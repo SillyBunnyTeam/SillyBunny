@@ -1,7 +1,7 @@
 import { MOTION_EASE, MOTION_SLOW, animateOut, play, stopMotion } from '../sillybunny-motion.js';
 
 /** The sheet that styles `.sb-banner`. It is the editor shell's, so a banner outside an editor loads it itself. */
-const BANNER_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' };
+const BANNER_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' };
 
 // libadwaita's AdwBanner measures, in px: the title is 6 from the edge, parts are 6 apart, the button is at least 84
 // wide beside the title, and a centred title keeps 36 clear of the button on each side. CSS holds the same numbers.

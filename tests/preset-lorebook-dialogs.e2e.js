@@ -213,7 +213,7 @@ for (const viewport of PL_VIEWPORTS) {
         await popup.locator('#wi_sort_start').fill('0');
         await popup.locator('#wi_sort_step').fill('5');
         await popup.locator('#wi_sort_ascending').check();
-        await expect(popup.locator('.info-block')).toBeHidden();
+        await expect(popup.locator('.sb-banner')).toBeHidden();
         await popup.locator('.popup-button-ok').click();
         await expect.poll(() => state.worlds.length).toBe(1);
         const byComment = (a, b) => a.comment.localeCompare(b.comment);
@@ -222,7 +222,7 @@ for (const viewport of PL_VIEWPORTS) {
         popup = await openPresetLorebookDialog(page, 'sorting');
         await popup.locator('#wi_sort_start').fill('8');
         await popup.locator('#wi_sort_step').fill('5');
-        await expect(popup.locator('.info-block')).toContainText('clamped');
+        await expect(popup.locator('.sb-banner')).toContainText('clamped');
         await popup.locator('.popup-button-ok').click();
         await expect.poll(() => state.worlds.length).toBe(2);
         expect(Object.values(state.worlds[1].data.entries).sort(byComment).map(entry => entry.order)).toEqual([8, 3, 0]);

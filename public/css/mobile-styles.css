@@ -1104,7 +1104,8 @@
         max-height: 42dvh !important;
         overflow-y: auto !important;
         padding: 5px 7px !important;
-        font-size: 16px !important;
+        /* Follows the text size, but never under 16px: iOS zooms into a focused field below that. */
+        font-size: max(16px, var(--mainFontSize)) !important;
         line-height: 1.18 !important;
         align-self: stretch !important;
         justify-self: stretch !important;

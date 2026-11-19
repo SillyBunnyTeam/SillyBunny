@@ -601,7 +601,9 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
 
                 const alert = alertOf(page);
                 await expect(alert).toBeVisible();
-                await expect(alert.getByRole('button')).toHaveText(['Cancel', 'Discard', 'Save as New Chat']);
+                // The DOM order is the Tab order, so it follows the drawing: Cancel first in a row, last in a stacked sheet.
+                const stacked = await alert.locator('.sb-dialog__responses.is-stacked').count() > 0;
+                await expect(alert.getByRole('button')).toHaveText(stacked ? ['Save as New Chat', 'Discard', 'Cancel'] : ['Cancel', 'Discard', 'Save as New Chat']);
                 await expect(alert.locator('.sb-dialog__heading')).toHaveText(TC_COPY.leaveHead);
                 await expect(alert.locator('.sb-dialog__message')).toHaveText(TC_COPY.leaveBody);
                 await expect(alert.locator('[data-sb-copy-placeholder]')).toHaveCount(0);

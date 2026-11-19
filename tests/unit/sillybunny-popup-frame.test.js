@@ -340,6 +340,16 @@ describe('Popup frame adapter', () => {
         frame.dispose();
     });
 
+    test.each(['alert', 'dialog', 'window'])('a framed %s Popup keeps OK before Cancel in the DOM, as docs/dialogs.md promises extensions', tier => {
+        setupDialogMedia();
+        const popupValue = popupDom();
+        const frame = framePopup(popupValue, { tier });
+        popupValue.dlg.showModal();
+        frame.opened();
+        expect(popupValue.okButton.compareDocumentPosition(popupValue.cancelButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        frame.dispose();
+    });
+
     test('Dialog moves the first heading itself to its header, keeps i18n and puts Cancel before Save', () => {
         setupDialogMedia();
         const popupValue = popupDom({ contentHtml: '<h3 data-i18n="Install Extension">Install Extension</h3><p>Details</p>' });

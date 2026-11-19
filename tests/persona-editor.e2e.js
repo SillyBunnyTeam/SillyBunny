@@ -232,6 +232,19 @@ test.describe('Persona editor', () => {
         expect(await page.evaluate(async avatarId => (await import('./scripts/sillybunny-folders.js')).getFolderId('personas', avatarId), persona.avatarId)).toBe(folderId);
     });
 
+    test('Escape on a switch of Global Settings does what Back does and leaves focus on a control', async ({ page }) => {
+        const editor = await openList(page);
+        await editor.getByRole('button', { name: 'Persona Management', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
+        const settings = page.locator('.sb-persona-settings');
+        await expect(settings).toBeVisible();
+        await expect(settings.locator('.sb-persona-detail-back')).toBeVisible();
+        await settings.getByRole('switch').first().focus();
+        await page.keyboard.press('Escape');
+        await expect(settings).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() => document.activeElement?.matches('button, a[href], input, select, textarea, [tabindex="0"], [role="button"], [role="listitem"]') ?? false)).toBe(true);
+    });
+
     test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
         const editor = await openList(page);
         const toggle = editor.locator('.sb-persona-list-header').getByRole('button', { name: 'Search', exact: true });
@@ -534,5 +547,22 @@ test.describe('Persona editor on mobile', () => {
         );
         expect(heights.length).toBeGreaterThan(0);
         for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
+    });
+});
+
+test.describe('Persona Global Settings on a phone', () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    test('Escape on a switch does what Back does and leaves focus on a control', async ({ page }) => {
+        const editor = await openList(page);
+        await editor.getByRole('button', { name: 'Persona Management', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
+        const settings = page.locator('.sb-persona-settings');
+        await expect(settings).toBeVisible();
+        await expect(settings.locator('.sb-persona-detail-back')).toBeVisible();
+        await settings.getByRole('switch').first().focus();
+        await page.keyboard.press('Escape');
+        await expect(settings).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() => document.activeElement?.matches('button, a[href], input, select, textarea, [tabindex="0"], [role="button"], [role="listitem"]') ?? false)).toBe(true);
     });
 });

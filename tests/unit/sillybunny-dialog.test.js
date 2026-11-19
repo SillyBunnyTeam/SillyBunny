@@ -929,6 +929,23 @@ describe('openAlert', () => {
         expect(dialog.isOpen).toBe(true);
     });
 
+    test('openAlert responses are in drawn order: caller order in a row, reversed in a stacked sheet', () => {
+        sheet.matches = false;
+        const names = () => [...getTopmostDialog().querySelectorAll('.sb-dialog__response')].map(node => node.textContent);
+        void openAlert({ heading: 'H', responses: [{ id: 'cancel', label: 'Cancel' }, { id: 'ok', label: 'OK' }] });
+        expect(names()).toEqual(['Cancel', 'OK']);
+        getTopmostDialog().remove();
+        sheet.matches = true;
+        void openAlert({ heading: 'H', responses: [{ id: 'cancel', label: 'Cancel' }, { id: 'ok', label: 'OK' }] });
+        expect(names()).toEqual(['OK', 'Cancel']);
+    });
+
+    test('openDialog puts Cancel before the affirmative response', () => {
+        sheet.matches = false;
+        openDialog({ title: 'T', content: document.createElement('div'), responses: { cancel: {}, affirmative: { id: 'save', label: 'Save' } } });
+        expect([...getTopmostDialog().querySelectorAll('.sb-dialog__response')].map(node => node.textContent)).toEqual(['Cancel', 'Save']);
+    });
+
     test('alerts stack their responses in sheets', () => {
         sheet.matches = true;
         void openAlert({ heading: 'H', responses: [{ id: 'cancel', label: 'Cancel' }, { id: 'ok', label: 'OK' }] });

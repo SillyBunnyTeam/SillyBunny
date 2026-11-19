@@ -1578,6 +1578,7 @@ function applyThemeColor(type) {
     if (type === 'quote') {
         document.documentElement.style.setProperty('--SmartThemeQuoteColor', power_user.quote_text_color);
     }
+    if (type === 'quote' || type === undefined) syncAccentPresetState(); // SillyBunny: keep the pressed accent preset in step
     /*     if (type === 'fastUIBG') {
             document.documentElement.style.setProperty('--SmartThemeFastUIBGColor', power_user.fastui_bg_color);
         } */
@@ -1678,6 +1679,28 @@ function normalizeAccentProfiles() {
 
     power_user.sb_accent_profiles = normalizedProfiles;
     return changed;
+}
+
+// SillyBunny: the accent presets as data, so the preset that matches the current accent can be marked `aria-pressed`.
+const ACCENT_PRESET_COLORS = Object.freeze({
+    blue: ['rgba(53, 132, 228, 1)', 'rgba(129, 208, 255, 1)'],
+    cyan: ['rgba(6, 182, 212, 1)', 'rgba(34, 211, 238, 1)'],
+    green: ['rgba(16, 185, 129, 1)', 'rgba(52, 211, 153, 1)'],
+    yellow: ['rgba(245, 158, 11, 1)', 'rgba(251, 191, 36, 1)'],
+    orange: ['rgba(255, 191, 0, 1)', 'rgba(255, 191, 0, 1)'],
+    red: ['rgba(239, 68, 68, 1)', 'rgba(248, 113, 113, 1)'],
+    pink: ['rgba(236, 72, 153, 1)', 'rgba(244, 114, 182, 1)'],
+    purple: ['rgba(168, 85, 247, 1)', 'rgba(192, 132, 252, 1)'],
+    gray: ['rgba(107, 114, 128, 1)', 'rgba(156, 163, 175, 1)'],
+});
+
+// SillyBunny: the preset whose primary colour is the current accent is the pressed one.
+function syncAccentPresetState() {
+    const current = String(power_user.quote_text_color ?? '').replace(/\s+/g, '');
+    document.querySelectorAll('.sb-accent-preset').forEach(button => {
+        const [quote] = ACCENT_PRESET_COLORS[button.dataset.accent] ?? [];
+        button.setAttribute('aria-pressed', String(Boolean(quote) && quote.replace(/\s+/g, '') === current));
+    });
 }
 
 function applyAccentColors(quoteColor, underlineColor) {
@@ -5384,47 +5407,7 @@ jQuery(async () => {
 
     // Accent color presets
     $(document).on('click', '.sb-accent-preset', function () {
-        const accent = $(this).data('accent');
-        let quoteColor, underlineColor;
-
-        switch (accent) {
-            case 'blue':
-                quoteColor = 'rgba(53, 132, 228, 1)';
-                underlineColor = 'rgba(129, 208, 255, 1)';
-                break;
-            case 'cyan':
-                quoteColor = 'rgba(6, 182, 212, 1)';
-                underlineColor = 'rgba(34, 211, 238, 1)';
-                break;
-            case 'green':
-                quoteColor = 'rgba(16, 185, 129, 1)';
-                underlineColor = 'rgba(52, 211, 153, 1)';
-                break;
-            case 'yellow':
-                quoteColor = 'rgba(245, 158, 11, 1)';
-                underlineColor = 'rgba(251, 191, 36, 1)';
-                break;
-            case 'orange':
-                quoteColor = 'rgba(255, 191, 0, 1)';
-                underlineColor = 'rgba(255, 191, 0, 1)';
-                break;
-            case 'red':
-                quoteColor = 'rgba(239, 68, 68, 1)';
-                underlineColor = 'rgba(248, 113, 113, 1)';
-                break;
-            case 'pink':
-                quoteColor = 'rgba(236, 72, 153, 1)';
-                underlineColor = 'rgba(244, 114, 182, 1)';
-                break;
-            case 'purple':
-                quoteColor = 'rgba(168, 85, 247, 1)';
-                underlineColor = 'rgba(192, 132, 252, 1)';
-                break;
-            case 'gray':
-                quoteColor = 'rgba(107, 114, 128, 1)';
-                underlineColor = 'rgba(156, 163, 175, 1)';
-                break;
-        }
+        const [quoteColor, underlineColor] = ACCENT_PRESET_COLORS[$(this).data('accent')] ?? [];
 
         if (quoteColor && underlineColor) {
             applyAccentColors(quoteColor, underlineColor);

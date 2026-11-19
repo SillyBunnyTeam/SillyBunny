@@ -100,8 +100,10 @@ export function mountPersonaSettings({ host, onClose }) {
         if (event.key !== 'Escape' || event.isComposing) return;
         event.preventDefault();
         event.stopPropagation();
-        if (event.target.matches('input, select, textarea')) event.target.blur();
-        else onClose();
+        // Back is only drawn where Global Settings is a pushed page. There Escape does what Back does. Elsewhere the field keeps focus,
+        // because blurring it could only move focus to the section, which is not a control.
+        if (event.target.matches('input, select, textarea') && !back.getClientRects().length) return;
+        onClose();
     });
     eventSource.on(event_types.SETTINGS_UPDATED, refresh);
 

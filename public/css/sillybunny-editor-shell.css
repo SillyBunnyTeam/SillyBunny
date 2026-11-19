@@ -763,7 +763,9 @@ body.reduced-motion .sb-spinner--delayed {
     }
 }
 
-.sb-header-icon-button:focus-visible {
+/* The reset above carries the :not() chain, so a bare `:focus-visible` rule loses to its `box-shadow: none`. Only the theme's `(hover: hover)` ring rescued it, which left touch widths with a keyboard (a tablet, a phone) without a ring. The chain here gives the ring the same specificity, and it comes later. */
+.sb-header-icon-button:focus-visible,
+.sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }

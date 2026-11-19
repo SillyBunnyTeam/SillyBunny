@@ -144,7 +144,9 @@ For third-party extensions the guarantee is functional, not visual
 values, `inputResults` keyed by id, `onOpen`, `onClosing` and `onClose` timing, the public element
 properties, and the classes `.popup`, `.popup-body`, `.popup-content`, `.popup-controls`,
 `.popup-input`, `.popup-inputs` and the OK, Cancel and Close classes. OK stays before Cancel in DOM
-order, `dlg` stays the native modal, and caller content stays directly inside `.popup-content`.
+order, `dlg` stays the native modal, and caller content stays directly inside `.popup-content`. Because
+the frame draws Cancel first with CSS `order`, Tab in a framed Popup reaches OK before Cancel; `openAlert`
+and `openDialog` build their responses in drawn order, so Tab follows the layout there.
 Not guaranteed: where controls sit. Dialog and Window move `.popup-controls` into the header, so
 `.popup-body > .popup-controls` no longer matches; Alert moves it after the body. Leading headings
 leave `.popup-content`. The default CONFIRM negative button is relabelled "Cancel" unless the caller

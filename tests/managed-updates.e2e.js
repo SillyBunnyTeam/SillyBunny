@@ -365,7 +365,9 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 const alert = alertOf(page);
                 await expect(alert).toBeVisible();
-                await expect(alert.getByRole('button')).toHaveText(['Keep Mine', 'Update']);
+                // The DOM order is the Tab order, so it follows the drawing: Cancel first in a row, the affirmative first in a stacked sheet.
+                const stacked = await alert.locator('.sb-dialog__responses.is-stacked').count() > 0;
+                await expect(alert.getByRole('button')).toHaveText(stacked ? ['Update', 'Keep Mine'] : ['Keep Mine', 'Update']);
                 await expect(alert.getByRole('heading', { name: 'Update Reisen?' })).toBeVisible();
                 await expect(alert.locator('[data-sb-managed-update="body"]')).toHaveText('A newer version of Reisen is available, but you\'ve edited your copy. Would you like to update anyway? Your copy is saved as a backup.');
                 await expect(alert.locator('[data-sb-copy-placeholder]')).toHaveCount(0);

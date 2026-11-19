@@ -307,6 +307,24 @@ export function layoutWithoutTransitions(row, layout) {
     row.classList.remove('is-laying-out');
 }
 
+/**
+ * Puts the response buttons in the DOM in the order they are drawn, so that Tab follows the layout.
+ * `wideOrder` is the order of a row (Cancel first, the affirmative last). A stacked column is drawn
+ * with `column-reverse`, which puts the first response at the bottom, so its DOM order is the reverse.
+ * Moving a focused node drops focus in some engines, so focus is put back.
+ * @param {HTMLElement} container
+ * @param {HTMLElement[]} wideOrder
+ * @param {boolean} stacked
+ */
+export function arrangeResponses(container, wideOrder, stacked) {
+    const wanted = stacked ? [...wideOrder].reverse() : wideOrder;
+    const current = [...container.children];
+    if (wanted.length === current.length && wanted.every((node, index) => node === current[index])) return;
+    const focused = container.contains(document.activeElement) ? document.activeElement : null;
+    container.append(...wanted);
+    if (focused && document.activeElement !== focused) focused.focus({ preventScroll: true });
+}
+
 /** Keeps a content-sized Window at its largest laid-out height until it closes. */
 export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
     let minimumHeight = null;
@@ -1307,6 +1325,7 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
         responsesNode.classList.remove('is-stacked');
         if (isSheet()) {
             responsesNode.classList.add('is-stacked');
+            arrangeResponses(responsesNode, [...buttons.values()], true);
             return;
         }
         responsesNode.classList.add('is-measuring');
@@ -1316,7 +1335,9 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
         const gap = parseFloat(style.columnGap) || 0;
         const available = responsesNode.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
         responsesNode.classList.remove('is-measuring');
-        if (widest * nodes.length + gap * (nodes.length - 1) > available + 1) responsesNode.classList.add('is-stacked');
+        const stacked = widest * nodes.length + gap * (nodes.length - 1) > available + 1;
+        responsesNode.classList.toggle('is-stacked', stacked);
+        arrangeResponses(responsesNode, nodes, stacked);
     }
 
     function complete(response, offset = 0) {
@@ -1376,7 +1397,7 @@ export function openAlert({ heading, body = '', bodyNode = null, extra = null, r
     host.showModal();
     layoutResponses();
     openMotion(frame);
-    const focusTarget = buttons.get(defaultResponse) ?? buttons.get(closeResponse) ?? firstFocusable(content) ?? responsesNode.querySelector('button');
+    const focusTarget = buttons.get(defaultResponse) ?? buttons.get(closeResponse) ?? firstFocusable(content) ?? buttons.values().next().value;
     focusTarget?.focus({ preventScroll: true });
     return result;
 }

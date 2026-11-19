@@ -758,26 +758,26 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261118zza', id: 'deferred-prompt-editor-css' },
     ],
     // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles. NovelAI's Logit Bias entries are entity rows, which the entity list sheet styles.
     'left:prompting': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261118zv', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
@@ -796,7 +796,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-list.css?v=20261118zza', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261118zg', id: 'deferred-character-import-css' },
     ],
@@ -805,17 +805,17 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles. The Regex page lists its scripts as entity rows.
     'right:extensions': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/extensions-panel.css?v=20261118h', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
     ],
     // SillyBunny: Appearance builds entry, text-area and button rows, which the same sheet styles.
     'right:appearance': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
     ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';

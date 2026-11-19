@@ -1645,6 +1645,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-19, UI polish sweep (task 14.6n). |
 | Owner | `TODO(copy)` |
 
+### Drawer headers, the composer's text size and the accent presets' state (task 14.6o)
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/keyboard.js` and `public/scripts/a11y.js` (a chevron inside its drawer header leaves `interactableSelectors` and `buttonSelectors`, and `.inline-drawer-toggle:not(.ds-row, [aria-expanded])` takes the Tab stop and the button role); `public/css/mobile-styles.css` (`#send_textarea` font size `max(16px, var(--mainFontSize))`); `public/scripts/power-user.js` (`ACCENT_PRESET_COLORS`, `syncAccentPresetState()` and its call in `applyThemeColor`). |
+| Area | Keyboard access to drawers; the composer on phones; Appearance accent presets. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The selector lists of `keyboard.js` and `a11y.js`; `applyThemeColor()`. |
+| Adapter shape | Since 2026-11-19 (UI polish sweep, task 14.6o; F-358, F-363, F-357): a drawer is one Tab stop, its header, and a header that names itself with `aria-expanded` or is a row that binds Enter itself is left out so Enter does not click twice; the composer follows the text size and never goes under 16px, below which iOS zooms into a focused field; the preset that matches the accent carries `aria-pressed="true"` and a ring. |
+| Protecting tests | `tests/focus-rings-dialog-order.e2e.js`; `tests/dialogs-accessibility.e2e.js`. |
+| Validation | 2026-11-19: root and tests lint, the full unit run, contracts and design rules, the dialog and accessibility specs, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-19, UI polish sweep (task 14.6o). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

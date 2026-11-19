@@ -110,7 +110,7 @@ const personasSource = readFileSync(new URL('../../public/scripts/personas.js', 
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
@@ -1489,7 +1489,7 @@ describe('Persona settings transport adoption', () => {
         expect(onChange).toHaveBeenCalledTimes(2);
     });
 
-    test('Escape blurs a field before closing and stops propagation in both cases', () => {
+    test('Escape in a field keeps focus there when Back is hidden, closes outside fields, and stops propagation in both cases', () => {
         const host = document.createElement('div');
         container.append(host);
         const onClose = jest.fn();
@@ -1499,11 +1499,24 @@ describe('Persona settings transport adoption', () => {
         const input = host.querySelector('input');
         input.focus();
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-        expect(document.activeElement).not.toBe(input);
+        expect(document.activeElement).toBe(input);
         expect(onClose).not.toHaveBeenCalled();
         settings.focusTarget().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(bubble).not.toHaveBeenCalled();
+        settings.destroy();
+    });
+
+    test('Escape in a field does what Back does where Back is drawn', () => {
+        const host = document.createElement('div');
+        container.append(host);
+        const onClose = jest.fn();
+        const settings = mountPersonaSettings({ host, onClose });
+        host.querySelector('.sb-persona-detail-back').getClientRects = () => [{ width: 36, height: 36 }];
+        const input = host.querySelector('input');
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        expect(onClose).toHaveBeenCalledTimes(1);
         settings.destroy();
     });
 });

@@ -5,7 +5,10 @@ const interactableSelectors = [
     '.menu_button', // General menu button in ST
     '.right_menu_button', // Button-likes in many menus
     '.drawer-icon', // Main "menu bar" icons
-    '.inline-drawer-icon', // Buttons/icons inside the drawer menus
+    // SillyBunny: a chevron inside its drawer header is decoration of the header, which is the control; the header takes the Tab stop instead.
+    // A header that already names itself a button with `aria-expanded`, or that is a row (the Connections page binds Enter and Space itself), is left out, so Enter does not click it twice.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded])',
+    '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)', // Buttons/icons inside the drawer menus
     '.paginationjs-pages li a', // Pagination buttons
     '.group_select, .character_select, .bogus_folder_select', // Cards to select char, group or folder in character list and other places
     '.swipe_picker_block', // Swipe picker entries in the swipe history popup

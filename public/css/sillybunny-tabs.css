@@ -7770,3 +7770,20 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     gap: 0.5rem;
     margin-top: 0.5rem;
 }
+
+/* Forced colours remove the fill that marks the selected sidebar tab, so it takes the system selection colours, as the selected segment of a segmented control does. */
+@media (forced-colors: active) {
+    .sb-settings-tab[aria-selected='true'],
+    .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]) {
+        forced-color-adjust: none;
+        background: Highlight;
+        color: HighlightText;
+    }
+
+    /* The focus outline is Highlight, which is the fill of a selected tab. */
+    .sb-settings-tab[aria-selected='true']:focus-visible,
+    .sb-shell-tab:is(.is-active, .active, .selected, .is-selected, .is-current, [aria-selected='true'], [aria-current]):focus-visible {
+        outline-color: HighlightText;
+        outline-offset: -2px;
+    }
+}

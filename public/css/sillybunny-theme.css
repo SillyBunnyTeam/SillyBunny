@@ -4171,6 +4171,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, white 34%, transparent);
 }
 
+.sb-accent-presets > .sb-accent-preset[aria-pressed='true'] {
+    outline: 2px solid var(--SmartThemeBodyColor);
+    outline-offset: 2px;
+}
+
 .sb-accent-preset:focus-visible {
     transform: none;
     border-color: color-mix(in srgb, var(--sb-accent) 30%, var(--sb-shell-border) 70%);
@@ -6530,9 +6535,9 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     transition: none !important;
 }
 
-/* Stacked: keep Cancel at the bottom within thumb reach. */
+/* Stacked: keep Cancel at the bottom within thumb reach. The DOM is reversed to match (`arrangeResponses`), so Tab follows the drawing. */
 .sb-dialog__responses.is-stacked {
-    flex-direction: column-reverse;
+    flex-direction: column;
     gap: 8px;
 }
 
@@ -6691,7 +6696,8 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         .autoComplete-wrap > .autoComplete,
         .autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details,
         .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
-        .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList
+        .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList,
+        .ds-pref-group
     ) {
         outline: 1px solid CanvasText;
         outline-offset: -1px;
@@ -6723,6 +6729,16 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         forced-color-adjust: none;
         background: Highlight;
         color: HighlightText;
+    }
+
+    /* The swatch and the colour box are the only place their colour shows, so forced colours must not replace it. */
+    .sb-accent-preset::before,
+    toolcool-color-picker {
+        forced-color-adjust: none;
+    }
+
+    .sb-accent-presets > .sb-accent-preset[aria-pressed='true'] {
+        outline-color: CanvasText;
     }
 
     /* A switch thumb is a pseudo-element, which forced colours paint like the track. */

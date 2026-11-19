@@ -8,7 +8,9 @@ const buttonSelectors = [
     '.right_menu_button',
     '.mes_button',
     '.drawer-icon',
-    '.inline-drawer-icon',
+    // SillyBunny: a chevron inside its drawer header is decoration of the header, so the header takes the button role instead.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded])',
+    '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)',
     '.swipe_left',
     '.swipe_right',
     '.character_select',
