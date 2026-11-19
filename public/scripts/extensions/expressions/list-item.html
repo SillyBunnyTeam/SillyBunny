@@ -1,6 +1,23 @@
 {{#each images}}
 <!-- SillyBunny: the tile is not a control, so the buttons in it are not nested in one. Its image is the button that sets the sprite; the four actions are buttons whose tooltip is also their name (native buttons answer Enter and Space themselves). -->
 <div class="expression_list_item" role="listitem" data-expression="{{../expression}}" data-expression-type="{{this.type}}" data-filename="{{this.fileName}}">
+    <div class="expression_list_title">
+        <span>{{../expression}}</span>
+        {{#if this.showFileName}}
+            <small class="expression_list_filename" title="{{this.fileName}}">{{this.fileName}}</small>
+        {{/if}}
+        {{#if ../isCustom}}
+            <small class="expression_list_custom">(custom)</small>
+        {{/if}}
+    </div>
+    <!-- SillyBunny: the picture comes first in the markup, as it does on screen, so that Tab enters the tile at its picture and then its actions. The actions are positioned over the picture by the sheet. A tile with no sprite draws a symbolic icon, named for assistive technology by the button. -->
+    <button type="button" class="expression_list_image_container" title="{{this.title}}"{{#if this.isPlaceholder}} aria-label="{{this.title}}"{{/if}}>
+        {{#if this.isPlaceholder}}
+        <i class="fa-solid fa-image expression_list_placeholder_icon" aria-hidden="true"></i>
+        {{else}}
+        <img class="expression_list_image" src="{{this.imageSrc}}" alt="{{this.title}}" data-epression="{{../expression}}" />
+        {{/if}}
+    </button>
     <div class="expression_list_buttons">
         <button type="button" class="menu_button expression_list_upload" title="Upload Image" aria-label="Upload Image">
             <i class="fa-solid fa-upload" aria-hidden="true"></i>
@@ -19,14 +36,5 @@
             <i class="fa-solid fa-trash" aria-hidden="true"></i>
         </button>
     </div>
-    <div class="expression_list_title">
-        <span>{{../expression}}</span>
-        {{#if ../isCustom}}
-            <small class="expression_list_custom">(custom)</small>
-        {{/if}}
-    </div>
-    <button type="button" class="expression_list_image_container" title="{{this.title}}">
-        <img class="expression_list_image" src="{{this.imageSrc}}" alt="{{this.title}}" data-epression="{{../expression}}" />
-    </button>
 </div>
 {{/each}}

@@ -156,7 +156,10 @@ img.expression.default {
     background-color: var(--sb-osd-bg);
     color: var(--sb-osd-ink);
     width: 100%;
-    height: 20%;
+    /* SillyBunny: the bar grows past a fifth of the tile when it carries a file name under the label. */
+    min-height: 20%;
+    padding-block: 2px;
+    box-sizing: border-box;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -218,9 +221,23 @@ img.expression.default {
     font-weight: 400;
 }
 
-/* SillyBunny: the placeholder picture is a light graphic; dimmed, it reads as an empty tile on both tones. */
-#image_list .expression_list_item[data-expression-type="failure"] .expression_list_image {
-    opacity: 0.3;
+/* SillyBunny: a tile with no sprite draws a dimmed symbolic icon, as the empty states of the other pages draw a missing image. */
+.expression_list_placeholder_icon {
+    color: var(--sb-muted-fg);
+    font-size: 48px;
+    opacity: 0.5;
+}
+
+/* SillyBunny: sprites of one expression are told apart by file name on a touch screen, where there is no tooltip; a long name is cut with an ellipsis and its tooltip holds the whole name. */
+.expression_list_filename {
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-inline: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--sb-type-meta, 0.85em);
+    font-weight: 400;
 }
 
 .expression_settings label {

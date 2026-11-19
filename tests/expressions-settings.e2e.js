@@ -34,6 +34,24 @@ async function openPage(browser, baseURL, viewport, { character } = {}) {
     return { context, page, detail: page.locator(EXTENSION_DETAIL) };
 }
 
+// A one-pixel PNG: the server only checks that the bytes are an image of the stored type.
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+const LONG_SPRITE = `joy-${'long'.repeat(14)}`;
+
+/** Creates a character whose folder holds the given sprites (file name and label), through the server's own routes. */
+async function createCharacterWithSprites(browser, baseURL, name, sprites) {
+    const probe = await browser.newContext({ baseURL });
+    const token = (await (await probe.request.get('/csrf-token')).json()).token;
+    const headers = { 'X-CSRF-Token': token };
+    const made = await probe.request.post('/api/characters/create', { headers, multipart: { ch_name: name, description: 'Sprites.', first_mes: 'Hello.', fav: 'false' } });
+    expect(made.ok()).toBe(true);
+    for (const { spriteName, label } of sprites) {
+        const sent = await probe.request.post('/api/sprites/upload', { headers, multipart: { name, label, spriteName, avatar: { name: `${spriteName}.png`, mimeType: 'image/png', buffer: PIXEL } } });
+        expect(sent.ok()).toBe(true);
+    }
+    await probe.close();
+}
+
 const isCoarse = viewport => viewport === '390x844';
 const floorOf = viewport => (isCoarse(viewport) ? 44 : 32);
 
@@ -195,6 +213,89 @@ for (const viewport of VIEWPORTS) {
             await expect(first.locator('.expression_list_upload')).toBeVisible();
             await context.close();
             void page;
+        });
+
+        test('a tile with no sprite draws a dimmed symbolic icon, and its picture button keeps a text name', async ({ browser, baseURL }) => {
+            const name = `Icon ${viewport}`;
+            await createCharacterWithSprites(browser, baseURL, name, []);
+            const { context, detail } = await openPage(browser, baseURL, viewport, { character: name });
+            const tile = detail.locator('#image_list .expression_list_item[data-expression-type="failure"]').first();
+            await expect(tile).toBeVisible();
+            await expect(tile.locator('img')).toHaveCount(0);
+            const icon = tile.locator('.expression_list_image_container .expression_list_placeholder_icon');
+            await expect(icon).toBeVisible();
+            await expect(icon).toHaveAttribute('aria-hidden', 'true');
+            expect(Number(await icon.evaluate(node => getComputedStyle(node).opacity))).toBeLessThan(1);
+            await expect(tile.locator('.expression_list_image_container')).toHaveAccessibleName('No Image');
+            await context.close();
+        });
+
+        test('the sprites of one expression show their file names, shortened with an ellipsis and whole in the tooltip', async ({ browser, baseURL }) => {
+            const name = `Captions ${viewport}`;
+            await createCharacterWithSprites(browser, baseURL, name, [
+                { spriteName: 'joy', label: 'joy' },
+                { spriteName: 'joy-1', label: 'joy' },
+                { spriteName: LONG_SPRITE, label: 'joy' },
+                { spriteName: 'anger', label: 'anger' },
+            ]);
+            const { context, detail } = await openPage(browser, baseURL, viewport, { character: name });
+            await detail.locator('#expressions_allow_multiple').setChecked(true);
+            const joy = detail.locator('#image_list .expression_list_item[data-expression="joy"]');
+            await expect(joy).toHaveCount(3);
+            const captions = joy.locator('.expression_list_filename');
+            await expect(captions).toHaveCount(3);
+            expect(await captions.allTextContents()).toEqual(['joy.png', 'joy-1.png', `${LONG_SPRITE}.png`]);
+            const long = captions.nth(2);
+            await expect(long).toHaveAttribute('title', `${LONG_SPRITE}.png`);
+            expect(await long.evaluate(node => ({ overflow: getComputedStyle(node).textOverflow, clipped: node.scrollWidth > node.clientWidth, inside: node.getBoundingClientRect().right <= node.closest('.expression_list_item').getBoundingClientRect().right + 0.5 }))).toEqual({ overflow: 'ellipsis', clipped: true, inside: true });
+            // A tile that is the only one of its expression has nothing to tell apart.
+            await expect(detail.locator('#image_list .expression_list_item[data-expression="anger"] .expression_list_filename')).toHaveCount(0);
+            await context.close();
+        });
+
+        test('a tile is entered at its picture, then its actions, as on screen', async ({ browser, baseURL }) => {
+            const name = `Order ${viewport}`;
+            await createCharacterWithSprites(browser, baseURL, name, [{ spriteName: 'joy', label: 'joy' }]);
+            const { context, page, detail } = await openPage(browser, baseURL, viewport, { character: name });
+            const tile = detail.locator('#image_list .expression_list_item[data-expression="joy"]');
+            await expect(tile).toHaveCount(1);
+            const order = await tile.evaluate(node => [...node.querySelectorAll('button')].map(button => button.className.match(/expression_list_(\w+)/)[1]));
+            expect(order).toEqual(['image_container', 'upload', 'regenerate', 'delete']);
+            await tile.locator('.expression_list_image_container').focus();
+            await page.keyboard.press('Tab');
+            await expect(tile.locator('.expression_list_upload')).toBeFocused();
+            await context.close();
+        });
+
+        test('Replace Existing in the sprite naming dialog is a destructive response, and Save keeps its place', async ({ browser, baseURL }) => {
+            const name = `Replace ${viewport}`;
+            await createCharacterWithSprites(browser, baseURL, name, [{ spriteName: 'joy', label: 'joy' }, { spriteName: 'joy-1', label: 'joy' }]);
+            const { context, page, detail } = await openPage(browser, baseURL, viewport, { character: name });
+            await detail.locator('#expressions_allow_multiple').setChecked(true);
+            const tile = detail.locator('#image_list .expression_list_item[data-filename="joy-1.png"]');
+            await expect(tile).toHaveCount(1);
+            const chooser = page.waitForEvent('filechooser');
+            await tile.locator('.expression_list_upload').click();
+            await (await chooser).setFiles({ name: 'unrelated.png', mimeType: 'image/png', buffer: PIXEL });
+            const dialog = page.locator('dialog[open]');
+            await expect(dialog).toBeVisible();
+            const replace = dialog.locator('.popup-button-custom', { hasText: 'Replace Existing' });
+            await expect(replace).toHaveClass(/is-destructive/);
+            await expect(replace).toHaveCSS('background-color', await page.evaluate(() => {
+                const probe = document.createElement('span');
+                probe.style.backgroundColor = 'var(--sb-color-danger)';
+                document.body.append(probe);
+                const color = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return color;
+            }));
+            await expect(dialog.locator('.popup-button-ok')).not.toHaveClass(/is-destructive/);
+            await expect(dialog.locator('.popup-button-ok')).toHaveText('Save');
+            // The response order is the Popup's own: OK stays before Cancel in the DOM.
+            const order = await dialog.evaluate(node => [...node.querySelectorAll('.popup-button-ok, .popup-button-cancel')].map(button => button.classList.contains('popup-button-ok') ? 'ok' : 'cancel'));
+            expect(order).toEqual(['ok', 'cancel']);
+            await page.keyboard.press('Escape');
+            await context.close();
         });
     });
 }

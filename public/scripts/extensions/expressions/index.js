@@ -178,6 +178,8 @@ function getPlaceholderImage(expression, isCustom = false) {
         expression: expression,
         isCustom: isCustom,
         canGenerate: true,
+        // SillyBunny: the template draws a symbolic icon for a tile with no sprite, in place of the placeholder picture.
+        isPlaceholder: true,
         title: 'No Image',
         type: 'failure',
         fileName: 'No-Image-Placeholder.svg',
@@ -2369,7 +2371,9 @@ async function drawSpritesList(spriteFolderName, labels, sprites) {
  * @returns {Promise<string>} Rendered list item template
  */
 async function getListItem(expression, { images, isCustom = false } = {}) {
-    return renderExtensionTemplateAsync(MODULE_NAME, 'list-item', { expression, images, isCustom: isCustom ?? false });
+    // SillyBunny: sprites of one expression carry their file name on the tile, so that they can be told apart without a tooltip.
+    const captioned = images?.map(image => ({ ...image, showFileName: images.length > 1 }));
+    return renderExtensionTemplateAsync(MODULE_NAME, 'list-item', { expression, images: captioned, isCustom: isCustom ?? false });
 }
 
 /**
@@ -3016,6 +3020,8 @@ async function onClickExpressionUpload(event) {
                     customButtons.push({
                         text: t`Replace Existing`,
                         result: POPUP_RESULT.NEGATIVE,
+                        // SillyBunny: replacing overwrites the sprite file, so the response takes Destructive Red.
+                        classes: ['is-destructive'],
                         action: () => {
                             console.debug('Replacing existing sprite');
                             spriteName = withoutExtension(clickedFileName);
