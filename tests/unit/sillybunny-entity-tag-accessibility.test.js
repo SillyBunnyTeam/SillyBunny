@@ -10,10 +10,10 @@ test('legacy accessibility preserves display-only metadata without changing acti
         + '</div></div><div class="tags"><span class="tag">Legacy</span></div>';
     initAccessibility();
     const roles = () => [...document.querySelectorAll('.tag')].map(tag => tag.getAttribute('role'));
-    expect(roles()).toEqual(['generic', 'generic', 'button', 'button', 'button', 'button']);
+    expect(roles()).toEqual([null, null, 'button', 'button', 'button', 'button']);
     const added = document.createElement('span');
     added.className = 'tag';
     document.querySelector('.ds-entity-row__tags').append(added);
     await Promise.resolve();
-    expect(added.getAttribute('role')).toBe('generic');
+    expect(added.getAttribute('role')).toBeNull();
 });

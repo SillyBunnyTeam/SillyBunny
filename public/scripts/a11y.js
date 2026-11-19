@@ -10,7 +10,8 @@ const buttonSelectors = [
     '.drawer-icon',
     // SillyBunny: a chevron inside its drawer header is decoration of the header, so the header takes the button role instead.
     // SillyBunny: the legacy Prompt Manager's drawer header sits in a group the prompt editor replaces and hides, so it takes no role and no Tab stop.
-    '.inline-drawer-toggle:not(.ds-row, [aria-expanded], #sb-openai-prompt-manager .inline-drawer-toggle)',
+    // SillyBunny: a header marked `sb-drawer-child-toggle` holds its own toggle button beside other buttons, so it takes no role: a button inside a button is nested-interactive.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded], .sb-drawer-child-toggle, #sb-openai-prompt-manager .inline-drawer-toggle)',
     '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)',
     '.swipe_left',
     '.swipe_right',
@@ -85,9 +86,9 @@ const tabItemSelectors = [
 /** @type {Record<string, (element: Element) => void>} */
 const a11yRules = {
     [buttonSelectors]: (element) => {
-        // SillyBunny: entity metadata is not a separate action.
+        // SillyBunny: entity metadata is not a separate action. It gets no role: "generic" is not an assignable ARIA role, so axe reports it as invalid.
         if (element.matches('.ds-entity-row__tags .tag:not(.actionable, .clickable-action)') && !element.querySelector('button, .tag_remove:not([style*="display: none"])')) {
-            element.setAttribute('role', 'generic');
+            element.removeAttribute('role');
             return;
         }
         element.setAttribute('role', 'button');
