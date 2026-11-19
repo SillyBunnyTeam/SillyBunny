@@ -418,7 +418,6 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             { section: '#sb-topbar-label-drawer' },
             { section: '[data-sb-category="topbar-custom-text"]' },
             { section: '#sb-quick-access-shortcuts-drawer' },
-            { section: '[data-sb-category="custom-css"]' },
         ]),
     }),
     interface: Object.freeze({

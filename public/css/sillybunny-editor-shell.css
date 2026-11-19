@@ -1626,3 +1626,34 @@ body.reduced-motion [data-selection-mode='true'] button.menu_button.sb-selection
 .menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action, .sb-status-page__action) {
     white-space: nowrap;
 }
+
+/* The Custom CSS Window: the editor takes the whole body. The field's label row only names the editor for assistive
+   technology, because the Window's title already says it and the save state and AI wand sit in the header bar. */
+.sb-custom-css-window .sb-dialog__body {
+    display: flex;
+    flex-direction: column;
+}
+
+.sb-custom-css-window .ds-row-textarea {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.sb-custom-css-window .ds-row-textarea__label-row {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.sb-custom-css-window .ds-row-textarea > .ds-row-textarea__input {
+    flex: 1 1 auto;
+    min-height: 50dvh;
+    resize: none;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: calc(var(--mainFontSize) * 0.84);
+    line-height: 1.45;
+    tab-size: 4;
+}

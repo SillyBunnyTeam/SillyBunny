@@ -133,7 +133,7 @@ function presentTheme(container) {
     const reset = block.querySelector('.sb-theme-preset-reset');
     if (reset) {
         // The click handler is delegated on the class, so the row takes it from the button it replaces.
-        const resetRow = createButtonRow({ label: reset.getAttribute('title') || textOf(reset), icon: 'rotate-left', field: 'theme-reset' });
+        const resetRow = createButtonRow({ label: t`Reset Theme to Default Libadwaita`, icon: 'rotate-left', danger: true, field: 'theme-reset' });
         resetRow.row.classList.add('sb-theme-preset-reset');
         rows.push(resetRow);
     }
@@ -288,26 +288,23 @@ function presentFont(container) {
 }
 
 /**
- * Custom CSS: a text-area field. The save indicator and the AI wand stay in the label row beside Expand,
- * and keep the ids and handlers `power-user.js` binds.
+ * Custom CSS: a button row in the UI Theme group, ahead of Reset, that opens a Window with the editor. `#customCSS` is
+ * the one store. It keeps its id, value and handlers and stays in the document, in a hidden home, while the Window is
+ * closed, because `power-user.js`, saved themes and extensions read and write it at any time. The save indicator and
+ * the AI wand keep their ids and handlers too and sit in the Window's header bar while it is open.
  */
 function presentCustomCss(container) {
-    if (container.querySelector('[data-sb-category="custom-css"]')) return;
+    if (container.querySelector('[data-sb-editor-field="custom-css"]')) return;
     const textarea = container.querySelector('#customCSS');
     const block = container.querySelector('#CustomCSS-block');
-    if (!(textarea instanceof HTMLTextAreaElement) || !block) return;
+    const themeGroup = container.querySelector('[data-sb-category="ui-theme"] > .ds-pref-group');
+    if (!(textarea instanceof HTMLTextAreaElement) || !block || !themeGroup) return;
 
     const copy = copyOf(textarea);
-    const group = createAppearanceGroup({
-        id: 'custom-css',
-        title: 'Custom CSS',
-        description: copy.subtitleText || 'Apply a custom CSS style to the whole SillyBunny interface.',
-        source: { description: copy.subtitle },
-    });
     textarea.classList.remove('ds-control-flex', 'margin0', 'margin-r5');
     const field = createTextAreaField({
         label: copy.labelText || 'Custom CSS',
-        field: 'custom-css',
+        field: 'custom-css-editor',
         input: textarea,
         expandLabel: t`Expand the Editor`,
     });
@@ -316,10 +313,52 @@ function presentCustomCss(container) {
     const wand = container.querySelector('#custom_css_ai_wand');
     const actions = [indicator, wand].filter(Boolean);
     if (actions.length) field.expand.before(...actions);
-    // The old Expand icon and the toolbar line are replaced by the field's own Expand button and the group description.
+    // The old Expand icon and the toolbar line are replaced by the field's own Expand button.
     for (const stale of block.querySelectorAll('.editor_maximize[data-for="customCSS"]')) stale.remove();
-    group.append(field);
-    block.before(group.section);
+
+    const home = document.createElement('div');
+    home.hidden = true;
+    home.dataset.sbCustomCssHome = '';
+    home.append(field.row);
+    themeGroup.closest('[data-sb-category="ui-theme"]').append(home);
+
+    let dialog = null;
+    let opening = false;
+    const openRow = createButtonRow({
+        label: t`Custom CSS`,
+        arrow: true,
+        field: 'custom-css',
+        onActivate: async () => {
+            if (dialog?.isOpen || opening) return;
+            opening = true;
+            // Loaded here, not at the top, so the page module does not pull in the dialog frame before a Window is wanted.
+            const { openDialog } = await import('./sillybunny-editor/dialog.js');
+            opening = false;
+            // The editor already fills the Window, so its own Expand button has nothing to add there.
+            field.expand.hidden = true;
+            const opened = openDialog({
+                title: t`Custom CSS`,
+                tier: 'window',
+                size: 'fill',
+                className: 'sb-custom-css-window',
+                content: body => body.append(field.row),
+                responses: null,
+            });
+            dialog = opened;
+            opened.headerEnd.prepend(...actions);
+            opened.closed.then(() => {
+                field.expand.hidden = false;
+                field.expand.before(...actions);
+                home.append(field.row);
+                if (dialog === opened) dialog = null;
+                // Safari does not focus a button on a click, so the dialog has no row to return to.
+                if (!document.activeElement || document.activeElement === document.body) openRow.row.focus();
+            });
+        },
+    });
+    const reset = themeGroup.querySelector('.sb-theme-preset-reset');
+    if (reset) reset.before(openRow.row);
+    else themeGroup.append(openRow.row);
     retire(block);
 }
 

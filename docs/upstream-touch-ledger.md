@@ -1730,6 +1730,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 13.8b). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/power-user.js` - Reset Theme to Default Libadwaita
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js` (the `.sb-theme-preset-reset` handler, `resetThemeToDefault()`, the `THEME_RESET_DEFAULTS` import). |
+| Area | Customize, Appearance: the UI Theme group's reset row. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `THEME_RESET_DEFAULTS` in `public/scripts/sillybunny-theme-css.js`; the row in `presentTheme()` of `public/scripts/sillybunny-appearance.js`. |
+| Adapter shape | Since 2026-11-19 (UI polish sweep, task 14.10c, the user's choices): the delegated click handler opens the shared alert ("Reset Theme?", Cancel, a destructive Reset), then `resetThemeToDefault()` writes the frozen table into `power_user` (the shipped Libadwaita theme's colours and effects, Custom CSS cleared, the selected theme, Blur Strength, Shadow Width and the font choice) and calls the existing `applyThemeColors`, `applyThemeEffects`, `applyBlurStrength`, `applyShadowWidth`, `applyCustomCSS` and `applyGoogleFont`. It no longer applies the user's saved copy of the Libadwaita theme. No new stored key. |
+| Protecting tests | `tests/custom-css-window.e2e.js`; `tests/unit/sillybunny-theme-reset-defaults.test.js`; `tests/theme-custom-css-import.test.js`. |
+| Validation | 2026-11-19: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js`, the related and named e2e specs (1,315 passed); the new spec failed 14 of 14 at `98fe8c9e8` without the change. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-19, UI polish sweep (task 14.10c). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/power-user.js` - bundled theme text repair
 | Field | Value |
 | --- | --- |

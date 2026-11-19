@@ -71,10 +71,16 @@ describe('theme actions keep stored theme data', () => {
         expect(exportThemeSource).not.toContain('getThemeSaveObject(');
     });
 
-    test('Reset restores colors without replacing Custom CSS', () => {
+    test('Reset asks first, then writes the shipped defaults and clears Custom CSS', () => {
         const resetSource = requireSection('.on(\'click\', \'.sb-theme-preset-reset\'', '// Accent color presets');
+        const defaultsSource = requireSection('function resetThemeToDefault()', 'async function applyMovingUIPreset');
 
-        expect(resetSource).toContain('applyTheme(\'Libadwaita\', { applyCss: false });');
+        expect(resetSource).toContain('await openAlert({');
+        expect(resetSource).toContain('if (choice !== \'reset\') {');
+        expect(resetSource.indexOf('resetThemeToDefault();')).toBeGreaterThan(resetSource.indexOf('if (choice !== \'reset\')'));
+        expect(resetSource).not.toContain('applyTheme(');
+        expect(defaultsSource).toContain('Object.assign(power_user, THEME_RESET_DEFAULTS);');
+        expect(defaultsSource).toContain('applyCustomCSS();');
     });
 });
 

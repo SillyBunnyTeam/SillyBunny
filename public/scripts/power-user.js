@@ -83,7 +83,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
-import { appendCustomCss, buildImportedTheme, getGeneratedCustomCss, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
+import { THEME_RESET_DEFAULTS, appendCustomCss, buildImportedTheme, getGeneratedCustomCss, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 // SillyBunny: registered side panels persist a side preference without applying draggable geometry.
@@ -2209,6 +2209,25 @@ function applyTheme(name, { applyCss = true } = {}) {
     // SillyBunny: the Custom CSS save state compares against the theme just applied.
     updateThemeCssSaveState();
     console.log('theme applied: ' + name);
+}
+
+// SillyBunny: the reset action is fork-only; the values it writes are in sillybunny-theme-css.js.
+/**
+ * Writes the shipped Libadwaita theme and the look settings beside it into the settings: the keys a saved theme stores
+ * (colors, effects, Custom CSS, the selected theme), Blur Strength, Shadow Width and the font choice. Layout, Chat Display,
+ * the visual switches and backgrounds are not theme settings and stay as they are. Imported fonts stay installed.
+ * The values are `THEME_RESET_DEFAULTS`, not the saved Libadwaita theme, which the user may have edited.
+ */
+function resetThemeToDefault() {
+    Object.assign(power_user, THEME_RESET_DEFAULTS);
+    $('#themes').val(THEME_RESET_DEFAULTS.theme).trigger('change.select2');
+    applyThemeColors(power_user);
+    applyThemeEffects();
+    applyBlurStrength();
+    applyShadowWidth();
+    applyCustomCSS();
+    applyGoogleFont();
+    saveSettingsDebounced();
 }
 
 async function applyMovingUIPreset(name) {
@@ -5398,11 +5417,23 @@ jQuery(async () => {
         applySillyBunnyPalettePreset(String($(this).data('sb-palette')));
     });
 
-    $(document).on('click', '.sb-theme-preset-reset', function () {
-        // SillyBunny: Reset restores colors only and leaves Custom CSS alone.
-        applyTheme('Libadwaita', { applyCss: false });
-        saveSettingsDebounced();
-        toastr.info('Theme colors reset to Libadwaita', 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
+    $(document).on('click', '.sb-theme-preset-reset', async function () {
+        // SillyBunny: Reset wipes the theme settings and Custom CSS, so it asks first. Cancel and a dismissal change nothing.
+        const { openAlert } = await import('./sillybunny-editor/dialog.js');
+        const choice = await openAlert({
+            heading: t`Reset Theme?`,
+            body: t`Theme settings and custom CSS will be wiped. This is irreversible!`,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'reset', label: t`Reset`, appearance: 'destructive' },
+            ],
+            closeResponse: 'cancel',
+        });
+        if (choice !== 'reset') {
+            return;
+        }
+        resetThemeToDefault();
+        toastr.info(t`Theme reset to default Libadwaita`, 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     });
 
     // Accent color presets

@@ -135,3 +135,34 @@ export function getGeneratedCustomCss({ mode, startCss, liveCss, generatedCss })
     const currentCss = normalizeThemeCss(liveCss);
     return !currentCss || currentCss === normalizeThemeCss(startCss) ? generatedCss : null;
 }
+
+/**
+ * What "Reset Theme to Default Libadwaita" writes into the settings. The keys of a saved theme (the ten colors,
+ * Custom CSS, the selected theme) come from `default/content/themes/Libadwaita.json`, the file SillyBunny ships, and not
+ * from the user's saved copy, which an Update may have changed. The effect keys, `blur_strength`, `shadow_width` and
+ * `google_font` are the fresh-install values: the first four are the `defaultValue` of `THEME_EFFECT_PROPERTIES` in
+ * `power-user.js`, the rest are in `default/content/settings.json` and in the `power_user` defaults there. The bundled
+ * theme file's own `shadow_width` is a legacy key that no code reads, so it is not the source of that value.
+ * `tests/unit/sillybunny-theme-reset-defaults.test.js` holds each group to its source.
+ */
+export const THEME_RESET_DEFAULTS = Object.freeze({
+    theme: 'Libadwaita',
+    main_text_color: 'rgba(255, 255, 255, 1)',
+    italics_text_color: 'rgba(170, 170, 172, 1)',
+    underline_text_color: 'rgba(170, 170, 172, 1)',
+    quote_text_color: 'rgba(129, 208, 255, 1)',
+    blur_tint_color: 'rgba(34, 34, 38, 0.9)',
+    chat_tint_color: 'rgba(29, 29, 32, 0.9)',
+    user_mes_blur_tint_color: 'rgba(29, 29, 32, 0.9)',
+    bot_mes_blur_tint_color: 'rgba(29, 29, 32, 0.9)',
+    shadow_color: 'rgba(0, 0, 6, 0.36)',
+    border_color: 'rgba(0, 0, 6, 0.5)',
+    custom_css: '',
+    'customCSS-bg-blur': 0,
+    'customCSS-bg-opacity': 1,
+    sheldBlurStrength: 0,
+    sheldBackgroundColor: 'transparent',
+    blur_strength: 13,
+    shadow_width: 2,
+    google_font: '',
+});
