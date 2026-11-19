@@ -146,7 +146,7 @@
             "radius-literal": 1,
             "duration-literal": 1,
             "important": 5,
-            "spacing-off-scale": 82
+            "spacing-off-scale": 81
         },
         "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
             "important": 3,
