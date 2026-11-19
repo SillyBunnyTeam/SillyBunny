@@ -547,6 +547,15 @@ describe('Agents shared movement', () => {
         expect(entries.map(item => item.key)).toEqual(['agent:a', 'agent:b', 'agent:c']);
     });
 
+    test('an infinite direction moves the agent to the first or last place of its sub-heading, and is refused at that place', async () => {
+        const model = await loadModel();
+        const list = build(model, [entry('a', { injection: { order: 0 } }), entry('b'), entry('c', { injection: { order: 20 } })]);
+        expect(model.moveAgentWithinSubheading(list, { key: 'agent:a', direction: Infinity })).toEqual({ orderedKeys: ['agent:b', 'agent:c', 'agent:a'], focusKey: 'agent:a' });
+        expect(model.moveAgentWithinSubheading(list, { key: 'agent:c', direction: -Infinity })).toEqual({ orderedKeys: ['agent:c', 'agent:a', 'agent:b'], focusKey: 'agent:c' });
+        expect(model.moveAgentWithinSubheading(list, { key: 'agent:a', direction: -Infinity })).toBeNull();
+        expect(model.moveAgentWithinSubheading(list, { key: 'agent:c', direction: Infinity })).toBeNull();
+    });
+
     test('downward nudge stays in its stage/category but includes other template subcategories', async () => {
         const model = await loadModel();
         const selected = bundled('a', { injection: { order: 0 } });

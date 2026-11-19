@@ -5,7 +5,7 @@ import { bindListFocus } from './sillybunny-editor/list-focus.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openDialog, createIconButton } from './sillybunny-editor/dialog.js';
-import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
+import { announceReorder, LONG_LIST, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
@@ -338,8 +338,10 @@ export function createTagManager(adapter) {
         if (state.settings.tag_sort_mode !== 'manual' || search.query) return false;
         const ordered = adapter.sort(state.tags, countLiveTagEntities(state.tagMap, state.characters, state.groups));
         const index = ordered.indexOf(tag);
-        if (!ordered[index + direction]) return false;
-        [ordered[index], ordered[index + direction]] = [ordered[index + direction], ordered[index]];
+        // An infinite direction (Alt+Home, Alt+End) goes to the first or last place of the whole list, past the loaded batches.
+        const target = Math.max(0, Math.min(ordered.length - 1, index + direction));
+        if (index < 0 || target === index) return false;
+        ordered.splice(target, 0, ...ordered.splice(index, 1));
         revealId = tag.id;
         const moved = mutate(() => ordered.forEach((entry, position) => entry.sort_order = position));
         revealId = null;
@@ -354,6 +356,7 @@ export function createTagManager(adapter) {
             index,
             count: ordered.length,
             filtered: state.settings.tag_sort_mode !== 'manual' || Boolean(search.query),
+            extremes: ordered.length >= LONG_LIST,
             name: tag.name,
             move: to => move(tag, to - index),
             onError: error => globalThis.toastr?.error(error.message),
@@ -680,6 +683,15 @@ export function createTagManager(adapter) {
             return true;
         },
         onRename: row => { if (!selection?.isActive) row.querySelector('input')?.focus(); },
+        onMove: (row, direction) => {
+            const tag = getState().tags.find(candidate => candidate.id === row.id);
+            if (!tag || selection?.isActive || getState().settings.tag_sort_mode !== 'manual' || search.query) return false;
+            if (!move(tag, direction)) return;
+            const ordered = adapter.sort(getState().tags, countLiveTagEntities(getState().tagMap, getState().characters, getState().groups));
+            announceReorder({ name: tag.name, position: ordered.indexOf(tag) + 1, count: ordered.length });
+            // The move builds the list again, so the row is found by its tag, not by the node that had focus.
+            controls.get(tag.id)?.entity.row.focus({ preventScroll: true });
+        },
     });
     const sortable = bindSortable(list, {
         handle: '.drag-handle', items: '.tag_view_item', touch: () => layout.matches,

@@ -26,7 +26,7 @@ import { extension_settings } from './extensions.js';
 import { t } from './i18n.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
-import { bindRovingFocus } from './sillybunny-roving-focus.js'; // SillyBunny: one Tab stop for the recent-chat filters.
+import { bindRovingFocus } from './sillybunny-editor/list-focus.js'; // SillyBunny: one Tab stop for the recent-chat filters.
 import { renderTemplateAsync } from './templates.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { clamp, flashHighlight, isElementInViewport, sortMoments, timestampToMoment } from './utils.js';

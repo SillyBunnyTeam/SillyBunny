@@ -25,6 +25,9 @@ import { getTopmostDialog } from './overlay-host.js';
 
 const REGION_CLASS = 'sb-reorder-status';
 
+/** The row count from which a list is long enough to offer Move to Top and Move to Bottom beside Move Up and Move Down. */
+export const LONG_LIST = 8;
+
 /**
  * Returns the shared live region of the topmost modal dialog, or of <body> when none is open. A modal dialog makes
  * everything outside it inert, and assistive technology skips announcements from inert content.

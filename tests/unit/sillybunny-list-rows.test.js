@@ -278,7 +278,7 @@ describe('bindListKeyboard', () => {
         expect(event.defaultPrevented).toBe(true);
     });
 
-    test.each([['ArrowUp', -1], ['ArrowDown', 1]])('Alt+%s moves by %s and consumes the event', (key, direction) => {
+    test.each([['ArrowUp', -1], ['ArrowDown', 1], ['Home', -Infinity], ['End', Infinity]])('Alt+%s moves by %s and consumes the event', (key, direction) => {
         const { rows: [row], onMove } = makeKeyboardList();
         const ancestor = listenOnDocument();
 

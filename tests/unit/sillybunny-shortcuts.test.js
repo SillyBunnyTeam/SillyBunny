@@ -44,7 +44,7 @@ describe('Keyboard shortcut registry', () => {
     });
 
     test('lists the keys that move through a list and that move a row', () => {
-        expect(keysOf('lists')).toEqual(['Up', 'Down', 'Home', 'End', 'Page Up', 'Page Down', 'Left', 'Right', 'Alt+Up', 'Alt+Down']);
+        expect(keysOf('lists')).toEqual(['Up', 'Down', 'Home', 'End', 'Page Up', 'Page Down', 'Left', 'Right', 'Alt+Up', 'Alt+Down', 'Alt+Home', 'Alt+End']);
     });
 
     test('lists the chat hotkeys and the Markdown hotkeys of the hotkey template', () => {

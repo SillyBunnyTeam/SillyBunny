@@ -17,7 +17,7 @@ import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
-import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
+import { announceReorder, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
@@ -493,9 +493,10 @@ export function mountWorldInfoEditor(container) {
         if (searchControl.query || !customSort()) return false;
         const ids = entries.map(entry => entry.uid);
         const index = ids.findIndex(value => String(value) === String(uid));
-        const target = index + direction;
-        if (index < 0 || target < 0 || target >= ids.length) return false;
-        [ids[index], ids[target]] = [ids[target], ids[index]];
+        // An infinite direction (Alt+Home, Alt+End) goes to the first or last place of the whole list, across pages.
+        const target = Math.max(0, Math.min(ids.length - 1, index + direction));
+        if (index < 0 || target === index) return false;
+        ids.splice(target, 0, ...ids.splice(index, 1));
         const previousOrder = heldOrder;
         const submittedOrder = heldOrder ? [...ids] : null;
         heldOrder = submittedOrder;
@@ -507,6 +508,25 @@ export function mountWorldInfoEditor(container) {
         if (selectedUid() !== null && ids.some(uid => String(uid) === String(selectedUid()))) rebase(selectedUid(), 'displayIndex');
         await finishListMutation(data, result);
         return result.ok;
+    }
+
+    /** The moved entry's row, found again by its key because the move builds the list's rows anew; its page is shown first when a long move left it. */
+    async function entryRowAfterMove(uid) {
+        let row = rows.get(`entry:${uid}`)?.row;
+        const page = pageForWorldInfoUid(entries, uid, pagination.pageSize);
+        if (!row?.isConnected && page !== pagination.page) {
+            internalPaging = true;
+            try { await pagination.goTo(page); } finally { internalPaging = false; }
+            row = rows.get(`entry:${uid}`)?.row;
+        }
+        return row?.isConnected ? row : null;
+    }
+
+    async function moveEntryByKey(uid, direction) {
+        const name = entryTitle(state.data.entries[uid], t`Untitled entry`);
+        if (!await moveEntryBy(uid, direction)) return;
+        announceReorder({ name, position: entries.findIndex(entry => String(entry.uid) === String(uid)) + 1, count: entries.length });
+        (await entryRowAfterMove(uid))?.focus({ preventScroll: true });
     }
 
     async function openMovePicker(trigger, uid) {
@@ -771,7 +791,7 @@ export function mountWorldInfoEditor(container) {
         },
         onMove: (row, direction) => {
             if (selection.isActive || !customSort() || searchControl.query) return false;
-            run(() => moveEntryBy(rowEntry(row).uid, direction));
+            run(() => moveEntryByKey(rowEntry(row).uid, direction));
         },
     });
     const onEscape = event => {

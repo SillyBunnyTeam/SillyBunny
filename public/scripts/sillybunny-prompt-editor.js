@@ -749,7 +749,10 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
             const entry = rowEntry(row);
             if (!entry?.orderEntry) return false;
             const id = entry.prompt.identifier;
-            if (move(id, state.order.findIndex(item => item.identifier === id) + direction)) movedByKeyboardOrDrag(id);
+            const ids = orderedIds();
+            const index = ids.indexOf(id);
+            const to = Math.max(0, Math.min(ids.length - 1, index + direction));
+            if (index >= 0 && to !== index && move(id, to)) movedByKeyboardOrDrag(id);
         },
     });
 

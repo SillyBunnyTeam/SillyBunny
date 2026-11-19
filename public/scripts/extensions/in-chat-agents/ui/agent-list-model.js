@@ -103,9 +103,11 @@ export function moveAgentWithinSubheading(model, { key, direction, orderedKeys }
         return { orderedKeys: [...orderedKeys], focusKey: key };
     }
     const index = keys.indexOf(key);
-    const target = index + direction;
-    if (![-1, 1].includes(direction) || target < 0 || target >= keys.length) return null;
-    [next[index], next[target]] = [next[target], next[index]];
+    if (![-1, 1, -Infinity, Infinity].includes(direction)) return null;
+    // An infinite direction is the first or last place of the sub-heading.
+    const target = Math.max(0, Math.min(keys.length - 1, index + direction));
+    if (target === index) return null;
+    next.splice(target, 0, ...next.splice(index, 1));
     return { orderedKeys: next, focusKey: key };
 }
 

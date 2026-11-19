@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions are synchronous. */
 import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
-import { bindRovingFocus } from '../../public/scripts/sillybunny-roving-focus.js';
+import { bindRovingFocus } from '../../public/scripts/sillybunny-editor/list-focus.js';
 
 const press = (target, key, init = {}) => {
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });

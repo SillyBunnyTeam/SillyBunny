@@ -32,7 +32,7 @@ import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { createButtonRow, createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
-import { bindRovingFocus } from './sillybunny-roving-focus.js';
+import { bindRovingFocus } from './sillybunny-editor/list-focus.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {

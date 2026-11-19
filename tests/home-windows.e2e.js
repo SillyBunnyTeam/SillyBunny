@@ -965,6 +965,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     'Next Card': ['Right'],
                     'Move Row Up': ['Alt', 'Up'],
                     'Move Row Down': ['Alt', 'Down'],
+                    'Move to Top': ['Alt', 'Home'],
+                    'Move to Bottom': ['Alt', 'End'],
                 };
 
                 await expect(lists.locator('.ds-row')).toHaveCount(Object.keys(keys).length);

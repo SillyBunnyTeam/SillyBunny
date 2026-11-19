@@ -1637,12 +1637,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `public/scripts/welcome-screen.js` (one `bindRovingFocus(...)` call for `.welcomeRecentTabs` per mounted panel). |
 | Area | Home, the recent-chat filters. |
 | Divergence reason | `TODO(copy)` |
-| Target seam | `public/scripts/sillybunny-roving-focus.js`. |
-| Adapter shape | Since 2026-11-19 (UI polish sweep, task 14.6n, F-356): the filter buttons are one Tab stop; Left, Right, Home and End move between them and select, as the filters are a cheap exclusive choice. The markup stays `role="group"` with `aria-pressed`. |
+| Target seam | `public/scripts/sillybunny-editor/list-focus.js` (`bindRovingFocus`). |
+| Adapter shape | Since 2026-11-19 (UI polish sweep, task 14.6n, F-356): the filter buttons are one Tab stop; Left, Right, Home and End move between them and select, as the filters are a cheap exclusive choice. The markup stays `role="group"` with `aria-pressed`. Since 2026-11-19 (task 14.6t, F-375): the helper lives in `sillybunny-editor/list-focus.js`, imported from `./sillybunny-editor/list-focus.js`, so the start loads one focus module. |
 | Protecting tests | `tests/keyboard-shell.e2e.js`; `tests/unit/sillybunny-roving-focus.test.js`. |
-| Validation | 2026-11-19: root and tests lint, the full unit run, contracts and design rules, the related e2e specs. |
+| Validation | 2026-11-19: root and tests lint, the full unit run, contracts and design rules, the related e2e specs. 14.6t: the same, and `tests/frontend-performance.e2e.js` alone (861 start resources). |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-19, UI polish sweep (task 14.6n). |
+| Last reviewed | 2026-11-19, UI polish sweep (tasks 14.6n and 14.6t). |
 | Owner | `TODO(copy)` |
 
 ### Drawer headers, the composer's text size and the accent presets' state (task 14.6o)

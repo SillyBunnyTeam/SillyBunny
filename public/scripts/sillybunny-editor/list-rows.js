@@ -13,6 +13,7 @@ import { bindListFocus } from './list-focus.js';
 const rowEntries = new WeakMap();
 const sortables = new WeakMap();
 
+const MOVE_DIRECTIONS = { ArrowUp: -1, ArrowDown: 1, Home: -Infinity, End: Infinity };
 const DEFAULT_ROW_SELECTOR = '[data-sb-list-key]';
 const DEFAULT_IGNORE = 'button, input, select, textarea, a, [role="switch"], [role="button"]';
 
@@ -79,7 +80,8 @@ export function reconcileRows({ container, cache, entries, key, signature = entr
  * Delegated row interactions on a list container, following GTK list conventions.
  *
  * - Click on a row (not on a nested control) or Enter/Space on a focused row → `onOpen`.
- * - F2 → `onRename`. Alt+ArrowUp/Down → `onMove(row, -1|1)`.
+ * - F2 → `onRename`. Alt+ArrowUp/Down → `onMove(row, -1|1)`; Alt+Home/End → `onMove(row, -Infinity|Infinity)`, which the
+ *   list reads as "to the first" or "to the last place" of the whole list, not only of the rows on the page.
  * - The list is one Tab stop, and the arrow keys, Home, End, Page Up and Page Down move focus between rows
  *   (`list-focus.js`; `navigate: false` disables both).
  *
@@ -92,7 +94,7 @@ export function reconcileRows({ container, cache, entries, key, signature = entr
  * @param {string} [options.keySourceSelector] Descendants (besides the row itself) whose keys act on the row, e.g. a drag grip.
  * @param {(row: HTMLElement, event: Event) => unknown} [options.onOpen]
  * @param {(row: HTMLElement, event: Event) => unknown} [options.onRename]
- * @param {(row: HTMLElement, direction: -1|1, event: Event) => unknown} [options.onMove]
+ * @param {(row: HTMLElement, direction: -1|1|typeof Infinity|typeof -Infinity, event: Event) => unknown} [options.onMove]
  * @param {boolean} [options.navigate=true]
  * @param {() => HTMLElement[]} [options.trailingStops] Controls after the last row that Down reaches, such as Show More.
  * @param {boolean} [options.singleTabStop=true] False leaves every row in the Tab order, for a short list inside an editor.
@@ -138,8 +140,8 @@ export function bindListKeyboard(container, {
             event.preventDefault();
             return;
         }
-        if (event.altKey && !event.ctrlKey && !event.metaKey && ['ArrowUp', 'ArrowDown'].includes(event.key) && onMove) {
-            if (onMove(row, event.key === 'ArrowUp' ? -1 : 1, event) === false) return;
+        if (event.altKey && !event.ctrlKey && !event.metaKey && onMove && Object.hasOwn(MOVE_DIRECTIONS, event.key)) {
+            if (onMove(row, MOVE_DIRECTIONS[event.key], event) === false) return;
             event.preventDefault();
             event.stopPropagation();
             return;

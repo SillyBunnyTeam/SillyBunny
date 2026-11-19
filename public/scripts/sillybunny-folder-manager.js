@@ -6,7 +6,7 @@ import { bindListFocus } from './sillybunny-editor/list-focus.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openAlert, openDialog, createIconButton } from './sillybunny-editor/dialog.js';
-import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
+import { announceReorder, LONG_LIST, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
@@ -266,6 +266,7 @@ export function createFolderManager(scope, adapter) {
             index,
             count: folders.length,
             filtered: Boolean(frame?.search?.query.trim()),
+            extremes: folders.length >= LONG_LIST,
             // The row keeps the folder object it was created with, so a rename shows only in the store's copy.
             name: folders[index]?.name ?? folder.name,
             move: to => {
@@ -596,6 +597,18 @@ export function createFolderManager(scope, adapter) {
         rowSelector: '.sb-folder-manager__folder-row',
         keySourceSelector: '.drag-handle',
         onRename: row => { if (!selection?.isActive) row.querySelector('input')?.focus(); return true; },
+        onMove: (row, direction) => {
+            if (selection?.isActive || frame?.search?.query.trim()) return false;
+            const id = row.dataset.folderId;
+            const folders = getFolders(scope);
+            const index = folders.findIndex(folder => folder.id === id);
+            // An infinite direction (Alt+Home, Alt+End) goes to the first or last place.
+            const to = Math.max(0, Math.min(folders.length - 1, index + direction));
+            if (index < 0 || to === index || !moveFolder(scope, id, to - index)) return;
+            refresh();
+            announceReorder({ name: folders[index].name, position: to + 1, count: folders.length });
+            entries.get(id)?.row.focus({ preventScroll: true });
+        },
     });
     sortable = bindSortable(list, {
         handle: '.drag-handle',

@@ -49,6 +49,8 @@ export function getShortcuts() {
         // Only in a list that can be reordered, and not while a search or a sort is on.
         { keys: ['Alt', 'Up'], scope: 'lists', label: t`Move Row Up` },
         { keys: ['Alt', 'Down'], scope: 'lists', label: t`Move Row Down` },
+        { keys: ['Alt', 'Home'], scope: 'lists', label: t`Move to Top` },
+        { keys: ['Alt', 'End'], scope: 'lists', label: t`Move to Bottom` },
 
         { keys: ['Up'], scope: 'chat', label: t`Edit Last Message` },
         { keys: ['Ctrl', 'Up'], scope: 'chat', label: t`Edit Last User Message` },
