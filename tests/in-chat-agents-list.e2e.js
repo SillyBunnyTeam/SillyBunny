@@ -131,6 +131,18 @@ test('stage headings match Connections group headings and categories are smaller
 });
 
 for (const width of [1440, 390]) {
+    test(`${width}px Agents selection header is as tall as the list header`, async ({ page, baseURL }) => {
+        const { root } = await openAgents(page, baseURL, width);
+        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'agents'));
+        await page.locator('[data-sb-settings-tab="agents"]').evaluate(node => node.click());
+        const height = selector => root.locator(selector).first().evaluate(node => node.getBoundingClientRect().height);
+        const listHeader = await height('.sb-list-header');
+        expect(listHeader).toBe(60);
+        await selectMode(page, root);
+        expect(await height('.ica-agents-selection-header')).toBe(listHeader);
+        expect(await height('.ica-agents-selection-header .sb-selection-header')).toBeLessThanOrEqual(listHeader);
+    });
+
     test(`q56 ${width}px category icons share the grip centre in closed and narrow open lists`, async ({ page, baseURL }, testInfo) => {
         const { root, saves } = await openAgents(page, baseURL, width);
         const samples = [];

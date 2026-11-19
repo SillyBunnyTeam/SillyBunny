@@ -2,6 +2,7 @@ import { t } from '../i18n.js';
 import { closeActionMenu, isActionMenuOpen, openActionMenu } from '../sillybunny-action-menu.js';
 import { HOME_STATE_CHANGED_EVENT } from '../sillybunny-home-state.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
+import { WIDE_LAYOUT_MIN_WIDTH } from './breakpoints.js';
 import { bindHeaderLayout } from './dialog.js';
 import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
@@ -294,8 +295,8 @@ function resolveChatWidth(viewportWidth) {
     const chatShell = document.getElementById('sheld');
     if (!chatShell) return viewportWidth;
 
-    const isFullWidthBreakpoint = viewportWidth <= 768 || (viewportWidth >= 769 && viewportWidth <= 1180);
-    if (isFullWidthBreakpoint) return viewportWidth;
+    // Below the wide layouts the chat takes whatever the docked panels leave, not the configured chat width.
+    if (viewportWidth < WIDE_LAYOUT_MIN_WIDTH) return viewportWidth;
 
     const root = document.documentElement;
     const probe = document.createElement('div');

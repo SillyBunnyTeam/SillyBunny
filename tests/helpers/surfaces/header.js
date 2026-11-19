@@ -815,7 +815,7 @@ export const surfaces = [
         selectionCancel: `${AGENTS} .sb-selection-header .sb-selection-cancel`,
         states: [{
             id: 'selection-mode',
-            root: `${AGENTS} .sb-selection-header`,
+            root: `${AGENTS} .ica-agents-selection-header`,
             ready: [`${AGENTS} .sb-selection-header .sb-selection-cancel`, `${AGENTS} .sb-selection-header .sb-selection-title`],
             open: enterAgentSelection,
         }],

@@ -3057,8 +3057,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
 }
 
 @media screen and (max-width: 1279px) {
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.sb-character-drawer-root.openDrawer {
         width: min(620px, calc(100vw - 28px)) !important;
         max-width: calc(100vw - 28px) !important;
@@ -3083,8 +3081,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
 }
 
 @media screen and (max-width: 1279px), screen and (max-height: 450px) {
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.sb-character-drawer-root.openDrawer {
         width: min(100vw, clamp(920px, 78vw, 1680px)) !important;
         max-width: min(100vw, calc(100vw - clamp(28px, 8vw, 160px))) !important;
@@ -3093,16 +3089,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
 }
 
 @media screen and (max-height: 450px) {
-    .sb-shell-root.fillLeft.openDrawer,
-    .sb-shell-root.fillRight.openDrawer {
-        width: 100vw !important;
-        max-width: 100vw !important;
-        min-width: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        border-radius: 0 !important;
-    }
-
     #right-nav-panel.openDrawer {
         min-width: min(420px, 100vw) !important;
         border-radius: 0 !important;
