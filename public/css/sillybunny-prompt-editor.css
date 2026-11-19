@@ -6,8 +6,18 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     display: none !important;
 }
 
-[data-sb-panel='editor']:has(.sb-prompt-owned) .sb-shell-panel-scroller {
+/* The page stands in the frame of the Characters window's list pages (World Info, Persona, Characters): the same space above the list and beside it at each width. */
+#sb-settings-page [data-sb-panel='editor']:has(.sb-prompt-owned) .sb-shell-panel-scroller {
     overflow: hidden !important;
+    padding-block-start: calc(var(--sb-shell-panel-padding-block) - 4px);
+    padding-inline: var(--sb-shell-panel-padding-inline);
+}
+
+@media (max-width: 1439px) {
+    #sb-settings-page [data-sb-panel='editor']:has(.sb-prompt-owned) .sb-shell-panel-scroller {
+        padding-block-start: 14px;
+        padding-inline: 14px;
+    }
 }
 
 #sb-settings-page .sb-editor-panel.sb-prompt-owned {
@@ -145,7 +155,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 0 12px 16px;
+    padding: var(--sb-shell-space-xs) 0 var(--sb-shell-space-xs) var(--sb-shell-space-xs);
     scrollbar-gutter: stable;
     background: transparent;
 }
@@ -154,11 +164,11 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     margin-bottom: 16px;
 }
 
-.sb-prompt-section h3 {
-    margin: 12px 4px 8px;
+/* The settings page's own heading rule has a higher specificity, so the id and the list body are named to keep World Info's heading metrics. */
+#sb-settings-page .sb-prompt-editor .sb-prompt-list-body .sb-prompt-section h3 {
+    margin: 6px 6px 8px;
     font-size: var(--sb-type-body);
     font-weight: 700;
-    line-height: 1.3;
 }
 
 /* A section with no rows, and the other backend's sections, leave the list altogether. */
