@@ -73,7 +73,7 @@ test.describe('World Info sorting controls', () => {
             await start.fill('0');
             await step.fill('5');
             await ascending.check();
-            await expect(popup.locator('.info-block')).toBeHidden();
+            await expect(popup.locator('.sb-banner')).toBeHidden();
 
             const fitsViewport = await popup.evaluate(element => {
                 const bounds = element.getBoundingClientRect();
@@ -86,7 +86,7 @@ test.describe('World Info sorting controls', () => {
             await applySorting();
             await start.fill('8');
             await step.fill('5');
-            await expect(popup.locator('.info-block')).toContainText('clamped');
+            await expect(popup.locator('.sb-banner')).toContainText('clamped');
             await popup.locator('.popup-button-ok').click();
             await expect.poll(readSavedOrders).toEqual({ native: [8, 3, 0], card: [8, 3, 0], cardIds: [4, 8, 12] });
         } finally {

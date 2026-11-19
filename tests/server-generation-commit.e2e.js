@@ -106,6 +106,8 @@ test.describe('server-owned chat generations', () => {
         try {
             await openChat(page);
             await connectFakeModel(page, `http://127.0.0.1:${model.address().port}/v1`);
+            // The chat behind the open Backend page is inert, so the message box takes no input until the page closes.
+            await page.locator('#sb-settings-close').click();
             page.on('dialog', async (dialog) => {
                 if (dialog.type() === 'beforeunload') {
                     await dialog.dismiss();

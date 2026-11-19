@@ -473,8 +473,10 @@ function closeMotion(frame, offset, done) {
 
 function wrapTab(host, event) {
     if (event.key !== 'Tab' || event.defaultPrevented) return;
+    // FOCUSABLE_SELECTOR matches a button or input that has tabindex="-1", but Tab never stops there. A list that is one Tab
+    // stop keeps its other rows' controls at -1, so counting them would put `last` on a control Tab cannot reach and the wrap would never run.
     const focusable = [...host.querySelectorAll(FOCUSABLE_SELECTOR)]
-        .filter(node => !node.closest('[hidden], [inert]') && isVisible(node));
+        .filter(node => node.tabIndex >= 0 && !node.closest('[hidden], [inert]') && isVisible(node));
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
