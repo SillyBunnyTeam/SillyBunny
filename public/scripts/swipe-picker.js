@@ -12,6 +12,7 @@ import { isMobile } from './RossAscends-mods.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import { addLongPressEvent, clamp, copyText, timestampToMoment } from './utils.js';
+import { bindListFocus } from './sillybunny-editor/list-focus.js'; // SillyBunny: the swipe rows are one Tab stop with arrow keys
 import { chat, deleteSwipe, ensureSwipes, isMessageSwipeable, isSwipingAllowed, swipe, syncMesToSwipe } from '/script.js';
 
 // SillyBunny: the rows are shared entity rows, which a deferred sheet styles.
@@ -75,6 +76,8 @@ async function openSwipePicker(messageId) {
     const listContainer = document.createElement('div');
     listContainer.classList.add('swipe_picker_div', 'flex1', 'marginTop10');
     wrapper.appendChild(listContainer);
+    // SillyBunny: the swipe rows are one Tab stop with arrow keys, as the shared lists.
+    bindListFocus(listContainer, { rowSelector: '.swipe_picker_block' });
 
     /** @type {Popup} */
     let popup;

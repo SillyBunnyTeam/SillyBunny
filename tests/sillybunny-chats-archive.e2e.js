@@ -1235,6 +1235,12 @@ test('the sidebar and the list follow the arrow, Home, End and Enter keys', asyn
     await rows(page).nth(99).focus();
     await expect(rows(page)).toHaveCount(100);
     await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('button', { name: 'Show More', exact: true })).toBeFocused();
+    await expect(rows(page)).toHaveCount(100);
+    await page.keyboard.press('ArrowUp');
+    await expect(rows(page).nth(99)).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
     await expect(rows(page)).toHaveCount(142);
     await expect(rows(page).nth(100)).toBeFocused();
     await expect(page.locator('.sbca-list-pane .sb-list-show-more')).toBeHidden();

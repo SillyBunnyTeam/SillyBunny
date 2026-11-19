@@ -421,7 +421,8 @@ describe('shared Characters/Groups list', () => {
         expect(pages.characters).toBe(2);
         expect(rows()).toHaveLength(20);
         expect(rows()[0]).toBe(first);
-        expect(document.activeElement).toBe(showMore());
+        // A press from the keyboard (a click with no pointer behind it) moves focus to the first row that it added.
+        expect(document.activeElement).toBe(rows()[10]);
         showMore().click();
         await settle();
         expect(pages.characters).toBe(3);

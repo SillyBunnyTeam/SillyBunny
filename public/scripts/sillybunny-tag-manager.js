@@ -1,6 +1,7 @@
 import { t, translate } from './i18n.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
+import { bindListFocus } from './sillybunny-editor/list-focus.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openDialog, createIconButton } from './sillybunny-editor/dialog.js';
@@ -435,6 +436,7 @@ export function createTagManager(adapter) {
         const page = frame.push({ title: tag.name, content, initialFocus: () => add });
         page.header.querySelector('.sb-dialog__header-end').append(add);
         renderTagMembers(tag, list, onAdd);
+        bindListFocus(list, { rowSelector: '.ds-entity-row' });
     }
 
     function showColor(tag, property) {
@@ -672,6 +674,7 @@ export function createTagManager(adapter) {
     }
     const unbindKeyboard = bindListKeyboard(list, {
         keySourceSelector: '.drag-handle',
+        trailingStops: () => [showMore.button],
         onOpen: row => {
             if (!selection?.isActive) openMembers(getState().tags.find(tag => tag.id === row.id));
             return true;

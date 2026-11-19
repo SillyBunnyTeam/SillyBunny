@@ -8,6 +8,8 @@
  * Consumers own row markup. Every row must carry `data-sb-list-key` (set by reconcileRows).
  */
 
+import { bindListFocus } from './list-focus.js';
+
 const rowEntries = new WeakMap();
 const sortables = new WeakMap();
 
@@ -73,16 +75,13 @@ export function reconcileRows({ container, cache, entries, key, signature = entr
     return keys;
 }
 
-function isRendered(row) {
-    return !row.closest('[hidden], [inert]');
-}
-
 /**
  * Delegated row interactions on a list container, following GTK list conventions.
  *
  * - Click on a row (not on a nested control) or Enter/Space on a focused row → `onOpen`.
  * - F2 → `onRename`. Alt+ArrowUp/Down → `onMove(row, -1|1)`.
- * - ArrowUp/Down/Home/End move focus between rendered rows (`navigate: false` disables).
+ * - The list is one Tab stop, and the arrow keys, Home, End, Page Up and Page Down move focus between rows
+ *   (`list-focus.js`; `navigate: false` disables both).
  *
  * Callbacks return `false` to decline (the event is then left alone).
  *
@@ -95,6 +94,8 @@ function isRendered(row) {
  * @param {(row: HTMLElement, event: Event) => unknown} [options.onRename]
  * @param {(row: HTMLElement, direction: -1|1, event: Event) => unknown} [options.onMove]
  * @param {boolean} [options.navigate=true]
+ * @param {() => HTMLElement[]} [options.trailingStops] Controls after the last row that Down reaches, such as Show More.
+ * @param {boolean} [options.singleTabStop=true] False leaves every row in the Tab order, for a short list inside an editor.
  * @returns {() => void} Unbind.
  */
 export function bindListKeyboard(container, {
@@ -105,9 +106,11 @@ export function bindListKeyboard(container, {
     onRename = null,
     onMove = null,
     navigate = true,
+    trailingStops = undefined,
+    singleTabStop = true,
 } = {}) {
     const rowFrom = target => target instanceof Element ? target.closest(rowSelector) : null;
-    const rowsIn = () => [...container.querySelectorAll(rowSelector)].filter(isRendered);
+    const focus = navigate ? bindListFocus(container, { rowSelector, keySourceSelector, trailingStops, singleTabStop }) : null;
 
     const onClick = event => {
         const row = rowFrom(event.target);
@@ -141,21 +144,12 @@ export function bindListKeyboard(container, {
             event.stopPropagation();
             return;
         }
-        if (!navigate || !plain || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-        const rows = rowsIn();
-        const index = rows.indexOf(row);
-        if (index < 0) return;
-        const next = event.key === 'Home' ? rows[0]
-            : event.key === 'End' ? rows.at(-1)
-                : rows[index + (event.key === 'ArrowUp' ? -1 : 1)];
-        if (!next || next === row) return;
-        event.preventDefault();
-        next.focus({ preventScroll: false });
     };
 
     container.addEventListener('click', onClick);
     container.addEventListener('keydown', onKeydown);
     return () => {
+        focus?.destroy();
         container.removeEventListener('click', onClick);
         container.removeEventListener('keydown', onKeydown);
     };

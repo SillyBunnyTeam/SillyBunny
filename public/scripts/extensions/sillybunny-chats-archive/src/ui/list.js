@@ -1,6 +1,7 @@
 import { physicalChatKey, sortRows } from '../core.js';
 import { createEntityRow } from '../../../../sillybunny-editor/entity-row.js';
 import { createStatusPage } from '../../../../sillybunny-editor/status-page.js';
+import { bindListFocus } from '../../../../sillybunny-editor/list-focus.js';
 import { stopBusyTask } from './busy.js';
 import { cancelNavigation } from './cancellation.js';
 import { LIST_PAGE_SIZE } from './constants.js';
@@ -254,22 +255,5 @@ function buildRow(ctx, state, ui, row) {
 }
 
 export function bindListKeys(ui) {
-    ui.list.addEventListener('keydown', event => {
-        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
-            return;
-        }
-        const rows = [...ui.list.querySelectorAll('[data-sbca-key]')];
-        const current = rows.indexOf(event.target.closest('[data-sbca-key]'));
-        if (rows.length === 0 || current < 0) {
-            return;
-        }
-        event.preventDefault();
-        if (event.key === 'ArrowDown' && current === rows.length - 1) {
-            if (!ui.showMore.isComplete) {
-                ui.showMore.button.click();
-                return;
-            }
-        }
-        rows[Math.max(0, Math.min(rows.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1)))].focus();
-    });
+    return bindListFocus(ui.list, { rowSelector: '[data-sbca-key]', trailingStops: () => [ui.showMore.button] }).destroy;
 }

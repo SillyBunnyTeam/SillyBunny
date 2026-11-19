@@ -3,6 +3,7 @@ import { openDialog } from './sillybunny-editor/dialog.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { createCheckRow, createPrefGroup, createSpinRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
+import { bindListFocus } from './sillybunny-editor/list-focus.js';
 
 // The rows are shared entity rows, which this deferred sheet draws. index.html preloads it, so the load is a cache hit.
 const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' };
@@ -414,6 +415,7 @@ export function openChatHistoryDialog() {
         syncEmptyState();
     });
     rowObserver.observe(chatList, { childList: true, subtree: true });
+    const listFocus = bindListFocus(chatList, { rowSelector: '.sb-chat-history-row' });
     decorateAllRows();
     syncEmptyState();
     const syncBackupsView = () => {
@@ -453,6 +455,7 @@ export function openChatHistoryDialog() {
     frame.closed.then(() => {
         searchObserver.disconnect();
         rowObserver.disconnect();
+        listFocus.destroy();
         backupsObserver.disconnect();
         statusObserver.disconnect();
         const expectedChatListMarkup = chatListSnapshot.innerHTML;

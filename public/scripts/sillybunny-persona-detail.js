@@ -267,6 +267,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     connectionList.setAttribute('role', 'list');
     connectionList.setAttribute('aria-label', t`Connections`);
     const unbindConnections = bindListKeyboard(connectionList, {
+        singleTabStop: false,
         onOpen: row => {
             const connection = rowEntry(row);
             if (row.getAttribute('aria-disabled') === 'true') return false;

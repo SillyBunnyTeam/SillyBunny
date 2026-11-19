@@ -2,6 +2,7 @@ import { t } from './i18n.js';
 import { folderCountLabel } from './sillybunny-editor/folder-row.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
+import { bindListFocus } from './sillybunny-editor/list-focus.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openAlert, openDialog, createIconButton } from './sillybunny-editor/dialog.js';
@@ -460,6 +461,7 @@ export function createFolderManager(scope, adapter) {
         const page = frame.push({ title: folder.name, content: pageContent, initialFocus: () => add });
         page.header.querySelector('.sb-dialog__header-end').append(add);
         members = { folderId: folder.id, page, add, list: memberList };
+        bindListFocus(memberList, { rowSelector: '.sb-folder-manager__member-row' });
         renderMemberList(folder);
         page.closed.then(() => {
             members = null;

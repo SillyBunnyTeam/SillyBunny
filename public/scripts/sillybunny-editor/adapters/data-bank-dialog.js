@@ -1,5 +1,6 @@
 import { t } from '../../i18n.js';
 import { openActionMenu } from '../../sillybunny-action-menu.js';
+import { bindListFocus } from '../list-focus.js';
 import { createListSearch } from '../list-search.js';
 import { createSelectionMode } from '../selection-mode.js';
 import { createStatusPage } from '../status-page.js';
@@ -171,6 +172,7 @@ export function frameDataBankManager(popup, { onSearch, onClose } = {}) {
     else page.append(selectionBar);
     // The upstream row template sits in the same root, so only rows inside a list count.
     const ROW_SELECTOR = '.attachmentsList .attachmentListItem';
+    bindListFocus(managerRoot, { rowSelector: ROW_SELECTOR });
     const rowKey = row => `${row.dataset.attachmentSource ?? ''}:${row.dataset.attachmentUrl ?? ''}`;
     const syncBulk = active => {
         if (bulkInput instanceof HTMLInputElement) bulkInput.checked = active;

@@ -1276,6 +1276,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         footer.hidden = true;
         unbindKeyboard = bindListKeyboard(rowsContainer, {
             rowSelector: '.ds-entity-row--activatable:not([aria-disabled="true"])',
+            trailingStops: () => [showMore.button],
             onOpen: (row, event) => {
                 if (selection.isActive) return true;
                 const entry = rowEntry(row);

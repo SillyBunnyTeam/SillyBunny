@@ -1315,6 +1315,11 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     box-shadow: none;
 }
 
+/* The reset above outranks the shared focus ring of `.ds-entity-row .ds-entity-row__button:focus-visible`, so the ring is set here at the reset's specificity. */
+#sb-settings-page .ica-agents-editor .ica-agent-row .ds-entity-row__button.menu_button:focus-visible {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 @media (hover: hover) {
     #sb-settings-page .ica-agents-editor .ica-agent-row .ds-entity-row__button.menu_button:not(:disabled):hover {
         background: var(--sb-flat-hover-bg);

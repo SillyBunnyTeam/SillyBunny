@@ -620,6 +620,7 @@ export function mountPersonaEditor(container) {
     });
     const unbindRows = bindListKeyboard(listBody, {
         rowSelector: '.sb-persona-row, .sb-folder-row:not([aria-disabled="true"])',
+        trailingStops: () => [showMore.button],
         onOpen: row => {
             const entry = rowEntry(row);
             if (selection.isActive) return true;
