@@ -5,6 +5,7 @@ import express from 'express';
 import sanitize from 'sanitize-filename';
 import _ from 'lodash';
 import { tryParse, tryWriteFileSync } from '../util.js';
+import { localizeWorldInfoExternalMedia } from '../external-media-import.js';
 
 const WORLD_INFO_EXTENSION = '.json';
 // SillyBunny divergence: canonical World Info filenames are UTF-8 bounded and written through the fork's safe persistence path.
@@ -211,7 +212,7 @@ router.post('/delete', (request, response) => {
     return response.sendStatus(200);
 });
 
-router.post('/import', (request, response) => {
+router.post('/import', async (request, response) => {
     if (!request.file) return response.sendStatus(400);
 
     const pathToUpload = path.join(request.file.destination, request.file.filename);
@@ -231,9 +232,14 @@ router.post('/import', (request, response) => {
             return response.status(400).send('Is not a valid world info file');
         }
 
+        const worldName = path.parse(filename).name;
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        const localized = await localizeWorldInfoExternalMedia(worldContent, { request, worldName });
+        const persistedContents = localized.changed ? JSON.stringify(worldContent, null, 4) : fileContents;
+
         const pathToNewFile = path.join(request.user.directories.worlds, filename);
-        writeWorldInfoFile(pathToNewFile, fileContents);
-        return response.send({ name: path.parse(pathToNewFile).name });
+        writeWorldInfoFile(pathToNewFile, persistedContents);
+        return response.send(localized.changed ? { name: worldName, data: worldContent } : { name: worldName });
     } catch (err) {
         console.error('World Info import failed:', err);
         return response.sendStatus(500);

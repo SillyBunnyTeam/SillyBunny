@@ -16785,6 +16785,8 @@ async function importCharacter(file, { preserveFileName = '', importTags = false
     formData.append('file_type', format);
     formData.append('user_name', name1);
     if (preserveFileName) formData.append('preserved_name', preserveFileName);
+    // SillyBunny: pass the user's external media import setting explicitly to avoid stale persisted settings races.
+    formData.append('import_external_media', power_user.import_external_media ? 'true' : 'false');
 
     try {
         const result = await fetch('/api/characters/import', {
