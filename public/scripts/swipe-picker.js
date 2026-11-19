@@ -140,7 +140,9 @@ async function openSwipePicker(messageId) {
             const swipeText = String(swipe ?? '');
             const template = $('#past_chat_template .select_chat_block_wrapper').clone();
             const block = template.find('.select_chat_block');
-            block.removeClass('select_chat_block').addClass('swipe_picker_block');
+            // SillyBunny: `.swipe_picker_block` is a keyboard interactable that would take its own Tab stop. The select button covers
+            // the whole row, so the row is not focusable and the button is its stop (`not_focusable` keeps keyboard.js from adding a tabindex).
+            block.removeClass('select_chat_block').addClass('swipe_picker_block not_focusable');
             const branchButton = template.find('.exportRawChatButton');
             const deleteButton = template.find('.PastChat_cross');
             const swipeInfo = Array.isArray(message.swipe_info) ? message.swipe_info[index] : null;

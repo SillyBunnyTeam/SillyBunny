@@ -657,12 +657,11 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         row.classList.toggle('is-selected', selectedId() === id);
         const grip = entity.slots.grip;
         if (orderEntry) {
+            // The grip is a handle for the pointer only, as in libadwaita. The row takes focus and carries the Alt+arrow moves,
+            // so a grip with a button role and no tab stop would only be a control that assistive technology cannot reach.
             grip.classList.add('sb-prompt-grip', 'ui-sortable-handle');
-            grip.removeAttribute('aria-hidden');
-            grip.setAttribute('role', 'button');
-            grip.setAttribute('aria-label', t`Drag to Reorder ${nameText}`);
             grip.setAttribute('aria-disabled', String(reorderLocked()));
-            grip.title = grip.getAttribute('aria-label');
+            grip.title = t`Drag to Reorder ${nameText}`;
         } else if (grip) {
             grip.classList.add('sb-prompt-handle-slot');
             grip.replaceChildren();

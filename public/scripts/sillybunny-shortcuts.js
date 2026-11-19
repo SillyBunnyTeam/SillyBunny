@@ -7,7 +7,7 @@ import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { isApplePlatform } from './sillybunny-platform.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
-export const SHORTCUT_SCOPES = Object.freeze(['general', 'editors', 'chat', 'formatting']);
+export const SHORTCUT_SCOPES = Object.freeze(['general', 'editors', 'lists', 'chat', 'formatting']);
 
 /**
  * `Mod` stands for the modifier of the shell shortcuts: Ctrl, or Command on Apple platforms. The chat and
@@ -15,7 +15,7 @@ export const SHORTCUT_SCOPES = Object.freeze(['general', 'editors', 'chat', 'for
  *
  * @typedef {object} Shortcut
  * @property {string[]} keys One entry per key of the combination.
- * @property {'general' | 'editors' | 'chat' | 'formatting'} scope
+ * @property {'general' | 'editors' | 'lists' | 'chat' | 'formatting'} scope
  * @property {string} label
  */
 
@@ -37,6 +37,19 @@ export function getShortcuts() {
         { keys: ['Mod', 'S'], scope: 'editors', label: t`Save` },
         { keys: ['Mod', 'F'], scope: 'editors', label: t`Find in List` },
 
+        { keys: ['Up'], scope: 'lists', label: t`Previous Row` },
+        { keys: ['Down'], scope: 'lists', label: t`Next Row` },
+        { keys: ['Home'], scope: 'lists', label: t`First Row` },
+        { keys: ['End'], scope: 'lists', label: t`Last Row` },
+        { keys: ['Page Up'], scope: 'lists', label: t`Previous Page` },
+        { keys: ['Page Down'], scope: 'lists', label: t`Next Page` },
+        // Left and Right step between cards only where the cards sit side by side, as in the character grid.
+        { keys: ['Left'], scope: 'lists', label: t`Previous Card` },
+        { keys: ['Right'], scope: 'lists', label: t`Next Card` },
+        // Only in a list that can be reordered, and not while a search or a sort is on.
+        { keys: ['Alt', 'Up'], scope: 'lists', label: t`Move Row Up` },
+        { keys: ['Alt', 'Down'], scope: 'lists', label: t`Move Row Down` },
+
         { keys: ['Up'], scope: 'chat', label: t`Edit Last Message` },
         { keys: ['Ctrl', 'Up'], scope: 'chat', label: t`Edit Last User Message` },
         { keys: ['Left'], scope: 'chat', label: t`Swipe Left` },
@@ -57,7 +70,7 @@ export function getShortcuts() {
 }
 
 function getScopeTitles() {
-    return { general: t`General`, editors: t`Editors and Lists`, chat: t`Chat`, formatting: t`Formatting` };
+    return { general: t`General`, editors: t`Editors and Lists`, lists: t`List Navigation`, chat: t`Chat`, formatting: t`Formatting` };
 }
 
 /**

@@ -617,10 +617,9 @@ export function mountWorldInfoEditor(container) {
             attributes: { 'data-uid': String(entry.uid) },
         });
         if (slots.grip) {
-            slots.grip.removeAttribute('aria-hidden');
-            slots.grip.setAttribute('role', 'button');
+            // A pointer-only handle: the row takes focus and carries the Alt+arrow moves (see the prompt list).
             slots.grip.setAttribute('aria-disabled', 'false');
-            slots.grip.setAttribute('aria-label', t`Drag to Reorder ${title}`);
+            slots.grip.title = t`Drag to Reorder ${title}`;
         }
         return row;
     }

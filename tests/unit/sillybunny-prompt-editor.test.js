@@ -416,7 +416,11 @@ describe('Prompt list', () => {
         expect(row.classList.contains('sb-prompt-row')).toBe(true);
         expect(row.querySelector('.ds-entity-row__title.sb-prompt-row-name').textContent).toBe('First');
         expect(row.querySelector('.ds-entity-row__subtitle.sb-prompt-row-subtitle').textContent).toBe('System · Relative');
-        expect(row.querySelector('.sb-prompt-grip').getAttribute('aria-label')).toBe('Drag to Reorder First');
+        const grip = row.querySelector('.sb-prompt-grip');
+        expect(grip.title).toBe('Drag to Reorder First');
+        expect(grip.getAttribute('role')).toBeNull();
+        expect(grip.getAttribute('aria-label')).toBeNull();
+        expect(grip.getAttribute('aria-hidden')).toBe('true');
         expect(row.querySelector('.sb-prompt-switch-target input[role="switch"]').getAttribute('aria-label')).toBe('Enable First');
         const more = row.querySelector('.ds-entity-row__button.sb-prompt-row-menu');
         expect(more.getAttribute('aria-label')).toBe('Actions for First');
@@ -608,7 +612,7 @@ describe('Prompt list sort', () => {
         expect(fakeModel.reorder).not.toHaveBeenCalled();
         chooseSort(column, 'Prompt Order');
         expect(ids(column)).toEqual(['main', 'first', 'zeta', 'marker', 'alpha', 'runtimeAgents']);
-        for (const grip of column.querySelectorAll('.sb-prompt-order .sb-prompt-grip[aria-label^="Drag"]')) expect(grip.getAttribute('aria-disabled')).toBe('false');
+        for (const grip of column.querySelectorAll('.sb-prompt-order .sb-prompt-grip[title^="Drag"]')) expect(grip.getAttribute('aria-disabled')).toBe('false');
         expect(rowMenuLabels(column, 'first')).toEqual(expect.arrayContaining(['Move Up', 'Move Down']));
         expect(sortButton(column).getAttribute('aria-pressed')).toBe('false');
         expect(column.querySelector('button[aria-label="Search Prompts"]').getAttribute('aria-pressed')).toBe('false');

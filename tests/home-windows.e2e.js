@@ -917,10 +917,10 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('Keyboard Shortcuts', () => {
-            sizeFreeTest('lists General, Editors and Lists, Chat and Formatting, with the Keyboard Shortcuts and Help keys in General', async ({ page }) => {
+            sizeFreeTest('lists General, Editors and Lists, List Navigation, Chat and Formatting, with the Keyboard Shortcuts and Help keys in General', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-                for (const group of ['General', 'Editors and Lists', 'Chat', 'Formatting']) {
+                for (const group of ['General', 'Editors and Lists', 'List Navigation', 'Chat', 'Formatting']) {
                     await expect(host.getByRole('group', { name: group })).toBeVisible();
                 }
                 const general = host.getByRole('group', { name: 'General' });
@@ -949,6 +949,28 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 });
                 expect(layout).toEqual({ panelFirst: true, lineSecond: true, above: true });
                 await expect(host.locator('[data-sb-art-placeholder]')).toHaveCount(1);
+            });
+
+            sizeFreeTest('lists the keys that move through a list and that move a row', async ({ page }) => {
+                const host = await openFromMenu(page, 'Keyboard Shortcuts');
+                const lists = host.getByRole('group', { name: 'List Navigation' });
+                const keys = {
+                    'Previous Row': ['Up'],
+                    'Next Row': ['Down'],
+                    'First Row': ['Home'],
+                    'Last Row': ['End'],
+                    'Previous Page': ['Page Up'],
+                    'Next Page': ['Page Down'],
+                    'Previous Card': ['Left'],
+                    'Next Card': ['Right'],
+                    'Move Row Up': ['Alt', 'Up'],
+                    'Move Row Down': ['Alt', 'Down'],
+                };
+
+                await expect(lists.locator('.ds-row')).toHaveCount(Object.keys(keys).length);
+                for (const [label, combination] of Object.entries(keys)) {
+                    await expect(lists.locator('.ds-row', { has: page.getByText(label, { exact: true }) }).locator('kbd kbd')).toHaveText(combination);
+                }
             });
 
             sizeFreeTest('lists the save and find shortcuts of the editors and lists', async ({ page }) => {

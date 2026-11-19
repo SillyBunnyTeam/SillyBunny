@@ -28,8 +28,8 @@ const { isApplePlatform } = await import('../../public/scripts/sillybunny-platfo
 const keysOf = scope => getShortcuts().filter(entry => entry.scope === scope).map(entry => entry.keys.join('+'));
 
 describe('Keyboard shortcut registry', () => {
-    test('sorts every entry into General, Editors and Lists, Chat or Formatting', () => {
-        expect([...SHORTCUT_SCOPES]).toEqual(['general', 'editors', 'chat', 'formatting']);
+    test('sorts every entry into General, Editors and Lists, List Navigation, Chat or Formatting', () => {
+        expect([...SHORTCUT_SCOPES]).toEqual(['general', 'editors', 'lists', 'chat', 'formatting']);
         const strays = getShortcuts().filter(entry => !SHORTCUT_SCOPES.includes(entry.scope));
 
         expect(strays).toEqual([]);
@@ -41,6 +41,10 @@ describe('Keyboard shortcut registry', () => {
 
     test('lists the save and find shortcuts that editors and lists handle', () => {
         expect(keysOf('editors')).toEqual(['Mod+S', 'Mod+F']);
+    });
+
+    test('lists the keys that move through a list and that move a row', () => {
+        expect(keysOf('lists')).toEqual(['Up', 'Down', 'Home', 'End', 'Page Up', 'Page Down', 'Left', 'Right', 'Alt+Up', 'Alt+Down']);
     });
 
     test('lists the chat hotkeys and the Markdown hotkeys of the hotkey template', () => {
@@ -107,7 +111,7 @@ describe('Keyboard Shortcuts window', () => {
     test('titles one group per scope', () => {
         const titles = [...fill().querySelectorAll('section')].map(section => section.dataset.title);
 
-        expect(titles).toEqual(['General', 'Editors and Lists', 'Chat', 'Formatting']);
+        expect(titles).toEqual(['General', 'Editors and Lists', 'List Navigation', 'Chat', 'Formatting']);
     });
 });
 
@@ -143,7 +147,7 @@ describe('Keyboard Shortcuts search', () => {
         expect(shownTitles(body)).toEqual([]);
         expect(list.filter('')).toBe(getShortcuts().length);
         expect(shownLabels(body)).toHaveLength(getShortcuts().length);
-        expect(shownTitles(body)).toHaveLength(4);
+        expect(shownTitles(body)).toHaveLength(5);
     });
 });
 
