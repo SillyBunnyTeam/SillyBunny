@@ -1168,18 +1168,10 @@ body:not(.movingUI) .drawer-content.maximized {
     flex: 0 0 auto;
 }
 
-#right-nav-panel #character_import_button,
-#right-nav-panel #external_import_button {
-    position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    margin: -1px !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-    clip: rect(0 0 0 0) !important;
-    clip-path: inset(50%) !important;
-    white-space: nowrap !important;
-    border: 0 !important;
+/* SillyBunny: the upstream button bar (New, Import, Group, sort) only carries click targets for the shell's own list header. The list
+   sheet hides it only while the list is mounted, so it is hidden here from the first paint and never takes a Tab stop before that. */
+#right-nav-panel #rm_button_bar {
+    display: none !important;
 }
 
 /* SillyBunny: both blocks are transports for upstream code and never show, in any menu type or width. Favorites are reached through the shared list filters, and the editors have their own headers. */

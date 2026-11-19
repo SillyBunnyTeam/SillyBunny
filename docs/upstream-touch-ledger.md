@@ -1630,6 +1630,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6l). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/welcome-screen.js` - arrow keys in the recent-chat filters
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/welcome-screen.js` (one `bindRovingFocus(...)` call for `.welcomeRecentTabs` per mounted panel). |
+| Area | Home, the recent-chat filters. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-roving-focus.js`. |
+| Adapter shape | Since 2026-11-19 (UI polish sweep, task 14.6n, F-356): the filter buttons are one Tab stop; Left, Right, Home and End move between them and select, as the filters are a cheap exclusive choice. The markup stays `role="group"` with `aria-pressed`. |
+| Protecting tests | `tests/keyboard-shell.e2e.js`; `tests/unit/sillybunny-roving-focus.test.js`. |
+| Validation | 2026-11-19: root and tests lint, the full unit run, contracts and design rules, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-19, UI polish sweep (task 14.6n). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

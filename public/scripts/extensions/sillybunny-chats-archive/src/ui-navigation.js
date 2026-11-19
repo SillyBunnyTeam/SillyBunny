@@ -183,7 +183,10 @@ export async function jumpToChat(ctx, state, row, control) {
             state.restoreFocus = false;
             state.dialog.forceClose();
             await state.dialog.closed;
-            document.getElementById('send_textarea')?.focus();
+            // The Characters window that holds the archive's button covers the chat that has just opened, and the layer behind a
+            // page is inert: it closes as after any picked chat unless the user keeps it open, and only then can the message box take focus.
+            const closed = globalThis.SillyBunnyShell?.closeCharactersAfterChatPick?.() ?? true;
+            if (closed) document.getElementById('send_textarea')?.focus();
         }
     } catch (error) {
         const cancelled = error?.name === 'AbortError' || error?.name === 'TimeoutError';

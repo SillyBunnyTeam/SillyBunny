@@ -110,10 +110,10 @@
             "radius-literal": 9,
             "shadow-literal": 7,
             "duration-literal": 1,
-            "important": 264,
+            "important": 255,
             "breakpoint-off-set": 6,
             "focus-outline": 1,
-            "spacing-off-scale": 123,
+            "spacing-off-scale": 122,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {

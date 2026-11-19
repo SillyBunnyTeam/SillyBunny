@@ -1025,19 +1025,30 @@ describe('Keyboard and disposal', () => {
         document.body.removeEventListener('keydown', outer);
     });
 
-    test('Escape in fields blurs; outside fields requests guarded close; neither bubbles', () => {
+    test('Escape in a field keeps focus there when Back is hidden; outside fields requests guarded close; neither bubbles', () => {
         const { host, requestClose } = mount();
         const outer = jest.fn();
         document.body.addEventListener('keydown', outer);
         const input = field(host, 'description');
         input.focus();
         keydown(input, 'Escape');
-        expect(document.activeElement).not.toBe(input);
+        expect(document.activeElement).toBe(input);
+        expect(document.activeElement).not.toBe(host.querySelector('.sb-persona-entry'));
         expect(requestClose).not.toHaveBeenCalled();
         keydown(host.querySelector('.sb-persona-entry'), 'Escape');
         expect(requestClose).toHaveBeenCalledTimes(1);
         expect(outer).not.toHaveBeenCalled();
         document.body.removeEventListener('keydown', outer);
+    });
+
+    test('Escape in a field does what Back does where Back is drawn', () => {
+        const { host, requestClose } = mount();
+        const back = host.querySelector('.sb-persona-detail-back');
+        back.getClientRects = () => [{ width: 36, height: 36 }];
+        const input = field(host, 'description');
+        input.focus();
+        keydown(input, 'Escape');
+        expect(requestClose).toHaveBeenCalledTimes(1);
     });
 
     test('destroy removes body-mounted surfaces, listeners and timers; optional backup remains', () => {

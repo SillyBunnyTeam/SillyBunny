@@ -1010,10 +1010,10 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             return;
         }
         const field = event.target.closest('input, textarea, select, [contenteditable="true"]');
-        if (field) {
-            field.blur();
-            root.focus({ preventScroll: true });
-        } else requestClose();
+        // Back is only drawn where the editor is a pushed page. There Escape does what Back does. Elsewhere the field keeps focus,
+        // because blurring it could only move focus to the editor's section, which is not a control.
+        if (field && !back.getClientRects().length) return;
+        requestClose();
     }
 
     const flushDraft = () => session.flushDraft();

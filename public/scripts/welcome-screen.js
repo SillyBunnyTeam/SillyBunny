@@ -26,6 +26,7 @@ import { extension_settings } from './extensions.js';
 import { t } from './i18n.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { bindRovingFocus } from './sillybunny-roving-focus.js'; // SillyBunny: one Tab stop for the recent-chat filters.
 import { renderTemplateAsync } from './templates.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { clamp, flashHighlight, isElementInViewport, sortMoments, timestampToMoment } from './utils.js';
@@ -760,6 +761,16 @@ async function sendWelcomePanel(chats, expand = false, { failed = false } = {}) 
                     setRecentChatFilter(root, filter);
                 });
             });
+            // SillyBunny: the filters are an exclusive toggle group, so Tab visits the pressed one and the arrow keys move and press.
+            const filterGroup = root.querySelector('.welcomeRecentTabs');
+            if (filterGroup instanceof HTMLElement) {
+                bindRovingFocus(filterGroup, {
+                    itemSelector: '.welcomeRecentTab',
+                    orientation: 'horizontal',
+                    isSelected: button => button.getAttribute('aria-pressed') === 'true',
+                    onMove: button => button.click(),
+                });
+            }
             // SillyBunny: the Home header, menu and empty states are built by sillybunny-home/.
             const home = mountHome(root, {
                 version: displayVersion,

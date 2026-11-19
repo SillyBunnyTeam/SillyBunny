@@ -299,20 +299,22 @@ test.describe('Persona editor', () => {
         await expect(entry.getByLabel('Unsaved Changes', { exact: true })).toBeHidden();
     });
 
-    test('guards dirty Back navigation with Cancel/Discard/Save and Escape in a field keeps Settings open', async ({ page }) => {
+    test('guards dirty Back navigation with Cancel/Discard/Save, and Escape in a field asks the same question', async ({ page }) => {
         const persona = await currentPersona(page);
         const entry = await openPersona(page, persona.avatarId);
         const description = entry.getByRole('textbox', { name: 'Persona Description', exact: true });
         const baseline = await description.inputValue();
         await description.fill('Unsaved guarded persona description');
+        // Escape in a field does what Back does: a dirty editor asks first, and Settings stays open behind the question.
+        const dialog = page.locator('dialog.popup[open]:not([closing])');
         await description.press('Escape');
+        await expect(dialog).toBeVisible();
         await expect(page.locator('#sb-settings-page')).toBeVisible();
+        await dialog.getByText('Cancel', { exact: true }).click();
         await expect(entry).toBeVisible();
-        await expect(description).not.toBeFocused();
-        await expect(page.locator('dialog.popup[open]')).toHaveCount(0);
+        await expect(description).toHaveValue('Unsaved guarded persona description');
         await entry.getByRole('button', { name: 'Back', exact: true }).click();
         // The Cancel popup keeps [open] while it closes, and the second Back opens another guard before that ends.
-        const dialog = page.locator('dialog.popup[open]:not([closing])');
         await expect(dialog).toBeVisible();
         // Cancel · Discard · Save in the order the dialog lays them out (the popup stacks them on a narrow dialog); Discard is
         // the one in the destructive colour.

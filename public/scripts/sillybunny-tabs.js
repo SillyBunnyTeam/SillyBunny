@@ -32,6 +32,7 @@ import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { createButtonRow, createEntryRow, createExpanderRow, createPrefGroup, createPropertyRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
+import { bindRovingFocus } from './sillybunny-roving-focus.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
@@ -5832,8 +5833,11 @@ function syncMobileModalState() {
 
     // SillyBunny: only the chat is inerted. Mobile panels dock below the top bar instead of
     // covering it, so its proxy buttons stay reachable and re-tapping one closes the panel,
-    // same as on desktop.
-    setElementInertForMobileModal(document.getElementById('sheld'), modalState.shouldInertShell);
+    // same as on desktop. The full-screen settings page covers the chat (and Home, which lives in it)
+    // at every width, so Tab, a screen reader and a click must not reach what it hides.
+    // The state flag, not the page's `hidden`, ends the inert at the start of a close: a caller that closes the page and focuses the
+    // composer in the same turn (the chat archive does) must find it live while the page still fades out over it.
+    setElementInertForMobileModal(document.getElementById('sheld'), modalState.shouldInertShell || sbSettingsState.open);
 }
 
 function queueMobileModalStateSync() {
@@ -13128,6 +13132,12 @@ function initAll() {
         closeCharacters() {
             closeCharacterPanel();
         },
+        /** Closes the Characters page after a chat is picked, as picking one from its list does, unless the user keeps it open. */
+        closeCharactersAfterChatPick() {
+            if (isCharactersPinStored() && !isMobileViewport()) return false;
+            closeCharacterPanel();
+            return true;
+        },
         isMobileViewport,
         highlightCharacterEditorTab() {
             const editorTab = document.querySelector('[data-sb-character-tab="editor"]');
@@ -13390,10 +13400,18 @@ function openSettingsPage(shellKey, tabId = null) {
     animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
 
     // The pane that is off screen on a phone is inert and cannot take focus, so a restored page shows content and focuses Close.
-    if (isMobileViewport() && !sbSettingsState.mobileContentView) {
-        document.querySelector('.sb-settings-tab')?.focus({ preventScroll: true });
-    } else {
-        document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
+    const entry = () => (isMobileViewport() && !sbSettingsState.mobileContentView
+        ? document.querySelector('.sb-settings-tab[aria-selected="true"]') ?? document.querySelector('.sb-settings-tab')
+        : document.getElementById('sb-settings-close'));
+    entry()?.focus({ preventScroll: true });
+    // WebKit can drop a focus() made in the frame that unhides its target, which leaves focus on the opener or on the body and
+    // Escape unheard. One retry after the first frame lands it; a focus the user has since moved inside the page stays.
+    if (!page.contains(document.activeElement)) {
+        requestAnimationFrame(() => {
+            const active = document.activeElement;
+            if (!sbSettingsState.open || page.contains(active)) return;
+            if (active === document.body || active?.closest('#top-bar')) entry()?.focus({ preventScroll: true });
+        });
     }
 }
 
@@ -13405,6 +13423,7 @@ function closeSettingsPage() {
 
     sbSettingsState.open = false;
     sbSettingsState.mobileContentView = false;
+    syncMobileModalState();
     const closingShell = sbSettingsState.activeShell;
     const restoreFocus = page.contains(document.activeElement);
     const openerId = SB_TOPBAR_SECTIONS.find(section => section.shellKey === closingShell)?.leadId;
@@ -13693,6 +13712,7 @@ function syncSettingsPaneInert() {
     const content = document.getElementById('sb-settings-content');
     if (sidebar) sidebar.inert = showContent;
     if (content) content.inert = split && !showContent;
+    syncMobileModalState();
 }
 
 function setSettingsMobileContentView(showContent) {
@@ -13827,6 +13847,26 @@ function initSettingsPageClose() {
             if (event.key === 'Escape') {
                 closeSettingsPage();
             }
+        });
+        // The page's keydown handler only hears keys from inside it. Focus can still sit on the top-bar toggle that opened the
+        // page (an engine that refused the focus move), and Escape there must close the page as well.
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || !sbSettingsState.open) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target && SB_TOPBAR_SECTIONS.some(section => target.id === section.leadId)) {
+                closeSettingsPage();
+            }
+        });
+    }
+
+    // A tab loads its page (and on a phone slides the sidebar away), so the arrow keys only move focus and Enter or Space selects.
+    const settingsTabList = document.getElementById('sb-settings-tab-list');
+    if (settingsTabList instanceof HTMLElement && settingsTabList.dataset.sbRovingBound !== 'true') {
+        settingsTabList.dataset.sbRovingBound = 'true';
+        bindRovingFocus(settingsTabList, {
+            itemSelector: '.sb-settings-tab',
+            orientation: 'vertical',
+            isSelected: tab => tab.getAttribute('aria-selected') === 'true',
         });
     }
 
