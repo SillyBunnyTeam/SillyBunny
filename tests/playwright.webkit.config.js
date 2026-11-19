@@ -29,6 +29,7 @@ export const DIALOG_SPECS = [
     'connection-manager-dialogs',
     'dialogs-accessibility',
     'dialog-opening-layout',
+    'welcome-transitions',
 ];
 
 // Opt-in: `npm run test:e2e:webkit`. The default config stays Chromium only.

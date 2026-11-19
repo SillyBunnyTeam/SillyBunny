@@ -18,7 +18,7 @@ import { bindSheetGestures } from './sheet-gestures.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, getTopmostDialog, hostOverlayLayer, releaseOverlayLayers } from './overlay-host.js';
 import { FOCUSABLE_SELECTOR, closeChain, coverSurface, findCoveredSurface, registerChainLevel, returnFocusTo, unregisterChainLevel } from './page-chain.js';
-import { PAGING_CLASS } from './page-motion.js';
+import { PAGING_CLASS, afterPageMotion } from './page-motion.js';
 import { installSlideShade } from './slide-shade.js';
 
 /*
@@ -37,6 +37,9 @@ let nextId = 0;
 
 /** The dim of the covered page at the end of a push, as a share of the Dialog Backdrop alpha. */
 const SLIDE_DIM = 0.5;
+
+/** The class of a surface whose visible height is clipped by a size motion (slide-shade.js draws its border). */
+const SIZING_CLASS = 'is-sizing';
 
 /**
  * The motions that keep the shadow of a dialog surface off, as `is-paging` (slide-shade.js): its page slides and its
@@ -105,8 +108,8 @@ function clearPaging(surface) {
  * the page (slide-shade.js, `.is-sliding`). The edge shadow is a static `box-shadow` of the class. Animating a
  * `box-shadow` instead paints the page again on every frame.
  *
- * The dialog surface has no shadow of its own while a slide runs (`holdPaging`): the height motion resizes the surface
- * on every frame, and WebKit paints its blurred shadow again each time, which made slides stall.
+ * The dialog surface has no shadow of its own while a slide runs (`holdPaging`): the clip of the size motion would cut
+ * it, and a shadow that followed the visible edge would be painted again on every frame, which stalls WebKit.
  * @param {HTMLElement} page
  * @param {[string, string]} transform The transform at the start and at the end of the slide.
  * @param {[number, number]} dim The share of the dim layer at the start and at the end, from 0 to `SLIDE_DIM`.
@@ -825,10 +828,11 @@ export function openDialog({
     }
 
     /*
-     * A swap of pages sizes the pages node from its old height to its new one over the slide. Without this, a
-     * content-sized dialog takes the height of the incoming page in the first frame, and a page that is positioned
-     * over the node is cropped or stretched to that height. While the node is resized, every page that shows keeps
-     * the height it has at rest: a page that follows the node would reflow, and a flex item would shrink.
+     * A swap of pages moves the height of the surface from its old height to its new one over the slide
+     * (`playSizeMotion`). Without this, a content-sized dialog takes the height of the incoming page in the first
+     * frame, and a page that is positioned over the node is cropped or stretched to that height. While the surface
+     * changes height, every page that shows keeps the height it has at rest: a page that follows the node would
+     * reflow, and a flex item would shrink.
      * Swaps in one task, such as closing several pages, share one height motion.
      *
      * A pin is an animation that holds the height and `flex-shrink` of a page, not an inline style. Any write to an
@@ -875,6 +879,7 @@ export function openDialog({
         const incoming = topPage()?.view.page;
         if (state !== 'open' || !incoming?.isConnected) return;
         const to = pagesNode.getBoundingClientRect().height;
+        const surfaceTo = surface.getBoundingClientRect().height;
         retargets = 0;
         // Style is clean after the measurement above, so the reads of the watcher force nothing. After the pins below,
         // each one would force a style update of the whole page, because any change of an inline style restyles it.
@@ -884,28 +889,114 @@ export function openDialog({
             if (page.isConnected && !page.hidden) pinPage(page, height);
         }
         // A motion that cannot run has already ended, which stops the watcher.
-        playHeightMotion(from, to);
-    }
-
-    function findHeightAnimation() {
-        return pagesNode.getAnimations().find(animation => animation.effect?.target === pagesNode);
+        playSizeMotion(from, surfaceTo, surfaceTo - to);
     }
 
     /**
+     * The size motion that runs now: the heights of the surface that show at its start and its end, and the animation
+     * that holds the larger size, whose clock the others share.
+     * @type {{ timeline: Animation, from: number, to: number } | null}
+     */
+    let sizeRun = null;
+
+    /** The height of the surface that shows now, which is its box height except while a size motion clips it. */
+    function visibleHeight() {
+        if (!sizeRun) return surface.getBoundingClientRect().height;
+        const progress = sizeRun.timeline.effect?.getComputedTiming().progress ?? 1;
+        return sizeRun.from + (sizeRun.to - sizeRun.from) * progress;
+    }
+
+    /**
+     * Moves the height of the surface from `from` to `to` without a layout on any frame. The surface takes the larger
+     * of the two heights at once and a clip animates the part of it that shows, so the pages are laid out once.
+     * Animating the height itself would lay the pages out on every frame, and in Firefox and WebKit a long page
+     * then paints few frames of the slide.
+     *
+     * The visible part is centred in a floating dialog and rests on the bottom edge in a sheet, which is where the
+     * surface grows and shrinks from. The pages node moves with the visible part, so the content stays at its top.
+     * @param {number} from Border box height of the surface that shows at the start.
+     * @param {number} to Border box height of the surface that shows at the end.
+     * @param {number} chrome What the surface adds to the height of the pages node: its border and padding.
      * @param {number} elapsed Time into the motion to continue from, in ms.
      * @returns {boolean} Whether the motion is running.
      */
-    function playHeightMotion(from, to, elapsed = 0) {
-        const running = holdPagingWhileStarting(surface, releasePaging => play(pagesNode, [{ height: `${from}px` }, { height: `${to}px` }], {
+    function playSizeMotion(from, to, chrome, elapsed = 0) {
+        const held = Math.max(from, to);
+        const options = { ...SPRING_NAVIGATION, fill: 'both' };
+        /** @type {Animation[]} */
+        const clipped = [];
+        let stopObserving = null;
+        let timeline = null;
+        const hold = holdPagingWhileStarting(surface, releasePaging => play(pagesNode, [{ minHeight: `${held - chrome}px` }, { minHeight: `${held - chrome}px` }], {
             ...SPRING_NAVIGATION,
+            // The clips below fill, so the hold fills too: at the end of its time it must not release the size before they end.
+            fill: 'both',
             onEnd: () => {
+                stopObserving?.();
+                for (const animation of clipped) animation.cancel();
+                surface.classList.remove(SIZING_CLASS);
+                sizeRun = null;
                 releasePaging();
-                endHeightMotion();
+                endHeightMotion(timeline?.playState === 'finished');
             },
-        })) !== null;
-        const animation = running && elapsed > 0 ? findHeightAnimation() : null;
-        if (animation) animation.currentTime = elapsed;
-        return running;
+        }));
+        if (!hold) return false;
+        timeline = hold.animation;
+        // The surface has its larger size now, and this is the one read of that layout.
+        const full = surface.getBoundingClientRect().height;
+        const start = Math.min(from, full);
+        const end = Math.min(to, full);
+        sizeRun = { timeline, from: start, to: end };
+        if (elapsed > 0) timeline.currentTime = elapsed;
+        if (Math.abs(start - full) < 0.5 && Math.abs(end - full) < 0.5) return true;
+
+        const sheet = host.dataset.presentation === 'sheet';
+        const style = getComputedStyle(surface);
+        const corners = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].join(' ');
+        const [borderTop, borderRight, borderBottom, borderLeft, paddingBottom] = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.paddingBottom].map(Number.parseFloat);
+        const offset = height => (sheet ? full - height : (full - height) / 2);
+        const shows = height => ({
+            clipPath: `inset(${offset(height)}px 0px ${full - height - offset(height)}px 0px round ${corners})`,
+        });
+        // The clip would cut the border at the moving edge, so the surface hides its border and draws it again on the
+        // edge of the visible part (`::after`). A strip in the colour of the page under the border (`::before`) covers the
+        // padding below the pages and the border's own row, which would otherwise show the held part of the pages.
+        surface.classList.add(SIZING_CLASS);
+        const bottomEdge = height => `${full - height - offset(height) - borderBottom}px`;
+        const sides = { left: `${-borderLeft}px`, right: `${-borderRight}px` };
+        const border = height => ({ top: `${offset(height) - borderTop}px`, bottom: bottomEdge(height), ...sides });
+        // Pages of a document window are on the View colour and the surface is on the Window colour, so the strip takes the colour of the page.
+        const pageColour = getComputedStyle(topPage()?.view.page ?? pagesNode).backgroundColor;
+        const floor = height => ({ bottom: bottomEdge(height), height: `${paddingBottom + borderBottom}px`, backgroundColor: pageColour, ...sides });
+        clipped.push(
+            surface.animate([shows(start), shows(end)], options),
+            surface.animate([border(start), border(end)], { ...options, pseudoElement: '::after' }),
+            surface.animate([floor(start), floor(end)], { ...options, pseudoElement: '::before' }),
+            pagesNode.animate([{ transform: `translateY(${offset(start)}px)` }, { transform: `translateY(${offset(end)}px)` }], options),
+        );
+        const handle = surface.querySelector(':scope > .sb-dialog__handle');
+        if (sheet && handle) clipped.push(handle.animate([{ translate: `50% ${offset(start)}px` }, { translate: `50% ${offset(end)}px` }], options));
+        if (elapsed > 0) for (const animation of clipped) animation.currentTime = elapsed;
+
+        // A change of the space the surface may take, such as the on-screen keyboard, moves the larger size under the clip.
+        if (typeof ResizeObserver !== 'undefined') {
+            let first = true;
+            const observer = new ResizeObserver((entries) => {
+                const box = entries.at(-1)?.borderBoxSize?.[0];
+                // Outside its active phase the hold no longer sizes the surface, which is not a change of the available space.
+                const time = Number(timeline.currentTime ?? 0);
+                const active = time > 0 && time < (timeline.effect?.getComputedTiming().endTime ?? 0);
+                if (first || !box || !active || Math.abs(box.blockSize - full) < 0.5) {
+                    first = false;
+                    return;
+                }
+                const incoming = topPage()?.view.page;
+                if (state === 'open' && incoming?.isConnected) retargetHeightMotion(incoming);
+            });
+            observer.observe(surface);
+            stopObserving = () => observer.disconnect();
+        }
+        return true;
     }
 
     let stopWatching = null;
@@ -921,8 +1012,15 @@ export function openDialog({
     /** Above this share of the motion the height that remains is too small for a new start to show. */
     const LAST_RETARGET_PROGRESS = 0.98;
 
-    function endHeightMotion() {
-        releasePins();
+    /**
+     * @param {boolean} finished Whether the motion ran to its end. A page that slides in the same frames can end a frame
+     *   later than the size motion, and its covered page must keep its height until it has left, so the pins of a
+     *   motion that finished wait for the end of every motion. A motion that was stopped releases them at once, which is
+     *   how its successor reads the new target.
+     */
+    function endHeightMotion(finished = false) {
+        if (finished) afterPageMotion(surface, () => { if (!sizeRun) releasePins(); });
+        else releasePins();
         if (!retargeting) stopFollowing();
     }
 
@@ -1004,10 +1102,9 @@ export function openDialog({
     function retargetHeightMotion(incoming) {
         const staying = shownPageHeights();
         staying.delete(incoming);
-        const current = pagesNode.getBoundingClientRect().height;
-        const animation = findHeightAnimation();
-        const progress = animation?.effect.getComputedTiming().progress ?? 1;
-        const elapsed = Number(animation?.currentTime ?? 0);
+        const current = visibleHeight();
+        const progress = sizeRun?.timeline.effect?.getComputedTiming().progress ?? 1;
+        const elapsed = Number(sizeRun?.timeline.currentTime ?? 0);
         // Stopping the motion can end the last hold, and the read below would then run with the shadow on.
         const keepPaging = holdPaging(surface);
         try {
@@ -1016,13 +1113,14 @@ export function openDialog({
             stopMotion(pagesNode);
             retargeting = false;
             const to = pagesNode.getBoundingClientRect().height;
+            const surfaceTo = surface.getBoundingClientRect().height;
             for (const [page, height] of staying) {
                 if (page.isConnected && !page.hidden) pinPage(page, height);
             }
             pinPage(incoming, to);
-            const from = (current - to * progress) / (1 - progress);
-            if (progress < LAST_RETARGET_PROGRESS && from >= 0) playHeightMotion(from, to, elapsed);
-            else playHeightMotion(current, to);
+            const from = (current - surfaceTo * progress) / (1 - progress);
+            if (progress < LAST_RETARGET_PROGRESS && from >= 0 && from <= Math.max(current, surfaceTo)) playSizeMotion(from, surfaceTo, surfaceTo - to, elapsed);
+            else playSizeMotion(current, surfaceTo, surfaceTo - to);
         } finally {
             retargeting = false;
             keepPaging();
@@ -1039,7 +1137,7 @@ export function openDialog({
                 if (!pendingSwap.heights.has(page)) pendingSwap.heights.set(page, height);
             }
         } else {
-            pendingSwap = { from: pagesNode.getBoundingClientRect().height, heights: shownPageHeights() };
+            pendingSwap = { from: visibleHeight(), heights: shownPageHeights() };
             // The heights are read first, because stopping a running height motion snaps the node and its pages to their end state.
             stopMotion(pagesNode);
             queueMicrotask(startHeightMotion);

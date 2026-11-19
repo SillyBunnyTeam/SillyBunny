@@ -38,12 +38,38 @@ async function useMotion(page) {
 async function installTransitionProbe(page) {
     await page.evaluate(() => {
         const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        // A size motion keeps the surface at the larger of its two heights and clips it, so the height that shows is
+        // the box less the two insets of the clip.
+        const shownBox = (surface) => {
+            const box = surface.getBoundingClientRect();
+            const inner = (getComputedStyle(surface).clipPath.match(/^inset\(([^)]*?)(?: round [^)]*)?\)$/) || [])[1];
+            const [top = 0, side = top, bottom = top] = inner ? inner.trim().split(/\s+/).map(Number.parseFloat) : [];
+            return { top: box.top + top, bottom: box.bottom - bottom, height: box.height - top - bottom, left: box.left, side };
+        };
+        // Where the surface draws its border while a size motion clips it: the edges of the `::after` box against the
+        // edges of the clip, and the colours of the two borders.
+        const borderEdge = (surface) => {
+            if (!surface.classList.contains('is-sizing')) return null;
+            const style = getComputedStyle(surface);
+            const after = getComputedStyle(surface, '::after');
+            const box = surface.getBoundingClientRect();
+            const shown = shownBox(surface);
+            return {
+                top: box.top + Number.parseFloat(style.borderTopWidth) + Number.parseFloat(after.top) - shown.top,
+                bottom: shown.bottom - (box.bottom - Number.parseFloat(style.borderBottomWidth) - Number.parseFloat(after.bottom)),
+                surfaceBorder: style.borderTopColor,
+                drawnBorder: after.borderTopColor,
+                drawnWidth: after.borderTopWidth,
+                width: style.borderTopWidth,
+            };
+        };
         const sample = () => {
             const host = document.querySelector('dialog.sb-dialog-host:not([closing])');
             const surface = host.querySelector('.sb-dialog');
-            const surfaceBox = surface.getBoundingClientRect();
+            const surfaceBox = shownBox(surface);
             return {
                 surface: surfaceBox.height,
+                edge: borderEdge(surface),
                 pages: [...host.querySelectorAll('.sb-dialog__page')].filter(page => !page.hidden).map((page) => {
                     const box = page.getBoundingClientRect();
                     return {
@@ -76,9 +102,13 @@ async function installTransitionProbe(page) {
             await afterCaller();
             const animations = hostAnimations();
             animations.forEach(animation => animation.pause());
-            const targets = animations.map(animation => animation.effect.target)
-                .filter(target => target.matches('dialog.sb-dialog-host, .sb-dialog, .sb-dialog-scrim'))
-                .map(target => target.className);
+            // The surface may animate its clip, and the border and the coloured strip that its pseudo-elements draw on the edge of the clip.
+            const surfaceMotion = animation => (animation.effect.pseudoElement ? ['top', 'bottom', 'left', 'right', 'height', 'backgroundColor'] : ['clipPath']);
+            const targets = animations
+                .filter(animation => animation.effect.target.matches('dialog.sb-dialog-host, .sb-dialog, .sb-dialog-scrim'))
+                .filter(animation => !animation.effect.target.matches('.sb-dialog')
+                    || animation.effect.getKeyframes().some(frame => Object.keys(frame).some(key => !['offset', 'easing', 'composite', 'computedOffset', ...surfaceMotion(animation)].includes(key))))
+                .map(animation => animation.effect.target.className);
             const end = endOf(animations);
             const frames = [];
             await step(animations, end, 12, frame => frames.push(frame));
@@ -115,17 +145,20 @@ async function installTransitionProbe(page) {
             const hostNode = () => document.querySelector('dialog.sb-dialog-host:not([closing])');
             const liveSample = () => {
                 const node = hostNode();
-                const surfaceBox = node.querySelector('.sb-dialog').getBoundingClientRect();
+                const surfaceBox = shownBox(node.querySelector('.sb-dialog'));
                 return {
                     time: performance.now(),
                     surface: surfaceBox.height,
-                    animating: hostAnimations().length > 0,
+                    // A hover fill on the row under the pointer fades in after the slide has ended: it is no frame of the slide.
+                    animating: hostAnimations().some(animation => !(animation instanceof window.CSSTransition)),
                     pages: [...node.querySelectorAll('.sb-dialog__page')].filter(page => !page.hidden).map((page) => {
                         const body = page.querySelector('.sb-dialog__body');
                         return {
                             title: page.querySelector('.sb-dialog__title').textContent,
                             cls: [...page.classList].filter(name => name.startsWith('is-')).join(' '),
                             height: page.getBoundingClientRect().height,
+                            left: page.getBoundingClientRect().left - surfaceBox.left,
+                            width: page.getBoundingClientRect().width,
                             bodyHeight: body.getBoundingClientRect().height,
                             sliding: page.classList.contains('is-sliding'),
                             edge: getComputedStyle(page).boxShadow,
@@ -237,7 +270,20 @@ function expectSteadyTransition({ before, frames, after, targets }, { rtl = fals
     expect(Math.sign(farthest.left), `the page that travels is ${farthest.left}px from its place at the farthest`).toBe(rtl ? -1 : 1);
     expect(Math.abs(frames.at(-1).pages.find(page => page.role === 'incoming').left), 'the last frame has the incoming page in place').toBeLessThanOrEqual(2);
 
-    expect(targets, 'a page change does not animate the dialog surface, the host or the backdrop').toEqual([]);
+    expect(targets, 'a page change animates the dialog surface only by its clip and the edge it draws, and never the host or the backdrop').toEqual([]);
+
+    // The clip cuts the border of the surface at the moving edge, so the surface draws it again on that edge.
+    if (Math.abs(to - from) > TOLERANCE) {
+        const clipped = frames.filter(frame => frame.edge);
+        expect(clipped.length, 'the height change clips the surface in at least one frame').toBeGreaterThan(0);
+        for (const { edge } of clipped) {
+            expect(Math.abs(edge.top), `the drawn border is ${edge.top}px from the top of the clip`).toBeLessThanOrEqual(0.5);
+            expect(Math.abs(edge.bottom), `the drawn border is ${edge.bottom}px from the bottom of the clip`).toBeLessThanOrEqual(0.5);
+            expect(edge.drawnWidth, 'the drawn border is as wide as the border of the surface').toBe(edge.width);
+            expect(edge.surfaceBorder, 'the surface hides its own border, so a translucent one is not drawn twice').toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/);
+            expect(edge.drawnBorder, 'the drawn border has the colour of the border of the surface').not.toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/);
+        }
+    }
 }
 
 const IDLE_ANIMATIONS = () => document.getAnimations().filter(animation => animation.effect?.target?.closest?.('dialog.sb-dialog-host')
@@ -327,9 +373,18 @@ function expectDim({ samples, backdropAlpha }, { rising }) {
     for (let index = 1; index < dims.length; index++) {
         expect((dims[index] - dims[index - 1]) * direction, `the dim ${rising ? 'rises' : 'falls'}. dims: ${dims.join(', ')}`).toBeGreaterThanOrEqual(-0.005);
     }
-    const [start, end] = rising ? [dims[0], dims.at(-1)] : [dims.at(-1), dims[0]];
+    const [, end] = rising ? [dims[0], dims.at(-1)] : [dims.at(-1), dims[0]];
     expect(Math.abs(end - half), `the slide ends with half the backdrop alpha (${half}) on the page. dims: ${dims.join(', ')}`).toBeLessThanOrEqual(rising ? 0.03 : half * 0.6);
-    expect(start, `the slide starts without it. dims: ${dims.join(', ')}`).toBeLessThanOrEqual(rising ? half * 0.6 : 0.03);
+    // The dim and the slide share one easing, so at every sampled frame the dim is half the backdrop alpha times the share
+    // of the slide's way that the page has left to cover (a push) or has covered (a pop). WebKit can paint the first
+    // frame of a slide late, with the spring already most of the way, so the first frame is not taken to be the start:
+    // each frame is judged against the slide's own position in that frame, which a frame on time still holds to the start.
+    const animated = samples.filter(sample => sample.animating);
+    for (const [index, sample] of animated.entries()) {
+        const sliding = findSliding(sample);
+        const share = 1 - Math.min(1, Math.abs(sliding.left) / sliding.width);
+        expect(Math.abs(dimAlpha(sliding) - half * share), `frame ${index}: the dim is ${dimAlpha(sliding)} where the slide has covered ${Math.round(share * 100)}% of its way (${half * share}). dims: ${dims.join(', ')}`).toBeLessThanOrEqual(half * 0.2);
+    }
     expect(samples.at(-1).pages.map(shown => shown.edge), 'nothing casts a shadow at rest').toEqual(samples.at(-1).pages.map(() => 'none'));
 }
 
@@ -346,7 +401,7 @@ function slideLength({ samples, startedAt }) {
  * Checks a slide that ran in real time: the dialog height moves one way and ends the slide at the height it rests
  * at, no page reflows while it shows (unless the content itself changes), and the page that slides casts a shadow over the one it covers.
  */
-function expectLiveSlide({ before, samples }, { contentChanges = false, minFrames = 6 } = {}) {
+function expectLiveSlide({ before, samples }, { contentChanges = false, minFrames = 6, steady = true } = {}) {
     const animated = samples.filter(sample => sample.animating);
     expect(animated.length, 'the slide painted frames').toBeGreaterThanOrEqual(minFrames);
     const lastIndex = samples.lastIndexOf(animated.at(-1));
@@ -354,10 +409,29 @@ function expectLiveSlide({ before, samples }, { contentChanges = false, minFrame
     const heights = [before.surface, ...animated.map(sample => sample.surface)];
     const description = `heights: ${heights.map(height => Math.round(height * 10) / 10).join(', ')}, then ${samples.slice(lastIndex + 1, lastIndex + 3).map(sample => sample.surface).join(', ')}`;
 
-    expect(Math.abs(animated.at(-1).surface - rest), `the last frame of the slide and the rest height differ. ${description}`).toBeLessThanOrEqual(TOLERANCE);
+    // The spring still covers about half a percent of the way in the last 30 ms, which is the gap between two frames in Firefox, so a long way leaves a few pixels to the next frame.
+    const reach = Math.max(TOLERANCE, Math.abs(rest - before.surface) / 100);
+    expect(Math.abs(animated.at(-1).surface - rest), `the last frame of the slide and the rest height differ. ${description}`).toBeLessThanOrEqual(reach);
     const direction = Math.sign(rest - before.surface);
     for (let index = 1; index < heights.length; index++) {
         expect((heights[index] - heights[index - 1]) * direction, `the height moves one way. ${description}`).toBeGreaterThanOrEqual(-TOLERANCE);
+    }
+
+    // The visible height travels from the old height to the new one in step with the slide, which has the same easing:
+    // at each frame the share of the way it has covered is the share the sliding page has covered. The slide runs on the
+    // compositor and can start a frame before an animation of the main thread, which is a fifth of the way in the first
+    // frames of the spring. A height that holds the larger size and snaps at the end covers its way elsewhere.
+    const distance = Math.abs(rest - before.surface);
+    if (steady && !contentChanges && distance >= 12) {
+        const slideShare = (sample) => {
+            const sliding = findSliding(sample);
+            const away = Math.min(1, Math.abs(sliding.left) / sliding.width);
+            return sliding.cls.includes('is-leaving') ? away : 1 - away;
+        };
+        for (const [index, sample] of animated.entries()) {
+            const covered = Math.abs(sample.surface - before.surface) / distance;
+            expect(Math.abs(covered - slideShare(sample)), `frame ${index}: the height has covered ${Math.round(covered * 100)}% of its way, and the slide ${Math.round(slideShare(sample) * 100)}%. ${description}`).toBeLessThanOrEqual(0.3);
+        }
     }
 
     for (const [index, sample] of samples.entries()) {
@@ -489,7 +563,7 @@ for (const { name, options } of VIEWPORTS) {
 
             expect(forward.samples.length, 'the push painted frames').toBeGreaterThan(8);
             // A slow page paints few frames of the slide, so only its end height and its direction are checked.
-            expectLiveSlide(forward, { minFrames: 2 });
+            expectLiveSlide(forward, { minFrames: 2, steady: false });
         });
     });
 }

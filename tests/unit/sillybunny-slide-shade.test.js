@@ -48,6 +48,13 @@ describe('slide shade styles', () => {
         expect(css.match(/var\(--sb-dialog-backdrop\)/g)).toHaveLength(2);
     });
 
+    test('they hide the border of a clipped surface and draw it on a box of its own, in the border colour of the theme, with a strip box under it', () => {
+        const css = document.head.querySelector(SHADE_STYLE).textContent;
+        expect(css).toMatch(/\.sb-dialog\.is-sizing \{\s*border-color: transparent;/);
+        expect(css).toMatch(/\.sb-dialog\.is-sizing::after \{[^}]*border-color: var\(--SmartThemeBorderColor\);[^}]*border-width: inherit;[^}]*border-radius: inherit;/);
+        expect(css).toMatch(/\.sb-dialog\.is-sizing::before,\s*\.sb-dialog\.is-sizing::after \{[^}]*position: absolute;/);
+    });
+
     test('a browser with constructable style sheets gets one adopted sheet and no style element', () => {
         const doc = freshDocument();
         supportConstructableSheets(doc);
@@ -149,7 +156,9 @@ describe('the dialog surface while pages slide', () => {
             let finish;
             const animation = {
                 finished: new Promise((resolve) => { finish = resolve; }),
-                effect: { target: this },
+                effect: { target: this, getComputedTiming: () => ({ progress: 0, endTime: options.duration }) },
+                currentTime: 0,
+                playState: 'running',
                 oncancel: null,
                 persist() {},
                 cancel() { animation.oncancel?.(); },

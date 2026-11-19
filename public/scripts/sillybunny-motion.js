@@ -107,6 +107,7 @@ export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTI
         onEnd?.();
     };
     const motion = {
+        animation,
         cancel() {
             cleanup();
             animation.cancel();

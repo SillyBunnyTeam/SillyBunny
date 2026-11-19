@@ -3,12 +3,12 @@ import baseConfig from './playwright.config.js';
 import { restartCacheClearStatePath } from './helpers/restart-cache-clear-seed.js';
 import { DIALOG_SPECS } from './playwright.webkit.config.js';
 
-// The dialog specs of the WebKit config, plus the Welcome and About slides. Current and previous Firefox are a
+// The dialog specs of the WebKit config, which include the Welcome and About slides. Current and previous Firefox are a
 // supported baseline, and Gecko differs from Chromium in how it navigates, restyles and moves focus.
 //
 // `welcome-slide-restyles` is not listed: it counts style recalculations in a trace of a Chrome DevTools Protocol
 // session, which only Chromium offers. `welcome-transitions` skips its one CDP test (CPU throttling) by itself.
-const FIREFOX_SPECS = [...DIALOG_SPECS, 'welcome-transitions'];
+const FIREFOX_SPECS = DIALOG_SPECS;
 
 // Tests that cannot pass in Playwright's Firefox for a reason that is not a defect of the page. Each pattern is
 // matched against the full title, which starts with the spec file name, and across every surface that a spec loops
