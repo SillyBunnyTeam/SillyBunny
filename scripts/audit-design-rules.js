@@ -52,8 +52,8 @@ export const RULES = Object.freeze([
 export const RULE_IDS = Object.freeze(RULES.map(rule => rule.id));
 
 const ALLOWED_BREAKPOINTS = Object.freeze({
-    width: new Set([450, 620, 621, 768, 769, 1024]),
-    height: new Set([360]),
+    width: new Set([450, 620, 621, 768, 769, 1024, 1279, 1280, 1439, 1440]),
+    height: new Set([360, 450]),
 });
 
 const NAMED_COLORS = new Set(('aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood '

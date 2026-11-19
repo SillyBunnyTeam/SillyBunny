@@ -3056,7 +3056,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     font-size: var(--sb-type-body);
 }
 
-@media screen and (max-width: 1100px) {
+@media screen and (max-width: 1279px) {
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.sb-character-drawer-root.openDrawer {
@@ -3082,7 +3082,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     }
 }
 
-@media screen and (max-width: 1180px), screen and (max-height: 860px) {
+@media screen and (max-width: 1279px), screen and (max-height: 450px) {
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer,
     #right-nav-panel.sb-character-drawer-root.openDrawer {
@@ -3092,7 +3092,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     }
 }
 
-@media screen and (max-height: 860px) {
+@media screen and (max-height: 450px) {
     .sb-shell-root.fillLeft.openDrawer,
     .sb-shell-root.fillRight.openDrawer {
         width: 100vw !important;

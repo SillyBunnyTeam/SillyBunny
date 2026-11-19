@@ -324,11 +324,16 @@ describe('hover-ungated', () => {
 });
 
 describe('breakpoint-off-set', () => {
-    test('accepts the allowed widths and the 360px height', () => {
+    test('accepts the allowed widths and the 360px and 450px heights', () => {
         const css = [
             '@media (max-width: 768px) { .a { margin: 0; } }',
             '@media (min-width: 769px) { .a { margin: 0; } }',
             '@media (max-width: 450px), (max-height: 360px) { .a { margin: 0; } }',
+            '@media (max-width: 1279px) { .a { margin: 0; } }',
+            '@media (min-width: 1280px) { .a { margin: 0; } }',
+            '@media (max-width: 1439px) { .a { margin: 0; } }',
+            '@media (min-width: 1440px) { .a { margin: 0; } }',
+            '@media (pointer: coarse) and (max-height: 450px) { .a { margin: 0; } }',
             '@media (max-height: 22.5rem) { .a { margin: 0; } }',
             '@media (max-width: 620px) { .a { margin: 0; } }',
             '@media (min-width: 621px) { .a { margin: 0; } }',
@@ -338,11 +343,13 @@ describe('breakpoint-off-set', () => {
         expect(counts(css)).toEqual({});
     });
 
-    test('counts each off-set feature, a width of 360 and a height other than 360', () => {
+    test('counts each off-set feature, a width of 360 and a height other than 360 and 450', () => {
         expect(counts('@media (max-width: 600px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });
         expect(counts('@media (min-width: 600px) and (max-width: 900px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 2 });
         expect(counts('@media (max-width: 360px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });
         expect(counts('@media (max-height: 860px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });
+        expect(counts('@media (max-width: 1100px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });
+        expect(counts('@media (max-width: 1180px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });
         expect(counts('@media (width <= 700px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });
         expect(counts('@media (400px <= width <= 800px) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 2 });
         expect(counts('@media (max-width: calc(750px / 0.9)) { .a { margin: 0; } }')).toEqual({ 'breakpoint-off-set': 1 });

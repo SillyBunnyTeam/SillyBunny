@@ -4,7 +4,7 @@
         "public/css/sillybunny-character-editor.css": {
             "radius-literal": 2,
             "important": 12,
-            "breakpoint-off-set": 2,
+            "breakpoint-off-set": 1,
             "breakpoint-1000": 1,
             "spacing-off-scale": 32
         },
@@ -16,7 +16,6 @@
             "radius-literal": 2,
             "shadow-literal": 1,
             "important": 14,
-            "breakpoint-off-set": 1,
             "spacing-off-scale": 27
         },
         "public/css/sillybunny-chat-styles.css": {
@@ -94,7 +93,6 @@
         },
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
-            "breakpoint-off-set": 1,
             "spacing-off-scale": 16
         },
         "public/css/sillybunny-prompt-editor.css": {
@@ -111,7 +109,6 @@
             "shadow-literal": 7,
             "duration-literal": 1,
             "important": 255,
-            "breakpoint-off-set": 6,
             "focus-outline": 1,
             "spacing-off-scale": 122,
             "spacing-off-scale-fallback": 2
@@ -127,7 +124,6 @@
             "shadow-literal": 25,
             "important": 186,
             "hover-ungated": 4,
-            "breakpoint-off-set": 1,
             "focus-outline": 1,
             "spacing-off-scale": 165,
             "spacing-off-scale-fallback": 4

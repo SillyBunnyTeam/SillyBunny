@@ -22,8 +22,10 @@
     /* The pane's shadow is that of an overlay sidebar's (slide-shade.js), over the shade. */
     --sb-conv-pane-shadow: 0 0 56px var(--sb-dialog-backdrop);
     --sb-conv-column-width: 100%;
-    --sb-conv-headerbar-height: 52px;
+    --sb-conv-headerbar-height: 56px;
     --sb-conv-button-size: max(40px, var(--sb-density-floor));
+    /* The 1px is the bar's bottom shade, which sits inside the border box. The padding gives way (to no less than 0) so that a 44px touch button still fits in a 56px bar. */
+    --sb-conv-headerbar-pad-block: clamp(0px, calc((var(--sb-conv-headerbar-height) - 1px - var(--sb-conv-button-size)) / 2), 6px);
     --sb-conv-column-gutter: 20px;
     /* libadwaita sidebar/headerbar: #2e2e32 in Libadwaita dark, #ebebed in light. */
     --sb-conv-sidebar-bg: var(--sb-sidebar-bg);
@@ -121,6 +123,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px;
+    padding-block: var(--sb-conv-headerbar-pad-block);
     border-block-end: var(--sb-headerbar-shade);
 }
 
@@ -858,6 +861,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     align-items: center;
     gap: 6px;
     padding: 6px;
+    padding-block: var(--sb-conv-headerbar-pad-block);
     border-block-end: var(--sb-headerbar-shade);
     background: var(--sb-layer-drawer);
 }
@@ -2648,7 +2652,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 #sheld[data-sb-conversation-layout='pages'],
 body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     --sb-conv-button-size: var(--sb-mobile-touch-target, 44px);
-    --sb-conv-headerbar-height: 56px;
     --sb-conv-column-gutter: 10px;
     overflow: hidden;
     grid-template-columns: minmax(0, 1fr);
@@ -2871,6 +2874,7 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     }
 }
 
+/* Stays at 420px, off the breakpoint set: the Conversation layout follows the #sheld width, and a 450px viewport query would disagree with it. */
 @media (max-width: 420px) {
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-avatar .sb-conversation-participant-avatar:nth-of-type(n+3) {
         display: none;

@@ -749,7 +749,9 @@
 
 /* style.css:2866 sizes description (29dvh) and first message (clamp to 18rem)
    from the viewport, so they dwarf every other field. One shared height for
-   every non-Metadata field; Metadata keeps its own compact sizes. */
+   every non-Metadata field; Metadata keeps its own compact sizes.
+   Stays at 1001px, off the breakpoint set: it pairs with the upstream rule
+   `min-width: 1001px` of style.css, which these rules override. */
 @media screen and (min-width: 1001px) {
     #right-nav-panel #form_create [data-sb-section]:not([data-sb-section="metadata"]) textarea[data-sb-editor-field] {
         height: 10.5rem;
