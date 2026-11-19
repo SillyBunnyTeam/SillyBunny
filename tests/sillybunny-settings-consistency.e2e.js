@@ -795,7 +795,7 @@ test.describe('Customize consistency', () => {
     });
 
     test('every Customize and Backend page, and Characters Import, keeps the one page frame: the same side inset and top space, and a scroller that reaches the page bottom', async ({ page }) => {
-        test.setTimeout(180000);
+        test.setTimeout(300000);
         // The Prompt editor and the Agents list are list pages with their own header and scroller, so they have no group to measure.
         const pages = [
             { id: 'appearance', shell: 'right' }, { id: 'extensions', shell: 'right' }, { id: 'interface', shell: 'right' },
@@ -820,7 +820,13 @@ test.describe('Customize consistency', () => {
             const group = [...scroller.querySelectorAll('.ds-pref-group')].find(shown);
             if (!group) return { error: `${rootSelector} has no group` };
             const flowing = [...scroller.querySelectorAll('*')].filter(node => shown(node) && !['absolute', 'fixed'].includes(getComputedStyle(node).position) && node.getBoundingClientRect().height > 0);
-            const contentTop = Math.min(...flowing.map(node => node.getBoundingClientRect().top));
+            // Content is a flowing box with no flowing box inside it. A wrapper starts where its own padding starts, and a
+            // zero-height sibling that `display: flex` keeps in a flex column pushes the content down by a gap without
+            // moving any wrapper's top, so the wrappers' tops cannot show it.
+            const flowingSet = new Set(flowing);
+            const leaves = flowing.filter(node => ![...node.children].some(child => flowingSet.has(child)));
+            // A row's text sits inside the row's padding, so a leaf in a boxed group counts from the group's top edge.
+            const contentTop = Math.min(...leaves.map(node => (node.closest('.ds-pref-group') ?? node).getBoundingClientRect().top));
             const resolve = value => {
                 const probe = document.createElement('div');
                 probe.style.cssText = `position:absolute;visibility:hidden;padding-left:${value}`;
@@ -840,8 +846,12 @@ test.describe('Customize consistency', () => {
             };
         }, selector);
 
-        for (const [width, height] of [[1440, 900], [390, 844]]) {
+        // Formatting, Sampling, Prompting and Connections show other groups for each API type, and a group that one type
+        // hides can leave space behind, so each pair is measured. The Characters Import page does not depend on the type.
+        const frameRuns = [[1440, 900, 'openai'], [1440, 900, 'textgenerationwebui'], [390, 844, 'openai'], [390, 844, 'textgenerationwebui']];
+        for (const [width, height, backend] of frameRuns) {
             await page.setViewportSize({ width, height });
+            await switchBackend(page, backend);
             const frames = {};
             for (const { id, shell } of pages) {
                 if (shell === 'characters') {
@@ -865,18 +875,18 @@ test.describe('Customize consistency', () => {
             expect(reference.error).toBeUndefined();
             expect(reference.inset).toBe(12);
             for (const [id, frame] of Object.entries(frames)) {
-                if (frame.error) { problems.push(`${width}: ${frame.error}`); continue; }
-                if (Math.abs(frame.left - reference.inset) > 0.5) problems.push(`${width} ${id}: left inset ${frame.left}, not ${reference.inset}`);
-                if (Math.abs(frame.right - reference.inset) > 0.5) problems.push(`${width} ${id}: right inset ${frame.right}, not ${reference.inset}`);
-                if (Math.abs(frame.top - reference.insetTop) > 1) problems.push(`${width} ${id}: top space ${frame.top}, not ${reference.insetTop}`);
-                if (Math.abs(frame.bottomGap - reference.bottomGap) > 1) problems.push(`${width} ${id}: scroller (${frame.scroller}) ends ${frame.bottomGap}px above the page's bottom, Interface ${reference.bottomGap}px`);
+                if (frame.error) { problems.push(`${width} ${backend}: ${frame.error}`); continue; }
+                if (Math.abs(frame.left - reference.inset) > 0.5) problems.push(`${width} ${backend} ${id}: left inset ${frame.left}, not ${reference.inset}`);
+                if (Math.abs(frame.right - reference.inset) > 0.5) problems.push(`${width} ${backend} ${id}: right inset ${frame.right}, not ${reference.inset}`);
+                if (Math.abs(frame.top - reference.insetTop) > 1) problems.push(`${width} ${backend} ${id}: top space ${frame.top}, not ${reference.insetTop}`);
+                if (Math.abs(frame.bottomGap - reference.bottomGap) > 1) problems.push(`${width} ${backend} ${id}: scroller (${frame.scroller}) ends ${frame.bottomGap}px above the page's bottom, Interface ${reference.bottomGap}px`);
             }
             expect(problems).toEqual([]);
 
             // An extension's own page, opened from its row, keeps the frame too, and Back returns to the list where it was.
             const extensions = await openSettingsTab(page, 'extensions', 'right');
             await expect.poll(() => extensions.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
-            for (const label of ['Character Expressions', 'Quick Reply', 'Regex']) {
+            for (const label of backend === 'openai' ? ['Character Expressions', 'Quick Reply', 'Regex'] : []) {
                 const scrolled = await page.evaluate(() => {
                     const list = document.querySelector('[data-sb-panel="extensions"] .sb-subpage-list');
                     list.scrollTop = 300;

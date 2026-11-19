@@ -9046,7 +9046,10 @@ function groupAdvancedFormattingIntoDrawers() {
 
     const miscHeading = [...systemColumn.querySelectorAll('h4')].find(heading => heading.textContent?.trim() === 'Miscellaneous');
     if (miscHeading instanceof HTMLElement) miscHeading.hidden = true;
+    // `.flex-container` sets `display: flex`, which outranks `[hidden]`, so the emptied row of columns would stay in the
+    // page's flex column as a zero-height item and add one gap above the first group. The marker is what the stylesheet hides.
     columns.hidden = true;
+    columns.dataset.sbEmptiedByOrder = 'true';
     formatting.dataset.sbGrouped = 'true';
     orderGroups();
     updateFormattingGroupVisibility(formatting);
