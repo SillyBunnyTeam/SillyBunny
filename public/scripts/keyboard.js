@@ -7,7 +7,8 @@ const interactableSelectors = [
     '.drawer-icon', // Main "menu bar" icons
     // SillyBunny: a chevron inside its drawer header is decoration of the header, which is the control; the header takes the Tab stop instead.
     // A header that already names itself a button with `aria-expanded`, or that is a row (the Connections page binds Enter and Space itself), is left out, so Enter does not click it twice.
-    '.inline-drawer-toggle:not(.ds-row, [aria-expanded])',
+    // SillyBunny: the legacy Prompt Manager's drawer header sits in a group the prompt editor replaces and hides, so it takes no Tab stop.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded], #sb-openai-prompt-manager .inline-drawer-toggle)',
     '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)', // Buttons/icons inside the drawer menus
     '.paginationjs-pages li a', // Pagination buttons
     '.group_select, .character_select, .bogus_folder_select', // Cards to select char, group or folder in character list and other places

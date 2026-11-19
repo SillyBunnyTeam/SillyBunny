@@ -30,7 +30,7 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createButtonRow, createEntryRow, createExpanderRow, createPrefGroup, createPropertyRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
+import { createButtonRow, createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { bindRovingFocus } from './sillybunny-roving-focus.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
@@ -761,7 +761,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-editor-shell.css?v=20261118zze', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261118zza', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261118zzh', id: 'deferred-prompt-editor-css' },
     ],
     // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles. NovelAI's Logit Bias entries are entity rows, which the entity list sheet styles.
     'left:prompting': [
@@ -8551,31 +8551,7 @@ function prepareEditorPanel(root) {
     root.dataset.sbEditorPrepared = 'true';
     root.dataset.sbPresentation = 'manual';
     root.classList.add('sb-prompting-panel', 'sb-editor-panel');
-    const header = createBackendSectionHeader({ modeAttrs: { 'data-sb-editor-mode': '' } });
-    // The way back to Presets and the active presets are rows of one boxed list, as the groups of the other Backend pages are.
-    const back = createButtonRow({
-        label: t`Presets`,
-        field: 'editor-presets',
-        arrow: true,
-        onActivate: () => openShell('left', 'prompting'),
-    });
-    back.row.dataset.sbEditorPresets = '';
-    const active = createPropertyRow({ label: t`Preset`, value: '', field: 'editor-preset' });
-    const names = active.row.querySelector('.ds-row-property__value');
-    names.setAttribute('aria-live', 'polite');
-    names.dataset.sbEditorPreset = '';
-    // sillybunny-preset-autosave.js fills in and reveals both states.
-    const states = createElement('span', { className: 'ds-row-subtitle sb-editor-states' });
-    states.append(
-        createElement('span', { text: 'Autosave off', attrs: { 'data-sb-editor-autosave': '', 'data-i18n': 'Autosave off', hidden: '' } }),
-        createElement('span', { text: 'Read-only', attrs: { 'data-sb-editor-read-only': '', 'data-i18n': 'Read-only', hidden: '' } }),
-    );
-    active.row.querySelector('.ds-row-text').append(states);
-    const meta = createPrefGroup({ field: 'editor-preset-state', rows: [back, active] });
-    meta.group.setAttribute('aria-label', t`Preset`);
-    meta.section.classList.add('sb-editor-meta');
-    header.append(meta.section);
-    root.append(header);
+    // The prompt list's header bar carries the presets, the backend, the way back to Presets and the two states, so the list starts under the page header.
     for (const [id, title] of [
         ['sb-editor-utility', 'Utility Prompts'],
         ['sb-editor-sysprompt', 'System Prompt'],
@@ -8588,7 +8564,7 @@ function buildEditorPanel() {
     const { panel, scroller } = createShellPanel({ id: 'editor' });
     const column = createElement('div', { className: 'sb-shell-column' });
     prepareEditorPanel(column);
-    initializePromptEditor(column);
+    initializePromptEditor(column, { openPresets: () => openShell('left', 'prompting') });
     scroller.append(column);
     return { panel, scroller, searchRoot: column, onActivate: () => {
         groupAdvancedFormattingIntoDrawers();
@@ -8603,8 +8579,8 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
     const isChatCompletion = activeApi === 'openai';
     const backend = SB_SAMPLING_BACKENDS.find(entry => entry.apiIds.includes(activeApi));
     const mode = root.querySelector('[data-sb-editor-mode]');
-    const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
-    if (mode.textContent !== modeLabel) mode.textContent = modeLabel;
+    const modeLabel = backend?.title ?? activeApi;
+    if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
 
     const adoptDocument = (id, groupId, wrapperSelector = null) => {
         const field = document.getElementById(id);
@@ -8619,7 +8595,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
 
     const manager = document.getElementById('sb-openai-prompt-manager');
     if (manager instanceof HTMLElement) {
-        if (manager.parentElement !== root || manager.previousElementSibling !== root.firstElementChild) root.firstElementChild.after(manager);
+        if (manager.parentElement !== root || manager.previousElementSibling) root.prepend(manager);
         if (manager.style.display) manager.style.display = '';
         if (!manager.classList.contains('sb-prompting-group')) manager.classList.add('sb-prompting-group');
         // The flatten pass visits descendants, so include the group's outer drawer via its parent.
@@ -8666,7 +8642,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
         });
     const names = presetNames.filter(Boolean).join(' · ');
     const meta = root.querySelector('[data-sb-editor-preset]');
-    if (meta.textContent !== names) meta.textContent = names;
+    if (meta && meta.textContent !== names) meta.textContent = names;
     refreshPresetProtectionUi();
     for (const group of root.querySelectorAll('.sb-prompting-group:not(#sb-openai-prompt-manager)')) normalizeBackendSettingsRows(group);
     for (const wrapper of root.querySelectorAll('[data-sb-editor-document]:not(.ds-row):not(.sb-settings-row-wrapper)')) wrapper.classList.add('sb-settings-row-wrapper');

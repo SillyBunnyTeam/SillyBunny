@@ -141,22 +141,101 @@ function capitalized(value) {
     return value ? value[0].toUpperCase() + value.slice(1) : '';
 }
 
-export function initializePromptEditor(column) {
+/**
+ * @param {HTMLElement} column
+ * @param {{ openPresets?: () => void }} [options] `openPresets` adds the header's way back to the Presets page.
+ */
+export function initializePromptEditor(column, { openPresets = null } = {}) {
     if (mountedEditors.has(column)) return;
     mountedEditors.add(column);
     let model = null;
+    // sillybunny-preset-autosave.js shows and hides both badges, and sillybunny-tabs.js fills the preset names and the backend.
+    const badge = (hook, key, text) => {
+        const node = element('span', 'sb-prompt-header-badge', text);
+        node.setAttribute(hook, '');
+        node.dataset.i18n = key;
+        node.hidden = true;
+        return node;
+    };
+    const autosaveBadge = badge('data-sb-editor-autosave', 'Autosave off', t`Autosave off`);
+    const readOnlyBadge = badge('data-sb-editor-read-only', 'Read-only', t`Read-only`);
     const listHeader = createListHeader({
         title: t`Prompts`,
         className: 'sb-prompt-list-header',
+        titleBadges: [readOnlyBadge, autosaveBadge],
         actions: [
+            ...openPresets ? [{ id: 'presets', label: t`Presets`, icon: 'sliders', onActivate: () => openPresets() }] : [],
             { id: 'search', label: t`Search Prompts`, icon: 'magnifying-glass', toggle: true, onActivate: () => searchControl.toggle() },
             { id: 'add', label: t`Add Prompt`, icon: 'plus', menu: true, onActivate: trigger => openAddMenu(trigger) },
             { id: 'more', label: t`Prompt List Actions`, icon: 'ellipsis-vertical', menu: true, onActivate: trigger => openListMenu(trigger) },
         ],
     });
+    const presetsButton = listHeader.button('presets');
+    if (presetsButton) presetsButton.dataset.sbEditorPresets = '';
+    // The line under the title reads "presets · backend · counts". The page's code fills the first two parts; the full line is the tooltip.
+    const subtitleLine = listHeader.element.querySelector('.sb-list-header__subtitle');
+    const presetNames = element('span', 'sb-prompt-context sb-prompt-context--presets');
+    presetNames.dataset.sbEditorPreset = '';
+    presetNames.setAttribute('aria-live', 'polite');
+    const backendName = element('span', 'sb-prompt-context sb-prompt-context--backend');
+    backendName.dataset.sbEditorMode = '';
+    const countsLine = element('span', 'sb-prompt-context sb-prompt-context--counts');
+    // On a narrow bar the state badges leave the title line and lead the subtitle as text (fitHeader).
+    const statesLine = element('span', 'sb-prompt-context sb-prompt-context--states');
+    subtitleLine.append(statesLine, presetNames, backendName, countsLine);
+    // The tooltip reads in Title Case like every other tooltip, so the counts take capitals; names stay as written.
+    const SMALL_WORDS = new Set(['a', 'an', 'and', 'by', 'for', 'in', 'of', 'on', 'the', 'to']);
+    const titleCased = text => text.replace(/(^|\s)(\p{Ll}\p{L}*)/gu, (match, space, word) => SMALL_WORDS.has(word) && space ? match : space + word[0].toUpperCase() + word.slice(1));
+    const syncSubtitleTooltip = () => {
+        const parts = [statesLine, presetNames, backendName, countsLine].filter(part => !part.hidden).map(part => part.textContent.trim());
+        for (const index of [0, parts.length - 1]) if (parts[index]) parts[index] = titleCased(parts[index]);
+        const full = parts.filter(Boolean).join(' · ');
+        if (subtitleLine.title !== full) subtitleLine.title = full;
+    };
+    new MutationObserver(syncSubtitleTooltip).observe(subtitleLine, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    // A search replaces the line with its result count, so the context parts step aside while it is on.
+    const setSubtitleLine = (text, searching = false) => {
+        if (countsLine.textContent !== text) countsLine.textContent = text;
+        for (const part of [statesLine, presetNames, backendName]) if (part.hidden !== searching) part.hidden = searching;
+    };
     const searchButton = listHeader.button('search');
     const addPromptButton = listHeader.button('add');
     const listActionsButton = listHeader.button('more');
+
+    // A bar that cannot hold the title, its state badges and every button keeps the list's name whole: the badges lead the subtitle as
+    // text first, and the Presets button moves into the list's menu (a Text Completion list has no menu, so its button stays). The need is
+    // measured from the natural widths of the title, the badges and an icon button, none of which depends on this state, so the choice does not flip back.
+    const headerTitle = listHeader.element.querySelector('.sb-list-header__title');
+    const stateBadges = [readOnlyBadge, autosaveBadge];
+    let fitFrame = 0;
+    const presetsInMenu = () => Boolean(presetsButton?.hidden);
+    function fitHeader() {
+        const bar = listHeader.element;
+        const unit = searchButton.offsetWidth;
+        if (!bar.clientWidth || !unit) return;
+        const px = (node, ...sides) => sides.reduce((sum, side) => sum + (parseFloat(getComputedStyle(node)[side]) || 0), 0);
+        const gap = px(bar, 'columnGap');
+        const buttons = [addPromptButton, listActionsButton].filter(control => !control.hidden).length + 1 + Number(Boolean(presetsButton));
+        const shown = stateBadges.filter(badgeNode => !badgeNode.hidden);
+        const required = px(bar, 'paddingLeft', 'paddingRight') + px(headerTitle.parentElement.parentElement, 'paddingLeft', 'paddingRight')
+            + headerTitle.scrollWidth + shown.reduce((sum, badgeNode) => sum + badgeNode.offsetWidth + gap, 0)
+            + buttons * unit + (buttons + 1) * gap;
+        const narrow = required > bar.clientWidth;
+        if (bar.dataset.narrow !== String(narrow)) bar.dataset.narrow = String(narrow);
+        const states = narrow ? shown.map(badgeNode => badgeNode.textContent.trim()).join(' · ') : '';
+        if (statesLine.textContent !== states) statesLine.textContent = states;
+        const moved = narrow && Boolean(presetsButton) && !listActionsButton.hidden;
+        if (presetsButton && presetsButton.hidden !== moved) presetsButton.hidden = moved;
+    }
+    function scheduleFit() {
+        if (fitFrame) return;
+        fitFrame = requestAnimationFrame(() => {
+            fitFrame = 0;
+            fitHeader();
+        });
+    }
+    if (typeof ResizeObserver === 'function') new ResizeObserver(scheduleFit).observe(listHeader.element);
+    new MutationObserver(scheduleFit).observe(headerTitle.parentElement, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-prompt-search-entry', inputClassName: 'sb-prompt-search',
@@ -193,8 +272,6 @@ export function initializePromptEditor(column) {
     let filter = '';
     let synchronizeFrame = 0;
     let renderedListKey = '';
-    let headerMeasuredWidth = 0;
-    let headerMeasuredText = '';
     let dragScope = '';
     let propertyDialog = null;
     let tokenTimer = null;
@@ -275,7 +352,6 @@ export function initializePromptEditor(column) {
         findRow: rowFor,
         focusTarget: detail => detail.querySelector('.sb-prompt-title'),
         fadeTarget: detail => detail.querySelector('.sb-prompt-content'),
-        measureLayout: measureShellLayout,
         applyLayout: applyShellLayout,
         onCollapseChange: () => closeOverlays(),
     });
@@ -366,7 +442,7 @@ export function initializePromptEditor(column) {
     }
 
     function menu(trigger, title, sections) {
-        openActionMenu({ trigger, title, sections: sections.map(items => ({ items: items.filter(Boolean) })) });
+        openActionMenu({ trigger, title, sections: sections.filter(items => items.length).map(items => ({ items: items.filter(Boolean) })) });
         markPromptMenus();
     }
 
@@ -696,6 +772,7 @@ export function initializePromptEditor(column) {
             if (control.getAttribute('aria-pressed') !== String(sorted)) control.setAttribute('aria-pressed', String(sorted));
         }
         listHeader.setTitle(textCompletion ? t`Prompt templates` : t`Prompts`);
+        scheduleFit();
         syncSectionVisibility(textCompletion);
         if (textCompletion) {
             clearTimeout(listTokenTimer);
@@ -774,16 +851,16 @@ export function initializePromptEditor(column) {
 
     function updateListSubtitle() {
         if (filter && resultCount) {
-            listHeader.setSubtitle(resultCount.shown === 0 ? t`No results` : t`${resultCount.shown} of ${resultCount.total} results`);
+            setSubtitleLine(resultCount.shown === 0 ? t`No results` : t`${resultCount.shown} of ${resultCount.total} results`, true);
             return;
         }
         if (textCompletionView()) {
-            listHeader.setSubtitle(t`Text completion · Grouped by role`);
+            setSubtitleLine(t`Grouped by role`);
             return;
         }
         const enabled = state.order.filter(entry => entry.enabled && promptFor(entry.identifier));
         const counts = enabled.map(entry => promptFor(entry.identifier)).filter(Boolean).map(knownCount).filter(count => typeof count === 'number');
-        listHeader.setSubtitle(state.strategy === 'character' && state.character?.name
+        setSubtitleLine(state.strategy === 'character' && state.character?.name
             ? t`Order for ${state.character.name}`
             : t`${enabled.length} active · ${counts.length ? counts.reduce((sum, count) => sum + count, 0) : '-'} tokens`);
     }
@@ -867,6 +944,7 @@ export function initializePromptEditor(column) {
 
     function openListMenu(trigger) {
         menu(trigger, t`Prompt List`, [
+            presetsInMenu() ? [{ ...menuItem(t`Presets`, 'sliders', openPresets), data: { sbEditorPresets: '' } }] : [],
             [menuItem(t`Import Prompt List`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export Prompt List`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export Character Prompts`, 'file-export', () => model.exportCharacter())],
             [menuItem(t`Select`, 'list-check', () => selection.enter(null, trigger)), menuItem(t`Reset Order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
         ]);
@@ -1560,25 +1638,8 @@ export function initializePromptEditor(column) {
         shell?.scheduleLayout();
     }
 
-    // Reads for the shell's layout pass; the shell applies its own writes in between.
-    function measureShellLayout({ width, collapsed }) {
-        const hideCollapsed = Boolean(draft) && collapsed;
-        const card = column.querySelector(':scope > .sb-backend-section-header');
-        const headerText = card?.textContent ?? '';
-        const headerHidden = column.classList.contains('sb-prompt-hide-header');
-        const revealHeader = !hideCollapsed && headerHidden && (headerMeasuredWidth !== width || headerMeasuredText !== headerText || !draft);
-        const fits = !headerHidden && card && [...card.querySelectorAll('.sb-backend-title-row, .sb-editor-meta')].every(node => node.scrollWidth <= node.clientWidth + 1);
-        return { headerText, headerHidden, revealHeader, fits };
-    }
-
-    function applyShellLayout({ headerText, headerHidden, revealHeader, fits }, { width, collapsed }) {
+    function applyShellLayout() {
         if (column.classList.contains('sb-prompt-detail-open') !== Boolean(draft)) column.classList.toggle('sb-prompt-detail-open', Boolean(draft));
-        const hideHeader = !revealHeader && Boolean(draft) && (collapsed || !fits);
-        if (headerHidden !== hideHeader) column.classList.toggle('sb-prompt-hide-header', hideHeader);
-        headerMeasuredWidth = width;
-        headerMeasuredText = headerText;
-        // A previously collapsed header must become measurable before checking its overflow.
-        if (revealHeader) scheduleLayout();
     }
 
     function scheduleSynchronize() {
@@ -1681,7 +1742,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261118zza', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261118zza', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261118zzh', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

@@ -90,10 +90,10 @@ function record(identifier, name, overrides = {}) {
     };
 }
 
-async function mountEditor() {
+async function mountEditor(options) {
     const column = document.createElement('div');
     document.body.append(column);
-    initializePromptEditor(column);
+    initializePromptEditor(column, options);
     await flush();
     await flush();
     return column;
@@ -380,6 +380,29 @@ function search(column, query) {
 }
 
 describe('Prompt list', () => {
+    test('the header carries the way back to Presets, the state badges and the context line', async () => {
+        const openPresets = jest.fn();
+        const column = await mountEditor({ openPresets });
+        const header = column.querySelector('.sb-prompt-list-header');
+        const buttons = [...header.querySelectorAll('button')];
+        expect(buttons.map(node => node.getAttribute('aria-label'))).toEqual(['Presets', 'Search Prompts', 'Add Prompt', 'Prompt List Actions']);
+        expect(buttons[0].title).toBe('Presets');
+        expect(buttons[0].hasAttribute('data-sb-editor-presets')).toBe(true);
+        buttons[0].click();
+        expect(openPresets).toHaveBeenCalledTimes(1);
+
+        const row = header.querySelector('.sb-list-header__lead');
+        expect([...row.querySelectorAll('[hidden]')].map(node => node.textContent)).toEqual(['Read-only', 'Autosave off']);
+        expect(row.querySelector('[data-sb-editor-autosave]')).not.toBeNull();
+        expect(row.querySelector('[data-sb-editor-read-only]')).not.toBeNull();
+
+        const line = header.querySelector('.sb-list-header__subtitle');
+        header.querySelector('[data-sb-editor-preset]').textContent = 'Default';
+        header.querySelector('[data-sb-editor-mode]').textContent = 'Chat Completions';
+        await flush();
+        expect(line.title).toBe(`Default · Chat Completions · ${line.querySelector('.sb-prompt-context--counts').textContent.replace(/active/, 'Active').replace(/tokens/, 'Tokens')}`);
+    });
+
     test('is the shared list header and boxed list of entity rows, with the compat classes kept', async () => {
         const column = await mountEditor();
         const header = column.querySelector('.sb-prompt-list-header');

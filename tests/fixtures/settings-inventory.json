@@ -3784,7 +3784,6 @@
       "root": "[data-sb-panel=\"editor\"]",
       "skip": ["#completion_prompt_manager_list",".sb-prompt-box"],
       "controls": [
-        {"identity":"data:data-sb-editor-field=editor-presets","identityKind":"data","kind":"button","name":"Presets","where":"visible"},
         {"identity":"#completion_prompt_manager_drag_lock","kind":"button","where":"hidden"},
         {"identity":"#bpt-prompt-search","kind":"text","where":"hidden"},
         {"identity":"#bpt-prompt-clear","kind":"button","where":"hidden"},
@@ -3866,6 +3865,7 @@
         {"identity":"#context_story_string_role","kind":"select","where":"hidden"},
         {"identity":"#context_example_separator","kind":"textarea","where":"hidden"},
         {"identity":"#context_chat_start","kind":"textarea","where":"hidden"},
+        {"identity":"data:data-action-id=presets","identityKind":"data","kind":"button","name":"Presets","where":"visible"},
         {"identity":"data:data-action-id=add","identityKind":"data","kind":"button","name":"Add Prompt","where":"visible"},
         {"identity":"data:data-action-id=more","identityKind":"data","kind":"button","name":"Prompt List Actions","where":"visible"},
         {"identity":"label:text:search prompts","identityKind":"label","kind":"text","name":"Search Prompts","where":"expander","lands":"none"},

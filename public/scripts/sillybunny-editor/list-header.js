@@ -29,13 +29,14 @@
  * @param {HeaderTitleButton} [options.titleButton]
  * @param {string} [options.titleClassName]
  * @param {string} [options.subtitleClassName]
+ * @param {HTMLElement[]} [options.titleBadges] Small state badges shown after the title; the caller shows and hides them. Not with `titleButton`.
  * @returns {{ element: HTMLElement, titleButton: HTMLButtonElement|null, setTitle: (text: string) => void,
  *   setSubtitle: (text: string) => void, setSubtitleHidden: (hidden: boolean) => void,
  *   button: (id: string) => HTMLButtonElement|null, setPressed: (id: string, pressed: boolean) => void,
  *   setOverflowed: (ids: string[]) => void, destroy: () => void }}
  */
 export function createListHeader({
-    title, subtitle = '', actions = [], className = '', titleButton: titleButtonOptions = null, titleClassName = '', subtitleClassName = '',
+    title, subtitle = '', actions = [], className = '', titleButton: titleButtonOptions = null, titleClassName = '', subtitleClassName = '', titleBadges = [],
 }) {
     const element = document.createElement('header');
     element.className = ['sb-list-header', className].filter(Boolean).join(' ');
@@ -49,7 +50,13 @@ export function createListHeader({
     subtitleElement.textContent = subtitle;
     // Block spans give no space in their text, so axe reads the title and subtitle of a button as one word ("Book3 entries") and finds it missing from the name.
     if (titleButtonOptions) titles.append(titleElement, document.createTextNode(' '), subtitleElement);
-    else titles.append(titleElement, subtitleElement);
+    else if (titleBadges.length) {
+        // The badges follow the title on its own line; the title shortens first and the badges keep their size.
+        const titleRow = document.createElement('div');
+        titleRow.className = 'sb-list-header__lead';
+        titleRow.append(titleElement, ...titleBadges);
+        titles.append(titleRow, subtitleElement);
+    } else titles.append(titleElement, subtitleElement);
     const spacer = document.createElement('span');
     spacer.className = 'sb-list-header__spacer';
     spacer.setAttribute('aria-hidden', 'true');

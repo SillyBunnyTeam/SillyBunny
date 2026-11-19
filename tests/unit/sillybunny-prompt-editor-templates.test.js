@@ -183,7 +183,7 @@ describe('Text Completion template list', () => {
         expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('No results');
         type('');
         expect(column.querySelector('.sb-prompt-list-body > .sb-status-page')).toBeNull();
-        expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('Text completion · Grouped by role');
+        expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('Grouped by role');
     });
 
     test('Preview in the row menu opens the template in preview mode', async () => {

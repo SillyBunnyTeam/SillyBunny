@@ -326,27 +326,34 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expectNoOverflow(prompting);
                 await expectSwitchGeometry(prompting);
                 const editor = await openPanel(page, 'editor');
-                await expect(editor.locator('[data-sb-editor-mode]')).toHaveText(`Backend: ${label}`);
-                await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveText(api === 'openai' ? 'Prompts' : 'Prompt templates');
-                // The Editor opens with the same unboxed line as the other Backend pages, then one boxed list: the way back to
-                // Presets is a button row with a trailing arrow, and the active presets are a property row.
-                const editorHeader = editor.locator('.sb-prompt-owned > .sb-backend-section-header');
-                await expect(editorHeader.locator(':scope > .sb-backend-title-row > [data-sb-editor-mode]')).toBeVisible();
-                const presetsButton = editorHeader.locator(':scope > .sb-editor-meta [data-sb-editor-presets]');
-                await expect(presetsButton).toHaveClass(/\bds-button-row\b/);
-                await expect(presetsButton).toHaveClass(/\bds-button-row--arrow\b/);
-                await expect(presetsButton).not.toHaveClass(/menu_button|sb-action-btn|sb-backend-navigation-pill/);
-                await expect(editorHeader.locator(':scope > .sb-editor-meta > [role="group"] > .ds-row')).toHaveCount(2);
-                await expect(editorHeader.locator(':scope > .sb-editor-meta [data-sb-editor-preset]')).toBeVisible();
-                const editorHeaderMetrics = await readBackendHeaderMetrics(editorHeader);
-                expect(editorHeaderMetrics.padding).toBe(promptingHeaderMetrics.padding);
-                expect(editorHeaderMetrics.rowGap).toBe(promptingHeaderMetrics.rowGap);
-                expect(editorHeaderMetrics.boxed).toBe(false);
-                // The title of the list is a heading in the Title role, and the editor sits one group gap under the line.
+                // The page has no backend line and no boxed list: the prompt list starts under the page header, and its header bar
+                // carries the context (presets · backend · counts), the way back to Presets and the state badges.
+                await expect(editor.locator('.sb-prompt-owned > .sb-backend-section-header, .sb-editor-meta, .sb-sampling-mode-pill')).toHaveCount(0);
+                const listHeader = editor.locator('.sb-prompt-list-header');
+                await expect(listHeader.locator('[data-sb-editor-mode]')).toHaveText(label);
+                await expect(listHeader.locator('[data-sb-editor-preset]')).not.toHaveText('');
+                await expect(listHeader.locator('.sb-list-header__subtitle')).toHaveAttribute('title', new RegExp(`${label}`));
+                /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- the Editor header holds Presets in a button or in the menu by its width */
+                if (page.viewportSize().width > 600) {
+                    const presetsButton = listHeader.locator('[data-sb-editor-presets]');
+                    await expect(presetsButton).toHaveAccessibleName('Presets');
+                    await expect(presetsButton).toHaveAttribute('title', 'Presets');
+                    await expect(presetsButton).toHaveJSProperty('tagName', 'BUTTON');
+                    await expect(listHeader.locator('.sb-list-header__button:visible').first()).toHaveAttribute('data-sb-editor-presets', '');
+                } else if (api === 'openai') {
+                    // A bar too narrow for the title, the states and every button moves Presets into the list's ⋮ menu.
+                    await expect(listHeader).toHaveAttribute('data-narrow', 'true');
+                    await expect(listHeader.locator('[data-sb-editor-presets]')).toBeHidden();
+                    await listHeader.getByRole('button', { name: 'Prompt List Actions', exact: true }).click();
+                    await expect(page.getByRole('menuitem', { name: 'Presets', exact: true })).toHaveAttribute('data-sb-editor-presets', '');
+                    await page.keyboard.press('Escape');
+                }
+                /* eslint-enable playwright/no-conditional-in-test, playwright/no-conditional-expect */
+                expect(await editor.evaluate(panel => panel.querySelector('.sb-prompt-editor').getBoundingClientRect().top - panel.getBoundingClientRect().top)).toBeCloseTo(24, 0);
+                // The title of the list is a heading in the Title role.
                 const groupHeading = await prompting.locator('.ds-pref-group-heading').first().evaluate(heading => ({ size: getComputedStyle(heading).fontSize, weight: getComputedStyle(heading).fontWeight }));
                 await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveCSS('font-size', groupHeading.size);
                 await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveCSS('font-weight', groupHeading.weight);
-                expect(await editor.evaluate(panel => panel.querySelector('.sb-prompt-editor').getBoundingClientRect().top - panel.querySelector('.sb-backend-section-header').getBoundingClientRect().bottom)).toBeCloseTo(24, 0);
                 // A group with no rows has no heading, and no prompt is available here.
                 await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(api === 'openai'
                     ? ['Prompt Order', 'Utility Prompts'] : ['System prompt', 'Context', 'Instruct']);

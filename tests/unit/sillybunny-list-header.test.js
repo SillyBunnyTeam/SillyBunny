@@ -17,6 +17,17 @@ function actions() {
 }
 
 describe('createListHeader', () => {
+    test('titleBadges follow the title on its own row and leave the subtitle under both', () => {
+        const badge = document.createElement('span');
+        badge.hidden = true;
+        const { element } = createListHeader({ title: 'Prompts', subtitle: 'Default', titleBadges: [badge] });
+        const titles = element.querySelector('.sb-list-header__titles');
+        const row = titles.querySelector(':scope > .sb-list-header__lead');
+
+        expect([...row.children]).toEqual([row.querySelector('.sb-list-header__title'), badge]);
+        expect([...titles.children]).toEqual([row, titles.querySelector('.sb-list-header__subtitle')]);
+    });
+
     test('builds the shared header structure and preserves supplied title text', () => {
         const header = createListHeader({ title: 'Characters', subtitle: '3 characters', className: 'character-header custom-header' });
         const { element } = header;

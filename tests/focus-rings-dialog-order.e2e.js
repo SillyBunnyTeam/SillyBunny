@@ -168,7 +168,8 @@ for (const viewport of ['1440x900', '390x844']) {
         const { context, page } = await openAt(browser, { baseURL, locale, timezoneId }, 'settings.backend.connections', { viewport });
         try {
             const stops = await page.evaluate(() => [...document.querySelectorAll('.inline-drawer-icon')]
-                .filter(icon => !icon.matches('.inline-drawer-toggle') && icon.parentElement.closest('.inline-drawer-toggle, .inline-drawer-header'))
+                // The legacy Prompt Manager's drawer is hidden markup that the prompt editor replaces; its header takes no Tab stop on purpose.
+                .filter(icon => !icon.matches('.inline-drawer-toggle') && icon.parentElement.closest('.inline-drawer-toggle, .inline-drawer-header') && !icon.closest('#sb-openai-prompt-manager'))
                 .map(icon => {
                     const header = icon.parentElement.closest('.inline-drawer-toggle, .inline-drawer-header');
                     return { iconTab: icon.tabIndex, iconRole: icon.getAttribute('role'), iconHtml: icon.outerHTML.slice(0, 160), parentHtml: icon.parentElement.outerHTML.slice(0, 160), headerTab: header.tabIndex, header: `${header.tagName}.${header.className}|${header.id}|${header.closest('[id]')?.id}` };

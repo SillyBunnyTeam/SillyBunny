@@ -1649,7 +1649,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 | Field | Value |
 | --- | --- |
-| File | `public/scripts/keyboard.js` and `public/scripts/a11y.js` (a chevron inside its drawer header leaves `interactableSelectors` and `buttonSelectors`, and `.inline-drawer-toggle:not(.ds-row, [aria-expanded])` takes the Tab stop and the button role); `public/css/mobile-styles.css` (`#send_textarea` font size `max(16px, var(--mainFontSize))`); `public/scripts/power-user.js` (`ACCENT_PRESET_COLORS`, `syncAccentPresetState()` and its call in `applyThemeColor`). |
+| File | `public/scripts/keyboard.js` and `public/scripts/a11y.js` (a chevron inside its drawer header leaves `interactableSelectors` and `buttonSelectors`, and `.inline-drawer-toggle:not(.ds-row, [aria-expanded])` takes the Tab stop and the button role, except the hidden legacy Prompt Manager drawer `#sb-openai-prompt-manager .inline-drawer-toggle` that the prompt editor replaces (task 14.6q)); `public/css/mobile-styles.css` (`#send_textarea` font size `max(16px, var(--mainFontSize))`); `public/scripts/power-user.js` (`ACCENT_PRESET_COLORS`, `syncAccentPresetState()` and its call in `applyThemeColor`). |
 | Area | Keyboard access to drawers; the composer on phones; Appearance accent presets. |
 | Divergence reason | `TODO(copy)` |
 | Target seam | The selector lists of `keyboard.js` and `a11y.js`; `applyThemeColor()`. |
@@ -1657,7 +1657,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/focus-rings-dialog-order.e2e.js`; `tests/dialogs-accessibility.e2e.js`. |
 | Validation | 2026-11-19: root and tests lint, the full unit run, contracts and design rules, the dialog and accessibility specs, the related e2e specs. |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-19, UI polish sweep (task 14.6o). |
+| Last reviewed | 2026-11-19, UI polish sweep (tasks 14.6o and 14.6q). |
 | Owner | `TODO(copy)` |
 
 ### Capitalisation of SillyBunny-written labels in upstream-origin files

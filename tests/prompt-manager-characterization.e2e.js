@@ -1165,13 +1165,15 @@ test.describe('Prompt Manager characterization', () => {
         await search.fill('Fixture Relative');
         await expect(body.locator('.sb-prompt-row')).toHaveCount(1);
         await expect(body.locator('.sb-prompt-section:not([hidden]) > h3')).toHaveText(['Prompt Order']);
-        await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText(/^1 of \d+ results$/);
+        // While a search is on, the count replaces the presets and the backend in the line.
+        await expect(page.locator('.sb-prompt-list-header .sb-prompt-context--counts')).toHaveText(/^1 of \d+ results$/);
+        await expect(page.locator('.sb-prompt-list-header .sb-prompt-context:not(.sb-prompt-context--counts):visible')).toHaveCount(0);
         await search.fill('zz-no-such-prompt');
         await expect(body.locator('.sb-prompt-section:not([hidden])')).toHaveCount(0);
         const status = body.locator(':scope > .sb-status-page');
         await expect(status).toBeVisible();
         await expect(status.locator('.sb-status-page__title')).toHaveText('No Results Found');
-        await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText('No results');
+        await expect(page.locator('.sb-prompt-list-header .sb-prompt-context--counts')).toHaveText('No results');
         await search.fill('');
         await expect(status).toHaveCount(0);
         await expect(body.locator('.sb-prompt-section:not([hidden]) > h3').first()).toHaveText('Prompt Order');
@@ -1269,7 +1271,7 @@ test.describe('Prompt editor mobile interaction', () => {
         await ui.open();
         await ui.openEditor('sbFixtureInChat');
         const editor = page.locator('.sb-prompt-detail');
-        await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toBeHidden();
+        await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toHaveCount(0);
         await editor.getByRole('button', { name: 'Prompt Properties: User · In-chat @ 2 · Swipe, Quiet', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Prompt Properties', exact: true });
         await sheet.getByRole('button', { name: /^Role:/ }).click();
@@ -1281,7 +1283,7 @@ test.describe('Prompt editor mobile interaction', () => {
         const saved = await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureInChat')?.injection_depth === 6);
         expect(promptFor(saved, 'sbFixtureInChat')).toMatchObject({ role: 'assistant', injection_position: 1 });
         await ui.close();
-        await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toBeVisible();
+        await expect(page.locator('.sb-prompt-list-header')).toBeVisible();
         const row = ui.row('sbFixtureInChat');
         await row.focus();
         await page.keyboard.press('Alt+ArrowUp');

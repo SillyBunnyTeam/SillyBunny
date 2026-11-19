@@ -16,35 +16,52 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     padding-bottom: 8px;
 }
 
-/* The line keeps to one row on a wide page, because the layout pass hides it when it overflows. */
-#sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
-    flex: none;
-    flex-wrap: nowrap;
+/* The list header carries the page's context: state badges after the title, and a subtitle of presets · backend · counts. */
+.sb-prompt-list-header .sb-list-header__lead {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
 }
 
-#sb-settings-page .sb-prompt-owned .sb-backend-title-row {
-    flex: none;
-    flex-wrap: nowrap;
-}
-
-/* The active presets and their states are one boxed list under the backend label, as the other Backend pages open. */
-#sb-settings-page .sb-prompt-owned .sb-editor-meta {
-    flex: 1 1 100%;
+.sb-prompt-list-header .sb-list-header__lead > .sb-list-header__title {
+    flex: 0 1 auto;
     min-width: 0;
 }
 
-.sb-prompt-owned .sb-editor-states {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 12px;
-}
-
-#sb-settings-page .sb-prompt-owned .sb-editor-states > [data-sb-editor-read-only] {
+.sb-prompt-list-header .sb-prompt-header-badge {
+    flex: none;
+    padding: 0 9px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    border-radius: var(--sb-radius-pill);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-meta);
     font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
 }
 
-#sb-settings-page .sb-prompt-owned.sb-prompt-hide-header > .sb-backend-section-header {
+.sb-prompt-list-header .sb-prompt-header-badge[hidden] {
+    display: none;
+}
+
+/* A bar too narrow for the title, the badges and every button (fitHeader) shows the states as text in the subtitle. The badges stay laid
+   out, out of sight, so their width can still be measured. */
+.sb-prompt-list-header[data-narrow='true'] .sb-prompt-header-badge {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* The parts join with a middle dot; a part with no text leaves no dot. The full line is the subtitle's tooltip. */
+.sb-prompt-list-header .sb-prompt-context:not(:empty, [hidden]) ~ .sb-prompt-context:not(:empty, [hidden])::before {
+    content: ' · ';
+}
+
+.sb-prompt-list-header .sb-prompt-context[hidden] {
     display: none;
 }
 
@@ -626,15 +643,6 @@ label.sb-prompt-property {
 }
 
 @media (max-width: 768px) {
-    #sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
-        flex-wrap: wrap;
-    }
-
-    #sb-settings-page .sb-prompt-owned .sb-sampling-mode-pill {
-        flex: none;
-        white-space: nowrap;
-    }
-
     #sb-settings-page .sb-prompt-editor .sb-prompt-title {
         flex: 1 1 0;
         min-width: 56px;

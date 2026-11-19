@@ -358,10 +358,46 @@ test('Editor header shows autosave and read-only state', async ({ page }) => {
     await loadApp(page);
     await selectPreset(page, 'openai', 'Default');
     const editor = await openPanel(page, 'editor');
-    await expect(editor.locator('[data-sb-editor-autosave]')).toHaveText('Autosave on');
+    // With autosave on and a writable preset the header shows no badge; a bundled preset adds Read-only.
+    await expect(editor.locator('[data-sb-editor-autosave]')).toBeHidden();
     await expect(editor.locator('[data-sb-editor-read-only]')).toBeVisible();
     await selectPreset(page, 'openai', USER_PRESET);
     await expect(editor.locator('[data-sb-editor-read-only]')).toBeHidden();
+});
+
+test.describe('Editor header on a phone', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('both states lead the subtitle, the title stays whole and Presets moves into the list menu', async ({ page }) => {
+        await loadApp(page, { autosave: false });
+        await selectPreset(page, 'openai', 'Default');
+        const editor = await openPanel(page, 'editor');
+        const header = editor.locator('.sb-prompt-list-header');
+        await expect(header).toHaveAttribute('data-narrow', 'true');
+        const title = header.locator('.sb-list-header__title');
+        await expect(title).toBeVisible();
+        expect(await title.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+        await expect(header.locator('.sb-prompt-header-badge:visible')).toHaveCount(0);
+        const subtitle = header.locator('.sb-list-header__subtitle');
+        // The separators between the parts are drawn by CSS, so the parts are read one by one.
+        await expect(subtitle.locator(':scope > .sb-prompt-context:not([hidden])')).toHaveText(['Read-only · Autosave off', 'Default', 'Chat Completions', /^\d+ active · .+ tokens$/]);
+        await expect(subtitle).toHaveAttribute('title', /^Read-only · Autosave Off · Default · Chat Completions · /);
+        await expect(header.locator('[data-sb-editor-presets]')).toBeHidden();
+        await header.getByRole('button', { name: 'Prompt List Actions', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Presets', exact: true }).click();
+        await expect(page.locator('[data-sb-panel="prompting"]')).toHaveAttribute('aria-hidden', 'false');
+    });
+});
+
+test('Editor header on a wide page keeps its badges on the title line and its Presets button', async ({ page }) => {
+    await loadApp(page, { autosave: false });
+    await selectPreset(page, 'openai', 'Default');
+    const editor = await openPanel(page, 'editor');
+    const header = editor.locator('.sb-prompt-list-header');
+    await expect(header).toHaveAttribute('data-narrow', 'false');
+    await expect(header.locator('.sb-list-header__lead .sb-prompt-header-badge:visible')).toHaveText(['Read-only', 'Autosave off']);
+    await expect(header.locator('.sb-prompt-context--states')).toHaveText('');
+    await expect(header.locator('button[data-sb-editor-presets]')).toBeVisible();
 });
 
 test('pressing the Preset Menu saves a pending edit before an action can run', async ({ page }) => {

@@ -372,7 +372,9 @@ export function refreshPresetProtectionUi() {
     if (autosave instanceof HTMLElement) {
         const label = isPresetAutosaveEnabled() ? 'Autosave on' : 'Autosave off';
         const text = isPresetAutosaveEnabled() ? t`Autosave on` : t`Autosave off`;
-        if (autosave.hidden) autosave.hidden = false;
+        // The badge names the unusual state only; with autosave on there is nothing to flag.
+        const hidden = isPresetAutosaveEnabled();
+        if (autosave.hidden !== hidden) autosave.hidden = hidden;
         if (autosave.dataset.i18n !== label) autosave.dataset.i18n = label;
         // Replacing identical text requeues the shell's child-list drawer observer indefinitely.
         if (autosave.textContent !== text) autosave.textContent = text;

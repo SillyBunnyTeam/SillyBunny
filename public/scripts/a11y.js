@@ -9,7 +9,8 @@ const buttonSelectors = [
     '.mes_button',
     '.drawer-icon',
     // SillyBunny: a chevron inside its drawer header is decoration of the header, so the header takes the button role instead.
-    '.inline-drawer-toggle:not(.ds-row, [aria-expanded])',
+    // SillyBunny: the legacy Prompt Manager's drawer header sits in a group the prompt editor replaces and hides, so it takes no role and no Tab stop.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded], #sb-openai-prompt-manager .inline-drawer-toggle)',
     '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)',
     '.swipe_left',
     '.swipe_right',
