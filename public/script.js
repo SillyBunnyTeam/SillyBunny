@@ -12697,6 +12697,7 @@ function collectMainApiElements() {
  *
  * @param {string} selectedVal the `#main_api` value to show
  */
+// SillyBunny: split out of changeMainAPI so the Connections panel can show the right groups for a provider without the status check and the other side effects of the rest of the API change.
 export function changePanelApiVisibility(selectedVal) {
     const apiElements = collectMainApiElements();
 

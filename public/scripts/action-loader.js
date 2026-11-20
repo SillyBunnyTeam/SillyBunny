@@ -610,6 +610,7 @@ async function hideOverlay() {
  * @returns {Promise<void>}
  */
 export function dismissPreloader() {
+    // SillyBunny: upstream removes #preloader at once; this fades it out first and falls back to removal when motion is off or the transition never ends.
     if (preloaderDismissal) return preloaderDismissal;
 
     const preloader = document.getElementById('preloader');
