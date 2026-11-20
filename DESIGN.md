@@ -268,7 +268,7 @@ This project rejects UI creep, nested menu spirals, configuration sprawl, screen
 
 ## 2. Colours
 
-The palette is a neutral base for customisation and exploration: the accent dictates user interaction. Values follow the libadwaita dark style (the bundled Libadwaita theme); Libadwaita Light maps the same roles onto the libadwaita light style. Every role below is derived from the user's theme colours, so the hex values describe the bundled Libadwaita theme only.
+The palette is a neutral base for customisation and exploration: the accent dictates user interaction. Values follow the libadwaita dark style (the bundled Libadwaita Dark theme); Libadwaita Light maps the same roles onto the libadwaita light style. Every role below is derived from the user's theme colours, so the hex values describe the bundled Libadwaita Dark theme only.
 
 Deviation: the HIG asks an app to follow the system's light or dark style; SillyBunny applies the theme the user saved and defaults to the dark bundled theme, because themes are user data and the app has no system-following mode. Review when the app gains a mode that follows the system's style.
 
