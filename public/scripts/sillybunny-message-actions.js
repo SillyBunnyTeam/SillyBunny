@@ -695,7 +695,14 @@ function observeChat(chat) {
         }
     }).observe(chat, { childList: true });
 
+    // The titles and the layout depend only on this body class, and other scripts toggle many body classes.
+    let wasExpanded = isSettingExpanded();
     new MutationObserver(() => {
+        const expanded = isSettingExpanded();
+        if (expanded === wasExpanded) {
+            return;
+        }
+        wasExpanded = expanded;
         document.querySelectorAll(HINT_SELECTOR).forEach(hint => hint.hasAttribute('aria-haspopup') && syncHintTitle(hint));
         scheduleLayoutForAll();
     }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
