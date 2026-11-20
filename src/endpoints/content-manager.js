@@ -151,8 +151,8 @@ const MANAGED_BUNDLED_QUICK_REPLIES = Object.freeze([
 // SillyBunny divergence: seeding never overwrites an existing theme file, so a bundled theme that changes
 // after users copied it would stay stale in their data folder. A managed theme is replaced only while the
 // user's copy has the SHA-256 of an earlier bundled file; an edited copy has another hash and is left alone.
-// Libadwaita Light lists the pre-release seeds that still carried the Dark V 1.0 palette, plus its file from before
-// its text colours were raised to the DESIGN.md contrast floor. CONTRAST_REVISED_THEME_HASHES maps every other
+// The Libadwaita Light entry lists the files of its pre-release builds, the last of them from before its text colours
+// were raised to the DESIGN.md contrast floor. CONTRAST_REVISED_THEME_HASHES maps every other
 // theme that had text colours raised to the hash of its file from before. A value is one hash, or an array of
 // hashes when pre-release builds also shipped an earlier revision of the file (the first entry is the last release's).
 const CONTRAST_REVISED_THEME_HASHES = Object.freeze({
