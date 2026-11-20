@@ -71,7 +71,8 @@ export function readKeys(root) {
 }
 
 /**
- * Checks that every key in the files is the one the manifest recorded, and that no file has changed since its key did.
+ * Checks that no key in the files is older than the one the manifest recorded, and that no file has changed since its key
+ * did. A key ahead of the record passes: the splash script's key also moves when that script's code changes.
  * @param {string} root
  * @param {any} manifest
  */
@@ -87,7 +88,7 @@ export function keyProblems(root, manifest) {
             continue;
         }
         for (const [field, key] of Object.entries(keys[group])) {
-            if (recorded[field] !== key) {
+            if (recorded[field] === undefined || key < recorded[field]) {
                 problems.push({ code: 'key-mismatch', message: `The files hold the ${group} ${field} key ${key}, but the manifest records ${recorded[field]}. Change keys with bump --write, not by hand.` });
             }
         }

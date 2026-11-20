@@ -57,9 +57,10 @@ test('a changed splash file gives the splash script and its index.html link new 
         assets['splash-tewi'].frames.raised.outputs[0].sha256 = '1'.repeat(64);
     });
 
+    const script = /scripts\/sillybunny-splash\.js\?v=(\d{8}[a-z])/.exec(readFileSync(join(root, 'public/index.html'), 'utf8'))[1];
     const run = await runBump({ root, today: '2026-11-14', write: true });
 
-    assert.deepEqual(run.result.bumps.map(({ field, from, to }) => [field, from, to]), [['value', '20261106e', '20261114a'], ['script', '20261106d', '20261114a']]);
+    assert.deepEqual(run.result.bumps.map(({ field, from, to }) => [field, from, to]), [['value', '20261106e', '20261114a'], ['script', script, '20261114a']]);
     assert.match(readFileSync(join(root, 'public/scripts/sillybunny-splash.js'), 'utf8'), /var ART_VERSION = '20261114a';/);
     assert.match(readFileSync(join(root, 'public/index.html'), 'utf8'), /scripts\/sillybunny-splash\.js\?v=20261114a"/);
 });
@@ -74,10 +75,18 @@ test('a key that is not newer, a malformed key or day, a key changed by hand and
     assert.match(readFileSync(join(root, HOME_KEY_FILE), 'utf8'), /'20261105a'/);
 
     const homeFile = join(root, HOME_KEY_FILE);
-    writeFileSync(homeFile, readFileSync(homeFile, 'utf8').replace(/'20261105a'/, '\'20261105b\''));
+    writeFileSync(homeFile, readFileSync(homeFile, 'utf8').replace(/'20261105a'/, '\'20261101a\''));
     assert.ok(codes(await runCheck({ root })).includes('key-mismatch'));
 
     const index = join(root, 'public/index.html');
     writeFileSync(index, `${readFileSync(index, 'utf8')}<script src="scripts/sillybunny-splash.js?v=20261106d"></script>\n`);
     assert.ok(codes(await runCheck({ root })).includes('key-source'));
+});
+
+test('a key ahead of the one the manifest records passes, because the splash script key also moves with its code', async (t) => {
+    const root = copyOfArt(t);
+    const index = join(root, 'public/index.html');
+    writeFileSync(index, readFileSync(index, 'utf8').replace(/(scripts\/sillybunny-splash\.js\?v=)\d{8}[a-z]/, '$120991231z'));
+
+    assert.equal(codes(await runCheck({ root })).includes('key-mismatch'), false);
 });
