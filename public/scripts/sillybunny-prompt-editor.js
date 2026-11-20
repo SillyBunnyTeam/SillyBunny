@@ -3,8 +3,8 @@ import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS
 import { promptManager } from './openai.js';
 import { openActionMenu, openPopover, closeActionMenu } from './sillybunny-action-menu.js';
 import { play, MOTION_FAST } from './sillybunny-motion.js';
-import { Popup, POPUP_RESULT } from './popup.js';
-import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
+import { Popup } from './popup.js';
+import { confirmDestructiveAction, confirmVerb } from './sillybunny-delete-confirm.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
@@ -529,9 +529,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         if (draft && !(await allowLeave())) return;
         const expectedScope = state.scope;
         if (!await Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null, {
-            okButton: t`Delete`,
-            defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpening: popup => popup.okButton.classList.add('is-destructive'),
+            ...confirmVerb(t`Delete`, { destructive: true }),
         })) return;
         const result = run(() => model.delete(id, expectedScope));
         if (result === false) return;

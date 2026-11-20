@@ -11,6 +11,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { t, translate } from './i18n.js';
 import { eventSource, event_types } from './events.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js';
 import { openActionMenu, closeActionMenu, isActionMenuOpen } from './sillybunny-action-menu.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
@@ -432,9 +433,7 @@ export function mountWorldInfoEditor(container) {
         if (!(await shell.guardLeave())) return;
         if (state.data !== data) return;
         if (!await Popup.show.confirm(t`Delete world info entry with UID: ${uid}?`, t`This action is irreversible!`, {
-            okButton: t`Delete`,
-            defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpening: popup => popup.okButton.classList.add('is-destructive'),
+            ...confirmVerb(t`Delete`, { destructive: true }),
         })) return;
         if (state.data !== data) return;
         const result = await remove(deps, name, data, uid);
@@ -473,9 +472,7 @@ export function mountWorldInfoEditor(container) {
         if (!(await shell.guardLeave()) || state.data !== data) return;
         // HUMAN: replace — bulk delete confirmation; the selected count remains explicit.
         if (!await Popup.show.confirm(`${t`lorum ipsum`} (${uids.length})`, t`This action is irreversible!`, {
-            okButton: t`Delete`,
-            defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpening: popup => popup.okButton.classList.add('is-destructive'),
+            ...confirmVerb(t`Delete`, { destructive: true }),
         })) return;
         if (state.data !== data) return;
         const targets = existingSelectedUids(uids);

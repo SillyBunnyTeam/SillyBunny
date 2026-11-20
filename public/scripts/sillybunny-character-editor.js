@@ -20,6 +20,7 @@
 
 import { formatCreatorNotes, getCurrentEntityId } from './chats.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { power_user, setCharacterEditorQuickEdit } from './power-user.js';
 import { groups } from './group-chats.js';
@@ -1287,9 +1288,7 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
 
     const deleteButton = _createGreetingButton('fa-trash-can', t`Delete`, async () => {
         const popup = new Popup(t`Delete this greeting?`, POPUP_TYPE.CONFIRM, '', {
-            okButton: t`Delete`,
-            defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpening: currentPopup => currentPopup.okButton.classList.add('is-destructive'),
+            ...confirmVerb(t`Delete`, { destructive: true }),
         });
         if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) return;
         greetingsRef.splice(index, 1);

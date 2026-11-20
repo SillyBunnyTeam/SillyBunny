@@ -4,6 +4,7 @@ import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../
 import { eventSource, event_types } from '../../../events.js';
 import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { confirmVerb } from '../../../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../../../sillybunny-action-menu.js';
 import { attachSortableKeys, reorderMenuItems } from '../../../sillybunny-editor/reorder-menu.js';
 import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
@@ -1149,9 +1150,7 @@ async function handlePanelAction(event) {
             POPUP_TYPE.CONFIRM,
             '',
             {
-                okButton: 'Exclude',
-                defaultResult: POPUP_RESULT.NEGATIVE,
-                onOpening: popup => popup.okButton.classList.add('is-destructive'),
+                ...confirmVerb('Exclude', { destructive: true }),
             },
         ).show();
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
