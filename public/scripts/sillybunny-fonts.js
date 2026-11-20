@@ -164,7 +164,7 @@ export function canonicalFontName(name, fonts) {
 
 /**
  * The three steps that decide where a family comes from: an imported family, then a bundled preset (exact name), then the
- * Google path of old.
+ * legacy Google Fonts name.
  * @param {unknown} name
  * @param {FontEntry[]} fonts
  * @returns {{ kind: 'none'|'imported'|'preset'|'google', name: string, preset?: { name: string, directory: string } }}

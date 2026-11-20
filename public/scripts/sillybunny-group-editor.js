@@ -1,4 +1,4 @@
-// SillyBunny: group editor controller — explicit save, draft backup (Step 4)
+// SillyBunny: group editor controller: explicit save and draft backup.
 //
 // Session, draft, leave-guard and header/toolbar mechanics are shared with the
 // character editor through ./sillybunny-editor/. This file owns only what is
@@ -7,19 +7,19 @@
 //
 // group-chats.js owns the draft itself (it is the only module allowed to import
 // group state) and hands this controller three callbacks:
-//   captureSnapshot()   — the draft as a plain object; the session compares it
-//                         against its baseline to decide whether the editor is dirty.
-//   applySnapshot(obj)  — write a snapshot back into the draft and the DOM.
-//   writeDomFromDraft() — re-render the fields from the draft without marking
-//                         anything dirty (used after a reconcile or a discard).
+//   captureSnapshot()   returns the draft as a plain object; the session compares it
+//                       against its baseline to decide whether the editor is dirty.
+//   applySnapshot(obj)  writes a snapshot back into the draft and the DOM.
+//   writeDomFromDraft() re-renders the fields from the draft without marking
+//                       anything dirty (used after a reconcile or a discard).
 //
 // Public API consumed by group-chats.js:
-//   initGroupEditor(config)             — bind DOM handlers (called once at startup)
-//   beginGroupEditorLoad()              — suspend the session before fields are written
-//   openGroupEditorSession(groupId)     — open an edit session (call after fields load)
-//   openGroupEditorCreateSession()      — open a create session
-//   isGroupEditorOwner(groupId)         — true when this session owns the group
-//   notifyGroupEditorChanged(options)   — report an edit instead of calling editGroup()
+//   initGroupEditor(config)             binds DOM handlers (called once at startup)
+//   beginGroupEditorLoad()              suspends the session before fields are written
+//   openGroupEditorSession(groupId)     opens an edit session (call after fields load)
+//   openGroupEditorCreateSession()      opens a create session
+//   isGroupEditorOwner(groupId)         is true when this session owns the group
+//   notifyGroupEditorChanged(options)   reports an edit instead of calling editGroup()
 
 import { t } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
@@ -258,7 +258,7 @@ export function readGroupEditorBaseline() {
 }
 
 /**
- * True when this session currently owns the given group.
+ * True when this session owns the given group.
  * @param {string} groupId
  * @returns {boolean}
  */
