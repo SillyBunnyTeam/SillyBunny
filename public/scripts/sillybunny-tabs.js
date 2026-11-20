@@ -4848,7 +4848,7 @@ function renderChatFiles(listRoot, files, currentChatId, { emptyTitle = 'No chat
 
     if (!files.length) {
         const empty = createElement('div', { className: 'sb-chat-files-empty' });
-        empty.innerHTML = `<strong>${emptyTitle}</strong><p>${emptyBody}</p>`;
+        empty.append(createElement('strong', { text: emptyTitle }), createElement('p', { text: emptyBody }));
         listRoot.appendChild(empty);
         return;
     }
