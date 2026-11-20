@@ -756,6 +756,8 @@ function getFolderNameByMessage(message) {
  */
 export async function sendExpressionCall(spriteFolderName, expression, { force = false, vnMode = null, overrideSpriteFile = null } = {}) {
     lastExpression[spriteFolderName.split('/')[0]] = expression;
+    // SillyBunny: tells the chat style sprite slot that the current expression of this character changed.
+    document.dispatchEvent(new CustomEvent('sb:expression-changed', { detail: { spriteFolderName, expression } }));
     if (vnMode === null) {
         vnMode = isVisualNovelMode();
     }
@@ -2292,6 +2294,8 @@ async function validateImages(spriteFolderName, forceRedrawCached = false) {
     const sprites = await getSpritesList(spriteFolderName);
     let validExpressions = await drawSpritesList(spriteFolderName, labels, sprites);
     spriteCache[spriteFolderName] = validExpressions;
+    // SillyBunny: upload, delete, generation and the folder override all re-validate here, so this is the one place that tells the chat style sprite slot that a folder's sprites changed.
+    document.dispatchEvent(new CustomEvent('sb:expression-sprites-changed', { detail: { spriteFolderName } }));
 }
 
 /**
@@ -3516,6 +3520,31 @@ export async function init() {
     setInterval(updateFunction, UPDATE_INTERVAL);
     moduleWorker();
     dragElement($('#expression-holder'));
+    // SillyBunny: loads the sprite slot of the Echo, Whisper and Ripple chat styles on first use, so the default style pays no start-up cost.
+    let chatStyleSpritesRequested = false;
+    const loadChatStyleSprites = async () => {
+        if (chatStyleSpritesRequested || !['echostyle', 'whisperstyle', 'ripplestyle'].some(name => document.body.classList.contains(name))) {
+            return;
+        }
+
+        chatStyleSpritesRequested = true;
+        try {
+            const { initChatStyleSprites } = await import('./chat-style-sprites.js');
+            initChatStyleSprites({
+                getExpressionsList,
+                getSpritesList,
+                getSpriteFolderName,
+                getLastExpression: folderKey => lastExpression[folderKey],
+                getContext,
+                getFallbackExpression: () => extension_settings.expressions.fallback_expression,
+            });
+        } catch (error) {
+            chatStyleSpritesRequested = false;
+            console.error('Expressions: failed to load the chat style sprites', error);
+        }
+    };
+    document.addEventListener('sb:chat-style-updated', loadChatStyleSprites);
+    loadChatStyleSprites();
     eventSource.on(event_types.CHAT_CHANGED, () => {
         // character changed
         removeExpression();

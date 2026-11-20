@@ -1666,3 +1666,51 @@ body.whisperstyle #chat .mes:not(.smallSysMes) .mes_edit_buttons .menu_button {
         inset-inline-start: -16px;
     }
 }
+
+/* --- Expression sprites in the picture slot of Echo, Whisper and Ripple ---
+   chat-style-sprites.js sets `data-sb-expression` and `--sb-message-expression` on the message of a character that has a valid
+   sprite. The small round avatar in the name row stays the profile picture. Each rule adds an attribute selector to the
+   selector it replaces, so none needs `!important`. */
+
+body.echostyle #chat .mes[data-sb-expression][is_user="false"] .mes_text::before {
+    background-image: var(--sb-message-expression);
+    /* `fixed` sizes the picture to the viewport, which shows only the edge of a sprite with a transparent background. */
+    background-attachment: scroll;
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+body.whisperstyle #chat .mes[data-sb-expression]::before {
+    background-image: var(--sb-message-expression);
+    /* Sprites put the face at different heights (a bust near the top, a full figure near the middle). A sprite that covers the
+       band by its width shows a sixth of its height, which misses the face of one framing or the other, so the sprite is
+       sized by the height of the band and shows the part of it that holds the face in both. */
+    background-position: center 25%;
+    background-repeat: no-repeat;
+    background-size: auto 220%;
+}
+
+body.ripplestyle #chat .mes[data-sb-expression] .mesAvatarWrapper .avatar {
+    background-image: var(--sb-message-expression);
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-size: cover;
+    -webkit-mask-image:
+        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
+    mask-image:
+        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
+    -webkit-mask-composite: destination-in;
+    mask-composite: intersect;
+
+    /* The image stays in the layout as the click target and keeps its alt text. */
+    > img {
+        opacity: 0;
+    }
+}

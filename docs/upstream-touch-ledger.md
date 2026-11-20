@@ -2517,6 +2517,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (task 9.3a). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/expressions/index.js` - sprites in the Echo, Whisper and Ripple picture slot
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/expressions/index.js`. |
+| Area | The picture slot of the Echo, Whisper and Ripple chat styles. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/extensions/expressions/chat-style-sprites.js`, which `init()` imports on first use of one of the three styles; `public/css/sillybunny-chat-styles.css` paints the result. |
+| Adapter shape | Three marked hunks: a loader in `init()` that imports the module once when the body has `echostyle`, `whisperstyle` or `ripplestyle` and hands it the extension's own functions; a `sb:expression-changed` event in `sendExpressionCall()`; a `sb:expression-sprites-changed` event in `validateImages()`. The module marks message elements with `data-sb-expression` and `--sb-message-expression` and stores nothing. |
+| Protecting tests | `tests/unit/chat-style-sprites.test.js`; `tests/chat-style-expressions.e2e.js`; `tests/frontend-performance.e2e.js` (start-up resource count). |
+| Validation | 2026-11-20: root and tests lint, the unit suite, budgets, contracts and design rules, the related e2e specs, and the screenshots of the three styles at 1440x900 and 390x844. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-20, PR #870 audit. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
