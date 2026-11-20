@@ -40,17 +40,23 @@
     gap: 18px;
     width: 100%;
     padding: var(--panel-padding, 18px);
-    border-radius: 14px;
+    border-radius: 20px;
     container: welcome-home / inline-size;
-    --sb-welcome-panel-bg: transparent;
+    --sb-welcome-panel-bg: var(--sb-card-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent));
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 88%, transparent);
     box-shadow: none;
 }
 
+:root[data-sb-surface-tone='light'] .welcomePanel {
+    --sb-welcome-panel-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeChatTintColor) 8%);
+}
+
 :root[data-sb-surface-tone='light'] .welcomeActionCard,
+:root[data-sb-surface-tone='light'] .welcomeRecentShell,
+:root[data-sb-surface-tone='light'] .welcomeGuidePanel,
 :root[data-sb-surface-tone='light'] .welcomePromptPanel {
-    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeChatTintColor) 8%);
 }
 
 .welcomePanel::before {
@@ -110,7 +116,7 @@
     width: 48px;
     height: 48px;
     padding: 6px;
-    border-radius: 14px;
+    border-radius: 16px;
 }
 
 .welcomePanel--compact .welcomeHeaderVersionDisplay {
@@ -126,7 +132,7 @@
     min-height: 400px;
     gap: 0;
     padding: var(--spacing-md, 12px);
-    border-radius: 14px;
+    border-radius: 20px;
 }
 
 .welcomePanel--listOnly .welcomeRecentShell,
@@ -138,6 +144,12 @@
     max-height: none;
 }
 
+
+.welcomePanelModeToggle.is-active {
+    color: var(--welcome-strong-fg);
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border, var(--SmartThemeBorderColor)));
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, transparent);
+}
 
 #chat:has(.welcomePanel) {
     padding-bottom: 12px;
@@ -180,6 +192,7 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     margin: 0;
     font-size: calc(var(--mainFontSize) * 0.78);
     font-weight: 700;
+    letter-spacing: 0.04em;
     color: var(--welcome-muted-fg);
 }
 
@@ -199,10 +212,10 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     object-fit: contain;
     image-rendering: pixelated;
     padding: 8px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    border: 0;
-    box-shadow: none;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 82%, transparent);
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--SmartThemeShadowColor) 12%, transparent);
 }
 
 .welcomeHeroTitleGroup {
@@ -216,7 +229,6 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     font-size: calc(var(--mainFontSize) * 1.72);
     font-weight: 700;
     line-height: 1.12;
-    letter-spacing: -0.01em;
     max-width: 100%;
     white-space: normal;
     text-wrap: balance;
@@ -236,14 +248,14 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     margin-inline: auto;
     max-width: min(100%, 600px);
     padding: 10px 12px;
-    border-radius: 14px;
+    border-radius: 16px;
     font-size: calc(var(--mainFontSize) * 0.82);
     line-height: 1.5;
     color: var(--welcome-strong-fg);
     display: block;
     align-self: center;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 0;
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border, var(--SmartThemeBorderColor)));
     box-shadow: none;
     text-align: center;
 }
@@ -309,7 +321,7 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
 }
 
 .welcomeActionCard {
-    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeChatTintColor) 8%);
     min-width: 0;
     min-height: 88px;
     width: 100%;
@@ -320,12 +332,11 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     justify-content: center;
     gap: 12px;
     text-align: center;
-    border-radius: 14px;
+    border-radius: 16px;
     text-decoration: none;
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 86%, transparent);
     box-shadow: none;
-    transition: background-color var(--sb-transition-fast);
 }
 
 .welcomeActionCard::before {
@@ -337,28 +348,6 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     pointer-events: none;
     background: var(--sb-welcome-surface-bg);
     opacity: var(--sb-page-control-opacity, 1);
-    transition: background-color var(--sb-transition-fast);
-}
-
-.welcomePanel .welcomeActionCard.menu_button {
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-@media (hover: hover) {
-    .welcomePanel .welcomeActionCard.menu_button:hover {
-        background: transparent;
-        box-shadow: none;
-    }
-
-    .welcomePanel .welcomeActionCard:hover::before {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.welcomePanel .welcomeActionCard:active::before {
-    background: var(--sb-flat-active-bg);
 }
 
 .welcomeActionCard i {
@@ -366,7 +355,7 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     width: 20px;
     font-size: calc(var(--mainFontSize) * 1.04);
     text-align: center;
-    color: var(--welcome-muted-fg);
+    color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 64%, var(--SmartThemeBodyColor));
 }
 
 .welcomeActionMeta {
@@ -436,19 +425,27 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
 }
 
 .welcomeRecentShell {
+    --sb-welcome-surface-bg: var(--sb-surface-elevated);
     display: flex;
     flex-direction: column;
     gap: 14px;
     min-height: 0;
-    padding: 0;
-    border-radius: 0;
-    overflow: visible;
+    padding: 18px;
+    border-radius: 20px;
+    overflow: hidden;
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 82%, transparent);
 }
 
 .welcomeRecentShell::before {
-    display: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--sb-welcome-surface-bg);
+    opacity: var(--sb-page-card-opacity, 1);
 }
 
 .welcomeHeader {
@@ -480,11 +477,11 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     padding: 4px;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 72%, transparent);
     border-radius: 14px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 38%, transparent);
 }
 
 .welcomeRecentTab {
@@ -499,20 +496,9 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     white-space: nowrap;
 }
 
-@media (hover: hover) {
-    .welcomeRecentTab:not(.active):hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
 .welcomeRecentTab.active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    box-shadow: none;
-}
-
-.welcomeRecentTab:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent) inset;
 }
 
 @container welcome-home (max-width: 1320px) {
@@ -539,27 +525,23 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     }
 }
 
-.welcomeRecent {
-    position: relative;
-    min-height: 0;
-    max-height: min(50vh, 440px);
-    max-height: min(50dvh, 440px);
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 0;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-}
-
 .welcomeRecent .recentChatList {
     display: flex;
     flex-direction: column;
     width: 100%;
     min-height: 0;
-    gap: 0;
-    padding: 0;
+    gap: 10px;
+}
+
+.welcomeRecent {
+    min-height: 0;
+    max-height: min(50vh, 440px);
+    max-height: min(50dvh, 440px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
 
 .welcomeRecent .welcomePanelLoader {
@@ -571,19 +553,31 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
 }
 
 .welcomePanel .recentChatList .noRecentChat {
+    --sb-welcome-surface-bg: var(--sb-surface-elevated-soft);
     display: flex;
     align-items: center;
     gap: 14px;
     padding: 18px;
-    border-radius: 0;
+    border-radius: 20px;
     background: transparent;
-    border: 0;
+    border: 1px dashed color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 74%, transparent);
     color: var(--welcome-muted-fg);
+}
+
+.welcomePanel .recentChatList .noRecentChat::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--sb-welcome-surface-bg);
+    opacity: var(--sb-page-control-opacity, 1);
 }
 
 .welcomePanel .recentChatList .noRecentChat i {
     font-size: calc(var(--mainFontSize) * 1.3);
-    color: var(--welcome-muted-fg);
+    color: var(--sb-accent-ink);
 }
 
 .welcomePanel .recentChatList .noRecentChat strong,
@@ -598,35 +592,38 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
 }
 
 .welcomeRecent .recentChatList .recentChat {
+    --sb-welcome-surface-bg: var(--sb-surface-elevated-soft);
     position: relative;
     display: flex;
     align-items: flex-start;
     gap: 14px;
     padding: 14px;
-    border-radius: 0;
-    border: 0;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 80%, transparent);
     background: transparent;
-    transition: background-color var(--sb-transition-fast);
+    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-/* Boxed-list separators: every visible row after the first gets a hairline on top. */
-.welcomeRecent .recentChatList .recentChat:not(.hidden):not(.recentChatFiltered) ~ .recentChat:not(.hidden):not(.recentChatFiltered)::before {
+.welcomeRecent .recentChatList .recentChat::before {
     content: "";
     position: absolute;
-    inset: 0 0 auto;
-    height: 1px;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
     pointer-events: none;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    background: var(--sb-welcome-surface-bg);
+    opacity: var(--sb-page-control-opacity, 1);
+    transition: background var(--sb-transition-fast);
 }
 
-@media (hover: hover) {
-    .welcomeRecent .recentChatList .recentChat:hover {
-        background: var(--sb-flat-hover-bg);
-    }
+.welcomeRecent .recentChatList .recentChat:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 26%, var(--sb-shell-border, transparent));
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
 }
 
-.welcomeRecent .recentChatList .recentChat:active {
-    background: var(--sb-flat-active-bg);
+.welcomeRecent .recentChatList .recentChat:hover::before {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
 }
 
 .welcomeRecent .recentChatList .recentChatOpen {
@@ -647,7 +644,8 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
 }
 
 .welcomeRecent .recentChatList .recentChat:has(.recentChatOpen:focus-visible) {
-    box-shadow: var(--sb-focus-ring-inset);
+    border-color: color-mix(in srgb, var(--sb-focus-ring) 88%, var(--SmartThemeBorderColor));
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 60%, transparent);
 }
 
 .welcomeRecent .recentChatList .recentChat .avatar {
@@ -657,10 +655,10 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     justify-content: center;
     width: 60px;
     height: 60px;
-    border-radius: 14px;
+    border-radius: 16px;
     overflow: hidden;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 78%, transparent);
 }
 
 .welcomeRecent .recentChatList .recentChat .avatar img {
@@ -721,20 +719,11 @@ body.hideChatAvatars .welcomePanel .recentChatList .recentChat .avatar {
     max-height: 32px;
     padding: 0;
     margin: 0;
-    border-radius: 10px;
+    border-radius: 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 0.8em;
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
-}
-
-@media (hover: hover) {
-    .welcomeRecent .recentChatList .recentChat .chatActions button:hover {
-        background: var(--sb-flat-hover-bg);
-    }
 }
 
 @media (max-width: 768px) {
@@ -805,25 +794,18 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 }
 
 .welcomeRecent .recentChatList .showMoreChats {
-    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, var(--SmartThemeBlurTintColor));
+    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 76%, transparent);
     align-self: center;
     min-width: 44px;
     min-height: 44px;
     position: -webkit-sticky;
     position: sticky;
-    bottom: 8px;
+    bottom: 0;
     z-index: 1;
-    margin: 8px 0;
-    border-radius: 999px;
+    border-radius: 14px;
     background: transparent;
-    border: 0;
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
-}
-
-@supports (color: rgb(from red r g b / 1)) {
-    .welcomeRecent .recentChatList .showMoreChats {
-        --sb-welcome-surface-bg: rgb(from color-mix(in srgb, var(--SmartThemeBodyColor) 10%, var(--SmartThemeBlurTintColor)) r g b / 1);
-    }
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 82%, transparent);
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--SmartThemeShadowColor) 16%, transparent);
 }
 
 .welcomeRecent .recentChatList .showMoreChats::before {
@@ -850,15 +832,15 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 }
 
 .welcomePromptPanel {
-    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    --sb-welcome-surface-bg: var(--sb-surface-elevated);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding: 16px 18px;
-    border-radius: 14px;
+    border-radius: 20px;
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 82%, transparent);
 }
 
 .welcomePromptPanel::before {
@@ -893,17 +875,25 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 }
 
 .welcomeGuidePanel {
+    --sb-welcome-surface-bg: var(--sb-surface-elevated);
     display: flex;
     flex-direction: column;
     gap: 16px;
-    padding: 0;
-    border-radius: 0;
+    padding: 18px;
+    border-radius: 20px;
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 82%, transparent);
 }
 
 .welcomeGuidePanel::before {
-    display: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--sb-welcome-surface-bg);
+    opacity: var(--sb-page-card-opacity, 1);
 }
 
 .welcomeGuidePanel h3 {
@@ -925,15 +915,15 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 }
 
 .welcomeGuideCard {
-    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    --sb-welcome-surface-bg: var(--sb-surface-elevated-soft);
     display: flex;
     flex-direction: column;
     gap: 10px;
     min-width: 0;
     padding: 16px;
-    border-radius: 14px;
+    border-radius: 16px;
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 78%, transparent);
 }
 
 .welcomeGuideCard::before {
@@ -1019,11 +1009,12 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     margin-top: 2px;
     font-size: calc(var(--mainFontSize) * 1);
     text-align: center;
-    color: var(--welcome-muted-fg);
+    color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 64%, var(--SmartThemeBodyColor));
 }
 
-.welcomePanel .welcomeDeckTab.is-active i {
-    color: var(--sb-accent-ink, var(--sb-accent));
+.welcomeDeckTab.is-active {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 14%, transparent);
 }
 
 .welcomeDeckTabMeta {
@@ -1060,8 +1051,8 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     animation: welcomeDeckFadeIn 180ms var(--sb-ease-out);
 }
 
-.welcomeAssistantButton i {
-    color: var(--sb-accent-ink, var(--sb-accent));
+.welcomeAssistantButton {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 10%, transparent);
 }
 
 .welcomeGuideHeader,
@@ -1128,7 +1119,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 }
 
 .welcomeGuideMascot {
-    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    --sb-welcome-surface-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeChatTintColor) 12%);
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -1140,9 +1131,9 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     min-width: 0;
     min-height: 116px;
     padding: 14px;
-    border-radius: 14px;
+    border-radius: 20px;
     background: transparent;
-    border: 0;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 82%, transparent);
 }
 
 .welcomeGuideMascot::before {
@@ -1175,26 +1166,26 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     max-width: min(100%, 28ch);
     overflow-wrap: anywhere;
     padding: 11px 12px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 96%, var(--SmartThemeBodyColor) 4%);
     color: var(--welcome-strong-fg);
     font-size: calc(var(--mainFontSize) * 0.8);
     line-height: 1.45;
     text-wrap: balance;
-    box-shadow: none;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 70%, transparent);
 }
 
-/* Triangle tail via clip-path so the translucent fill doesn't double up where it meets the bubble. */
 .welcomeGuideBubble::before {
     content: "";
     position: absolute;
     left: -8px;
     top: 26px;
-    width: 8px;
+    width: 16px;
     height: 16px;
     background: inherit;
-    -webkit-clip-path: polygon(100% 0, 0 50%, 100% 100%);
-    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+    transform: rotate(45deg);
+    border-left: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 70%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 70%, transparent);
 }
 
 .welcomeTourPanel.tutorialCollapsed .welcomeTourProgress,
@@ -1223,6 +1214,11 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     border-radius: 14px;
 }
 
+.welcomeTourProgressButton.is-active {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, transparent);
+    box-shadow: 0 4px 8px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 18%, transparent);
+}
+
 .welcomeTourProgressNumber {
     width: 28px;
     height: 28px;
@@ -1233,12 +1229,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     font-size: calc(var(--mainFontSize) * 0.76);
     font-weight: 800;
     color: var(--welcome-strong-fg);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-}
-
-.welcomeTourProgressButton.is-active .welcomeTourProgressNumber {
-    color: var(--sb-on-solid-accent, #fff);
-    background: var(--sb-solid-accent, var(--sb-accent));
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 26%, transparent);
 }
 
 .welcomeTourProgressLabel {
@@ -1277,8 +1268,8 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 
 .welcomeTourHint {
     padding: 10px 12px;
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
     color: var(--welcome-muted-fg);
     font-size: calc(var(--mainFontSize) * 0.76);
     line-height: 1.45;
@@ -1324,7 +1315,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 
 .welcomeGuideCardHeader i,
 .welcomeStarterPackHeader .welcomeGuideCardHeader i {
-    color: var(--welcome-muted-fg);
+    color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 64%, var(--SmartThemeBodyColor));
 }
 
 .welcomeChipRow {
@@ -1480,22 +1471,26 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     border-radius: 999px;
     font-size: calc(var(--mainFontSize) * 0.74);
     font-weight: 700;
-    border: 0;
+    letter-spacing: 0.04em;
+    border: 1px solid transparent;
 }
 
 .welcomeStatusBadge--good {
     color: color-mix(in srgb, var(--color-success, var(--sb-accent)) 72%, var(--SmartThemeBodyColor));
-    background: color-mix(in srgb, var(--color-success, var(--sb-accent)) 20%, transparent);
+    background: color-mix(in srgb, var(--color-success, var(--sb-accent)) 24%, var(--SmartThemeBlurTintColor));
+    border-color: color-mix(in srgb, var(--color-success, var(--sb-accent)) 42%, var(--SmartThemeBorderColor));
 }
 
 .welcomeStatusBadge--warm {
     color: color-mix(in srgb, var(--color-warning, var(--SmartThemeQuoteColor)) 72%, var(--SmartThemeBodyColor));
-    background: color-mix(in srgb, var(--color-warning, var(--SmartThemeQuoteColor)) 20%, transparent);
+    background: color-mix(in srgb, var(--color-warning, var(--SmartThemeQuoteColor)) 24%, var(--SmartThemeBlurTintColor));
+    border-color: color-mix(in srgb, var(--color-warning, var(--SmartThemeQuoteColor)) 42%, var(--SmartThemeBorderColor));
 }
 
 .welcomeStatusBadge--neutral {
     color: var(--welcome-muted-fg);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
+    border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 74%, transparent);
 }
 
 @keyframes welcomeDeckFadeIn {
@@ -1573,14 +1568,11 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     }
 
     .welcomePanel,
+    .welcomeGuidePanel,
     .welcomePromptPanel {
         gap: 14px;
         padding: 12px;
-        border-radius: 14px;
-    }
-
-    .welcomeGuidePanel {
-        gap: 14px;
+        border-radius: 20px;
     }
 
     .welcomeHeaderTitle {
@@ -1592,7 +1584,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
         width: 54px;
         height: 54px;
         padding: 7px;
-        border-radius: 14px;
+        border-radius: 20px;
     }
 
     .welcomeHeaderVersionDisplay {
@@ -1637,7 +1629,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
         max-width: none;
         padding: 10px 12px;
         gap: 10px;
-        border-radius: 14px;
+        border-radius: 16px;
         white-space: normal !important;
     }
 
@@ -1674,7 +1666,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
         width: 100%;
         min-height: var(--sb-mobile-touch-target, 44px);
         padding: 0 14px;
-        border-radius: 14px;
+        border-radius: 16px;
         font-size: calc(var(--mainFontSize) * 0.82);
     }
 
@@ -1710,7 +1702,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     .welcomeRecent .recentChatList .recentChat .avatar {
         width: 52px;
         height: 52px;
-        border-radius: 14px;
+        border-radius: 16px;
     }
 
     .welcomeRecent .recentChatList .recentChat .chatNameContainer {
@@ -1823,6 +1815,8 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
 
     .welcomeRecentShell {
         gap: 10px;
+        padding: 12px;
+        border-radius: 20px;
     }
 
     .welcomePanel--compact .welcomeHeaderTitle {
@@ -1863,6 +1857,7 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
     .welcomeRecent .recentChatList .recentChat {
         padding: 10px;
         gap: 10px;
+        border-radius: 16px;
     }
 
     .welcomeRecent .recentChatList .recentChat .avatar {
@@ -1977,9 +1972,4 @@ body.big-avatars .welcomeRecent .recentChatList .recentChat .chatMessageContaine
         animation: none !important;
         opacity: 1;
     }
-}
-
-body.reduced-motion .welcomeDeckPanel.is-active {
-    animation: none !important;
-    opacity: 1;
 }
