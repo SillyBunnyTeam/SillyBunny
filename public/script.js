@@ -12536,7 +12536,7 @@ async function getTemporaryChat({ switchMenu = true } = {}) {
         });
         return true;
     } catch (error) {
-        console.log(error);
+        console.error('Error while opening the temporary chat.', error);
         endTemporaryChat();
         showTemporaryChatError();
         return false;
