@@ -41,8 +41,7 @@ export function placementStep({ p, q }, id) {
  * @returns {import('./raster.js').Raster} With alpha 0 or 255 only, and the colour under alpha 0 zero.
  */
 export function fitToGrid(raster, { p, q }) {
-    // The centre of pixel x lies at x + 1/2, in cell floor((x + 1/2) * q / p); this is the same in whole numbers.
-    const cellOf = (x) => Math.floor(((2 * x + 1) * q) / (2 * p));
+    const cellOf = (x) => cellIndex(x, { p, q });
     const columns = spans(raster.width, cellOf);
     const rows = spans(raster.height, cellOf);
     const fitted = createRaster(columns.length, rows.length, raster.channels);
@@ -58,6 +57,14 @@ export function fitToGrid(raster, { p, q }) {
     }
     return fitted;
 }
+
+/**
+ * The cell a master pixel falls in. The centre of pixel x lies at x + 1/2, in cell floor((x + 1/2) * q / p); this is the
+ * same in whole numbers. A description that counts in master pixels reaches the placement grid through it.
+ * @param {number} x A master pixel, along either axis.
+ * @param {{ p: number, q: number }} ratio In lowest terms.
+ */
+export const cellIndex = (x, { p, q }) => Math.floor(((2 * x + 1) * q) / (2 * p));
 
 /** The first master pixel of each cell along one side, and the one after its last. */
 function spans(length, cellOf) {

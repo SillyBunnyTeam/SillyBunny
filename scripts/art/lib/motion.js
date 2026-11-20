@@ -1,6 +1,8 @@
 import { posix } from 'node:path';
+import { cellIndex } from './fit.js';
 import { frameBox } from './frame.js';
 import { masterFile, parseRatio } from './manifest.js';
+import { placementOf } from './placement.js';
 import { ArtProblem } from './problem.js';
 import { readRaster } from './raster.js';
 
@@ -41,11 +43,11 @@ export async function buildPlayerDescription({ root, id }, asset, run) {
     if (run.format !== 1 || !builder) {
         fail('motion-invalid', `it is a run's description of the kind ${JSON.stringify(run.kind)} in format ${JSON.stringify(run.format)}, and the derive builds only format 1 of ${Object.keys(BUILDERS).join(', ')}.`);
     }
-    const { p, q } = parseRatio(asset.ratio);
-    if (p !== q) {
-        fail('motion-invalid', `the asset is placed at the ratio ${asset.ratio}, and a player's description is built at ratio 1 only.`);
+    const ratio = parseRatio(asset.ratio);
+    if (ratio.p < ratio.q) {
+        fail('motion-invalid', `the asset is placed at the ratio ${asset.ratio}, and a player's description is built at ratio 1 or for a fit, which takes more master pixels than placement pixels.`);
     }
-    const description = await builder({ root, id, asset, run, fail });
+    const description = await builder({ root, id, asset, run, fail, ratio });
     return { description, bytes: Buffer.from(`${JSON.stringify(description, null, 4)}\n`) };
 }
 
@@ -55,7 +57,7 @@ const BUILDERS = Object.freeze({ 'splash-loop': splashDescription, 'motion-frame
  * The `--anim.json` of the splash player: one layer that holds every frame, its timeline with the effects in its own
  * pixels, and the blink.
  */
-async function splashDescription({ root, id, asset, run, fail }) {
+async function splashDescription({ root, id, asset, run, fail, ratio }) {
     if (asset.type !== 'still' || !isPlainObject(asset.frames)) {
         fail('motion-mismatch', `a splash loop's description belongs to a still with frames, and ${id} is a ${asset.type}${asset.frames ? '' : ' with no frames'}.`);
     }
@@ -72,7 +74,7 @@ async function splashDescription({ root, id, asset, run, fail }) {
     }
     const blink = runBlink(run.blink, frames, fail);
     const layer = asset.motion.layer ?? id;
-    const origin = await originOf(root, asset, asset.master ?? asset.frames[run.base].master);
+    const origin = await originOf(root, id, asset, asset.master ?? asset.frames[run.base].master);
     const [width, height] = asset.grid;
     return {
         id,
@@ -96,8 +98,8 @@ async function splashDescription({ root, id, asset, run, fail }) {
                     frames: [...effect.frames],
                     // The player counts an effect's age from the first key that shows one of its frames.
                     from: timeline.keys.find(({ frame }) => effect.frames.includes(frame)).at,
-                    x: effect.x - origin.x,
-                    y: effect.y - origin.y,
+                    x: cellIndex(effect.x, ratio) - origin.x,
+                    y: cellIndex(effect.y, ratio) - origin.y,
                 })),
             },
         },
@@ -109,7 +111,7 @@ async function splashDescription({ root, id, asset, run, fail }) {
  * The `--breath.json` of the breath player. A scene's figure layers lie at their boxes in the scene's still; a still is
  * its own one layer, with itself and its blink frames as the pose `c` and its breath frames as the pose `b`.
  */
-async function breathDescription({ root, id, asset, run, fail }) {
+async function breathDescription({ root, id, asset, run, fail, ratio }) {
     const { breath } = run;
     const rhythm = breath?.rhythm;
     const validRhythm = isPlainObject(rhythm) && typeof rhythm.cycleSeconds === 'number' && rhythm.cycleSeconds > 0
@@ -120,8 +122,8 @@ async function breathDescription({ root, id, asset, run, fail }) {
     const blinkFrames = runBlinkFrames(run, fail);
     const blink = runBlink(run.blink, {}, fail);
     const { backdrop, layers } = asset.type === 'scene'
-        ? await sceneLayers({ root, asset, breath, fail })
-        : await stillLayers({ root, id, asset, breath, blinkFrames, fail });
+        ? await sceneLayers({ root, id, asset, breath, fail, ratio })
+        : await stillLayers({ root, id, asset, breath, blinkFrames, fail, ratio });
     return {
         scene: id,
         grid: gridOf(asset),
@@ -137,7 +139,7 @@ async function breathDescription({ root, id, asset, run, fail }) {
  * A scene's figure layers. The run cut them on the scene master's canvas, so a layer's place there, less the top left
  * of the still's frame, must be its box.
  */
-async function sceneLayers({ root, asset, breath, fail }) {
+async function sceneLayers({ root, id, asset, breath, fail, ratio }) {
     const valid = Array.isArray(breath.layers) && breath.layers.every((layer) => isPlainObject(layer) && NAME_PATTERN.test(layer.id ?? '')
         && ['z', 'left', 'top', 'width', 'height', 'waist'].every((key) => Number.isInteger(layer[key])) && isPlainObject(layer.images));
     if (!valid) {
@@ -152,20 +154,22 @@ async function sceneLayers({ root, asset, breath, fail }) {
     if (breath.grid?.width !== master.width || breath.grid?.height !== master.height) {
         fail('motion-mismatch', `the run cut the breath on a ${breath.grid?.width}x${breath.grid?.height} canvas, but the scene's master is ${master.width}x${master.height}.`);
     }
-    const origin = asset.frame.mode === 'canvas' ? { x: 0, y: 0 } : frameBox(master, asset.frame);
+    const origin = await originOf(root, id, asset, asset.master);
     if ((breath.backdrop ?? null) !== (asset.backdrop ? posix.basename(asset.backdrop.master) : null)) {
         fail('motion-mismatch', `the run's backdrop is ${breath.backdrop ?? 'none'}, but the scene's is ${asset.backdrop?.master ?? 'none'}.`);
     }
     const layers = breath.layers.map((layer) => {
         const { box, pictures } = asset.layers[layer.id];
         const placed = [layer.left - origin.x, layer.top - origin.y, layer.width, layer.height];
-        if (placed.some((value, at) => value !== box[at])) {
+        // At a fit the box is the derive's own measure on the placement grid, so the run's place in master pixels has nothing to match.
+        if (ratio.p === ratio.q && placed.some((value, at) => value !== box[at])) {
             fail('motion-mismatch', `the run placed the layer ${layer.id} at ${placed.join(', ')} of the scene's still, but its box is ${box.join(', ')}.`);
         }
         const namer = pictureNamer(pictures, `the layer ${layer.id}`, fail);
         const images = Object.fromEntries(POSES.map((pose) => [pose, namedStates(poseFiles(layer.images, pose, `the layer ${layer.id}`, fail), namer.nameOf)]));
         namer.checkAllMade();
-        return { id: layer.id, z: layer.z, left: box[0], top: box[1], width: box[2], height: box[3], waist: layer.waist, images };
+        const waist = cellIndex(layer.top + layer.waist, ratio) - origin.y - box[1];
+        return { id: layer.id, z: layer.z, left: box[0], top: box[1], width: box[2], height: box[3], waist, images };
     });
     return { backdrop: asset.backdrop ? shippedName(asset.backdrop, 'the backdrop', fail) : null, layers };
 }
@@ -174,21 +178,21 @@ async function sceneLayers({ root, asset, breath, fail }) {
  * A still as its one layer: the pose `c` is the still and its blink frames, and the pose `b` its breath frames. The run
  * counts the waist in rows of the master, and the shipped still starts at the top of its frame.
  */
-async function stillLayers({ root, id, asset, breath, blinkFrames, fail }) {
+async function stillLayers({ root, id, asset, breath, blinkFrames, fail, ratio }) {
     if (asset.type !== 'still' || typeof asset.master !== 'string' || !isPlainObject(asset.frames)) {
         fail('motion-mismatch', `a breath belongs to a scene or to a still with a master and frames, and ${id} is a ${asset.type}${asset.master ? '' : ' with no master'}.`);
     }
     if (!Number.isInteger(breath.waist)) {
         fail('motion-invalid', 'breath must give the still\'s waist row.');
     }
-    const top = asset.frame.mode === 'canvas' ? 0 : frameBox(await readRaster(masterFile(root, asset.master)), asset.frame).y;
+    const { y: top } = await originOf(root, id, asset, asset.master);
     const namer = pictureNamer(asset.frames, 'the still', fail);
     const blinks = Object.fromEntries(Object.values(blinkFrames).filter((frame) => frame.layer === undefined).map(({ eyes, file }) => [eyes, file]));
     const c = { base: shippedName({ outputs: asset.outputs.filter((output) => output.from === undefined) }, 'the still', fail), ...namedStates(blinks, namer.nameOf) };
     const b = namedStates(poseFiles(breath.images, 'b', 'the still', fail), namer.nameOf);
     namer.checkAllMade();
     const [width, height] = asset.grid;
-    return { backdrop: null, layers: [{ id, z: 0, left: 0, top: 0, width, height, waist: breath.waist - top, images: { c, b } }] };
+    return { backdrop: null, layers: [{ id, z: 0, left: 0, top: 0, width, height, waist: cellIndex(breath.waist, ratio) - top, images: { c, b } }] };
 }
 
 /** The run's file names of one pose: a base, and a picture for any blink state the run drew. */
@@ -331,14 +335,15 @@ function shippedName(picture, what, fail) {
 }
 
 /**
- * Where the asset's shipped picture starts in its master's pixels, which the run's description counts in: the top
- * left of its frame, cut from `master`.
+ * Where the asset's shipped picture starts on its placement grid: the top left of its frame, cut from `master` once it
+ * is placed. The run counts in the master's pixels, which `cellIndex` brings onto that grid.
  */
-async function originOf(root, asset, master) {
+async function originOf(root, id, asset, master) {
     if (asset.frame.mode === 'canvas') {
         return { x: 0, y: 0 };
     }
-    const box = frameBox(await readRaster(masterFile(root, master)), asset.frame);
+    const placed = placementOf({ id }, asset)(await readRaster(masterFile(root, master)));
+    const box = frameBox(placed, asset.frame);
     return { x: box.x, y: box.y };
 }
 

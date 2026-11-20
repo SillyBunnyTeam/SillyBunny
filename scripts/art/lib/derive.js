@@ -2,14 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import { deriveCard } from './card.js';
 import { encode } from './codec.js';
-import { fitToGrid, placementStep } from './fit.js';
 import { frameBox, renderFrame, SUBJECT_ALPHA } from './frame.js';
 import { encodeIco } from './ico.js';
 import { masterFile, outputsOf, parseRatio } from './manifest.js';
 import { buildPlayerDescription, isRunDescription } from './motion.js';
+import { placementOf } from './placement.js';
 import { ArtProblem } from './problem.js';
 import { createRaster, hasBinaryAlpha, isOpaque, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
-import { rebuildRings } from './rings.js';
 
 /**
  * A file as the derive makes it. A `picture` or an `ico` may be compared by its decoded pixels on a platform whose
@@ -27,6 +26,8 @@ const DERIVERS = Object.freeze({
     copy: deriveCopy,
     card: (context, asset) => deriveCard(context, asset, { readMaster }),
 });
+
+export { placementOf };
 
 /** Whether the files of an asset are made from masters, as opposed to pinned by their sha256. */
 export const isDerived = (asset) => Object.hasOwn(DERIVERS, asset.type);
@@ -80,30 +81,6 @@ async function encodeOutputs(raster, outputs) {
         files.push({ path: output.path, bytes, sha256: sha256(bytes), kind: 'picture' });
     }
     return files;
-}
-
-/**
- * Brings a master onto its placement grid. This comes before the frame is cut, so the frame's margin counts placement
- * pixels. A fitted master gets its sticker painted again on its own canvas, where a figure cut by the canvas border has
- * no edge along the cut; the frame's padding would give it one.
- * @param {{ id: string }} context
- * @param {any} asset
- * @returns {(raster: import('./raster.js').Raster) => import('./raster.js').Raster}
- * @throws {ArtProblem} When the ratio is one the derive refuses.
- */
-export function placementOf({ id }, asset) {
-    const ratio = parseRatio(asset.ratio);
-    const { step, factor } = placementStep(ratio, id);
-    if (step === 'enlarge') {
-        return (raster) => upscaleNearest(raster, factor);
-    }
-    if (step === 'fit') {
-        return (raster) => {
-            const fitted = fitToGrid(raster, ratio);
-            return asset.rings ? rebuildRings(fitted, asset.rings).raster : fitted;
-        };
-    }
-    return (raster) => raster;
 }
 
 async function deriveStill(context, asset) {
