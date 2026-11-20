@@ -33,6 +33,14 @@ describe('pull request checks workflow', () => {
         expect(bootStep.env).toEqual({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' });
     });
 
+    test('runs the character index tests under Bun after the Bun install', () => {
+        const commands = workflow.jobs['run-bun-checks'].steps.map(step => step.run ?? '');
+        const installIndex = commands.findIndex(command => command.startsWith('bun install'));
+        const testIndex = commands.indexOf('bun test ./tests/character-index.test.js');
+        expect(installIndex).toBeGreaterThanOrEqual(0);
+        expect(testIndex).toBeGreaterThan(installIndex);
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = Object.values(workflow.jobs).flatMap(job => job.steps.map(step => step.uses).filter(Boolean));
         expect(uses.length).toBeGreaterThan(0);
