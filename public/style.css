@@ -3,7 +3,7 @@
 /* SillyBunny: an imported sheet that the fork changes carries a key, because the service worker caches /css/ by the full URL. */
 @import url(css/animations.css?v=20261118zp);
 @import url(css/popup.css?v=20261117za);
-@import url(css/promptmanager.css?v=20261118zy);
+@import url(css/promptmanager.css?v=20261120b);
 @import url(css/loader.css?v=20261110a);
 @import url(css/character-group-overlay.css?v=20261120a);
 @import url(css/file-form.css?v=20261120a);

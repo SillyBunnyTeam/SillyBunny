@@ -144,9 +144,14 @@
     padding-left: 4px;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-grip,
 #completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-grip {
     opacity: 0.6;
+}
+
+@media (hover: hover) {
+    #completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-grip {
+        opacity: 0.6;
+    }
 }
 
 #completion_prompt_manager #completion_prompt_manager_list.prompt-manager-drag-locked li .pm-row-grip {
@@ -159,7 +164,7 @@
     width: 3px;
     align-self: stretch;
     margin: 6px 6px 6px 0;
-    border-radius: 99px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     transition: background-color var(--sb-transition-slow);
 }
@@ -220,14 +225,16 @@
     cursor: pointer;
 }
 
-.prompt-manager-inspect-action:hover {
-    text-decoration: underline;
+@media (hover: hover) {
+    .prompt-manager-inspect-action:hover {
+        text-decoration: underline;
+    }
 }
 
 .prompt-manager-inspect-action:focus-visible {
     outline: 2px solid var(--SmartThemeQuoteColor);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: var(--sb-radius-inner);
     text-decoration: underline;
 }
 
@@ -242,8 +249,8 @@
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-chip {
     display: inline-flex;
     align-items: center;
-    padding: 1px 5px;
-    border-radius: 99px;
+    padding: 1px 6px;
+    border-radius: var(--sb-radius-pill);
     font-size: calc(var(--mainFontSize) * 0.68);
     font-weight: 700;
     letter-spacing: 0.02em;
@@ -332,16 +339,26 @@
     transition: opacity var(--sb-transition-slow), transform var(--sb-transition-slow);
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-actions,
 #completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-actions {
     opacity: 1;
     transform: translateX(0);
     pointer-events: auto;
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens,
 #completion_prompt_manager #completion_prompt_manager_list li:focus-within .pm-row-end-zone .prompt_manager_prompt_tokens {
     opacity: 0;
+}
+
+@media (hover: hover) {
+    #completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-actions {
+        opacity: 1;
+        transform: translateX(0);
+        pointer-events: auto;
+    }
+
+    #completion_prompt_manager #completion_prompt_manager_list li:hover .pm-row-end-zone .prompt_manager_prompt_tokens {
+        opacity: 0;
+    }
 }
 
 /* The upstream fa-icon spans inside .pm-row-actions stay as they are. */
@@ -352,16 +369,18 @@
     width: 26px;
     height: 26px;
     flex: 0 0 26px;
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     cursor: pointer;
     opacity: 0.7;
     transition: background-color var(--sb-transition-slow), opacity var(--sb-transition-slow);
     filter: drop-shadow(0 0 2px black);
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span:hover {
-    opacity: 1;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+@media (hover: hover) {
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span:hover {
+        opacity: 1;
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    }
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > .prompt-manager-control-placeholder {
@@ -375,8 +394,10 @@
     transition: opacity var(--sb-transition-slow);
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li .prompt-manager-toggle-action:hover {
-    opacity: 1;
+@media (hover: hover) {
+    #completion_prompt_manager #completion_prompt_manager_list li .prompt-manager-toggle-action:hover {
+        opacity: 1;
+    }
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li:not(.completion_prompt_manager_prompt_disabled) .prompt-manager-toggle-action {
@@ -396,15 +417,17 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     cursor: pointer;
     font-size: 14px;
     transition: background var(--sb-transition-slow), color var(--sb-transition-slow);
 }
 
-#completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    color: var(--SmartThemeBodyColor);
+@media (hover: hover) {
+    #completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        color: var(--SmartThemeBodyColor);
+    }
 }
 
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell {
@@ -442,9 +465,9 @@
 .pm-kebab-menu {
     background: var(--SmartThemeBlurTintColor, #38383c);
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 12px;
-    padding: 4px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    border-radius: var(--sb-radius-overlay);
+    padding: 6px;
+    box-shadow: var(--sb-shadow-popover);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     overflow: hidden;
@@ -453,9 +476,9 @@
 .pm-kebab-menu-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 9px;
     width: 100%;
-    padding: 10px 12px;
+    padding: 9px 12px;
     border: none;
     background: transparent;
     color: var(--SmartThemeBodyColor);
@@ -463,12 +486,14 @@
     font-family: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     transition: background var(--sb-transition-slow);
 }
 
-.pm-kebab-menu-item:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+@media (hover: hover) {
+    .pm-kebab-menu-item:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    }
 }
 
 .pm-kebab-menu-item i {
@@ -640,7 +665,7 @@
     /* SillyBunny: the pill pads on the spacing scale; min-height keeps its height. */
     padding: 3px 9px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
-    border-radius: 99px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent);
     font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
@@ -651,10 +676,12 @@
     user-select: none;
 }
 
-.pm-trigger-chip:hover {
-    border-color: var(--SmartThemeBorderColor);
-    color: var(--SmartThemeBodyColor);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+@media (hover: hover) {
+    .pm-trigger-chip:hover {
+        border-color: var(--SmartThemeBorderColor);
+        color: var(--SmartThemeBodyColor);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    }
 }
 
 .pm-trigger-chip[aria-checked="true"] {
@@ -674,9 +701,9 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 9px;
     margin-top: 12px;
-    padding-top: 10px;
+    padding-top: 9px;
     border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
 }
 
@@ -695,9 +722,11 @@
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
 }
 
-.pm-editor-btn-primary:hover {
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
-    border-color: var(--SmartThemeQuoteColor);
+@media (hover: hover) {
+    .pm-editor-btn-primary:hover {
+        background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+        border-color: var(--SmartThemeQuoteColor);
+    }
 }
 
 /* SillyBunny: accordion header parts: chevron, active count and lock. */
@@ -705,8 +734,8 @@
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 0 4px;
+    gap: 3px;
+    padding: 0 3px;
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
     font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.84));
 }
@@ -718,15 +747,17 @@
     width: 22px;
     height: 22px;
     flex: 0 0 22px;
-    border-radius: 6px;
+    border-radius: var(--sb-radius-inner);
     cursor: pointer;
     -webkit-user-select: none;
     user-select: none;
     transition: background var(--sb-transition-slow);
 }
 
-.pm-accordion-toggle:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+@media (hover: hover) {
+    .pm-accordion-toggle:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    }
 }
 
 .pm-accordion-toggle:focus-visible {
@@ -736,7 +767,7 @@
 
 .pm-accordion-chevron {
     font-size: 10px;
-    transition: transform 160ms ease;
+    transition: transform var(--sb-transition-fast);
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
 }
 
@@ -758,7 +789,7 @@
 }
 #prompt-manager-reset-character,
 #completion_prompt_manager_popup_entry_form_reset {
-    color: rgb(220 173 16);
+    color: var(--sb-color-warning);
 }
 
 #completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form_control #completion_prompt_manager_popup_entry_form_prompt {
@@ -932,7 +963,7 @@
 .pm-footer-group {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     flex-wrap: wrap;
 }
 
@@ -949,8 +980,8 @@
 .pm-footer-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
+    gap: 6px;
+    padding: 4px 9px;
     font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
     white-space: nowrap;
 }
@@ -1206,6 +1237,8 @@
     pointer-events: none;
 }
 
+/* SillyBunny: this width and the min-width: 961px blocks below are the split between the stacked and the side-by-side workspace.
+   PROMPT_MANAGER_DESKTOP_SPLIT_QUERY in PromptManager.js repeats it, so change all of them together. */
 @media screen and (max-width: 960px) {
     .sb-workspace-split {
         position: relative;
@@ -1222,7 +1255,7 @@
         transform: translateX(100%);
         transition: transform var(--sb-transition-fast);
         background: var(--SmartThemeBlurTintColor, var(--grey1000, #18181b));
-        border-radius: var(--sb-radius-md, 16px);
+        border-radius: var(--sb-radius-md, 12px);
         padding: 12px;
         overflow-y: auto;
         overscroll-behavior: contain;
@@ -1231,11 +1264,11 @@
     .sb-workspace-back-button {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 9px;
         margin-bottom: 12px;
         padding: 6px 9px;
         font-size: var(--sb-type-control, 0.875rem);
-        border-radius: var(--sb-radius-sm, 8px);
+        border-radius: var(--sb-radius-sm, 9px);
     }
 
     .sb-workspace-split.sb-workspace-mobile-detail .sb-workspace-list-pane {
@@ -1287,15 +1320,21 @@
         display: block;
         width: 2px;
         height: 40px;
-        border-radius: 99px;
+        border-radius: var(--sb-radius-pill);
         background: color-mix(in srgb, var(--SmartThemeBorderColor) 48%, transparent);
         transition: background var(--sb-transition-slow), height var(--sb-transition-slow);
     }
 
-    .pm-workspace-divider:hover::after,
     .pm-workspace-divider.sb-divider-active::after {
         background: var(--SmartThemeQuoteColor);
         height: 60px;
+    }
+
+    @media (hover: hover) {
+        .pm-workspace-divider:hover::after {
+            background: var(--SmartThemeQuoteColor);
+            height: 60px;
+        }
     }
 
     #completion_prompt_manager.completion_prompt_manager_has_editor .pm-workspace-divider {
