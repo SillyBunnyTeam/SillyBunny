@@ -576,7 +576,8 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 2990;
+    /* Directly under the sheet, so the backdrop covers everything below the modal layer. */
+    z-index: calc(var(--sb-z-modal, 3000) - 10);
     padding: 0;
     border: 0;
     background: var(--sb-dialog-backdrop);

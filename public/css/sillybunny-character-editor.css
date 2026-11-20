@@ -115,6 +115,8 @@
     position: -webkit-sticky;
     position: sticky;
     top: 0;
+    /* Above the selects that #left-nav-panel lifts to --sb-z-raised, so a select that scrolls under the header does not paint over it,
+       and below --sb-z-dropdown. No layer token sits between those two. */
     z-index: 50;
     display: flex;
     align-items: center;
