@@ -1629,21 +1629,6 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6l). |
 | Owner | `TODO(copy)` |
 
-### Pill padding in an upstream-origin sheet (task 14.6l)
-
-| Field | Value |
-| --- | --- |
-| File | `public/css/promptmanager.css` (`.pm-trigger-chip` padding `4px 12px` to `3px 9px`, marked); `public/style.css` and `public/index.html` (cache keys of the changed sheets); `scripts/copy-strings.js` is SillyBunny's own. |
-| Area | Spacing scale. |
-| Divergence reason | `TODO(copy)` |
-| Target seam | The spacing scale of `DESIGN.md` (`3, 6, 9, 12, 18, 24, 36px`). |
-| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6l; F-345): the trigger chip's `min-height: 32px` keeps its height. |
-| Protecting tests | The surface audit's parity check; `tests/unit/stylesheet-cache-keys.test.js`. |
-| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, design rules. |
-| Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-18, UI polish sweep (task 14.6l). |
-| Owner | `TODO(copy)` |
-
 ### `public/scripts/welcome-screen.js` - arrow keys in the recent-chat filters
 
 | Field | Value |
@@ -1677,7 +1662,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |
-| File | Batch A: `public/scripts/extensions/connection-manager/index.js`. Batch B: `public/script.js`, `public/scripts/chat-backups.js`, `extensions.js`, `group-chats.js`, `kai-settings.js`, `nai-settings.js`, `openai.js`, `power-user.js`, `preset-manager.js`, `textgen-settings.js`, and the templates `promptManagerFooter.html`, `promptManagerHeader.html` and `wandMenu.html`; `public/index.html` (two accessible names). Batch D: `public/scripts/BulkEditOverlay.js`, `public/scripts/PromptManager.js`, `public/scripts/extensions/connection-manager/settings.html`. Batch C: `public/index.html`, `public/scripts/extensions/quick-reply/index.js`. The gap pass (task 12.4): `public/index.html` (14 switch-row titles), `public/scripts/extensions/connection-manager/index.js`, `public/scripts/preset-manager.js`, `public/scripts/templates/wandMenu.html`. The last pass (task 12.4b): `public/index.html` (row subtitles without a trailing period, and capitalisation), `public/scripts/extensions/regex/editor.html`, `regex/index.js`, `tags.js`, `templates/promptManagerFooter.html`, `quick-reply/html/qrEditor.html` (the Icon field's label carried the key "Label"; it now carries "Icon"), `connection-manager/index.js` (`getCommandCheckLabel`: the Edit dialog shows command names as check labels in sentence capitalisation, while `FANCY_NAMES` stays in header capitalisation for row titles), `power-user.js`, `group-chats.js`, `tts/index.js`, `bookmarks.js`, `chats.js`, `openai.js`, `secrets.js`, `welcome-screen.js`, `public/script.js`. Toast titles and periods (task 12.4c): `public/script.js`, `backgrounds.js`, `chat-backups.js`, `extensions.js`, `group-chats.js`, `openai.js`, `personas.js`, `power-user.js`, `preset-manager.js`, `welcome-screen.js`, `world-info.js`, `extensions/connection-manager/index.js`, `extensions/expressions/index.js`, `extensions/quick-reply/index.js`, `extensions/quick-reply/src/ui/SettingsUi.js`, `extensions/tts/index.js`. |
+| File | Batch A: `public/scripts/extensions/connection-manager/index.js`. Batch B: `public/script.js`, `public/scripts/chat-backups.js`, `extensions.js`, `group-chats.js`, `kai-settings.js`, `nai-settings.js`, `openai.js`, `power-user.js`, `preset-manager.js`, `textgen-settings.js`, and the templates `promptManagerHeader.html` and `wandMenu.html`; `public/index.html` (two accessible names). Batch D: `public/scripts/BulkEditOverlay.js`, `public/scripts/PromptManager.js`, `public/scripts/extensions/connection-manager/settings.html`. Batch C: `public/index.html`, `public/scripts/extensions/quick-reply/index.js`. The gap pass (task 12.4): `public/index.html` (14 switch-row titles), `public/scripts/extensions/connection-manager/index.js`, `public/scripts/preset-manager.js`, `public/scripts/templates/wandMenu.html`. The last pass (task 12.4b): `public/index.html` (row subtitles without a trailing period, and capitalisation), `public/scripts/extensions/regex/editor.html`, `regex/index.js`, `tags.js`, `quick-reply/html/qrEditor.html` (the Icon field's label carried the key "Label"; it now carries "Icon"), `connection-manager/index.js` (`getCommandCheckLabel`: the Edit dialog shows command names as check labels in sentence capitalisation, while `FANCY_NAMES` stays in header capitalisation for row titles), `power-user.js`, `group-chats.js`, `tts/index.js`, `bookmarks.js`, `chats.js`, `openai.js`, `secrets.js`, `welcome-screen.js`, `public/script.js`. Toast titles and periods (task 12.4c): `public/script.js`, `backgrounds.js`, `chat-backups.js`, `extensions.js`, `group-chats.js`, `openai.js`, `personas.js`, `power-user.js`, `preset-manager.js`, `welcome-screen.js`, `world-info.js`, `extensions/connection-manager/index.js`, `extensions/expressions/index.js`, `extensions/quick-reply/index.js`, `extensions/quick-reply/src/ui/SettingsUi.js`, `extensions/tts/index.js`. |
 | Area | Labels, headings, tooltips, accessible names and toast titles that SillyBunny wrote on lines it had already changed in upstream-origin files. |
 | Divergence reason | `TODO(copy)` |
 | Target seam | None: the strings are edited in place. The list of strings and the form each takes is the copy register of the UI polish sweep, built by a script from the rule in `DESIGN.md` (Capitalisation Rule). |
@@ -1685,7 +1670,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/unit/sillybunny-label-capitalisation.test.js` (reads role-tagged labels from source and the settings inventory's switch names; upstream-verbatim lines and keys that a locale translates are skipped by rule; exemptions in `tests/fixtures/label-capitalisation-allowlist.json`, each with a reason); `tests/unit/sillybunny-capitalisation-rule.test.js`; the tests that assert each label; `tests/unit/upstream-template-compatibility.test.js`. |
 | Validation | 2026-11-18, per batch: root and tests lint, the full unit run, budgets, contracts and design rules, the related e2e specs, the settings inventory of the pages changed. |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-18, UI polish sweep (task 12.3, batches A to D; tasks 12.4, 12.4b, 12.4c). |
+| Last reviewed | 2026-11-18, UI polish sweep (task 12.3, batches A to D; tasks 12.4, 12.4b, 12.4c); 2026-11-20, PR #870 audit (`promptManagerFooter.html` is back at its `staging` content). |
 | Owner | `TODO(copy)` |
 
 ### `public/scripts/extensions/expressions/` - Character Expressions settings and sprite list
@@ -2573,15 +2558,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-20, PR #870 audit. |
 | Owner | `TODO(copy)` |
 
-### `public/css/rm-groups.css`, `public/css/st-tailwind.css` and `public/scripts/templates/promptManagerListHeader.html` - group member lists, settings sizing helpers and the prompt list header
+### `public/css/rm-groups.css` and `public/css/st-tailwind.css` - group member lists and settings sizing helpers
 | Field | Value |
 | --- | --- |
-| File | `public/css/rm-groups.css`; `public/css/st-tailwind.css`; `public/scripts/templates/promptManagerListHeader.html`. |
-| Area | Group editor member lists; width helpers of settings rows; the header row of the prompt list. |
+| File | `public/css/rm-groups.css`; `public/css/st-tailwind.css`. |
+| Area | Group editor member lists; width helpers of settings rows. |
 | Divergence reason | `TODO(copy)` |
-| Target seam | `public/css/sillybunny-entity-list.css` and `public/css/sillybunny-character-editor.css` (member lists); `public/scripts/sillybunny-editor/rows.js` and `public/scripts/sillybunny-settings-presentation.js` (the rows that take the helpers); `public/css/promptmanager.css` (the `pm-list-head-*` cells). |
-| Adapter shape | `rm-groups.css`: the upstream rules of the member lists, their row actions, empty texts, search layout and model override inputs are removed, under three markers that name where each is drawn. `st-tailwind.css`: two added helpers, `.ds-control-flex` and `.ds-label-bounded`, under one marker, and `.textarea_compact` takes its size from the `--sb-type-*` scale. `promptManagerListHeader.html`: one cell per column of the row (`pm-list-head-grip`, `-bar`, `-name`, `-tokens`, `-toggle`), with the `data-i18n` keys of the upstream cells kept. |
-| Protecting tests | `tests/unit/sillybunny-group-list-adapters.test.js`; `tests/group-editor-member-lists.e2e.js`; `tests/prompt-manager-lifecycle-wiring.test.js`; `tests/prompt-manager-characterization.e2e.js`; `tests/libadwaita-surface-layers-css.test.js`. |
+| Target seam | `public/css/sillybunny-entity-list.css` and `public/css/sillybunny-character-editor.css` (member lists); `public/scripts/sillybunny-editor/rows.js` and `public/scripts/sillybunny-settings-presentation.js` (the rows that take the helpers). |
+| Adapter shape | `rm-groups.css`: the upstream rules of the member lists, their row actions, empty texts, search layout and model override inputs are removed, under three markers that name where each is drawn. `st-tailwind.css`: two added helpers, `.ds-control-flex` and `.ds-label-bounded`, under one marker, and `.textarea_compact` takes its size from the `--sb-type-*` scale. |
+| Protecting tests | `tests/unit/sillybunny-group-list-adapters.test.js`; `tests/group-editor-member-lists.e2e.js`; `tests/libadwaita-surface-layers-css.test.js`. |
 | Validation | 2026-11-20: root lint, the unit suite, budgets, contracts and design rules; the divergence itself was not changed on this date. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-20, PR #870 audit. |
