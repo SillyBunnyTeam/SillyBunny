@@ -444,6 +444,8 @@ export function initializeColorPickers() {
         enhanceWithin(document.body);
         const observer = new MutationObserver(mutations => {
             for (const mutation of mutations) {
+                // A streamed reply writes nodes into #chat on every token, and no picker lives in a message.
+                if (mutation.target instanceof Element && mutation.target.closest('#chat')) continue;
                 for (const node of mutation.addedNodes) enhanceWithin(node);
             }
             if (active && !active.picker.isConnected) closeColorMenu({ restoreFocus: false, commitPending: false });

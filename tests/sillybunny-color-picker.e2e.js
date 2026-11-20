@@ -161,6 +161,34 @@ test('opens as a popover at 769x800', async ({ page }) => {
     expect(await menu.evaluate(node => node.closest('.sb-dialog') === null)).toBe(true);
 });
 
+test('adopts a picker added outside #chat and leaves nodes added inside #chat alone', async ({ page }) => {
+    await mountPicker(page);
+    await page.evaluate(() => {
+        const chat = document.createElement('div');
+        chat.id = 'chat';
+        document.body.append(chat);
+    });
+    // Let the observer see #chat arrive on its own, as it exists before a reply streams into it.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+    await page.evaluate(() => {
+        const chat = document.getElementById('chat');
+        for (const [id, parent] of [['inside-chat-picker', chat], ['outside-chat-picker', document.body]]) {
+            const picker = document.createElement('toolcool-color-picker');
+            picker.id = id;
+            picker.setAttribute('color', '#3584e4');
+            parent.append(picker);
+        }
+    });
+    const outside = page.locator('#outside-chat-picker .button');
+    await outside.click();
+    await expect(page.locator('.sb-color-picker-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sb-color-picker-menu')).toHaveCount(0);
+    // The picker inside #chat has no adopted button to act on, so the click is sent as an event.
+    await page.locator('#inside-chat-picker .button').dispatchEvent('click');
+    await expect(page.locator('.sb-color-picker-menu')).toHaveCount(0);
+});
+
 test('keeps the complete RGB/RGBA event contract and rejects incomplete edits', async ({ page }) => {
     await mountPicker(page);
     await page.locator('toolcool-color-picker').evaluate(picker => {
