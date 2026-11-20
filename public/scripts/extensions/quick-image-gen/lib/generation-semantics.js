@@ -12,6 +12,14 @@ function copyStringArray(value) {
     return Array.isArray(value) ? value.filter(item => typeof item === "string") : [];
 }
 
+// SillyBunny divergence: copy NovelAI Precise Reference state deeply, so that copies do not share reference objects.
+export function cloneNovelAIPreciseReferenceState(value) {
+    return {
+        enabled: value?.enabled === true,
+        references: Array.isArray(value?.references) ? value.references.map(reference => ({ ...reference })) : [],
+    };
+}
+
 export function captureRegenerationReferences(settings = {}, runtimeOptions = {}) {
     const provider = typeof settings?.provider === "string" ? settings.provider : "";
     const referenceSettings = {};
@@ -21,6 +29,10 @@ export function captureRegenerationReferences(settings = {}, runtimeOptions = {}
     if (arrayField) referenceSettings[arrayField] = copyStringArray(settings[arrayField]);
     if (provider === "proxy") {
         referenceRuntimeOptions.proxyRefImages = copyStringArray(runtimeOptions?.proxyRefImages);
+    } else if (provider === "novelai") {
+        // SillyBunny divergence: keep the NovelAI Precise Reference images for regeneration only when they were on.
+        referenceSettings.naiPreciseReference = cloneNovelAIPreciseReferenceState(settings.naiPreciseReference);
+        if (!referenceSettings.naiPreciseReference.enabled) referenceSettings.naiPreciseReference.references = [];
     } else if (provider === "local") {
         referenceSettings.localRefImage = typeof settings.localRefImage === "string" ? settings.localRefImage : "";
         referenceSettings.a1111ControlNetImage = typeof settings.a1111ControlNetImage === "string"
@@ -44,6 +56,10 @@ function cloneReferenceSnapshot(snapshot) {
 
 function countReferenceChars(snapshot) {
     let count = 0;
+    // SillyBunny divergence: nested Precise Reference images count toward the retention limit.
+    for (const reference of snapshot?.settings?.naiPreciseReference?.references || []) {
+        if (typeof reference.image === "string") count += reference.image.length;
+    }
     for (const value of Object.values(snapshot?.settings || {})) {
         if (typeof value === "string") count += value.length;
         else if (Array.isArray(value)) count += value.reduce((total, item) => total + item.length, 0);

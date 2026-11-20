@@ -9,6 +9,12 @@ import { materializeAndValidateProviderOutput } from '../public/scripts/extensio
 import { normalizeProviderResult } from '../public/scripts/extensions/quick-image-gen/lib/provider-contract.js';
 import { buildTextAIRequestMessages } from '../public/scripts/extensions/quick-image-gen/lib/prompt-pipeline.js';
 import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/lib/security.js';
+import { cloneNovelAIPreciseReferenceState } from '../public/scripts/extensions/quick-image-gen/lib/generation-semantics.js';
+import { cloneSynchronizedValue } from '../public/scripts/extensions/quick-image-gen/lib/settings-persistence.js';
+import { isNovelAICompatibleProxyUrl } from '../public/scripts/extensions/quick-image-gen/lib/provider-adapters.js';
+import { buildNovelAIProxyRequestUrl } from '../public/scripts/extensions/quick-image-gen/lib/hosted-provider.js';
+import { isNovelAIV5Model, normalizeNovelAIImageParameters } from '../public/scripts/novelai-image-models.js';
+import { buildNovelAIPreciseReferenceParameters } from '../public/scripts/novelai-precise-reference.js';
 
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
 const qigSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/index.js', import.meta.url)), 'utf8');
@@ -167,6 +173,7 @@ describe('Conversation extension media integration', () => {
             prompt_prefix: 'photo of {{char}}', negative_prompt: 'blur',
             character_prompts: { conversation: 'blue eyes', roleplay: 'wrong character' },
             character_negative_prompts: { conversation: 'hat' },
+            novel_precise_reference: { enabled: false, references: [] },
         } };
         const secretState = { novel: true };
         const save = jest.fn(async () => 'conversation-selfie.png');
@@ -189,6 +196,7 @@ describe('Conversation extension media integration', () => {
             substituteParams: (text, options) => text.replaceAll('{{char}}', options?.name2Override || 'Roleplay'),
             getRequestHeaders: () => ({}),
             loadNovelSchedulers: () => ['karras'],
+            buildNovelAIPreciseReferenceParameters,
             humanizedDateTime: () => 'timestamp',
             saveBase64AsFile: save,
             sendMessage,
@@ -218,6 +226,7 @@ describe('Conversation extension media integration', () => {
             steps: 23, scale: 6, width: 832, height: 1216, seed: 42,
             prompt: 'photo of Conversation, blue eyes, selfie at a desk',
             negative_prompt: 'watermark, blur, hat',
+            precise_reference: [],
         }) }]);
         expect(save).toHaveBeenCalledWith('image-data', 'Conversation', 'Conversation_timestamp', 'png');
         expect(sendMessage).not.toHaveBeenCalled();
@@ -236,6 +245,30 @@ describe('Conversation extension media integration', () => {
         await expect(generate()).resolves.toBeNull();
         expect(requests).toHaveLength(3);
         expect(qig.generateScopedImage).not.toHaveBeenCalled();
+    });
+
+    test('Image Generation sends no Precise References for a missing or malformed saved state', async () => {
+        const settings = { sd: { model: 'nai-diffusion-4-5-full', steps: 23, width: 832, height: 1216, novel_anlas_guard: false } };
+        const requests = [];
+        const context = createQigContext({
+            buildNovelAIPreciseReferenceParameters,
+            extension_settings: settings,
+            getRequestHeaders: () => ({}),
+            loadNovelSchedulers: () => ['karras'],
+            fetch: async (_url, options) => {
+                requests.push(JSON.parse(options.body));
+                return { ok: true, text: async () => 'image-data' };
+            },
+        });
+        for (const name of ['getNovelParams', 'generateNovelImage']) {
+            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
+        }
+
+        for (const state of [undefined, null, { enabled: true, references: {} }]) {
+            settings.sd.novel_precise_reference = state;
+            await expect(context.generateNovelImage('prompt', 'negative')).resolves.toEqual({ format: 'png', data: 'image-data' });
+        }
+        expect(requests.map(body => body.precise_reference)).toEqual([[], [], []]);
     });
 
     test('uses the activated QIG capability with the explicit Conversation speaker only', async () => {
@@ -425,6 +458,152 @@ describe('Conversation extension media integration', () => {
         delete charRefImages.target;
         const withoutTargetReference = buildSettings(roleplaySettings, { __qigScopedCharacter: true });
         expect(withoutTargetReference.proxyRefImages).toEqual([]);
+    });
+
+    function createConfigurationContext(settings, values) {
+        const context = createQigContext({
+            _automationRevision: 0,
+            charSettingsBaseState: null,
+            cloneNovelAIPreciseReferenceState,
+            cloneSynchronizedValue,
+            closePalettePresetMenu() {},
+            defaultSettings: { naiPreciseReference: { enabled: false, references: [] }, pollinationsModel: 'flux' },
+            document: { getElementById: () => null },
+            ensureFilterPoolsState() {},
+            getConfigurationKeys: record => ['provider', 'prompt', ...(record?.provider === 'novelai' ? ['naiPreciseReference'] : ['pollinationsModel'])],
+            getSettings: () => settings,
+            hideStatus() {},
+            loadCharSettings: jest.fn(async () => {}),
+            normalizeGenerationPresetStore() {},
+            normalizeInjectInsertMode: value => value,
+            normalizePaletteMode: value => value,
+            refreshAllUI() {},
+            renderConfigurationSelect() {},
+            renderContextualFilters() {},
+            resetAutoGenerateCadence() {},
+            saveSettingsDebounced() {},
+            setTimeout: jest.fn(),
+            showStatus() {},
+            updateQigStatusLine() {},
+            ...values,
+        });
+        for (const name of ['cloneCharScopedState', 'rememberCharSettingsBaseState', 'getGlobalConfigurationSettings', 'snapshotConfiguration', 'loadConfiguration']) {
+            evaluateInContext(name, context);
+        }
+        return context;
+    }
+
+    const preciseReferences = image => ({ enabled: true, references: [{ image, type: 'character', strength: 1, fidelity: 1 }] });
+
+    function createCharacterOverrideContext() {
+        const settings = { provider: 'novelai', prompt: 'character prompt', naiPreciseReference: preciseReferences('CHARACTER') };
+        const context = createConfigurationContext(settings, {
+            charSettingsOverrideApplied: true,
+            configurations: [{ id: 'pollinations', name: 'Pollinations', provider: 'pollinations', pollinationsModel: 'turbo' }],
+        });
+        context.charSettingsBaseState = context.cloneCharScopedState({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
+        return { context, settings };
+    }
+
+    test('QIG saves the global Precise References in a configuration while a character override is active', () => {
+        const { context, settings } = createCharacterOverrideContext();
+
+        expect(context.snapshotConfiguration(settings)).toMatchObject({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
+    });
+
+    test('QIG keeps the global Precise References as the base when it loads a configuration during a character override', async () => {
+        const { context, settings } = createCharacterOverrideContext();
+
+        await context.loadConfiguration('pollinations');
+        expect(context.loadCharSettings).toHaveBeenCalledTimes(1);
+        expect(context.charSettingsBaseState).toMatchObject({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
+        expect(settings._charSettingsBaseState.naiPreciseReference).toEqual(preciseReferences('GLOBAL'));
+    });
+
+    test('QIG configurations take the live Precise References outside a character override', () => {
+        const settings = {
+            provider: 'novelai',
+            naiPreciseReference: preciseReferences('EDITED'),
+            _charSettingsBaseState: { naiPreciseReference: preciseReferences('SAVED_BEFORE_EDIT') },
+        };
+        const context = createConfigurationContext(settings, { charSettingsOverrideApplied: false });
+
+        expect(context.snapshotConfiguration(settings).naiPreciseReference).toEqual(preciseReferences('EDITED'));
+    });
+
+    function createNovelAIGenerationContext() {
+        const requests = [];
+        const context = createQigContext({
+            assertSafeConfigurableEndpoint() {},
+            buildNovelAIPreciseReferenceParameters,
+            buildNovelAIProxyRequestUrl,
+            isNovelAICompatibleProxyUrl,
+            isNovelAIV5Model,
+            normalizeNovelAIImageParameters,
+            normalizeSize() {},
+            resolveRandomSeed: seed => seed,
+            fetch: async (url, options) => {
+                requests.push({ url, body: JSON.parse(options.body) });
+                throw new Error('request captured');
+            },
+        });
+        for (const name of ['getNovelAISampler', 'getNovelAIProxyGenerateUrl', 'genNovelAI']) {
+            evaluateInContext(name, context);
+        }
+        return { context, requests };
+    }
+
+    function preparedReferenceImage() {
+        const png = Buffer.alloc(33);
+        png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+        png.write('IHDR', 12, 'latin1');
+        png.writeUInt32BE(1472, 16);
+        png.writeUInt32BE(1472, 20);
+        return png.toString('base64');
+    }
+
+    function novelAISettings(overrides = {}) {
+        return {
+            naiModel: 'nai-diffusion-4-5-full', naiKey: 'key', naiProxyUrl: '', sampler: 'euler_a', seed: 7,
+            width: 832, height: 1216, steps: 23, cfgScale: 5,
+            naiPreciseReference: { enabled: true, references: [{ image: preparedReferenceImage(), type: 'style', strength: 0.6, fidelity: 0.25 }] },
+            ...overrides,
+        };
+    }
+
+    test('QIG sends the Precise References to the official NovelAI API and to a native proxy', async () => {
+        const { context, requests } = createNovelAIGenerationContext();
+
+        for (const naiProxyUrl of ['', 'https://proxy.example/novelai']) {
+            await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiProxyUrl }))).rejects.toThrow('request captured');
+        }
+        expect(requests.map(request => request.url)).toEqual(['https://image.novelai.net/ai/generate-image', 'https://proxy.example/novelai/generate']);
+        for (const { body } of requests) {
+            expect(body.parameters).toMatchObject({
+                director_reference_images: [preparedReferenceImage()],
+                director_reference_descriptions: [{ caption: { base_caption: 'style', char_captions: [] }, legacy_uc: false }],
+                director_reference_strength_values: [0.6],
+                director_reference_secondary_strength_values: [0.75],
+            });
+        }
+    });
+
+    test('QIG rejects Precise References for unsupported models and OpenAI-compatible proxies before any request', async () => {
+        const { context, requests } = createNovelAIGenerationContext();
+
+        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiModel: 'nai-diffusion-4-full' }))).rejects.toThrow('requires NovelAI V4.5');
+        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiProxyUrl: 'https://proxy.example/v1' }))).rejects.toThrow('OpenAI-compatible proxies are not supported');
+        expect(requests).toEqual([]);
+    });
+
+    test('QIG sends no Precise References when they are off, also for earlier models', async () => {
+        const { context, requests } = createNovelAIGenerationContext();
+        const settings = novelAISettings({ naiModel: 'nai-diffusion-3' });
+        settings.naiPreciseReference.enabled = false;
+
+        await expect(context.genNovelAI('prompt', 'negative', settings)).rejects.toThrow('request captured');
+        expect(requests).toHaveLength(1);
+        expect(requests[0].body.parameters).not.toHaveProperty('director_reference_images');
     });
 
     test('QIG readiness follows complete initialization and propagates failure', async () => {

@@ -66,6 +66,9 @@ import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 // SillyBunny: expose the configured provider without borrowing the active roleplay chat.
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
+// SillyBunny: NovelAI Precise Reference shares its request checks and editor with Quick Image Gen.
+import { buildNovelAIPreciseReferenceParameters } from '../../novelai-precise-reference.js';
+import { mountNovelAIPreciseReferenceEditor } from '../../novelai-precise-reference-ui.js';
 
 export { MODULE_NAME };
 
@@ -105,6 +108,8 @@ const comfyTypes = {
 };
 
 let modelLoadRequest = 0;
+// SillyBunny: the Precise Reference editor is mounted once and refreshed when the model changes.
+let novelPreciseReferenceEditor;
 
 const initiators = {
     command: 'command',
@@ -328,6 +333,8 @@ const defaultSettings = {
     novel_sm_dyn: false,
     novel_decrisper: false,
     novel_variety_boost: false,
+    // SillyBunny: NovelAI Precise Reference starts off, with no reference images.
+    novel_precise_reference: { enabled: false, references: [] },
 
     // OpenAI settings
     openai_style: 'vivid',
@@ -579,6 +586,18 @@ async function loadSettings() {
     $('#sd_resolution').val(resolutionId);
 
     toggleSourceControls();
+    // SillyBunny: keep reference images in provider settings, separate from reusable prompt styles.
+    if (!novelPreciseReferenceEditor) {
+        novelPreciseReferenceEditor = mountNovelAIPreciseReferenceEditor(document.querySelector('#sd_novel_precise_reference'), {
+            getState: () => extension_settings.sd.novel_precise_reference,
+            onChange: state => {
+                extension_settings.sd.novel_precise_reference = state;
+                saveSettingsDebounced();
+            },
+            getModel: () => extension_settings.sd.model,
+        });
+    }
+    novelPreciseReferenceEditor.refresh();
     addPromptTemplates();
     registerFunctionTool();
 
@@ -2063,6 +2082,8 @@ async function fetchImageModels(provider, body = {}) {
  * @param {string} modelId Model ID
  */
 function switchModelSpecificControls(modelId) {
+    // SillyBunny: the Precise Reference editor shows whether the selected model accepts references.
+    novelPreciseReferenceEditor?.refresh();
     const modelControls = $('.sd_settings [data-sd-model]');
     modelControls.hide();
     const isNovel = extension_settings.sd.source === sources.novel;
@@ -3994,6 +4015,12 @@ async function generateDrawthingsImage(prompt, negativePrompt, signal) {
  * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
  */
 async function generateNovelImage(prompt, negativePrompt, signal) {
+    // SillyBunny: send the Precise References with the request, and check them first so that a set the server refuses is not uploaded.
+    const referenceState = extension_settings.sd.novel_precise_reference;
+    const preciseReference = referenceState?.enabled === true && Array.isArray(referenceState.references) ? referenceState.references : [];
+    buildNovelAIPreciseReferenceParameters(extension_settings.sd.model, preciseReference, {
+        anlasGuard: extension_settings.sd.novel_anlas_guard,
+    });
     const { steps, width, height, sm, sm_dyn } = getNovelParams();
 
     const result = await fetch('/api/novelai/generate-image', {
@@ -4004,6 +4031,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
             prompt: prompt,
             model: extension_settings.sd.model,
             novel_anlas_guard: extension_settings.sd.novel_anlas_guard,
+            precise_reference: preciseReference,
             sampler: extension_settings.sd.sampler,
             scheduler: extension_settings.sd.scheduler,
             steps: steps,
