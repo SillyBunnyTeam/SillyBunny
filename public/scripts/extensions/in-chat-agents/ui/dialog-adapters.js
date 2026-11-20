@@ -208,7 +208,7 @@ export function prepareCustomGroupDialog(source) {
     return state;
 }
 
-/** Presents the five refinement modes as one keyboard-accessible select and keeps the old radios as the source. */
+/** Presents the five refinement modes as one keyboard-accessible select and keeps the upstream radios as the source. */
 export function prepareRefinePromptDialog(source) {
     const root = asElement(source);
     const existing = preparedDialogs.get(root);

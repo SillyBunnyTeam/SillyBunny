@@ -1,5 +1,4 @@
-// SillyBunny: character editor controller — explicit-save, draft backup, greeting renderer
-// (Step 3b, feat/v1.9.0-ui-overhaul)
+// SillyBunny: character editor controller: explicit save, draft backup, greeting renderer
 //
 // Session, draft, leave-guard, header/toolbar, and preview mechanics are shared
 // with the group editor through ./sillybunny-editor/. This file keeps only what
@@ -7,17 +6,17 @@
 // the token readout, and preview formatting.
 //
 // Public API consumed by script.js:
-//   beginCharacterEditorLoad()          — flush draft before field writes
-//   loadCharacterEditorGreetings(chid, mode) — render greeting lists after fields are loaded
-//   openCharacterEditorSession(chid)    — open edit session (call after fields are written)
-//   openCharacterEditorCreateSession()  — open create session
-//   captureCharacterEditorSave(avatar)  — capture the owning session's submitted values
-//   markCharacterEditorSaved(receipt, avatar?) — acknowledge only those submitted values
-//   getCharacterEditorAlternateGreetings(avatar) — alternate greetings to submit for a save
-//   getCharacterEditorGroupGreetings(avatar)     — group-only greetings to submit for a save
-//   addAlternateGreeting()              — add a new alternate greeting row
-//   addGroupGreeting()                  — add a new group-only greeting row
-//   initCharacterEditor()               — bind all DOM handlers (called once at startup)
+//   beginCharacterEditorLoad(): flush draft before field writes
+//   loadCharacterEditorGreetings(chid, mode): render greeting lists after fields are loaded
+//   openCharacterEditorSession(chid): open edit session (call after fields are written)
+//   openCharacterEditorCreateSession(): open create session
+//   captureCharacterEditorSave(avatar): capture the owning session's submitted values
+//   markCharacterEditorSaved(receipt, avatar?): acknowledge only those submitted values
+//   getCharacterEditorAlternateGreetings(avatar): alternate greetings to submit for a save
+//   getCharacterEditorGroupGreetings(avatar): group-only greetings to submit for a save
+//   addAlternateGreeting(): add a new alternate greeting row
+//   addGroupGreeting(): add a new group-only greeting row
+//   initCharacterEditor(): bind all DOM handlers (called once at startup)
 
 import { formatCreatorNotes, getCurrentEntityId } from './chats.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
@@ -93,7 +92,7 @@ let tokenMirrorScheduled = false;
 const relatedRows = new Map();
 let relatedLinksDirty = true;
 
-// Session-local greeting drafts (A.2.3). Rows edit these, never the entity, so
+// Session-local greeting drafts. Rows edit these, never the entity, so
 // Cancel/Discard can revert and unrelated autosaves cannot persist half-edits.
 // draftOwner is the avatar (or NEW_CHAR_DRAFT_KEY) the drafts were loaded for.
 /** @type {string[]} */
@@ -496,7 +495,7 @@ function _mountChrome() {
         },
         onSave: () => void session.save(),
         // The sticky header's title is the rename affordance, replacing the
-        // legacy #rm_button_selected_ch h2 inside the hidden #rm_PinAndTabs. It
+        // #rm_button_selected_ch h2 inside the hidden #rm_PinAndTabs. It
         // writes name/data.name and keeps the avatar identity; the destructive
         // full rename (renameCharacter() → /api/characters/rename, which mints a
         // new avatar and moves the chat directory) stays in the action menu.
@@ -556,7 +555,7 @@ function _closeSafely() {
     // character panel as a drawer has data-sb-character-tab tabs, while the
     // page-hosted layout uses a settings page sidebar with data-sb-settings-tab.
     // Clicking #rm_button_back (the hidden stub) only fires the panel switch
-    // without activating the correct tab, leaving the UI desynchronized. (Step 3b fix)
+    // without activating the correct tab, leaving the UI desynchronized.
     const drawerTab = document.getElementById('sb_character_tab_characters');
     const settingsTab = document.querySelector('[data-sb-settings-tab="characters"]');
     const isPageMode = !drawerTab?.offsetParent && Boolean(settingsTab?.offsetParent);
@@ -666,12 +665,12 @@ const OVERFLOW_CANDIDATES = [
 ];
 
 /**
- * The three actions recovered from the legacy #rm_PinAndTabs titlebar, which is
+ * The three actions taken from the #rm_PinAndTabs titlebar, which is
  * hidden by CSS for character_edit/create. They are plain hidden transports;
  * dispatching a click on each runs its existing binding:
- *   #creators_note_styles_button    -> chats.js:2335  openGlobalStylesPreferenceDialog()
- *   #character_open_media_overrides -> chats.js:2309  delegated .open_media_overrides
- *   .rm_stats_button                -> stats.js:327   characterStatsHandler()
+ *   #creators_note_styles_button    -> chats.js  openGlobalStylesPreferenceDialog()
+ *   #character_open_media_overrides -> chats.js  delegated .open_media_overrides
+ *   .rm_stats_button                -> stats.js  characterStatsHandler()
  */
 const RECOVERED_ACTIONS = [
     { id: 'sb_action_global_styles', label: 'Global Styles', glyph: 'palette', transport: '#creators_note_styles_button' },
@@ -742,7 +741,7 @@ function _buildActionSections() {
 
 /**
  * Runs a transport-select entry by selecting it and firing change, so the
- * upstream dispatcher at script.js:18707 stays the single implementation of
+ * upstream options-menu click handler in script.js stays the single implementation of
  * every one of these actions.
  * @param {string} optionId
  */
@@ -1053,7 +1052,7 @@ function _syncRoleSegment() {
 // ============================================================
 
 function _bindGreetingAddButtons() {
-    // Upstream delegates .open_alternate_greetings on document (script.js:18654)
+    // Upstream delegates .open_alternate_greetings on document in script.js
     // and registers first, so a second delegated handler could never stop it:
     // one click added two greetings, one written straight into the entity. A
     // listener on the button itself runs before anything delegated on document.
@@ -1389,8 +1388,8 @@ function _bindGreetingExpanders() {
 // ============================================================
 
 /**
- * A.2.8: gate on the shell's authoritative state rather than a layout read,
- * which gave false negatives mid-animation. setMenuType() mirrors menu_type into
+ * Gates on the shell's authoritative state rather than a layout read,
+ * which gives false negatives mid-animation. setMenuType() mirrors menu_type into
  * data-menu-type, and the drawer is open while it carries .openDrawer.
  */
 function _isEditorVisible() {

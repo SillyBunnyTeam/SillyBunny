@@ -345,7 +345,7 @@ export function openChatHistoryDialog() {
         remove.classList.remove('fa-skull');
         remove.classList.add('fa-trash-can');
         // The row is the shared entity row on the upstream node: its click handler, file name and action nodes stay where
-        // they are, and the actions the interface used to show become one row menu.
+        // they are, and the actions that upstream shows as separate buttons become one row menu.
         chatRow.classList.add('sb-chat-history-row', 'ds-entity-row', 'ds-entity-row--activatable');
         chatRow.classList.toggle('is-selected', chatRow.hasAttribute('highlight'));
         // The dimming of this legacy class belongs to the upstream layout; the entity row styles its own title and metadata.

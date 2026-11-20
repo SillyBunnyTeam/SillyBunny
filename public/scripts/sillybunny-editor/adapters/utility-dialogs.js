@@ -638,7 +638,7 @@ function quickReplyMenuSection(scope, actions, danger = false) {
 
 /**
  * Turns the settings row of one Quick Reply (a button of a set) into a shared entity row: a grip, the icon button, the label
- * field and the message field in the text column, and one menu button at the end. The buttons that the row used to show (add
+ * field and the message field in the text column, and one menu button at the end. The buttons that the upstream row shows (add
  * above, options, move, copy, cut, export, remove) stay in the row, hidden, and the menu items run them, so every handler is the
  * one the extension bound. Call it once the row is complete.
  * @param {HTMLElement} item The `.qr--set-item` that `QuickReply.renderSettings()` built.

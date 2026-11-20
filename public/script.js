@@ -365,7 +365,7 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { DELETE_CHOICE, confirmMessageDeletion, confirmVerb } from './scripts/sillybunny-delete-confirm.js';
-// SillyBunny: a temporary chat is never written; the narrow write seams below ask this flag. The module has no imports, so it adds no cycle.
+// SillyBunny: a temporary chat is never written; the narrow write seams in this file ask this flag. The module has no imports, so it adds no cycle.
 import { getStoredChatName, isTemporaryChat, isTemporaryChatWith, reassertReservedChatName } from './scripts/sillybunny-temporary-chat-state.js';
 // SillyBunny: starting, saving and leaving a temporary chat; its functions run only after script.js has loaded.
 import { beginTemporaryChat, endTemporaryChat, leaveTemporaryChat, showTemporaryChatError } from './scripts/sillybunny-temporary-chat.js';
@@ -375,7 +375,7 @@ import { lorebookSelectOptions } from './scripts/sillybunny-editor/adapters/pres
 import { messageScreenshotOptions } from './scripts/sillybunny-editor/adapters/misc-dialogs.js';
 // SillyBunny: the scroll sink asks this whether a greeting-only chat that is opening stays at its top. The module has no imports, so it adds no cycle.
 import { shouldHoldChatAtTop } from './scripts/sillybunny-home/greeting-art-opening.js';
-// SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
+// SillyBunny: character editor controller
 import {
     beginCharacterEditorLoad,
     loadCharacterEditorGreetings,
@@ -507,7 +507,7 @@ toastr.options = {
     progressBar: false,
     showDuration: 300,
     hideDuration: 300,
-    // SillyBunny: a toast stays for 5 seconds and shows and hides over 300ms (DESIGN: Toasts, Timing); holding it is handled below.
+    // SillyBunny: a toast stays for 5 seconds and shows and hides over 300ms (DESIGN: Toasts, Timing); `holdToast` and `releaseToast` hold it.
     timeOut: 5000,
     extendedTimeOut: 5000,
     showEasing: 'linear',
@@ -4216,7 +4216,7 @@ export async function sendTextareaMessage() {
     if (is_send_press) return;
     if (isExecutingCommandsFromChatInput) return;
 
-    // SillyBunny: with no API the message used to be posted without a reply or any word about why. Slash commands still run offline.
+    // SillyBunny: with no API, Send says why instead of posting a message that gets no reply. Slash commands still run offline.
     if ((online_status === 'no_connection' || online_status === undefined) && !String($('#send_textarea').val()).trimStart().startsWith('/')) {
         notifyNotConnected();
         return;
@@ -9433,7 +9433,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             if (data.error) {
                 unblockGeneration(type);
 
-                // SillyBunny: a 200 body shaped { error: { message } } stayed silent, because only data.response was read.
+                // SillyBunny: a 200 body shaped { error: { message } } carries a provider error, which upstream misses because it reads only data.response.
                 const errorMessage = extractProviderMessage(data);
                 if (errorMessage) {
                     toastr.error(errorMessage, t`API Error`, { preventDuplicates: true });
@@ -12629,7 +12629,7 @@ export async function openCharacterChat(file_name) {
 
 ////////// OPTIMZED MAIN API CHANGE FUNCTION ////////////
 
-// SillyBunny (feat/v1.9.0-ui-overhaul): the element map below is shared by the two halves of the
+// SillyBunny: the element map below is shared by the two halves of the
 // main-API change. It is built once per call rather than hoisted, because several of the ids are
 // authored by extensions after this module is evaluated and a hoisted map would capture nulls. The
 // element set is deliberately unchanged from upstream.
@@ -12687,13 +12687,13 @@ function collectMainApiElements() {
  * Reshows the settings groups and backend block the chosen API owns, and hides the rest.
  *
  * This is the visibility half of the main-API change, split out so a control that only needs the
- * right groups on screen can run it without the side effects below. It is pure presentation: the
+ * right groups on screen can run it without the side effects of the rest of the change. It is pure presentation: the
  * only writes are `display` on the connector, settings, range, preset, and streaming groups.
  *
  * The `apiConnector` ids are the five provider blocks in `#rm_api_block`, which the Connections
  * panel moves into slots of its own. Those are skipped: the panel hides them with the `hidden`
- * attribute, and a `display` written here would fight it. Everything else -- the settings, range,
- * preset, and streaming groups, none of which the panel owns -- is switched as before.
+ * attribute, and a `display` written here would fight it. Every other group (settings, range,
+ * preset, and streaming; the panel owns none of them) is switched here.
  *
  * @param {string} selectedVal the `#main_api` value to show
  */
@@ -12796,7 +12796,7 @@ export function setUserName(value, { toastPersonaNameChange = true } = {}) {
 }
 
 async function doOnboarding(avatarId) {
-    if (await showFirstRunWelcome(avatarId)) return; // SillyBunny: the Welcome dialog replaces the popup below, which stays as the fallback.
+    if (await showFirstRunWelcome(avatarId)) return; // SillyBunny: the Welcome dialog replaces the onboarding popup that follows, which stays as the fallback.
     const template = $('#onboarding_template .onboarding');
     let userName = await callGenericPopup(template, POPUP_TYPE.INPUT, currentUser?.name || name1, { wider: true, cancelButton: false });
 
@@ -15538,7 +15538,7 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#add_avatar_button').val('');
     $('#avatar_div').css('display', 'flex');
 
-    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    // SillyBunny: flush pending draft before overwriting fields
     beginCharacterEditorLoad();
     $('#character_name_pole').val(characters[chid].name);
     // SillyBunny: reset nicknames per character so a previous draft is never applied to another card.
@@ -15578,7 +15578,7 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#set_character_world').data('chid', chid);
     setWorldInfoButtonClass(chid);
     checkEmbeddedWorld(chid);
-    // SillyBunny: controller renders greetings and opens edit session (Step 3b)
+    // SillyBunny: controller renders greetings and opens edit session
     loadCharacterEditorGreetings(chid, 'edit');
     openCharacterEditorSession(chid);
     // SillyBunny: select_rm_create already schedules this surface's focus.
@@ -15638,7 +15638,7 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     //create text poles
     $('#rm_button_back').css('display', '');
     $('#character_import_button').css('display', '');
-    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    // SillyBunny: flush pending draft before overwriting fields
     beginCharacterEditorLoad();
     $('#character_name_pole').val(create_save.name);
     $('#character_nickname_pole').val(create_save.nickname || '');
@@ -15671,7 +15671,7 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     setWorldInfoButtonClass(undefined, !!create_save.world);
     updateFavButtonState(false);
     checkEmbeddedWorld();
-    // SillyBunny: controller renders greetings and opens create session (Step 3b)
+    // SillyBunny: controller renders greetings and opens create session
     loadCharacterEditorGreetings(null, 'create');
     openCharacterEditorCreateSession();
     focusUiSurface(document.getElementById('right-nav-panel'));
@@ -18058,8 +18058,8 @@ function initCharacterSearch() {
 // MARK: DOM Handlers Start
 jQuery(async function () {
     // SillyBunny: the group editor's sections are always open in the scrolling
-    // sheet, so the upstream "expand the drawers on open" pre-clicks are gone
-    // with the drawer markup (Step 4).
+    // sheet, so the upstream "expand the drawers on open" pre-clicks have no
+    // place here: the drawer markup they click does not exist.
 
     $(document).on('click', '.api_loading', () => {
         cancelStatusCheck('Canceled because connecting was manually canceled');
@@ -18518,7 +18518,7 @@ jQuery(async function () {
             if (menu_type == 'create') {
                 elementsToUpdate[id]();
             }
-            // SillyBunny: edit mode uses explicit save; controller dirty listener handles state (Step 3b)
+            // SillyBunny: edit mode uses explicit save; controller dirty listener handles state
         });
     });
 
@@ -18536,7 +18536,7 @@ jQuery(async function () {
             return;
         }
         updateFavButtonState(!fav_ch_checked);
-        // SillyBunny: explicit-save model; controller marks dirty via requestAnimationFrame (Step 3b)
+        // SillyBunny: explicit-save model; controller marks dirty via requestAnimationFrame
     });
 
     /* $("#renameCharButton").on('click', renameCharacter); */

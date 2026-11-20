@@ -164,7 +164,7 @@ function presentCustomAccent(container) {
         description: 'Choose your own primary and secondary accent colors',
         source: { title },
     });
-    // The settings normaliser pointed the switch at captions that the group now holds.
+    // The settings normaliser points the switch at captions that the group holds, so the reference is dropped.
     toggle.removeAttribute('aria-labelledby');
     const rows = [createSwitchRow({ label: textOf(title) || 'Custom RGB Accent', field: 'custom-accent', input: toggle })];
     for (const [selector, field] of [['#sb-accent-primary-picker', 'accent-primary'], ['#sb-accent-secondary-picker', 'accent-secondary']]) {
@@ -313,7 +313,7 @@ function presentCustomCss(container) {
     const wand = container.querySelector('#custom_css_ai_wand');
     const actions = [indicator, wand].filter(Boolean);
     if (actions.length) field.expand.before(...actions);
-    // The old Expand icon and the toolbar line are replaced by the field's own Expand button.
+    // The field's own Expand button replaces the upstream Expand icon and the toolbar line.
     for (const stale of block.querySelectorAll('.editor_maximize[data-for="customCSS"]')) stale.remove();
 
     const home = document.createElement('div');
@@ -383,7 +383,7 @@ export function presentBackgroundGallery(gallery) {
         emptyText: t`No Results`,
     });
     carryCopy(row, copy);
-    // What is left of the old row is a bar of three buttons.
+    // The upstream row text goes, which leaves a bar of three buttons.
     copy.row?.querySelector(':scope > .ds-row-text')?.remove();
     copy.row?.classList.add('ds-row-actions');
     gallery.querySelector('#bg-header-fixed')?.classList.remove('ds-pref-group');

@@ -2533,10 +2533,10 @@ function appendOpenAIModelEntry($container, entry, favoriteValues = new Set()) {
 }
 
 function getApiSelect2DropdownParent() {
-    // SillyBunny (feat/v1.9.0-ui-overhaul): the provider forms live in the Connections panel, which
-    // moved them out of `#rm_api_block`. A dropdown parent that still resolves to that now-empty
-    // block would render every model picker somewhere the user cannot see, so the panel is preferred
-    // and the block is only the fallback for the brief window before the panel is built.
+    // SillyBunny: the provider forms live in the Connections panel, not in `#rm_api_block`.
+    // A dropdown parent that resolves to that empty block would render every model picker
+    // where the user cannot see it, so the panel is preferred and the block is only the
+    // fallback for the brief window before the panel is built.
     const apiDropdownParent = $('.sb-connections-panel');
     if (apiDropdownParent.length) {
         return apiDropdownParent;
@@ -3852,7 +3852,7 @@ function groupOpenAISettingsIntoDrawers() {
         },
         {
             id: 'sb-openai-names',
-            // SillyBunny: the radio sets became groups of their own, so this one holds the system messages; the settings search still finds it by its old title.
+            // SillyBunny: the radio sets became groups of their own, so this one holds the system messages; the settings search finds it by its old title.
             title: 'System Messages',
             description: 'Choose how system messages and the system prompt are sent.',
             searchAliases: ['Character Names & Prompt Formatting'],
@@ -3948,8 +3948,8 @@ function groupOpenAISettingsIntoDrawers() {
  * A collapsible group keeps them in its `.inline-drawer-content`. The settings page flattens the
  * group into a static section (`flattenNestedSettingsDrawers` in sillybunny-settings-content.js),
  * which lifts the blocks out of that wrapper and drops it, so they become the group's own children
- * after its heading. Reading only the wrapper found no blocks once flattened, and every group was
- * hidden as empty.
+ * after its heading. Reading only the wrapper finds no blocks once flattened, and every group would
+ * be hidden as empty.
  * @param {HTMLElement} group
  * @returns {Element[]}
  */
@@ -6071,7 +6071,7 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
 
     if (!response.ok) {
         const errorBody = await response.text();
-        // SillyBunny: bodies that are not JSON (proxy pages, plain text) used to fail without any message.
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) still get an error message.
         if (!tryParseStreamingError(response, errorBody)) {
             showRequestError({ title: 'Chat Completion API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
         }
@@ -7466,7 +7466,7 @@ function loadOpenAISettings(data, settings) {
     scheduleOpenAIUiRefresh();
 }
 
-// SillyBunny: each row shows one subtitle, the description of its current mode; the recommendation beside it was a second line.
+// SillyBunny: each row shows one subtitle, the description of its current mode, so the recommendation is not a second line.
 function updateBindPresetToConnectionHelp() {
     const copy = document.getElementById('bind_preset_to_connection_copy');
     if (!(copy instanceof HTMLElement)) {
@@ -9610,7 +9610,7 @@ async function onConnectButtonClick(e) {
         }
 
         if (!secret_state[config.key] && (!config.proxy || !oai_settings.reverse_proxy) && !config.keyless) {
-            // SillyBunny: an empty key used to do nothing at all. Only a real click gets an answer, because auto-connect
+            // SillyBunny: an empty key gets an answer, but only for a real click, because auto-connect
             // and profile changes click this button through jQuery's trigger(), which has no originalEvent. A keyboard
             // click made with element.click() has one but is not trusted, so isTrusted would silence it.
             if (e.originalEvent) {

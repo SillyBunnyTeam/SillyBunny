@@ -109,7 +109,7 @@ import { chat_completion_sources, oai_settings } from './openai.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
 import { ToolManager } from './tool-calling.js';
 import { createGroupTurnRouting, getRoutedReplyStatus } from './group-turn-routing.js';
-// SillyBunny: group editor controller (Step 4 - explicit save)
+// SillyBunny: group editor controller (explicit save)
 import {
     beginGroupEditorLoad,
     openGroupEditorSession,
@@ -163,7 +163,7 @@ let groupRoundRemaining = [];
 let fav_grp_checked = false;
 let openGroupId = null;
 
-// SillyBunny: the group editor's unsaved draft (Step 4). While the explicit-save
+// SillyBunny: the group editor's unsaved draft. While the explicit-save
 // editor owns a group, every editable field is written here and never into
 // groups[]; Save copies the draft over the live group and calls editGroup().
 // EDITABLE_KEYS is the whole surface: it is what the session baselines, what the
@@ -204,7 +204,7 @@ export function canRestoreGroupAvatar() {
 }
 
 // ============================================================
-// Editor draft (Step 4)
+// Editor draft
 // ============================================================
 
 /** @param {any} value */
@@ -259,8 +259,8 @@ function resetEditorDraft(group) {
  * True when the editor owns the fields on screen, which covers both an edit
  * session for a persisted group and a create session that has no group yet. In
  * create mode `openGroupId` stays null for the whole session, so every handler
- * that used the old `if (!openGroupId) return` guard must ask this instead or
- * its edits are silently dropped.
+ * that tests `if (!openGroupId) return` must ask this instead, or its edits
+ * are silently dropped.
  * @returns {boolean}
  */
 function isGroupEditorActive() {
@@ -336,7 +336,7 @@ function updateGroupHeaderTitle(name) {
 /**
  * Apply one member action to a group-like object. Pure: it never touches the
  * DOM or the live group, so the same code drives the editor draft and the
- * programmatic path (slash commands, extensions) that still writes straight
+ * programmatic path (slash commands, extensions), which writes straight
  * through.
  * @param {Group|GroupDraft} groupLike
  * @param {'add'|'remove'|'enable'|'disable'} action
@@ -1796,9 +1796,9 @@ export function getGroupBlock(group) {
 function updateGroupAvatar(group) {
     $('#group_avatar_preview').empty().append(getGroupAvatar(group));
 
-    // SillyBunny: a create-mode draft has no id, and the old loose `data('id') == group.id`
-    // matched the hidden #group_list_template row (undefined == null), stripping its
-    // .avatar so every later getGroupBlock() clone rendered the blank placeholder.
+    // SillyBunny: a create-mode draft has no id, and a loose `data('id') == group.id`
+    // would match the hidden #group_list_template row (undefined == null), and strip its
+    // .avatar, so every later getGroupBlock() clone rendered the blank placeholder.
     const groupId = group?.id === null || group?.id === undefined ? '' : String(group.id);
     if (groupId) {
         $('#rm_print_characters_block .group_select').each(function () {
@@ -2404,8 +2404,8 @@ function activateNaturalOrder(members, input, lastMessage, allowSelfResponses, i
  * @param {string} id Group ID to delete
  * @returns {Promise<boolean>} Whether the group was deleted
  */
-// SillyBunny: return deletion success for id-based row actions while preserving
-// the legacy side-effect sequence
+// SillyBunny: return deletion success for id-based row actions while keeping
+// the side-effect sequence of the upstream flow
 async function deleteGroup(id) {
     const group = groups.find((x) => x.id === id);
 
@@ -2638,9 +2638,8 @@ async function onGroupNameInput() {
 }
 
 /**
- * Renames the open group. The legacy flow showed an input popup; the editor's
- * header title is the rename affordance now, so this focuses it and leaves the
- * name as an ordinary unsaved edit.
+ * Renames the open group. The editor's header title is the rename affordance,
+ * so this focuses it and leaves the name as an ordinary unsaved edit.
  */
 async function renameOpenGroup() {
     if (menu_type !== 'group_edit' || !openGroupId) {
@@ -2676,7 +2675,7 @@ async function renameOpenGroup() {
 }
 
 // SillyBunny: the group editor controller is initialised from this module's own
-// ready handler, so it no longer needs a global bridge (Step 4).
+// ready handler, so it needs no global bridge.
 
 /**
  * Checks if a character with the given avatar ID is a member of the group.
@@ -4123,8 +4122,8 @@ async function createGroup(receipt = captureGroupEditorSave()) {
         hideMutedSprites: Boolean(draft.hideMutedSprites),
         activation_strategy: activationStrategy,
         generation_mode: generationMode,
-        // SillyBunny: the join templates and per-member model overrides used to
-        // be dropped here even though the backend accepts them (Step 4 fix).
+        // SillyBunny: the join templates and per-member model overrides are copied here
+        // because the backend accepts them.
         generation_mode_join_prefix: String(draft.generation_mode_join_prefix ?? ''),
         generation_mode_join_suffix: String(draft.generation_mode_join_suffix ?? ''),
         disabled_members: [...(draft.disabled_members ?? [])],
@@ -4539,8 +4538,8 @@ function doCurMemberListPopout() {
 
 jQuery(() => {
     initGroupSpeakerControls();
-    // SillyBunny: the group editor controller lives with the group state it edits
-    // (Step 4). It owns the session, the draft store and the chrome, and calls
+    // SillyBunny: the group editor controller lives with the group state it edits.
+    // It owns the session, the draft store and the chrome, and calls
     // back into this module for anything that has to touch groups[].
     initGroupEditor({
         captureSnapshot: captureEditorSnapshot,
@@ -4623,7 +4622,7 @@ jQuery(() => {
     eventSource.on(event_types.GROUP_UPDATED, () => groupTurnRouting.refresh());
     // SillyBunny: the More menu's "Rename Group" entry asks the editor's header
     // title to start an inline rename, instead of reaching into group state from
-    // world-info.js (Step 4).
+    // world-info.js.
     document.addEventListener('sb-group-rename-requested', () => {
         void renameOpenGroup();
     });

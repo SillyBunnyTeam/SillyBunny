@@ -62,7 +62,7 @@ function carryLinks(title, source) {
 
 /**
  * A group that only appears while a Chat Completions backend is off keeps hiding its rows through the upstream attribute that
- * the old wrapper carried.
+ * the upstream wrapper carries.
  * @param {HTMLElement} row
  * @param {Element|null|undefined} wrapper
  */
@@ -233,7 +233,7 @@ function presentAdvancedFormatting(formatting) {
     const file = document.getElementById('af_master_import_file');
     if (file instanceof HTMLElement) section.append(file);
 
-    // What is left of the old heading block and its button bar. The upstream title goes, so that no pass builds a header from it again.
+    // The upstream heading block and its button bar are retired below. The upstream title goes, so that no pass builds a header from it again.
     legacyTitle?.remove();
     for (const old of formatting.querySelectorAll(':scope > .sb-settings-flat-header, :scope > .flex-container.alignItemsBaseline')) retire(old);
 }
@@ -693,7 +693,7 @@ function presentPrefill(root) {
         if (!(input instanceof HTMLTextAreaElement && caption && container instanceof HTMLElement && container !== body)) continue;
         const area = createTextAreaField({ input, label: textOf(caption) || caption.dataset.i18n || '', field: name, rows: 3, expandLabel: t`Expand the Editor` });
         carry(area.row.querySelector('.ds-row-label'), caption);
-        // The old bar held only the caption and the maximize icon that the field's own Expand button replaces.
+        // The upstream bar holds only the caption and the maximize icon, which the field's own Expand button replaces.
         caption.parentElement?.remove();
         container.before(area.row);
         if (!container.querySelector('textarea')) retire(container);

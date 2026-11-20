@@ -32,7 +32,7 @@ function computeView(ctx, state, ui, model) {
 /**
  * Rows and sidebar locations for the current search, Filters and location. When Filters hide the chosen
  * location, `fallbackModel` is the model with All Chats chosen instead, and the rows already follow it; the
- * caller commits it. Rows still loading or a scan still running can leave a location empty for now, so only
+ * caller commits it. Rows still loading or a scan still running can leave a location empty, so only
  * complete data may drop it.
  */
 export function deriveView(ctx, state, ui) {

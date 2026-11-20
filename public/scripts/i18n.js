@@ -44,12 +44,12 @@ function safeRemoveLocalStorageItem(key) {
 }
 
 /**
- * Array of translations keys if they should be tracked - if not tracked then null.
+ * Array of translations keys if they should be tracked, or null if they are not tracked.
  * @type {Set<string>|null}
  *
  * Don't change to let/const! It will break module loading. script.js suspends
  * module evaluation on a top-level await for the window load event
- * (script.js:451), so this file's body may not have run yet when a DOM-ready
+ * (see the top-level await in script.js), so this file's body may not have run yet when a DOM-ready
  * handler calls t`...`; a let/const binding is still in its temporal dead zone
  * then and throws, aborting the caller. `localeData` above is var for the same
  * reason.

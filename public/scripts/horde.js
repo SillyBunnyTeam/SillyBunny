@@ -383,8 +383,8 @@ function getHordeModelTemplate(option) {
         return option.text;
     }
 
-    // SillyBunny: catalogue fields are untrusted. They are reduced to text in an inert document (the old detached
-    // element loaded images and ran their handlers) and escaped when interpolated, and only http(s) addresses become links.
+    // SillyBunny: catalogue fields are untrusted. They are reduced to text in an inert document (a detached
+    // element would load images and run their handlers) and escaped when interpolated, and only http(s) addresses become links.
     // how much do we trust the metadata from the models repo? about this much
     const displayName = plainText(model.display_name || model.name).replace(/.*\//g, '');
     const description = plainText(model.description);
@@ -475,7 +475,7 @@ export function initHorde() {
 
     // Not needed on mobile
     if (!isMobile()) {
-        // SillyBunny (feat/v1.9.0-ui-overhaul): `#rm_api_block` is emptied by the Connections panel,
+        // SillyBunny: `#rm_api_block` is emptied by the Connections panel,
         // so the dropdown renders in the panel when it exists and in the block otherwise.
         const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
         $('#horde_model').select2({

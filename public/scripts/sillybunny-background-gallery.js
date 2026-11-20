@@ -376,7 +376,7 @@ function draw() {
     if (folders.length) container.setAttribute('aria-label', t`Background`);
     else container.removeAttribute('aria-label');
     if (!folders.length) {
-        // Without folders the gallery is the flat grid it always was.
+        // Without folders the gallery is a flat grid.
         for (const file of model.unfiled) container.append(makeCell(file));
     } else {
         for (const section of model.sections) container.append(buildSection(section, searching));
@@ -449,7 +449,7 @@ function buildHeader() {
         add.querySelector('span')?.remove();
         add.setAttribute('aria-label', t`Add Background`);
         add.title = label;
-        // The label no longer has text, so the file input it opens takes its name from here.
+        // The label has no text, so the file input it opens takes its name from here.
         document.getElementById('add_bg_button')?.setAttribute('aria-label', t`Add Background`);
         controls.prepend(add);
     }

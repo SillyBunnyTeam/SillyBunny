@@ -975,7 +975,7 @@ async function deleteAllConnectionProfiles() {
     toastr.success(t`Deleted ${profilesToDelete.length} connection profile(s)`); // SillyBunny: no trailing period, by DESIGN.md
 }
 
-// SillyBunny: makeFancyProfile was replaced by formatProfileCommandValue (id-keyed rows).
+// SillyBunny: formatProfileCommandValue formats a profile's command value for the id-keyed rows.
 /**
  * Formats one recorded command value of the connection profile for display.
  * @param {ConnectionProfile} profile Connection profile
@@ -1208,7 +1208,7 @@ function renderConnectionProfiles(profiles) {
  *
  * The same summary the inline card used, without the card: the modal supplies the frame, the
  * heading, and the scroll region, so the markup here is only the list of settings and the omitted
- * ones. Nothing is cached -- a profile can be edited while the modal is up, and the summary is
+ * ones. Nothing is cached, because a profile can be edited while the modal is up and the summary is
  * cheap to build.
  *
  * @param {object} profile
@@ -1929,11 +1929,10 @@ export async function init() {
     /**
      * Opens the selected profile's summary as a modal.
      *
-     * The summary used to expand in place under the picker, which pushed every control below it down
-     * the page and left it there: the panel read as though the detail were one more setting, and the
-     * list it belongs to had moved off screen. A modal keeps the picker where it is and dims the rest
-     * while the summary is read, which is also how every other profile action (create, edit, rename,
-     * delete) already presents itself.
+     * An in-place expansion under the picker would push every control below it down the page, so the
+     * panel would read as though the detail were one more setting and the list it belongs to would move
+     * off screen. A modal keeps the picker where it is and dims the rest while the summary is read,
+     * which is also how every other profile action (create, edit, rename, delete) presents itself.
      */
     async function showProfileDetails() {
         const selectedProfile = extension_settings.connectionManager.selectedProfile;

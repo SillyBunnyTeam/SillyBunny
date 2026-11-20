@@ -411,7 +411,7 @@ class PromptManager {
         // Active editor pane area (`edit` / `inspect` / `preview`) when visible.
         this.activePopupArea = '';
 
-        // SillyBunny: set of marker identifiers whose accordion groups are currently collapsed. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: set of marker identifiers whose accordion groups are collapsed.
         this.collapsedMarkers = new Set(
             (() => { try { return JSON.parse(localStorage.getItem('sb-pm-collapsed-markers') ?? '[]'); } catch (_) { return []; } })(),
         );
@@ -635,7 +635,7 @@ class PromptManager {
         }
     }
 
-    // SillyBunny: mobile context menu for the ⋮ kebab button — surfaces edit/inspect/detach/send actions on touch — feat/v1.9.0-ui-overhaul
+    // SillyBunny: mobile context menu for the ⋮ kebab button. It surfaces the edit, inspect, detach and send actions on touch.
     showKebabMenu(anchorEl, identifier) {
         this.closeKebabMenu?.();
 
@@ -842,8 +842,8 @@ class PromptManager {
 
             const promptID = event.currentTarget?.dataset?.pmIdentifier;
 
-            // SillyBunny: accordion retract — clicking the already-selected prompt closes
-            // the editor instead of reopening it. — feat/v1.9.0-ui-overhaul
+            // SillyBunny: accordion retract: clicking the already-selected prompt closes
+            // the editor instead of reopening it.
             if (promptID && promptID === this.selectedPromptId && this.isPopupVisible()) {
                 const closeAndClear = () => {
                     this.hidePopup();
@@ -1288,7 +1288,7 @@ class PromptManager {
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_close_button').addEventListener('click', closeAndClearPopup);
         // SillyBunny: preview mode has its own close button and field listeners.
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_preview_close_button').addEventListener('click', closeAndClearPopup);
-        // SillyBunny: mobile slide-in back button — returns to the list view on narrow
+        // SillyBunny: mobile slide-in back button returns to the list view on narrow
         // viewports by calling the same closeAndClearPopup path, which triggers
         // syncEditorPaneState() and removes .sb-workspace-mobile-detail from the workspace.
         this.containerElement?.querySelector(`.${this.configuration.prefix}prompt_manager_back_button`)
@@ -1299,8 +1299,8 @@ class PromptManager {
         this.setupPreviewListeners();
         closeAndClearPopup();
 
-        // SillyBunny: accordion toggle — clicking .pm-accordion-toggle collapses/expands
-        // a marker group without a full re-render; persists state to localStorage. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: accordion toggle: clicking .pm-accordion-toggle collapses or expands
+        // a marker group without a full re-render, and saves the state to localStorage.
         this.containerElement?.addEventListener('click', (event) => {
             const toggle = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-accordion-toggle') : null);
             if (!toggle) return;
@@ -1324,7 +1324,7 @@ class PromptManager {
             toggle.click();
         });
 
-        // SillyBunny: mobile kebab ⋮ — builds a transient context menu for touch users who can't hover — feat/v1.9.0-ui-overhaul
+        // SillyBunny: mobile kebab ⋮ builds a transient context menu for touch users who cannot hover.
         this.containerElement?.addEventListener('click', (event) => {
             const kebab = event.target.closest('.pm-row-kebab');
             if (!kebab) return;
@@ -1334,14 +1334,14 @@ class PromptManager {
             this.showKebabMenu(kebab, identifier);
         });
 
-        // SillyBunny: JS-side touch detection fallback — media query `hover:none` is unreliable
-        // in DevTools emulation; this adds .sb-touch-device so CSS can target it independently. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: JS-side touch detection fallback: the media query `hover:none` is unreliable
+        // in DevTools emulation, so this adds .sb-touch-device for CSS to target independently.
         if (navigator.maxTouchPoints > 0) {
             this.containerElement?.classList.add('sb-touch-device');
         }
 
-        // SillyBunny: trigger chip toggle — syncs chip aria-checked + hidden <select> so that
-        // the existing handleSavePrompt path reading selectedOptions keeps working. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: trigger chip toggle syncs chip aria-checked and the hidden <select>, so that
+        // handleSavePrompt can keep reading selectedOptions.
         document.getElementById(this.configuration.prefix + 'prompt_manager_popup_trigger_chips')
             ?.addEventListener('click', (event) => {
                 const chip = /** @type {HTMLElement} */(event.target instanceof Element ? event.target.closest('.pm-trigger-chip') : null);
@@ -1397,7 +1397,7 @@ class PromptManager {
             divider.addEventListener('pointerup', onUp);
         });
 
-        // SillyBunny: restore persisted list pane width on init. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: restore the persisted list pane width on init.
         const savedWidth = (() => { try { return localStorage.getItem('sb-pm-list-width'); } catch (_) { return null; } })();
         if (savedWidth && this.containerElement instanceof HTMLElement) {
             this.containerElement.style.setProperty('--pm-list-width', savedWidth);
@@ -2063,7 +2063,7 @@ class PromptManager {
             option.selected = Array.isArray(prompt.injection_trigger) && prompt.injection_trigger.includes(option.value);
         });
         injectionTriggerField.dispatchEvent(new Event('change', { bubbles: true }));
-        // SillyBunny: sync chip state to match the hidden select after loading. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: sync chip state to match the hidden select after loading.
         document.querySelectorAll('#completion_prompt_manager_popup_trigger_chips .pm-trigger-chip').forEach(chip => {
             const active = Array.isArray(prompt.injection_trigger) && prompt.injection_trigger.includes(chip.dataset.triggerValue);
             chip.setAttribute('aria-checked', active ? 'true' : 'false');
@@ -2240,7 +2240,7 @@ class PromptManager {
         injectionDepthField.value = DEFAULT_DEPTH.toString();
         injectionOrderField.value = DEFAULT_ORDER.toString();
         injectionTriggerField.value = '';
-        // SillyBunny: reset chips when the edit form is cleared. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: reset chips when the edit form is cleared.
         document.querySelectorAll('#completion_prompt_manager_popup_trigger_chips .pm-trigger-chip').forEach(chip => {
             chip.setAttribute('aria-checked', 'false');
         });
@@ -2563,8 +2563,8 @@ class PromptManager {
             return false;
         }
 
-        // SillyBunny: pre-pass — build per-marker group membership so markers can render
-        // chevron, active count, and lock state without a second traversal. — feat/v1.9.0-ui-overhaul
+        // SillyBunny: pre-pass builds per-marker group membership so markers can render
+        // chevron, active count, and lock state without a second traversal.
         const allPrompts = this.getPromptsForCharacter(this.activeCharacter);
         /** @type {Map<string, string[]>} markerId → child identifiers */
         const markerGroups = new Map();
@@ -2587,7 +2587,7 @@ class PromptManager {
             const draggableClass = `${prefix}prompt_manager_prompt_draggable`;
             const markerClass = prompt.marker ? `${prefix}prompt_manager_marker` : '';
 
-            // SillyBunny: skip children of collapsed marker groups — accordion hide. — feat/v1.9.0-ui-overhaul
+            // SillyBunny: skip children of collapsed marker groups (accordion hide).
             if (!prompt.marker) {
                 const isChildCollapsed = [...markerGroups.entries()].some(([mid, children]) =>
                     children.includes(prompt.identifier) && this.collapsedMarkers.has(mid),
@@ -2660,13 +2660,13 @@ class PromptManager {
             const importantClass = isImportantPrompt ? `${prefix}prompt_manager_important` : '';
             const selectedClass = this.selectedPromptId === prompt.identifier && this.activePopupArea ? `${prefix}prompt_manager_prompt_selected` : '';
             const iconLookup = prompt.role === 'system' && (prompt.marker || prompt.system_prompt) ? '' : prompt.role;
-            // SillyBunny: type class drives the left accent bar colour in the new row layout — feat/v1.9.0-ui-overhaul
+            // SillyBunny: the type class drives the colour of the left accent bar.
             const typeRowClass = isMarkerPrompt ? 'pm-row-type-marker'
                 : isSystemPrompt || isImportantPrompt ? 'pm-row-type-system'
                     : isInjectionPrompt ? 'pm-row-type-injection'
                         : 'pm-row-type-user';
 
-            // SillyBunny: build subtitle chip HTML — replaces icon columns that ate name space — feat/v1.9.0-ui-overhaul
+            // SillyBunny: build the subtitle chip HTML. Chips take less room than icon columns, so the name keeps its space.
             const typeChipLabel = isMarkerPrompt ? 'marker'
                 : isSystemPrompt ? 'system'
                     : isImportantPrompt ? 'required'
@@ -2679,15 +2679,15 @@ class PromptManager {
                             : 'pm-chip-user';
             const typeChipHtml = typeChipLabel
                 ? `<span class="pm-row-chip ${typeChipClass}">${typeChipLabel}</span>` : '';
-            // SillyBunny: only show role chip when role is non-default (user/assistant) — system is already implied by the type chip — feat/v1.9.0-ui-overhaul
+            // SillyBunny: show the role chip only when the role is not the default (user or assistant), because the type chip already implies system.
             const roleChipHtml = iconLookup && prompt.role !== 'system'
                 ? `<span class="pm-row-chip pm-chip-role pm-chip-role-${escapeHtml(prompt.role || 'system')}">${escapeHtml(prompt.role || 'system')}</span>` : '';
             const depthChipHtml = isInjectionPrompt
                 ? `<span class="pm-row-chip pm-chip-depth">↓${escapeHtml((prompt.injection_depth ?? 0).toString())}</span>` : '';
             const subtitleChipHtml = typeChipHtml + roleChipHtml + depthChipHtml;
 
-            // SillyBunny: accordion state — marker rows show a chevron, active count, and
-            // toggle-disabled lock; non-marker rows are skipped when their group is collapsed. — feat/v1.9.0-ui-overhaul
+            // SillyBunny: accordion state: marker rows show a chevron, active count, and
+            // toggle-disabled lock; non-marker rows are skipped when their group is collapsed.
             let accordionHtml = '';
             if (isMarkerPrompt) {
                 const groupChildren = markerGroups.get(prompt.identifier) ?? [];

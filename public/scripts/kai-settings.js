@@ -277,7 +277,7 @@ export async function generateKoboldWithStreaming(generate_data, signal) {
         signal: signal,
     });
     if (!response.ok) {
-        // SillyBunny: bodies that are not JSON (proxy pages, plain text) used to fail without any message.
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) still get an error message.
         const errorBody = await response.text();
         if (!tryParseStreamingError(response, errorBody)) {
             showRequestError({ title: 'KoboldAI API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });

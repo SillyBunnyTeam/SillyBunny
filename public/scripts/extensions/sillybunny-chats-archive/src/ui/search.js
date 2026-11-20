@@ -19,7 +19,7 @@ export function createSearchField(ctx) {
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-label', tr(ctx, 'Search Indexed Chats'));
     input.placeholder = tr(ctx, 'Search…');
-    // The mention hint no longer fits a phone's placeholder; it stays as the field's description.
+    // The mention hint does not fit a phone's placeholder, so it is the field's description.
     input.setAttribute('aria-description', tr(ctx, 'Type to search chats. Mention character names with @.'));
     input.autocomplete = 'off';
     input.enterKeyHint = 'search';
