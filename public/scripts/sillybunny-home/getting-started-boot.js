@@ -2,19 +2,13 @@ import { characters, chat, getCurrentChatId, this_chid } from '../../script.js';
 import { eventSource, event_types } from '../events.js';
 import { selected_group } from '../group-chats.js';
 import { fixToastrForDialogs } from '../popup.js';
+import { CONVERSATION_MESSAGE_SENT_EVENT, CONVERSATION_THREAD_OPENED_EVENT } from '../sillybunny-conversation/constants.js';
 import { accountStorage } from '../util/AccountStorage.js';
 import { createGettingStartedState, getGettingStartedSteps, setSharedGettingStartedState } from './getting-started.js';
 import { createGettingStartedSignals, isGeneratedReply, isUserMessage } from './getting-started-signals.js';
 import { GETTING_STARTED_STORAGE_KEY, loadGettingStartedSnapshot, serializeGettingStartedSnapshot } from './getting-started-storage.js';
 import { planCompletionToast, showCompletionToast } from './getting-started-toast.js';
 import { openFromHomeTile, openGettingStarted } from './windows.js';
-
-/**
- * Conversation mode sends no `MESSAGE_SENT` and opens no chat of the app, so it announces itself on `window`
- * (attachments.js for a message, chrome.js for a thread). Keep the names in step with the ones it dispatches.
- */
-export const CONVERSATION_MESSAGE_SENT_EVENT = 'sb:conversation-user-message-sent';
-export const CONVERSATION_THREAD_OPENED_EVENT = 'sb:conversation-thread-opened';
 
 const steps = getGettingStartedSteps();
 const stepIds = steps.map(step => step.id);

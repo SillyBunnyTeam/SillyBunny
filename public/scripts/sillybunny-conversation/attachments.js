@@ -8,6 +8,7 @@ import {
     CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS,
     CONVERSATION_ATTACHMENT_MAX_BYTES,
     CONVERSATION_ATTACHMENT_MAX_FILES,
+    CONVERSATION_MESSAGE_SENT_EVENT,
     DEFAULT_SETTINGS,
     GROUP_MAX_CONCURRENT_SPEAKERS,
     GROUP_SECOND_REPLY_CHANCE,
@@ -873,7 +874,7 @@ export async function submitConversationInput() {
         updateLastUserActivity(avatar, { branchId, groupId, personaId });
         scheduleInterfaceRefresh({ syncControls: false });
         // Conversation mode has no MESSAGE_SENT, so Home hears about the first message here (Getting Started, step 4).
-        window.dispatchEvent(new CustomEvent('sb:conversation-user-message-sent'));
+        window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_SENT_EVENT));
 
         const queuedText = text || attachmentContextParts.join('\n') || 'Sent an attachment.';
         const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });

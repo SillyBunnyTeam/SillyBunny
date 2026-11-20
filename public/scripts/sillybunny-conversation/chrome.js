@@ -8,7 +8,7 @@ import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { CHROME_IDS, CONVERSATION_THREAD_OPENED_EVENT, DEFAULT_BRANCH_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
     createConversationBranchForAvatar,
@@ -1287,7 +1287,7 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
     }
 
     // Every way into a thread ends here, and Conversation opens no chat of the app, so Home hears about it from this event (Getting Started, step 3).
-    window.dispatchEvent(new CustomEvent('sb:conversation-thread-opened', { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
+    window.dispatchEvent(new CustomEvent(CONVERSATION_THREAD_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
 
     if (branchId) {
         setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
