@@ -38,6 +38,7 @@ The chat is the product's core, so its messages have their own pattern.
 - **Row types:** a profile row adds folders, favourites, and a ⋮ only when it has actions.
 - **List rows:** Deviation: with a grip a row has three controls in total, exceeding the boxed-list maximum of two, for consistency with the prompt list; there are never three trailing controls.
 - **Reordering:** Deviation: prompt rows still lack move menu items until the libadwaita TODO follow-up; their grip/keyboard reorder remains available.
+- **Prompt list:** The prompt editor replaces upstream's Prompt Manager list. The upstream list is still built, hidden, because code and extensions read it, so what an extension draws into it (Bunny Preset Tools' prompt sections, extra row buttons) does not show. This is an accepted compromise of the rebuilt editor (maintainer, 2026-11-20): do not show the upstream list again to bring that content back.
 
 ## Colours, Typography and Shapes
 
