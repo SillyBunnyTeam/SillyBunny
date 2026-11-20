@@ -137,6 +137,7 @@
         "lint": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js",
         "lint:fix": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js --fix",
         "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
+        "check:copy-placeholders": "node scripts/check-copy-placeholders.js",
         "agents:bump-template-versions": "node scripts/bump-agent-template-versions.js",
         "changelog:merged-prs": "node scripts/update-changelog-merged-prs.js",
         "version:bump": "node scripts/bump-version.js",
