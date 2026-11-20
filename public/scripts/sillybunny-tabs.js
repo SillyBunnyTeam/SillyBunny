@@ -807,7 +807,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'right:extensions': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/extensions-panel.css?v=20261118h', id: 'deferred-extensions-panel-css' },
+        { href: 'css/extensions-panel.css?v=20261120b', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [

@@ -273,13 +273,13 @@ input.extension_missing[type="checkbox"] {
 }
 
 .sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button:first-child {
-    border-start-start-radius: var(--sb-radius-button, 14px);
-    border-end-start-radius: var(--sb-radius-button, 14px);
+    border-start-start-radius: var(--sb-radius-button, 9px);
+    border-end-start-radius: var(--sb-radius-button, 9px);
 }
 
 .sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child > .menu_button:last-child {
-    border-start-end-radius: var(--sb-radius-button, 14px);
-    border-end-end-radius: var(--sb-radius-button, 14px);
+    border-start-end-radius: var(--sb-radius-button, 9px);
+    border-end-end-radius: var(--sb-radius-button, 9px);
 }
 
 @media screen and (max-width: 1100px) {
