@@ -518,7 +518,7 @@ input[type='checkbox']:focus-visible {
 /* Keep chat disclosures aligned with the shell's short, low-distance reveals. */
 .mes_reasoning_details[open] > :not(summary),
 #chat .mes_text .ooc_block[open] > .ooc_content {
-    animation: sb-chat-disclosure-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: sb-chat-disclosure-in var(--sb-duration-fast) var(--sb-ease-out-cubic) both;
     transform-origin: top;
 }
 
@@ -4764,11 +4764,11 @@ input[type="range"]::-webkit-slider-thumb {
 /* Backwards fill only: a held transform would leave stacking contexts that paint the text over the action popover. */
 #chat .mes.sb-message-editing .mes_text,
 #chat .mes.sb-message-editing .mes_edit_buttons {
-    animation: sb-message-edit-surface-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation: sb-message-edit-surface-in var(--sb-duration-fast) var(--sb-ease-out-cubic) backwards;
 }
 
 #chat .mes.sb-message-edit-restored .mes_text {
-    animation: sb-message-edit-surface-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation: sb-message-edit-surface-in var(--sb-duration-fast) var(--sb-ease-out-cubic) backwards;
 }
 
 @keyframes sb-message-edit-surface-in {
