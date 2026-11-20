@@ -5,8 +5,9 @@ import { test } from 'node:test';
 import { decode, encoderVersions } from '../lib/codec.js';
 import { runDerive, runProve } from '../lib/commands.js';
 import { fitToGrid } from '../lib/fit.js';
-import { parseRatio } from '../lib/manifest.js';
-import { samePixels } from '../lib/raster.js';
+import { frameBox, renderFrame } from '../lib/frame.js';
+import { parseRatio, readManifest } from '../lib/manifest.js';
+import { paste, samePixels } from '../lib/raster.js';
 import { fakeSha } from '../test-support/manifests.js';
 import { paint } from '../test-support/pictures.js';
 import { fixtureRepo, writeFixtureManifest } from '../test-support/repos.js';
@@ -130,3 +131,186 @@ for (const ratio of RATIOS) {
         assert.deepEqual(codes(await runProve({ root })), []);
     });
 }
+
+const GROUND = [30, 30, 90, 255];
+const SKIN = [240, 200, 180, 255];
+const COAT = [60, 160, 90, 255];
+const SHUT = [90, 40, 40, 255];
+const STATES = Object.freeze(['breath-c', 'breath-c-half', 'breath-b', 'breath-b-half']);
+
+/**
+ * A scene of two figures on a ground line, drawn on a master canvas for `ratio`. The figures stand at whole master
+ * pixels that are not on cell borders, and the second figure, which is drawn over the first, shares cells with it. A
+ * figure has four pictures: the pose c and the pose b, each with and without a shut eye row.
+ */
+function fittedScene(ratio) {
+    const { p, q } = parseRatio(ratio);
+    const at = (unit) => Math.floor((unit * p) / q) + 1;
+    const [width, height] = masterSize([20, 20], ratio);
+    const rects = { first: [at(3), at(2), at(9) - at(3), at(14) - at(2)], second: [at(8), at(4), at(13) - at(8), at(14) - at(4)] };
+    const colours = { first: SKIN, second: COAT };
+    const picture = (layer, state) => {
+        const [, , w, h] = rects[layer];
+        return paint(w, h, (x, y) => {
+            const lifted = state.startsWith('breath-b') && y === 0;
+            const shut = state.endsWith('-half') && y === 3;
+            return lifted ? CLEAR : shut ? SHUT : colours[layer];
+        });
+    };
+    const ground = paint(width, height, (x, y) => (y === height - 2 && x >= 1 ? GROUND : CLEAR));
+    const master = paint(width, height, () => CLEAR);
+    paste(master, ground, 0, 0);
+    for (const layer of ['first', 'second']) {
+        paste(master, picture(layer, 'breath-c'), rects[layer][0], rects[layer][1]);
+    }
+    return { master, ground, rects, picture };
+}
+
+/** What the player lays over the backdrop for one picture of each figure, at the boxes the derive recorded. */
+const composeShipped = (backdrop, layers) => {
+    const canvas = { ...backdrop, data: Buffer.from(backdrop.data) };
+    for (const { picture, box } of layers) {
+        paste(canvas, picture, box[0], box[1]);
+    }
+    return canvas;
+};
+
+/** A scratch checkout of the scene of `fittedScene`, whose layer boxes are still the placeholder that the derive replaces. */
+async function sceneRepo(t, ratio, { change = () => undefined } = {}) {
+    const { master, ground, rects, picture } = fittedScene(ratio);
+    const parsed = parseRatio(ratio);
+    const placedMaster = fitToGrid(master, parsed);
+    const framing = frameBox(placedMaster, { mode: 'subject', margin: 1 });
+    const grid = [framing.width, framing.height];
+    const files = {
+        'assets-src/art/master/duo/duo.png': master,
+        'assets-src/art/master/duo/duo--backdrop.png': ground,
+    };
+    const pictures = (layer, digit) => Object.fromEntries(STATES.map((state, at) => {
+        files[`assets-src/art/master/duo/duo--${layer}--${state}.png`] = picture(layer, state);
+        return [state, { master: `duo/duo--${layer}--${state}.png`, outputs: [output(`duo--${layer}--${state}`, String(digit + at))] }];
+    }));
+    const layers = { first: { box: [0, 0, 1, 1], pictures: pictures('first', 1) }, second: { box: [0, 0, 1, 1], pictures: pictures('second', 5) } };
+    const states = (layer) => ({ c: { base: `duo--${layer}--breath-c.png`, half: `duo--${layer}--breath-c-half.png` }, b: { base: `duo--${layer}--breath-b.png`, half: `duo--${layer}--breath-b-half.png` } });
+    files['assets-src/art/master/duo/duo--motion.json'] = {
+        format: 1,
+        kind: 'motion-frames',
+        recipe: 'duo-idle',
+        frames: {},
+        blink: { steps: [{ eyes: 'half', ms: 90 }], gapMs: { min: 3600, max: 5400 } },
+        breath: {
+            scene: 'duo',
+            grid: { cell: 1, width: master.width, height: master.height },
+            rhythm: { cycleSeconds: 3.5, breathsPerCycle: 2 },
+            poses: ['c', 'b'],
+            backdrop: 'duo--backdrop.png',
+            layers: ['first', 'second'].map((id, at) => ({ id, z: 3 + at, left: rects[id][0], top: rects[id][1], width: rects[id][2], height: rects[id][3], waist: 6, images: states(id) })),
+        },
+    };
+    const manifest = {
+        format: 1,
+        encoder: encoderVersions(),
+        assets: {
+            duo: {
+                type: 'scene',
+                key: 'home',
+                master: 'duo/duo.png',
+                ratio,
+                frame: { mode: 'subject', margin: 1 },
+                grid,
+                outputs: [output('duo', '0')],
+                backdrop: { master: 'duo/duo--backdrop.png', outputs: [output('duo--backdrop', '9')] },
+                layers,
+                compose: { pose: 'breath-c' },
+                motion: { master: 'duo/duo--motion.json', output: `${SHIP}/duo--breath.json`, cell: 2.5, sha256: fakeSha('a') },
+            },
+        },
+    };
+    change(files, manifest);
+    const root = await fixtureRepo(t, files);
+    writeFixtureManifest(root, manifest);
+    return { root, master, ground, rects, picture, parsed, placedMaster, framing };
+}
+
+for (const ratio of RATIOS) {
+    test(`a scene at the ratio ${ratio} ships layer pictures that, laid over the backdrop in any combination, give the fit of the whole frame`, async (t) => {
+        const { root, ground, rects, picture, parsed, placedMaster, framing } = await sceneRepo(t, ratio);
+
+        assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+        assert.deepEqual(codes(await runProve({ root })), []);
+
+        const recorded = readManifest(root).manifest.assets.duo;
+        const read = async (name) => decode(readFileSync(join(root, SHIP, `${name}@native.webp`)));
+        const backdrop = await read('duo--backdrop');
+        const shipped = Object.fromEntries(await Promise.all(['first', 'second'].map(async (layer) => [layer, Object.fromEntries(await Promise.all(STATES.map(async (state) => [state, await read(`duo--${layer}--${state}`)])))])));
+        for (const layer of ['first', 'second']) {
+            const { box } = recorded.layers[layer];
+            for (const state of STATES) {
+                assert.deepEqual([shipped[layer][state].width, shipped[layer][state].height], [box[2], box[3]], `${layer} ${state} has the size of its box`);
+            }
+        }
+        let combinations = 0;
+        for (const one of STATES) {
+            for (const two of STATES) {
+                const wholeFrame = fitToGrid(composeOnMaster(ground, rects, picture, { first: one, second: two }), parsed);
+                const expected = renderFrame(wholeFrame, framing);
+                const laid = composeShipped(backdrop, [{ picture: shipped.first[one], box: recorded.layers.first.box }, { picture: shipped.second[two], box: recorded.layers.second.box }]);
+                assert.ok(samePixels(laid, expected), `${one} and ${two}`);
+                combinations++;
+            }
+        }
+        assert.equal(combinations, 16);
+        assert.ok(samePixels(await read('duo'), renderFrame(placedMaster, framing)), 'the still is the fit of the master');
+
+        const description = JSON.parse(readFileSync(join(root, SHIP, 'duo--breath.json'), 'utf8'));
+        assert.deepEqual(description.layers.map(({ id, left, top, width, height }) => ({ id, box: [left, top, width, height] })), ['first', 'second'].map((id) => ({ id, box: recorded.layers[id].box })));
+    });
+}
+
+function composeOnMaster(ground, rects, picture, chosen) {
+    const canvas = { ...ground, data: Buffer.from(ground.data) };
+    for (const layer of ['first', 'second']) {
+        paste(canvas, picture(layer, chosen[layer]), rects[layer][0], rects[layer][1]);
+    }
+    return canvas;
+}
+
+test('a scene at a fit reports a layer box that the derive measured otherwise, and prove refuses it until derive --write records it', async (t) => {
+    const { root } = await sceneRepo(t, '3/2');
+
+    const dry = await runDerive({ root });
+    assert.deepEqual(dry.result.layerBoxesStale.map(({ layer }) => layer), ['first', 'second']);
+    const refused = codes(await runProve({ root }));
+    assert.deepEqual(refused.slice(0, 2), ['manifest-stale', 'manifest-stale']);
+    assert.deepEqual([...new Set(refused.slice(2))], ['output-missing']);
+
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    assert.equal('layerBoxesStale' in (await runDerive({ root })).result, false);
+    assert.deepEqual(codes(await runProve({ root })), []);
+});
+
+test('a scene at a fit refuses a player\'s own description, a layer that shows nothing of its own, and a picture of the wrong size', async (t) => {
+    const cases = [
+        ['motion-invalid', (files) => {
+            files['assets-src/art/master/duo/duo--motion.json'] = { scene: 'duo', grid: { width: 1, height: 1 }, layers: [] };
+        }],
+        ['layer-empty', (files, manifest) => {
+            const { first } = manifest.assets.duo.layers;
+            for (const name of STATES) {
+                files[first.pictures[name].master.replace(/^/, 'assets-src/art/master/')] = paint(files['assets-src/art/master/duo/duo--first--breath-c.png'].width, files['assets-src/art/master/duo/duo--first--breath-c.png'].height, () => CLEAR);
+            }
+            files['assets-src/art/master/duo/duo.png'] = paint(files['assets-src/art/master/duo/duo.png'].width, files['assets-src/art/master/duo/duo.png'].height, () => CLEAR);
+            paste(files['assets-src/art/master/duo/duo.png'], files['assets-src/art/master/duo/duo--backdrop.png'], 0, 0);
+            const second = files['assets-src/art/master/duo/duo--second--breath-c.png'];
+            const run = files['assets-src/art/master/duo/duo--motion.json'];
+            paste(files['assets-src/art/master/duo/duo.png'], second, run.breath.layers[1].left, run.breath.layers[1].top);
+        }],
+        ['grid-mismatch', (files) => {
+            files['assets-src/art/master/duo/duo--second--breath-b.png'] = paint(3, 3, () => SKIN);
+        }],
+    ];
+    for (const [code, change] of cases) {
+        const { root } = await sceneRepo(t, '3/2', { change });
+        assert.deepEqual(codes(await runDerive({ root, write: true })), [code]);
+    }
+});

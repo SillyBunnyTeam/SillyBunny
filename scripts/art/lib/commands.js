@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { checkArt } from './check.js';
 import { encoderMismatches } from './codec.js';
-import { deriveAsset, isDerived } from './derive.js';
+import { deriveAsset, isDerived, staleLayerBoxes } from './derive.js';
 import { applyBump, keyProblems, planBump } from './keys.js';
 import { applyManaged, managedProblems, planManaged } from './managed.js';
 import { MANIFEST_PATH, mastersOf, outputFile, outputsOf, readManifest } from './manifest.js';
@@ -161,6 +161,7 @@ export async function runDerive(options) {
     const problems = [];
     const changed = [];
     const recordedStale = [];
+    const boxesStale = [];
     let outputs = 0;
     for (const [id, asset] of Object.entries(manifest.assets)) {
         if ((only && !only.includes(id)) || !isDerived(asset)) {
@@ -176,6 +177,7 @@ export async function runDerive(options) {
             problems.push({ asset: id, ...error.toJSON() });
             continue;
         }
+        boxesStale.push(...staleLayerBoxes(asset, files).map((stale) => ({ asset: id, ...stale })));
         for (const file of files) {
             outputs++;
             const path = outputFile(root, file.path);
@@ -190,13 +192,16 @@ export async function runDerive(options) {
     }
     const report = (entries) => entries.map(({ asset, path, before, after }) => ({ asset, path, before, after }));
     if (problems.length > 0 || !write) {
-        return finish('derive', { write, summary: { outputs, changed: changed.length }, changed: report(changed), manifestStale: recordedStale.map(({ path }) => path) }, problems);
+        return finish('derive', { write, summary: { outputs, changed: changed.length }, changed: report(changed), manifestStale: recordedStale.map(({ path }) => path), ...(boxesStale.length > 0 ? { layerBoxesStale: boxesStale } : {}) }, problems);
     }
     for (const { path, bytes } of changed) {
         writeAtomically(outputFile(root, path), bytes);
     }
     for (const { asset, path, sha256: digest } of recordedStale) {
         setRecordedSha(manifest.assets[asset], path, digest);
+    }
+    for (const { asset, layer, box } of boxesStale) {
+        manifest.assets[asset].layers[layer].box = box;
     }
     const manifestChanged = writeManifest(join(root, manifestPath), manifest);
     return finish('derive', {

@@ -9,6 +9,7 @@ import { buildPlayerDescription, isRunDescription } from './motion.js';
 import { placementOf } from './placement.js';
 import { ArtProblem } from './problem.js';
 import { createRaster, hasBinaryAlpha, isOpaque, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
+import { fitScene } from './scene-fit.js';
 
 /**
  * A file as the derive makes it. A `picture` or an `ico` may be compared by its decoded pixels on a platform whose
@@ -131,7 +132,7 @@ async function deriveScene(context, asset) {
     const { id } = context;
     const { p, q } = parseRatio(asset.ratio);
     if (p !== q) {
-        throw new ArtProblem('scene-ratio', `${id} is a scene at a ratio of ${asset.ratio}; a scene is derived at ratio 1 only.`, { asset: id });
+        return deriveFittedScene(context, asset);
     }
     const base = await readMaster(context, asset.master);
     const box = frameBox(base, asset.frame);
@@ -170,6 +171,86 @@ async function deriveScene(context, asset) {
     }
     files.push(await copyMotion(context, asset));
     return files;
+}
+
+/**
+ * A scene at a ratio above 1. Its layers are measured on the placement grid, not read from the manifest: each layer's
+ * `box` is where `fitScene` finds the layer's pictures, so the manifest's box is only a record of it. The files carry
+ * `layerBoxes`, which `derive --write` records and `prove` compares.
+ * @returns {Promise<DerivedFile[] & { layerBoxes: Record<string, number[]> }>}
+ */
+async function deriveFittedScene(context, asset) {
+    const { id } = context;
+    const place = placementOf(context, asset);
+    const run = await readRunOf(context, asset);
+    const master = await readMaster(context, asset.master);
+    let backdrop = null;
+    if (asset.backdrop) {
+        backdrop = await readMaster(context, asset.backdrop.master);
+        if (backdrop.width !== master.width || backdrop.height !== master.height) {
+            throw new ArtProblem('backdrop-size', `The backdrop is ${backdrop.width}x${backdrop.height}, but the scene master is ${master.width}x${master.height}.`, { asset: id });
+        }
+    }
+    const layers = [];
+    for (const [layerId, layer] of Object.entries(asset.layers)) {
+        const placed = run.breath.layers.find((candidate) => candidate.id === layerId);
+        if (!placed || !['left', 'top', 'width', 'height'].every((key) => Number.isInteger(placed[key]))) {
+            throw new ArtProblem('motion-mismatch', `${asset.motion.master}: the run does not place the layer ${layerId} at whole pixels of the scene's master.`, { asset: id, path: asset.motion.master });
+        }
+        if (placed.left < 0 || placed.top < 0 || placed.left + placed.width > master.width || placed.top + placed.height > master.height) {
+            throw new ArtProblem('layer-box', `The layer ${layerId} reaches past the scene's master.`, { asset: id });
+        }
+        if (!layer.pictures[asset.compose.pose]) {
+            throw new ArtProblem('composition-mismatch', `Layer ${layerId} has no "${asset.compose.pose}" picture to compose the still from.`, { asset: id });
+        }
+        const pictures = {};
+        for (const [name, picture] of Object.entries(layer.pictures)) {
+            pictures[name] = checkGrid(context, await readMaster(context, picture.master), [placed.width, placed.height], `The picture ${name} of layer ${layerId}`);
+        }
+        layers.push({ id: layerId, z: placed.z, left: placed.left, top: placed.top, pictures });
+    }
+    // A stable sort, so layers of one z keep the order of the manifest.
+    layers.sort((one, other) => one.z - other.z);
+    const fitted = fitScene({ id, master, backdrop, layers, pose: asset.compose.pose, place, frame: asset.frame });
+    const files = await encodeOutputs(checkGrid(context, fitted.still, asset.grid, 'The scene'), asset.outputs);
+    if (asset.backdrop) {
+        files.push(...await encodeOutputs(fitted.backdrop, asset.backdrop.outputs));
+    }
+    const measured = structuredClone(asset);
+    for (const [layerId, layer] of Object.entries(asset.layers)) {
+        measured.layers[layerId].box = fitted.layers[layerId].box;
+        for (const [name, picture] of Object.entries(layer.pictures)) {
+            files.push(...await encodeOutputs(fitted.layers[layerId].pictures[name], picture.outputs));
+        }
+    }
+    files.push(await copyMotion(context, measured));
+    return Object.assign(files, { layerBoxes: Object.fromEntries(Object.entries(fitted.layers).map(([layerId, { box }]) => [layerId, box])) });
+}
+
+/** The layers of a scene at a fit whose recorded box is not the box the derive measured. */
+export function staleLayerBoxes(asset, files) {
+    return Object.entries(files.layerBoxes ?? {})
+        .filter(([layer, box]) => box.some((value, at) => value !== asset.layers[layer].box[at]))
+        .map(([layer, box]) => ({ layer, recorded: asset.layers[layer].box, box }));
+}
+
+/** The run's description of a fitted scene, which places each layer in the master's pixels. */
+async function readRunOf({ root, id }, asset) {
+    const { master } = asset.motion;
+    const path = masterFile(root, master);
+    if (!existsSync(path)) {
+        throw new ArtProblem('master-missing', `The motion description ${master} does not exist.`, { asset: id, path: master });
+    }
+    let run;
+    try {
+        run = JSON.parse(readFileSync(path, 'utf8'));
+    } catch (error) {
+        throw new ArtProblem('motion-invalid', `${master} is not JSON: ${error.message}`, { asset: id, path: master });
+    }
+    if (!isRunDescription(run) || run.kind !== 'motion-frames' || !Array.isArray(run.breath?.layers)) {
+        throw new ArtProblem('motion-invalid', `${master}: ${id} is a scene at the ratio ${asset.ratio}, so its layers are measured on the placement grid, and that needs a run's description of motion frames, which places each layer in the master's pixels.`, { asset: id, path: master });
+    }
+    return run;
 }
 
 /**

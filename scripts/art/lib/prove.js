@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { sameCardText } from './card.js';
 import { unlistedFiles } from './check.js';
 import { decode, encoderMismatches, encoderVersions } from './codec.js';
-import { deriveAsset, isDerived } from './derive.js';
+import { deriveAsset, isDerived, staleLayerBoxes } from './derive.js';
 import { readIco } from './ico.js';
 import { outputFile, outputsOf } from './manifest.js';
 import { ArtProblem } from './problem.js';
@@ -53,6 +53,9 @@ export async function proveArt(root, manifest, { only, pixels = false } = {}) {
             }
             problems.push({ asset: id, ...error.toJSON() });
             continue;
+        }
+        for (const { layer, recorded, box } of staleLayerBoxes(asset, files)) {
+            problems.push({ code: 'manifest-stale', asset: id, expected: box, actual: recorded, message: `The manifest records the box [${recorded.join(', ')}] for the layer ${layer}, but the derive measures [${box.join(', ')}] on the placement grid. Run derive --write.` });
         }
         const recorded = new Map(outputsOf(asset).map(({ path, sha256: digest }) => [path, digest]));
         for (const file of files) {
