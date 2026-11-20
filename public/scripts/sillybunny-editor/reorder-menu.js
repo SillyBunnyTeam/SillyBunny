@@ -381,7 +381,7 @@ export const UPSTREAM_SORTABLES = [
     },
     {
         selector: '#completion_prompt_manager_list',
-        options: { name: row => textOf(row, '.pm-row-primary'), key: row => row.dataset.pmIdentifier },
+        options: { name: row => textOf(row, '.completion_prompt_manager_prompt_name > :is(a, span[title]:not(.fa-solid))'), key: row => row.dataset.pmIdentifier },
     },
     {
         selector: '#regex_debugger_rules_global, #regex_debugger_rules_scoped, #regex_debugger_rules_preset',

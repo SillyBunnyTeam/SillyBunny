@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261120b">
+    <link rel="preload" as="style" href="style.css?v=20261120c">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -57,7 +57,7 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261120b">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261120c">
     <!-- SillyBunny: the key tracks fork edits to this sheet, which the service worker caches by the full URL. -->
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css?v=20261120a">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261118zu">
@@ -8395,9 +8395,7 @@
                                 <label for="completion_prompt_manager_popup_entry_form_injection_trigger">
                                     <span data-i18n="Triggers">Triggers</span>
                                 </label>
-                                <!-- SillyBunny: hidden backing select kept for upstream JS save/load compatibility;
-                                     chips below drive its state visually. -->
-                                <select id="completion_prompt_manager_popup_entry_form_injection_trigger" class="text_pole pm-trigger-hidden-select" name="injection_trigger" multiple>
+                                <select id="completion_prompt_manager_popup_entry_form_injection_trigger" class="text_pole" name="injection_trigger" multiple>
                                     <option data-i18n="Normal" value="normal">Normal</option>
                                     <option data-i18n="Continue" value="continue">Continue</option>
                                     <option data-i18n="Impersonate" value="impersonate">Impersonate</option>
@@ -8405,15 +8403,6 @@
                                     <option data-i18n="Regenerate" value="regenerate">Regenerate</option>
                                     <option data-i18n="Quiet" value="quiet">Quiet</option>
                                 </select>
-                                <!-- SillyBunny: capitalisation by DESIGN.md -->
-                                <div id="completion_prompt_manager_popup_trigger_chips" class="pm-trigger-chips" role="group" aria-label="Trigger Types">
-                                    <button type="button" class="pm-trigger-chip" data-trigger-value="normal" role="checkbox" aria-checked="false" data-i18n="Normal">Normal</button>
-                                    <button type="button" class="pm-trigger-chip" data-trigger-value="continue" role="checkbox" aria-checked="false" data-i18n="Continue">Continue</button>
-                                    <button type="button" class="pm-trigger-chip" data-trigger-value="impersonate" role="checkbox" aria-checked="false" data-i18n="Impersonate">Impersonate</button>
-                                    <button type="button" class="pm-trigger-chip" data-trigger-value="swipe" role="checkbox" aria-checked="false" data-i18n="Swipe">Swipe</button>
-                                    <button type="button" class="pm-trigger-chip" data-trigger-value="regenerate" role="checkbox" aria-checked="false" data-i18n="Regenerate">Regenerate</button>
-                                    <button type="button" class="pm-trigger-chip" data-trigger-value="quiet" role="checkbox" aria-checked="false" data-i18n="Quiet">Quiet</button>
-                                </div>
                                 <div class="text_muted" data-i18n="Filter to specific generation types.">
                                     Filter to specific generation types.
                                 </div>
@@ -8471,20 +8460,9 @@
                             <textarea id="completion_prompt_manager_popup_entry_form_prompt" class="text_pole" name="prompt" data-macros data-macros-autocomplete="always" data-macros-autocomplete-style="expanded" placeholder="The prompt to be sent." data-i18n="[placeholder]The prompt to be sent."></textarea>
                         </div>
                         <div class="completion_prompt_manager_popup_entry_form_footer">
-                            <!-- SillyBunny: button elements with text labels stand in for icon-only <a> tags;
-                                 the IDs and the data-pm-prompt attribute stay for upstream JS. -->
-                            <button id="completion_prompt_manager_popup_entry_form_close" type="button" class="menu_button pm-editor-btn" title="Close" data-i18n="[title]close">
-                                <i class="fa-solid fa-close fa-fw" aria-hidden="true"></i>
-                                <span data-i18n="Close">Close</span>
-                            </button>
-                            <button id="completion_prompt_manager_popup_entry_form_reset" type="button" class="menu_button pm-editor-btn" title="Reset" data-i18n="[title]reset">
-                                <i class="fa-solid fa-undo fa-fw" aria-hidden="true"></i>
-                                <span data-i18n="Reset">Reset</span>
-                            </button>
-                            <button id="completion_prompt_manager_popup_entry_form_save" type="button" class="menu_button pm-editor-btn pm-editor-btn-primary" title="Save" data-i18n="[title]save" data-pm-prompt="">
-                                <i class="fa-solid fa-save fa-fw" aria-hidden="true"></i>
-                                <span data-i18n="Save">Save</span>
-                            </button>
+                            <a id="completion_prompt_manager_popup_entry_form_close" title="Close" data-i18n="[title]close" class="fa-solid fa-close menu_button"></a>
+                            <a id="completion_prompt_manager_popup_entry_form_reset" title="Reset" data-i18n="[title]reset" class="fa-solid fa-undo menu_button"></a>
+                            <a id="completion_prompt_manager_popup_entry_form_save" title="Save" data-i18n="[title]save" class="fa-solid fa-save menu_button" data-pm-prompt=""></a>
                         </div>
                     </form>
                 </div>

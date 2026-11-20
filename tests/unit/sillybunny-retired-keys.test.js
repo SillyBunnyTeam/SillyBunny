@@ -36,7 +36,7 @@ describe('the retired keys', () => {
     });
 
     test('add the Frontend Icon choice to the account keys in the browser', () => {
-        expect(RETIRED_LOCAL_KEYS).toEqual([...RETIRED_ACCOUNT_KEYS, 'sb-frontend-icon']);
+        expect(RETIRED_LOCAL_KEYS).toEqual([...RETIRED_ACCOUNT_KEYS, 'sb-frontend-icon', 'sb-pm-collapsed-markers']);
     });
 
     test('name no key that the app still reads', () => {
@@ -49,7 +49,7 @@ describe('the retired keys', () => {
 describe('removing the retired keys', () => {
     test('deletes them from the account and from the browser, and leaves every other key', () => {
         const account = createStore({ ...KEPT, WelcomePage_DeckView: 'wide', WelcomePage_TutorialStatus: 'done', WelcomePage_TutorialIndex: '3', bundledAssistantGuideAvatar: 'renamed.png', bundledAssistantGuideDeleted: 'true' });
-        const local = createStore({ ...KEPT, 'sb-frontend-icon': 'badge', WelcomePage_DeckView: 'wide', WelcomePage_TutorialIndex: '3', 'sb-splash-character': 'tewi' });
+        const local = createStore({ ...KEPT, 'sb-frontend-icon': 'badge', 'sb-pm-collapsed-markers': '["main"]', WelcomePage_DeckView: 'wide', WelcomePage_TutorialIndex: '3', 'sb-splash-character': 'tewi' });
 
         removeRetiredKeys({ account, local });
 

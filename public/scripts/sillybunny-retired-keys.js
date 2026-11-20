@@ -9,11 +9,12 @@ export const RETIRED_ACCOUNT_KEYS = Object.freeze([
 
 /**
  * Browser storage keys of the same kind. Earlier versions mirrored the `WelcomePage_*` preferences into the browser,
- * and kept the choice of the Frontend Icon there.
+ * kept the choice of the Frontend Icon there, and kept which Prompt Manager marker groups were collapsed.
  */
 export const RETIRED_LOCAL_KEYS = Object.freeze([
     ...RETIRED_ACCOUNT_KEYS,
     'sb-frontend-icon',
+    'sb-pm-collapsed-markers',
 ]);
 
 /**
