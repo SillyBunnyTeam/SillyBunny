@@ -195,28 +195,6 @@ export function originFrom(anchor, element) {
     return `${Math.round(x)}px ${Math.round(y)}px`;
 }
 
-/**
- * Shared-element morph: the element starts at `fromRect` (scaled by `scale`) and settles into its
- * own box, fading in from `fromOpacity`.
- */
-export function morphFrom(element, fromRect, { scale = 1, fromOpacity = 0, duration = MOTION_SLOW, easing = MOTION_EASE, onEnd = null } = {}) {
-    if (!fromRect || !canAnimate(element)) {
-        onEnd?.();
-        return null;
-    }
-    const rect = element.getBoundingClientRect();
-    if (!rect.width || !rect.height || !fromRect.width || !fromRect.height) {
-        onEnd?.();
-        return null;
-    }
-    const dx = fromRect.left + fromRect.width / 2 - (rect.left + rect.width / 2);
-    const dy = fromRect.top + fromRect.height / 2 - (rect.top + rect.height / 2);
-    return play(element, [
-        { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: fromOpacity },
-        { transform: 'none', opacity: 1 },
-    ], { duration, easing, styles: { 'transform-origin': 'center' }, onEnd });
-}
-
 /** Animates the element's border-box height from `fromHeight` to its current height. */
 export function animateHeightFrom(element, fromHeight, { duration = MOTION_SLOW, styles = null } = {}) {
     if (!canAnimate(element)) {

@@ -37,7 +37,6 @@ export const MAX_TABLE_BYTES = 1024 * 1024;
 const MAX_WOFF2_STREAM_BYTES = 32 * 1024 * 1024;
 const MAX_TABLES = 256;
 
-export const IMPORT_ACCEPT = '.woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf';
 export const PRESET_STYLE_ID = 'sb-preset-font-style';
 export const IMPORTED_STYLE_ID = 'sb-imported-fonts';
 export const GOOGLE_STYLE_ID = 'google-font-style';

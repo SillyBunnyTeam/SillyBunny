@@ -155,33 +155,6 @@ export function buildAgentFromSnapshot(snapshot) {
     return { ...createDefaultAgent(), ...structuredClone(snapshot), id: uuidv4(), enabled: false };
 }
 
-function getComparableAgentSnapshot(agent) {
-    const snapshot = structuredClone(agent || {});
-    delete snapshot.id;
-    delete snapshot.enabled;
-    delete snapshot.favorite;
-    return snapshot;
-}
-
-function stableAgentComparableValue(value) {
-    if (Array.isArray(value)) return value.map(stableAgentComparableValue);
-    if (value && typeof value === 'object') {
-        return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
-            .map(([key, entryValue]) => [key, stableAgentComparableValue(entryValue)]));
-    }
-    return value;
-}
-
-function getComparableAgentKey(agent) {
-    return JSON.stringify(stableAgentComparableValue(getComparableAgentSnapshot(agent)));
-}
-
-export function hasIdenticalAgent(agent, existingAgents = []) {
-    const candidateKey = getComparableAgentKey(agent);
-    const candidateName = String(agent?.name ?? '').trim();
-    return existingAgents.some(existing => String(existing?.name ?? '').trim() === candidateName && getComparableAgentKey(existing) === candidateKey);
-}
-
 export function hasMatchingAgentSnapshot(snapshot, existingAgents = []) {
     const snapshotTemplateId = String(snapshot?.sourceTemplateId ?? '').trim();
     const snapshotName = String(snapshot?.name ?? '').trim().toLowerCase();

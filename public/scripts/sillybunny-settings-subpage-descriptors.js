@@ -18,9 +18,6 @@
 
 import { createButtonRow, createEntryRow, createPrefGroup, createSwitchRow, moveCaption } from './sillybunny-editor/rows.js';
 
-/** Marks a description that still needs human wording. */
-export const SB_SUBPAGE_PLACEHOLDER_ATTRIBUTE = 'data-sb-copy-placeholder';
-
 /**
  * Descriptions of the extensions SillyBunny ships (built-in, core and bundled), keyed by the
  * container each one mounts its settings in. A container that is not listed here belongs to an
