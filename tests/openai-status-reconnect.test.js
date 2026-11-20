@@ -50,6 +50,7 @@ function createHarness() {
         getStringHash: value => value,
         accountStorage: { getItem: () => 'true', setItem: jest.fn() },
         updateFeatureSupportFlags: jest.fn(),
+        countStatusLoadingStart: jest.fn(),
         saveSettingsDebounced: jest.fn(),
         writeSecret: jest.fn(),
         getRequestHeaders: () => ({}),
@@ -295,5 +296,17 @@ describe('Chat Completion reconnect status ownership', () => {
         context.fetch.mockResolvedValueOnce(response(['proxy-model']));
         await connect();
         expect(context.online_status).toBe('Valid');
+    });
+});
+
+describe('startStatusLoading() hook', () => {
+    test('tells the KoboldCpp model switcher each time a status check starts the loading state', async () => {
+        const { context, connect } = createHarness();
+        context.fetch.mockResolvedValue(response(['saved-model']));
+
+        await connect();
+        await connect();
+
+        expect(context.countStatusLoadingStart).toHaveBeenCalledTimes(2);
     });
 });

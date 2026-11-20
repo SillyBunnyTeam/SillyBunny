@@ -1,7 +1,8 @@
 import { localforage } from '../lib.js';
 import { characters, event_types, eventSource, main_api, nai_settings, online_status, this_chid } from '../script.js';
 import { power_user, registerDebugFunction } from './power-user.js';
-import { chat_completion_sources, model_list, oai_settings } from './openai.js';
+import { chat_completion_sources, getChatCompletionModel, model_list, oai_settings } from './openai.js';
+import { countKoboldCppChatTokens, isKoboldCppChatCompletion } from './sillybunny-koboldcpp-models.js';
 import { groups, selected_group } from './group-chats.js';
 import { getStringHash } from './utils.js';
 import { kai_flags, kai_settings } from './kai-settings.js';
@@ -574,6 +575,11 @@ export function getTokenizerModel() {
         return oai_settings.openai_model;
     }
 
+    // SillyBunny: KoboldCpp counts with the model it has loaded, so its counts are cached per model.
+    if (isKoboldCppChatCompletion()) {
+        return getChatCompletionModel() || chat_completion_sources.KOBOLDCPP;
+    }
+
     const turboTokenizer = 'gpt-3.5-turbo';
     const gpt4Tokenizer = 'gpt-4';
     const gpt4oTokenizer = 'gpt-4o';
@@ -823,6 +829,9 @@ export function countTokensOpenAI(messages, full = false) {
 
         if (typeof cachedCount === 'number') {
             token_count += cachedCount;
+        } else if (isKoboldCppChatCompletion()) {
+            // SillyBunny: The server picks a tokenizer by model name, and that tokenizer can differ from KoboldCpp's. Counts under this model name come only from KoboldCpp, so an estimate stands in and stays out of the cache.
+            token_count += guesstimate(JSON.stringify(message));
         } else {
             jQuery.ajax({
                 async: false,
@@ -855,6 +864,11 @@ export function countTokensOpenAI(messages, full = false) {
  * @returns {Promise<number|null>} Token count, or null when the request failed.
  */
 async function requestOpenAITokenCount(endpoint, messages) {
+    // SillyBunny: KoboldCpp counts with the tokenizer of the model it has loaded.
+    if (isKoboldCppChatCompletion()) {
+        return countKoboldCppChatTokens(messages);
+    }
+
     try {
         const data = await jQuery.ajax({
             async: true,
@@ -911,7 +925,11 @@ export async function countTokensOpenAIAsync(messages, full = false) {
             }
 
             token_count += tokenCount;
-            cacheObject[cacheKey] = tokenCount;
+
+            // SillyBunny: The cache key names only the source until KoboldCpp reports its loaded model. A count under that key could stay in the cache after a model switch.
+            if (model !== chat_completion_sources.KOBOLDCPP) {
+                cacheObject[cacheKey] = tokenCount;
+            }
         }
     }
 
@@ -930,7 +948,8 @@ export async function countTokensOpenAIAsync(messages, full = false) {
  * @returns {Promise<void>}
  */
 export async function primeOpenAITokenCache(messages) {
-    if (!Array.isArray(messages) || messages.length === 0) {
+    // SillyBunny: KoboldCpp counts one text per request, so its messages are counted when they are first needed.
+    if (!Array.isArray(messages) || messages.length === 0 || isKoboldCppChatCompletion()) {
         return;
     }
 
