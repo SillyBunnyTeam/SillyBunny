@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { checkCardEntry } from './card-entry.js';
+import { checkPackEntry } from './pack-entry.js';
 
 export const MANIFEST_PATH = 'assets-src/art/art-manifest.json';
 export const MASTER_ROOT = 'assets-src/art/master';
 
-export const ASSET_TYPES = Object.freeze(['still', 'scene', 'pair', 'icon', 'ico', 'copy', 'pinned', 'card']);
+export const ASSET_TYPES = Object.freeze(['still', 'scene', 'pair', 'icon', 'ico', 'copy', 'pinned', 'card', 'pack']);
 export const KEY_GROUPS = Object.freeze(['home', 'splash']);
 const PINNED_CHECKS = Object.freeze(['nearest-pair']);
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -338,6 +339,7 @@ const CHECKERS = {
         checkOutputs(asset.outputs, 'outputs', fail, { encoded: false });
     },
     card: (asset, fail) => checkCardEntry(asset, fail, { onlyKeys, checkMaster, checkGrid, checkOutputs, isSafeRelative }),
+    pack: (asset, fail) => checkPackEntry(asset, fail, { onlyKeys, checkGrid, checkName, checkPicture }),
 };
 
 function checkKey(asset, fail) {

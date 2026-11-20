@@ -26,6 +26,7 @@ const DERIVERS = Object.freeze({
     ico: deriveIco,
     copy: deriveCopy,
     card: (context, asset) => deriveCard(context, asset, { readMaster }),
+    pack: derivePack,
 });
 
 export { placementOf };
@@ -264,6 +265,19 @@ async function derivePair(context, asset) {
     }
     const placed = placementOf(context, asset)(asset.opaque ? { ...master, channels: 3 } : master);
     return encodeOutputs(checkGrid(context, placed, asset.grid, 'The pair'), asset.outputs);
+}
+
+/**
+ * Every sprite of an expression pack: its native master, which must have the pack's grid, drawn at the pack's one step.
+ * The manifest's check keeps every file of a pack at the same whole step, so no sprite is resized by a filter.
+ */
+async function derivePack(context, asset) {
+    const files = [];
+    for (const [name, { master, outputs }] of Object.entries(asset.frames)) {
+        const sprite = checkGrid(context, await readMaster(context, master), asset.grid, `The expression ${name}`);
+        files.push(...await encodeOutputs(sprite, outputs));
+    }
+    return files;
 }
 
 async function deriveIcon(context, asset) {

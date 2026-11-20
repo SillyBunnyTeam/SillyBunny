@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { stampCardVersion } from './card.js';
 import { deriveAsset } from './derive.js';
 import { outputFile } from './manifest.js';
+import { packFolderOf } from './pack-entry.js';
 import { ArtProblem } from './problem.js';
 import { sha256 } from './raster.js';
 
@@ -17,19 +18,39 @@ export const MANAGED_FOLDER = 'default/content';
 const APP_MANAGED = new URL('../../../src/sillybunny-managed-content.js', import.meta.url);
 
 /**
- * The managed items that an entry of each type ships, in the app's item types. Another entry type that ships managed
- * files, such as an expression pack and its `sprites` folder, adds its items here.
+ * The managed items that an entry of each type ships, in the app's item types. A card is one file; a pack is the folder of
+ * its sprites, which `files` lists by name, and which the app manages as one `sprites` item.
  */
 const ITEMS_OF_ENTRY = Object.freeze({
     card: (asset) => asset.outputs.map(({ path }) => ({ type: 'character', path })),
+    pack: (asset) => [{ type: 'sprites', path: packFolderOf(asset), files: Object.values(asset.frames).map(({ outputs }) => posix.basename(outputs[0].path)) }],
 });
 
 /**
- * How the items of each type are compared with the managed manifest, by the app's own fingerprint, and, for a type whose
- * file carries its own version, how a new version is written into the file.
+ * How the items of each type are compared with the managed manifest, by the app's own fingerprints, and, for a type whose
+ * file carries its own version, how a new version is written into the file. `isCurrent` gives null when a file of the item
+ * does not exist, which `check` reports as a missing output.
  */
 const ITEM_TYPES = Object.freeze({
-    character: { fingerprint: (app, bytes, worldNames) => app.fingerprintCard(bytes, { worldNames }), stamp: stampCardVersion },
+    character: {
+        changed: 'fingerprint than the file has now',
+        isCurrent: (app, root, item, entry, worldNames) => {
+            const path = outputFile(root, item.path);
+            return existsSync(path) ? app.fingerprintCard(readFileSync(path), { worldNames }) === entry.fingerprint : null;
+        },
+        stamp: stampCardVersion,
+    },
+    sprites: {
+        changed: 'hashes than the files have now',
+        isCurrent: (app, root, item, entry) => {
+            const paths = item.files.map((name) => outputFile(root, posix.join(item.path, name)));
+            if (!paths.every((path) => existsSync(path))) {
+                return null;
+            }
+            const now = new Map(item.files.map((name, at) => [name, app.fingerprintSpriteFile(readFileSync(paths[at]))]));
+            return entry.files.length === now.size && entry.files.every(({ name, sha256: digest }) => now.get(name) === digest);
+        },
+    },
 });
 
 /** @typedef {{ asset: string, item: string, type: string, path: string, from: number, to: number }} ManagedChange */
@@ -78,13 +99,9 @@ async function managedStates(root, manifest) {
         if (!entry) {
             return [{ ...item, state: 'missing' }];
         }
-        const path = outputFile(root, item.path);
-        if (!existsSync(path)) {
-            return [];
-        }
         try {
-            const fingerprint = ITEM_TYPES[item.type].fingerprint(app, readFileSync(path), worldNames);
-            return [{ ...item, version: entry.version, state: fingerprint === entry.fingerprint ? 'current' : 'stale' }];
+            const current = ITEM_TYPES[item.type].isCurrent(app, root, item, entry, worldNames);
+            return current === null ? [] : [{ ...item, version: entry.version, state: current ? 'current' : 'stale' }];
         } catch (error) {
             return [{ ...item, state: 'unreadable', reason: error.message }];
         }
@@ -96,7 +113,7 @@ function problemOf(app, state) {
     const where = { asset: state.asset, path: state.path };
     if (state.state === 'stale') {
         const stamp = ITEM_TYPES[state.type].stamp ? ' and writes that version into the card\'s character_version' : '';
-        return [{ code: 'managed-stale', ...where, message: `${manifestNameOf(app)} records version ${state.version} of ${state.filename} with another fingerprint than the file has now, so installs that hold version ${state.version} would never get this one. Run node scripts/art/cli.js bump --write, which raises it to version ${state.version + 1}${stamp}.` }];
+        return [{ code: 'managed-stale', ...where, message: `${manifestNameOf(app)} records version ${state.version} of ${state.filename} with another ${ITEM_TYPES[state.type].changed}, so installs that hold version ${state.version} would never get this one. Run node scripts/art/cli.js bump --write, which raises it to version ${state.version + 1}${stamp}.` }];
     }
     if (state.state === 'missing') {
         return [{ code: 'managed-missing', ...where, message: `${state.path} ships from the art manifest, but ${manifestNameOf(app)} does not manage it as a ${state.type}. Add it with node scripts/build-managed-manifest.js ${MANAGED_FOLDER} ${state.type}:${state.filename}, and seed it in ${MANAGED_FOLDER}/index.json.` }];

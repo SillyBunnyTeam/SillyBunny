@@ -223,7 +223,7 @@ function setRecordedSha(asset, path, digest) {
         return;
     }
     const lists = [
-        asset.outputs,
+        asset.outputs ?? [],
         ...Object.values(asset.frames ?? {}).map((frame) => frame.outputs),
         asset.backdrop?.outputs ?? [],
         ...Object.values(asset.layers ?? {}).flatMap((layer) => Object.values(layer.pictures).map((picture) => picture.outputs)),

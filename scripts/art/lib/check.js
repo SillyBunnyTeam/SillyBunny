@@ -124,7 +124,7 @@ export async function checkArt(root, manifest) {
                 continue;
             }
             const bytes = readFileSync(path);
-            if (nativePictures.has(master) && ['still', 'scene', 'pair', 'card'].includes(asset.type)) {
+            if (nativePictures.has(master) && ['still', 'scene', 'pair', 'card', 'pack'].includes(asset.type)) {
                 const raster = await readRaster(bytes);
                 if (!hasBinaryAlpha(raster)) {
                     problems.push({ code: 'master-not-native', asset: id, path: master, message: `The master ${master} has translucent pixels.` });
