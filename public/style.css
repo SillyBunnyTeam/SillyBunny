@@ -2410,7 +2410,7 @@ body[data-stscript-style] .hljs.language-stscript {
             >.helpContent {
                 text-overflow: ellipsis;
                 overflow: hidden;
-                font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+                font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
                 white-space: nowrap;
                 line-height: 1.2;
                 max-height: 1.2em;
@@ -2550,7 +2550,7 @@ body[data-stscript-style] .hljs.language-stscript {
                 .argument-description {
                     margin-left: 0.5em;
                     font-family: var(--mainFontFamily);
-                    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+                    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
                 }
             }
 
@@ -3147,7 +3147,7 @@ input[type="file"] {
 }
 
 .extension_token_counter {
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     width: 100%;
     text-align: right;
     margin-bottom: 5px;
@@ -3303,7 +3303,7 @@ select option[disabled]:not(:checked) {
 
 /* Fix font size difference in API Connections dropdowns - Issue #4599 */
 #custom_model_id {
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .menu_button.api_button:hover {
@@ -3583,8 +3583,8 @@ input[type=search]:focus::-webkit-search-cancel-button {
 }
 
 /* SillyBunny: the allow-self-responses row lives in the group editor's Chat
-   Settings section now, and toggleHiddenControls() shows or hides it from the
-   draft. The old #rm_group_top_bar :has() rule no longer matches anything. */
+   Settings section, and toggleHiddenControls() shows or hides it from the
+   draft, so no #rm_group_top_bar :has() rule is needed. */
 
 /* SillyBunny: group queue state uses the entity-row badge, not row outlines. */
 
@@ -3987,7 +3987,7 @@ grammarly-extension {
     text-align: center;
     gap: 6px;
     font-weight: 500;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     min-width: var(--sb-control-min-height, 30px);
     min-height: var(--sb-control-min-height, 30px);
     white-space: nowrap;
@@ -4123,7 +4123,7 @@ grammarly-extension {
     gap: 8px;
     padding: 6px 14px;
     border-radius: 9999px;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 600;
     margin-top: 2px;
     margin-bottom: 15px;
@@ -4419,7 +4419,7 @@ input[type='checkbox'].del_checkbox {
     margin-left: 5px;
     /*previously needed to avoid firefox scrollbar overlap, no longer necessary?*/
     /* margin-right: 15px; */
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     color: var(--SmartThemeBodyColor);
     flex: 1;
     gap: 5px;
@@ -4430,7 +4430,7 @@ input[type='checkbox'].del_checkbox {
     width: max-content;
     margin-left: 5px;
     margin-right: 15px;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     color: var(--SmartThemeEmColor);
     text-align: center;
 }
@@ -5439,7 +5439,7 @@ body.big-avatars .missing-avatar {
 }
 
 .slider_hint span {
-    font-size: var(--sb-type-caption); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .slider_hint span:nth-child(2) {
@@ -5863,7 +5863,7 @@ body:not(.caption) .mes_img_caption {
 }
 
 .menu_button_icon span {
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 /*------------ TOP SIDE SETTINGS ----------------*/
@@ -5980,7 +5980,7 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     border-radius: 1rem;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     letter-spacing: 0.03em;
     transition: all 0.5s ease;
 }
@@ -6135,7 +6135,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .drawer-content select {
     width: 100%;
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .settingsSectionWrap {
@@ -6145,7 +6145,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .wi-enter-footer-text {
-    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
     color: var(--SmartThemeBodyColor);
 }
 
@@ -6231,7 +6231,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 /* Eyebrow label for section headers */
 .eyebrow-label {
-    font-size: var(--sb-type-caption); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.2em;
@@ -6249,7 +6249,7 @@ body:not(.movingUI) .drawer-content.maximized {
 /* Settings panel h4 headers as eyebrow labels */
 #user-settings-block h4,
 #left-nav-panel h4 {
-    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -6455,7 +6455,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .paginationjs-size-changer select {
     width: unset;
     margin: 0;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     padding-right: 20px;
 }
 
@@ -6488,7 +6488,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .paginationjs-nav {
     padding: 2px;
-    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: bold;
     width: auto;
 }
@@ -6640,7 +6640,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 #SystemPromptColumn summary,
 #InstructSequencesColumn summary {
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     cursor: pointer;
 }
 
@@ -6688,7 +6688,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .model-title {
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: bold;
     overflow: hidden;
 }
@@ -6704,7 +6704,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .model-class,
 .model-context-length,
 .model-date-added {
-    font-size: var(--sb-type-meta); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .model-class,
@@ -6888,7 +6888,7 @@ body:not(.movingUI) .drawer-content.maximized {
     padding: 0 10px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-    font-size: var(--sb-type-caption); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -6929,7 +6929,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-chat-completion-config-title {
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     overflow-wrap: anywhere;
 }
 

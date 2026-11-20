@@ -55,7 +55,7 @@
     margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
 }
 
-/* SillyBunny: the template is sanitised, which drops the old non-data attribute. */
+/* SillyBunny: the template is sanitised, which drops non-data attributes, so the empty-list text lives in data-no-scripts-text. */
 .regex-script-container:empty::after {
     content: attr(data-no-scripts-text);
     font-size: 0.95em;

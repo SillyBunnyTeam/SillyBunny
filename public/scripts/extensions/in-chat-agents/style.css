@@ -1139,7 +1139,7 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     to { transform: rotate(360deg); }
 }
 
-/* A2 shared list shell. */
+/* Shared list shell. */
 /* Same bottom inset as the prompt editor column (sillybunny-prompt-editor.css `.sb-editor-panel.sb-prompt-owned`). */
 .sb-shell-column.ica-agents-column {
     height: 100%;

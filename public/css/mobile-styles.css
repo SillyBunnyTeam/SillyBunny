@@ -45,7 +45,7 @@
 
     #AdvancedFormatting > .flex-container.alignItemsBaseline:first-child > h3 {
         min-width: 0;
-        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+        font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
         line-height: 1.15;
     }
 
@@ -128,7 +128,7 @@
         grid-template-columns: repeat(var(--bg-thumb-columns, 3), 1fr);
     }
 
-    /* SillyBunny: the folder tiles are gone; folders are sections (sillybunny-background-gallery.css). */
+    /* SillyBunny: folders are sections (sillybunny-background-gallery.css). */
 
     /* Settings panel spacing */
     #right-nav-panel .drawer-content,
@@ -645,7 +645,7 @@
         visibility: hidden;
     }
 
-    /* SillyBunny: #visual-novel-wrapper is fixed under the top bar in every layout (the expressions stylesheet), so it is no longer unset here. */
+    /* SillyBunny: #visual-novel-wrapper is fixed under the top bar in every layout (the expressions stylesheet), so this sheet leaves it alone. */
 
     body.waifuMode .expression-holder {
         /*display: inline;*/

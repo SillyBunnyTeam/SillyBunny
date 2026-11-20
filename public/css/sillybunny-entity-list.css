@@ -1,7 +1,7 @@
-/* SillyBunny: entity boxed lists and Libadwaita tag filters (Step 4.7).
+/* SillyBunny: entity boxed lists and Libadwaita tag filters.
    Loaded as a deferred stylesheet so it stays out of the blocking-CSS budget; the
-   group editor activates it on open, and the Characters/Groups list rework (Step 7)
-   adopts the same classes. The editors' own tag lists keep their rules in
+   group editor activates it on open, and the Characters and Groups lists
+   adopt the same classes. The editors' own tag lists keep their rules in
    sillybunny-character-editor.css, which loads at startup. */
 
 /* Entity boxed list: optional grip · avatar · text (title/subtitle/tags) · badge ·
@@ -866,7 +866,7 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
     transition: none;
 }
 
-/* Group editor member rows (moved from sillybunny-character-editor.css)
+/* Group editor member rows
    ========================================================================= */
 
 /* Member rows

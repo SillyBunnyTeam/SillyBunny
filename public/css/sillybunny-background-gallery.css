@@ -2,7 +2,7 @@
    Loaded as a deferred stylesheet with the gallery module (sillybunny-background-gallery.js), so it stays out of the blocking-CSS budget. */
 
 /* The tab row: the buttons end where the thumbnail grid ends. The scroll button leads the group and is out of the layout
-   until it shows, so a hidden button no longer leaves an empty gap at the end of the row. */
+   until it shows, so a hidden button leaves no gap at the end of the row. */
 #sb-settings-page #Backgrounds #bg_tabs .heading-controls {
     justify-content: flex-end;
     justify-self: end;

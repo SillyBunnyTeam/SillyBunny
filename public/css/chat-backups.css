@@ -1,4 +1,4 @@
-/* SillyBunny: Chat History owns backup and chat-list visibility inside the shared Window page, so the upstream popup selector is no longer applicable. */
+/* SillyBunny: Chat History owns backup and chat-list visibility inside the shared Window page, so the upstream popup selector does not apply. */
 .chatBackupsList {
     display: flex;
     flex-direction: column;

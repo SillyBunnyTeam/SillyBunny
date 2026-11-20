@@ -412,8 +412,8 @@ body.sb-topbar-compact #sb-topbar-stack {
     outline: none;
 }
 
-/* Upstream forces placeholders to SmartThemeEmColor as important; at the old
-   0.62 opacity these search fields fell to ~2:1 contrast on the raised field. */
+/* Upstream forces placeholders to SmartThemeEmColor as important; at the 0.62
+   opacity that upstream applies, these search fields fall to ~2:1 contrast on the raised field. */
 :is(.sb-universal-search-field, .sb-bottom-chat-search-field) input::placeholder {
     color: var(--sb-input-placeholder) !important;
     opacity: 1;
@@ -755,7 +755,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 /* Square hit boxes at the labelled buttons' own height, in the labelled bar as well: an icon
-   button is as tall as it is wide (Geechan review, #685). Placed after .sb-proxy-button-icon-only
+   button is as tall as it is wide. Placed after .sb-proxy-button-icon-only
    so equal specificity resolves here by source order. */
 #sb-topbar-inner .sb-proxy-button-icon-only {
     width: var(--sb-proxy-button-height);
@@ -3881,9 +3881,9 @@ body.reduced-motion .sb-search-entry {
 
 /* libadwaita boxed list: the preference pill.
    This is the one pill primitive: every preference group on the settings page resolves to it,
-   whether the order pass boxed the rows or a normalizer wrapped a loose flex container. It was
-   spelled twice, at 4%/14px/no-border here and 5%/16px/bordered on the category body only, so
-   ordered tabs read as pills and raw upstream markup read as a second, flatter kind of card. */
+   whether the order pass boxed the rows or a normalizer wrapped a loose flex container. A second
+   definition with other values would make ordered tabs read as pills and raw upstream markup read
+   as a second, flatter kind of card. */
 .ds-pref-group {
     display: flex;
     flex-direction: column;
@@ -5359,8 +5359,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 /* SillyBunny: Formatting groups use the same heading + one preference-pill anatomy as Presets.
-   The legacy Advanced Formatting card wrapped each body in a second tinted box with its own shadow,
-   so fields looked nested and heavier than every other settings group. */
+   Without it the Advanced Formatting card wraps each body in a second tinted box with its own shadow,
+   so fields look nested and heavier than every other settings group. */
 #sb-settings-page #AdvancedFormatting > .sb-formatting-group {
     width: 100%;
     min-width: 0;
@@ -5431,8 +5431,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 /* The Connections tab's upstream drawer, after the panel has moved the profile card and the five
    provider blocks out of it. It is clipped rather than `display: none`, and deliberately stays in
    normal flow, because `openai.js`, `horde.js`, and `textgen-models.js` still register it as a
-   select2 dropdown parent and jQuery measures it to place the dropdown; a node with no box -- or one
-   taken out of flow -- makes every model picker compute its position from zero and land in the
+   select2 dropdown parent and jQuery measures it to place the dropdown; a node with no box, or one
+   taken out of flow, makes every model picker compute its position from zero and land in the
    top-left corner. A 1px clipped box has geometry and cannot be seen. */
 .sb-legacy-api-drawer {
     display: block !important;
@@ -5450,7 +5450,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 /* The two source pickers the panel mirrors in its own combo row, and the headings that name them.
    The selects stay in the document and keep their values, their options, and their listeners,
-   because upstream and extensions read and write them by id -- they are simply not painted, since
+   because upstream and extensions read and write them by id. They are not painted, since
    the row is what the user sees. Upstream's own heading for each is dropped with them: the row
    carries the same label, and leaving the heading behind would name a control that is not there.
    Descendant combinators rather than child (>) are intentional: wrapProviderContent() moves these
@@ -5567,7 +5567,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 /* A flattened section is a heading in the enclosing body's flow, not a card of its own: it must
-   not sit inside the box it used to be. Several wrappers parent their own card around a nested
+   not sit inside a box of its own. Several wrappers parent their own card around a nested
    drawer, and those treatments would otherwise stack a tinted box inside a tinted box. */
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-settings-subdrawer,
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-openai-settings-drawer {
@@ -5643,7 +5643,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     opacity: 1;
 }
 
-/* UI Theme and a few upstream headings keep their visible copy in a nested span. Reset the old
+/* UI Theme and a few upstream headings keep their visible copy in a nested span. Reset the
    tracked title treatment so the visible text, not only its parent h4, matches Messages. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading .sb-settings-category-title > span {
     font: inherit;
@@ -5697,7 +5697,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     color: var(--sb-shell-text-secondary);
 }
 
-/* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
+/* Rows lifted out of a flattened drawer lose the spacing the enclosing expander draws, so
    they get the grouped row metric back: the row height and inset, and a separator between rows. */
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row),
 .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row, .ds-pref-group, .sb-settings-row-wrapper) {
@@ -5935,8 +5935,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-radius: 0;
 }
 
-/* Sentence case, like every other group label on the page. The
-   tracked uppercase kicker here was the last one left in settings. */
+/* Sentence case, like every other group label on the page. */
 /* SillyBunny: gallery and extension chrome follow Settings without changing their data or controls. */
 #sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) {
     --sb-bg-icon-size: 40px;
@@ -5991,7 +5990,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     font-size: var(--sb-type-control);
 }
 
-/* The panel leaves #Backgrounds when the section order places it, so the gallery's flat button edge (`border: 0`) no longer reaches the remove button; the source button beside it has none either. */
+/* The panel leaves #Backgrounds when the section order places it, so the gallery's flat button edge (`border: 0`) does not reach the remove button; the source button beside it has none either. */
 #sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-card > .menu_button {
     border: 0;
     color: var(--sb-color-danger);
@@ -6196,7 +6195,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 /* The category body is the same Libadwaita preference pill as every other group; its children are
    deliberately flat rows, because repeated row chrome makes a category read as a stack of
-   unrelated cards. Only the standalone margin is dropped here — the category gap owns spacing. */
+   unrelated cards. Only the standalone margin is dropped here, because the category gap owns the spacing. */
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category > .sb-settings-category-body.ds-pref-group {
     margin: 0;
 }
@@ -6588,7 +6587,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 @media screen and (max-width: 768px) {
     /* Single-column stack; sidebar and content each fill the full pane.
-       Only one is visible at a time — sidebar by default, content after tab selection. */
+       Only one is visible at a time: the sidebar by default, the content after a tab is selected. */
     #sb-settings-inner {
         grid-template-columns: 1fr;
         position: relative;
@@ -6694,7 +6693,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
    Sliding subpage stack
    ------------------------------------------------------------------------------------------
    GNOME Settings presents a section as a list of rows; picking one slides a detail page in from
-   the right over the list. This is that stack, used by the four panels that were still made of
+   the right over the list. This is that stack, used by the four panels that are built from
    accordions: Extensions, Connections, Prompting, and Agents.
 
    The two pages are stacked in the same grid cell, so neither reserves space for the other and the
@@ -6891,8 +6890,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-width: 0;
 }
 
-/* The moved section is a settings section like any other; it was authored as a drawer body, so the
-   frame that used to draw it is neutralised and it takes the panel's own width. */
+/* The moved section is a settings section like any other; it is authored as a drawer body, so the
+   frame that draws it is neutralised and it takes the panel's own width. */
 .sb-subpage-detail-content {
     display: flex;
     flex-direction: column;
@@ -6901,8 +6900,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-width: 0;
 }
 
-/* An accordion that had a toggle before now names the page that holds it, so the toggle is gone and
-   only the generic expand behaviour is left behind. The detail-opened card drawer below loses its bar
+/* An accordion with a toggle names the page that holds it, so the toggle is hidden and
+   only the generic expand behaviour remains. The detail-opened card drawer below loses its bar
    the same way, and upstream's authored h3/h4 steps aside because the detail bar already names the page. */
 .sb-subpage-detail-content > h3,
 .sb-subpage-detail-content > h4,
@@ -7004,7 +7003,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 /* A pill the detail pass drew around a run of rows holds rows that were authored as centred flex
    containers: they size to their content, so inside the pill they would leave a margin on both
-   sides of every row while the pill spans the page. The pill is the frame now, and its rows take
+   sides of every row while the pill spans the page. The pill is the frame, so its rows take
    its width the way an authored panel's rows do. */
 .sb-subpage-detail-content .ds-pref-group > * {
     width: 100%;
@@ -7405,7 +7404,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 /* ── Provider page ───────────────────────────────────────────────────────────────────────── */
 
 /* Upstream authors a block-level connector that upstream's own change function shows and hides. The
-   panel owns that decision now, so the block is not a box of its own here: its children are the
+   panel owns that decision, so the block is not a box of its own here: its children are the
    page. */
 .sb-connections-provider > [id$='_api'],
 .sb-connections-provider > #kobold_horde {
@@ -7539,11 +7538,11 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     }
 }
 
-/* ── Model ID picker (bug fix: styles were mobile-only) ──────────────────────────────────── */
+/* ── Model ID picker ──────────────────────────────────────────────────────────────────────── */
 
 /* The model ID picker and inline multi-select picker insert a styled menu as a flow sibling of
-   their search row. The styles previously lived only inside the max-width: 768px block in
-   sillybunny-mobile-shell.css, so the menu was unstyled on any desktop viewport. These base rules
+   their search row. These styles sit outside the max-width: 768px block of
+   sillybunny-mobile-shell.css so that the menu is styled at every width. These base rules
    apply at all widths; the mobile sheet overrides only the dvh-based max-height. */
 .sb-model-id-picker-menu,
 .sb-inline-select-picker-menu {

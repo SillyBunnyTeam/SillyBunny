@@ -157,8 +157,8 @@
     --sb-shell-tab-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--SmartThemeBlurTintColor) 93%);
     --sb-shell-border: color-mix(in srgb, var(--SmartThemeBorderColor) 96%, transparent);
     /* Shell text scale (primary and dim foreground). Every `--sb-shell-text*`
-       consumer resolves here; without these the declarations were dropped and the text inherited
-       whatever colour its ancestor happened to carry. */
+       consumer resolves here; without these the declarations are dropped and the text inherits
+       whatever colour its ancestor carries. */
     --sb-shell-text: var(--SmartThemeBodyColor);
     --sb-shell-text-secondary: var(--sb-muted-fg);
     --sb-shell-shadow: 0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
@@ -4880,10 +4880,10 @@ body.reduced-motion *::after {
 }
 
 /* ========================================================================
-   Overlay Overrides (libadwaita shell pass - Agent B)
+   Overlay overrides
    ======================================================================== */
 
-/* Options Menu (#options) and Extensions Menu (#extensionsMenu) - popover surfaces */
+/* Options Menu (#options) and Extensions Menu (#extensionsMenu) as popover surfaces */
 #options,
 #extensionsMenu,
 .actionButtonsModal.options-content {
@@ -5069,7 +5069,6 @@ body.reduced-motion #extensionsMenu {
     }
 }
 
-/* Dialogs and Popups */
 .popup {
     background: var(--sb-layer-dialog);
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
@@ -5090,7 +5089,7 @@ body.reduced-motion #extensionsMenu {
     border-radius: var(--sb-radius-alert);
 }
 
-/* Dialog enter animation - override popup.css pop-in */
+/* Dialog enter animation; overrides popup.css pop-in */
 @keyframes pop-in {
     from {
         opacity: 0;
@@ -5116,7 +5115,7 @@ body.reduced-motion .popup[opening] {
     animation: none;
 }
 
-/* Dialog exit animation - override popup.css pop-out */
+/* Dialog exit animation; overrides popup.css pop-out */
 @keyframes pop-out {
     from {
         opacity: 1;
@@ -7045,7 +7044,7 @@ body #toast-container[class] > .sb-toast--action {
     color: var(--sb-toast-status);
 }
 
-/* Toast enter animation - slide down from own height */
+/* Toast enter animation: slides down from its own height */
 @keyframes sb-toast-in {
     from {
         opacity: 0;
@@ -7101,7 +7100,7 @@ body.reduced-motion #toast-container > div.sb-toast-leaving {
     opacity: 0;
 }
 
-/* Tooltips - libadwaita OSD (shadow ink, white text, subtle border, no shadow) */
+/* Tooltips: libadwaita OSD (shadow ink, white text, subtle border, no shadow) */
 .tooltip-inner {
     background: var(--sb-layer-toast);
     color: var(--sb-layer-toast-fg);
@@ -7158,7 +7157,7 @@ body.reduced-motion #toast-container > div.sb-toast-leaving {
     }
 }
 
-/* Composer Frame - view layer, single border, no gradient, no accent wash on focus.
+/* Composer frame: view layer, single border, no gradient, no accent wash on focus.
    Distinct from the header-bar top bar. The body.no-blur selector beats upstream
    toggle-dependent.css, which paints the translucent blur tint as an important declaration. */
 #send_form,
@@ -7181,7 +7180,7 @@ body.no-blur #send_form {
     border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 90%, transparent) !important;
 }
 
-/* Send button - libadwaita suggested-action: solid accent fill, neutral raised disabled.
+/* Send button: libadwaita suggested-action, solid accent fill, neutral raised disabled.
    Shape and size come from the #send_but sizing rules in sillybunny-tabs.css. */
 #send_but {
     background: var(--sb-accent) !important;

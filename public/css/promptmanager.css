@@ -114,8 +114,8 @@
 
 #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
     align-items: center;
-    /* SillyBunny: zero horizontal padding — row parts own their own spacing so the name
-       column gets maximum budget at narrow widths. — feat/v1.9.0-ui-overhaul */
+    /* SillyBunny: zero horizontal padding, because the row parts own their spacing and the
+       name column gets the most width at narrow widths. */
     padding: 0 4px 0 0;
     min-height: 44px;
     border: 1px solid var(--SmartThemeBorderColor);
@@ -126,9 +126,8 @@
         transform var(--sb-transition-slow);
 }
 
-/* ── New AdwActionRow-style flex layout ── SillyBunny: feat/v1.9.0-ui-overhaul ── */
+/* SillyBunny: AdwActionRow-style flex layout. */
 
-/* Drag grip */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-grip {
     flex: 0 0 24px;
     width: 24px;
@@ -155,7 +154,6 @@
     pointer-events: none;
 }
 
-/* Type accent bar */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-type-bar {
     flex: 0 0 3px;
     width: 3px;
@@ -182,7 +180,6 @@
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 32%, transparent);
 }
 
-/* Name area — takes all remaining space */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-name-area,
 #completion_prompt_manager #completion_prompt_manager_list li .completion_prompt_manager_prompt_name {
     flex: 1 1 0;
@@ -195,7 +192,6 @@
     overflow: hidden;
 }
 
-/* Primary name line */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary {
     display: flex;
     align-items: center;
@@ -235,7 +231,6 @@
     text-decoration: underline;
 }
 
-/* Chips row */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-chips {
     display: flex;
     align-items: center;
@@ -299,10 +294,10 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 52%, transparent);
 }
 
-/* End zone — fixed width, position:relative for action overlay */
+/* End zone: fixed width and positioned, so the action overlay anchors to it. */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone {
-    /* SillyBunny: 72px fits 3 × 22px action buttons + gaps and keeps the name column viable
-       at the 280px desktop list pane width. — feat/v1.9.0-ui-overhaul */
+    /* SillyBunny: 72px fits three 22px action buttons and their gaps, and keeps the name column
+       usable at the 280px desktop list pane width. */
     flex: 0 0 72px;
     width: 72px;
     position: relative;
@@ -313,7 +308,6 @@
     padding-right: 6px;
 }
 
-/* Token count */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
     transition: opacity var(--sb-transition-slow);
     font-size: var(--sb-type-control, calc(var(--mainFontSize) * 0.88));
@@ -324,7 +318,6 @@
     min-width: 0;
 }
 
-/* Action buttons — hover revealed on desktop */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
     position: absolute;
     inset: 0;
@@ -351,7 +344,7 @@
     opacity: 0;
 }
 
-/* Individual action spans inside pm-row-actions — keep existing fa-icon spans */
+/* The upstream fa-icon spans inside .pm-row-actions stay as they are. */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions > span {
     display: inline-flex;
     align-items: center;
@@ -390,7 +383,6 @@
     color: var(--SmartThemeQuoteColor);
 }
 
-/* Kebab button — hidden on desktop, shown on mobile */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-kebab {
     display: none;
     position: absolute;
@@ -415,7 +407,6 @@
     color: var(--SmartThemeBodyColor);
 }
 
-/* Toggle cell */
 #completion_prompt_manager #completion_prompt_manager_list li .pm-row-toggle-cell {
     flex: 0 0 44px;
     width: 44px;
@@ -448,7 +439,6 @@
     pointer-events: none;
 }
 
-/* Kebab context menu */
 .pm-kebab-menu {
     background: var(--SmartThemeBlurTintColor, #38383c);
     border: 1px solid var(--SmartThemeBorderColor);
@@ -629,8 +619,8 @@
     margin-top: 1em;
 }
 
-/* SillyBunny: trigger chips replace Select2 multi-select to avoid overflow:hidden clipping issues
-   and provide touch-friendly 44px targets. The hidden <select> is kept for upstream JS compat. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: trigger chips stand in for the Select2 multi-select, whose menu clipped under
+   overflow: hidden and had no 44px touch target. The hidden <select> stays for upstream JS. */
 .pm-trigger-hidden-select {
     display: none !important;
 }
@@ -678,8 +668,8 @@
     outline-offset: 2px;
 }
 
-/* SillyBunny: editor popup footer — proper button elements with icon + text labels replace
-   icon-only <a> tags; Save is primary (accent color), Close is muted. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: the popup footer uses button elements with icon and text labels instead of
+   icon-only <a> tags; Save is primary and Close is muted. */
 .completion_prompt_manager_popup_entry_form_footer {
     display: flex;
     align-items: center;
@@ -710,7 +700,7 @@
     border-color: var(--SmartThemeQuoteColor);
 }
 
-/* SillyBunny: accordion header elements — chevron, active count, lock. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: accordion header parts: chevron, active count and lock. */
 .pm-accordion-meta {
     flex: 0 0 auto;
     display: flex;
@@ -923,7 +913,7 @@
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 88%, transparent);
 }
 
-/* SillyBunny: two-part footer toolbar — left=select+insert, right=global actions. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: two-part footer toolbar, with select and insert on the left and global actions on the right. */
 #completion_prompt_manager .completion_prompt_manager_footer {
     display: flex;
     flex-direction: row;
@@ -946,7 +936,7 @@
     flex-wrap: wrap;
 }
 
-/* SillyBunny: primary group stretches to fill space; actions group stays compact. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: primary group stretches to fill space; actions group stays compact. */
 .pm-footer-group-primary {
     flex: 1 1 auto;
     min-width: 0;
@@ -965,7 +955,7 @@
     white-space: nowrap;
 }
 
-/* SillyBunny: labeled variant shows icon + text label; icon-only variant gets square padding. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: labeled variant shows icon + text label; icon-only variant gets square padding. */
 .pm-footer-btn-labeled {
     gap: 6px;
     padding: 4px 12px;
@@ -1056,7 +1046,6 @@
     justify-content: space-between;
 }
 
-/* Small-screen adjustments (popup layout, tab sizing) — viewport-based */
 @media screen and (max-width: 412px) {
     #completion_prompt_manager_popup {
         max-width: 100%;
@@ -1087,10 +1076,10 @@
     }
 }
 
-/* SillyBunny: kebab/hover model keyed on pointer capability, not viewport width.
-   hover:none + pointer:coarse = touch device regardless of window size. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: the kebab and hover model follows pointer capability, not viewport width:
+   hover: none with pointer: coarse is a touch device at any window size. */
 @media (hover: none) and (pointer: coarse) {
-    /* On touch devices hover doesn't fire — show kebab, hide hover actions */
+    /* Hover does not fire on touch devices, so the kebab shows and the hover actions hide. */
     #completion_prompt_manager #completion_prompt_manager_list li .pm-row-actions {
         display: none;
     }
@@ -1101,7 +1090,6 @@
         justify-content: center;
     }
 
-    /* Token count makes room for kebab */
     #completion_prompt_manager #completion_prompt_manager_list li .pm-row-end-zone .prompt_manager_prompt_tokens {
         opacity: 1 !important;
         padding-right: 32px;
@@ -1112,7 +1100,6 @@
         opacity: 1;
     }
 
-    /* Larger touch targets */
     #completion_prompt_manager #completion_prompt_manager_list li.completion_prompt_manager_prompt {
         min-height: 52px;
     }
@@ -1125,8 +1112,8 @@
     }
 }
 
-/* SillyBunny: JS-side touch fallback — .sb-touch-device is added when navigator.maxTouchPoints > 0
-   for DevTools and environments where hover:none media query is unreliable. — feat/v1.9.0-ui-overhaul */
+/* SillyBunny: .sb-touch-device is added when navigator.maxTouchPoints > 0, for DevTools and for
+   environments where the hover: none query is unreliable. */
 #completion_prompt_manager.sb-touch-device #completion_prompt_manager_list li .pm-row-actions {
     display: none;
 }
@@ -1204,7 +1191,7 @@
     line-height: 1.45;
 }
 
-/* SillyBunny: mobile slide-in detail (Layout C). The workspace clips its overflow so the
+/* SillyBunny: mobile slide-in detail. The workspace clips its overflow so the
    editor pane translates off-screen to the right by default and slides in when a prompt is
    selected, replacing the list view. The back button is only visible in detail mode. */
 .sb-workspace-split {
@@ -1269,8 +1256,8 @@
 }
 
 @media screen and (min-width: 961px) {
-    /* SillyBunny: flex layout lets the list pane use --pm-list-width (set by the
-       drag divider) while keeping the editor fluid; replaces the fixed 280px grid. — feat/v1.9.0-ui-overhaul */
+    /* SillyBunny: flex layout lets the list pane take --pm-list-width (set by the
+       drag divider) while the editor stays fluid. */
     .sb-workspace-split {
         display: flex;
         align-items: start;
@@ -1322,7 +1309,7 @@
 
     #completion_prompt_manager .completion_prompt_manager_list_pane {
         /* SillyBunny: width driven by --pm-list-width custom property so the drag
-           divider can resize without JS touching individual element widths. — feat/v1.9.0-ui-overhaul */
+           divider can resize without JS touching individual element widths. */
         flex: 0 0 var(--pm-list-width, 280px);
         width: var(--pm-list-width, 280px);
         min-width: 200px;
@@ -1355,7 +1342,7 @@
     #completion_prompt_manager .completion_prompt_manager_editor_pane {
         display: flex;
         /* SillyBunny: start collapsed; expands to fluid width when has_editor is set
-           so the list pane can occupy full width when nothing is selected. — feat/v1.9.0-ui-overhaul */
+           so the list pane can occupy full width when nothing is selected. */
         flex: 0 0 0;
         width: 0;
         min-width: 0;
@@ -1508,7 +1495,7 @@
 
     #completion_prompt_manager .completion_prompt_manager_editor_host #completion_prompt_manager_popup_entry_form_prompt {
         /* SillyBunny: flex: 1 1 auto lets the textarea fill remaining vertical space in the
-           editor pane rather than collapsing to its default 2-row intrinsic height. — feat/v1.9.0-ui-overhaul */
+           editor pane rather than collapsing to its default 2-row intrinsic height. */
         flex: 1 1 auto;
         min-height: clamp(220px, 32vh, 420px);
         min-height: clamp(220px, 32dvh, 420px);

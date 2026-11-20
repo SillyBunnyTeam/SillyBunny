@@ -1,6 +1,6 @@
-/* SillyBunny editor sheet — shared chrome, character sections, group sections
+/* SillyBunny editor sheet: shared chrome, character sections and group sections
  * =========================================================================
- * One stylesheet for both explicit-save editors (Step 3b/Step 4). The header,
+ * One stylesheet for both explicit-save editors (character and group). The header,
  * toolbar, sections, rows and fields are shared and unstyled by ID; the
  * character-only sections come first, then the group-only rules at the bottom.
  * Every ID-scoped rule names both editors, so the two can never drift apart.
@@ -84,7 +84,7 @@
 }
 
 /* The group panel is a .right_menu toggled by selectRightMenuWithAnimation
-   (script.js:14501), which writes an inline display; the group-specific
+   (script.js), which writes an inline display; the group-specific
    container rules live at the bottom of this file. */
 
 .sb-editor-sheet__content {
@@ -100,7 +100,7 @@
     -webkit-overflow-scrolling: touch;
 }
 
-/* Header — sticky, horizontal buttons
+/* Header: sticky, horizontal buttons
    ========================================================================= */
 
 /* The header toggles visibility with the `hidden` attribute, but the flex
@@ -269,7 +269,7 @@
     background: var(--sb-accent);
 }
 
-/* Token readout — mirrors the legacy #result_info counters. */
+/* Token readout: mirrors the #result_info counters of the upstream markup. */
 .sb-editor-tokens {
     flex: 0 1 auto;
     min-width: 0;
@@ -455,7 +455,7 @@
     }
 }
 
-/* Toolbar — horizontal action buttons
+/* Toolbar: horizontal action buttons
    ========================================================================= */
 
 .sb-editor-toolbar {
@@ -477,13 +477,13 @@
     overflow: hidden;
 }
 
-/* Upstream sets display: flex on .menu_button (style.css:4254), which these divs
+/* Upstream sets display: flex on .menu_button (style.css), which these divs
    carry for their click handlers. Do not add !important here: create mode hides
    the edit-only actions with inline styles, and !important would defeat that and
    leave Delete/Duplicate pointing at the previously selected character.
 
    The same class paints .menu_button as a chip (1px border, 5% fill), and
-   sillybunny-theme.css:677 re-applies a fill and a 14px radius with four :not()
+   sillybunny-theme.css re-applies a fill and a 14px radius with four :not()
    guards, giving specificity 0,5,0, which outranks a plain class selector. A
    toolbar of icon actions reads better as flat buttons, so the chip chrome is
    stripped here. The #right-nav-panel prefix is what makes these declarations
@@ -538,7 +538,7 @@
     min-width: 0;
 }
 
-/* Upstream #char-management-dropdown styling is obsolete now the select is a
+/* Upstream #char-management-dropdown styling does not apply because the select is a
    hidden transport; the visible menu above replaces it. */
 .sb-editor-toolbar :is(#char-management-dropdown, #group-chat-lorebook-dropdown) {
     display: none !important;
@@ -747,8 +747,8 @@
     margin-inline-start: 6px;
 }
 
-/* style.css:2866 sizes description (29dvh) and first message (clamp to 18rem)
-   from the viewport, so they dwarf every other field. One shared height for
+/* The upstream rule in style.css that sets the description to 29dvh and the first message
+   to clamp(..., 18rem) sizes them from the viewport, so they dwarf every other field. One shared height for
    every non-Metadata field; Metadata keeps its own compact sizes.
    Stays at 1001px, off the breakpoint set: it pairs with the upstream rule
    `min-width: 1001px` of style.css, which these rules override. */
@@ -773,7 +773,7 @@
     field-sizing: content;
 }
 
-/* Essentials section — avatar and name side by side
+/* Essentials section: avatar and name side by side
    ========================================================================= */
 
 /* The avatar and the field rows sit side by side while the box holds both, and stack where it does not (the rows' basis is
@@ -838,10 +838,10 @@
     border-bottom: 0;
 }
 
-/* Preview pane — rendered Markdown output
+/* Preview pane: rendered Markdown output
    ========================================================================= */
 
-/* Preview pane — replaces the textarea in-place when active
+/* Preview pane: replaces the textarea in place while active
    ========================================================================= */
 
 #form_create :is(textarea[data-sb-editor-field], .sb-preview-pane)[hidden] {
@@ -887,7 +887,7 @@
     user-select: text;
 }
 
-/* Role segmented control — sits immediately before the hidden #depth_prompt_role
+/* Role segmented control: sits immediately before the hidden #depth_prompt_role
    select; takes all remaining suffix space on its row. */
 #right-nav-panel .sb-boolean-radio-group[aria-label] + #depth_prompt_role {
     /* select is a hidden transport; the segment above is the visible control */
@@ -1001,7 +1001,7 @@
     white-space: nowrap;
 }
 
-/* style.css:7102 and :4053 give the list its own forced scroll box, which
+/* The upstream rules for the greetings list give it its own forced scroll box, which
    reads as a nested dropdown inside the sheet. The sheet already scrolls. */
 #form_create .sb-greetings-list {
     display: flex;
@@ -1254,7 +1254,7 @@ body.reduced-motion :is(
     background: var(--sb-tag-color, var(--sb-muted-fg));
 }
 
-/* Group editor — group-specific sheet rules (Step 4)
+/* Group editor: rules specific to the group editor
    ========================================================================= */
 
 /* Panel and sheet container
@@ -1273,7 +1273,7 @@ body.reduced-motion :is(
     padding: 0 !important;
 }
 
-/* Avatar — the label is the fixed square; the collage fills it
+/* Avatar: the label is the fixed square; the collage fills it
    ========================================================================= */
 
 .sb-character-essentials__avatar #group_avatar_div {

@@ -484,7 +484,7 @@
 }
 
 .textarea_compact {
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     line-height: 1.2;
 }
 

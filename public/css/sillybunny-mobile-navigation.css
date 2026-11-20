@@ -177,8 +177,8 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-chat-bar
 }
 
 /*
- * Composer toolbar: a flat row with the theme's hairline above it, as on desktop. The old pill
- * radius curved that hairline into a capsule outline that desktop no longer has.
+ * Composer toolbar: a flat row with the theme's hairline above it, as on desktop. A pill
+ * radius would curve that hairline into a capsule outline.
  */
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems:not(#sb-specificity) {
     --sb-composer-inset: 4px;

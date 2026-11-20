@@ -75,7 +75,7 @@ body.sb-sheld-blur #sheld::before {
 }
 
 /* Flat has no fill per message: its column carries the bot tint over its own as one surface, and the tint follows Background Visibility on desktop.
-   A selected message takes the neutral fill, since upstream's dark red used to show only around the message's own fill. */
+   A selected message takes the neutral fill, since upstream's dark red shows only around the message's own fill. */
 body.flatchat #chat {
     --sb-flat-column-tint: var(--SmartThemeBotMesBlurTintColor);
 }

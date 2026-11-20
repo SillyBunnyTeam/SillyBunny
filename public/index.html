@@ -129,7 +129,7 @@
     <!-- top bar central settings buttons -->
     <div id="top-bar">
     </div>
-    <!-- SillyBunny: full-screen settings page — replaces drawer overlays (feat/v1.9.0-ui-overhaul) -->
+    <!-- SillyBunny: full-screen settings page that replaces the drawer overlays. -->
     <div id="sb-settings-page" hidden aria-modal="true" role="dialog" aria-label="Settings">
         <div id="sb-settings-inner">
             <aside id="sb-settings-sidebar" aria-label="Settings Navigation">
@@ -6803,9 +6803,9 @@
                             </div>
                             <a id="chartokenwarning" class="right_menu_button fa-solid fa-triangle-exclamation" href="https://docs.sillytavern.app/usage/core-concepts/characterdesign/#character-tokens" target="_blank" title="About Token 'Limits'" data-i18n="[title]About Token 'Limits'"></a>
                             <!-- SillyBunny: #creators_note_styles_button, #character_open_media_overrides
-                                 and .rm_stats_button were MOVED into the character editor toolbar so they
-                                 stay reachable; #rm_PinAndTabs is hidden for character_edit/create.
-                                 Do not reintroduce them here: duplicate IDs make getElementById return
+                                 and .rm_stats_button live in the character editor toolbar so they
+                                 stay reachable while #rm_PinAndTabs is hidden for character_edit/create.
+                                 Do not add them here: duplicate IDs make getElementById return
                                  the first match in document order, which would be the hidden copy. -->
                         </div>
                         <button id="sb_character_editor_exit" class="menu_button menu_button_icon" type="button" title="Close Characters" aria-label="Close Characters">
@@ -6893,7 +6893,7 @@
                                     <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                                 </button>
                                 <!-- SillyBunny: #char-management-dropdown is kept as a hidden transport,
-                                     not deleted. world-info.js:7456 sets and triggers it on long-press of
+                                     not deleted. world-info.js sets and triggers it on long-press of
                                      #world_button, and extensions (e.g. the gallery) append options to it
                                      at runtime. The visible GNOME menu below reads its options and is the
                                      only user-facing entry point. -->
@@ -7286,10 +7286,10 @@
                             </div>
                         </form>
                     </div>
-                    <!-- SillyBunny: group editor sheet (Step 4). Mirrors #form_create inside
+                    <!-- SillyBunny: group editor sheet. Mirrors #form_create inside
                          #rm_ch_create_block: this element stays the toggled menu panel, while
                          nav_list/expand stays display:none until selectRightMenuWithAnimation
-                         sets an inline display (script.js:14501). The shared chrome classes
+                         sets an inline display. The shared chrome classes
                          (.sb-editor-*, .ds-*, .sb-editor-sheet) come from
                          sillybunny-character-editor.css; only the group-specific row layout lives here. -->
                     <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu sb-editor-sheet">
@@ -7347,10 +7347,9 @@
 
                         <div class="sb-editor-sheet__content" id="sb_group_editor_content">
                             <!-- SillyBunny: six flat sections, same .sb-editor-section /
-                                 .ds-pref-group pattern as #form_create. The legacy drawer markup
-                                 is gone; the IDs groupControlsToggle, groupCurrentMemberListToggle
-                                 and groupAddMemberListToggle are kept because script.js:17264 and
-                                 tags.js still query them. -->
+                                 .ds-pref-group pattern as #form_create. The IDs groupControlsToggle,
+                                 groupCurrentMemberListToggle and groupAddMemberListToggle are kept
+                                 because script.js and tags.js query them. -->
                             <section class="sb-editor-section" data-sb-section="essentials" aria-labelledby="sb_group_section_essentials">
                                 <header class="ds-pref-group-header" id="groupControlsToggle">
                                     <h3 class="ds-pref-group-heading" id="sb_group_section_essentials" data-i18n="Essentials">Essentials</h3>
@@ -7522,7 +7521,7 @@
                                             <i class="fa-solid fa-chevron-right"></i>
                                         </span>
                                     </button>
-                                    <!-- SillyBunny: chats.js:2309 binds .open_media_overrides by delegation,
+                                    <!-- SillyBunny: chats.js binds .open_media_overrides by delegation (openExternalMediaOverridesDialog),
                                          so this row only needs the class. The hidden transport above holds
                                          the same class for the ⋯ menu. -->
                                     <button type="button" class="ds-row ds-row-button open_media_overrides" id="group_media_overrides_row" title="Click to allow/forbid the use of external media for this group." data-i18n="[title]Click to allow/forbid the use of external media for this group.">
@@ -8396,7 +8395,7 @@
                                     <span data-i18n="Triggers">Triggers</span>
                                 </label>
                                 <!-- SillyBunny: hidden backing select kept for upstream JS save/load compatibility;
-                                     chips below drive its state visually. — feat/v1.9.0-ui-overhaul -->
+                                     chips below drive its state visually. -->
                                 <select id="completion_prompt_manager_popup_entry_form_injection_trigger" class="text_pole pm-trigger-hidden-select" name="injection_trigger" multiple>
                                     <option data-i18n="Normal" value="normal">Normal</option>
                                     <option data-i18n="Continue" value="continue">Continue</option>
@@ -8471,8 +8470,8 @@
                             <textarea id="completion_prompt_manager_popup_entry_form_prompt" class="text_pole" name="prompt" data-macros data-macros-autocomplete="always" data-macros-autocomplete-style="expanded" placeholder="The prompt to be sent." data-i18n="[placeholder]The prompt to be sent."></textarea>
                         </div>
                         <div class="completion_prompt_manager_popup_entry_form_footer">
-                            <!-- SillyBunny: proper button elements with text labels replace icon-only <a> tags;
-                                 IDs and data-pm-prompt attr preserved for upstream JS compatibility. — feat/v1.9.0-ui-overhaul -->
+                            <!-- SillyBunny: button elements with text labels stand in for icon-only <a> tags;
+                                 the IDs and the data-pm-prompt attribute stay for upstream JS. -->
                             <button id="completion_prompt_manager_popup_entry_form_close" type="button" class="menu_button pm-editor-btn" title="Close" data-i18n="[title]close">
                                 <i class="fa-solid fa-close fa-fw" aria-hidden="true"></i>
                                 <span data-i18n="Close">Close</span>
@@ -8688,7 +8687,7 @@
                 <h4 data-i18n="Persona Name:">Persona Name:</h4>
             </div>
         </div>
-        <!-- SillyBunny: retained for extensions; getGroupCharacterBlock now uses createEntityRow -->
+        <!-- SillyBunny: kept for extensions; getGroupCharacterBlock builds rows with createEntityRow. -->
         <div id="group_member_template" class="template_element">
             <div class="group_member ds-entity-row">
                 <div class="avatar ds-entity-row__avatar">

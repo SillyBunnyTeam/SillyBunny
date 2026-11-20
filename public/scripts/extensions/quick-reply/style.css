@@ -308,7 +308,7 @@
 }
 
 /* SillyBunny: a quick reply is a shared entity row. The text column holds the icon button and the label field above the
-   message field. The buttons the row used to show stay in it, hidden, for the row's menu to run. */
+   message field. The upstream buttons stay in the row, hidden, for the row's menu to run. */
 #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item > [hidden] {
   display: none;
 }
@@ -1389,7 +1389,7 @@ dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modal
 dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting) .sb-dialog__close {
   visibility: hidden;
 }
-/* SillyBunny: min-content on the old body collapses the debugger inside the Window grid. */
+/* SillyBunny: min-content on the body collapses the debugger inside the Window grid. */
 dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) {
   width: min(420px, calc(100% - 32px)) !important;
   height: auto !important;

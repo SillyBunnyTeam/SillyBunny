@@ -121,7 +121,7 @@ label[for="extensions_autoconnect"]:not(.ds-row) {
     font-weight: normal;
 }
 
-/* SillyBunny: extension cards now use the manager's shared boxed list. */
+/* SillyBunny: extension cards use the manager's shared boxed list. */
 .extensions_info .extension_name {
     font-size: 1.05em;
 }

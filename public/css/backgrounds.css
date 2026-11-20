@@ -143,7 +143,7 @@ body.sb-bg-blur #bg_custom {
 }
 
 #bg-filter {
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     flex: 1 1 260px;
     min-width: 0;
 }
@@ -265,7 +265,7 @@ body.sb-bg-blur #bg_custom {
     left: 5px;
 }
 
-/* SillyBunny: the old click-to-select mode and its folder tiles, breadcrumb and cover buttons are gone; selection mode and folders are in sillybunny-background-gallery.css. */
+/* SillyBunny: selection mode and folders are in sillybunny-background-gallery.css. */
 .bg_example .jg-menu {
     display: flex;
     position: absolute;
@@ -368,7 +368,7 @@ body.sb-bg-blur #bg_custom {
     right: 0;
     background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.9));
     color: #fff;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 600;
     padding: 4px 8px 6px;
     text-align: center;

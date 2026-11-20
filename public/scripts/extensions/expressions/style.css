@@ -113,7 +113,7 @@ img.expression.default {
 }
 
 /* SillyBunny: a sprite tile is a grid cell with the control radius and the raised fill, and its image is its own button. The literal colours of the
-   tile, its label bar and its state tints, the accent and danger tints of the action buttons, the agent block's box and the old flex layout of
+   tile, its label bar and its state tints, the accent and danger tints of the action buttons, the agent block's box and the upstream flex layout of
    the list and the button strip are removed below, because each one bypassed the theme's tokens. */
 .expression_list_item {
     position: relative;
