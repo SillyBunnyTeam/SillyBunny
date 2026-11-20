@@ -6254,7 +6254,7 @@ function helpCommandCallback(_, type) {
         case 'hotkeys':
         case 'hotkey':
         case '3':
-            // SillyBunny: the Keyboard Shortcuts window is the one shortcut overview, so the old chat message is not shown.
+            // SillyBunny: the Keyboard Shortcuts window is the one shortcut overview, so no chat message is shown.
             import('./sillybunny-shortcuts.js').then(({ openShortcutsWindow }) => openShortcutsWindow());
             break;
         case 'macros':

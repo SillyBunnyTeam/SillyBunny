@@ -90,7 +90,7 @@
     // `cssPerArtPixel` is the CSS size of one art pixel, which the width and the height of every picture follow.
     function chooseFit(viewportHeight, ratio) {
         var stepOne = { step: 1, smooth: false, cssPerArtPixel: 1 / ratio };
-        // Without a viewport height the shares below mean nothing, so the picture keeps one whole step.
+        // Without a viewport height the shares mean nothing, so the picture keeps one whole step.
         if (!(viewportHeight > 0)) return stepOne;
         var fitting = Math.floor((HEIGHT_SHARE * viewportHeight * ratio) / TALLEST_ROWS + EPSILON);
         if (fitting >= 1) return { step: fitting, smooth: false, cssPerArtPixel: fitting / ratio };

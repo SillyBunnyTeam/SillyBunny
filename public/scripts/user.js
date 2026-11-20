@@ -38,7 +38,7 @@ export async function setUserControls(isEnabled) {
 
 /**
  * SillyBunny: the settings split detaches #account_controls before the settings load, so the
- * document-wide lookups above miss its buttons. The Data & Security tab calls this with its container.
+ * document-wide lookups miss its buttons. The Data & Security tab calls this with its container.
  * @param {ParentNode} root Subtree that holds the account controls
  */
 export function syncUserControls(root = document) {

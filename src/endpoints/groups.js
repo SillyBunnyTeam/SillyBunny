@@ -259,8 +259,8 @@ router.post('/create', (request, response) => {
         chats: request.body.chats ?? [id],
         generation_mode_join_prefix: request.body.generation_mode_join_prefix ?? '',
         generation_mode_join_suffix: request.body.generation_mode_join_suffix ?? '',
-        // SillyBunny: hideMutedSprites and member_models were accepted by the frontend create payload
-        // but not whitelisted here, so they were silently dropped on creation (Step 4 fix).
+        // SillyBunny: the frontend create payload carries hideMutedSprites and member_models, so they are
+        // whitelisted here. Without that the route drops them when it creates the group.
         hideMutedSprites: !!request.body.hideMutedSprites,
         member_models: (request.body.member_models && typeof request.body.member_models === 'object' && !Array.isArray(request.body.member_models))
             ? request.body.member_models

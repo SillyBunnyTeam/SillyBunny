@@ -2,13 +2,13 @@
  * SillyBunny subpage descriptors.
  *
  * `sillybunny-settings-subpage.js` is the stack; this is the part that knows what each panel's rows
- * are. The panels it covers -- Extensions and Prompting -- were the last ones still built out of
- * accordions, so each one is described here as a list of rows and the section each row opens. Agents
+ * are. Each panel it covers, Extensions and Prompting, is described here as a list of rows and the
+ * section each row opens, because both are built out of accordions. Agents
  * is presented as a dashboard by its own extension and keeps that layout.
  *
  * Connections is not here. Its backend picker is the axis every one of its settings hangs off, so
- * behind a row it made the only way to change backend an action that wrote global API state, and the
- * page it needed on screen was the picker itself. It is built by hand instead, in
+ * behind a row it would make the only way to change backend an action that writes global API state, and the
+ * page it needs on screen is the picker itself. It is built by hand instead, in
  * `sillybunny-connections-panel.js`.
  *
  * The descriptions are the copy of the page. SillyBunny can describe only the extensions it ships,
@@ -310,7 +310,7 @@ export function buildExtensionsLead(panel, pinned, { onPresented } = {}) {
  *
  * Extensions build their own title, and they do it in two different shapes: most wrap their settings
  * in a drawer the container holds, while a few put the drawer class on the container itself. Both
- * have to be read, because the container's whole text is not a label -- it is the label plus every
+ * have to be read, because the container's whole text is not a label: it is the label plus every
  * setting inside it.
  *
  * @param {HTMLElement} body
@@ -356,7 +356,7 @@ function collectExtensionRows(body) {
  * Reads the title an extension gave its own container.
  *
  * The title is the text of the drawer's toggle, and specifically of the element the extension used
- * to say its name -- the rest of the toggle is icon glyphs and, in some cases, a help marker the
+ * to say its name. The rest of the toggle is icon glyphs and, in some cases, a help marker the
  * extension appends. Falls back to the toggle's own text when the extension used none of the usual
  * elements, and returns an empty string rather than a paragraph when there is no drawer at all.
  *
@@ -381,7 +381,7 @@ function readExtensionLabel(container) {
 /**
  * The text an element shows under its own name.
  *
- * A title often carries a help marker -- an anchor wrapping a `?` glyph -- that documents the card
+ * A title often carries a help marker (an anchor wrapping a `?` glyph) that documents the card
  * rather than naming it. Reading it into the label puts a stray character after the name that the
  * page then repeats in every list row, so links are left out.
  *

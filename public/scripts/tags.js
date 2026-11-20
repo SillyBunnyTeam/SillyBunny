@@ -2305,7 +2305,7 @@ async function onTagDeleteClick() {
     }
 
     // SillyBunny: keep the merge control in the shared destructive Alert, as a select row. The row adopts the
-    // select and its select2 container, so the select leaves the template nodes that are appended below.
+    // select and its select2 container, so the select leaves the template nodes that are appended afterwards.
     const alertBody = document.createElement('div');
     const headingSelector = 'h1, h2, h3, h4, h5, h6';
     popupContent.filter(headingSelector).add(popupContent.find(headingSelector)).remove();
@@ -2334,7 +2334,7 @@ async function onTagDeleteClick() {
     const mergeValue = mergeSelect.val();
     const mergeTagId = mergeValue ? String(mergeValue) : null;
 
-    // SillyBunny: the removal moved into removeTagById(), which the Tag Manager's bulk Delete shares.
+    // SillyBunny: the removal lives in removeTagById(), which the Tag Manager's bulk Delete shares.
     removeTagById(id, mergeTagId);
 
     toastr.success(`'${tag.name}' deleted${mergeTagId ? ` and merged into '${tags.find(x => x.id === mergeTagId).name}'` : ''}`, 'Delete Tag');

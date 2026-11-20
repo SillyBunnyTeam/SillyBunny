@@ -6,8 +6,8 @@
  * nothing else: it takes a list page and a detail page, animates between them, and keeps the two
  * scrollers and the focus history in order.
  *
- * Why a stack rather than the accordions it replaces: Backend and Customize panels author their
- * settings as `inline-drawer`s nested up to eleven levels deep (Extensions), four providers' blocks
+ * Why a stack rather than accordions: Backend and Customize panels author their
+ * settings as `inline-drawer`s nested many levels deep (Extensions), four providers' blocks
  * side by side (Connections), or a preset manager taller than the panel (Prompting). Expanding one
  * pushes everything below it off-screen and there is no way back to the section that owned it, so
  * the pages read as one long scroll with no structure. A stack gives every section the full panel

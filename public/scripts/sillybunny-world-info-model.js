@@ -1,4 +1,4 @@
-// SillyBunny: data layer for the World Info editor rebuild. No DOM and no world-info.js import:
+// SillyBunny: data layer for the World Info editor. No DOM and no world-info.js import:
 // persistence functions are injected so the model stays unit-testable and world-info.js keeps
 // owning saves, caches and originalData bookkeeping.
 //
@@ -226,7 +226,7 @@ function isEscaped(text, index) {
 
 // ---------------------------------------------------------------------------------------------
 // Field schema. Each field reads a UI value from a draft and writes one back; `keys` lists the
-// native entry keys it owns. `coverage` below maps every `newWorldInfoEntryDefinition` key.
+// native entry keys it owns. `coverage` maps every `newWorldInfoEntryDefinition` key.
 
 const strategyOf = entry => entry?.constant === true ? 'constant' : entry?.vectorized === true ? 'vectorized' : 'normal';
 const hasFilter = entry => {
@@ -372,7 +372,7 @@ export const FIELDS = Object.freeze([
         read: entry => recursionLevelValue(entry.delayUntilRecursion),
         write: (entry, value) => { entry.delayUntilRecursion = parseRecursionLevel(value, entry.delayUntilRecursion); },
     },
-    // Filters (D10)
+    // Filters
     {
         id: 'characterFilter', section: 'filters', control: 'character-filter', label: 'Filter to Characters or Tags', i18n: 'Filter to Characters or Tags', keys: ['characterFilter'],
         read: entry => ({
@@ -501,7 +501,7 @@ export function applyDraft(data, uid, baseline, draft, { setOriginal }) {
 }
 
 /**
- * Re-bases one native key of an open draft after a list-level action (D1) changed the live entry.
+ * Re-bases one native key of an open draft after a list-level action changed the live entry.
  * The draft follows only when the user had not changed that key, so dirty state is unchanged.
  * @returns {boolean} Whether the draft value was replaced.
  */
@@ -514,13 +514,13 @@ export function rebaseKey(entry, baseline, draft, key) {
     return clean;
 }
 
-/** Keys an external writer changed on the live entry since the draft was opened (B.6 banner). */
+/** Keys an external writer changed on the live entry since the draft was opened, which the external-change banner reports. */
 export function externalChanges(entry, baseline) {
     return changedKeys(baseline, entry);
 }
 
 // ---------------------------------------------------------------------------------------------
-// originalData mirroring — same paths and values as the legacy per-field writers.
+// originalData mirroring: same paths and values as the legacy per-field writers.
 
 const ORIGINAL_PATHS = Object.freeze({
     comment: 'comment',
@@ -757,7 +757,7 @@ async function commitMutation(deps, name, data, receipt) {
     return result;
 }
 
-/** Row and bulk enable switch (D1). */
+/** Row and bulk enable switch. */
 export async function setEnabled(deps, name, data, uids, enabled) {
     const targets = entriesOf(data, [uids].flat());
     if (!targets.length) return { ok: false, name: null };

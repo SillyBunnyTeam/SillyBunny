@@ -447,7 +447,7 @@ async function openSwipePicker(messageId) {
             if (footer instanceof HTMLElement) {
                 footer.classList.add('swipe_picker_footer');
                 if (swipeIdLabel instanceof HTMLLabelElement) footer.prepend(swipeIdLabel);
-                // SillyBunny: the list gives up the height of the footer, and the scroll distance below depends on the list.
+                // SillyBunny: the list gives up the height of the footer, and `scrollToSelectedSwipe` depends on the list height.
                 popup.sbFrame.contentChanged();
             }
             scrollToSelectedSwipe();

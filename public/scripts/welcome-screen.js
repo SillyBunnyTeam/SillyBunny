@@ -616,7 +616,7 @@ async function refreshCharacterAvatarCache(avatar) {
 
     for (const img of avatarImages) {
         if (img instanceof HTMLImageElement) {
-            // SillyBunny: the prefix above also matches the mobile URL, which must not become the full-size file.
+            // SillyBunny: the prefix also matches the mobile URL, which must not become the full-size file.
             img.src = img.getAttribute('src')?.startsWith(mobileThumbnailUrl) ? cacheBustedMobileThumbnailUrl : cacheBustedThumbnailUrl;
         }
     }
@@ -952,7 +952,7 @@ async function openRecentCharacterChat(avatarId, fileName) {
     }
 
     try {
-        // SillyBunny: asking here keeps Cancel from reading as a failure below.
+        // SillyBunny: asking here keeps Cancel from reading as a failure.
         if (!await leaveTemporaryChat()) {
             return;
         }

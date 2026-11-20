@@ -153,7 +153,7 @@ const SB_DATA_SECURITY_REQUIRED_SECTIONS = Object.freeze([
  */
 export const SB_FLAT_SECTION_CLASS = 'sb-settings-flat-section';
 
-/** Heading element of a flattened subsection; carries the label the drawer header used to show. */
+/** Heading element of a flattened subsection; carries the label of the drawer header. */
 export const SB_FLAT_SECTION_HEADER_CLASS = 'sb-settings-flat-header';
 
 /**
@@ -191,8 +191,8 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
  *   blocks rather than stray accordions, and Connections drawer descendants carry provider
  *   visibility gates that flattening would break.
  *
- * The transform moves nodes with `insertBefore`/`appendChild` -- never `cloneNode` and never
- * `innerHTML` -- so input bindings, jQuery data, and SillyTavern's own listeners stay attached.
+ * The transform moves nodes with `insertBefore`/`appendChild` and uses neither `cloneNode` nor
+ * `innerHTML`, so input bindings, jQuery data, and SillyTavern's own listeners stay attached.
  * The content wrapper is dropped after its children have been lifted out, because the base
  * `.inline-drawer-content` rule is `display: none` and a wrapper that no longer has a toggle to
  * reveal it would hide the settings it holds.
@@ -300,9 +300,8 @@ export const SB_SETTINGS_CATEGORY_CLASS = 'sb-settings-category';
 /**
  * Reading order for each Backend and Customize tab.
  *
- * Upstream, SillyBunny, and extension-authored settings arrived in the order their authors
- * appended them, so related controls sat apart: Messages ran streaming, sending, swipes, prompt
- * building, and diagnostics through one 2000px section. Each tab is regrouped by meaning into
+ * Upstream, SillyBunny, and extension-authored settings appear in the order their authors
+ * appended them, so related controls sit apart. Each tab is regrouped by meaning into
  * named sub-categories, regardless of who authored a control.
  *
  * `root` names the element whose children are reordered. `contract: true` marks a tab that is built to
@@ -979,7 +978,7 @@ function detach(element) {
  *
  * Most selectors name the section directly. The streaming and sound controls resolve to a checkbox
  * inside a `<label class="checkbox_label">`, and it is the label that reads as a settings row, so
- * the closest one is returned instead -- moving the bare input would strand its label text.
+ * the closest one is returned instead, because moving the bare input would strand its label text.
  *
  * @param {HTMLElement} scope element searched for the selector
  * @param {string} selector

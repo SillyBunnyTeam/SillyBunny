@@ -8,7 +8,7 @@
  *   tree       the working tree. A rendered string that is in no set of it is data (a name, a file, a model id), not a label.
  *
  * Usage: node scripts/copy-strings.js upstream|tree [--base <sha>] [--out <file>]
- * Without `--out` the set goes to the cache directory (see `cacheFile`). The upstream set is large (several MB), so it is built on
+ * Without `--out` the set goes to the cache directory (see `cacheFile`). The upstream set is large, so it is built on
  * demand and never committed; the audit commits only the violations that it finds.
  */
 

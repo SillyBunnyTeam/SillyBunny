@@ -111,12 +111,12 @@ const loadAppearanceModule = createDeferredModule(new URL('./sillybunny-appearan
 const loadBackgroundGalleryModule = createDeferredModule(new URL('./sillybunny-background-gallery.js', import.meta.url));
 const loadBackendPagesModule = createDeferredModule(new URL('./sillybunny-backend-pages.js', import.meta.url));
 const loadSamplingModule = createDeferredModule(new URL('./sillybunny-sampling.js', import.meta.url));
-/** Set once the Formatting and Presets rows have been built; the Backend updates below call into it. */
+/** Set once the Formatting and Presets rows have been built; the Backend updates call into it. */
 let backendPagesModule = null;
 let backendPagesPromise;
 let serverToolsPromise;
 let settingsPanelPromise;
-/** Set once the Appearance module has regrouped the upstream rows; the Appearance helpers below need it. */
+/** Set once the Appearance module has regrouped the upstream rows; the Appearance helpers need it. */
 let appearanceModule = null;
 
 /** Appearance holds raw upstream rows until its module has regrouped them, and the settings passes must not reshape them first. */
@@ -189,7 +189,7 @@ function ensureBackendPages() {
 
 /**
  * Marks the panels that a deferred module fills as busy until it has built them, the way an on-demand panel is marked, so
- * that a screen reader and the audit's open steps can tell a page that is still the raw upstream rows from a built one.
+ * that a screen reader and automated checks can tell a page that is still the raw upstream rows from a built one.
  * @template T
  * @param {'left' | 'right'} shellKey
  * @param {string[]} tabIds
@@ -213,10 +213,10 @@ function initializeSettingsPanel() {
         // navigation, so the inline drawers are opened directly instead.
         openAllInlineDrawers();
         applyDefaultDrawerStates();
-        // Injection above can author drawers inside another drawer -- the Appearance theme card
+        // The theme picker injection can author drawers inside another drawer: the Appearance theme card
         // creates `#sb-interface-drawer`, `#sb-topbar-label-drawer` and
         // `#sb-quick-access-shortcuts-drawer` inside `#AppearanceSection`, all after the split has
-        // already run its flatten pass -- so it is repeated once the panel is fully built.
+        // already run its flatten pass. The flatten pass is therefore repeated once the panel is fully built.
         flattenRightShellSettingsDrawers();
         invalidateUserSettingsTabSearchIndexes();
     })).catch(error => {
@@ -234,7 +234,7 @@ function initializeSettingsPanel() {
  * Connections preserves upstream drawer content because its descendants carry provider visibility
  * gates; its scoped form pass supplies expander-row presentation without flattening that ancestry.
  */
-// SillyBunny: Agents now owns shared preference pages, not an extension drawer.
+// SillyBunny: Agents owns shared preference pages, not an extension drawer.
 const SB_COLLAPSIBLE_DRAWER_TAB_IDS = Object.freeze(new Set(['extensions', 'connections']));
 
 /**
@@ -575,8 +575,8 @@ function invalidateUserSettingsTabSearchIndexes() {
  * drawers still append into it; it has no settings left, so it contributes nothing in practice.
  *
  * The Data & Security container is here too. Its content is authored inside the settings block, so
- * before the split moved it the drawer expansion, search reveal and drawer persistence below all
- * reached it; listing it keeps that behaviour instead of leaving the moved drawer inert. It is
+ * the drawer expansion, search reveal and drawer persistence must still reach it after the split
+ * moves it, so listing it keeps the moved drawer from going inert. It is
  * absent from the document until its panel is built, and the `instanceof` guard covers that.
  *
  * @returns {HTMLElement[]}
@@ -625,8 +625,8 @@ function openAllInlineDrawers(root = null) {
  * the split.
  *
  * The split flattens and orders the markup it relocates, but some sections author their drawers
- * at runtime -- OpenAI groups are built in `openai.js` once its panel is created,
- * and Advanced Formatting and the Appearance theme card are assembled after the split -- so both
+ * at runtime (OpenAI groups are built in `openai.js` once its panel is created,
+ * and Advanced Formatting and the Appearance theme card are assembled after the split), so both
  * passes are repeated on activation. Both are idempotent, so re-running them costs queries and no
  * DOM churn.
  * Extensions and Connections are skipped for the same reason as in `flattenRightShellSettingsDrawers`, and
@@ -668,7 +668,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
     rightTab: 'sb-right-tab',
     surfaceTransparency: 'sb-surface-transparency',
-    // The one stored list of label parts, read at every width. The name is from when it held the desktop label only.
+    // The one stored list of label parts, read at every width. The name says desktop, but the list is read at every width.
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
     // Read once, to seed the list above for a browser that stored only a phone value; nothing writes it.
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
@@ -688,7 +688,7 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileButtonScale: 'sb-mobile-button-scale',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
-    // Legacy single-key form of the desktop value below; kept as a read-only seed so a bar
+    // Legacy single-key form of `desktopTopbarIconsOnly`; kept as a read-only seed so a bar
     // configured before the split keeps its look.
     topbarIconsOnly: 'sb-topbar-icons-only',
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
@@ -698,9 +698,9 @@ const SB_STORAGE_KEYS = Object.freeze({
     paperTextureOpacity: 'sb-paper-texture-opacity',
 });
 
-// The pre-overhaul shell-tab rail wrote these transient presentation attributes to <html>. Keep the
-// retired storage keys untouched for older builds and extensions, but never let stale attributes
-// suppress the top bar when a page is upgraded without a full browser restart.
+// An older shell-tab rail wrote these transient presentation attributes to <html>, and they can
+// remain after an upgrade without a full browser restart. Keep the retired storage keys untouched
+// for older builds and extensions, but never let stale attributes suppress the top bar.
 const SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES = Object.freeze([
     'data-sb-mobile-nav-layout',
     'data-sb-mobile-nav-mode',
@@ -1096,7 +1096,7 @@ const SB_CHAT_SEARCH_MARK_SELECTOR = 'mark[data-sb-chat-search="true"]';
 const SB_INIT_RETRY_DELAY_MS = 150;
 const SB_INIT_MAX_RETRIES = 30;
 
-// Shell Style picker removed for the libadwaita shell; legacy sb-theme values are ignored.
+// The libadwaita shell has no Shell Style picker, so legacy sb-theme values are ignored.
 const SB_SHELL_THEME = 'clean-minimal';
 
 const SB_MESSAGE_STYLES = Object.freeze([
@@ -1355,7 +1355,7 @@ const SB_SEARCH_TARGET_SELECTOR = [
  *
  * The sidebar treats a hit here as specific enough to reveal a tab, because the tab's name is
  * unlikely to be on screen while the section it holds is discoverable. Everything else the index
- * collects — individual checkboxes, selects, buttons — is a leaf control whose match says very
+ * collects (individual checkboxes, selects, buttons) is a leaf control whose match says very
  * little about the tab, so it is left to the universal search panel, which is built for browsing.
  */
 const SB_SIDEBAR_SECTION_MATCH_SELECTOR = [
@@ -1591,7 +1591,7 @@ function normalizeTopbarLabelParts(value, fallback = []) {
 
 /**
  * The stored list of label parts. A browser that has no list but stored a phone value gets a list of that one part, and an
- * empty phone value gives an empty list, which shows the default label as it did before.
+ * empty phone value gives an empty list, which shows the default label.
  * @returns {string[]}
  */
 function readTopbarLabelParts() {
@@ -2061,7 +2061,7 @@ function wait(ms) {
 }
 
 // Row subtitles and section meta lines describe a setting rather than name it: they stay searchable,
-// but folding them into `textContent` turned every label into "NameDescription". Placeholder copy is
+// but folding them into `textContent` would turn every label into "NameDescription". Placeholder copy is
 // unwritten filler and is neither searchable nor shown.
 const SB_SEARCH_DESCRIPTION_SELECTOR = [
     '.ds-row-subtitle',
@@ -7461,8 +7461,8 @@ function hideHostToggles() {
         characterToggle.style.pointerEvents = 'none';
     }
 
-    // SillyBunny: World Info is no longer a left/top-level drawer, but keeping
-    // the upstream drawer ID preserves legacy selectors until runtime reparents it.
+    // SillyBunny: World Info is not a left or top-level drawer. The upstream drawer ID stays
+    // so that selectors written for it keep working until runtime reparents it.
     const worldInfoDrawer = document.getElementById('WI-SP-button');
     worldInfoDrawer?.classList.add('sb-drawer-host');
     worldInfoDrawer?.querySelector(':scope > .drawer-toggle')?.classList.add('sb-hidden-toggle');
@@ -7588,7 +7588,7 @@ function adoptTopbarExtensionNodes(extraNodes = []) {
         const descriptors = candidates.map((node, index) => describeTopbarNode(node, index));
         // Only id-bearing slot children can be matched by key; id-less descriptors fall back to a
         // per-pass index, which would collide across the two lists. Those are covered by the
-        // parentElement check below instead.
+        // parentElement check instead.
         const slotChildKeys = Array.from(slot.children)
             .filter(node => node instanceof Element && node.id)
             .map(node => `id:${node.id}`);
@@ -7598,7 +7598,7 @@ function adoptTopbarExtensionNodes(extraNodes = []) {
         for (const key of plan.adoptKeys) {
             const node = byKey.get(key);
 
-            // The parent check -- not a "already in place" helper -- is what terminates repeated
+            // The parent check, not an "already in place" helper, is what terminates repeated
             // passes: appendChild on a node the slot already holds still mutates childList.
             if (node instanceof HTMLElement && node.parentElement !== slot) {
                 slot.appendChild(node);
@@ -7744,7 +7744,6 @@ function prepareEmbeddedDrawer(drawerId, root = document) {
     drawerContent.classList.remove('openDrawer', 'closedDrawer', 'fillLeft', 'fillRight', 'pinnedOpen');
     drawerContent.classList.add('sb-managed', 'sb-shell-embedded-content');
 
-    // Clean up any persistent inline styles or state
     drawerContent.removeAttribute('style');
     drawer.style.display = '';
     drawer.style.visibility = '';
@@ -7845,7 +7844,7 @@ const SB_SAMPLING_GROUPS = Object.freeze([
     { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases' },
     { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition' },
     { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits' },
-    // The group has no description yet; its title keeps the translation key the upstream heading uses.
+    // The group has no description; its title keeps the translation key the upstream heading uses.
     { id: 'banned', title: 'Banned Tokens/Strings', i18n: 'Banned Tokens', description: '' },
     { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules' },
 ]);
@@ -8253,7 +8252,7 @@ function drawerHasControls(drawer) {
 
 function hideEmptyGroupedSettingsDrawers() {
     // Flattened sections are skipped: they have no `.inline-drawer-content` left, so the control
-    // test below would report them empty and hide a section that only exists while expanded.
+    // test would report them empty and hide a section that only exists while expanded.
     document.querySelectorAll('#range_block_openai .sb-openai-settings-drawer, #textgenerationwebui_api-settings .sb-textgen-drawers > .inline-drawer').forEach(drawer => {
         if (!(drawer instanceof HTMLElement) || !drawer.classList.contains('inline-drawer')) {
             return;
@@ -8282,7 +8281,7 @@ function updateSamplingCardVisibility(section) {
         if (card.hidden !== !hasVisibleContent) card.hidden = !hasVisibleContent;
     }
 
-    // Track visibility as we write: `card.hidden` writes above have not been flushed yet, so a
+    // Track visibility as we write: the `card.hidden` writes have not been flushed yet, so a
     // checkVisibility() here would force the very layout this function is trying to avoid.
     const visibleCards = new Set(cardVisibility.filter(([, visible]) => visible).map(([card]) => card));
     const groups = [];
@@ -8975,7 +8974,7 @@ function groupAdvancedFormattingIntoDrawers() {
         ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement')],
         ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat')],
         ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies')],
-        // SillyBunny: the caption of the Reasoning group says that its settings are global (placeholder P4).
+        // SillyBunny: the caption of the Reasoning group says that its settings are global.
         ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'These settings apply to every chat, whichever template is chosen')],
         ['reasoning-prompts', createGroup('sb-af-reasoning-prompts', 'Add to Prompts')],
         ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown')],
@@ -10879,12 +10878,12 @@ function revealSearchMatch(shellKey, match) {
     if (isMobileViewport()) setSettingsMobileContentView(true);
 
     // The jump finishes on timers. A page that the user opens or closes in the meantime must not be
-    // undone, so each delayed step below stops when the stack shows a different page than it expects.
+    // undone, so each delayed step stops when the stack shows a different page than it expects.
     const stackKey = `${shellKey}:${match.tabId}`;
     const openRowAtJump = sbSubpageStacks.get(stackKey)?.openRowId ?? null;
 
     window.setTimeout(() => {
-        // SillyBunny: subpage-hosted tabs route through the stack, not the old drawer routing.
+        // SillyBunny: subpage-hosted tabs route through the stack, not through drawer routing.
         // Matches inside the store would otherwise trigger jQuery slideToggle on inline-drawer
         // toggles, injecting inline display:block and bleeding the old panel into view.
         const stack = sbSubpageStacks.get(stackKey);
@@ -10943,8 +10942,8 @@ function setActiveTab(shellKey, tabId) {
     const shellConfig = getShellConfig(shellKey);
 
     if (shellKey === 'left' && tabId === 'world-info') {
-        // SillyBunny: final guard for old code paths that still ask for the
-        // removed left-shell World Info route.
+        // SillyBunny: final guard for code paths that still ask for a left-shell World Info
+        // route. World Info lives in Characters.
         openCharacterPanelTab('world-info');
         return;
     }
@@ -10988,7 +10987,7 @@ function setActiveTab(shellKey, tabId) {
 /** @param {string} shellKey @param {string|null} [tabId] */
 function openShell(shellKey, tabId = null) {
     if (shellKey === 'left' && tabId === 'world-info') {
-        // World Info moved from the Backend shell into Characters.
+        // World Info lives in Characters, not in the Backend shell.
         openCharacterPanelTab('world-info');
         return;
     }
@@ -11030,7 +11029,7 @@ function buildShell(shellKey) {
     originalContent.querySelector('#settingsSearch')?.classList.add('sb-legacy-search-hidden');
 
     // The settings page supplies its own sidebar, title header, and close button, so the
-    // in-shell header and horizontal tab rail are no longer built.
+    // in-shell header and horizontal tab rail are not built.
     const frame = createElement('div', { className: 'sb-shell-frame' });
     const main = createElement('div', { className: 'sb-shell-main' });
     const panelBody = createElement('div', { className: 'sb-shell-body' });
@@ -11057,9 +11056,9 @@ function buildShell(shellKey) {
     let userSettingsSplit = null;
     if (shellKey === 'left') {
         // SillyBunny: the base tab is the Connections panel, built by hand
-        // rather than by the drawer passes or the subpage stack. The drawer it replaces stays in the
-        // document, detached from the layout, so every id authored inside it -- `#main_api`,
-        // `#rm_api_block`, and the connection-manager extension's own markup -- is still resolvable
+        // rather than by the drawer passes or the subpage stack. The upstream drawer stays in the
+        // document, detached from the layout, so every id authored inside it (`#main_api`,
+        // `#rm_api_block`, and the connection-manager extension's own markup) is still resolvable
         // by the code that looks it up. The panel moves out only the nodes it presents: the profile
         // card and the five provider blocks.
         const apiDrawerPrep = prepareEmbeddedDrawer('sys-settings-button');
@@ -11090,8 +11089,8 @@ function buildShell(shellKey) {
             basePanel.scroller.appendChild(userSettingsSplit.appearance);
         }
 
-        // The split empties the block, so what is left -- the legacy header rows, the search input,
-        // and the emptied columns -- is parked on the shell root and hidden. Keeping it attached
+        // The split empties the block, so what is left (the legacy header rows, the search input,
+        // and the emptied columns) is parked on the shell root and hidden. Keeping it attached
         // rather than detaching it leaves `#user-settings-block-content` resolvable by id for
         // third-party drawers and for the drawer-state code that looks the emptied section up.
         originalContent.classList.add('sb-legacy-settings-remainder');
@@ -11262,7 +11261,7 @@ function buildShell(shellKey) {
                     bindInlineDrawerPersistence(dataSecurityContent);
                     // SillyBunny: this action was detached when the initial shell bindings ran.
                     bindClearCookiesAndCacheButton(dataSecurityContent);
-                    // SillyBunny: the upstream rows move into boxed-list groups now that every fix-up above has run on them.
+                    // SillyBunny: the upstream rows move into boxed-list groups now that every fix-up has run on them.
                     dataSecurityModule.presentDataSecurity(dataSecurityContent);
                     injectSillyTavernImportCard(dataSecurityContent, dataSecurityModule);
                 } else {
@@ -11369,7 +11368,7 @@ function interceptDrawerOpeners() {
         event.stopPropagation();
     }, true);
 
-    // Collapse sibling inline-drawers when one is opened — prevents nested
+    // Collapse sibling inline-drawers when one is opened, which prevents nested
     // dropdown clutter by keeping only one drawer open per container at a time.
     document.addEventListener('click', event => {
         if (!(event.target instanceof Element)) return;
@@ -11415,7 +11414,7 @@ function interceptDrawerOpeners() {
             const siblingContent = sibling.querySelector(':scope > .inline-drawer-content');
             if (!siblingIcon?.classList.contains('fa-circle-chevron-up')) continue;
 
-            // Close it — mirror what ST's handler does
+            // Close it, as ST's handler does
             siblingIcon.classList.replace('fa-circle-chevron-up', 'fa-circle-chevron-down');
             siblingIcon.classList.replace('up', 'down');
             if (window.jQuery && siblingContent) {
@@ -11759,16 +11758,16 @@ function bindInlineDrawerPersistence(root = document) {
  * Re-flattens drawers that a panel authored after its own activation pass had already run.
  *
  * The Prompt Manager rebuilds its header with `innerHTML` on every render, which brings back the
- * collapsible `#completion_prompt_manager_drawer` band each time -- one refresh after the tab was
+ * collapsible `#completion_prompt_manager_drawer` band each time, one refresh after the tab was
  * flattened. The persistence observer already watches these subtrees and is the only thing that
  * reliably fires afterwards, so the flatten rides along with the same debounce. It is idempotent,
  * and it skips any panel with no drawers left, so the common case is one query per panel.
  *
  * Only a visible panel is re-flattened: every activation already runs the full pass through
  * `flattenSettingsPanelDrawers`, so a hidden panel catches up when it is shown. Re-running it on
- * hidden panels cost a full Prompting rebuild for unrelated mutations (closing search, hotkeys), and
+ * hidden panels would cost a full Prompting rebuild for unrelated mutations (closing search, hotkeys), and
  * the Prompting pass decides group visibility with `checkVisibility()`, which is false for every
- * control inside a hidden panel -- it hid each group until the next activation re-showed it. Each
+ * control inside a hidden panel, so it would hide each group until the next activation re-showed it. Each
  * shell keeps its own active panel and the settings page can be closed, so the active class alone
  * does not mean the panel is on screen.
  */
@@ -12972,7 +12971,7 @@ function initAll() {
     sbState.initialized = true;
 
     // Sizzle caches compiled selectors, not DOM results. Its default 50-entry cache thrashes across
-    // the shell's 120+ delegated input selectors, recompiling them for every keystroke.
+    // the shell's many delegated input selectors, recompiling them for every keystroke.
     if (window.jQuery?.expr) window.jQuery.expr.cacheLength = Math.max(window.jQuery.expr.cacheLength, 512);
 
     restorePersistedTopbarState();
@@ -13011,7 +13010,7 @@ function initAll() {
     // SillyBunny: user input ends the ⬇ scroll-to-bottom ladder so a mid-ladder flick is not snapped back.
     getChatScrollElement()?.addEventListener('wheel', cancelPendingBottomChatScroll, { passive: true });
     getChatScrollElement()?.addEventListener('touchstart', cancelPendingBottomChatScroll, { passive: true });
-    // Refresh again after the current JS task — APP_READY may have already
+    // Refresh again after the current JS task, because APP_READY may have already
     // fired before this listener was registered, so the initial call in
     // buildBottomChatBar() may have found no active chat yet.
     scheduleBottomChatBarRefresh(0);
@@ -13162,7 +13161,7 @@ function initAll() {
         setTopbarIconsOnly(mode, value) {
             setTopbarIconsOnly(mode, value);
         },
-        // Kept as a no-op for extensions; panels are no longer resizable drawers.
+        // Kept as a no-op for extensions; panels are not resizable drawers.
         setDesktopShellSnapToChatWidth() {},
         setMessageStyle,
         toggleChatSidebar() {
@@ -13556,8 +13555,8 @@ function setRootAttribute(element, name, value) {
 }
 
 // Shell roots are moved into the page once and stay there; switching sections only
-// toggles which one is active. Reparenting on every open forced a full style and layout
-// pass over each panel, which stalled the first frames of the open animation.
+// toggles which one is active. Reparenting on every open would force a full style and layout
+// pass over each panel, which would stall the first frames of the open animation.
 /** @param {string} shellKey @param {string|null} [tabId] */
 function mountShellRootInSettingsPage(shellKey, tabId = null) {
     const host = document.getElementById('sb-settings-shell-host');
@@ -13610,13 +13609,13 @@ function mountShellRootInSettingsPage(shellKey, tabId = null) {
 
     const activeTab = shellState.tabs.get(shellState.activeTabId);
     activeTab?.onActivate?.();
-    // The flatten is part of activation, so the already-active tab has to run it too -- otherwise
+    // The flatten is part of activation, so the already-active tab has to run it too. Otherwise
     // the base tab, which is active before the page is ever mounted, is the one panel that never
     // gets flattened.
     flattenSettingsPanelDrawers(shellKey, shellState.activeTabId);
     // SillyBunny: the stacked panels have their store wrapper and their stack built from the same
-    // activation pass, and this path bypasses `setActiveTab` for the tab that is already active --
-    // which is the base tab, every time the page is first mounted. Without this the first paint of
+    // activation pass, and this path bypasses `setActiveTab` for the tab that is already active.
+    // That tab is the base tab, every time the page is first mounted. Without this the first paint of
     // an Extensions panel is the raw legacy drawer: the wrapper that hides its children
     // does not exist yet, so all of its sections render at once.
     installSettingsSubpage(shellKey, shellState.activeTabId);
@@ -13805,7 +13804,7 @@ function initSettingsPageClose() {
         sidebarCloseButton.addEventListener('click', closeSettingsPage);
     }
 
-    // Back button: mobile only — returns from content view to sidebar view.
+    // Back button: mobile only. It returns from content view to sidebar view.
     const backButton = document.getElementById('sb-settings-back');
     if (backButton instanceof HTMLButtonElement && backButton.dataset.sbBound !== 'true') {
         backButton.dataset.sbBound = 'true';
@@ -14222,7 +14221,7 @@ function initSettingsKeyboardShortcuts() {
 
         // `Ctrl+F` works inside a field on purpose: it opens search rather than the browser's own
         // find, which cannot reach into the settings page. The destination shortcuts are the
-        // opposite -- while the user is typing, a stray `Ctrl+P` must not navigate away.
+        // opposite: while the user is typing, a stray `Ctrl+P` must not navigate away.
         const active = document.activeElement;
         const isEditable = active instanceof HTMLInputElement ||
             active instanceof HTMLTextAreaElement ||

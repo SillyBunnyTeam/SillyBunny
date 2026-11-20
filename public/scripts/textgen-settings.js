@@ -1423,7 +1423,7 @@ export async function generateTextGenWithStreaming(generate_data, signal) {
     if (!response.ok) {
         const errorBody = await response.text();
         tryParseStreamingError(response, errorBody);
-        // SillyBunny: bodies that are not JSON (proxy pages, plain text) used to fail without any message.
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) fail without any message upstream.
         showRequestError({ title: 'Text Completion API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
         throw createFailedResponseError({ status: getFailureStatus(response), body: errorBody });
     }

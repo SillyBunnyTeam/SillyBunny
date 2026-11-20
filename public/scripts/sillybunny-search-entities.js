@@ -148,7 +148,7 @@ async function openCharacter(index) {
                     return;
                 }
             } catch {
-                // Fall through to the session-only path below.
+                // Fall through to the session-only path.
             }
         } else {
             if (await selectById(index) === false) return;

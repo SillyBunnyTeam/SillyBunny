@@ -1030,7 +1030,7 @@ export function createManagedContent({
 
         /**
          * Brings every item that nobody edited up to date. An item that is modified, deleted or not installed is left
-         * as it is. A world is backed up before it is replaced; see the rules above. One item that fails does not
+         * as it is. A world is backed up before it is replaced; see the rules in the header of this module. One item that fails does not
          * stop the others.
          * @returns {string[]} The filenames that were updated.
          */

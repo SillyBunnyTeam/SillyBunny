@@ -110,7 +110,7 @@ const sortFn = (a, b) => b.order - a.order;
 let updateEditor = (navigation, flashOnNav = true) => { console.debug('Triggered WI navigation', navigation, flashOnNav); };
 let worldInfoEditorLoadId = 0;
 // SillyBunny: the rebuilt editor (sillybunny-world-info-editor.js) registers here and owns list
-// rendering, pagination and drag ordering; toolbar handlers below stay bound and act as its transport.
+// rendering, pagination and drag ordering; toolbar handlers stay bound and act as its transport.
 let worldInfoEditorAdapter = null;
 
 // Do not optimize. updateEditor is a function that is updated by the displayWorldEntries with new data.
@@ -7501,7 +7501,7 @@ export function initWorldInfo() {
         if (target === 'renameGroupButton') {
             // SillyBunny: the group editor's header title is the rename affordance;
             // it owns the name field, so hand the request over rather than
-            // reaching into the group state from here (Step 4).
+            // reaching into the group state from here.
             document.dispatchEvent(new CustomEvent('sb-group-rename-requested'));
             return;
         }
@@ -7510,7 +7510,7 @@ export function initWorldInfo() {
     });
 
     // SillyBunny: no Select2 on #world_editor_select / #world_info; the rebuilt editor's book picker
-    // and Active books list drive these native selects (Appendix B D3).
+    // and Active books list drive these native selects.
 
     $('#WorldInfo, #world_popup_entries_list').on('scroll', () => {
         $('.world_entry input[name="group"], .world_entry input[name="automationId"]').each((_, el) => {

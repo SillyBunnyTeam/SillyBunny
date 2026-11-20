@@ -1074,7 +1074,7 @@ async function downloadTabbyModel() {
         const popupResult = await callGenericPopup(downloadHtml, POPUP_TYPE.CONFIRM, '', {
             okButton: 'Download',
             cancelButton: 'Cancel',
-            // SillyBunny: presentation only; the inputs keep their names and values, which this function reads below.
+            // SillyBunny: presentation only; the inputs keep their names and values, which this function reads.
             ...tabbyDownloaderOptions(downloadHtml),
         });
 

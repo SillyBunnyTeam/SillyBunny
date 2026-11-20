@@ -782,7 +782,7 @@ function charaFormatData(data, directories) {
         return [];
     };
 
-    // Multipart forms cannot express an empty repeated field, so the editor sends group-only
+    // SillyBunny: multipart forms cannot express an empty repeated field, so the editor sends group-only
     // greetings as a JSON array string. Returns null when the request carries no usable value.
     const getGroupOnlyGreetings = data => {
         let value = data.group_only_greetings;

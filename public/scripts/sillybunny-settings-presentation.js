@@ -27,7 +27,7 @@
  * - A container that holds sections is not a row. Advanced Formatting is one heading above a drawer
  *   of sections, so its body is left alone and each section is normalized on its own turn.
  * - A panel that designs itself is not passed to this module at all. The sampling panel and the
- *   agents dashboard have layouts of their own, and the four panels converted to sliding subpages
+ *   agents dashboard have layouts of their own, and the panels shown as sliding subpages
  *   build their own headers, so the caller skips them.
  *
  * Nothing is cloned and nothing moves between sections, so ids, listeners, jQuery data, and the
@@ -44,8 +44,8 @@ import { SB_SETTINGS_SECTION_ORDER } from './sillybunny-settings-content.js';
 /**
  * Placeholder description, used where a section has no copy of its own.
  *
- * Every one of these needs human-written text. `data-sb-copy-placeholder` marks them so the wording
- * pass can find them, and the return value lists them per tab.
+ * Every one of these needs human-written text. `data-sb-copy-placeholder` marks them so the
+ * maintainers can find them, and the return value lists them per tab.
  */
 const SB_PLACEHOLDER_DESCRIPTION = 'lorum ipsum';
 
@@ -173,7 +173,7 @@ function normalizeCustomizeField(row, control, { subtitles = true } = {}) {
     const suffix = document.createElement('div');
     suffix.className = 'ds-row-suffix';
     const subtitle = subtitles ? createRowSubtitle(row, { placeholder: subtitles !== 'titled' }) : null;
-    // Tooltip info markers have become visible copy; actionable help links keep their handlers.
+    // The subtitle shows the tooltip copy, so the tooltip info markers go; actionable help links keep their handlers.
     for (const marker of title.querySelectorAll('.fa-circle-info, .fa-info-circle')) marker.remove();
     addMissingClasses(title, 'ds-row-label');
     removePresentClasses(title, 'displayNone');
@@ -1279,8 +1279,8 @@ export function normalizeSettingsPresentation(scope, options = {}) {
  *
  * A detail page opened from a row that named a drawer is that drawer's page: the row carries the
  * card's own title, read from its toggle, and the page draws the card's content directly. The match
- * is what distinguishes the card from an expander inside it -- Advanced Formatting holds a Logit Bias
- * editor and a CFG block, and those stay closed the way the panel had them.
+ * is what distinguishes the card from an expander inside it. Advanced Formatting holds a Logit Bias
+ * editor and a CFG block, and those stay closed as the panel draws them.
  *
  * When nothing in the section matches, the section is not a card and nothing is opened. An extension
  * that builds its settings without a drawer keeps whatever it drew.
@@ -1324,7 +1324,7 @@ function openNamedDrawer(scope, label) {
  * Tab panels are drawn as siblings that share a class and are revealed one at a time, so the hidden
  * ones belong with the shown one and have to travel into the same pill: otherwise the panel a user
  * switches to falls out of the box that holds the one they started on. A container that is simply
- * hidden -- another API's block, a section upstream emptied -- shares no class with the shown row and
+ * hidden (another API's block, a section upstream emptied) shares no class with the shown row and
  * is skipped, which is what keeps it out of the group.
  *
  * @param {Element} shown the group's last visible child
@@ -1342,11 +1342,11 @@ function sharesShape(shown, hidden) {
 /**
  * Boxes one opened card body's rows, so an extension's page reads like the Messages tab.
  *
- * An extension writes its card as a list of rows -- a checkbox label, a labelled select, a slider --
+ * An extension writes its card as a list of rows (a checkbox label, a labelled select, a slider)
  * with no headings between them, which is exactly the shape the row pass boxes when a section has
  * one. There is no heading here to say where a group ends, so the card is one group, except where the
  * extension drew its own divider: an `hr` is the extension saying a group ended, and boxing across it
- * would merge two things it kept apart. A group of one is still a group -- Quick Reply keeps three
+ * would merge two things it kept apart. A group of one is still a group: Quick Reply keeps three
  * set lists apart with rules, and each of those lists is a preference pill.
  *
  * Rows are the top level only. A nested block the extension built for itself keeps its own layout.
@@ -1381,7 +1381,7 @@ function boxCardBody(body) {
             }
             continue;
         }
-        // A row the pass above already pilled is a group of its own, and wrapping it again would put
+        // A row that `normalizeSettingsPresentation` already pilled is a group of its own, and wrapping it again would put
         // a pill inside a pill. Splitting here also keeps the rows around it in their own pill.
         if (child.classList.contains(SB_PILL_SELECTOR.slice(1))) {
             if (current.length > 0) {
@@ -1443,10 +1443,10 @@ function readDrawerTitle(drawer) {
 }
 
 /**
- * Boxes the rows of a page the pass above read nothing in.
+ * Boxes the rows of a page in which `normalizeSettingsPresentation` read nothing.
  *
  * The Presets page is the case that needs this: it is a preset picker, a tab pair, and the panels
- * behind them, with no heading anywhere to say where a group starts or ends -- the blocks a user
+ * behind them, with no heading anywhere to say where a group starts or ends. The blocks a user
  * reads are named by a picker rather than by a title. So the rows are grouped the way the Extensions
  * pages group theirs, one pill at a time, and a divider the page drew still ends a group.
  *
@@ -1493,8 +1493,8 @@ function hasVisibleRow(container) {
  *
  * A detail page is a single section in its own page, which changes what counts as a row: the plain
  * pass reads the provider blocks a Connections page holds side by side, but a detail page holds one
- * of them, filled out by one `form` the pass leaves opaque. So the run above is applied to what it
- * can read, and then the rendered form is pilled on its own -- at `h4` boundaries, because a
+ * of them, filled out by one `form` the pass leaves opaque. So `normalizeSettingsPresentation` is applied to what it
+ * can read, and then the rendered form is pilled on its own, at `h4` boundaries, because a
  * provider's `h4`s name its fields rather than sections of a settings page.
  *
  * What a form's heading means only resolves here, since upstream nests provider blocks inside a
@@ -1525,7 +1525,7 @@ export function normalizeSettingsDetail(scope, options = {}) {
     for (const form of scope.querySelectorAll('form')) {
         // The form itself is the pill; what must not be pilled is a form that is hidden, belongs to
         // a panel that presents itself, already sits inside a pill, or holds nothing a reader can
-        // see -- a container's upload form is three hidden inputs and no row.
+        // see. A container's upload form is three hidden inputs and no row.
         if (form.matches(SB_HIDDEN_SELECTOR) || form.classList.contains('hidden') || form.classList.contains('displayNone')) {
             continue;
         }
