@@ -23,7 +23,7 @@ for (const width of [1440, 390]) {
             await page.evaluate(() => window.$('#themes').val('Libadwaita Light').trigger('change'));
             await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'light');
             const lightReference = await driver.root.locator('.ica-agents-box').first().evaluate(appearance);
-            await page.evaluate(() => window.$('#themes').val('Libadwaita').trigger('change'));
+            await page.evaluate(() => window.$('#themes').val('Libadwaita Dark').trigger('change'));
             await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'dark');
             await page.locator('#sb-settings-close').click();
             await page.locator('#ica_tracker_panel_wand_item').evaluate(node => node.click());
@@ -58,7 +58,7 @@ for (const width of [1440, 390]) {
             await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'light');
             for (const card of await panel.locator('.ica--tpanel-agent').all()) expect(await card.evaluate(appearance)).toEqual(lightReference);
             expect(await page.locator('.ica--companion-card').evaluate(appearance)).toEqual(lightReference);
-            await page.evaluate(() => window.$('#themes').val('Libadwaita').trigger('change'));
+            await page.evaluate(() => window.$('#themes').val('Libadwaita Dark').trigger('change'));
             await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'dark');
             await page.evaluate(async () => {
                 (await import('/scripts/extensions/in-chat-agents/agent-store.js')).getAgentById('qa-scene').sourceTemplateId = 'tpl-chat-only-companion';

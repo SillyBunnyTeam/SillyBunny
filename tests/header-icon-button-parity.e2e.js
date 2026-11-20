@@ -84,7 +84,7 @@ test.describe('character list and editor header icon parity', () => {
         await waitForAnimations(page);
     });
 
-    for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+    for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
         test(`${theme} keeps list and editor icon states equal`, async ({ page }) => {
             await setTheme(page, theme);
             await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
@@ -160,7 +160,7 @@ test.describe('character list and editor header icon parity', () => {
         });
     }
 
-    for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+    for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
         test(`${theme} Persona and World Info header icons use the shared hover fill and Chat Archive corner shape`, async ({ page }) => {
             await setTheme(page, theme);
             const archiveRadius = await page.locator('#sbca_drawer_button').evaluate(node => getComputedStyle(node).borderRadius);
@@ -205,7 +205,7 @@ test.describe('character list and editor header icon parity', () => {
 
     test('mobile Persona and World Info header icons keep the Chat Archive corner shape', async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
-        await setTheme(page, 'Libadwaita');
+        await setTheme(page, 'Libadwaita Dark');
         const archiveRadius = await page.locator('#sbca_drawer_button').evaluate(node => getComputedStyle(node).borderRadius);
 
         for (const [tab, selector] of [
@@ -223,7 +223,7 @@ test.describe('character list and editor header icon parity', () => {
             test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390 });
 
             test('World Info pick status keeps its suggested action accent treatment', async ({ page }) => {
-                await setTheme(page, 'Libadwaita');
+                await setTheme(page, 'Libadwaita Dark');
                 await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
                 const chooseWorld = page.locator('#WorldInfo .sb-status-page__action.is-suggested');
                 await expect(chooseWorld).toHaveText('Worlds/Lorebooks');
@@ -237,7 +237,7 @@ test.describe('character list and editor header icon parity', () => {
             });
 
             test('empty Persona keeps the suggested New action accent treatment', async ({ page }) => {
-                await setTheme(page, 'Libadwaita');
+                await setTheme(page, 'Libadwaita Dark');
                 await page.route('**/api/avatars/get', route => route.fulfill({ json: [] }));
                 await page.evaluate(async () => {
                     const { power_user } = await import('./scripts/power-user.js');

@@ -57,7 +57,7 @@ function fieldContrast(node) {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 }]) {
-    for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+    for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
         test(`prompt field matches character fields in ${theme} at ${viewport.width}px`, async ({ page }) => {
             await page.setViewportSize(viewport);
             await testSetup.awaitST({ page });

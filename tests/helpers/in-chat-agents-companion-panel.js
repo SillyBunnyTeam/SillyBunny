@@ -28,6 +28,6 @@ export async function seedCompanionPanel(page) {
         (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
         panel.setCompanionPanelLocked(false);
         panel.updateCompanionPanelHandleVisibility();
-        window.$('#themes').val('Libadwaita').trigger('change');
+        window.$('#themes').val('Libadwaita Dark').trigger('change');
     });
 }

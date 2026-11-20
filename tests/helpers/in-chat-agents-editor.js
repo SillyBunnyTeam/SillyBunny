@@ -163,7 +163,7 @@ export async function seedEditorAgents(page) {
                 separateRecentChats: false,
             });
             (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
-            window.$('#themes').val('Libadwaita').trigger('change');
+            window.$('#themes').val('Libadwaita Dark').trigger('change');
             await window.SillyBunnyShell.openTab('left', 'agents');
         },
         agents,

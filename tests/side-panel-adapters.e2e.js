@@ -104,7 +104,7 @@ test('side panels share dialog headers, boxed groups, and theme-derived surfaces
     await expect(popup).toHaveCount(0);
 
     const themeStyles = [];
-    for (const theme of ['Libadwaita', 'Libadwaita Light', 'Cinder']) {
+    for (const theme of ['Libadwaita Dark', 'Libadwaita Light', 'Cinder']) {
         await page.evaluate(themeName => {
             const select = document.getElementById('themes');
             select.value = themeName;
@@ -133,7 +133,7 @@ test('side panels share dialog headers, boxed groups, and theme-derived surfaces
     expect(themeStyles[2].header).not.toBe(themeStyles[0].header);
     await page.evaluate(() => {
         const select = document.getElementById('themes');
-        select.value = 'Libadwaita';
+        select.value = 'Libadwaita Dark';
         select.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await page.locator('#sb-left-shell-toggle').click();

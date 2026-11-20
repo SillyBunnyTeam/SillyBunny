@@ -167,7 +167,7 @@ for (const width of [1440, 768, 390]) {
                 urls: ['lorebooks/qa/book'],
             });
         });
-        for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+        for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
             await page.evaluate(async theme => {
                 window.$('#themes').val(theme).trigger('change');
                 await window.SillyBunnyShell.openTab('characters', 'import');

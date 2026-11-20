@@ -6,7 +6,7 @@ import { waitForAppReady } from './helpers/app-ready.js';
 import { showSettingsSidebar } from './helpers/settings-phone-pane.js';
 
 // Customize > Appearance: Custom CSS is a row of the UI Theme group that opens a Window with the editor, and
-// "Reset Theme to Default Libadwaita" asks first and then restores the shipped theme and the look settings beside it.
+// "Reset Theme to Default Libadwaita Dark" asks first and then restores the shipped theme and the look settings beside it.
 
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -14,7 +14,7 @@ test.describe.configure({ timeout: 90_000 });
 
 const VIEWPORTS = [{ width: 1440, height: 900 }, { width: 390, height: 844 }];
 
-const MESSAGE = 'Theme reset to default Libadwaita';
+const MESSAGE = 'Theme reset to default Libadwaita Dark';
 const BODY = 'Theme settings and custom CSS will be wiped. This is irreversible!';
 
 /** What the page starts with: every key the reset writes is off its default. */
@@ -53,7 +53,7 @@ const OUT_OF_SCOPE_START = {
     waifuMode: true,
 };
 const RESET = {
-    theme: 'Libadwaita',
+    theme: 'Libadwaita Dark',
     main_text_color: 'rgba(255, 255, 255, 1)',
     italics_text_color: 'rgba(170, 170, 172, 1)',
     underline_text_color: 'rgba(170, 170, 172, 1)',
@@ -97,7 +97,7 @@ async function loadSettings(page, baseURL, { powerUser = {}, editSavedLibadwaita
         Object.assign(settings.power_user, powerUser);
         if (editSavedLibadwaita) {
             // The server never overwrites an edited copy of a bundled theme, so a user's "Libadwaita" can differ from the shipped file.
-            data.themes = data.themes.map(theme => theme.name === 'Libadwaita'
+            data.themes = data.themes.map(theme => theme.name === 'Libadwaita Dark'
                 ? { ...theme, quote_text_color: 'rgba(200, 0, 0, 1)', main_text_color: 'rgba(9, 9, 9, 1)', custom_css: '.edited { color: red; }' }
                 : theme);
         }
@@ -154,7 +154,7 @@ for (const viewport of VIEWPORTS) {
             await expect(rows.nth(-2)).toHaveAttribute('data-sb-editor-field', 'custom-css');
             await expect(cssRow(panel)).toContainText('Custom CSS');
             await expect(cssRow(panel).locator('.ds-row__chevron')).toHaveCount(1);
-            await expect(resetRow(panel)).toContainText('Reset Theme to Default Libadwaita');
+            await expect(resetRow(panel)).toContainText('Reset Theme to Default Libadwaita Dark');
             await expect(panel.locator('[data-sb-category="custom-css"]')).toHaveCount(0);
             await expect(page.locator('#customCSS')).toHaveCount(1);
             await expect(page.locator('#customCSS')).toBeHidden();
@@ -261,8 +261,8 @@ for (const viewport of VIEWPORTS) {
             await expect(page.locator('#toast-container .toast-message', { hasText: MESSAGE })).toHaveCount(1);
             await expect(page.locator('#customCSS')).toHaveValue('');
             await expect(page.locator('#custom-style')).toHaveJSProperty('textContent', '');
-            await expect(page.locator('#themes')).toHaveValue('Libadwaita');
-            await expect(themeGroup(panel).locator('.ds-select-row__value')).toHaveText('Libadwaita');
+            await expect(page.locator('#themes')).toHaveValue('Libadwaita Dark');
+            await expect(themeGroup(panel).locator('.ds-select-row__value')).toHaveText('Libadwaita Dark');
             await expect(page.locator('#blur_strength')).toHaveValue('13');
             await expect(page.locator('#shadow_width')).toHaveValue('2');
             expect(await bodyColor(page)).toBe(RESET.main_text_color);

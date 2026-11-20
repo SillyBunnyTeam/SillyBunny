@@ -283,7 +283,7 @@ test.describe('a viewport too short for a banner', () => {
 const BACKDROP_FLOOR = 1.1;
 /** The windows whose panel has the backdrop: one of two figures, and the two windows that have one figure. */
 const BACKDROP_WINDOWS = ['About', 'Getting Started', 'Welcome'];
-const THEME_AND_WINDOW = ['Libadwaita', 'Libadwaita Light'].flatMap(themeName => BACKDROP_WINDOWS.map(windowName => [themeName, windowName]));
+const THEME_AND_WINDOW = ['Libadwaita Dark', 'Libadwaita Light'].flatMap(themeName => BACKDROP_WINDOWS.map(windowName => [themeName, windowName]));
 
 test.describe('the backdrop of a panel', () => {
     test.use({ viewport: { width: 1440, height: 900 } });

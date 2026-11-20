@@ -1231,7 +1231,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await chooseSortItem(page, 'Grid');
             await expect(dot).toHaveCSS('position', 'absolute');
             await expect(current.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('width', viewport.width === 390 ? '88px' : '116px');
-            for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+            for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
                 await page.evaluate(theme => window.$('#themes').val(theme).trigger('change'), theme);
                 await expect(dot).toBeVisible();
                 const accent = await dot.evaluate(element => {

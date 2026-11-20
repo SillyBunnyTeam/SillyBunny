@@ -6839,7 +6839,7 @@
         {"identity":"data:data-accent=purple","identityKind":"data","kind":"button","name":"Purple Accent","group":"UI Theme","where":"visible"},
         {"identity":"data:data-accent=gray","identityKind":"data","kind":"button","name":"Gray Accent","group":"UI Theme","where":"visible"},
         {"identity":"data:data-sb-editor-field=custom-css","identityKind":"data","kind":"button","name":"Custom CSS","group":"UI Theme","where":"visible"},
-        {"identity":"data:data-sb-editor-field=theme-reset","identityKind":"data","kind":"button","name":"Reset Theme to Default Libadwaita","group":"UI Theme","where":"visible"},
+        {"identity":"data:data-sb-editor-field=theme-reset","identityKind":"data","kind":"button","name":"Reset Theme to Default Libadwaita Dark","group":"UI Theme","where":"visible"},
         {"identity":"#ui-preset-update-button","kind":"button","where":"hidden"},
         {"identity":"#ui-preset-save-button","kind":"button","where":"hidden"},
         {"identity":"#ui_preset_import_button","kind":"button","where":"hidden"},

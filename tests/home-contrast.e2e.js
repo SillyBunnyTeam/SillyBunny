@@ -28,7 +28,7 @@ const LINE_FLOOR = 1.1;
 const FORCED_EDGE_FLOOR = 3;
 /** Regression floor: the edge contrast of the Home tiles in these themes, as measured before the column had a backing, rounded down, per width. */
 const EDGE_BEFORE = {
-    Libadwaita: { wide: 1.06, narrow: 1.03 },
+    'Libadwaita Dark': { wide: 1.06, narrow: 1.03 },
     'Celestial Macaron': { wide: 1.44, narrow: 1.43 },
 };
 /** The tint alpha of the Everforest Dark chat column. */

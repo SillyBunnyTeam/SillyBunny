@@ -32,7 +32,7 @@ export function parseComputedColor(value) {
 
 /** The two bundled tones the selection forms are checked in. */
 export const SELECTION_TONES = Object.freeze([
-    { tone: 'dark', theme: 'Libadwaita' },
+    { tone: 'dark', theme: 'Libadwaita Dark' },
     { tone: 'light', theme: 'Libadwaita Light' },
 ]);
 

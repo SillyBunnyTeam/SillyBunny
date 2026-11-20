@@ -273,7 +273,7 @@ test.describe('the backdrop of the hero', () => {
     }
 
     for (const hero of [DAY, NIGHT]) {
-        for (const themeName of ['Libadwaita', 'Libadwaita Light']) {
+        for (const themeName of ['Libadwaita Dark', 'Libadwaita Light']) {
             test(`behind the ${hero.art.id} hero is the lavender of a window's panel in ${themeName}, as a fade from about 20% to about 5%`, async ({ page }) => {
                 await page.clock.setFixedTime(new Date(2026, 9, 30, hero.hour, 0));
                 await protectMaintainerServer(page);

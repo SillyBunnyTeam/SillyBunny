@@ -15,8 +15,8 @@ const THEME_VARIABLES = {
     border_color: '--SmartThemeBorderColor',
 };
 
-/** @param {'Libadwaita'|'Libadwaita Light'} [name] */
-export function libadwaitaThemeVariables(name = 'Libadwaita') {
+/** @param {'Libadwaita Dark'|'Libadwaita Light'} [name] */
+export function libadwaitaThemeVariables(name = 'Libadwaita Dark') {
     const theme = JSON.parse(readFileSync(new URL(`../../default/content/themes/${name}.json`, import.meta.url), 'utf8'));
     return Object.fromEntries(Object.entries(THEME_VARIABLES)
         .filter(([key]) => typeof theme[key] === 'string')
@@ -25,9 +25,9 @@ export function libadwaitaThemeVariables(name = 'Libadwaita') {
 
 /**
  * @param {import('@playwright/test').Page} page
- * @param {'Libadwaita'|'Libadwaita Light'} [name]
+ * @param {'Libadwaita Dark'|'Libadwaita Light'} [name]
  */
-export async function applyLibadwaitaTheme(page, name = 'Libadwaita') {
+export async function applyLibadwaitaTheme(page, name = 'Libadwaita Dark') {
     await page.evaluate(variables => {
         for (const [variable, value] of Object.entries(variables)) {
             document.documentElement.style.setProperty(variable, value);

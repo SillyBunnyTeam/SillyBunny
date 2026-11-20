@@ -64,7 +64,7 @@ async function openAgents(page, baseURL, width = 1440, { withChat = false } = {}
     await waitForAppReady(page);
     if (withChat) await selectSampleCharacter(page);
     await page.evaluate(async () => {
-        window.$('#themes').val('Libadwaita').trigger('change');
+        window.$('#themes').val('Libadwaita Dark').trigger('change');
         const store = await import('/scripts/extensions/in-chat-agents/agent-store.js');
         store.loadAgents(['Alpha', 'Bravo', 'Charlie'].map((name, index) => ({
             ...store.createDefaultAgent(), id: `qa-${name.toLowerCase()}`, name: `QA ${name}`, prompt: 'QA prompt',

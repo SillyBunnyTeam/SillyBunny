@@ -288,7 +288,7 @@ async function bindPresetSampling(page, api) {
     });
 }
 
-for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
     for (const width of [1920, 390]) {
         test(`${theme} Backend groups retain their flow at ${width}px`, async ({ page, baseURL }) => {
             test.setTimeout(120000);

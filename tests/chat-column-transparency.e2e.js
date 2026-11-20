@@ -8,7 +8,7 @@ import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readBundledTheme = name => JSON.parse(readFileSync(path.join(repoRoot, 'default', 'content', 'themes', `${name}.json`), 'utf8'));
-const bundledThemes = ['Libadwaita', 'Libadwaita Light'].map(readBundledTheme);
+const bundledThemes = ['Libadwaita Dark', 'Libadwaita Light'].map(readBundledTheme);
 // A bundled theme whose chat tint stores 0.05 alpha, as most bundled themes do.
 const lowAlphaTheme = readBundledTheme('Cinder');
 // A Libadwaita copy whose chat tint differs from its message tints, the two-tone report shape.

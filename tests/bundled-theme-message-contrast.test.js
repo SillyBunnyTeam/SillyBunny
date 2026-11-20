@@ -93,7 +93,7 @@ describe('bundled theme message text contrast', () => {
     test('a user name takes the colour that the theme CSS gives it, and a bot name the main text colour', () => {
         const amber = themes.find(theme => theme.name === 'Amber Dusk');
         const dracula = themes.find(theme => theme.name === 'Dracula');
-        const plain = themes.find(theme => theme.name === 'Libadwaita');
+        const plain = themes.find(theme => theme.name === 'Libadwaita Dark');
 
         expect(nameColours(amber)[1].rgb).toEqual([250, 189, 47]);
         expect(nameColours(dracula)[0]).toEqual({ rgb: [225, 215, 239], alpha: 0.74 });

@@ -263,7 +263,7 @@ test.describe('character toolbar resize', () => {
     });
 });
 
-for (const theme of ['Libadwaita', 'Libadwaita Light']) test(`editor headings match Customize typography in ${theme}`, async ({ page }) => {
+for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) test(`editor headings match Customize typography in ${theme}`, async ({ page }) => {
     await openEditor(page);
     await page.evaluate(theme => $('#themes').val(theme).trigger('change'), theme);
     const typography = node => {

@@ -7,7 +7,7 @@ import { THEME_RESET_DEFAULTS } from '../../public/scripts/sillybunny-theme-css.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const readText = (...parts) => readFileSync(path.join(repoRoot, ...parts), 'utf8');
-const bundledTheme = JSON.parse(readText('default', 'content', 'themes', 'Libadwaita.json'));
+const bundledTheme = JSON.parse(readText('default', 'content', 'themes', 'Libadwaita Dark.json'));
 const freshInstall = JSON.parse(readText('default', 'content', 'settings.json')).power_user;
 const powerUserSource = readText('public', 'scripts', 'power-user.js');
 

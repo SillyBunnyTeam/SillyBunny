@@ -101,7 +101,7 @@ export const DENSITIES = Object.freeze([
 
 /** The two Libadwaita themes, by the name the theme selector uses. `tone` is the `data-sb-surface-tone` they produce. */
 export const THEMES = Object.freeze([
-    { id: 'libadwaita', name: 'Libadwaita', tone: 'dark' },
+    { id: 'libadwaita', name: 'Libadwaita Dark', tone: 'dark' },
     { id: 'libadwaita-light', name: 'Libadwaita Light', tone: 'light' },
 ]);
 

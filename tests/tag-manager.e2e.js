@@ -634,7 +634,7 @@ for (const width of [1440, 768, 390]) {
     test(`${width}px tag surface stays framed and contained in both bundled themes`, async ({ page }) => {
         await prepare(page, width);
         await openFromList(page);
-        for (const theme of ['Libadwaita', 'Libadwaita Light']) {
+        for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
             await page.evaluate(theme => window.$('#themes').val(theme).trigger('change'), theme);
             await expect(row(page, fixtureTag)).toBeVisible();
             const bounds = await manager(page).boundingBox();

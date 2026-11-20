@@ -34,7 +34,7 @@ const backends = [
     { id: 'novel', source: null },
 ];
 const themes = [
-    { value: 'Libadwaita', label: 'libadwaita-dark' },
+    { value: 'Libadwaita Dark', label: 'libadwaita-dark' },
     { value: 'Libadwaita Light', label: 'libadwaita-light' },
 ];
 const viewports = [

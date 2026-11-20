@@ -1067,7 +1067,7 @@ test.describe('Backgrounds settings consistency', () => {
     test.describe.configure({ timeout: 60000 });
 
     for (const { name, width, theme, compact } of [
-        { name: 'desktop', width: 1440, theme: 'Libadwaita', compact: false },
+        { name: 'desktop', width: 1440, theme: 'Libadwaita Dark', compact: false },
         { name: 'compact light desktop', width: 1440, theme: 'Libadwaita Light', compact: true },
         { name: 'compact light mobile', width: 390, theme: 'Libadwaita Light', compact: true },
     ]) {
