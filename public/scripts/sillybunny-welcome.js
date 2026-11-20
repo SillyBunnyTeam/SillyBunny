@@ -48,14 +48,11 @@ function createPosition(position) {
     return wrapper;
 }
 
-function createActionButton(label, { stub = false } = {}) {
+function createActionButton(label) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'menu_button';
     button.textContent = label;
-    if (stub) {
-        button.dataset.sbStub = 'true';
-    }
     return button;
 }
 
