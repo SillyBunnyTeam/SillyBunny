@@ -83,6 +83,48 @@ const blockingStylesheets = Array.from(indexHtml.matchAll(/<link\b[^>]*>/gi))
     }))
     .filter(asset => asset.href);
 
+// Sheets with a width media query still block the first render when the viewport matches, so a phone waits for them.
+// They are reported for information only and are outside the budgets above.
+const widthMediaStylesheets = Array.from(indexHtml.matchAll(/<link\b[^>]*>/gi))
+    .map(match => match[0])
+    .filter(tag => /\brel=(["'])stylesheet\1/i.test(tag))
+    .filter(tag => /\bwidth\b/i.test(getAttribute(tag, 'media')))
+    .map(tag => ({
+        href: getAttribute(tag, 'href'),
+        size: getPublicFileSize(getAttribute(tag, 'href')),
+    }))
+    .filter(asset => asset.href);
+
+// A sheet that style.css imports is fetched only after style.css arrives, and it blocks rendering like style.css itself.
+function collectImportedStylesheets(cssUrl, seen = new Set()) {
+    const cssPath = path.resolve(publicRoot, stripQuery(cssUrl).replace(/^\/+/, ''));
+    if (!cssPath.startsWith(`${publicRoot}${path.sep}`) || !fs.existsSync(cssPath)) {
+        return [];
+    }
+    const source = fs.readFileSync(cssPath, 'utf8');
+    const imports = [];
+    for (const match of source.matchAll(/@import\s+(?:url\(\s*)?(["']?)([^"')\s;]+)\1/gi)) {
+        const target = match[2];
+        if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(target) || target.startsWith('data:')) {
+            continue;
+        }
+        const resolved = path.relative(publicRoot, path.resolve(path.dirname(cssPath), stripQuery(target))).split(path.sep).join('/');
+        if (seen.has(resolved)) {
+            continue;
+        }
+        seen.add(resolved);
+        const importedPath = path.join(publicRoot, resolved);
+        imports.push({ href: resolved, size: fs.existsSync(importedPath) ? fs.statSync(importedPath).size : 0 });
+        imports.push(...collectImportedStylesheets(resolved, seen));
+    }
+    return imports;
+}
+
+const importedStylesheetSeen = new Set();
+const importedStylesheets = blockingStylesheets
+    .filter(asset => stripQuery(asset.href).endsWith('.css'))
+    .flatMap(asset => collectImportedStylesheets(asset.href, importedStylesheetSeen));
+
 const startupScripts = Array.from(indexHtml.matchAll(/<script\b[^>]*>/gi))
     .map(match => match[0])
     .map(tag => ({
@@ -95,6 +137,8 @@ const blockingStylesheetBytes = blockingStylesheets.reduce((total, asset) => tot
 const startupScriptBytes = startupScripts.reduce((total, asset) => total + asset.size, 0);
 
 console.log(`Blocking stylesheets: ${blockingStylesheets.length}, ${formatBytes(blockingStylesheetBytes)}`);
+console.log(`Width-media stylesheets (information only): ${widthMediaStylesheets.length}, ${formatBytes(widthMediaStylesheets.reduce((total, asset) => total + asset.size, 0))}`);
+console.log(`Imported stylesheets (information only): ${importedStylesheets.length}, ${formatBytes(importedStylesheets.reduce((total, asset) => total + asset.size, 0))}`);
 console.log(`Startup scripts: ${startupScripts.length}, ${formatBytes(startupScriptBytes)}`);
 
 if (blockingStylesheets.length > budgets.blockingStylesheetCount) {
