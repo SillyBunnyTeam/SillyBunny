@@ -769,7 +769,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     ],
     'characters:world-info': [
-        { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
+        { href: 'css/world-info.css?v=20261120a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zzj', id: 'deferred-editor-chrome-css' },

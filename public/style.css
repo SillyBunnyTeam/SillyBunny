@@ -1,18 +1,19 @@
 @charset "UTF-8";
 
+/* SillyBunny: an imported sheet that the fork changes carries a key, because the service worker caches /css/ by the full URL. */
 @import url(css/animations.css?v=20261118zp);
 @import url(css/popup.css?v=20261117za);
 @import url(css/promptmanager.css?v=20261118zy);
 @import url(css/loader.css?v=20261110a);
-@import url(css/character-group-overlay.css);
-@import url(css/file-form.css);
+@import url(css/character-group-overlay.css?v=20261120a);
+@import url(css/file-form.css?v=20261120a);
 @import url(css/logprobs.css);
-@import url(css/accounts.css);
+@import url(css/accounts.css?v=20261120a);
 @import url(css/tags.css);
 @import url(css/scrollable-button.css?v=20260517a);
 /* SillyBunny: Home rules live in their own sheet */
 @import url(css/sillybunny-home.css?v=20261118zzw);
-@import url(css/data-maid.css);
+@import url(css/data-maid.css?v=20261120a);
 @import url(css/secrets.css?v=20261118zk);
 @import url(css/backgrounds.css?v=20261118s);
 @import url(css/chat-backups.css?v=20261118zh);
