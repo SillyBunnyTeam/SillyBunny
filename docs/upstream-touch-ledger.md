@@ -1548,7 +1548,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | `TODO(copy)` |
 | Target seam | The select2 result templates' icon markup; the values passed to the member lists' shared status page. |
 | Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6h; the user's choices on F-101 and F-138): each capability icon is `role="img"` with an `aria-label` equal to its tooltip, because a `title` is not an accessible name; a member list search without a match shows "Try a different search" as the page's description. |
-| Protecting tests | `tests/select2-model-templates.test.js`; the surface audit of the `status` family. |
+| Protecting tests | `tests/unit/select2-model-templates.test.js`; the surface audit of the `status` family. |
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the `status` family and the changed surfaces, the related e2e specs. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6h). |
@@ -1563,7 +1563,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | `TODO(copy)` |
 | Target seam | The spinner helpers of `public/scripts/sillybunny-editor/status-page.js` (`spinnerMarkup()`, `createSpinner()`, `setIconBusy()`, `ensureSpinnerStyles()`). |
 | Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6g, F-254): a spinning `fa-spin` glyph is replaced by the shared spinner; the spinner's stylesheet loads on first use, not at startup; a spinner under `.hidden` stops animating. The two keyframes had no user in markup, scripts, extensions, `default/` or tests; custom CSS that named `pulse` loses it. |
-| Protecting tests | `tests/unit/sillybunny-status-page.test.js`; `tests/upstream-template-compatibility.test.js`; `tests/header-icon-button-parity.e2e.js`; the surface audit of Connections, Data Maid and the Extensions manager. |
+| Protecting tests | `tests/unit/sillybunny-status-page.test.js`; `tests/unit/upstream-template-compatibility.test.js`; `tests/header-icon-button-parity.e2e.js`; the surface audit of Connections, Data Maid and the Extensions manager. |
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of eight surfaces, the settings inventory of three pages, the related e2e specs. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6g). |
@@ -1593,7 +1593,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | `TODO(copy)` |
 | Target seam | `public/scripts/sillybunny-editor/banner.js`; `openShortcutsWindow()` in `public/scripts/sillybunny-shortcuts.js`; `--sb-osd-bg` and `--sb-osd-ink`; `UPSTREAM_SORTABLES` in `public/scripts/sillybunny-editor/reorder-menu.js`. |
 | Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6j; F-321 to F-330): each surface keeps its ids, toggles and handlers and takes the shared pattern; the MovingUI title loses its final period under a new i18n key; `hotkeys.html` and `system_message_types.HOTKEYS` stayed for a time with no code path that shows them, and the last pass (task 14.6l) removed them. |
-| Protecting tests | `tests/window-dialogs.e2e.js`; `tests/toast-queue.e2e.js`; `tests/unit/sillybunny-toast-motion.test.js`; the surface audit of `dialog.window.regex-debugger`, `editor.prompt`, `editor.quick-reply` and `panel.companion.panel`. |
+| Protecting tests | `tests/window-dialogs.e2e.js`; `tests/toast-queue.e2e.js`; `tests/sillybunny-toast-motion.test.js`; the surface audit of `dialog.window.regex-debugger`, `editor.prompt`, `editor.quick-reply` and `panel.companion.panel`. |
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the changed surfaces, the related e2e specs. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6j). |
@@ -2032,7 +2032,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | `TODO(copy)` |
 | Target seam | `login.css`'s own tokens (the page loads `style.css`, not `sillybunny-theme.css`); the art slot's name follows `createArtPlaceholder()` in `public/scripts/sillybunny-home/art.js`. |
 | Adapter shape | Since 2026-11-18 (UI polish sweep, task 11.2): marked hunks in the four files; every upstream id, field and handler kept. |
-| Protecting tests | `tests/login-keyboard.e2e.js`; `tests/unit/login-page.test.js`; `tests/unit/density-tokens-css.test.js`; the `home.login` surface of `tests/audit/surface-audit.e2e.js`. |
+| Protecting tests | `tests/login-keyboard.e2e.js`; `tests/unit/login-page.test.js`; `tests/density-tokens-css.test.js`; the `home.login` surface of `tests/audit/surface-audit.e2e.js`. |
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js`, `login-keyboard.e2e.js`, the `home.login` audit (5 of 5), and captures at 360x640, 390x844, 844x390 and 1440x900 in both tones and forced colours with no overflow. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 11.2). |
@@ -2527,6 +2527,62 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Adapter shape | Three marked hunks: a loader in `init()` that imports the module once when the body has `echostyle`, `whisperstyle` or `ripplestyle` and hands it the extension's own functions; a `sb:expression-changed` event in `sendExpressionCall()`; a `sb:expression-sprites-changed` event in `validateImages()`. The module marks message elements with `data-sb-expression` and `--sb-message-expression` and stores nothing. |
 | Protecting tests | `tests/unit/chat-style-sprites.test.js`; `tests/chat-style-expressions.e2e.js`; `tests/frontend-performance.e2e.js` (start-up resource count). |
 | Validation | 2026-11-20: root and tests lint, the unit suite, budgets, contracts and design rules, the related e2e specs, and the screenshots of the three styles at 1440x900 and 390x844. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-20, PR #870 audit. |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/action-loader.js` - start-up splash fade-out
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/action-loader.js`. |
+| Area | Start-up: removal of the initial HTML splash (`#preloader`) after the first loader hide. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/css/loader.css` (the `sb-boot-exit` transition) and `public/scripts/sillybunny-boot-guard.js` (`window.SillyBunnyBootGuard`). |
+| Adapter shape | `dismissPreloader()` stands in place of upstream's `yoinkPreloader()`: it reports the finished boot to the boot guard, adds `sb-boot-exit`, and removes the element when the transition ends or after its duration plus 100 ms. Repeated calls share one promise, and a zero duration (Reduced Motion) removes the element at once. |
+| Protecting tests | `tests/splash.e2e.js` ("removes the preloader once the app has booted"); `tests/unit/sillybunny-splash.test.js`. |
+| Validation | 2026-11-20: root lint, the unit suite, budgets, contracts and design rules; the divergence itself was not changed on this date. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-20, PR #870 audit. |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/i18n.js` - translation writes and the language select
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/i18n.js`. |
+| Area | Translation of elements at run time, and the UI language select. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-settings-macros.js` (`formatSettingsMacroExamples`); `public/scripts/sillybunny-tabs.js`, which calls `addLanguagesToDropdown()` again with the Data & Security content that holds the select. |
+| Adapter shape | Four marked hunks: `translateElement()` returns when the `data-i18n` attribute is gone before its queued mutation is delivered; an attribute or text is written only when the translation differs from the present value; `formatSettingsMacroExamples(element)` runs after a translation is written; `addLanguagesToDropdown(root)` is exported, takes a root, skips a select it has filled (`data-sb-languages-loaded`) and binds the named change handler per select. |
+| Protecting tests | `tests/unit/sillybunny-data-security.test.js`; `tests/unit/settings-inventory.test.js`; `tests/home-windows.e2e.js` (the language select of the Welcome window). |
+| Validation | 2026-11-20: root lint, the unit suite, budgets, contracts and design rules; the divergence itself was not changed on this date. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-20, PR #870 audit. |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/bulk-edit.js` and `public/scripts/filters.js` - selection and filter state of the shared character list
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/bulk-edit.js`; `public/scripts/filters.js`. |
+| Area | Characters list: bulk selection, and the check for an active filter. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-character-list.js` and the selection mode of `public/scripts/sillybunny-editor/selection-mode.js`. |
+| Adapter shape | `bulk-edit.js`: five marked guards on `characterGroupOverlay.legacyRowSelectionEnabled`, so upstream's row checkboxes and its state changes run only while the shared list does not own selection. `filters.js`: `hasAnyFilter({ ignore })` leaves the named filter types out of the check, under one marker. |
+| Protecting tests | `tests/unit/bulk-edit.test.js`; `tests/unit/bulk-edit-overlay.test.js`; `tests/group-chat-bulk-actions.test.js`; `tests/unit/sillybunny-character-list.test.js`; `tests/unit/sillybunny-character-list-state.test.js`; `tests/unit/sillybunny-group-list-adapters.test.js`; `tests/character-list.e2e.js`. |
+| Validation | 2026-11-20: root lint, the unit suite, budgets, contracts and design rules; the divergence itself was not changed on this date. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-20, PR #870 audit. |
+| Owner | `TODO(copy)` |
+
+### `public/css/rm-groups.css`, `public/css/st-tailwind.css` and `public/scripts/templates/promptManagerListHeader.html` - group member lists, settings sizing helpers and the prompt list header
+| Field | Value |
+| --- | --- |
+| File | `public/css/rm-groups.css`; `public/css/st-tailwind.css`; `public/scripts/templates/promptManagerListHeader.html`. |
+| Area | Group editor member lists; width helpers of settings rows; the header row of the prompt list. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/css/sillybunny-entity-list.css` and `public/css/sillybunny-character-editor.css` (member lists); `public/scripts/sillybunny-editor/rows.js` and `public/scripts/sillybunny-settings-presentation.js` (the rows that take the helpers); `public/css/promptmanager.css` (the `pm-list-head-*` cells). |
+| Adapter shape | `rm-groups.css`: the upstream rules of the member lists, their row actions, empty texts, search layout and model override inputs are removed, under three markers that name where each is drawn. `st-tailwind.css`: two added helpers, `.ds-control-flex` and `.ds-label-bounded`, under one marker, and `.textarea_compact` takes its size from the `--sb-type-*` scale. `promptManagerListHeader.html`: one cell per column of the row (`pm-list-head-grip`, `-bar`, `-name`, `-tokens`, `-toggle`), with the `data-i18n` keys of the upstream cells kept. |
+| Protecting tests | `tests/unit/sillybunny-group-list-adapters.test.js`; `tests/group-editor-member-lists.e2e.js`; `tests/prompt-manager-lifecycle-wiring.test.js`; `tests/prompt-manager-characterization.e2e.js`; `tests/libadwaita-surface-layers-css.test.js`. |
+| Validation | 2026-11-20: root lint, the unit suite, budgets, contracts and design rules; the divergence itself was not changed on this date. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-20, PR #870 audit. |
 | Owner | `TODO(copy)` |
