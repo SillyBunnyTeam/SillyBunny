@@ -127,7 +127,7 @@
         "movingUIState": {},
         "movingUIPreset": "Default",
         "noShadows": false,
-        "theme": "Libadwaita",
+        "theme": "Libadwaita Dark",
         "sb_theme_text_revision": 1,
         "auto_swipe": false,
         "auto_swipe_minimum_length": 0,

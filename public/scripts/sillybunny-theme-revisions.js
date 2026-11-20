@@ -589,7 +589,7 @@ export const REVISED_THEMES = Object.freeze({
         oldCss: 'bdcb81aee8d83',
         newCss: 'bdcb81aee8d83',
     },
-    Libadwaita: {
+    'Libadwaita Dark': {
         old: {
             main_text_color: 'rgba(255, 255, 255, 1)',
             italics_text_color: 'rgba(153, 153, 155, 1)',

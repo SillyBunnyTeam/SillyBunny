@@ -151,7 +151,7 @@ const MANAGED_BUNDLED_QUICK_REPLIES = Object.freeze([
 // SillyBunny divergence: seeding never overwrites an existing theme file, so a bundled theme that changes
 // after users copied it would stay stale in their data folder. A managed theme is replaced only while the
 // user's copy has the SHA-256 of an earlier bundled file; an edited copy has another hash and is left alone.
-// Libadwaita lists the pre-release seeds that still carried the Dark V 1.0 palette, plus its file from before
+// Libadwaita Light lists the pre-release seeds that still carried the Dark V 1.0 palette, plus its file from before
 // its text colours were raised to the DESIGN.md contrast floor. CONTRAST_REVISED_THEME_HASHES maps every other
 // theme that had text colours raised to the hash of its file from before. A value is one hash, or an array of
 // hashes when pre-release builds also shipped an earlier revision of the file (the first entry is the last release's).
@@ -347,15 +347,23 @@ const CONTRAST_REVISED_THEME_HASHES = Object.freeze({
     ],
 });
 
-const MANAGED_BUNDLED_THEMES = Object.freeze([
+// SillyBunny divergence: the bundled theme "Libadwaita" is now "Libadwaita Dark". A user's `Libadwaita.json` is
+// deleted only while its SHA-256 is listed here, which covers every version that was shipped. An edited copy has
+// another hash, stays, and becomes the user's own theme. The client selects "Libadwaita Dark" for a user whose
+// selected theme no longer exists.
+const RETIRED_BUNDLED_THEMES = Object.freeze([
     {
-        bundledPath: 'themes/Libadwaita.json',
-        staleHashes: Object.freeze([
+        filename: 'Libadwaita.json',
+        shippedHashes: Object.freeze([
+            'ce420dcde11cec505b2112515e1aeccea5937768911971817f3089c96f412b97',
             'c0e039effbc0c83883b551d4e74b2c29a506079f09f9e2a66b3b6659cd7c536d',
             'afcaa383c6b4ab81a3704e6f58eaec18eeaff63d9c95d0de76a4ef1ca75c30d9',
             'c09b7f589beab4cc8e752e74c37a31f39cdda2a540b7e1e5ce0314eccc53c2dd',
         ]),
     },
+]);
+
+const MANAGED_BUNDLED_THEMES = Object.freeze([
     {
         bundledPath: 'themes/Libadwaita Light.json',
         staleHashes: Object.freeze([
@@ -845,7 +853,7 @@ export function reconcileManagedBundledQuickReplies(directories) {
 }
 
 /**
- * Replaces stale pre-release copies of bundled themes without touching user-modified files.
+ * Replaces stale pre-release copies of bundled themes and removes retired ones, without touching user-modified files.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  */
 export function reconcileManagedBundledThemes(directories) {
@@ -853,6 +861,21 @@ export function reconcileManagedBundledThemes(directories) {
 
     if (!themesDirectory || !fs.existsSync(themesDirectory)) {
         return;
+    }
+
+    for (const retiredTheme of RETIRED_BUNDLED_THEMES) {
+        const targetPath = path.join(themesDirectory, retiredTheme.filename);
+
+        try {
+            if (!fs.existsSync(targetPath) || !retiredTheme.shippedHashes.includes(getSha256(fs.readFileSync(targetPath)))) {
+                continue;
+            }
+
+            fs.rmSync(targetPath);
+            console.info(`Retired bundled theme removed from ${targetPath}`);
+        } catch (error) {
+            console.warn(`Failed to retire bundled theme ${retiredTheme.filename}`, error);
+        }
     }
 
     for (const managedTheme of MANAGED_BUNDLED_THEMES) {

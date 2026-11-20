@@ -1,5 +1,5 @@
 /* SillyBunny: this page loads style.css but not sillybunny-theme.css, so the shell tokens it needs are declared here,
-   once per tone, with the values of the Libadwaita and Libadwaita Light themes. The page has no theme choice of its
+   once per tone, with the values of the Libadwaita Dark and Libadwaita Light themes. The page has no theme choice of its
    own, so the system colour scheme picks the tone. Keep the values in step with those two theme files. */
 body.login {
     --SmartThemeBodyColor: rgb(255, 255, 255);

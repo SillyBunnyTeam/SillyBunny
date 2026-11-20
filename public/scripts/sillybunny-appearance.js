@@ -133,7 +133,7 @@ function presentTheme(container) {
     const reset = block.querySelector('.sb-theme-preset-reset');
     if (reset) {
         // The click handler is delegated on the class, so the row takes it from the button it replaces.
-        const resetRow = createButtonRow({ label: t`Reset Theme to Default Libadwaita`, icon: 'rotate-left', danger: true, field: 'theme-reset' });
+        const resetRow = createButtonRow({ label: t`Reset Theme to Default Libadwaita Dark`, icon: 'rotate-left', danger: true, field: 'theme-reset' });
         resetRow.row.classList.add('sb-theme-preset-reset');
         rows.push(resetRow);
     }

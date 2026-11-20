@@ -26,7 +26,7 @@ const bundledThemesDirectory = path.join(process.cwd(), '..', 'default', 'conten
 
 // Dark V 1.0 palette shipped under the Libadwaita name by pre-release seeds.
 const LIBADWAITA_QUOTE_COLORS = {
-    Libadwaita: 'rgba(129, 208, 255, 1)',
+    'Libadwaita Dark': 'rgba(129, 208, 255, 1)',
     'Libadwaita Light': 'rgba(4, 97, 190, 1)',
 };
 
@@ -64,23 +64,23 @@ describe('bundled Libadwaita theme reconcile', () => {
         const directories = makeThemesDirectory();
         const staleDirectory = path.join(process.cwd(), 'fixtures', 'stale-libadwaita-themes');
 
-        for (const name of ['Libadwaita.json', 'Libadwaita Light.json']) {
+        for (const name of ['Libadwaita Light.json']) {
             fs.copyFileSync(path.join(staleDirectory, name), path.join(directories.themes, name));
         }
 
         contentManager.reconcileManagedBundledThemes(directories);
 
-        for (const name of ['Libadwaita.json', 'Libadwaita Light.json']) {
+        for (const name of ['Libadwaita Light.json']) {
             const reconciled = fs.readFileSync(path.join(directories.themes, name));
             expect(sha256(reconciled)).toBe(sha256(fs.readFileSync(path.join(bundledThemesDirectory, name))));
             expect(JSON.parse(reconciled.toString('utf8')).quote_text_color).toBe(LIBADWAITA_QUOTE_COLORS[path.parse(name).name]);
         }
     });
 
-    test('leaves user-edited Libadwaita theme files untouched', () => {
+    test('leaves user-edited Libadwaita Light theme files untouched', () => {
         const directories = makeThemesDirectory();
-        const targetPath = path.join(directories.themes, 'Libadwaita.json');
-        const userContent = `${JSON.stringify(STALE_LIBADWAITA_SEED, null, 4)}\n`;
+        const targetPath = path.join(directories.themes, 'Libadwaita Light.json');
+        const userContent = `${JSON.stringify({ ...STALE_LIBADWAITA_SEED, name: 'Libadwaita Light' }, null, 4)}\n`;
         fs.writeFileSync(targetPath, userContent);
 
         contentManager.reconcileManagedBundledThemes(directories);
@@ -100,7 +100,7 @@ describe('bundled Libadwaita theme reconcile', () => {
     });
 
     test('bundled Libadwaita themes keep a blue accent that reads on their own surfaces', () => {
-        for (const name of ['Libadwaita.json', 'Libadwaita Light.json']) {
+        for (const name of ['Libadwaita Dark.json', 'Libadwaita Light.json']) {
             const theme = JSON.parse(fs.readFileSync(path.join(bundledThemesDirectory, name), 'utf8'));
             expect(theme.quote_text_color).toBe(LIBADWAITA_QUOTE_COLORS[path.parse(name).name]);
         }
@@ -111,6 +111,51 @@ describe('bundled Libadwaita theme reconcile', () => {
         tempRoots.push(root);
 
         expect(() => contentManager.reconcileManagedBundledThemes({ root, themes: path.join(root, 'themes') })).not.toThrow();
+    });
+});
+
+describe('retired bundled theme Libadwaita, renamed Libadwaita Dark', () => {
+    const fixturesDirectory = path.join(process.cwd(), 'fixtures', 'stale-libadwaita-themes');
+    // One unedited copy for each version of Libadwaita.json that was shipped.
+    const SHIPPED_COPIES = [
+        'pr-870-Libadwaita.json',
+        'Libadwaita.json',
+        'early-pre-release-Libadwaita.json',
+        path.join('pre-release', 'Libadwaita.json'),
+    ];
+
+    test.each(SHIPPED_COPIES)('removes an unedited copy of the shipped file %s', (fixture) => {
+        const directories = makeThemesDirectory();
+        const targetPath = path.join(directories.themes, 'Libadwaita.json');
+        fs.copyFileSync(path.join(fixturesDirectory, fixture), targetPath);
+
+        contentManager.reconcileManagedBundledThemes(directories);
+
+        expect(fs.existsSync(targetPath)).toBe(false);
+    });
+
+    test('keeps an edited copy as the user\'s own theme', () => {
+        const directories = makeThemesDirectory();
+        const targetPath = path.join(directories.themes, 'Libadwaita.json');
+        const edited = JSON.parse(fs.readFileSync(path.join(fixturesDirectory, 'pr-870-Libadwaita.json'), 'utf8'));
+        edited.quote_text_color = 'rgba(1, 2, 3, 1)';
+        const userContent = `${JSON.stringify(edited, null, 4)}\n`;
+        fs.writeFileSync(targetPath, userContent);
+
+        contentManager.reconcileManagedBundledThemes(directories);
+
+        expect(fs.readFileSync(targetPath, 'utf8')).toBe(userContent);
+    });
+
+    test('does not touch Libadwaita Dark.json', () => {
+        const directories = makeThemesDirectory();
+        const targetPath = path.join(directories.themes, 'Libadwaita Dark.json');
+        const bundled = fs.readFileSync(path.join(bundledThemesDirectory, 'Libadwaita Dark.json'));
+        fs.writeFileSync(targetPath, bundled);
+
+        contentManager.reconcileManagedBundledThemes(directories);
+
+        expect(sha256(fs.readFileSync(targetPath))).toBe(sha256(bundled));
     });
 });
 
@@ -157,7 +202,6 @@ describe('bundled theme revisions that only pre-release builds shipped', () => {
 
     test.each([
         ['Everforest Dark.json', stalePath('stale-bundled-themes', 'pre-release', 'Everforest Dark.json')],
-        ['Libadwaita.json', stalePath('stale-libadwaita-themes', 'pre-release', 'Libadwaita.json')],
         ['Libadwaita Light.json', stalePath('stale-libadwaita-themes', 'pre-release', 'Libadwaita Light.json')],
     ])('replaces an unmodified pre-release copy of %s with the bundled theme', (themeFile, fixturePath) => {
         const directories = makeThemesDirectory();

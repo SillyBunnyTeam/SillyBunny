@@ -22,8 +22,14 @@ const contentManagerSource = readFileSync(new URL('../src/endpoints/content-mana
 const bundledNames = readdirSync(new URL('../default/content/themes/', import.meta.url)).map(file => file.replace(/\.json$/, ''));
 const unrevisedNames = bundledNames.filter(name => !Object.hasOwn(REVISED_THEMES, name));
 
-/** The Dark V migration renames this theme to Libadwaita before the repair runs, so a saved palette never carries its name. */
+/** The Dark V migration renames this theme to Libadwaita Dark before the repair runs, so a saved palette never carries its name. */
 const RENAMED_BEFORE_REPAIR = ['Dark V 1.0'];
+
+/**
+ * Bundled themes that replace a retired file of another name. The server does not replace a copy of them, but the client renames a saved
+ * selection of the retired theme before the repair runs, so a saved palette of the retired theme is found under the new name.
+ */
+const RENAMES_OF_RETIRED_THEMES = { 'Libadwaita Dark': 'Libadwaita.json' };
 
 /** Names of the bundled themes the server replaces while the user's copy is an earlier version, read from content-manager.js. */
 function managedThemeNames() {
@@ -33,7 +39,10 @@ function managedThemeNames() {
     }
     const contrastNames = [...contrastBlock.matchAll(/^ {4}(?:'([^']+)'|([\w-]+)): (?:'[0-9a-f]{64}',|\[)$/gm)].map(match => match[1] ?? match[2]);
     const listedNames = [...contentManagerSource.matchAll(/bundledPath: 'themes\/([^']+)\.json'/g)].map(match => match[1]);
-    return [...listedNames, ...contrastNames];
+    for (const retiredFile of Object.values(RENAMES_OF_RETIRED_THEMES)) {
+        expect(contentManagerSource).toContain(`filename: '${retiredFile}'`);
+    }
+    return [...listedNames, ...contrastNames, ...Object.keys(RENAMES_OF_RETIRED_THEMES)];
 }
 
 const paletteOf = theme => Object.fromEntries(THEME_COLOR_KEYS.map(key => [key, theme[key]]));
@@ -187,8 +196,8 @@ describe('revised theme text colors: running once', () => {
         expect(powerUserSource).toContain('power_user.sb_theme_text_revision = SB_THEME_TEXT_REVISION;');
     });
 
-    test('the Dark V 1.0 migration writes the Libadwaita quote the theme ships', () => {
-        const libadwaita = bundled('Libadwaita');
+    test('the Dark V 1.0 migration writes the Libadwaita Dark quote the theme ships', () => {
+        const libadwaita = bundled('Libadwaita Dark');
         const start = powerUserSource.indexOf('if (power_user.theme === \'Dark V 1.0\') {');
 
         expect(powerUserSource.slice(start, powerUserSource.indexOf('saveSettingsDebounced();', start))).toContain(`power_user.quote_text_color = '${libadwaita.quote_text_color}';`);

@@ -83,7 +83,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
-import { THEME_RESET_DEFAULTS, appendCustomCss, buildImportedTheme, getGeneratedCustomCss, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
+import { THEME_RESET_DEFAULTS, appendCustomCss, buildImportedTheme, getGeneratedCustomCss, getRenamedBundledThemeName, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 // SillyBunny: registered side panels persist a side preference without applying draggable geometry.
@@ -237,7 +237,7 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
 ]);
 
 // SillyBunny: the ten color keys of each historical default palette, in order: bundled Dark V 1.0, the stale
-// pre-release Libadwaita seed, the stale pre-release Libadwaita Light seed. Startup repair replaces saved
+// pre-release Libadwaita Dark seed, the stale pre-release Libadwaita Light seed. Startup repair replaces saved
 // colors only when every key matches one palette.
 const LEGACY_DEFAULT_THEME_PALETTES = Object.freeze([
     {
@@ -446,7 +446,7 @@ export const power_user = {
     movingUIState: {},
     movingUIPreset: '',
     noShadows: false,
-    theme: 'Libadwaita',
+    theme: 'Libadwaita Dark',
 
     gestures: true,
     auto_swipe: false,
@@ -2213,10 +2213,10 @@ function applyTheme(name, { applyCss = true } = {}) {
 
 // SillyBunny: the reset action is fork-only; the values it writes are in sillybunny-theme-css.js.
 /**
- * Writes the shipped Libadwaita theme and the look settings beside it into the settings: the keys a saved theme stores
+ * Writes the shipped Libadwaita Dark theme and the look settings beside it into the settings: the keys a saved theme stores
  * (colors, effects, Custom CSS, the selected theme), Blur Strength, Shadow Width and the font choice. Layout, Chat Display,
  * the visual switches and backgrounds are not theme settings and stay as they are. Imported fonts stay installed.
- * The values are `THEME_RESET_DEFAULTS`, not the saved Libadwaita theme, which the user may have edited.
+ * The values are `THEME_RESET_DEFAULTS`, not the saved Libadwaita Dark theme, which the user may have edited.
  */
 function resetThemeToDefault() {
     Object.assign(power_user, THEME_RESET_DEFAULTS);
@@ -2397,7 +2397,7 @@ export async function loadPowerUserSettings(settings, data) {
     // SillyBunny: Dark V 1.0 was the previous bundled default. Migrate only
     // that exact legacy selection; explicitly chosen themes remain untouched.
     if (power_user.theme === 'Dark V 1.0') {
-        power_user.theme = 'Libadwaita';
+        power_user.theme = 'Libadwaita Dark';
         // Dark V 1.0 shipped with reduced motion on; the libadwaita shell
         // expects motion. OS prefers-reduced-motion still wins at apply time.
         power_user.reduced_motion = false;
@@ -2405,7 +2405,7 @@ export async function loadPowerUserSettings(settings, data) {
         // user-selected accent that differs from Dark V's shipped values.
         if (power_user.quote_text_color === 'rgba(198, 193, 151, 1)'
             && power_user.underline_text_color === 'rgba(145, 145, 145, 1)') {
-            // SillyBunny: the quote matches the bundled Libadwaita theme.
+            // SillyBunny: the quote matches the bundled Libadwaita Dark theme.
             power_user.quote_text_color = 'rgba(129, 208, 255, 1)';
             power_user.underline_text_color = 'rgba(129, 208, 255, 1)';
         }
@@ -2463,12 +2463,19 @@ export async function loadPowerUserSettings(settings, data) {
         themes = data.themes;
     }
 
+    // SillyBunny: the bundled theme "Libadwaita" is now "Libadwaita Dark". This runs before the palette and text repairs below, which find the theme by name.
+    const renamedTheme = getRenamedBundledThemeName(power_user.theme, themes);
+    if (renamedTheme) {
+        power_user.theme = renamedTheme;
+        saveSettingsDebounced();
+    }
+
     // SillyBunny: the Dark V 1.0 migration above renames the theme and retunes only two accent colors on power_user,
     // so the raw saved palette can still equal a legacy default. The match reads savedPowerUserSettings for that
     // reason; a complete match is repaired from the bundled theme while authored colors, custom CSS, and effects
     // stay as saved.
     const migratedTheme = themes.find(theme => theme.name === power_user.theme);
-    if (/^Libadwaita( Light)?$/.test(power_user.theme)
+    if (/^Libadwaita (Dark|Light)$/.test(power_user.theme)
         && LEGACY_DEFAULT_THEME_PALETTES.some(palette => Object.entries(palette)
             .every(([key, value]) => savedPowerUserSettings[key] === value))
         && migratedTheme && migratedTheme.blur_tint_color !== power_user.blur_tint_color) {
@@ -5433,7 +5440,7 @@ jQuery(async () => {
             return;
         }
         resetThemeToDefault();
-        toastr.info(t`Theme reset to default Libadwaita`, 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
+        toastr.info(t`Theme reset to default Libadwaita Dark`, 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     });
 
     // Accent color presets

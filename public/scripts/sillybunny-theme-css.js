@@ -137,8 +137,23 @@ export function getGeneratedCustomCss({ mode, startCss, liveCss, generatedCss })
 }
 
 /**
- * What "Reset Theme to Default Libadwaita" writes into the settings. The keys of a saved theme (the ten colors,
- * Custom CSS, the selected theme) come from `default/content/themes/Libadwaita.json`, the file SillyBunny ships, and not
+ * Gets the theme name to select for a saved selection of the bundled theme that was renamed to "Libadwaita Dark".
+ * The old name is kept when a loaded theme still has it, which is a copy the user edited: the server removes
+ * only unedited copies of the old file.
+ * @param {string} selectedName Theme name in the saved settings.
+ * @param {{name?: string}[]} loadedThemes The themes loaded from the user's data folder.
+ * @returns {string|null} The name to select, or null when the selection stays as it is.
+ */
+export function getRenamedBundledThemeName(selectedName, loadedThemes) {
+    if (selectedName !== 'Libadwaita' || loadedThemes.some(theme => theme?.name === 'Libadwaita')) {
+        return null;
+    }
+    return 'Libadwaita Dark';
+}
+
+/**
+ * What "Reset Theme to Default Libadwaita Dark" writes into the settings. The keys of a saved theme (the ten colors,
+ * Custom CSS, the selected theme) come from `default/content/themes/Libadwaita Dark.json`, the file SillyBunny ships, and not
  * from the user's saved copy, which an Update may have changed. The effect keys, `blur_strength`, `shadow_width` and
  * `google_font` are the fresh-install values: the first four are the `defaultValue` of `THEME_EFFECT_PROPERTIES` in
  * `power-user.js`, the rest are in `default/content/settings.json` and in the `power_user` defaults there. The bundled
@@ -146,7 +161,7 @@ export function getGeneratedCustomCss({ mode, startCss, liveCss, generatedCss })
  * `tests/unit/sillybunny-theme-reset-defaults.test.js` holds each group to its source.
  */
 export const THEME_RESET_DEFAULTS = Object.freeze({
-    theme: 'Libadwaita',
+    theme: 'Libadwaita Dark',
     main_text_color: 'rgba(255, 255, 255, 1)',
     italics_text_color: 'rgba(170, 170, 172, 1)',
     underline_text_color: 'rgba(170, 170, 172, 1)',
