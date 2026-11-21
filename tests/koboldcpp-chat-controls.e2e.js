@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block' });
 test.setTimeout(90000);
@@ -21,6 +22,7 @@ async function openChatCompletionSource(page, baseURL) {
             const data = await response.json();
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings._version = version;
             settings.main_api = 'openai';
             settings.extension_settings ??= {};
