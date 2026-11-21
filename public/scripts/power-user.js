@@ -4473,12 +4473,12 @@ jQuery(async () => {
         reloadMarkdownProcessor();
     });
 
-    // SillyBunny: a new Markdown engine applies to the open chat at once.
+    // SillyBunny: a new Markdown engine applies to the open chat at once. The choice is saved first, so a chat reload that fails cannot lose it.
     $('#markdown_engine').on('change', async function () {
         power_user.markdown_engine = normalizeMarkdownEngine($(this).val());
+        saveSettingsDebounced();
         reloadMarkdownProcessor();
         await reloadCurrentChat();
-        saveSettingsDebounced();
     });
 
     $('.start-reply-with-input').on('input', function () {

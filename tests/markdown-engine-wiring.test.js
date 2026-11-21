@@ -77,13 +77,13 @@ describe('markdown engine wiring', () => {
         expect(powerUserSource).toContain('    $(\'#markdown_engine\').val(normalizeMarkdownEngine(power_user.markdown_engine)).each((_, select) => select.dispatchEvent(new Event(\'input\', { bubbles: true })));');
     });
 
-    test('a change of the select stores the engine, reloads the processor and re-renders the chat', () => {
+    test('a change of the select stores the engine and saves it, then reloads the processor and re-renders the chat', () => {
         const handler = [
             '    $(\'#markdown_engine\').on(\'change\', async function () {',
             '        power_user.markdown_engine = normalizeMarkdownEngine($(this).val());',
+            '        saveSettingsDebounced();',
             '        reloadMarkdownProcessor();',
             '        await reloadCurrentChat();',
-            '        saveSettingsDebounced();',
             '    });',
         ].join('\n');
         expect(powerUserSource).toContain(handler);
