@@ -477,7 +477,7 @@ async function pickEntry(state) {
     content.classList.add('flex-container', 'flexFlowColumn', 'flexGap5');
 
     const heading = document.createElement('h3');
-    heading.textContent = t`Load a KoboldCpp model`;
+    heading.textContent = t`Load a KoboldCpp Model`;
     const search = document.createElement('input');
     search.type = 'search';
     search.classList.add('text_pole');

@@ -279,7 +279,7 @@ test.describe('KoboldCpp model switcher controls on a phone', () => {
         await expect(modelGroup.locator('.ds-select-row:has(#koboldcpp_model) ~ * #koboldcpp_model_hint')).toBeVisible();
 
         const result = page.evaluate(() => window.SillyTavern.getContext().executeSlashCommandsWithOptions('/kcpp-model'));
-        const picker = page.getByRole('dialog').filter({ hasText: 'Load a KoboldCpp model' });
+        const picker = page.getByRole('dialog').filter({ hasText: 'Load a KoboldCpp Model' });
         await expect(picker.getByRole('searchbox')).toHaveAttribute('aria-label', 'Search...');
         await expect(picker.getByRole('button', { name: 'Loaded alpha.gguf', exact: true })).toBeVisible();
         await expect(picker.getByRole('img', { name: 'Loaded', exact: true })).toBeVisible();

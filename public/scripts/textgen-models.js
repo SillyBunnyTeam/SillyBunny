@@ -8,6 +8,7 @@ import { accountStorage } from './util/AccountStorage.js';
 import { escapeHtml, localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
 import { updateServiceTierOptions } from './service-tiers.js';
+// SillyBunny: the KoboldCpp model switcher lives in its own module to keep this file close to upstream.
 import { initKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 // SillyBunny: model details for the shared picker rows of the Connections select rows.
 import { registerOptionDetails } from './sillybunny-editor/option-details.js';

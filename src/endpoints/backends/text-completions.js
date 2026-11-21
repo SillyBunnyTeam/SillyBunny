@@ -16,6 +16,7 @@ import { abortOnRequestClose, forwardFetchResponse, trimV1, getConfigValue, poll
 import { getResumableGeneration } from '../../resumable-generations.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
 import { createHash } from 'node:crypto';
+// SillyBunny: KoboldCpp admin-mode model switching lives in its own module to keep this file close to upstream.
 import { router as koboldCppAdminRouter } from './koboldcpp-admin.js';
 
 export const router = express.Router();

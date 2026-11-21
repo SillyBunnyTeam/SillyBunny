@@ -46,6 +46,7 @@ import {
 } from './sampling-parameter-policy.js';
 import { oai_settings } from './openai.js';
 import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, loadAphroditeModels, loadDreamGenModels, loadFeatherlessModels, loadGenericModels, loadInfermaticAIModels, loadLlamaCppModels, loadMancerModels, loadOllamaModels, loadOpenRouterModels, loadTabbyModels, loadTogetherAIModels, loadVllmModels, setOpenRouterProviders, updateOpenRouterProvidersWarning } from './textgen-models.js';
+// SillyBunny: the KoboldCpp model switcher lives in its own module to keep this file close to upstream.
 import { refreshKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
 import { AbortReason } from './util/AbortReason.js';
