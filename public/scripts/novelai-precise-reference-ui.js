@@ -100,7 +100,7 @@ export function mountNovelAIPreciseReferenceEditor(container, { getState, onChan
         upload.accept = 'image/png,image/jpeg,image/webp,image/avif,image/gif';
         upload.multiple = true;
         upload.hidden = true;
-        upload.setAttribute('aria-label', 'Add reference images');
+        upload.setAttribute('aria-label', 'Add Reference Images');
         upload.disabled = busy || !supported;
         upload.addEventListener('change', async () => {
             const files = Array.from(upload.files || []);
@@ -136,7 +136,7 @@ export function mountNovelAIPreciseReferenceEditor(container, { getState, onChan
         add.type = 'button';
         add.className = 'menu_button';
         add.disabled = busy || !supported;
-        add.textContent = busy ? 'Preparing references…' : 'Add reference images';
+        add.textContent = busy ? 'Preparing References…' : 'Add Reference Images';
         add.addEventListener('click', () => upload.click());
         container.append(add, upload);
 
@@ -169,7 +169,7 @@ export function mountNovelAIPreciseReferenceEditor(container, { getState, onChan
                 range.step = '0.05';
                 range.value = String(reference[field]);
                 range.disabled = busy;
-                range.setAttribute('aria-label', `${text} for reference ${index + 1}`);
+                range.setAttribute('aria-label', `${text} for Reference ${index + 1}`);
                 const number = document.createElement('input');
                 number.type = 'number';
                 number.className = 'text_pole';
@@ -193,7 +193,7 @@ export function mountNovelAIPreciseReferenceEditor(container, { getState, onChan
             remove.type = 'button';
             remove.className = 'menu_button';
             remove.textContent = 'Remove';
-            remove.setAttribute('aria-label', `Remove reference ${index + 1}`);
+            remove.setAttribute('aria-label', `Remove Reference ${index + 1}`);
             remove.disabled = busy;
             remove.addEventListener('click', () => {
                 const latest = state();
