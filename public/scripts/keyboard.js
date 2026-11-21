@@ -5,7 +5,12 @@ const interactableSelectors = [
     '.menu_button', // General menu button in ST
     '.right_menu_button', // Button-likes in many menus
     '.drawer-icon', // Main "menu bar" icons
-    '.inline-drawer-icon', // Buttons/icons inside the drawer menus
+    // SillyBunny: a chevron inside its drawer header is decoration of the header, which is the control; the header takes the Tab stop instead.
+    // A header that already names itself a button with `aria-expanded`, or that is a row (the Connections page binds Enter and Space itself), is left out, so Enter does not click it twice.
+    // SillyBunny: the legacy Prompt Manager's drawer header sits in a group the prompt editor replaces and hides, so it takes no Tab stop.
+    // SillyBunny: a header marked `sb-drawer-child-toggle` holds its own toggle button beside other buttons, which is the Tab stop; a click on that button still reaches the header's handler.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded], .sb-drawer-child-toggle, #sb-openai-prompt-manager .inline-drawer-toggle)',
+    '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)', // Buttons/icons inside the drawer menus
     '.paginationjs-pages li a', // Pagination buttons
     '.group_select, .character_select, .bogus_folder_select', // Cards to select char, group or folder in character list and other places
     '.swipe_picker_block', // Swipe picker entries in the swipe history popup
@@ -30,7 +35,8 @@ const interactableSelectors = [
 
 if (CSS.supports('selector(:has(*))')) {
     // Option entries in the extension menu popup that are coming from extensions
-    interactableSelectors.push('#extensionsMenu div:has(.extensionsMenuExtensionButton)');
+    // SillyBunny: an extension's `.extension_container` wrapper only holds its rows; it is not a row, so it takes no tab stop and no role.
+    interactableSelectors.push('#extensionsMenu div:has(.extensionsMenuExtensionButton):not(.extension_container)');
 }
 
 export const INTERACTABLE_CONTROL_CLASS = 'interactable';
@@ -44,17 +50,23 @@ export const DISABLED_CONTROL_CLASS = 'disabled';
  * @type {MutationObserver}
  */
 const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
+    // One batch can carry thousands of records for the same subtree (a page swap adds a node and then
+    // toggles classes inside it). Rescanning each one repeats full-subtree queries, so collapse the
+    // batch to its unique outermost elements first.
+    const changed = new Set();
+    for (const mutation of mutations) {
         if (mutation.type === 'childList') {
-            mutation.addedNodes.forEach(handleNodeChange);
+            mutation.addedNodes.forEach(node => node instanceof Element && changed.add(node));
+        } else if (mutation.type === 'attributes' && mutation.attributeName === 'class' && mutation.target instanceof Element) {
+            changed.add(mutation.target);
         }
-        if (mutation.type === 'attributes') {
-            const target = mutation.target;
-            if (mutation.attributeName === 'class' && target instanceof Element) {
-                handleNodeChange(target);
-            }
-        }
-    });
+    }
+    for (const node of changed) {
+        if (!node.isConnected) continue;
+        let ancestor = node.parentElement;
+        while (ancestor && !changed.has(ancestor)) ancestor = ancestor.parentElement;
+        if (!ancestor) handleNodeChange(node);
+    }
 });
 
 /**
@@ -223,6 +235,12 @@ function initializeScrollResetBehaviors(element = document) {
 function handleGlobalKeyDown(event) {
     if (event.key === 'Enter') {
         if (!(event.target instanceof HTMLElement))
+            return;
+
+        // SillyBunny: a native button, link, summary or button-like input already clicks on Enter, so the
+        // synthetic click below would run its handler twice, and the second click lands on whatever took focus
+        // after the first. Checkbox and radio stay out of this list because Enter does not toggle them.
+        if (event.target.matches('button, summary, a[href], input:is([type="button"], [type="submit"], [type="reset"], [type="image"])'))
             return;
 
         // Only count enter on this interactable if no modifier key is pressed

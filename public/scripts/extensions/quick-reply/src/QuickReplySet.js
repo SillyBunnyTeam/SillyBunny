@@ -97,6 +97,7 @@ export class QuickReplySet {
         if (!this.settingsDom) {
             this.settingsDom = document.createElement('div'); {
                 this.settingsDom.classList.add('qr--set-qrListContents');
+                this.settingsDom.setAttribute('role', 'list'); // SillyBunny: each quick reply row is a list item.
                 this.qrList.forEach((qr, idx) => {
                     this.renderSettingsItem(qr, idx);
                 });
@@ -272,6 +273,8 @@ export class QuickReplySet {
             this.save();
         };
         qr.onTransfer = async () => {
+            // SillyBunny: load dialog-only presentation without adding UI imports to the set model.
+            const { quickReplyTransferOptions } = await import('../../../sillybunny-editor/adapters/utility-dialogs.js');
             /**@type {HTMLSelectElement} */
             let sel;
             let isCopy = false;
@@ -331,20 +334,13 @@ export class QuickReplySet {
                     dom.append(hintP);
                 }
             }
-            const dlg = new Popup(dom, POPUP_TYPE.CONFIRM, null, { okButton: 'Transfer', cancelButton: 'Cancel' });
-            const copyBtn = document.createElement('div'); {
-                copyBtn.classList.add('qr--copy');
-                copyBtn.classList.add('menu_button');
-                copyBtn.textContent = 'Copy';
-                copyBtn.addEventListener('click', () => {
-                    isCopy = true;
-                    dlg.completeAffirmative();
-                });
-                // @ts-ignore
-                (dlg.ok ?? dlg.okButton).insertAdjacentElement('afterend', copyBtn);
-            }
+            // SillyBunny: keep Copy neutral so Transfer remains the suggested action.
+            const dlg = new Popup(dom, POPUP_TYPE.CONFIRM, null, {
+                ...quickReplyTransferOptions(dom), okButton: 'Transfer', cancelButton: 'Cancel',
+                customButtons: [{ text: 'Copy', classes: ['qr--copy'], result: POPUP_RESULT.AFFIRMATIVE, appendAtEnd: true, action: () => { isCopy = true; } }],
+            });
             const prom = dlg.show();
-            sel.focus({ preventScroll: true });
+            // SillyBunny: the adapter focuses the visible select-row trigger before the first paint.
             await prom;
             if (dlg.result == POPUP_RESULT.AFFIRMATIVE) {
                 const qrs = QuickReplySet.get(sel.value);

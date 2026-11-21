@@ -1,21 +1,23 @@
 @charset "UTF-8";
 
-@import url(css/animations.css);
-@import url(css/popup.css?v=20260803a);
-@import url(css/promptmanager.css?v=20260507a);
-@import url(css/loader.css);
-@import url(css/character-group-overlay.css);
-@import url(css/file-form.css);
+/* SillyBunny: an imported sheet that the fork changes carries a key, because the service worker caches /css/ by the full URL. */
+@import url(css/animations.css?v=20261118zp);
+@import url(css/popup.css?v=20261117za);
+@import url(css/promptmanager.css?v=20261120c);
+@import url(css/loader.css?v=20261110a);
+@import url(css/character-group-overlay.css?v=20261120a);
+@import url(css/file-form.css?v=20261120a);
 @import url(css/logprobs.css);
-@import url(css/accounts.css);
+@import url(css/accounts.css?v=20261120a);
 @import url(css/tags.css);
 @import url(css/scrollable-button.css?v=20260517a);
-@import url(css/welcome.css?v=20260609a);
-@import url(css/data-maid.css);
-@import url(css/secrets.css);
-@import url(css/backgrounds.css?v=20260606a);
-@import url(css/chat-backups.css);
-@import url(css/spacing-system.css);
+/* SillyBunny: Home rules live in their own sheet */
+@import url(css/sillybunny-home.css?v=20261118zzw);
+@import url(css/data-maid.css?v=20261120a);
+@import url(css/secrets.css?v=20261118zk);
+@import url(css/backgrounds.css?v=20261118s);
+@import url(css/chat-backups.css?v=20261118zh);
+@import url(css/spacing-system.css?v=20261118zy);
 @import url(css/streaming-display.css);
 
 :root {
@@ -97,24 +99,15 @@
     --color-text: var(--SmartThemeBodyColor);
     --color-text-secondary: var(--SmartThemeEmColor);
     --color-border: var(--SmartThemeBorderColor);
-    --color-success: #f3c985;
-    --color-danger: #fb7185;
-    --color-warning: #facc15;
+    /* SillyBunny: libadwaita dark standalone status colours; light values live in sillybunny-theme.css. */
+    --color-success: #78e9ab;
+    --color-danger: #ff938c;
+    --color-warning: #ffc252;
     --color-shadow: var(--SmartThemeShadowColor);
     --color-focus-ring: color-mix(in srgb, var(--color-primary) 72%, transparent);
-    --toast-surface-color: color-mix(in srgb, var(--color-surface-strong, var(--SmartThemeBlurTintColor)) 92%, var(--SmartThemeBodyColor) 8%);
     --toast-text-color: var(--SmartThemeBodyColor);
     --toast-link-color: color-mix(in srgb, var(--toast-text-color) 86%, var(--SmartThemeQuoteColor) 14%);
-    --toast-border-color: color-mix(in srgb, var(--toast-text-color) 14%, transparent);
-    --toast-shadow-color: color-mix(in srgb, var(--color-shadow, var(--SmartThemeShadowColor)) 32%, transparent);
-    --toast-success-accent: var(--sb-color-success, var(--color-success, var(--SmartThemeQuoteColor)));
-    --toast-error-accent: var(--sb-color-error, var(--color-danger, var(--SmartThemeUnderlineColor)));
-    --toast-info-accent: var(--sb-color-info, var(--color-primary, var(--SmartThemeQuoteColor)));
-    --toast-warning-accent: var(--sb-color-warning, var(--color-warning, var(--SmartThemeQuoteColor)));
-    --toast-success-bg: color-mix(in srgb, var(--toast-success-accent) 26%, var(--toast-surface-color) 74%);
-    --toast-error-bg: color-mix(in srgb, var(--toast-error-accent) 28%, var(--toast-surface-color) 72%);
-    --toast-info-bg: color-mix(in srgb, var(--toast-info-accent) 26%, var(--toast-surface-color) 74%);
-    --toast-warning-bg: color-mix(in srgb, var(--toast-warning-accent) 30%, var(--toast-surface-color) 70%);
+    /* SillyBunny: the unused toast tokens are gone. */
     --sb-scrollbar-track: color-mix(in srgb, var(--color-background, var(--SmartThemeBlurTintColor)) 86%, transparent);
     --sb-scrollbar-track-hover: color-mix(in srgb, var(--color-background, var(--SmartThemeBlurTintColor)) 70%, transparent);
     --sb-scrollbar-thumb: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 34%, transparent);
@@ -135,15 +128,15 @@
     --lineSpacingMobileLeading: .504rem;
     --messageMarginScale: 1;
     --mainFontSize: calc(var(--fontScale) * 15px);
-    --mainFontFamily: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
-    --monoFontFamily: 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-    --sb-type-caption: calc(var(--mainFontSize) * 0.72);
+    --mainFontFamily: 'Adwaita Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
+    --monoFontFamily: 'Adwaita Mono', 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    --sb-type-caption: calc(var(--mainFontSize) * 0.82);
     --sb-type-meta: calc(var(--mainFontSize) * 0.78);
     --sb-type-control: calc(var(--mainFontSize) * 0.86);
     --sb-type-body: var(--mainFontSize);
-    --sb-type-title: calc(var(--mainFontSize) * 1.08);
-    --sb-type-headline: calc(var(--mainFontSize) * 1.35);
-    --sb-type-display: calc(var(--mainFontSize) * 1.62);
+    --sb-type-title: var(--mainFontSize);
+    --sb-type-headline: calc(var(--mainFontSize) * 1.36);
+    --sb-type-display: calc(var(--mainFontSize) * 1.81);
     --sb-line-compact: 1.2;
     --sb-line-title: 1.18;
     --sb-line-body: 1.55;
@@ -151,8 +144,6 @@
     --sb-weight-body: 400;
     --sb-weight-control: 600;
     --sb-weight-title: 700;
-    --sb-tracking-label: 0.06em;
-    --sb-tracking-kicker: 0.1em;
     /* Compatibility aliases for older imported themes and extension-style presets. */
     --mainFont: var(--mainFontFamily);
     --headerFont: var(--mainFontFamily);
@@ -403,14 +394,11 @@ input[type='checkbox']:focus-visible {
 }
 
 /* General dragover styling */
+/* SillyBunny: a whole drop area is a 2px inset ring at 40% Accent over a 10% Accent fill (DESIGN.md Elevation, Drop Target), in place of the dashed outline and its pulse. The ring is an outline pulled inside the box so it paints over the children, which matters for body. The fill is an inset shadow so the element keeps its own background. */
 .dragover {
-    filter: brightness(1.1) saturate(1.0);
-    outline: 3px dashed var(--SmartThemeBorderColor);
-    animation: pulse var(--animation-duration-3x) infinite alternate;
-}
-
-.dragover.no_animation {
-    animation: none;
+    outline: 2px solid color-mix(in srgb, var(--sb-accent, var(--SmartThemeQuoteColor)) 40%, transparent);
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--sb-accent, var(--SmartThemeQuoteColor)) 10%, transparent);
 }
 
 .tokenItemizingSubclass {
@@ -525,6 +513,13 @@ input[type='checkbox']:focus-visible {
 .mes_reasoning_details .mes_reasoning_summary {
     list-style: none;
     margin-right: calc(var(--mes-right-spacing) * -1);
+}
+
+/* Keep chat disclosures aligned with the shell's short, low-distance reveals. */
+.mes_reasoning_details[open] > :not(summary),
+#chat .mes_text .ooc_block[open] > .ooc_content {
+    animation: sb-chat-disclosure-in var(--sb-duration-fast) var(--sb-ease-out-cubic) both;
+    transform-origin: top;
 }
 
 .mes_reasoning_details summary::-webkit-details-marker {
@@ -679,6 +674,18 @@ input[type='checkbox']:focus-visible {
     border-top: 1px solid color-mix(in srgb, var(--color-primary, var(--SmartThemeQuoteColor)) 28%, transparent);
     padding: 0.5em 0.65em 0.65em;
     white-space: normal;
+}
+
+@keyframes sb-chat-disclosure-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scaleY(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scaleY(1);
+    }
 }
 
 .mes_reasoning q {
@@ -973,7 +980,8 @@ body .panelControlBar {
     opacity: 0;
 }
 
-.zoomed_avatar:hover .panelControlBar {
+/* SillyBunny: focus reveals Close as hover does. */
+.zoomed_avatar:is(:hover, :focus-within) .panelControlBar {
     opacity: 1;
 }
 
@@ -1329,9 +1337,6 @@ body .panelControlBar {
     padding: 1px;
 }
 
-.options-content a,
-#extensionsMenu>.extension_container>div,
-#extensionsMenu>*:not(.extension_container),
 .list-group>div,
 .list-group .list-group-item,
 #sd_dropdown .list-group span {
@@ -1344,16 +1349,11 @@ body .panelControlBar {
     align-items: baseline;
 }
 
-#extensionsMenu>.extension_container>div,
-#extensionsMenu>*:not(.extension_container),
-.options-content a,
+/* SillyBunny: the rows of the Options and wand menus are full strength (sillybunny-theme.css). */
 .list-group-item {
     opacity: 0.5;
 }
 
-#extensionsMenu>.extension_container>div:hover,
-#extensionsMenu>*:not(.extension_container):hover,
-.options-content a:hover,
 .list-group-item:hover {
     opacity: 1;
 }
@@ -1505,13 +1505,6 @@ body .panelControlBar {
     opacity: 0.7;
 }
 
-.swipe_picker_header {
-    position: -webkit-sticky;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-}
-
 .swipe_picker_popup .popup-body,
 .swipe_picker_popup .popup-content {
     display: flex;
@@ -1640,10 +1633,6 @@ body.hideAllSwipeButtons :is(.swipe_left, .swipe_right),
     justify-content: space-evenly;
 }
 
-#HotSwapWrapper {
-    justify-content: space-evenly;
-}
-
 .avatar.interactable {
     opacity: 0.6;
 }
@@ -1673,6 +1662,8 @@ body.hideAllSwipeButtons :is(.swipe_left, .swipe_right),
     box-shadow: 0 0 5px var(--black50a);
 }
 
+/* SillyBunny: the logo files, and the earlier pixel logo that saved chats still show */
+img[src*="img/sillybunny/logo-"],
 img[src*="sillybunny-pixel-logo"] {
     object-fit: contain;
 }
@@ -1738,7 +1729,7 @@ img[src*="sillybunny-pixel-logo"] {
 
 .mes_text,
 .mes_reasoning {
-    font-family: var(--mainFontFamily, 'Figtree', 'Noto Sans', sans-serif);
+    font-family: var(--mainFontFamily, 'Adwaita Sans', 'Noto Sans', sans-serif);
     font-weight: 500;
     line-height: calc(var(--mainFontSize) + var(--lineSpacingDesktopLeading, .5rem)); /* SillyBunny: line-spacing slider. */
     max-width: 100%;
@@ -2420,7 +2411,7 @@ body[data-stscript-style] .hljs.language-stscript {
             >.helpContent {
                 text-overflow: ellipsis;
                 overflow: hidden;
-                font-size: 0.9em;
+                font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
                 white-space: nowrap;
                 line-height: 1.2;
                 max-height: 1.2em;
@@ -2560,7 +2551,7 @@ body[data-stscript-style] .hljs.language-stscript {
                 .argument-description {
                     margin-left: 0.5em;
                     font-family: var(--mainFontFamily);
-                    font-size: 0.9em;
+                    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
                 }
             }
 
@@ -2959,66 +2950,11 @@ input[type="file"] {
     display: none;
 }
 
-#right-nav-panel-tabs {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    width: 100%;
-    padding: 8px;
-    background: color-mix(in srgb, var(--color-surface-strong, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%)) 80%, transparent);
-    border-bottom: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-    border-radius: 1.65rem 1.65rem 0 0;
-    position: -webkit-sticky;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-
-/* Navigation pill style for panel tabs */
-#right-nav-panel-tabs .right_menu_button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-radius: 9999px;
-    border: 1px solid transparent;
-    padding: 8px 16px;
-    font-size: calc(var(--mainFontSize) * 0.9);
-    font-weight: 600;
-    color: var(--color-text-secondary, var(--SmartThemeEmColor));
-    transition: all 200ms ease;
-    opacity: 1;
-    filter: none;
-}
-
-#right-nav-panel-tabs .right_menu_button.active {
-    border-color: var(--color-border, var(--SmartThemeBorderColor));
-    background-color: var(--color-surface, var(--SmartThemeBlurTintColor));
-    color: var(--color-text, var(--SmartThemeBodyColor));
-}
-
-#right-nav-panel-tabs .right_menu_button:hover {
-    color: var(--color-text, var(--SmartThemeBodyColor));
-    background-color: var(--color-surface-hover, color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-}
-
-#rm_PinAndTabs {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: 0;
-}
-
-#chartokenwarning.menu_button {
-    font-size: unset;
-    height: fit-content;
-    aspect-ratio: unset;
-}
-
 /* ##################################################################### */
 /*                      Right Panel's Upper Tabs                         */
 /* ##################################################################### */
+
+/* SillyBunny: #rm_PinAndTabs and #CharListButtonAndHotSwaps never show; the one rule that hides them is in sillybunny-tabs.css. */
 
 .right_menu_button {
     display: inline-flex;
@@ -3039,89 +2975,44 @@ input[type="file"] {
     color: var(--color-primary);
 }
 
-#rm_button_characters,
-#rm_button_panel_pin_div,
 #WI_button_panel_pin_div {
     font-size: 24px;
     display: inline;
     padding: 1px;
 }
 
-#rm_button_panel_pin_div,
 #WI_button_panel_pin_div {
     opacity: 0.5;
     transition: var(--animation-duration-2x);
 }
 
-#rm_button_panel_pin_div:hover,
-#rm_button_panel_pin_div:has(:focus-visible),
 #WI_button_panel_pin_div:hover,
 #WI_button_panel_pin_div:has(:focus-visible) {
     opacity: 1;
 }
 
-#rm_button_panel_pin,
 #WI_panel_pin {
     display: none;
 }
 
-#rm_button_panel_pin:checked+label,
 #WI_panel_pin:checked+label {
     display: inline;
 }
 
-#rm_button_panel_pin:checked+label .checked,
 #WI_panel_pin:checked+label .checked {
     display: inline;
 }
 
-#rm_button_panel_pin:checked+label .unchecked,
 #WI_panel_pin:checked+label .unchecked {
     display: none;
 }
 
-#rm_button_panel_pin:not(:checked)+label .checked,
 #WI_panel_pin:not(:checked)+label .checked {
     display: none;
 }
 
-#rm_button_panel_pin:not(:checked)+label .unchecked,
 #WI_panel_pin:not(:checked)+label .unchecked {
     display: inline;
-}
-
-#rm_button_selected_ch {
-    flex: 1;
-    overflow: hidden;
-    padding: 6px 14px;
-    border-radius: 9999px;
-    border: 1px solid transparent;
-    transition: all 200ms ease;
-    cursor: pointer;
-}
-
-#rm_button_selected_ch:hover {
-    background-color: var(--color-surface-hover, color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-}
-
-#rm_button_selected_ch h2 {
-    cursor: pointer;
-    text-overflow: ellipsis;
-    overflow: hidden;
-    text-align: left;
-    white-space: nowrap;
-    margin: 0;
-    font-size: calc(var(--mainFontSize) * 1.25);
-}
-
-#rm_button_selected_ch h2:empty {
-    display: none;
-}
-
-.selected-right-tab {
-    border-color: var(--color-border, var(--SmartThemeBorderColor)) !important;
-    background-color: var(--color-surface, var(--SmartThemeBlurTintColor)) !important;
-    color: var(--color-text, var(--SmartThemeBodyColor)) !important;
 }
 
 #rm_print_characters_pagination {
@@ -3257,7 +3148,7 @@ input[type="file"] {
 }
 
 .extension_token_counter {
-    font-size: calc(var(--mainFontSize) * 0.875);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     width: 100%;
     text-align: right;
     margin-bottom: 5px;
@@ -3413,7 +3304,7 @@ select option[disabled]:not(:checked) {
 
 /* Fix font size difference in API Connections dropdowns - Issue #4599 */
 #custom_model_id {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .menu_button.api_button:hover {
@@ -3441,24 +3332,14 @@ select option[disabled]:not(:checked) {
     flex-direction: column;
 }
 
-#rm_characters_topbar_buttons {
-    margin-top: 0;
-    margin-bottom: 10px;
-    display: flex;
-    flex-direction: row;
-    align-items: baseline;
-}
+/* SillyBunny: #rm_characters_topbar_buttons rule removed, nothing uses it. */
 
 #rm_characters_topbar_expander {
     flex-grow: 1;
 }
 
 #charListFixedTop {
-    padding: 0 5px 5px;
-}
-
-#CharListButtonAndHotSwaps {
-    margin-top: 0 !important;
+    padding: 5px;
 }
 
 #form_character_search_form {
@@ -3468,13 +3349,7 @@ select option[disabled]:not(:checked) {
     column-gap: 5px;
 }
 
-#GroupFavDelOkBack .menu_button {
-    margin: 0;
-    height: fit-content;
-    padding: 5px;
-    border-radius: 5px;
-    aspect-ratio: 1 / 1;
-}
+/* SillyBunny: #GroupFavDelOkBack rule removed, nothing uses it. */
 
 #character_sort_order {
     flex: 1;
@@ -3708,37 +3583,20 @@ input[type=search]:focus::-webkit-search-cancel-button {
     position: relative;
 }
 
-#rm_group_top_bar:not(:has(#rm_group_activation_strategy option[value="0"]:checked)) label:has(#rm_group_allow_self_responses) {
-    display: none;
-}
+/* SillyBunny: the allow-self-responses row lives in the group editor's Chat
+   Settings section, and toggleHiddenControls() shows or hides it from the
+   draft, so no #rm_group_top_bar :has() rule is needed. */
 
-.group_member .queue_position:not(:empty)::before {
-    content: "#";
-}
-
-.group_member .queue_position {
-    margin-right: 0.75rem;
-    font-size: calc(var(--mainFontSize) * 0.9);
-}
-
-.group_member.is_queued {
-    outline: 2px solid var(--golden);
-}
-
-.group_member.is_active {
-    outline: 2px solid var(--active);
-}
+/* SillyBunny: group queue state uses the entity-row badge, not row outlines. */
 
 .character_select.is_fav .avatar,
 .group_select.is_fav .avatar,
-.group_member.is_fav .avatar,
 .avatar.is_fav {
     outline: 2px solid var(--golden);
 }
 
 .character_select.is_fav .ch_name,
-.group_select.is_fav .ch_name,
-.group_member.is_fav .ch_name {
+.group_select.is_fav .ch_name {
     color: var(--golden);
 }
 
@@ -3821,24 +3679,6 @@ grammarly-extension {
     height: 100%;
     /* Avoids cutting off the box shadow on the avatar*/
     margin: 10px;
-}
-
-#avatar_controls {
-    height: 100%;
-    width: 100%;
-    flex-grow: 1;
-    align-items: flex-start;
-    flex-flow: row wrap;
-    justify-content: center;
-    gap: 8px;
-    padding: 5px 5px 10px 0;
-}
-
-#avatar_controls>label {
-    flex: 0 1 220px;
-    min-width: min(220px, 100%);
-    height: auto !important;
-    margin: 0;
 }
 
 #description_div,
@@ -3939,64 +3779,6 @@ grammarly-extension {
     margin: 0;
 }
 
-/* Character button groups */
-.char-button-group {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    padding: 4px;
-    border-radius: 1rem;
-}
-
-.char-button-group-primary {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 20%, transparent);
-}
-
-.char-button-group-secondary {
-    background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 50%, transparent);
-    border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-}
-
-.char-button-group-manage {
-    background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 50%, transparent);
-    border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-}
-
-.char-button-toolbar {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-    min-width: 0;
-    align-items: center;
-}
-
-.char-button-group-icons {
-    flex-wrap: nowrap;
-    justify-content: center;
-    overflow-x: auto;
-    scrollbar-width: thin;
-}
-
-.char-button-group-utility {
-    align-self: center;
-    justify-content: center;
-}
-
-.char-button-group-icons .menu_button,
-.char-button-group-utility .menu_button {
-    flex: 0 0 auto;
-}
-
-/* Labels on primary character buttons */
-.char-button-group-primary .menu_button[data-label]::after {
-    content: attr(data-label);
-    font-size: calc(var(--mainFontSize) * 0.75);
-    font-weight: 600;
-    margin-left: 2px;
-}
-
 .form_create_bottom_buttons_block {
     display: flex;
     flex-direction: column;
@@ -4007,43 +3789,7 @@ grammarly-extension {
     min-width: 0;
 }
 
-#avatar_controls > label[for="char-management-dropdown"] {
-    align-self: center;
-    margin-inline: auto;
-}
-
-.greetings-editor-shell {
-    gap: 10px;
-}
-
-.character-greetings-summary {
-    color: var(--SmartThemeEmColor);
-    line-height: 1.45;
-}
-
-.character-greetings-primary,
-.character-greetings-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 65%, transparent);
-}
-
-.character-greeting-label-row,
-.character-greetings-editor-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: space-between;
-}
-
-.character-greeting-label-row {
-    font-weight: 600;
-}
-
+/* SillyBunny: the rules of the removed character editor action block (#avatar_controls, .char-button-*, .sb-character-editor-side-actions), .greetings-editor-shell and .character-greeting-label-row are removed, nothing uses them. */
 #character_greetings_editor .alternate_greetings_list {
     overflow-y: auto;
     max-height: 45dvh;
@@ -4066,25 +3812,6 @@ grammarly-extension {
 .red_button:hover,
 .redWarningBG:hover {
     background-color: var(--fullred) !important;
-}
-
-#result_info {
-    font-size: calc(var(--mainFontSize) * 0.9);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 1px 3px;
-}
-
-#result_info_text {
-    display: flex;
-    flex-direction: column;
-    line-height: 0.9;
-    text-align: right;
-}
-
-#result_info .right_menu_button {
-    padding: 4px;
 }
 
 /* Focus */
@@ -4250,7 +3977,7 @@ grammarly-extension {
     background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-button, 14px);
-    padding: 6px 16px;
+    padding: 6px 18px; /* SillyBunny: spacing scale */
     width: min-content;
     cursor: pointer;
     margin: 4px 0;
@@ -4261,7 +3988,7 @@ grammarly-extension {
     text-align: center;
     gap: 6px;
     font-weight: 500;
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     min-width: var(--sb-control-min-height, 30px);
     min-height: var(--sb-control-min-height, 30px);
     white-space: nowrap;
@@ -4325,16 +4052,7 @@ grammarly-extension {
     top: 0;
 }
 
-#bgtest {
-    display: none;
-    width: 100vw;
-    width: 100dvw;
-    height: 100vh;
-    height: 100dvh;
-    position: absolute;
-    z-index: -100;
-    background-color: red;
-}
+/* SillyBunny: #bgtest rule removed, nothing uses it. */
 
 .prompt_order {
     display: flex;
@@ -4406,7 +4124,7 @@ grammarly-extension {
     gap: 8px;
     padding: 6px 14px;
     border-radius: 9999px;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 600;
     margin-top: 2px;
     margin-bottom: 15px;
@@ -4464,13 +4182,7 @@ grammarly-extension {
     user-select: none;
 }
 
-#form_rename_chat {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    opacity: 0.8;
-    gap: 5px;
-}
+/* SillyBunny: #form_rename_chat rule removed, nothing uses it. */
 
 
 /* Override toastr default styles */
@@ -4478,16 +4190,12 @@ body #toast-container {
     margin-top: var(--topBarBlockSize);
 }
 
+/* SillyBunny: a toast's size, ink, edge and fill are sillybunny-theme.css's. */
 body #toast-container>div {
     opacity: 1;
     filter: unset;
     -ms-filter: unset;
-    padding: 10px 10px 10px 50px;
     font-size: calc(var(--mainFontSize) * 0.95);
-    width: 300px;
-    color: var(--toast-text-color);
-    border: 1px solid var(--toast-border-color);
-    box-shadow: 0 16px 36px var(--toast-shadow-color);
 }
 
 body #toast-container .toast-message a,
@@ -4508,22 +4216,6 @@ body #toast-container .toast-close-button:hover {
 
 body #toast-container .toast.toast-non-interactable {
     cursor: default;
-}
-
-body #toast-container .toast-success {
-    background-color: var(--toast-success-bg);
-}
-
-body #toast-container .toast-error {
-    background-color: var(--toast-error-bg);
-}
-
-body #toast-container .toast-info {
-    background-color: var(--toast-info-bg);
-}
-
-body #toast-container .toast-warning {
-    background-color: var(--toast-warning-bg);
 }
 
 button.toast-close-button {
@@ -4552,61 +4244,66 @@ input[type='checkbox'] {
     min-height: var(--sb-checkbox-size);
     aspect-ratio: 1 / 1;
     overflow: hidden;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 88%, var(--SmartThemeBodyColor) 14%);
-    background:
-        radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.1), transparent 58%),
-        color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, transparent);
-    box-shadow:
-        inset 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 25%, transparent),
-        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 10%, transparent);
+    /* SillyBunny divergence: libadwaita check button (rounded square + check glyph); radios keep the circle. */
+    border-radius: calc(var(--sb-checkbox-size) * 0.3);
+    border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    background: transparent;
+    box-shadow: none;
     cursor: pointer;
     transform: none;
     flex-shrink: 0;
     align-self: center;
     place-content: center;
     display: grid;
-    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 input[type="checkbox"]::before {
     content: "";
-    width: calc(var(--sb-checkbox-size) * 0.5);
-    height: calc(var(--sb-checkbox-size) * 0.5);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 86%, white 14%);
+    width: calc(var(--sb-checkbox-size) * 0.56);
+    height: calc(var(--sb-checkbox-size) * 0.56);
+    background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
+    -webkit-clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
     transform: scale(0);
-    transition: var(--animation-duration) transform ease-in-out, background-color 160ms ease;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 16%, transparent);
+    transition: var(--animation-duration) transform ease-in-out, background-color var(--sb-transition-fast);
 }
 
 input[type="checkbox"]:checked::before {
     transform: scale(1);
 }
 
+/* Solid accent fill with a contrast-aware check, matching libadwaita's checked controls. */
 input[type='checkbox']:checked {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 60%, var(--SmartThemeBorderColor));
-    background:
-        radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.12), transparent 58%),
-        color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 14%, var(--SmartThemeBlurTintColor));
+    border-color: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    box-shadow: none;
 }
 
-input[type='checkbox']:hover {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 42%, var(--SmartThemeBorderColor));
-    transform: none;
+@media (hover: hover) {
+    input[type='checkbox']:not(:checked):not(:disabled):hover {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 44%, transparent);
+        transform: none;
+    }
 }
 
 input[type='checkbox']:focus-visible {
-    outline: none;
-    box-shadow:
-        inset 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 25%, transparent),
-        0 0 0 3px color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 20%, transparent);
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
 }
 
 input[type="checkbox"]:disabled {
     color: grey;
     cursor: not-allowed;
-    opacity: 0.55;
+    /* SillyBunny: every disabled control takes the shared disabled strength. */
+    opacity: var(--sb-disabled-opacity);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    input[type='checkbox'],
+    input[type='checkbox']::before {
+        transition: none;
+    }
 }
 
 input[type='checkbox'].del_checkbox {
@@ -4723,7 +4420,7 @@ input[type='checkbox'].del_checkbox {
     margin-left: 5px;
     /*previously needed to avoid firefox scrollbar overlap, no longer necessary?*/
     /* margin-right: 15px; */
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     color: var(--SmartThemeBodyColor);
     flex: 1;
     gap: 5px;
@@ -4734,7 +4431,7 @@ input[type='checkbox'].del_checkbox {
     width: max-content;
     margin-left: 5px;
     margin-right: 15px;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     color: var(--SmartThemeEmColor);
     text-align: center;
 }
@@ -4983,10 +4680,6 @@ input[type="range"]::-webkit-slider-thumb {
     white-space: nowrap;
 }
 
-#chartokenwarning a {
-    color: var(--SmartThemeBodyColor);
-}
-
 #char-management-dropdown {
     height: auto;
     margin-bottom: 0;
@@ -5066,6 +4759,28 @@ input[type="range"]::-webkit-slider-thumb {
     padding-bottom: 5px;
     filter: drop-shadow(0px 0px 2px black);
     transition: var(--animation-duration-2x) ease-in-out;
+}
+
+/* Backwards fill only: a held transform would leave stacking contexts that paint the text over the action popover. */
+#chat .mes.sb-message-editing .mes_text,
+#chat .mes.sb-message-editing .mes_edit_buttons {
+    animation: sb-message-edit-surface-in var(--sb-duration-fast) var(--sb-ease-out-cubic) backwards;
+}
+
+#chat .mes.sb-message-edit-restored .mes_text {
+    animation: sb-message-edit-surface-in var(--sb-duration-fast) var(--sb-ease-out-cubic) backwards;
+}
+
+@keyframes sb-message-edit-surface-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .mes_reasoning_actions {
@@ -5234,6 +4949,15 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
     background-color: var(--black70a);
     backdrop-filter: var(--SmartThemeBackdropFilter);
     -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
+}
+
+/* SillyBunny: legacy visibility checks still track the window while its source nodes live in the shared frame. */
+#shadow_select_chat_popup.sb-chat-history-compat-open {
+    pointer-events: none;
+    visibility: hidden;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 #select_chat_popup {
@@ -5421,10 +5145,6 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
 
 .swipe_picker_block .select_chat_block_mes {
     text-align: left;
-}
-
-.swipe_picker_block .select_chat_actions {
-    align-items: baseline;
 }
 
 .swipe_picker_expand_toggle {
@@ -5620,7 +5340,8 @@ body .ui-slider-handle {
     border-color: var(--SmartThemeBorderColor) !important;
 }
 
-body .ui-widget-content {
+/* SillyBunny: the autocomplete list is a popover (surface and rows in sillybunny-theme.css), so these widget rules leave it out. */
+body .ui-widget-content:not(.ui-autocomplete) {
     background-color: var(--SmartThemeBlurTintColor);
     border: 1px solid var(--SmartThemeBorderColor) !important;
     border-radius: 10px;
@@ -5650,7 +5371,7 @@ body .ui-widget-content .ui-menu-item-wrapper {
     border: unset;
 }
 
-body .ui-widget-content li {
+body .ui-widget-content:not(.ui-autocomplete) li {
     padding: 5px;
     text-decoration: none;
     display: flex;
@@ -5660,7 +5381,7 @@ body .ui-widget-content li {
     transition: opacity var(--animation-duration-2x);
 }
 
-body .ui-widget-content li:hover {
+body .ui-widget-content:not(.ui-autocomplete) li:hover {
     /* background-color: var(--SmartThemeEmColor); */
     opacity: 1;
 }
@@ -5719,7 +5440,7 @@ body.big-avatars .missing-avatar {
 }
 
 .slider_hint span {
-    font-size: calc(var(--mainFontSize) - .25rem);
+    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .slider_hint span:nth-child(2) {
@@ -5894,16 +5615,16 @@ a:hover {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 10px;
+    padding: 6px;
     z-index: 1;
     transition: opacity var(--animation-duration) ease-in-out;
-    background: linear-gradient(rgba(0, 0, 0, 0.8), transparent);
+    background: var(--sb-osd-bg);
+    color: var(--sb-osd-ink);
 }
 
 .mes_img_swipes {
     top: unset;
     bottom: 0;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
 }
 
 /* Pass-through pointer events to the swipe buttons only */
@@ -5918,25 +5639,32 @@ a:hover {
 .mes_img_swipes .right_menu_button,
 .mes_img_controls .right_menu_button,
 .mes_video_controls .right_menu_button {
-    filter: brightness(90%);
-    text-shadow: 1px 1px var(--SmartThemeShadowColor) !important;
-    padding: 1px;
-    height: 1.25em;
-    width: 1.25em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--sb-radius-control);
+    color: var(--sb-osd-ink);
+    text-shadow: none !important;
 }
 
-.mes_img_swipes .right_menu_button::before,
-.mes_img_controls .right_menu_button::before,
-.mes_video_controls .right_menu_button::before {
-    /* Fix weird alignment with this font-awesome icons on focus */
-    position: relative;
-    top: 0.6125em;
+@media (hover: hover) {
+    .mes_img_swipes .right_menu_button:hover,
+    .mes_img_controls .right_menu_button:hover,
+    .mes_video_controls .right_menu_button:hover {
+        background: color-mix(in srgb, white 12%, transparent);
+    }
 }
 
-.mes_img_swipes .right_menu_button:hover,
-.mes_img_controls .right_menu_button:hover,
-.mes_video_controls .right_menu_button:hover {
-    filter: brightness(150%);
+@media (prefers-contrast: more) {
+    .mes_img_swipes .right_menu_button,
+    .mes_img_controls .right_menu_button,
+    .mes_video_controls .right_menu_button {
+        box-shadow: 0 0 0 1px var(--sb-osd-ink);
+    }
 }
 
 /* It's better to show controls only when the video is not playing */
@@ -5973,7 +5701,7 @@ body:not(.caption) .mes_img_caption {
 
 .mes_img_swipe_counter {
     font-weight: 600;
-    filter: drop-shadow(2px 4px 6px black);
+    color: var(--sb-osd-ink);
     cursor: default;
 }
 
@@ -6136,7 +5864,7 @@ body:not(.caption) .mes_img_caption {
 }
 
 .menu_button_icon span {
-    font-size: calc(var(--mainFontSize) * 0.9);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 /*------------ TOP SIDE SETTINGS ----------------*/
@@ -6238,9 +5966,12 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     border: 1px solid var(--SmartThemeBorderColor);
 }
 
-.inline-drawer-header:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 30%, transparent);
+/* SillyBunny: hover fills only where a pointer can hover; a tap on touch would leave the fill stuck. */
+@media (hover: hover) {
+    .inline-drawer-header:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 30%, transparent);
+    }
 }
 
 /* Top-level settings section headers */
@@ -6250,7 +5981,7 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     border-radius: 1rem;
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     letter-spacing: 0.03em;
     transition: all 0.5s ease;
 }
@@ -6405,7 +6136,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .drawer-content select {
     width: 100%;
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .settingsSectionWrap {
@@ -6415,7 +6146,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .wi-enter-footer-text {
-    font-size: calc(var(--mainFontSize) * 0.8);
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
     color: var(--SmartThemeBodyColor);
 }
 
@@ -6432,18 +6163,6 @@ body:not(.movingUI) .drawer-content.maximized {
 .logit_bias_text,
 .logit_bias_value {
     flex: 1;
-}
-
-.editable-slider-notification {
-    position: absolute;
-    right: 0px;
-    left: 0px;
-    margin: 0 auto;
-    width: 70%;
-    top: 5px;
-    padding: 0;
-    display: block;
-    text-align: center;
 }
 
 .openai_logit_bias_form,
@@ -6513,7 +6232,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 /* Eyebrow label for section headers */
 .eyebrow-label {
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.2em;
@@ -6531,7 +6250,7 @@ body:not(.movingUI) .drawer-content.maximized {
 /* Settings panel h4 headers as eyebrow labels */
 #user-settings-block h4,
 #left-nav-panel h4 {
-    font-size: calc(var(--mainFontSize) * 0.8);
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -6594,10 +6313,7 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-#rm_group_add_members a,
-#rm_group_members a {
-    color: var(--SmartThemeBodyColor);
-}
+/* SillyBunny: entity-list links inherit their shared control/tag styles. */
 
 .draggable {
     min-width: 100px;
@@ -6615,15 +6331,18 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     aspect-ratio: unset;
-    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-    backdrop-filter: var(--SmartThemeBackdropFilter);
-    background-color: var(--SmartThemeBlurTintColor);
+    /* SillyBunny: a Window layer is opaque, no blur. */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: var(--sb-layer-window, var(--SmartThemeBlurTintColor));
     padding: 5px;
 }
 
 .zoomed_avatar {
+    /* SillyBunny: capped to the window less the top bar, so Close is never under it. */
+    --sb-zoomed-avatar-height: calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
     /* Max height with 2/3 aspect ratio */
-    --maxWidth: calc(90vh * 0.666);
+    --maxWidth: calc(var(--sb-zoomed-avatar-height) * 0.666);
     /* Left gap between the left corner and chat */
     --leftGapWidth: calc((100vw - var(--sheldWidth)) / 2);
     /* Left position of the avatar (half of the gap minus half of the avatar width) */
@@ -6635,18 +6354,19 @@ body:not(.movingUI) .drawer-content.maximized {
     left: var(--leftPosition);
     position: absolute;
     height: auto;
-    max-height: 90vh !important;
+    max-height: var(--sb-zoomed-avatar-height) !important;
     align-items: start;
 }
 
 .zoomed_avatar_container {
     width: 100%;
     /* margin-inline: 10px; */
-    max-height: 90vh;
+    max-height: var(--sb-zoomed-avatar-height, 90vh);
     max-width: 90dvh;
 }
 
 .zoomed_avatar img {
+    max-height: var(--sb-zoomed-avatar-height);
     height: unset !important;
     width: 100%;
     object-fit: contain !important;
@@ -6683,10 +6403,7 @@ body:not(.movingUI) .drawer-content.maximized {
     height: 100%;
 }
 
-#groupMemberListPopout #rm_group_members {
-    margin: 0;
-    padding: 20px 0 0;
-}
+/* SillyBunny: detached member rows retain ds-entity-list spacing. */
 
 
 
@@ -6739,7 +6456,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .paginationjs-size-changer select {
     width: unset;
     margin: 0;
-    font-size: calc(var(--mainFontSize) * 0.85);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     padding-right: 20px;
 }
 
@@ -6772,7 +6489,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .paginationjs-nav {
     padding: 2px;
-    font-size: calc(var(--mainFontSize) * .8);
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: bold;
     width: auto;
 }
@@ -6924,7 +6641,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 #SystemPromptColumn summary,
 #InstructSequencesColumn summary {
-    font-size: 0.95em;
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     cursor: pointer;
 }
 
@@ -6972,7 +6689,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .model-title {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: bold;
     overflow: hidden;
 }
@@ -6988,7 +6705,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .model-class,
 .model-context-length,
 .model-date-added {
-    font-size: calc(var(--mainFontSize) * 0.75);
+    font-size: var(--sb-type-meta); /* SillyBunny: the size comes from the --sb-type-* scale. */
 }
 
 .model-class,
@@ -7172,7 +6889,7 @@ body:not(.movingUI) .drawer-content.maximized {
     padding: 0 10px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-    font-size: calc(var(--mainFontSize) * 0.7);
+    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -7204,7 +6921,8 @@ body:not(.movingUI) .drawer-content.maximized {
     flex-direction: column;
     gap: 10px;
     min-width: 0;
-    padding: 14px;
+    /* SillyBunny: card padding on the spacing scale. */
+    padding: 12px;
     border-radius: 16px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
@@ -7212,7 +6930,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-chat-completion-config-title {
-    font-size: calc(var(--mainFontSize) * 0.88);
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     overflow-wrap: anywhere;
 }
 
@@ -7338,37 +7056,7 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 }
 
-.nanogpt_info_btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.8em;
-    min-height: 1.8em;
-    margin-left: 0.15em;
-    vertical-align: middle;
-}
-
-.nanogpt-credits-popup {
-    display: grid;
-    gap: 0.25em 1em;
-    grid-template-columns: max-content minmax(0, 1fr);
-    text-align: left;
-}
-
-.nanogpt-credits-popup h3 {
-    grid-column: 1 / -1;
-    margin: 0 0 0.25em;
-}
-
-.nanogpt-credits-popup div:nth-of-type(odd) {
-    opacity: 0.8;
-    white-space: nowrap;
-}
-
-.nanogpt-credits-popup div:nth-of-type(even) {
-    font-weight: 600;
-    overflow-wrap: anywhere;
-}
+/* SillyBunny: the .nanogpt-credits-popup, .swipe_picker_header, .select_chat_actions and .editable-slider-notification rules are removed, nothing builds them. */
 
 @media (prefers-contrast: more) {
     :root {
@@ -7582,15 +7270,17 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 
+/* SillyBunny: speaker bar on the Bottom bar layer, chips and buttons at the Control radius. */
 .group_speaker_controls {
+    container-type: inline-size;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 8px;
-    background: var(--SmartThemeBlurTintColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
+    gap: 6px;
+    padding: 3px 6px;
+    background: var(--sb-layer-bottombar);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
     margin-bottom: 4px;
 }
 
@@ -7609,42 +7299,52 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
 
 .group_typing_indicator {
     flex: 0 0 100%;
-    width: 100%;
     color: var(--SmartThemeQuoteColor);
     font-size: calc(var(--mainFontSize) * 0.86);
-    line-height: 1.2;
     padding: 1px 4px;
-    opacity: 0.9;
 }
 
 .group_speaker_list {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
-    overflow-x: auto;
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
 }
 
 .group_speaker_avatar {
-    position: relative;
-    isolation: isolate;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 5px;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    padding: 2px 7px 2px 2px;
+    gap: 6px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: var(--sb-density-floor);
     max-width: 150px;
+    padding: 2px 9px 2px 3px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
     cursor: pointer;
-    flex: 0 0 auto;
-    overflow: visible;
 }
 
 .group_speaker_avatar.selected {
-    border-color: var(--SmartThemeQuoteColor);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
+}
+
+@media (hover: hover) {
+    .group_speaker_avatar:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+.group_speaker_avatar:active {
+    background: var(--sb-raised-active-bg);
+}
+
+.group_speaker_avatar:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .group_speaker_avatar img {
@@ -7652,7 +7352,7 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     height: 24px;
     border-radius: 50%;
     object-fit: cover;
-    flex: 0 0 auto;
+    flex-shrink: 0;
 }
 
 .group_speaker_avatar span {
@@ -7661,34 +7361,14 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     text-overflow: ellipsis;
 }
 
-@media screen and (max-width: 600px) {
+/* SillyBunny: with the buttons label-only, a phone held sideways has no height for a second row, so the bar stays one row and the chips scroll beside the buttons. */
+@media (max-height: 500px) {
     .group_speaker_controls {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
-        grid-template-areas: "typing typing typing typing" "avatars greeting speak hide";
-        align-items: center;
-        gap: 4px;
-        padding: 4px 6px;
-        overflow: hidden;
-    }
-
-    .group_typing_indicator {
-        grid-area: typing;
-        font-size: calc(var(--mainFontSize) * 0.72);
-        padding: 0 2px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        flex-wrap: nowrap;
     }
 
     .group_speaker_list {
-        grid-area: avatars;
-        flex: none;
-        max-width: 100%;
-        min-width: 0;
-        min-height: 30px;
-        gap: 4px;
-        padding-bottom: 0;
+        flex-wrap: nowrap;
         overflow-x: auto;
         scrollbar-width: none;
     }
@@ -7698,69 +7378,30 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     }
 
     .group_speaker_avatar {
-        flex: 0 0 30px;
-        max-width: 30px;
-        min-width: 30px;
-        width: 30px;
-        height: 30px;
-        padding: 1px;
-        justify-content: center;
+        flex: 0 0 auto;
     }
 
-    .group_speaker_avatar span,
-    #group_add_greeting span,
-    #group_speaker_now span,
-    #group_speaker_hide span {
+    .group_speaker_controls :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) {
+        flex: 0 0 auto;
+        padding-inline: 8px;
+    }
+}
+
+@container (max-width: 520px) {
+    .group_speaker_avatar {
+        justify-content: center;
+        min-width: var(--sb-density-floor);
+        padding: 2px;
+    }
+
+    .group_speaker_avatar span {
         display: none;
     }
 
     .group_speaker_avatar img {
-        width: 24px;
-        height: 24px;
+        width: calc(var(--sb-density-floor) - 8px);
+        height: calc(var(--sb-density-floor) - 8px);
     }
-
-    #group_add_greeting,
-    #group_speaker_now,
-    #group_speaker_hide {
-        width: 34px;
-        min-width: 34px;
-        max-width: 34px;
-        height: 30px;
-        min-height: 30px;
-        max-height: 30px;
-        padding: 0;
-        justify-content: center;
-        gap: 0;
-        font-size: calc(var(--mainFontSize) * 0.95);
-    }
-
-    #group_add_greeting {
-        grid-area: greeting;
-    }
-
-    #group_speaker_now {
-        grid-area: speak;
-    }
-
-    #group_speaker_hide {
-        grid-area: hide;
-    }
-
-}
-
-@media screen and (max-width: 420px) {
-    .group_speaker_controls {
-        grid-template-columns: minmax(0, 1fr) 30px 30px 30px;
-    }
-
-    #group_add_greeting,
-    #group_speaker_now,
-    #group_speaker_hide {
-        width: 30px;
-        min-width: 30px;
-        max-width: 30px;
-    }
-
 }
 
 /* Mobile chat input guardrails: keep send/stop controls square and centered. */
@@ -7820,61 +7461,5 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     #send_form.sb-generating-controls #mes_stop {
         margin: 0 !important;
         opacity: 1;
-    }
-}
-
-@media screen and (max-width: 768px) {
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions {
-        width: 100%;
-        max-width: 100%;
-        align-self: start;
-        justify-self: stretch;
-        justify-content: flex-start;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions #favorite_button {
-        flex: 0 0 auto;
-        width: auto;
-        min-width: max(var(--sb-mobile-touch-target, 44px), 4.5rem);
-        overflow: visible;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls {
-        grid-column: 1 / -1;
-        width: 100%;
-        min-width: 0;
-        height: auto;
-        flex-direction: column;
-        flex-wrap: nowrap;
-        align-items: stretch;
-        justify-content: flex-start;
-        padding: 0;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar {
-        flex: 0 0 auto;
-        width: 100%;
-        min-width: 0;
-        align-items: stretch;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons {
-        width: 100%;
-        max-width: 100%;
-        box-sizing: border-box;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        overflow-x: visible;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons .menu_button {
-        flex: 0 0 40px;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div {
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
     }
 }

@@ -15,9 +15,9 @@ const EDITOR_HTML = `
         <h4>Pipeline Prompts</h4>
         <div class="prompt-editor-controls">
             <select id="pf-prompt-selector" class="text_pole">
-                <option value="">Select a prompt...</option>
+                <option value="">Select a prompt…</option>
             </select>
-            <button id="pf-prompt-reset" class="menu_button" title="Reset to default">
+            <button id="pf-prompt-reset" class="menu_button" title="Reset to Default">
                 <i class="fa-solid fa-rotate-left"></i>
             </button>
         </div>
@@ -75,7 +75,7 @@ const EDITOR_HTML = `
 
         <div class="prompt-editor-actions">
             <button id="pf-prompt-save" class="menu_button">
-                <i class="fa-solid fa-save"></i> <span>Save</span>
+                <span>Save</span>
             </button>
             <span id="pf-prompt-status" class="prompt-status"></span>
         </div>
@@ -91,7 +91,7 @@ const EDITOR_HTML = `
         <div class="prompt-field">
             <label class="checkbox_label">
                 <input type="checkbox" id="pf-pipeline-enabled" />
-                <span>Enable Predictive Pipeline</span>
+                <span>Enable predictive pipeline</span>
             </label>
             <div class="prompt-help">Use multi-stage LLM pipeline for lorebook retrieval instead of keyword matching</div>
         </div>
@@ -99,8 +99,8 @@ const EDITOR_HTML = `
         <div class="prompt-field">
             <label for="pf-pipeline-id">Pipeline</label>
             <select id="pf-pipeline-id" class="text_pole">
-                <option value="default">Two-Stage Predictive Retrieval</option>
-                <option value="single-pass">Single-Pass Selection</option>
+                <option value="default">Two-stage predictive retrieval</option>
+                <option value="single-pass">Single-pass selection</option>
             </select>
         </div>
 
@@ -298,7 +298,7 @@ function populatePromptSelector() {
     if (!selector) return;
 
     const prompts = getAllPrompts();
-    selector.innerHTML = '<option value="">Select a prompt...</option>';
+    selector.innerHTML = '<option value="">Select a prompt…</option>';
 
     for (const [id, prompt] of prompts) {
         const option = document.createElement('option');

@@ -22,6 +22,8 @@ import {
 import { getEventSourceStream } from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
 import { getSortableDelay, versionCompare } from './utils.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { createFailedResponseError, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
 
 export let koboldai_settings;
 export let koboldai_setting_names;
@@ -66,8 +68,9 @@ function initKoboldSamplerOrderLock() {
         button.classList.toggle('fa-lock', locked);
         button.classList.toggle('fa-lock-open', !locked);
         button.setAttribute('aria-pressed', String(locked));
-        button.setAttribute('aria-label', locked ? t`Sampler reordering locked` : t`Sampler reordering unlocked`);
-        button.title = locked ? t`Unlock sampler reordering` : t`Lock sampler reordering`;
+        // SillyBunny: capitalisation by DESIGN.md
+        button.setAttribute('aria-label', locked ? t`Sampler Reordering Locked` : t`Sampler Reordering Unlocked`);
+        button.title = locked ? t`Unlock Sampler Reordering` : t`Lock Sampler Reordering`;
         $sortable.sortable((locked || !canEditSamplerOrder()) ? 'disable' : 'enable');
         $sortable.toggleClass('is-sampler-order-locked', locked);
     };
@@ -245,21 +248,25 @@ export function getKoboldGenerationData(finalPrompt, settings, maxLength, maxCon
     return generate_data;
 }
 
+// SillyBunny: returns whether the user was told, so the caller can report bodies that are not JSON.
 function tryParseStreamingError(response, decoded) {
+    let reported = false;
     try {
         const data = JSON.parse(decoded);
 
         if (!data) {
-            return;
+            return reported;
         }
 
         if (data.error) {
-            toastr.error(data.error.message || response.statusText, 'KoboldAI API');
+            showRequestError({ title: 'KoboldAI API', status: getFailureStatus(response), statusText: response.statusText, body: data });
+            reported = true;
             throw new Error(data);
         }
     } catch {
         // No JSON. Do nothing.
     }
+    return reported;
 }
 
 export async function generateKoboldWithStreaming(generate_data, signal) {
@@ -270,8 +277,12 @@ export async function generateKoboldWithStreaming(generate_data, signal) {
         signal: signal,
     });
     if (!response.ok) {
-        tryParseStreamingError(response, await response.text());
-        throw new Error(`Got response status ${response.status}`);
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) still get an error message.
+        const errorBody = await response.text();
+        if (!tryParseStreamingError(response, errorBody)) {
+            showRequestError({ title: 'KoboldAI API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        }
+        throw createFailedResponseError({ status: getFailureStatus(response), body: errorBody });
     }
     const eventStream = getEventSourceStream();
     response.body.pipeThrough(eventStream);

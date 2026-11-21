@@ -1,0 +1,120 @@
+{
+    "outDir": "raw/s5/pixel-body",
+    "items": [
+        {
+            "in": "approved/about-reisen.png"
+        },
+        {
+            "in": "approved/gs-reisen.png"
+        },
+        {
+            "in": "approved/gs-reisen-done.png"
+        },
+        {
+            "in": "approved/help-reisen.png"
+        },
+        {
+            "in": "approved/splash-reisen.png"
+        },
+        {
+            "in": "approved/troubleshooting-reisen.png"
+        },
+        {
+            "in": "approved/welcome-next-reisen.png"
+        },
+        {
+            "in": "approved/about-tewi.png"
+        },
+        {
+            "in": "approved/empty-tewi.png"
+        },
+        {
+            "in": "approved/extras-tewi.png"
+        },
+        {
+            "in": "approved/shortcuts-tewi.png"
+        },
+        {
+            "in": "approved/splash-tewi.png"
+        },
+        {
+            "in": "approved/welcome-persona-tewi.png"
+        },
+        {
+            "in": "raw/s5/masters/day-reisen.png",
+            "id": "hero-duo-reisen",
+            "character": "reisen"
+        },
+        {
+            "in": "raw/s5/masters/day-tewi-2.png",
+            "id": "hero-duo-tewi",
+            "character": "tewi"
+        },
+        {
+            "in": "raw/s5/fix/ear-night-reisen/20261101T144553Z-gpt-image-2.5-sunburst-h-patch-1.png",
+            "id": "hero-duo-night-reisen",
+            "character": "reisen"
+        },
+        {
+            "in": "raw/s5/masters/night-tewi.png",
+            "id": "hero-duo-night-tewi",
+            "character": "tewi"
+        },
+        {
+            "in": "approved/splash-reisen.png",
+            "id": "splash-both-reisen",
+            "character": "reisen"
+        },
+        {
+            "in": "raw/s5/masters/splash-both-tewi-r2.png",
+            "id": "splash-both-tewi",
+            "character": "tewi"
+        },
+        {
+            "in": "raw/s5/masters/welcome-reisen-2.png",
+            "id": "welcome-both-reisen",
+            "character": "reisen"
+        },
+        {
+            "in": "raw/s5/masters/welcome-tewi-2.png",
+            "id": "welcome-both-tewi",
+            "character": "tewi"
+        },
+        {
+            "in": "raw/s5/masters/night-moon.png",
+            "id": "night-moon",
+            "figureHeight": 153,
+            "ringRepair": false
+        },
+        {
+            "in": "raw/s5/masters/night-star.png",
+            "id": "night-star-15",
+            "figureHeight": 15,
+            "ringRepair": false
+        },
+        {
+            "in": "raw/s5/masters/night-star.png",
+            "id": "night-star-9",
+            "figureHeight": 9,
+            "ringRepair": false
+        },
+        {
+            "in": "raw/s5/masters/night-star.png",
+            "id": "night-star-12",
+            "figureHeight": 12,
+            "ringRepair": false
+        },
+        {
+            "in": "raw/s5/masters/night-star.png",
+            "id": "night-star-18",
+            "figureHeight": 18,
+            "ringRepair": false
+        },
+        {
+            "in": "raw/s5/masters/night-star.png",
+            "id": "night-star-8",
+            "figureHeight": 8,
+            "ringRepair": false
+        }
+    ]
+}

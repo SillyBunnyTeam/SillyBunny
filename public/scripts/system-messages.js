@@ -24,7 +24,7 @@ export const system_message_types = {
     COMMENT: 'comment',
     SLASH_COMMANDS: 'slash_commands',
     FORMATTING: 'formatting',
-    HOTKEYS: 'hotkeys',
+    // SillyBunny: the HOTKEYS type and its template are removed, because the Keyboard Shortcuts window is the one shortcut overview.
     MACROS: 'macros',
     WELCOME_PROMPT: 'welcome_prompt',
     ASSISTANT_NOTE: 'assistant_note',
@@ -49,10 +49,6 @@ export async function initSystemMessages() {
         /** @type {ChatMessage} */
         slash_commands: lodash.merge(structuredClone(defaultMessage), {
             mes: '',
-        }),
-        /** @type {ChatMessage} */
-        hotkeys: lodash.merge(structuredClone(defaultMessage), {
-            mes: await renderTemplateAsync('hotkeys'),
         }),
         /** @type {ChatMessage} */
         formatting: lodash.merge(structuredClone(defaultMessage), {

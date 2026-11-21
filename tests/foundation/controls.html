@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/webfonts/AdwaitaSans/stylesheet.css">
+    <link rel="stylesheet" href="/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/css/solid.min.css">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/css/mobile-styles.css" media="(max-width: 768px)">
+    <link rel="stylesheet" href="/css/sillybunny-theme.css">
+    <link rel="stylesheet" href="/css/sillybunny-tabs.css">
+    <link rel="stylesheet" href="/css/sillybunny-mobile-shell.css" media="(max-width: 768px)">
+    <link rel="stylesheet" href="/css/sillybunny-editor-shell.css">
+    <style>
+        body { position: static; height: auto; overflow: auto; background: var(--color-background); }
+        main { display: grid; gap: 16px; padding: 16px; max-width: 700px; margin: auto; }
+        .fixture-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+        label { display: grid; gap: 8px; min-width: 0; }
+        .fixture-surface { padding: 16px; background: var(--color-surface); border-radius: var(--sb-radius-lg); }
+        .fixture-scroll { display: grid; gap: 12px; overflow-x: auto; }
+        .banner-frame { box-sizing: border-box; flex: none; }
+        #banner-wide-frame { width: 640px; }
+        #banner-start-frame { width: 240px; }
+        #banner-stacked-frame { width: 140px; }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="fixture-row">
+            <button type="button" class="menu_button menu_button_primary" id="primary">Save</button>
+            <button type="button" class="menu_button" id="secondary">Cancel</button>
+            <button type="button" class="menu_button" disabled>Save</button>
+            <button type="button" class="menu_button" aria-disabled="true">Delete</button>
+            <button type="button" class="menu_button" aria-busy="true">Import</button>
+            <button type="button" class="menu_button" aria-pressed="true">Export</button>
+            <button type="button" class="menu_button" id="long">ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ</button>
+        </div>
+        <div class="fixture-surface">
+            <label for="field">Search</label>
+            <input class="text_pole" id="field" placeholder="Search">
+            <label for="invalid">Name</label>
+            <input class="text_pole" id="invalid" aria-invalid="true" aria-describedby="error">
+            <span id="error">Name is required</span>
+            <label for="disabled">Name</label>
+            <input class="text_pole" id="disabled" disabled value="Alex">
+            <label for="select">Preset</label>
+            <select id="select"><option>Default</option><option>Creative</option></select>
+            <label class="checkbox_label"><input type="checkbox">Default</label>
+        </div>
+        <div class="fixture-surface" id="entry-rows"></div>
+        <div class="fixture-surface" id="textarea-fields"></div>
+        <div class="fixture-surface" id="search-entries"></div>
+        <div class="fixture-surface">
+            <div class="fixture-scroll" id="banners">
+                <div class="banner-frame" id="banner-wide-frame"></div>
+                <div class="banner-frame" id="banner-start-frame"></div>
+                <div class="banner-frame" id="banner-stacked-frame"></div>
+            </div>
+        </div>
+        <div class="fixture-surface" id="status-pages"></div>
+        <div class="fixture-surface" id="expander-rows"></div>
+    </main>
+    <script type="module">
+        import { createEntryRow, createExpanderRow, createPrefGroup, createSwitchRow, createTextAreaField } from '/scripts/sillybunny-editor/rows.js';
+        import { createSearchEntry } from '/scripts/sillybunny-editor/search-entry.js';
+        import { createBanner } from '/scripts/sillybunny-editor/banner.js';
+        import { createStatusPage } from '/scripts/sillybunny-editor/status-page.js';
+        for (const name of ['wide', 'start', 'stacked']) {
+            const banner = createBanner({ title: 'Offline', actionLabel: 'Reconnect', onActivate: () => {} });
+            banner.element.id = `banner-${name}`;
+            document.getElementById(`banner-${name}-frame`).append(banner.element);
+        }
+        const pages = {
+            'status-empty': { state: 'empty', title: 'No Documents', description: 'Create a document to see it here.', actions: [{ label: 'New Document', primary: true }] },
+            'status-no-results': { state: 'no-results', title: 'No Results Found', description: 'Try a different search.', compact: true },
+            'status-loading': { state: 'loading', title: 'Loading Documents', delay: 0 },
+            'status-error': { state: 'error', title: 'Documents Failed to Load', description: 'Check the connection.', compact: true, actions: [{ label: 'Try Again', primary: true }] },
+            'status-unavailable': { state: 'unavailable', title: 'Documents Unavailable', description: 'Turn on Documents to use them.', compact: true },
+        };
+        for (const [id, options] of Object.entries(pages)) {
+            const page = createStatusPage(options);
+            page.element.id = id;
+            document.getElementById('status-pages').append(page.element);
+        }
+        const searches = {
+            'search-rest': { label: 'Search settings', placeholder: 'Search...' },
+            'search-filled': { label: 'Search prompts', placeholder: 'Search...', value: 'lore' },
+            'search-bar': { label: 'Search personas', placeholder: 'Search...', variant: 'bar' },
+        };
+        for (const [id, { value = '', ...options }] of Object.entries(searches)) {
+            const entry = createSearchEntry({ id, clearLabel: 'Clear', ...options });
+            entry.input.value = value;
+            document.getElementById('search-entries').append(entry.element);
+        }
+        const entries = {
+            'entry-rest': { label: 'Name', field: 'rest' },
+            'entry-filled': { label: 'Name', field: 'filled', value: 'Alex' },
+            'entry-focus': { label: 'Name', field: 'focus', value: 'Alex' },
+            'entry-error': { label: 'Name', field: 'error', value: 'Alex' },
+            'entry-disabled': { label: 'Name', field: 'disabled', value: 'Alex' },
+            'entry-password': { label: 'Password', field: 'password', type: 'password', value: 'hunter2' },
+        };
+        const rows = Object.fromEntries(Object.entries(entries).map(([id, options]) => [id, createEntryRow({ floating: true, id, ...options })]));
+        rows['entry-error'].setError('Name is already taken');
+        rows['entry-disabled'].setDisabled(true);
+        const nested = (id, label) => createEntryRow({ floating: true, id, label, field: id });
+        const expanders = [
+            createExpanderRow({ id: 'expander-rest', label: 'Advanced', subtitle: 'Less common options', field: 'rest', children: [nested('expander-name', 'Name')] }),
+            createExpanderRow({ id: 'expander-open', label: 'Matching', field: 'open', open: true, children: [createSwitchRow({ id: 'expander-case', label: 'Case sensitive', field: 'case' })] }),
+            createExpanderRow({ id: 'expander-note', label: 'Note', field: 'note', suffix: createSwitchRow({ id: 'expander-enabled', label: 'Enabled', field: 'enabled' }).row, children: [nested('expander-text', 'Text')] }),
+        ];
+        document.getElementById('expander-rows').append(createPrefGroup({ field: 'expander-rows', rows: expanders }).section);
+        document.getElementById('entry-rows').append(createPrefGroup({ field: 'entry-rows', rows: Object.values(rows) }).section);
+        const areas = {
+            'area-rest': { label: 'Notes', field: 'rest', subtitle: 'One line of help', count: { label: 'Tokens:' }, expandLabel: 'Expand the editor' },
+            'area-error': { label: 'Rules', field: 'error', value: 'Alex', expandLabel: 'Expand the editor' },
+            'area-disabled': { label: 'Style', field: 'disabled', value: 'Alex', expand: false },
+        };
+        const fields = Object.fromEntries(Object.entries(areas).map(([id, options]) => [id, createTextAreaField({ id, ...options })]));
+        fields['area-rest'].setCount(12);
+        fields['area-error'].setError('Too long');
+        fields['area-disabled'].setDisabled(true);
+        document.getElementById('textarea-fields').append(createPrefGroup({ field: 'textarea-fields', rows: Object.values(fields) }).section);
+    </script>
+</body>
+</html>

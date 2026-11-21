@@ -1,5 +1,12 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
+// The presentation adapters build shared rows and need a DOM; these tests are about the extension's own logic.
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/adapters/utility-dialogs.js', () => ({
+    adoptQuickReplyRow: () => {},
+    adoptQuickReplySetLink: () => {},
+    adoptQuickReplySetPicker: () => {},
+}));
+
 await jest.unstable_mockModule('../public/script.js', () => ({
     getRequestHeaders: jest.fn(() => ({})),
     substituteParams: value => value,
@@ -7,8 +14,12 @@ await jest.unstable_mockModule('../public/script.js', () => ({
 
 await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
     Popup: { show: { confirm: jest.fn(), input: jest.fn() } },
-    POPUP_RESULT: { AFFIRMATIVE: 1 },
+    POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0 },
     POPUP_TYPE: { CONFIRM: 1 },
+}));
+
+await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
 }));
 
 await jest.unstable_mockModule('../public/scripts/slash-commands.js', () => ({

@@ -2,6 +2,8 @@ import { event_types, eventSource, getRequestHeaders } from '../../../script.js'
 import { SECRET_KEYS, secret_state } from '../../secrets.js';
 import { saveTtsProviderSettings, initVoiceMap } from './index.js';
 import { Popup } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from '../../i18n.js'; // SillyBunny: translates the response verb.
 export { VolcengineTtsProvider };
 
 class VolcengineTtsProvider {
@@ -268,7 +270,8 @@ class VolcengineTtsProvider {
             return;
         }
 
-        const confirm = await Popup.show.confirm(`Are you sure you want to delete the selected voice ${selectedVoiceName}?`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(`Are you sure you want to delete the selected voice ${selectedVoiceName}?`, null, confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }

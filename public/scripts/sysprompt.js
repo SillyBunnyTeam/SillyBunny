@@ -2,6 +2,8 @@ import { Fuse } from '../lib.js';
 
 import { saveSettingsDebounced } from '../script.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from './i18n.js'; // SillyBunny: translates the response verb.
 import { power_user } from './power-user.js';
 import { getPresetManager } from './preset-manager.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
@@ -79,8 +81,9 @@ export async function checkForSystemPromptInInstructTemplate(name, template) {
     }
     if ('system_prompt' in template && template.system_prompt) {
         const existingName = system_prompts.find(x => x.content === template.system_prompt)?.name;
-        const html = await renderTemplateAsync('migrateInstructPrompt', { prompt: template.system_prompt, existing: existingName });
-        const confirm = await callGenericPopup(html, POPUP_TYPE.CONFIRM);
+        const html = await renderTemplateAsync('migrateInstructPrompt', { prompt: template.system_prompt, existing: existingName, name });
+        // SillyBunny: "No" leaves the template's prompt out and the body says so, so the negative keeps its own label (confirmVerb).
+        const confirm = await callGenericPopup(html, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Import`, { negative: t`No` }));
         if (confirm) {
             const migratedName = `[Migrated] ${name}`;
             const prompt = { name: migratedName, content: template.system_prompt };

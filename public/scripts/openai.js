@@ -55,6 +55,7 @@ import {
     createThumbnail,
     delay,
     download,
+    escapeHtml,
     getAudioDurationFromDataURL,
     getBase64Async,
     getFileText,
@@ -82,14 +83,21 @@ import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '
 import { renderTemplateAsync } from './templates.js';
 import { SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+// SillyBunny: Native confirmation uses the shared alert so discarded drafts keep a safe default.
+import { openAlert } from './sillybunny-editor/dialog.js';
 import { t } from './i18n.js';
 import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { COMETAPI_IGNORE_PATTERNS, IGNORE_SYMBOL, MEDIA_DISPLAY, MEDIA_TYPE } from './constants.js';
 import { setOpenRouterProviders, syncNanoGptProvidersForModel, syncOpenRouterProvidersForModel, updateNanoGptProvidersWarning, updateOpenRouterProvidersWarning } from './textgen-models.js';
 import { getNanoGptServiceTiers, isNanoGptPayg, updateServiceTierOptions } from './service-tiers.js';
+// SillyBunny: YAML and reasoning controls adopt shared full-width Window rows.
+import { customEndpointParametersOptions } from './sillybunny-editor/adapters/window-content-dialogs.js';
 import { hasTextOrArrayPayload, shouldRetainContextAtDepth, stripHtmlTagsFromContext, stripOocBlocksFromContext } from './ooc-blocks.js';
 import { checkPostInterceptChatBudget, shouldCheckPostInterceptChatBudget } from './openai-prompt-budget.js';
+// SillyBunny: Connect with an empty key marks the key field and says what is missing.
+import { flagMissingKey } from './sillybunny-connection-notices.js';
 import {
     buildChatCompletionPresetForSave,
     buildChatCompletionSamplingProfileKey,
@@ -118,6 +126,11 @@ import {
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { createFailedResponseError, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
+// SillyBunny: model details for the shared picker rows of the Connections select rows.
+import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+import { describeAimlapiModel, describeChutesModel, describeElectronHubModel, describeOpenRouterModel } from './sillybunny-model-details.js';
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier, trimOldestRetainedContribution } from './in-chat-agent-inspection.js';
 
 export {
@@ -320,16 +333,18 @@ const MODEL_ID_SEARCH_CONTROLS = [
 
 const INLINE_SELECT_PICKER_CONTROLS = [
     { source: 'nanogpt-model', select: '#model_nanogpt_select', label: 'NanoGPT Model' },
-    { source: 'nanogpt-allowed-providers', select: '#nanogpt_allowed_providers', label: 'Allowed providers', multiple: true },
-    { source: 'nanogpt-ignored-providers', select: '#nanogpt_ignored_providers', label: 'Ignored providers', multiple: true },
-    { source: 'openrouter-model-chat', select: '#model_openrouter_select', label: 'OpenRouter model' },
-    { source: 'openrouter-sort-models', select: '#openrouter_sort_models', label: 'OpenRouter model sorting' },
-    { source: 'openrouter-providers-chat', select: '#openrouter_providers_chat', label: 'OpenRouter providers', multiple: true },
-    { source: 'openrouter-quantizations-chat', select: '#openrouter_quantizations_chat', label: 'OpenRouter quantizations', multiple: true },
-    { source: 'openrouter-model-text', select: '#openrouter_model', label: 'OpenRouter model' },
-    { source: 'openrouter-middleout', select: '#openrouter_middleout', label: 'OpenRouter middle-out transform' },
-    { source: 'openrouter-providers-text', select: '#openrouter_providers_text', label: 'OpenRouter providers', multiple: true },
-    { source: 'openrouter-quantizations-text', select: '#openrouter_quantizations_text', label: 'OpenRouter quantizations', multiple: true },
+    // SillyBunny: capitalisation by DESIGN.md
+    { source: 'nanogpt-allowed-providers', select: '#nanogpt_allowed_providers', label: 'Allowed Providers', multiple: true },
+    { source: 'nanogpt-ignored-providers', select: '#nanogpt_ignored_providers', label: 'Ignored Providers', multiple: true },
+    { source: 'openrouter-model-chat', select: '#model_openrouter_select', label: 'OpenRouter Model' },
+    { source: 'openrouter-sort-models', select: '#openrouter_sort_models', label: 'OpenRouter Model Sorting' },
+    { source: 'openrouter-providers-chat', select: '#openrouter_providers_chat', label: 'OpenRouter Providers', multiple: true },
+    // SillyBunny: capitalisation by DESIGN.md
+    { source: 'openrouter-quantizations-chat', select: '#openrouter_quantizations_chat', label: 'OpenRouter Quantizations', multiple: true },
+    { source: 'openrouter-model-text', select: '#openrouter_model', label: 'OpenRouter Model' },
+    { source: 'openrouter-middleout', select: '#openrouter_middleout', label: 'OpenRouter Middle-Out Transform' },
+    { source: 'openrouter-providers-text', select: '#openrouter_providers_text', label: 'OpenRouter Providers', multiple: true },
+    { source: 'openrouter-quantizations-text', select: '#openrouter_quantizations_text', label: 'OpenRouter Quantizations', multiple: true },
 ];
 
 // SillyBunny: touch browsers can open Select2 search as a keyboard-only field.
@@ -639,7 +654,7 @@ const default_settings = {
     pollinations_model: 'openai',
     pollinations_endpoint: POLLINATIONS_ENDPOINT.AUTHENTICATED,
     cometapi_model: 'gpt-4o',
-    moonshot_model: 'kimi-latest',
+    moonshot_model: 'kimi-k3', // SillyBunny: a model that #model_moonshot_select lists; the retired 'kimi-latest' left the row blank.
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
     zai_model: 'glm-5.3',
     zai_endpoint: ZAI_ENDPOINT.COMMON,
@@ -814,7 +829,8 @@ async function validateReverseProxy(signal) {
     const rememberKey = `Proxy_SkipConfirm_${getStringHash(oai_settings.reverse_proxy)}`;
     const skipConfirm = accountStorage.getItem(rememberKey) === 'true';
 
-    const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting To Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }));
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting to Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }), confirmVerb(t`Connect`));
 
     if (signal?.aborted) {
         return;
@@ -2056,7 +2072,7 @@ export async function prepareOpenAIMessages({
     if (!dryRun && shouldCheckPostInterceptChatBudget(eventData)) {
         const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countChatCompletionPayloadTokensOpenAIAsync);
         if (exceeded) {
-            toastr.error(t`Pre-generation intercepts exceed the context size.`);
+            toastr.error(t`Pre-generation intercepts exceed the context size`); // SillyBunny: no trailing period, by DESIGN.md
             chatCompletion.log(`Pre-generation intercepts exceed the context size. Tokens: ${promptTokens}. Budget: ${promptTokenBudget}.`);
             promptManager.error = t`Pre-generation intercepts made the prompt too large. Reduce intercept output, raise your token limit, or disable the intercept agent.`;
             promptManager.render(false);
@@ -2085,43 +2101,55 @@ function getChatCompletionErrorMessage(data, response) {
 }
 
 /**
+ * Shows a Chat Completion error body as a toast.
+ * @param {object} data Parsed response body
+ * @param {Response} response Fetch response
+ * @param {string} title Toast title
+ */
+function showChatCompletionError(data, response, title) {
+    // SillyBunny: the provider's message comes first, the HTTP reason only fills in when it said nothing.
+    showRequestError({
+        title,
+        status: getFailureStatus(response),
+        statusText: getChatCompletionErrorMessage(data, response),
+        body: data,
+    });
+}
+
+/**
  * Handles errors during streaming requests.
  * @param {Response} response
  * @param {string} decoded - response text or decoded stream data
  * @param {object} [options]
  * @param {boolean?} [options.quiet=false] Suppress toast messages
+ * @returns {boolean} True when the user was told about the error, so the caller knows whether it still has to.
  */
 export function tryParseStreamingError(response, decoded, { quiet = false } = {}) {
+    // SillyBunny: the three upstream branches share one toast path, and the return value tells the caller whether a toast was shown.
+    let reported = false;
     try {
         const data = JSON.parse(decoded);
 
         if (!data) {
-            return;
+            return reported;
         }
 
+        reported = Boolean(data.quota_error);
         checkQuotaError(data, { quiet });
         checkModerationError(data, { quiet });
 
         // these do not throw correctly (equiv to Error("[object Object]"))
         // if trying to fix "[object Object]" displayed to users, start here
 
-        if (data.error) {
-            !quiet && toastr.error(getChatCompletionErrorMessage(data, response), 'Chat Completion API');
-            throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
-        }
-
-        if (data.message) {
-            !quiet && toastr.error(data.message, 'Chat Completion API');
-            throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
-        }
-
-        if (data.detail) {
-            !quiet && toastr.error(getChatCompletionErrorMessage(data, response), 'Chat Completion API');
+        if (data.error || data.message || data.detail) {
+            !quiet && showChatCompletionError(data, response, 'Chat Completion API');
+            reported = !quiet;
             throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
         }
     } catch {
         // No JSON. Do nothing.
     }
+    return reported;
 }
 
 /**
@@ -2505,8 +2533,16 @@ function appendOpenAIModelEntry($container, entry, favoriteValues = new Set()) {
 }
 
 function getApiSelect2DropdownParent() {
-    const apiDropdownParent = $('#rm_api_block');
-    return apiDropdownParent.length ? apiDropdownParent : $(document.body);
+    // SillyBunny: the provider forms live in the Connections panel, not in `#rm_api_block`.
+    // A dropdown parent that resolves to that empty block would render every model picker
+    // where the user cannot see it, so the panel is preferred and the block is only the
+    // fallback for the brief window before the panel is built.
+    const apiDropdownParent = $('.sb-connections-panel');
+    if (apiDropdownParent.length) {
+        return apiDropdownParent;
+    }
+    const apiBlock = $('#rm_api_block');
+    return apiBlock.length ? apiBlock : $(document.body);
 }
 
 function getPromptManagerSelect2DropdownParent() {
@@ -2663,7 +2699,8 @@ function openInlineModelSelectPicker(select, { input = null, source = select.id 
     let currentGroup = null;
 
     menu.innerHTML = '';
-    menu.setAttribute('aria-label', t`Available models`);
+    // SillyBunny: capitalisation by DESIGN.md
+    menu.setAttribute('aria-label', t`Available Models`);
 
     if (entries.length === 0) {
         const empty = document.createElement('div');
@@ -2864,8 +2901,12 @@ function bindInlineSelectPickerSelect(select, control) {
         });
     }
 
+    // SillyBunny: a select that a select row adopted is hidden and opens the row's shared picker from its trigger; this list
+    // would open over the row as a narrow popover, with "No options available" four lines high at 390px.
+    const opensInline = () => shouldUseInlineModelSelectPicker() && !select.classList.contains('ds-select-row__native');
+
     const openPicker = event => {
-        if (!shouldUseInlineModelSelectPicker()) {
+        if (!opensInline()) {
             return;
         }
 
@@ -2879,7 +2920,7 @@ function bindInlineSelectPickerSelect(select, control) {
     let tapStart = null;
     select.addEventListener('pointerdown', event => {
         tapStart = null;
-        if (!shouldUseInlineModelSelectPicker()) return;
+        if (!opensInline()) return;
         if (event.pointerType === 'mouse') {
             openPicker(event);
             return;
@@ -2900,14 +2941,14 @@ function bindInlineSelectPickerSelect(select, control) {
     });
     // Native multiple selects can toggle an option on touchend despite canceled pointer events.
     select.addEventListener('touchend', event => {
-        if (shouldUseInlineModelSelectPicker()) event.preventDefault();
+        if (opensInline()) event.preventDefault();
     }, { passive: false });
     document.getElementById(`${select.id}_picker`)?.addEventListener('click', openPicker);
     select.addEventListener('click', event => {
-        if (shouldUseInlineModelSelectPicker()) event.preventDefault();
+        if (opensInline()) event.preventDefault();
     });
     select.addEventListener('keydown', event => {
-        if (!shouldUseInlineModelSelectPicker() || ![' ', 'Enter', 'ArrowDown'].includes(event.key)) {
+        if (!opensInline() || ![' ', 'Enter', 'ArrowDown'].includes(event.key)) {
             return;
         }
 
@@ -2996,8 +3037,9 @@ function ensureOpenAIModelPickerButton() {
         input.insertAdjacentElement('afterend', button);
     }
 
-    button.title = t`Open model list`;
-    button.setAttribute('aria-label', t`Open model list`);
+    // SillyBunny: capitalisation by DESIGN.md
+    button.title = t`Open Model List`;
+    button.setAttribute('aria-label', t`Open Model List`);
     button.disabled = select.disabled || select.options.length === 0;
     setModelIdPickerTouchTarget(button);
 }
@@ -3033,10 +3075,11 @@ function updateOpenAIModelFavoriteButton() {
     const currentModel = String($('#openai_model_id').val() || oai_settings.openai_model || $('#model_openai_select').val() || '');
     const isFavorite = currentModel.length > 0 && getModelFavoritesForSource(chat_completion_sources.OPENAI).includes(currentModel);
     const title = currentModel.length === 0
-        ? t`Select a model first`
+        // SillyBunny: capitalisation by DESIGN.md
+        ? t`Select a Model First`
         : isFavorite
-            ? t`Remove current model from favorites`
-            : t`Add current model to favorites`;
+            ? t`Remove Current Model From Favorites`
+            : t`Add Current Model to Favorites`;
 
     $favoriteButton.prop('disabled', currentModel.length === 0);
     $favoriteButton.attr('title', title);
@@ -3469,10 +3512,11 @@ function updateModelIdSearchFavoriteButton(control) {
     const modelId = normalizeModelIdSearchValue(input.value || oai_settings[control.setting] || '');
     const isFavorite = modelId.length > 0 && getModelFavoritesForSource(control.source).includes(modelId);
     const title = modelId.length === 0
-        ? t`Enter a model first`
+        // SillyBunny: capitalisation by DESIGN.md
+        ? t`Enter a Model First`
         : isFavorite
-            ? t`Remove current model from favorites`
-            : t`Add current model to favorites`;
+            ? t`Remove Current Model From Favorites`
+            : t`Add Current Model to Favorites`;
 
     button.disabled = modelId.length === 0;
     button.title = title;
@@ -3583,8 +3627,9 @@ function ensureModelIdSearchPickerButton(control) {
         input.insertAdjacentElement('afterend', button);
     }
 
-    button.title = t`Open model list`;
-    button.setAttribute('aria-label', t`Open model list`);
+    // SillyBunny: capitalisation by DESIGN.md
+    button.title = t`Open Model List`;
+    button.setAttribute('aria-label', t`Open Model List`);
     button.disabled = select.disabled || select.options.length === 0;
     setModelIdPickerTouchTarget(button);
 }
@@ -3724,6 +3769,11 @@ function createOpenAISettingsDrawer(id, title, description) {
     const $title = $('<b>').text(title);
     const $label = $('<div>', { class: 'flex-container flexFlowColumn' })
         .append($title);
+    const isEditorDrawer = id === 'sb-openai-prompt-manager';
+    if (!isEditorDrawer) {
+        $title.addClass('sb-settings-category-title');
+        $label.addClass('sb-settings-category-heading');
+    }
 
     if (id === 'sb-openai-sampling') {
         const $helpLink = $('<a>', {
@@ -3742,7 +3792,9 @@ function createOpenAISettingsDrawer(id, title, description) {
     }
 
     if (description) {
-        $label.append($('<small>', { class: 'sb-group-meta' }).text(description));
+        const $description = $('<small>', { class: 'sb-group-meta' }).text(description);
+        if (!isEditorDrawer) $description.attr('data-i18n', description);
+        $label.append($description);
     }
 
     $header.append($label);
@@ -3761,10 +3813,11 @@ function groupOpenAISettingsIntoDrawers() {
         return;
     }
 
+    // SillyBunny: keep preset-bound prompt controls together while preserving the live upstream nodes.
     const groupConfigs = [
         {
             id: 'sb-openai-budget',
-            title: 'Token Budget',
+            title: 'Generation Settings',
             description: 'Context, response limits, swipes, and costs',
             selectors: [
                 '#range_block_openai > .range-block:has(#openai_max_context)',
@@ -3774,6 +3827,7 @@ function groupOpenAISettingsIntoDrawers() {
                 '#range_block_openai > div:has(#openrouter_max_prompt_cost)',
                 '#range_block_openai > div:has(#electronhub_max_prompt_cost)',
                 '#range_block_openai > div:has(#chutes_max_prompt_cost)',
+                '#range_block_openai > .range-block:has(#stream_toggle)',
             ],
         },
         {
@@ -3797,23 +3851,31 @@ function groupOpenAISettingsIntoDrawers() {
             ],
         },
         {
-            id: 'sb-openai-output',
-            title: 'Output',
-            description: 'Streaming, prompt templates, names, and continue behavior',
+            id: 'sb-openai-names',
+            // SillyBunny: the radio sets became groups of their own, so this one holds the system messages; the settings search finds it by its old title.
+            title: 'System Messages',
+            description: 'Choose how system messages and the system prompt are sent.',
+            searchAliases: ['Character Names & Prompt Formatting'],
             selectors: [
-                '#range_block_openai > .range-block:has(#stream_toggle)',
-                '#range_block_openai > .inline-drawer:has(#main_prompt_quick_edit_textarea)',
-                '#range_block_openai > .inline-drawer:has(#impersonation_prompt_textarea)',
-                '#openai_settings > div > .inline-drawer:has(#character_names_none)',
-                '#openai_settings > div > .inline-drawer:has(#continue_postfix_none)',
-                '#openai_settings > div > .range-block:has(#continue_prefill)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
+                '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
                 '#openai_settings > div > .range-block:has(#squash_system_messages)',
                 '#openai_settings > div > .range-block:has(#use_sysprompt)',
             ],
         },
         {
-            id: 'sb-openai-advanced',
-            title: 'Advanced & Reasoning',
+            id: 'sb-openai-prefill',
+            title: 'Reply Prefill',
+            description: 'Set starting text for replies and adjust continuation prefill.',
+            selectors: [
+                '#openai_settings > div > .range-block:has(#continue_prefill)',
+                '#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',
+                '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
+            ],
+        },
+        {
+            id: 'sb-openai-request',
+            title: 'Request Options',
             description: 'Tools, media, reasoning, and server config',
             selectors: [
                 '#openai_settings > div > .range-block:has(#openai_enable_web_search)',
@@ -3824,10 +3886,18 @@ function groupOpenAISettingsIntoDrawers() {
                 '#openai_settings > div > .range-block:has(#openai_show_thoughts)',
                 '#openai_settings > div > .range-block:has(#openai_auto_append_reasoning_tags)',
                 '#openai_settings > div > .flex-container:has(#openai_reasoning_effort)',
-                '#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',
                 '#openai_settings > div > .range-block:has(#openai_reasoning_tag_style)',
                 '#openai_settings > div > .flex-container:has(#openai_verbosity)',
-                '#openai_settings > div > .range-block:has(#claude_assistant_prefill)',
+            ],
+        },
+        // SillyBunny: retain Quick Prompts here; the shell moves Utility Prompts and Prompt Manager into Editor.
+        {
+            id: 'sb-openai-prompts',
+            title: 'Quick Prompts Edit / Utility Prompts',
+            description: '',
+            selectors: [
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#main_prompt_quick_edit_textarea)',
+                '#range_block_openai > :is(.inline-drawer, .sb-settings-flat-section):has(#impersonation_prompt_textarea)',
             ],
         },
         {
@@ -3860,6 +3930,8 @@ function groupOpenAISettingsIntoDrawers() {
 
     groupedBlocks.forEach(group => {
         const $drawer = createOpenAISettingsDrawer(group.id, group.title, group.description);
+        // SillyBunny: names a group had before its regrouping, for the settings search (`data-sb-search-aliases`).
+        if (group.searchAliases?.length) $drawer.attr('data-sb-search-aliases', group.searchAliases.join('|'));
         const $content = $drawer.children('.inline-drawer-content');
 
         group.blocks.forEach($block => $content.append($block));
@@ -3870,9 +3942,34 @@ function groupOpenAISettingsIntoDrawers() {
     updateOpenAISettingsGroupVisibility();
 }
 
+/**
+ * Gets the settings blocks a grouped OpenAI section holds.
+ *
+ * A collapsible group keeps them in its `.inline-drawer-content`. The settings page flattens the
+ * group into a static section (`flattenNestedSettingsDrawers` in sillybunny-settings-content.js),
+ * which lifts the blocks out of that wrapper and drops it, so they become the group's own children
+ * after its heading. Reading only the wrapper finds no blocks once flattened, and every group would
+ * be hidden as empty.
+ * @param {HTMLElement} group
+ * @returns {Element[]}
+ */
+function getOpenAISettingsGroupBlocks(group) {
+    // SillyBunny: Prompting boxes the live blocks without changing their provider visibility contract.
+    const body = group.querySelector(':scope > .sb-prompting-group-body');
+    if (body) {
+        return Array.from(body.children);
+    }
+    const content = group.querySelector(':scope > .inline-drawer-content');
+    if (content) {
+        return Array.from(content.children);
+    }
+
+    return Array.from(group.children).filter(child => !child.classList.contains('sb-settings-flat-header'));
+}
+
 function updateOpenAISettingsGroupVisibility() {
     $('#range_block_openai .sb-openai-settings-drawer').each(function () {
-        const blocks = $(this).children('.inline-drawer-content').children().toArray();
+        const blocks = getOpenAISettingsGroupBlocks(this);
         const hasVisibleContent = blocks.some(block => {
             if (!(block instanceof HTMLElement) || getComputedStyle(block).display === 'none') {
                 return false;
@@ -4179,7 +4276,8 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
         fillServerChatCompletionConfigForm(result?.settings);
         serverChatCompletionConfigState.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || serverChatCompletionConfigState.lastModifiedMs;
         setServerChatCompletionConfigMessage(result?.message || 'Chat completion server config saved.');
-        toastr.success(result?.message || 'Chat completion server config saved.', 'Server config');
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.success(result?.message || 'Chat completion server config saved', 'Server config');
 
         if (restart) {
             serverChatCompletionConfigState.busy = false;
@@ -4190,13 +4288,15 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
             if (!restarted) {
                 serverChatCompletionConfigState.restarting = false;
                 setServerChatCompletionConfigMessage('Restart is taking longer than expected. Refresh the page once the server is back.');
+                // SillyBunny: capitalisation by DESIGN.md
                 toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
             }
         }
     } catch (error) {
         console.error('Failed to save chat completion server config.', error);
         setServerChatCompletionConfigMessage(error.message || 'Failed to save chat completion server config.');
-        toastr.error(error.message || 'Failed to save chat completion server config.', 'Server config');
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(error.message || 'Failed to save chat completion server config', 'Server config');
     } finally {
         if (!serverChatCompletionConfigState.restarting) {
             serverChatCompletionConfigState.busy = false;
@@ -4205,11 +4305,12 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
     }
 }
 
+// SillyBunny: capitalisation by DESIGN.md
 function buildServerChatCompletionConfigCard({ nested = false } = {}) {
     const headerLead = nested
         ? `
             <div class="sb-chat-completion-config-inline-copy">
-                <strong>Claude & Gemini flags</strong>
+                <strong>Claude & Gemini Flags</strong>
                 <small>These values are saved into <code>config.yaml</code> and need a restart after saving.</small>
             </div>
         `
@@ -4230,17 +4331,21 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-system-prompt-cache">
                         <input id="sb-config-claude-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
+                        <small class="ds-row-subtitle" data-i18n="Let Claude cache system instructions for reuse between replies.">Let Claude cache system instructions for reuse between replies.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-extended-ttl">
                         <input id="sb-config-claude-extended-ttl" type="checkbox">
                         <span>Extended cache TTL</span>
+                        <small class="ds-row-subtitle" data-i18n="Extend the cache duration from five minutes to one hour. Cache creation costs more.">Extend the cache duration from five minutes to one hour. Cache creation costs more.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-adaptive-thinking">
                         <input id="sb-config-claude-adaptive-thinking" type="checkbox">
                         <span>Adaptive thinking</span>
+                        <small class="ds-row-subtitle" data-i18n="Let supported Claude models adjust their thinking based on your chosen reasoning effort.">Let supported Claude models adjust their thinking based on your chosen reasoning effort.</small>
                     </label>
                     <label class="sb-chat-completion-config-field" for="sb-config-claude-caching-depth">
-                        <span>Caching at depth</span>
+                        <span>Caching at Depth</span>
+                        <small class="ds-row-subtitle" data-i18n="Higher values place cache markers earlier in the chat. Set to -1 to disable.">Higher values place cache markers earlier in the chat. Set to -1 to disable.</small>
                         <input id="sb-config-claude-caching-depth" class="text_pole" type="number" step="1" min="-1">
                     </label>
                     <div class="toggle-description justifyLeft">
@@ -4250,30 +4355,31 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                 <section class="sb-chat-completion-config-section" data-source="makersuite,vertexai">
                     <strong class="sb-chat-completion-config-title">Gemini</strong>
                     <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version">
-                        <span>API version</span>
+                        <span>API Version</span>
+                        <small class="ds-row-subtitle" data-i18n="Set the Google AI Studio API version. Leave blank to use v1beta.">Set the Google AI Studio API version. Leave blank to use v1beta.</small>
                         <input id="sb-config-gemini-api-version" class="text_pole" type="text" placeholder="v1beta">
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-thought-signatures">
                         <input id="sb-config-gemini-thought-signatures" type="checkbox">
                         <span>Thought signatures</span>
+                        <small class="ds-row-subtitle" data-i18n="Send saved thought signatures back to Gemini to preserve reasoning context between replies.">Send saved thought signatures back to Gemini to preserve reasoning context between replies.</small>
                     </label>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-system-prompt-cache">
                         <input id="sb-config-gemini-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
+                        <small class="ds-row-subtitle" data-i18n="Let supported Gemini models cache system instructions through OpenRouter.">Let supported Gemini models cache system instructions through OpenRouter.</small>
                     </label>
                 </section>
             </div>
+            <!-- SillyBunny: the three actions are label-only buttons (an icon or a label, not both). -->
             <div class="sb-chat-completion-config-actions">
                 <button id="sb-chat-completion-config-reload" class="menu_button menu_button_icon" type="button">
-                    <i class="fa-solid fa-rotate-right"></i>
                     <span>Reload</span>
                 </button>
                 <button id="sb-chat-completion-config-save" class="menu_button menu_button_icon" type="button">
-                    <i class="fa-solid fa-floppy-disk"></i>
-                    <span>Save server config</span>
+                    <span>Save Server Config</span>
                 </button>
                 <button id="sb-chat-completion-config-save-restart" class="menu_button menu_button_icon menu_button_primary" type="button">
-                    <i class="fa-solid fa-power-off"></i>
                     <span>Save & Restart</span>
                 </button>
             </div>
@@ -4303,7 +4409,7 @@ function buildServerChatCompletionConfigDrawer() {
 }
 
 function injectServerChatCompletionConfigCard() {
-    const $advancedDrawerContent = $('#sb-openai-advanced > .inline-drawer-content');
+    const $advancedDrawerContent = $('#sb-openai-request > .inline-drawer-content');
 
     if ($advancedDrawerContent.length === 0 || $('#sb-chat-completion-server-config, #sb-chat-completion-server-config-drawer').length) {
         return;
@@ -4311,10 +4417,17 @@ function injectServerChatCompletionConfigCard() {
 
     $advancedDrawerContent.append(buildServerChatCompletionConfigDrawer());
 
+    // SillyBunny: Reloading this editor can discard a draft, so Cancel is the default response.
     document.getElementById('sb-chat-completion-config-reload')?.addEventListener('click', async () => {
-        if (serverChatCompletionConfigState.loaded && updateServerChatCompletionConfigDirtyState()
-            && !window.confirm('Discard your unsaved server config edits and reload from config.yaml?')) {
-            return;
+        if (serverChatCompletionConfigState.loaded && updateServerChatCompletionConfigDirtyState()) {
+            const response = await openAlert({
+                heading: 'Discard your unsaved server config edits and reload from config.yaml?',
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'discard', label: t`Discard`, appearance: 'destructive' },
+                ],
+            });
+            if (response !== 'discard') return;
         }
 
         await loadServerChatCompletionConfig({ force: true });
@@ -4359,6 +4472,17 @@ function scheduleOpenAIUiRefresh() {
     }, 200);
 }
 
+// SillyBunny: the Connections select rows show each model's details (what the select2 templates show) as a
+// picker subtitle at every width; select2 itself is not initialised at 768px and below. NanoGPT's template
+// builds text nodes only; the others parse catalogue fields as HTML, so they are described in sillybunny-model-details.js.
+registerOptionDetails({
+    model_openrouter_select: option => describeOpenRouterModel(model_list.find(x => x.id === option.value)),
+    model_aimlapi_select: option => describeAimlapiModel(model_list.find(x => x.id === option.value)),
+    model_electronhub_select: option => describeElectronHubModel(model_list.find(x => x.id === option.value)),
+    model_chutes_select: option => describeChutesModel(model_list.find(x => x.id === option.value)),
+    model_nanogpt_select: option => getNanoGptModelTemplate({ id: option.value, text: option.textContent, element: option }),
+});
+
 function getOpenRouterModelTemplate(option) {
     const model = model_list.find(x => x.id === option?.element?.value);
 
@@ -4371,9 +4495,10 @@ function getOpenRouterModelTemplate(option) {
 
     const price = 0 === Number(model.pricing?.prompt) ? 'Free' : `${tokens_rounded}k t/$ `;
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
-            <div><strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.context_length} ctx | <small>${price}</small></div>
+        <div class="flex-container flexFlowColumn" title="${escapeHtml(model.id)}">
+            <div><strong>${escapeHtml(model.name)}</strong> | ${escapeHtml(model.context_length)} ctx | <small>${escapeHtml(price)}</small></div>
         </div>
     `));
 }
@@ -4416,10 +4541,11 @@ function getElectronHubModelTemplate(option) {
     const outputPrice = model.pricing?.output;
     const price = inputPrice && outputPrice ? `$${inputPrice}/$${outputPrice} in/out Mtoken` : 'Unknown';
 
-    const visionIcon = model.metadata?.vision ? '<i class="fa-solid fa-eye fa-sm" title="This model supports vision"></i>' : '';
-    const reasoningIcon = model.metadata?.reasoning ? '<i class="fa-solid fa-brain fa-sm" title="This model supports reasoning"></i>' : '';
-    const toolCallsIcon = model.metadata?.function_call ? '<i class="fa-solid fa-wrench fa-sm" title="This model supports function tools"></i>' : '';
-    const premiumIcon = model?.premium_model ? '<i class="fa-solid fa-crown fa-sm" title="This model requires a subscription"></i>' : '';
+    // SillyBunny: a `title` is a tooltip, not an accessible name, so each capability icon is an image with the same words as its label.
+    const visionIcon = model.metadata?.vision ? '<i class="fa-solid fa-eye fa-sm" role="img" title="This model supports vision" aria-label="This model supports vision"></i>' : '';
+    const reasoningIcon = model.metadata?.reasoning ? '<i class="fa-solid fa-brain fa-sm" role="img" title="This model supports reasoning" aria-label="This model supports reasoning"></i>' : '';
+    const toolCallsIcon = model.metadata?.function_call ? '<i class="fa-solid fa-wrench fa-sm" role="img" title="This model supports function tools" aria-label="This model supports function tools"></i>' : '';
+    const premiumIcon = model?.premium_model ? '<i class="fa-solid fa-crown fa-sm" role="img" title="This model requires a subscription" aria-label="This model requires a subscription"></i>' : '';
 
     const iconsContainer = document.createElement('span');
     iconsContainer.insertAdjacentHTML('beforeend', visionIcon);
@@ -4429,9 +4555,10 @@ function getElectronHubModelTemplate(option) {
 
     const capabilities = (iconsContainer.children.length) ? ` | ${iconsContainer.innerHTML}` : '';
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container alignItemsBaseline" title="${DOMPurify.sanitize(model.id)}">
-            <strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.tokens} ctx | <small>${price}</small>${capabilities}
+        <div class="flex-container alignItemsBaseline" title="${escapeHtml(model.id)}">
+            <strong>${escapeHtml(model.name)}</strong> | ${escapeHtml(model.tokens)} ctx | <small>${escapeHtml(price)}</small>${capabilities}
         </div>
     `));
 }
@@ -4479,9 +4606,10 @@ function getChutesModelTemplate(option) {
     }
 
     const contextLength = model.context_length || model.max_model_len || 'Unknown';
-    const visionIcon = model.input_modalities?.includes('image') ? '<i class="fa-solid fa-eye fa-sm" title="This model supports vision"></i>' : '';
-    const reasoningIcon = model.supported_features?.includes('reasoning') ? '<i class="fa-solid fa-brain fa-sm" title="This model supports reasoning"></i>' : '';
-    const toolCallsIcon = model.supported_features?.includes('structured_outputs') ? '<i class="fa-solid fa-wrench fa-sm" title="This model supports function tools"></i>' : '';
+    // SillyBunny: a `title` is a tooltip, not an accessible name, so each capability icon is an image with the same words as its label.
+    const visionIcon = model.input_modalities?.includes('image') ? '<i class="fa-solid fa-eye fa-sm" role="img" title="This model supports vision" aria-label="This model supports vision"></i>' : '';
+    const reasoningIcon = model.supported_features?.includes('reasoning') ? '<i class="fa-solid fa-brain fa-sm" role="img" title="This model supports reasoning" aria-label="This model supports reasoning"></i>' : '';
+    const toolCallsIcon = model.supported_features?.includes('structured_outputs') ? '<i class="fa-solid fa-wrench fa-sm" role="img" title="This model supports function tools" aria-label="This model supports function tools"></i>' : '';
 
     const iconsContainer = document.createElement('span');
     iconsContainer.insertAdjacentHTML('beforeend', visionIcon);
@@ -4490,9 +4618,10 @@ function getChutesModelTemplate(option) {
 
     const capabilities = (iconsContainer.children.length) ? ` | ${iconsContainer.innerHTML}` : '';
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container alignItemsBaseline" title="${DOMPurify.sanitize(model.id)}">
-            <strong>${DOMPurify.sanitize(model.id)}</strong> | ${contextLength} ctx | <small>${price}</small>${capabilities}
+        <div class="flex-container alignItemsBaseline" title="${escapeHtml(model.id)}">
+            <strong>${escapeHtml(model.id)}</strong> | ${escapeHtml(contextLength)} ctx | <small>${escapeHtml(price)}</small>${capabilities}
         </div>
     `));
 }
@@ -4529,7 +4658,7 @@ function getNanoGptModelTemplate(option) {
         ['tool_calling', 'wrench', 'This model supports tool calling'],
     ]) {
         if (model.capabilities?.[capability] === true) {
-            icons.append($('<i>', { class: `fa-solid fa-${icon} fa-sm`, title, 'aria-label': title }), ' ');
+            icons.append($('<i>', { class: `fa-solid fa-${icon} fa-sm`, role: 'img', title, 'aria-label': title }), ' ');
         }
     }
 
@@ -5278,9 +5407,10 @@ function getAimlapiModelTemplate(option) {
 
     const vendor = model.id.split('/')[0];
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
-            <div><strong>${DOMPurify.sanitize(model.info?.name || model.name || model.id)}</strong> | ${vendor}</div>
+        <div class="flex-container flexFlowColumn" title="${escapeHtml(model.id)}">
+            <div><strong>${escapeHtml(model.info?.name || model.name || model.id)}</strong> | ${escapeHtml(vendor)}</div>
         </div>
     `));
 }
@@ -5940,8 +6070,12 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
     });
 
     if (!response.ok) {
-        tryParseStreamingError(response, await response.text());
-        throw new Error(`Got response status ${response.status}`);
+        const errorBody = await response.text();
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) still get an error message.
+        if (!tryParseStreamingError(response, errorBody)) {
+            showRequestError({ title: 'Chat Completion API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        }
+        throw createFailedResponseError({ status: getFailureStatus(response), body: errorBody });
     }
     if (stream) {
         const eventStream = getEventSourceStream();
@@ -5988,7 +6122,8 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
 
         if (data.error) {
             const message = getChatCompletionErrorMessage(data, response);
-            toastr.error(message, t`API returned an error`);
+            // SillyBunny: the toast shows the provider's message and a hint.
+            showChatCompletionError(data, response, t`API returned an error`);
             throw new Error(message);
         }
 
@@ -7331,40 +7466,28 @@ function loadOpenAISettings(data, settings) {
     scheduleOpenAIUiRefresh();
 }
 
+// SillyBunny: each row shows one subtitle, the description of its current mode, so the recommendation is not a second line.
 function updateBindPresetToConnectionHelp() {
     const copy = document.getElementById('bind_preset_to_connection_copy');
-    const tip = document.getElementById('bind_preset_to_connection_tip');
-
-    if (!(copy instanceof HTMLElement) || !(tip instanceof HTMLElement)) {
+    if (!(copy instanceof HTMLElement)) {
         return;
     }
 
-    if (oai_settings.bind_preset_to_connection) {
-        copy.textContent = t`Linked mode: choosing a preset can also switch the provider, model, and other connection-specific options saved inside that preset.`;
-        tip.textContent = t`Use this when each preset is meant for one exact API setup.`;
-        return;
-    }
-
-    copy.textContent = t`Independent mode: choosing a preset keeps your current provider and model, so one preset can be reused across multiple connections.`;
-    tip.textContent = t`Recommended for most setups and especially for shared preset libraries.`;
+    copy.textContent = oai_settings.bind_preset_to_connection
+        ? t`Linked mode: choosing a preset can also switch the provider, model, and other connection-specific options saved inside that preset`
+        : t`Independent mode: choosing a preset keeps your current provider and model, so one preset can be reused across multiple connections`;
 }
 
+// SillyBunny: see updateBindPresetToConnectionHelp().
 function updateBindPresetToSamplingHelp() {
     const copy = document.getElementById('bind_preset_to_sampling_copy');
-    const tip = document.getElementById('bind_preset_to_sampling_tip');
-
-    if (!(copy instanceof HTMLElement) || !(tip instanceof HTMLElement)) {
+    if (!(copy instanceof HTMLElement)) {
         return;
     }
 
-    if (shouldIncludeSamplingFieldsInPreset(oai_settings)) {
-        copy.textContent = t`Linked mode: choosing a preset also updates temperature, penalties, and other sampling sliders to values saved inside that preset.`;
-        tip.textContent = t`Use this when each preset stores its own sampling values.`;
-        return;
-    }
-
-    copy.textContent = t`Independent mode: choosing a preset leaves your current sampling sliders unchanged, so one set of sampling values can be reused across multiple presets.`;
-    tip.textContent = t`Recommended when different models need different sampling settings.`;
+    copy.textContent = shouldIncludeSamplingFieldsInPreset(oai_settings)
+        ? t`Linked mode: choosing a preset also updates temperature, penalties, and other sampling sliders to values saved inside that preset`
+        : t`Independent mode: choosing a preset leaves your current sampling sliders unchanged, so one set of sampling values can be reused across multiple presets`;
 }
 
 function syncModelSamplingProfilesUI() {
@@ -7454,7 +7577,8 @@ function applySamplingSettings(profile) {
 function saveSamplingProfileForCurrentModel() {
     const profileKey = getModelSamplingProfileKey();
     if (!profileKey) {
-        toastr.warning(t`No model is currently selected.`, t`Cannot save sampling profile`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.warning(t`No model is currently selected`, t`Cannot save sampling profile`);
         return;
     }
     oai_settings.model_sampling_profiles ??= {};
@@ -7474,13 +7598,15 @@ function saveSamplingProfileForCurrentModel() {
         $saveButton.removeClass('success-flash');
     }, 1200);
 
-    toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
+    // SillyBunny: capitalisation by DESIGN.md
+    toastr.success(t`Saved sampling settings for ${modelLabel}`, t`Model sampling profile saved`);
 }
 
 function clearSamplingProfileForCurrentModel() {
     const profileKeys = getModelSamplingProfileKeys();
     if (!profileKeys.length) {
-        toastr.warning(t`No model is currently selected.`, t`Cannot clear sampling profile`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.warning(t`No model is currently selected`, t`Cannot clear sampling profile`);
         return;
     }
     const profiles = oai_settings.model_sampling_profiles;
@@ -7492,10 +7618,11 @@ function clearSamplingProfileForCurrentModel() {
         }
         saveSettingsDebounced();
         const modelLabel = getChatCompletionModel();
-        toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model sampling profile removed`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Cleared sampling profile for ${modelLabel}`, t`Model sampling profile removed`);
     } else {
         const modelLabel = getChatCompletionModel();
-        toastr.info(t`No saved sampling profile exists for ${modelLabel}.`, t`No sampling profile to clear`);
+        toastr.info(t`No saved sampling profile exists for ${modelLabel}`, t`No sampling profile to clear`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
 }
 
@@ -7525,8 +7652,9 @@ function maybeShowPresetConnectionBindingReminder(previousPresetName, nextPreset
     }
 
     hasShownPresetConnectionBindingReminder = true;
+    // SillyBunny: the reminder quotes the #bind_preset_to_connection label in index.html, so keep the two in step.
     toastr.info(
-        t`This preset is linked to your API and model settings. Turn off "Keep API/model linked to preset" if you want one preset to stay reusable across multiple connections.`,
+        t`This preset is linked to your API and model settings. Turn off "Keep API/Model Linked to Preset" if you want one preset to stay reusable across multiple connections.`,
         t`Preset switch also changes the connection setup`,
         { timeOut: 9000 },
     );
@@ -7755,12 +7883,27 @@ function normalizeLogitBiasEntry(entry) {
     };
 }
 
-function normalizeLogitBiasPresets(source, { includeDefaults = false } = {}) {
+function normalizeLogitBiasPresets(source, { includeDefaults = false, keepEntries = false } = {}) {
     const presets = includeDefaults ? structuredClone(default_bias_presets) : {};
 
     if (source && typeof source === 'object' && !Array.isArray(source)) {
         for (const [name, entries] of Object.entries(source)) {
             if (!Array.isArray(entries)) {
+                continue;
+            }
+
+            // SillyBunny: the Logit Bias list keeps each row's entry object and the array its drag handler sorts, so the
+            // state that is already live is normalised in place; copying it on every call (the Add button runs this) cut
+            // the rows already drawn off from what is saved.
+            if (keepEntries) {
+                const kept = entries.map(entry => {
+                    const normalized = normalizeLogitBiasEntry(entry);
+                    return normalized ? Object.assign(entry, normalized) : null;
+                }).filter(Boolean);
+                if (kept.length !== entries.length || kept.some((entry, index) => entry !== entries[index])) {
+                    entries.splice(0, entries.length, ...kept);
+                }
+                presets[name] = entries;
                 continue;
             }
 
@@ -7772,7 +7915,7 @@ function normalizeLogitBiasPresets(source, { includeDefaults = false } = {}) {
 }
 
 function normalizeLogitBiasState(selectedPreset = oai_settings.bias_preset_selected) {
-    oai_settings.bias_presets = normalizeLogitBiasPresets(oai_settings.bias_presets, { includeDefaults: true });
+    oai_settings.bias_presets = normalizeLogitBiasPresets(oai_settings.bias_presets, { includeDefaults: true, keepEntries: true }); // SillyBunny: see normalizeLogitBiasPresets.
 
     let selected = typeof selectedPreset === 'string' && selectedPreset.trim()
         ? selectedPreset
@@ -8027,7 +8170,8 @@ async function onPresetImportFileChange(e) {
     }
 
     if (name in openai_setting_names) {
-        const confirm = await callGenericPopup('Preset name already exists. Overwrite?', POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup('Preset name already exists. Overwrite?', POPUP_TYPE.CONFIRM, '', confirmVerb(t`Overwrite`, { destructive: true }));
 
         if (!confirm) {
             return;
@@ -8086,7 +8230,8 @@ async function onExportPresetClick() {
         const textHeader = t`Your preset contains proxy and/or custom endpoint settings.`;
         const textMessage = '<div>' + t`Do you want to remove these fields before exporting?` + `</div><br>${DOMPurify.sanitize(fieldValues.join('<br>'))}`;
         const cancelButton = { text: 'Cancel', result: POPUP_RESULT.CANCELLED, appendAtEnd: true };
-        const popupOptions = { customButtons: [cancelButton] };
+        // SillyBunny: "No" exports with the fields, so it keeps its own label and the custom Cancel is the only Cancel (confirmVerb).
+        const popupOptions = { ...confirmVerb(t`Remove`, { negative: t`No` }), customButtons: [cancelButton] };
         const popupResult = await Popup.show.confirm(textHeader, textMessage, popupOptions);
 
         if (popupResult === POPUP_RESULT.CANCELLED) {
@@ -8170,7 +8315,8 @@ function onLogitBiasPresetExportClick() {
 }
 
 async function onDeletePresetClick() {
-    const confirm = await callGenericPopup(t`Delete the preset? This action is irreversible and your current settings will be overwritten.`, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await callGenericPopup(t`Delete the preset? This action is irreversible and your current settings will be overwritten.`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
 
     if (!confirm) {
         return;
@@ -8206,7 +8352,8 @@ async function onDeletePresetClick() {
 }
 
 async function onLogitBiasPresetDeleteClick() {
-    const value = await callGenericPopup(t`Delete the preset?`, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const value = await callGenericPopup(t`Delete the preset?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
 
     if (!value) {
         return;
@@ -9463,7 +9610,14 @@ async function onConnectButtonClick(e) {
         }
 
         if (!secret_state[config.key] && (!config.proxy || !oai_settings.reverse_proxy) && !config.keyless) {
-            console.log(`No secret key saved for ${oai_settings.chat_completion_source}`);
+            // SillyBunny: an empty key gets an answer, but only for a real click, because auto-connect
+            // and profile changes click this button through jQuery's trigger(), which has no originalEvent. A keyboard
+            // click made with element.click() has one but is not trusted, so isTrusted would silence it.
+            if (e.originalEvent) {
+                flagMissingKey(document.querySelector(config.selector));
+            } else {
+                console.log(`No secret key saved for ${oai_settings.chat_completion_source}`);
+            }
             return;
         }
     }
@@ -9545,6 +9699,13 @@ function toggleChatCompletionForms() {
     }
 
     $('[data-source]').each(function () {
+        // SillyBunny: the shared Sampling tab shows every sampler for every provider
+        // (sillybunny-tabs.js SB_SAMPLER_REGISTRY); unsupported values are ignored by the provider.
+        if (this.hasAttribute('data-sb-sampler-ungated')) {
+            $(this).show();
+            return;
+        }
+
         const mode = $(this).data('source-mode');
         const validSources = $(this).data('source').split(',');
         const effectiveSource = oai_settings.chat_completion_source === chat_completion_sources.OPENAI_RESPONSES
@@ -9662,7 +9823,8 @@ async function onCustomizeParametersClick() {
 
     syncCustomReasoningPopup();
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    // SillyBunny: preserve YAML whitespace while the shared Window body owns scrolling.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, ...customEndpointParametersOptions(template) });
 }
 
 /**
@@ -10330,7 +10492,7 @@ $('#save_custom_endpoint').on('click', async function () {
     const keyInputValue = String($('#api_key_custom').val()).trim();
 
     if (!presetName || presetName === 'None') {
-        toastr.error(t`Please enter a name for the endpoint profile.`);
+        toastr.error(t`Please enter a name for the endpoint profile`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -10366,7 +10528,7 @@ $('#save_custom_endpoint').on('click', async function () {
     if (await saveSettings(0, { returnResult: true }) !== true) {
         return;
     }
-    toastr.success(t`Custom Endpoint Profile Saved`);
+    toastr.success(t`Custom endpoint profile saved`);
 });
 
 $('#delete_custom_endpoint').on('click', async function () {
@@ -10394,7 +10556,8 @@ $('#delete_custom_endpoint').on('click', async function () {
 
         saveSettingsDebounced();
         $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
-        toastr.success(t`Custom Endpoint Profile Deleted`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.success(t`Custom endpoint profile deleted`);
     } else {
         toastr.error(t`Could not find custom endpoint profile with name '${presetName}'`);
     }

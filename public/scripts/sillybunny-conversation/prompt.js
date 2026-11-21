@@ -365,7 +365,7 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
     const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
     if (!messages.length || (!force && messages.length < MEMORY_SUMMARY_MIN_MESSAGES)) {
         if (notify) {
-            toastr.info(`Memory appears after at least ${MEMORY_SUMMARY_MIN_MESSAGES} messages, or when there is enough chat to summarize.`);
+            toastr.info(`Memory appears after at least ${MEMORY_SUMMARY_MIN_MESSAGES} messages, or when there is enough chat to summarize`);
         }
         return false;
     }
@@ -404,7 +404,7 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
             }
             saveConversationMemorySummary(avatar, response.trim(), messages.length, { branchId, groupId, personaId });
             if (notify) {
-                toastr.success('Conversation memory refreshed.');
+                toastr.success('Conversation memory refreshed');
             }
             return true;
         }

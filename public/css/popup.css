@@ -167,6 +167,15 @@ body.no-blur .popup[open]::backdrop {
     /* This rule is very important, please do not ignore this! */
 }
 
+/* SillyBunny: in a sheet the cropper is built at the room that the header and the instruction leave, and an enlarged picture fits the sheet. */
+.sb-dialog .popup-crop-wrap {
+    max-height: min(75dvh, calc(100dvh - 190px));
+}
+
+.sb-dialog .img_enlarged:not(.zoomed) {
+    max-height: calc(100dvh - 120px);
+}
+
 .popup-inputs {
     margin-top: 10px;
     font-size: smaller;

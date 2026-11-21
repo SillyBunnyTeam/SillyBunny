@@ -162,7 +162,7 @@ export async function createSandbox(messageId) {
     const iframeElement = documentRef.createElement('iframe');
     iframeElement.className = 'card-script-sandbox-frame';
     iframeElement.setAttribute('sandbox', 'allow-scripts');
-    iframeElement.setAttribute('title', `Card script sandbox for message ${normalizedMessageId}`);
+    iframeElement.setAttribute('title', `Card Script Sandbox for Message ${normalizedMessageId}`);
     iframeElement.setAttribute('aria-hidden', 'true');
     iframeElement.tabIndex = -1;
     iframeElement.srcdoc = runtimeDependencies.buildSandboxDocument({
@@ -371,7 +371,7 @@ export async function syncCardScriptButtonForMessage(messageId, { messageElement
     button.classList.toggle('script-ran', shouldShow && hasRun && !isActive);
     button.classList.toggle('fa-play', !isActive);
     button.classList.toggle('fa-stop', isActive);
-    button.setAttribute('title', isActive ? 'Stop card scripts' : 'Run card scripts');
+    button.setAttribute('title', isActive ? 'Stop Card Scripts' : 'Run Card Scripts');
     button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
 
     return shouldShow;
@@ -488,7 +488,7 @@ async function showCardScriptConfirmation() {
 
     const { callGenericPopup, POPUP_RESULT, POPUP_TYPE } = await import('./popup.js');
     const content = `
-        <h3>Run card scripts?</h3>
+        <h3>Run Card Scripts?</h3>
         <p>This will run scripts embedded in this card inside a sandboxed iframe. Only a narrow allowlist of slash commands can cross back into SillyBunny.</p>
         <p>Do not run card scripts from cards you do not trust.</p>
     `;
@@ -577,7 +577,7 @@ function syncDestroyedButtonState(messageElement) {
     button.classList.add('script-ran');
     button.classList.add('fa-play');
     button.classList.remove('fa-stop');
-    button.setAttribute('title', 'Run card scripts');
+    button.setAttribute('title', 'Run Card Scripts');
     button.setAttribute('aria-pressed', 'false');
 }
 

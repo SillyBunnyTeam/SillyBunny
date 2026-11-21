@@ -7,7 +7,7 @@
         <div class="folder-item" data-folder-id="{{id}}">
             <input type="text" class="folder-name-input text_pole" value="{{name}}" data-original-name="{{name}}" />
             <span class="folder-profile-count">({{profileCount}} profiles)</span>
-            <i class="fa-solid fa-trash-can folder-delete-btn" title="Delete folder" data-i18n="[title]Delete folder"></i>
+            <i class="fa-solid fa-trash-can folder-delete-btn" title="Delete Folder" data-i18n="[title]Delete Folder"></i>
         </div>
         {{/each}}
         {{else}}
@@ -18,14 +18,13 @@
     <div class="folder-add-row">
         <input id="new_profile_folder_name" type="text" class="text_pole flex1" placeholder="New folder name" data-i18n="[placeholder]New folder name" />
         <button id="add_new_folder" type="button" class="menu_button">
-            <i class="fa-solid fa-folder-plus"></i>
             <span data-i18n="Add Folder">Add Folder</span>
         </button>
     </div>
 
     <div class="marginTop10">
-        <small data-i18n="Note: Deleting a folder moves its profiles to the root level.">
-            Note: Deleting a folder moves its profiles to the root level.
+        <small data-i18n="Note: Deleting a folder moves its profiles to the root level">
+            Note: Deleting a folder moves its profiles to the root level
         </small>
     </div>
 </div>

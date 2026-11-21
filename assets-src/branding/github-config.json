@@ -1,0 +1,2387 @@
+{
+ "colours": {
+  "lavender": "#b99bf2",
+  "logo": "#8b64aa",
+  "plum": "#5b3c6b",
+  "ink": "#24152f",
+  "pale": "#f5e9ff",
+  "night": "#1c1228",
+  "cream": "#fff1dc",
+  "cloverGreen": "#4fa35a",
+  "darkGreen": "#2f7a40",
+  "bottleBlue": "#5aa3e0",
+  "gold": "#f3c969",
+  "orange": "#e8873a",
+  "quietPale": "#d9c8ef",
+  "panelDark": "#2e1c42",
+  "quietPlum": "#70507f"
+ },
+ "sources": {
+  "plate": "approved/logo-plate.svg",
+  "emblem": "approved/logo-emblem.svg",
+  "art": {
+   "banner-main": "approved/pixel/banner-main.png",
+   "banner-features": "approved/pixel/banner-features.png",
+   "banner-install": "approved/pixel/banner-install.png",
+   "banner-contributing": "approved/pixel/banner-contributing.png",
+   "banner-credits": "approved/pixel/banner-credits.png",
+   "banner-community": "approved/pixel/banner-community.png",
+   "social-welcome": "approved/pixel/social-welcome.png"
+  },
+  "backdrops": {
+   "backdrop-mansion-day-banner": "approved/pixel/backdrop-mansion-day-banner.png",
+   "backdrop-mansion-night-banner": "approved/pixel/backdrop-mansion-night-banner.png",
+   "backdrop-mansion-day-social": "approved/pixel/backdrop-mansion-day-social.png"
+  },
+  "placeholders": {}
+ },
+ "icons": {
+  "palettes": {
+   "light": {
+    "o": "plum",
+    "l": "lavender",
+    "c": "cream"
+   },
+   "dark": {
+    "o": "quietPale",
+    "l": "lavender",
+    "c": "cream"
+   }
+  },
+  "shapes": {
+   "features": {
+    "rows": [
+     "....oooooooo....",
+     "....ollllllo....",
+     "....ollllllo....",
+     "..ooooccccoooo..",
+     ".ooccccccccccoo.",
+     ".occcccccccccco.",
+     ".occcccccccccco.",
+     ".ocllllllllllco.",
+     ".ocllllllllllco.",
+     ".occcccccccccco.",
+     ".ocaaaaaaaaaaco.",
+     ".ocaaaaaaaaaaco.",
+     ".ocaaaaaaaaaaco.",
+     ".ocaaaaaaaaaaco.",
+     ".ooccccccccccoo.",
+     "..oooooooooooo.."
+    ],
+    "accent": "bottleBlue"
+   },
+   "install": {
+    "rows": [
+     "....oooooooo....",
+     "....occoocco....",
+     "....occoocco....",
+     "....occoocco....",
+     "..oooccooccooo..",
+     ".oolllllllllloo.",
+     ".ollllllllllllo.",
+     ".olcllllllllllo.",
+     ".ollllllllllllo.",
+     ".ollllllllllllo.",
+     ".oolllllllllloo.",
+     "..ooooccccoooo..",
+     ".....occcco.....",
+     ".....ooccoo.....",
+     "......occo......",
+     "......oooo......"
+    ]
+   },
+   "contributing": {
+    "rows": [
+     "oooooooooooooooo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "oooooocllloooooo",
+     ".....oclllo.....",
+     ".....oclllo.....",
+     ".....oclllo.....",
+     ".....oclllo.....",
+     "....oocllloo....",
+     "....ollllllo....",
+     "....ollllllo....",
+     "....oooooooo...."
+    ]
+   },
+   "credits": {
+    "rows": [
+     ".oooooo..oooooo.",
+     "ooaaaaooooaaaaoo",
+     "oacaaaaooaaaacao",
+     "oaaaaaaooaaaaaao",
+     "oaaaaaaooaaaaaao",
+     "ooaaaaooooaaaaoo",
+     ".ooooooaaoooooo.",
+     ".ooooooaaoooooo.",
+     "ooaaaaoaaoaaaaoo",
+     "oacaaaaaaaaaacao",
+     "oaaaaaaaaaaaaaao",
+     "oaaaaaaaaaaaaaao",
+     "ooaaaaoaaoaaaaoo",
+     ".ooooooaaoooooo.",
+     ".....oaaoo......",
+     ".....oooo......."
+    ],
+    "accent": "cloverGreen"
+   },
+   "community": {
+    "rows": [
+     "................",
+     "............oooo",
+     ".........oooocco",
+     ".........occocco",
+     ".........occocco",
+     "........oocclcco",
+     "....ooooollllcco",
+     "ooooollllllllcco",
+     "ollllllllllllcco",
+     "ollllllllllllcco",
+     "ollllllllllllcco",
+     "oooolllllllllcco",
+     "...ollooollllcco",
+     "...ollo.oooolcco",
+     "...oooo....ooooo",
+     "................"
+    ]
+   }
+  }
+ },
+ "ornaments": {
+  "moon": {
+   "rows": [
+    "..ooo..",
+    ".oyyyo.",
+    "oyyoo..",
+    "oyyo...",
+    "oyyoo..",
+    ".oyyyo.",
+    "..ooo.."
+   ],
+   "colours": {
+    "o": "plum",
+    "y": "gold"
+   }
+  },
+  "moon-dark": {
+   "rows": [
+    "..ooo..",
+    ".oyyyo.",
+    "oyyoo..",
+    "oyyo...",
+    "oyyoo..",
+    ".oyyyo.",
+    "..ooo.."
+   ],
+   "colours": {
+    "o": "pale",
+    "y": "gold"
+   }
+  },
+  "clover": {
+   "rows": [
+    ".gg.gg.",
+    "ggggggg",
+    ".ggdgg.",
+    "ggggggg",
+    ".gg.gg.",
+    "...d...",
+    "...d..."
+   ],
+   "colours": {
+    "g": "cloverGreen",
+    "d": "darkGreen"
+   }
+  },
+  "carrot": {
+   "rows": [
+    ".g.g.g.",
+    "..ggg..",
+    "..rrr..",
+    "..rrr..",
+    "...rr..",
+    "...rr..",
+    "....r.."
+   ],
+   "colours": {
+    "g": "cloverGreen",
+    "r": "orange"
+   }
+  }
+ },
+ "assets": {
+  "avatar": {
+   "width": 500,
+   "height": 500,
+   "maxBytes": 1000000
+  },
+  "social": {
+   "width": 1280,
+   "height": 640,
+   "maxBytes": 1000000
+  },
+  "banner": {
+   "width": 2560,
+   "height": 800,
+   "maxBytes": 1000000
+  }
+ },
+ "final": {
+  "avatar": "avatar.png",
+  "social": "social-preview.png",
+  "banner-main-light": "banner-main-light.png",
+  "banner-main-dark": "banner-main-dark.png",
+  "banner-features-light": "banner-features-light.png",
+  "banner-features-dark": "banner-features-dark.png",
+  "banner-install-light": "banner-install-light.png",
+  "banner-install-dark": "banner-install-dark.png",
+  "banner-contributing-light": "banner-contributing-light.png",
+  "banner-contributing-dark": "banner-contributing-dark.png",
+  "banner-credits-light": "banner-credits-light.png",
+  "banner-credits-dark": "banner-credits-dark.png",
+  "banner-community-light": "banner-community-light.png",
+  "banner-community-dark": "banner-community-dark.png"
+ },
+ "chosen": {
+  "avatar": "avatar-fill",
+  "social": "social-grove"
+ },
+ "contacts": {
+  "banner-main": [
+   {
+    "kind": "raised",
+    "x0": 204,
+    "x1": 220,
+    "y": 357,
+    "strength": 0.3
+   },
+   {
+    "kind": "raised",
+    "x0": 224,
+    "x1": 245,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 15,
+    "x1": 31,
+    "y": 335
+   },
+   {
+    "kind": "contact",
+    "x0": 80,
+    "x1": 102,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 112,
+    "x1": 134,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 313,
+    "x1": 330,
+    "y": 335
+   },
+   {
+    "kind": "footprint",
+    "x0": 15,
+    "x1": 330,
+    "y": 335
+   }
+  ],
+  "banner-features": [
+   {
+    "kind": "raised",
+    "x0": 8,
+    "x1": 40,
+    "y": 331
+   },
+   {
+    "kind": "contact",
+    "x0": 84,
+    "x1": 110,
+    "y": 331
+   },
+   {
+    "kind": "contact",
+    "x0": 117,
+    "x1": 184,
+    "y": 350
+   },
+   {
+    "kind": "contact",
+    "x0": 186,
+    "x1": 252,
+    "y": 356
+   },
+   {
+    "kind": "footprint",
+    "x0": 115,
+    "x1": 262,
+    "y": 354
+   },
+   {
+    "kind": "contact",
+    "x0": 274,
+    "x1": 291,
+    "y": 334
+   },
+   {
+    "kind": "contact",
+    "x0": 289,
+    "x1": 320,
+    "y": 338
+   }
+  ],
+  "banner-install": [
+   {
+    "kind": "contact",
+    "x0": 12,
+    "x1": 28,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 36,
+    "x1": 47,
+    "y": 337
+   },
+   {
+    "kind": "contact",
+    "x0": 209,
+    "x1": 222,
+    "y": 337
+   },
+   {
+    "kind": "contact",
+    "x0": 226,
+    "x1": 242,
+    "y": 357
+   },
+   {
+    "kind": "footprint",
+    "x0": 12,
+    "x1": 242,
+    "y": 347
+   },
+   {
+    "kind": "raised",
+    "x0": 74,
+    "x1": 92,
+    "y": 355
+   },
+   {
+    "kind": "contact",
+    "x0": 100,
+    "x1": 130,
+    "y": 355
+   },
+   {
+    "kind": "contact",
+    "x0": 135,
+    "x1": 165,
+    "y": 355
+   },
+   {
+    "kind": "raised",
+    "x0": 172,
+    "x1": 190,
+    "y": 355
+   },
+   {
+    "kind": "contact",
+    "x0": 273,
+    "x1": 291,
+    "y": 355
+   },
+   {
+    "kind": "contact",
+    "x0": 299,
+    "x1": 324,
+    "y": 356
+   }
+  ],
+  "banner-contributing": [
+   {
+    "kind": "raised",
+    "x0": 12,
+    "x1": 34,
+    "y": 339
+   },
+   {
+    "kind": "contact",
+    "x0": 72,
+    "x1": 98,
+    "y": 339
+   },
+   {
+    "kind": "contact",
+    "x0": 110,
+    "x1": 204,
+    "y": 353
+   },
+   {
+    "kind": "footprint",
+    "x0": 107,
+    "x1": 207,
+    "y": 350
+   },
+   {
+    "kind": "contact",
+    "x0": 213,
+    "x1": 238,
+    "y": 345
+   },
+   {
+    "kind": "contact",
+    "x0": 270,
+    "x1": 289,
+    "y": 350
+   }
+  ],
+  "banner-credits": [
+   {
+    "kind": "contact",
+    "x0": 70,
+    "x1": 91,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 93,
+    "x1": 114,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 217,
+    "x1": 234,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 235,
+    "x1": 250,
+    "y": 357
+   }
+  ],
+  "banner-community": [
+   {
+    "kind": "contact",
+    "x0": 58,
+    "x1": 81,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 123,
+    "x1": 149,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 209,
+    "x1": 226,
+    "y": 357
+   },
+   {
+    "kind": "contact",
+    "x0": 227,
+    "x1": 241,
+    "y": 357
+   }
+  ],
+  "social-welcome": [
+   {
+    "kind": "contact",
+    "x0": 75,
+    "x1": 94,
+    "y": 295
+   },
+   {
+    "kind": "contact",
+    "x0": 111,
+    "x1": 131,
+    "y": 295
+   },
+   {
+    "kind": "contact",
+    "x0": 162,
+    "x1": 177,
+    "y": 294
+   },
+   {
+    "kind": "raised",
+    "x0": 180,
+    "x1": 198,
+    "y": 294
+   }
+  ]
+ },
+ "layouts": [
+  {
+   "id": "avatar-plate",
+   "asset": "avatar",
+   "note": "The approved plate as it is: pale squircle with transparent corners.",
+   "background": null,
+   "elements": [
+    {
+     "type": "plate",
+     "size": 500,
+     "at": {
+      "left": 0,
+      "top": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar-tile",
+   "asset": "avatar",
+   "note": "The plate at 84% on a full-bleed lavender square.",
+   "background": "lavender",
+   "elements": [
+    {
+     "type": "plate",
+     "size": 420,
+     "at": {
+      "centerX": 250,
+      "centerY": 250
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar-fill",
+   "asset": "avatar",
+   "note": "The plate at full size on lavender, so the lavender shows only in its corners.",
+   "background": "lavender",
+   "elements": [
+    {
+     "type": "plate",
+     "size": 500,
+     "at": {
+      "left": 0,
+      "top": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "social-grove",
+   "asset": "social",
+   "note": "Social: the logo plaque at the left with the pair large on the right, the pair on the ground.",
+   "background": "pale",
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-social",
+     "step": 3,
+     "at": {
+      "left": -1,
+      "top": -1
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 4,
+     "widthCells": 177,
+     "heightCells": 93,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 40,
+      "centerY": 320
+     }
+    },
+    {
+     "type": "plate",
+     "size": 150,
+     "at": {
+      "left": 84,
+      "top": 168
+     },
+     "edge": {
+      "outline": {
+       "colour": "plum",
+       "width": 4
+      }
+     }
+    },
+    {
+     "type": "wordmark",
+     "size": 84,
+     "colour": "plum",
+     "line": "baseline",
+     "at": {
+      "left": 262,
+      "lineY": 296
+     }
+    },
+    {
+     "type": "bar",
+     "unit": 4,
+     "widthCells": 157,
+     "heightCells": 3,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 1
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 1,
+      "inset": 1
+     },
+     "at": {
+      "left": 80,
+      "top": 336
+     }
+    },
+    {
+     "type": "subtitle",
+     "lines": [
+      "A SillyTavern fork with a Bun runtime,",
+      "detailed human interface guidelines,",
+      "and modernised features!"
+     ],
+     "size": 34,
+     "colour": "quietPlum",
+     "align": "centre",
+     "at": {
+      "top": 362,
+      "centerX": 394
+     }
+    },
+    {
+     "type": "art",
+     "source": "social-welcome",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 1,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 56,
+      "top": 16
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 4,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-main-light",
+   "asset": "banner",
+   "note": "Main: the logo plate and the wordmark on one baseline, the pair large on the right.",
+   "background": "pale",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 151,
+     "heightCells": 75,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "plate",
+     "size": 280,
+     "at": {
+      "left": 193,
+      "top": 149
+     },
+     "edge": {
+      "outline": {
+       "colour": "plum",
+       "width": 8
+      }
+     }
+    },
+    {
+     "type": "wordmark",
+     "size": 140,
+     "colour": "plum",
+     "line": "baseline",
+     "at": {
+      "left": 521,
+      "lineY": 387
+     }
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 135,
+     "heightCells": 3,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 1
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 1,
+      "inset": 1
+     },
+     "at": {
+      "left": 184,
+      "top": 465
+     }
+    },
+    {
+     "type": "subtitle",
+     "lines": [
+      "A SillyTavern fork with a Bun runtime,",
+      "detailed human interface guidelines,",
+      "and modernised features!"
+     ],
+     "size": 42,
+     "colour": "quietPlum",
+     "align": "centre",
+     "at": {
+      "top": 517,
+      "centerX": 724
+     }
+    },
+    {
+     "type": "art",
+     "source": "banner-main",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 1,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-main-dark",
+   "asset": "banner",
+   "note": "Main: the logo plate and the wordmark on one baseline, the pair large on the right.",
+   "background": "night",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-night-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 151,
+     "heightCells": 75,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "panelDark",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "night",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "plate",
+     "size": 280,
+     "at": {
+      "left": 193,
+      "top": 149
+     }
+    },
+    {
+     "type": "wordmark",
+     "size": 140,
+     "colour": "pale",
+     "line": "baseline",
+     "at": {
+      "left": 521,
+      "lineY": 387
+     }
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 135,
+     "heightCells": 3,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 1
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 1,
+      "inset": 1
+     },
+     "at": {
+      "left": 184,
+      "top": 465
+     }
+    },
+    {
+     "type": "subtitle",
+     "lines": [
+      "A SillyTavern fork with a Bun runtime,",
+      "detailed human interface guidelines,",
+      "and modernised features!"
+     ],
+     "size": 42,
+     "colour": "quietPale",
+     "align": "centre",
+     "at": {
+      "top": 517,
+      "centerX": 724
+     }
+    },
+    {
+     "type": "art",
+     "source": "banner-main",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 0,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "logo",
+       "cells": 1
+      },
+      {
+       "colour": "panelDark",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "night",
+      "ornaments": [
+       "moon-dark",
+       "clover",
+       "carrot",
+       "moon-dark"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-features-light",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the left.",
+   "background": "pale",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true,
+     "mirror": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 165,
+     "heightCells": 42,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 1120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "features",
+     "palette": "light",
+     "unit": 8,
+     "at": {
+      "left": 1184,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "features",
+     "size": 112,
+     "colour": "plum",
+     "at": {
+      "left": 1340,
+      "centerY": 400
+     },
+     "maxWidth": 1100
+    },
+    {
+     "type": "art",
+     "source": "banner-features",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": -1,
+       "y": 0
+      }
+     },
+     "at": {
+      "left": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-features-dark",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the left.",
+   "background": "night",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-night-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true,
+     "mirror": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 165,
+     "heightCells": 42,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "panelDark",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "night",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 1120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "features",
+     "palette": "dark",
+     "unit": 8,
+     "at": {
+      "left": 1184,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "features",
+     "size": 112,
+     "colour": "pale",
+     "at": {
+      "left": 1340,
+      "centerY": 400
+     },
+     "maxWidth": 1100
+    },
+    {
+     "type": "art",
+     "source": "banner-features",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 0,
+       "y": 0
+      }
+     },
+     "at": {
+      "left": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "logo",
+       "cells": 1
+      },
+      {
+       "colour": "panelDark",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "night",
+      "ornaments": [
+       "moon-dark",
+       "clover",
+       "carrot",
+       "moon-dark"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-install-light",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the right.",
+   "background": "pale",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 142,
+     "heightCells": 42,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "install",
+     "palette": "light",
+     "unit": 8,
+     "at": {
+      "left": 184,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "install",
+     "size": 112,
+     "colour": "plum",
+     "at": {
+      "left": 340,
+      "centerY": 400
+     },
+     "maxWidth": 900
+    },
+    {
+     "type": "art",
+     "source": "banner-install",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 1,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 160,
+      "top": 26
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-install-dark",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the right.",
+   "background": "night",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-night-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 142,
+     "heightCells": 42,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "panelDark",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "night",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "install",
+     "palette": "dark",
+     "unit": 8,
+     "at": {
+      "left": 184,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "install",
+     "size": 112,
+     "colour": "pale",
+     "at": {
+      "left": 340,
+      "centerY": 400
+     },
+     "maxWidth": 900
+    },
+    {
+     "type": "art",
+     "source": "banner-install",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 0,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 160,
+      "top": 26
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "logo",
+       "cells": 1
+      },
+      {
+       "colour": "panelDark",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "night",
+      "ornaments": [
+       "moon-dark",
+       "clover",
+       "carrot",
+       "moon-dark"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-contributing-light",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the left.",
+   "background": "pale",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true,
+     "mirror": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 115,
+     "heightCells": 26,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 1520,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "contributing",
+     "palette": "light",
+     "unit": 4,
+     "at": {
+      "left": 1584,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "contributing",
+     "size": 112,
+     "colour": "plum",
+     "at": {
+      "left": 1676,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "art",
+     "source": "banner-contributing",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": -1,
+       "y": 0
+      }
+     },
+     "at": {
+      "left": 160,
+      "top": 26
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-contributing-dark",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the left.",
+   "background": "night",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-night-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true,
+     "mirror": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 115,
+     "heightCells": 26,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "panelDark",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "night",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 1520,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "contributing",
+     "palette": "dark",
+     "unit": 4,
+     "at": {
+      "left": 1584,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "contributing",
+     "size": 112,
+     "colour": "pale",
+     "at": {
+      "left": 1676,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "art",
+     "source": "banner-contributing",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 0,
+       "y": 0
+      }
+     },
+     "at": {
+      "left": 160,
+      "top": 26
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "logo",
+       "cells": 1
+      },
+      {
+       "colour": "panelDark",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "night",
+      "ornaments": [
+       "moon-dark",
+       "clover",
+       "carrot",
+       "moon-dark"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-credits-light",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the right.",
+   "background": "pale",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 77,
+     "heightCells": 23,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "credits",
+     "palette": "light",
+     "unit": 4,
+     "at": {
+      "left": 184,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "credits",
+     "size": 112,
+     "colour": "plum",
+     "at": {
+      "left": 276,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "art",
+     "source": "banner-credits",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 1,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-credits-dark",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the right.",
+   "background": "night",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-night-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 77,
+     "heightCells": 23,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "panelDark",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "night",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 120,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "credits",
+     "palette": "dark",
+     "unit": 4,
+     "at": {
+      "left": 184,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "credits",
+     "size": 112,
+     "colour": "pale",
+     "at": {
+      "left": 276,
+      "lineY": 400
+     }
+    },
+    {
+     "type": "art",
+     "source": "banner-credits",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 0,
+       "y": 0
+      }
+     },
+     "at": {
+      "right": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "logo",
+       "cells": 1
+      },
+      {
+       "colour": "panelDark",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "night",
+      "ornaments": [
+       "moon-dark",
+       "clover",
+       "carrot",
+       "moon-dark"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-community-light",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the left.",
+   "background": "pale",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-day-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true,
+     "mirror": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 121,
+     "heightCells": 42,
+     "layers": [
+      {
+       "colour": "plum",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "lavender",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "pale",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "cream",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 1472,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "community",
+     "palette": "light",
+     "unit": 8,
+     "at": {
+      "left": 1536,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "community",
+     "size": 112,
+     "colour": "plum",
+     "at": {
+      "left": 1692,
+      "centerY": 400
+     },
+     "maxWidth": 800
+    },
+    {
+     "type": "art",
+     "source": "banner-community",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": -1,
+       "y": 0
+      }
+     },
+     "at": {
+      "left": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "plum",
+       "cells": 1
+      },
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "pale",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "pale",
+      "ornaments": [
+       "moon",
+       "clover",
+       "carrot",
+       "moon"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "banner-community-dark",
+   "asset": "banner",
+   "note": "Grove: a plaque drawn like the frame holds the icon and the title; the pair on the left.",
+   "background": "night",
+   "height": 800,
+   "elements": [
+    {
+     "type": "backdrop",
+     "source": "backdrop-mansion-night-banner",
+     "step": 6,
+     "at": {
+      "left": -1,
+      "top": -2
+     },
+     "bleed": true,
+     "mirror": true
+    },
+    {
+     "type": "bar",
+     "unit": 8,
+     "widthCells": 121,
+     "heightCells": 42,
+     "layers": [
+      {
+       "colour": "lavender",
+       "inset": 0,
+       "notch": 2
+      },
+      {
+       "colour": "logo",
+       "inset": 1,
+       "notch": 1
+      },
+      {
+       "colour": "panelDark",
+       "inset": 2,
+       "notch": 0
+      },
+      {
+       "colour": "night",
+       "inset": 3,
+       "notch": 0
+      }
+     ],
+     "studs": {
+      "colour": "gold",
+      "cells": 2,
+      "inset": 4
+     },
+     "at": {
+      "left": 1472,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "icon",
+     "icon": "community",
+     "palette": "dark",
+     "unit": 8,
+     "at": {
+      "left": 1536,
+      "centerY": 400
+     }
+    },
+    {
+     "type": "title",
+     "title": "community",
+     "size": 112,
+     "colour": "pale",
+     "at": {
+      "left": 1692,
+      "centerY": 400
+     },
+     "maxWidth": 800
+    },
+    {
+     "type": "art",
+     "source": "banner-community",
+     "step": 2,
+     "shadow": {
+      "tint": "plum",
+      "bands": 3,
+      "inset": 4,
+      "strengths": {
+       "contact": 1,
+       "footprint": 0.6,
+       "raised": 0.5
+      },
+      "offset": {
+       "x": 0,
+       "y": 0
+      }
+     },
+     "at": {
+      "left": 160,
+      "top": 28
+     }
+    },
+    {
+     "type": "frame",
+     "unit": 8,
+     "layers": [
+      {
+       "colour": "lavender",
+       "cells": 1
+      },
+      {
+       "colour": "logo",
+       "cells": 1
+      },
+      {
+       "colour": "panelDark",
+       "cells": 1
+      }
+     ],
+     "boss": {
+      "cells": 13,
+      "notch": 3,
+      "outside": "night",
+      "ornaments": [
+       "moon-dark",
+       "clover",
+       "carrot",
+       "moon-dark"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

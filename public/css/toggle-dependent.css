@@ -30,11 +30,7 @@ body.hideChatAvatars .mesAvatarWrapper .avatar {
     display: none !important;
 }
 
-body.no-hotswap #CharListButtonAndHotSwaps .flex-container {
-    flex-wrap: nowrap;
-    align-items: flex-end;
-    flex-flow: row;
-}
+/* SillyBunny: #CharListButtonAndHotSwaps is a hidden transport (sillybunny-tabs.css), so the no-hotswap layout rule is gone. */
 
 body.hideChatAvatars .last_mes:not(.smallSysMes) {
     padding-bottom: 20px !important;
@@ -361,8 +357,8 @@ body.documentstyle #chat .mes .mesAvatarWrapper,
 body.documentstyle #chat .mes .mes_block .ch_name .name_text,
 body.documentstyle #chat .mes .mes_block .ch_name .timestamp,
 body.documentstyle #chat .mes .mes_block .ch_name .timestamp-icon,
-body.documentstyle #chat .mes .mes_block .ch_name .timestamp-model,
-body.documentstyle .mes:not(.last_mes) .ch_name .mes_buttons {
+body.documentstyle #chat .mes .mes_block .ch_name .timestamp-model {
+    /* SillyBunny: older rows' actions are in sillybunny-message-actions.css. */
     display: none !important;
 }
 
@@ -529,24 +525,9 @@ label[for="trim_spaces"]:not(:has(input:checked)) small {
     filter: brightness(0.5);
 }
 
-#bind_preset_to_connection:checked~.toggleOff {
-    display: none;
-}
-
-#bind_preset_to_connection:not(:checked)~.toggleOn {
-    display: none;
-}
-
+/* SillyBunny: the .toggleOn and .toggleOff rules are removed, no markup has those icons. */
 label[for="bind_preset_to_connection"]:has(input:checked) {
     color: var(--active);
-}
-
-#bind_preset_to_sampling:checked~.toggleOff {
-    display: none;
-}
-
-#bind_preset_to_sampling:not(:checked)~.toggleOn {
-    display: none;
 }
 
 label[for="bind_preset_to_sampling"]:has(input:checked) {
@@ -584,23 +565,7 @@ label[for="model_sampling_profiles_enabled"]:has(input:checked)~#model_sampling_
     color: var(--golden);
 }
 
-#advanced-formatting-cc-notice {
-    display: none;
-    gap: 5px;
-    align-items: baseline;
-    margin: 5px 0;
-    padding: 5px 10px;
-}
-
-#AdvancedFormatting.sb-chat-completion-mode #advanced-formatting-cc-notice {
-    display: flex;
-}
-
 #AdvancedFormatting.sb-chat-completion-mode [data-cc-null]:not([data-cc-chat-completion-visible]) {
-    display: none !important;
-}
-
-#AdvancedFormatting.sb-chat-completion-mode #sb-af-instruct {
     display: none !important;
 }
 

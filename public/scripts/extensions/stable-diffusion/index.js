@@ -27,6 +27,8 @@ import {
     writeExtensionField,
 } from '../../extensions.js';
 import { selected_group } from '../../group-chats.js';
+// SillyBunny: adopt prompt review fields into the scrolling dialog body.
+import { utilityFormOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
 import {
     clamp,
     debounce,
@@ -65,6 +67,7 @@ import { MacrosParser } from '/scripts/macros.js';
 import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 // SillyBunny: expose the configured provider without borrowing the active roleplay chat.
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
+import { adoptImageGenerationSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the swap button and the style picker get rows.
 import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
 
 export { MODULE_NAME };
@@ -842,16 +845,21 @@ async function refinePrompt(prompt, args = null) {
             });
         }
 
+        // SillyBunny: Popup still owns prompt results and optional custom inputs.
+        const dialogOptions = utilityFormOptions({ mainLabel: t`Prompt` });
         const refinedPrompt = await Popup.show.input(
             t`Review and edit the prompt:`,
             t`Press "Cancel" to abort the image generation.`,
             prompt.trim(),
             {
+                ...dialogOptions,
                 rows: 8,
                 okButton: t`Continue`,
                 cancelButton: t`Cancel`,
                 customInputs,
                 onClose: (popup) => {
+                    // SillyBunny: release row IDs while retaining the original prompt/result handling.
+                    dialogOptions.onClose(popup);
                     if (!popup.result || !(popup.inputResults instanceof Map) || !args) {
                         return;
                     }
@@ -4813,7 +4821,11 @@ async function onComfyOpenWorkflowEditorClick() {
         workflow = $('#sd_comfy_workflow_editor_workflow').val().toString();
         return true;
     };
-    const popup = new Popup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Save', cancelButton: 'Cancel', wide: true, large: true, onClosing: saveValue });
+    // SillyBunny: the JSON editor owns its scroll, so the Window body must not scroll it again.
+    const popup = new Popup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Save', cancelButton: 'Cancel', wide: true, large: true, tier: 'window', onClosing: saveValue });
+    popup.dlg.classList.add('sd-comfy-workflow-window');
+    // SillyBunny: the workflow JSON is a document, so its Window body uses the View surface.
+    popup.dlg.classList.add('sb-document');
     const popupResult = popup.show();
     const checkPlaceholders = () => {
         workflow = $('#sd_comfy_workflow_editor_workflow').val().toString();
@@ -5071,8 +5083,14 @@ async function addSDGenButtons() {
     const dropdown = $('#sd_dropdown');
     dropdown.hide();
 
+    // SillyBunny: the drop-down opens beside the wand menu row that opens it, so it never covers the menu's rows.
     let popper = Popper.createPopper(button.get(0), dropdown.get(0), {
-        placement: 'top',
+        placement: 'right-start',
+        modifiers: [
+            { name: 'offset', options: { offset: [-6, 10] } },
+            { name: 'flip', options: { fallbackPlacements: ['left-start', 'right-end', 'left-end'] } },
+            { name: 'preventOverflow', options: { altAxis: true, padding: 8 } },
+        ],
     });
 
     $(document).on('click', '.sd_message_gen', (e) => sdMessageButton($(e.currentTarget), { animate: false }));
@@ -5841,6 +5859,7 @@ export async function init() {
 
     const template = await renderExtensionTemplateAsync('stable-diffusion', 'settings', defaultSettings);
     $('#sd_container').append(template);
+    adoptImageGenerationSettings($('#sd_container')[0]); // SillyBunny: the swap button and the style picker get rows.
     $('#sd_source').on('change', onSourceChange);
     $('#sd_scale').on('input', onScaleInput);
     $('#sd_steps').on('input', onStepsInput);
