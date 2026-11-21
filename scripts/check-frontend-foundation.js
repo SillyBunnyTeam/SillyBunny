@@ -2,34 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { run, runNpm } from './lib/npm-launcher.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testsRoot = path.join(repoRoot, 'tests');
 const webkitImage = process.env.SB_FOUNDATION_WEBKIT_IMAGE || 'mcr.microsoft.com/playwright:v1.60.0-noble';
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function hasCommand(command, args = ['--version']) {
     return spawnSync(command, args, { cwd: repoRoot, stdio: 'ignore' }).status === 0;
 }
 
-function run(command, args, { cwd = repoRoot, env = process.env } = {}) {
-    const result = spawnSync(command, args, {
-        cwd,
-        env: { ...env },
-        stdio: 'inherit',
-    });
-
-    if (result.error) {
-        throw result.error;
-    }
-
-    if (result.status !== 0) {
-        throw new Error(`${command} ${args.join(' ')} exited with status ${result.status ?? 'unknown'}`);
-    }
-}
-
 function runChromium(runtime) {
-    const command = runtime === 'bun' ? 'bun' : npmCommand;
     const args = runtime === 'bun'
         ? [
             'node_modules/@playwright/test/cli.js',
@@ -40,10 +23,15 @@ function runChromium(runtime) {
         ]
         : ['run', 'test:foundation', '--', '--project=chromium-*'];
 
-    run(command, args, {
+    const options = {
         cwd: testsRoot,
         env: { ...process.env, SB_UI_TEST_RUNTIME: runtime, SB_UI_ARTIFACTS: `test-results/foundation-gate-${runtime}` },
-    });
+    };
+    if (runtime === 'bun') {
+        run('bun', args, options);
+    } else {
+        runNpm(args, options);
+    }
 }
 
 function runWebKit() {
@@ -66,14 +54,14 @@ function runWebKit() {
         'node_modules/.bin/playwright', 'test',
         '--config', 'playwright.foundation.config.js',
         '--project=webkit-*',
-    ]);
+    ], { cwd: repoRoot });
 }
 
 function runGate() {
-    run(npmCommand, ['run', 'check:frontend-contracts']);
-    run(npmCommand, ['run', 'lint']);
-    run(npmCommand, ['run', 'check:frontend-budgets']);
-    run(npmCommand, ['--prefix', 'tests', 'run', 'test:unit', '--', '--runInBand']);
+    runNpm(['run', 'check:frontend-contracts'], { cwd: repoRoot });
+    runNpm(['run', 'lint'], { cwd: repoRoot });
+    runNpm(['run', 'check:frontend-budgets'], { cwd: repoRoot });
+    runNpm(['--prefix', 'tests', 'run', 'test:unit', '--', '--runInBand'], { cwd: repoRoot });
     runChromium('node');
 
     if (!hasCommand('bun')) {
