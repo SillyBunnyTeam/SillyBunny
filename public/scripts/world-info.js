@@ -19,6 +19,7 @@ import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCom
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { getWorldInfoExportText } from './sillybunny-world-info-export.js'; // SillyBunny: gives an exported lorebook the original URLs of imported media.
 import { StructuredCloneMap } from './util/StructuredCloneMap.js';
 import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
@@ -2873,9 +2874,10 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         }
     });
 
-    $('#world_popup_export').off('click').on('click', () => {
+    // SillyBunny: the handler is async because the export text comes from the server.
+    $('#world_popup_export').off('click').on('click', async () => {
         if (name && data) {
-            const jsonValue = JSON.stringify(data);
+            const jsonValue = await getWorldInfoExportText(data);
             const fileName = `${name}.json`;
             download(jsonValue, fileName, 'application/json');
         }
@@ -6927,6 +6929,8 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
         return returnResult ? failed(t`Failed to import World Info`) : false;
     }
     formData.set('name', persistedWorldName);
+    // SillyBunny: pass the user's external media import setting explicitly to avoid stale persisted settings races.
+    formData.set('import_external_media', power_user.import_external_media ? 'true' : 'false');
     const releaseSaveBlock = blockWorldInfoSaves(persistedWorldName);
     let saveTarget = persistedWorldName;
     let importedName;
@@ -6959,7 +6963,9 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
 
         if (data.name) {
             importedName = data.name;
-            importedData = cloneWorldInfoData(formData.has('convertedData') ? JSON.parse(String(formData.get('convertedData'))) : jsonData, new Map());
+            // SillyBunny: when the server rewrites imported media URLs, cache the server's updated World Info payload.
+            const sourceWorldData = data.data ?? (formData.has('convertedData') ? JSON.parse(String(formData.get('convertedData'))) : jsonData);
+            importedData = cloneWorldInfoData(sourceWorldData, new Map());
             worldInfoCommittedEntryInstances.set(data.name, worldInfoEntryInstances.get(importedData));
             invalidateWorldInfoCache(data.name);
             worldInfoCache.set(data.name, importedData);

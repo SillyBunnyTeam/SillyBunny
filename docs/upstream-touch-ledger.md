@@ -1176,6 +1176,48 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 route input types and errors. |
 | Owner | Server and data compatibility integrator. |
 
+### `src/endpoints/characters.js`, `src/endpoints/worldinfo.js`, `public/script.js`, `public/scripts/world-info.js`, `public/scripts/power-user.js`, `public/index.html`, and `default/config.yaml` - external media download on import
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`, `src/endpoints/worldinfo.js`, `public/script.js`, `public/scripts/world-info.js`, `public/scripts/power-user.js`, `public/index.html`, `default/config.yaml`. |
+| Area | Character card and World Info / lorebook import (`POST /api/characters/import`, `POST /api/worldinfo/import`), their export (`POST /api/characters/export`, `POST /api/worldinfo/export` and the lorebook export button), the server config key `allowExternalMediaImport` and Character Handling settings. |
+| Divergence reason | SillyBunny lets a user save the external images that an imported card or lorebook links to the `user/images/<folder>/` folder of that user, so the images stay when the host removes them. SillyTavern leaves every URL as it is. The original URL of each stored file goes into a manifest in the same folder, so an exported card or lorebook carries the URLs of its author and not paths that exist on one install only. |
+| Target seam | `src/external-media-import.js` for the download and `src/external-media-manifest.js` for the manifest, the export and Data Maid; `public/scripts/sillybunny-world-info-export.js` for the lorebook export request. |
+| Adapter shape | `importFromYaml()`, `importFromCharX()`, `importFromByaf()`, `importFromJson()` and `importFromPng()` in `src/endpoints/characters.js` call `localizeCharacterExternalMedia()` before persisting the card (and before writing BYAF scenario chats). `POST /import` in `src/endpoints/worldinfo.js` is `async`, calls `localizeWorldInfoExternalMedia()`, writes the updated JSON when external URLs were replaced, and returns `{ name, data }` so `importWorldInfo()` in `public/scripts/world-info.js` caches the rewritten payload. `POST /export` in `src/endpoints/characters.js` calls `restoreExternalMediaUrls()` on the parsed card of the `png` and `json` formats, so only the exported copy changes. `POST /export` in `src/endpoints/worldinfo.js` takes `{ data }` and answers the same data with the original URLs restored. The `#world_popup_export` handler in `public/scripts/world-info.js` is `async` and gets its export text from `getWorldInfoExportText()`. `public/index.html` and `public/scripts/power-user.js` bind `power_user.import_external_media` (default `false`), and `importCharacter()` in `public/script.js` and `importWorldInfo()` in `public/scripts/world-info.js` pass `import_external_media` (`'true'` or `'false'`) on the import form. That field is the only way to turn the download on for an import. `default/config.yaml` has the key `allowExternalMediaImport` (default `true`), and `false` forbids the download for every user. `addMissingConfigValues()` adds the key to an existing `config.yaml`. |
+| Protecting tests | `tests/external-media-import.test.js`, `tests/world-info-save.test.js`, `tests/world-info-export-media.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- external-media-import.test.js world-info-save.test.js world-info-export-media.test.js world-info-endpoint-utils.test.js character-archive-assets.test.js`, `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`. |
+| Rollback path | Remove the `localizeCharacterExternalMedia()` calls in the five import functions, the `localizeWorldInfoExternalMedia()` call in `POST /import` of `src/endpoints/worldinfo.js`, the `restoreExternalMediaUrls()` calls and imports in the two `POST /export` routes, the `getWorldInfoExportText()` import and call in `public/scripts/world-info.js`, the `import_external_media` form fields, the settings binding, and the `allowExternalMediaImport` key in `default/config.yaml`. Then remove `src/external-media-import.js`, `src/external-media-manifest.js` and `public/scripts/sillybunny-world-info-export.js` when no other entry names them. Files that imports already stored stay in `user/images/<folder>/` together with their `.external-media.json`, and the cards and lorebooks that were imported keep their local paths. |
+| Last reviewed | 2026-11-21 PR `#1002` review fixes (issue `#952` external media import). |
+| Owner | Server and data compatibility integrator. |
+
+### `src/endpoints/data-maid.js` - external media that an import stored
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/data-maid.js`. |
+| Area | The loose image list of the Data Maid report (`#collectImages()`). |
+| Divergence reason | Data Maid treats a file under `user/images/` as known only when a chat message names it. A file that an external media import stored is named by the text of a character card or a lorebook, so SillyTavern's check would offer it for deletion while the card still points to it. |
+| Target seam | `src/external-media-manifest.js`. |
+| Adapter shape | `#collectImages()` calls `getKeptExternalMediaPaths()` once and skips each file of a subfolder that the result holds. The result holds each `.external-media.json` and each file that the manifest of its folder lists while a card in the characters folder or a lorebook in the worlds folder names its local URL. When a card or a lorebook cannot be read, it holds every listed file. A user without a manifest costs one folder listing and no card is read. |
+| Protecting tests | `tests/data-maid-external-media.test.js`, `tests/data-maid-fonts.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- data-maid-external-media.test.js data-maid-fonts.test.js`, `npm run lint`. |
+| Rollback path | Remove the import, the `getKeptExternalMediaPaths()` call and its condition in `#collectImages()`. No stored data or settings change; Data Maid then lists the stored files as loose again. |
+| Last reviewed | 2026-11-21 PR `#1002` review fixes. |
+| Owner | Server and data compatibility integrator. |
+
+### `src/users.js` - headers of the stored images route
+| Field | Value |
+| --- | --- |
+| File | `src/users.js`. |
+| Area | The route `/user/images/*` that serves the files of a user's image folder. |
+| Divergence reason | The file server that Express uses has no content type for `.avif` and `.jfif`, so it answers `application/octet-stream`, and the `X-Content-Type-Options` header comes only from the global middleware. Files that an import stores come from outside, so the route sets both itself. |
+| Target seam | `src/stored-media-headers.js`. |
+| Adapter shape | `router.use('/user/images/*', ...)` runs `setStoredMediaHeaders()` before `createRouteHandler()`. It sets `X-Content-Type-Options: nosniff` and, for `.avif` and `.jfif`, the types `image/avif` and `image/jpeg`. Every other extension keeps the type that the file server gives it. The route sets no `Content-Security-Policy`, because Chromium does not load audio or video that is opened directly or in a frame when that header has `sandbox`. |
+| Protecting tests | `tests/user-images-route.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- user-images-route.test.js`, `npm run lint`. |
+| Rollback path | Remove the import of `setStoredMediaHeaders()` and the middleware argument of the `/user/images/*` route. `.avif` and `.jfif` files are then served as `application/octet-stream` again. No stored data or settings change. |
+| Last reviewed | 2026-11-21 PR `#1002` review fixes. |
+| Owner | Server and data compatibility integrator. |
+
 ### `src/endpoints/sprites.js` - sprite file types
 | Field | Value |
 | --- | --- |
@@ -2669,6 +2711,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | In `openai.js`, remove the `parameters` option, `parametersToApply` and its two uses from `setCustomEndpointPreset()`, the `parameters:` argument of the dropdown change, Save, Delete and `/custom-endpoint-profile` calls, the `pickCustomEndpointParameters(oai_settings)` spread in the Save handler, the `fillMissingCustomEndpointParameters()` call in `loadCustomEndpointPresets()`, `selectionChanged` and the two `Object.assign(oai_settings, ...)` calls in `syncCustomEndpointPresetSelectionBySecretId()`, and both imports. Replace `writeCustomEndpointParameter()`, `bindCustomEndpointParameterFields()` and its call with the three upstream `input` handlers, which write `oai_settings` and call `saveSettingsDebounced()`. In `shared.js`, remove the marked import changes and the marked call in `getChatCompletionProfileRequestOverrides()`. In `openai-preset-utils.js`, remove `CUSTOM_ENDPOINT_PARAMETER_KEYS`, `pickCustomEndpointParameters()`, `fillMissingCustomEndpointParameters()`, `getCustomEndpointProfileRequestOverrides()`, its field map and the two parameter spreads in `normalizeCustomEndpointPreset()`. Restore the Endpoint Profiles description in `index.html`. Then drop the new tests named under Protecting tests, and restore the changed expectations: the None profile in `tests/openai-preset-utils.test.js`, and the description and the `/custom-endpoint-profile` call in `tests/openai-proxy-preset-wiring.test.js`. Saved data: `normalizeCustomEndpointPreset()` without the spreads builds each profile from its five fields, so it drops the three keys at load, and the next settings save removes them. The live Additional Parameters stay as they were last applied. A value that only an endpoint profile other than the selected one holds is lost. |
 | Last reviewed | 2026-11-21, PR #1006. |
 | Owner | Preset/API sync owner. |
+
+### `src/private-request-filter.js` - addresses that reach a private host in another form
+| Field | Value |
+| --- | --- |
+| File | `src/private-request-filter.js` |
+| Area | Outbound request filtering (SSRF protection). |
+| Divergence reason | Upstream's private ranges hold loopback, the private networks and link-local, and compare the address as written. A connection to an unspecified address (`0.0.0.0`, `::`) reaches a service on the server's own host, and an IPv4-mapped IPv6 address (`::ffff:127.0.0.1`) reaches the IPv4 host that it names, so both passed the filter and the strict agent of untrusted requests. SillyBunny blocks them as it blocks the plain form. |
+| Target seam | `src/private-address-forms.js` (`unmapIpv4Address()`). |
+| Adapter shape | One import, two added ranges (`0.0.0.0/8`, `::/128`) in `privateIpRanges`, and one `unmapIpv4Address()` call each in `#isPrivateIp()` and `#isAllowedPrivateAddress()`, each under a marker. The socket still connects to the address as resolved. |
+| Protecting tests | `tests/private-request-filter.test.js` (`addresses that reach this host or a private host in another form`); `tests/search-visit.test.js`. |
+| Validation | 2026-11-21: root and `tests/` lint, the two test files, and a live probe under Node.js 24.22.2 and Bun 1.4.4 (a dual-stack loopback server was reached through `0.0.0.0`, `::` and `::ffff:127.0.0.1` before the change and through none of them after it). |
+| Rollback path | Remove the import, the two ranges and the two `unmapIpv4Address()` calls from `src/private-request-filter.js`, then delete `src/private-address-forms.js` and the test block. No setting or stored data changes: `privateAddressWhitelist` keeps its format, and a whitelisted IPv4 host stays allowed in its mapped form. |
+| Last reviewed | 2026-11-21, open pull request audit (security audit of #1002). |
+| Owner | Server runtime integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?

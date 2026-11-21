@@ -7,6 +7,7 @@ import { getSettingsBackupFilePrefix } from './settings.js';
 import { CHAT_BACKUPS_PREFIX } from './chats.js';
 import { isPathUnderParent, recoverFileWriteSync, tryParse } from '../util.js';
 import { SETTINGS_FILE } from '../constants.js';
+import { getKeptExternalMediaPaths } from '../external-media-manifest.js';
 
 const sha256 = str => crypto.createHash('sha256').update(str).digest('hex');
 
@@ -213,6 +214,8 @@ export class DataMaidService {
                 }
                 knownImageFullPaths.add(path.normalize(path.join(this.directories.root, image)));
             });
+            // SillyBunny: a file that an external media import stored is named by card and lorebook text, which the chat scan above cannot see.
+            const keptExternalMedia = await getKeptExternalMediaPaths(this.directories);
             const images = await fs.promises.readdir(this.directories.userImages, { withFileTypes: true });
             for (const dirent of images) {
                 const direntPath = path.join(dirent.parentPath, dirent.name);
@@ -223,7 +226,7 @@ export class DataMaidService {
                     const subdirFiles = await fs.promises.readdir(direntPath, { withFileTypes: true });
                     for (const file of subdirFiles) {
                         const subdirFilePath = path.join(direntPath, file.name);
-                        if (file.isFile() && !knownImageFullPaths.has(subdirFilePath)) {
+                        if (file.isFile() && !knownImageFullPaths.has(subdirFilePath) && !keptExternalMedia.has(subdirFilePath)) {
                             result.push(subdirFilePath);
                         }
                     }

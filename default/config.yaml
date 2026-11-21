@@ -330,6 +330,9 @@ whitelistImportDomains:
   - cdn.discordapp.com
   - files.catbox.moe
   - raw.githubusercontent.com
+# Allow users to save the external images of imported cards and lorebooks to their own image folder.
+# Set to false to forbid it for every user, whatever their setting.
+allowExternalMediaImport: true
 # API request overrides (for KoboldAI and Text Completion APIs)
 ## Note: host includes the port number if it's not the default (80 or 443)
 ## Format is an array of objects:
