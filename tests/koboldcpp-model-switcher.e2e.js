@@ -368,11 +368,13 @@ test.describe('KoboldCpp model switcher controls on a phone', () => {
         expect((await result).pipe).toBe('');
     });
 
-    test('the Chat Completion model select has the same accessible name and description', async ({ page, baseURL }) => {
+    test('the Chat Completion model row has the same accessible name and description, and its hint sits in the Model group', async ({ page, baseURL }) => {
         await connectKoboldCpp(page, baseURL, 'chat');
 
-        const select = page.locator('#koboldcpp_chat_model');
-        await expect(select).toHaveAccessibleName('KoboldCpp Model');
-        await expect(select).toHaveAccessibleDescription('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+        const trigger = page.getByRole('button', { name: 'KoboldCpp Model alpha.gguf' });
+        await expect(trigger).toHaveAccessibleDescription(MODEL_HINT);
+
+        const modelGroup = page.locator('[data-sb-connections-group="model"]:has(#koboldcpp_chat_model)');
+        await expect(modelGroup.locator('.ds-select-row:has(#koboldcpp_chat_model) ~ * #koboldcpp_chat_model_hint')).toBeVisible();
     });
 });
