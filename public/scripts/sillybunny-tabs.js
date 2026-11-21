@@ -34,6 +34,7 @@ import { createButtonRow, createEntryRow, createExpanderRow, createRow, createSw
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { bindRovingFocus } from './sillybunny-editor/list-focus.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
+import { presentMarkdownEngineRow } from './sillybunny-markdown-engine-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
     animateIn,
@@ -11081,6 +11082,8 @@ function buildShell(shellKey) {
         };
         basePanel.connectionsPanel = connectionsPanel;
     } else if (shellKey === 'right') {
+        // The toggle row replaces the raw select before any settings pass can turn the select into a drop-down row.
+        presentMarkdownEngineRow(originalContent);
         userSettingsSplit = splitUserSettingsContent(originalContent);
 
         if (userSettingsSplit) {
