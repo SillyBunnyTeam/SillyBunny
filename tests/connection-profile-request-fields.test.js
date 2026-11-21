@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const mockOpenAiSettings = {};
 const mockProxies = [];
+const mockEndpointProfiles = [];
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     CONNECT_API_MAP: {
@@ -11,6 +12,7 @@ await jest.unstable_mockModule('../public/script.js', () => ({
         'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
         openai: { selected: 'openai', source: 'openai' },
         pollinations: { selected: 'openai', source: 'pollinations' },
+        custom: { selected: 'openai', source: 'custom' },
     },
     createModelIcon: jest.fn(),
     getRequestHeaders: jest.fn(() => ({})),
@@ -29,6 +31,8 @@ await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
+    chat_completion_sources: { CUSTOM: 'custom' },
+    custom_endpoint_presets: mockEndpointProfiles,
     oai_settings: mockOpenAiSettings,
     proxies: mockProxies,
     ZAI_ENDPOINT: {
@@ -125,6 +129,7 @@ beforeEach(() => {
         delete mockOpenAiSettings[key];
     }
     mockProxies.splice(0, mockProxies.length);
+    mockEndpointProfiles.splice(0, mockEndpointProfiles.length);
 });
 
 test('service tiers stay scoped to the profile or its bound preset, including explicit Default', () => {
@@ -328,6 +333,53 @@ describe('reasoning settings from the profile preset', () => {
         expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Empty Preset' }, {}).overrides).toEqual({});
         expect(getChatCompletionProfileRequestOverrides({ ...base, preset: 'Missing Preset' }, {}).overrides).toEqual({});
         expect(getChatCompletionProfileRequestOverrides(base, {}).overrides).toEqual({});
+    });
+});
+
+describe('Additional Parameters from the Custom endpoint profile', () => {
+    const base = { id: 'profile-custom', mode: 'cc', name: 'Custom Profile', api: 'custom', model: 'local-model', 'custom-endpoint-profile': 'Local' };
+
+    beforeEach(() => {
+        mockEndpointProfiles.push(
+            { name: 'None', url: '', key: '', model: '', secretId: '' },
+            { name: 'Local', url: 'http://127.0.0.1:5000/v1', model: 'local-model', secretId: 'local-id', custom_include_body: '  top_k: 20\n', custom_exclude_body: '', custom_include_headers: 'X-Title: Story' },
+            { name: 'Legacy', url: 'http://127.0.0.1:5001/v1', model: 'legacy-model', secretId: 'legacy-id' },
+        );
+    });
+
+    test('a profile that records none uses the ones its endpoint profile stores', () => {
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(base, {});
+
+        expect(overrides).toEqual({ custom_include_body: '  top_k: 20\n', custom_exclude_body: '', custom_include_headers: 'X-Title: Story' });
+        expect(profileFieldNames).toEqual(['custom_include_body', 'custom_exclude_body', 'custom_include_headers']);
+    });
+
+    test('a value on the profile and a value the caller sends win over the endpoint profile', () => {
+        const profile = { ...base, 'custom-include-body': 'min_p: 0.1' };
+
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(profile, { custom_include_headers: 'X-Caller: 1' });
+
+        expect(overrides).toEqual({ custom_include_body: 'min_p: 0.1', custom_exclude_body: '' });
+        expect(profileFieldNames).not.toContain('custom_include_headers');
+    });
+
+    test('None sends empty values, as applying the profile clears them', () => {
+        const { overrides } = getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': 'None' }, {});
+
+        expect(overrides).toEqual({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+    });
+
+    test('a missing endpoint profile and one that stores none send nothing extra', () => {
+        for (const name of ['Deleted', 'Legacy', undefined]) {
+            expect(getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': name }, {}).overrides).toEqual({});
+        }
+    });
+
+    test.each(['openai', 'nanogpt', 'openrouter-text', 'not-an-api'])('a profile of the %s API that holds a stale endpoint profile name sends nothing extra', api => {
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides({ ...base, api }, {});
+
+        expect(overrides).toEqual({});
+        expect(profileFieldNames).toEqual([]);
     });
 });
 

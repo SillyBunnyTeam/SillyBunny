@@ -1258,11 +1258,15 @@
                 "how to connect",
                 "not connecting",
                 "cant connect",
-                "can't connect"
+                "can't connect",
+                "endpoint profile",
+                "endpoint profiles",
+                "custom endpoint profile",
+                "additional parameters"
             ],
             "keysecondary": [],
             "comment": "A28 Backend ▸ Connections",
-            "content": "Backend ▸ Connections is the first Backend tab: \"Configure the model backend for all AI character responses. We recommend OpenRouter if you're unsure.\" Groups: \"Connection Profile\" (all-in-one saved setups), \"Backend\" and \"General\". In Backend, the Backend Type toggle offers Chat Completions, Text Completions and Other (NovelAI, AI Horde, KoboldAI Classic), then a Source picker. Provider blocks have Connection (API key and test), Model, Providers and Advanced sections. Other labels: Status, \"Auto-connect to Last Server\", \"View Hidden API Keys\", \"Custom Model\", \"Reveal API Key\". A masked key field shows a \"Caps Lock On\" icon while it has focus and Caps Lock is on. Home ▸ Getting Started ▸ \"Connect a Model\" ▸ Show Me opens this tab. The Help icon here links to SillyTavern's connection profile docs.",
+            "content": "Backend ▸ Connections is the first Backend tab: \"Configure the model backend for all AI character responses. We recommend OpenRouter if you're unsure.\" Groups: \"Connection Profile\" (all-in-one saved setups), \"Backend\" and \"General\". In Backend, the Backend Type toggle offers Chat Completions, Text Completions and Other (NovelAI, AI Horde, KoboldAI Classic), then a Source picker. Provider blocks have Connection (API key and test), Model, Providers and Advanced sections. Other labels: Status, \"Auto-connect to Last Server\", \"View Hidden API Keys\", \"Custom Model\", \"Reveal API Key\". A masked key field shows a \"Caps Lock On\" icon while it has focus and Caps Lock is on. Home ▸ Getting Started ▸ \"Connect a Model\" ▸ Show Me opens this tab. The Help icon here links to SillyTavern's connection profile docs. With the Custom (OpenAI-compatible) source, the \"Custom Endpoint Profiles\" expander holds \"Endpoint Profiles\": named sets of a URL, an API key, a model ID and the Additional Parameters (extra body fields, excluded body fields and headers, set with the \"Additional Parameters\" button in Advanced). Choosing a profile applies what it stores, and None clears the fields. An edit of the Additional Parameters is kept with the selected profile; \"Save Custom Endpoint Profile\" stores the current URL, key, model and parameters under the profile name, and \"Delete Custom Endpoint Profile\" removes the profile. A connection profile's own Additional Parameters still take priority over those of its endpoint profile.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
