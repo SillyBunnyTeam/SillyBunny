@@ -9755,21 +9755,32 @@ function onProxyAccessKeyShowClick() {
     $(this).toggleClass('fa-eye-slash fa-eye');
 }
 
+// SillyBunny: the live Additional Parameters belong to the selected endpoint profile. An edit goes to both, so the
+// next settings save stores it and selecting the profile again brings it back. None stores no edit of its own, so with
+// None selected the live settings are the only store.
+function writeCustomEndpointParameter(parameterKey, value) {
+    oai_settings[parameterKey] = value;
+
+    if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== 'None') {
+        selected_custom_endpoint_preset[parameterKey] = value;
+    }
+}
+
 async function onCustomizeParametersClick() {
     const template = $(await renderTemplateAsync('customEndpointAdditionalParameters'));
 
     template.find('#custom_include_body').val(oai_settings.custom_include_body).on('input', function () {
-        oai_settings.custom_include_body = String($(this).val());
+        writeCustomEndpointParameter('custom_include_body', String($(this).val())); // SillyBunny: also stored with the selected endpoint profile.
         saveSettingsDebounced();
     });
 
     template.find('#custom_exclude_body').val(oai_settings.custom_exclude_body).on('input', function () {
-        oai_settings.custom_exclude_body = String($(this).val());
+        writeCustomEndpointParameter('custom_exclude_body', String($(this).val())); // SillyBunny: also stored with the selected endpoint profile.
         saveSettingsDebounced();
     });
 
     template.find('#custom_include_headers').val(oai_settings.custom_include_headers).on('input', function () {
-        oai_settings.custom_include_headers = String($(this).val());
+        writeCustomEndpointParameter('custom_include_headers', String($(this).val())); // SillyBunny: also stored with the selected endpoint profile.
         saveSettingsDebounced();
     });
 

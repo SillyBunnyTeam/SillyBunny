@@ -16,6 +16,8 @@ const changeSource = source.match(/async function onCustomEndpointPresetChange\(
 const loadSource = source.match(/export async function loadCustomEndpointPresets\(settings\) \{[\s\S]*?\n\}/)[0].replace('export ', '');
 const deleteSource = source.match(/\$\('#delete_custom_endpoint'\)\.on\('click', async function \(\) \{[\s\S]*?\n\}\);/)[0];
 const slashCommandSource = source.match(/async function runCustomEndpointPresetCallback\([\s\S]*?\n\}/)[0];
+const popupSource = ['writeCustomEndpointParameter', 'onCustomizeParametersClick']
+    .map(name => source.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`))[0]).join('\n');
 const scriptSource = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const saverSource = ['saveSettings', 'saveSettingsInner', 'normalizeSettingsVersion']
     .map(name => scriptSource.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`))[0]).join('\n');
@@ -44,6 +46,32 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
     const secretState = { [keys.CUSTOM]: [{ id: 'unrelated-active-id', active: true }] };
     let persistedSettings;
     const clickHandlers = new Map();
+    // The Additional Parameters dialog exists only while it is open, so its fields are kept apart from the page's `$` selectors.
+    const popupValues = new Map();
+    const popupHandlers = new Map();
+    const popupFields = new Map();
+    const popupTemplate = {
+        find(selector) {
+            if (!popupFields.has(selector)) {
+                popupFields.set(selector, {
+                    val(...args) {
+                        if (args.length === 0) return popupValues.get(selector) ?? '';
+                        popupValues.set(selector, args[0] ?? '');
+                        return this;
+                    },
+                    on(event, handler) {
+                        popupHandlers.set(`${selector}:${event}`, handler);
+                        return this;
+                    },
+                    toggle() {
+                        return this;
+                    },
+                });
+            }
+            return popupFields.get(selector);
+        },
+    };
+    let closePopup;
     const context = {
         ...Object.fromEntries([
             'firstRun', 'currentVersion', 'name1', 'active_character', 'active_group', 'user_avatar',
@@ -89,7 +117,14 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         appendCustomEndpointPresetOption: jest.fn(),
         getCustomEndpointPresetOption: () => ({ remove() {} }),
         rotateSecret: jest.fn(async () => {}),
-        $: selector => ({
+        renderTemplateAsync: async () => popupTemplate,
+        callGenericPopup: () => new Promise(resolve => { closePopup = resolve; }),
+        POPUP_TYPE: { TEXT: 1 },
+        customEndpointParametersOptions: () => ({}),
+        custom_reasoning_param_formats: { OPENAI: 'openai', STRING: 'string', THINKING_OBJECT: 'thinking_object' },
+        custom_reasoning_preset_types: { CUSTOM: 'custom' },
+        setCustomReasoningPreset: jest.fn(),
+        $: selector => typeof selector === 'object' ? selector : ({
             find() {
                 return this;
             },
@@ -125,12 +160,28 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         isTemporaryChat: () => false,
         getStatusOpen: jest.fn(async () => context.selected_custom_endpoint_preset?.secretId),
     };
-    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${loadSource}\n${slashCommandSource}\n${saveSource}\n${deleteSource}`, context);
+    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${loadSource}\n${slashCommandSource}\n${saveSource}\n${deleteSource}\n${popupSource}`, context);
     return {
         context,
         profile,
         values,
         attributes,
+        // Opens the dialog and returns its fields. Typing runs the field's `input` handler on the text that the field holds.
+        openPopup: async () => {
+            const opened = context.onCustomizeParametersClick();
+            await new Promise(resolve => setImmediate(resolve));
+            return {
+                text: parameterKey => popupValues.get(`#${parameterKey}`),
+                type: (parameterKey, text) => {
+                    popupValues.set(`#${parameterKey}`, text);
+                    popupHandlers.get(`#${parameterKey}:input`).call(popupFields.get(`#${parameterKey}`));
+                },
+                close: async () => {
+                    closePopup();
+                    await opened;
+                },
+            };
+        },
         connect: () => context.onConnectButtonClick({ stopPropagation() {} }),
         save: () => clickHandlers.get('#save_custom_endpoint')(),
         remove: () => clickHandlers.get('#delete_custom_endpoint')(),
@@ -422,6 +473,79 @@ describe('Custom endpoint profile Additional Parameters', () => {
         expect(harness.context.oai_settings.custom_include_body).toBe('set-by-connection-profile: 1');
         expect(harness.context.selected_custom_endpoint_preset).toMatchObject(storedParameters);
         expect(harness.context.saveSettingsDebounced).not.toHaveBeenCalled();
+    });
+
+    describe('editing in the Additional Parameters dialog', () => {
+        const other = () => normalizeCustomEndpointPreset({ name: 'Other', model: 'model-b', secretId: 'b-id', custom_include_body: 'other: 1', custom_exclude_body: '', custom_include_headers: 'X-Other: 1' });
+
+        test('an edit is stored with the selected profile, comes back when the profile is selected again, and is in the saved settings', async () => {
+            const harness = createHarness();
+            const otherProfile = other();
+            harness.context.custom_endpoint_presets.push(otherProfile);
+            Object.assign(harness.profile, storedParameters);
+            Object.assign(harness.context.oai_settings, storedParameters);
+
+            const popup = await harness.openPopup();
+            expect(popup.text('custom_include_body')).toBe(storedParameters.custom_include_body);
+            popup.type('custom_include_body', 'edited_in_popup: 1');
+
+            expect(harness.context.oai_settings.custom_include_body).toBe('edited_in_popup: 1');
+            expect(harness.profile.custom_include_body).toBe('edited_in_popup: 1');
+            expect(harness.profile).toMatchObject({ custom_exclude_body: storedParameters.custom_exclude_body, custom_include_headers: storedParameters.custom_include_headers });
+            expect(harness.context.saveSettingsDebounced).toHaveBeenCalled();
+            await popup.close();
+
+            harness.values.set('#custom_endpoint_preset', 'Other');
+            await harness.context.onCustomEndpointPresetChange();
+            expect(harness.context.oai_settings.custom_include_body).toBe('other: 1');
+
+            harness.values.set('#custom_endpoint_preset', harness.profile.name);
+            await harness.context.onCustomEndpointPresetChange();
+            expect(harness.context.oai_settings).toMatchObject({ ...storedParameters, custom_include_body: 'edited_in_popup: 1' });
+
+            await harness.context.saveSettings(0, { returnResult: true });
+            const saved = harness.persisted().custom_endpoint_presets.find(preset => preset.name === harness.profile.name);
+            expect(saved.custom_include_body).toBe('edited_in_popup: 1');
+            expect(harness.persisted().selected_custom_endpoint_preset.custom_include_body).toBe('edited_in_popup: 1');
+            expect(harness.persisted().custom_endpoint_presets.find(preset => preset.name === 'Other').custom_include_body).toBe('other: 1');
+        });
+
+        test('each of the three fields is stored with the selected profile, including an empty value', async () => {
+            const harness = createHarness();
+            Object.assign(harness.profile, storedParameters);
+            Object.assign(harness.context.oai_settings, storedParameters);
+
+            const popup = await harness.openPopup();
+            popup.type('custom_exclude_body', '- seed');
+            popup.type('custom_include_headers', '');
+
+            expect(harness.profile).toMatchObject({ custom_exclude_body: '- seed', custom_include_headers: '' });
+            expect(harness.context.oai_settings).toMatchObject({ custom_exclude_body: '- seed', custom_include_headers: '' });
+        });
+
+        test('an edit stores only the field that changed with a profile that stores none', async () => {
+            const harness = createHarness();
+            Object.assign(harness.context.oai_settings, storedParameters);
+
+            const popup = await harness.openPopup();
+            popup.type('custom_include_body', 'edited_in_popup: 1');
+
+            expect(harness.profile.custom_include_body).toBe('edited_in_popup: 1');
+            expect(harness.profile).not.toHaveProperty('custom_exclude_body');
+            expect(harness.profile).not.toHaveProperty('custom_include_headers');
+        });
+
+        test('with None selected the live settings are the only store', async () => {
+            const harness = createHarness({ profile: normalizeCustomEndpointPreset({ name: 'None' }) });
+            const popup = await harness.openPopup();
+
+            popup.type('custom_include_headers', 'X-Typed: 1');
+
+            expect(harness.context.oai_settings.custom_include_headers).toBe('X-Typed: 1');
+            expect(harness.profile).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+            await harness.context.saveSettings(0, { returnResult: true });
+            expect(harness.persisted().custom_endpoint_presets[0]).toMatchObject({ name: 'None', custom_include_headers: '' });
+        });
     });
 
     describe('loading profiles that store no Additional Parameters', () => {
