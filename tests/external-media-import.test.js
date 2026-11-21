@@ -351,37 +351,15 @@ describe('external media import (#952)', () => {
             expect(fs.readFileSync(path.join(folderPath, `bg-${hash16(GIF_BG)}.gif`)).equals(GIF_BG)).toBe(true);
         });
 
-        test('honours explicit import_external_media=false override even when settings.json has it enabled', async () => {
-            fs.writeFileSync(
-                path.join(directories.root, 'settings.json'),
-                JSON.stringify({ power_user: { import_external_media: true } }),
-            );
-
-            const card = createV2Card();
-            card.data.name = 'Override Off';
-            card.data.first_mes = 'Welcome! ![scene](https://files.catbox.moe/scene.png)';
-
-            const answer = await importCharacterCard(createCardPng(card), 'png', {
-                import_external_media: 'false',
-            });
-
-            expect(answer).toEqual({ status: 200, body: { file_name: 'Override Off' } });
-            expect(fetchMock).not.toHaveBeenCalled();
-            expect(readStoredCard('Override Off').first_mes).toBe('Welcome! ![scene](https://files.catbox.moe/scene.png)');
-        });
-
-        test('honours persisted power_user.import_external_media in settings.json across V1 JSON, YAML, CharX, and BYAF imports', async () => {
-            fs.writeFileSync(
-                path.join(directories.root, 'settings.json'),
-                JSON.stringify({ power_user: { import_external_media: true } }),
-            );
+        test('downloads across V1 JSON, YAML, CharX, and BYAF imports when the request field is true', async () => {
             fetchMock.mockResolvedValue(mockImageResponse(PNG_SCENE));
+            const on = { import_external_media: 'true' };
 
             // 1. V1 JSON card
             const v1 = createV1Card();
             v1.name = 'V1 Hero';
             v1.first_mes = '![v1](https://files.catbox.moe/scene.png)';
-            const v1Answer = await importCharacterCard(Buffer.from(JSON.stringify(v1)), 'json');
+            const v1Answer = await importCharacterCard(Buffer.from(JSON.stringify(v1)), 'json', on);
             expect(v1Answer).toEqual({ status: 200, body: { file_name: 'V1 Hero' } });
             const expectedV1Url = `/user/images/${encodeURIComponent('V1 Hero')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(readStoredCard('V1 Hero').first_mes).toBe(`![v1](${expectedV1Url})`);
@@ -392,7 +370,7 @@ describe('external media import (#952)', () => {
                 'context: "Portrait: https://files.catbox.moe/scene.png"',
                 'greeting: "Hello ![yaml](https://files.catbox.moe/scene.png)"',
             ].join('\n');
-            const yamlAnswer = await importCharacterCard(Buffer.from(yamlText, 'utf8'), 'yaml');
+            const yamlAnswer = await importCharacterCard(Buffer.from(yamlText, 'utf8'), 'yaml', on);
             expect(yamlAnswer).toEqual({ status: 200, body: { file_name: 'Yaml Hero' } });
             const expectedYamlUrl = `/user/images/${encodeURIComponent('Yaml Hero')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(readStoredCard('Yaml Hero').first_mes).toBe(`Hello ![yaml](${expectedYamlUrl})`);
@@ -402,7 +380,7 @@ describe('external media import (#952)', () => {
             charxCard.data.name = 'CharX Hero';
             charxCard.data.first_mes = '![charx](https://files.catbox.moe/scene.png)';
             const charxZip = await createZip([{ name: 'card.json', content: JSON.stringify(charxCard) }]);
-            const charxAnswer = await importCharacterCard(charxZip, 'charx');
+            const charxAnswer = await importCharacterCard(charxZip, 'charx', on);
             expect(charxAnswer).toEqual({ status: 200, body: { file_name: 'CharX Hero' } });
             const expectedCharxUrl = `/user/images/${encodeURIComponent('CharX Hero')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(readStoredCard('CharX Hero').first_mes).toBe(`![charx](${expectedCharxUrl})`);
@@ -412,7 +390,7 @@ describe('external media import (#952)', () => {
             byafParts.character.loreItems[0].value = 'Lore pic: https://files.catbox.moe/scene.png';
             byafParts.scenarios[0].firstMessages[0].text = 'Welcome ![byaf](https://files.catbox.moe/scene.png)';
             byafParts.scenarios[0].messages[0].text = 'Look at https://files.catbox.moe/scene.png';
-            const byafAnswer = await importCharacterCard(await createByafArchive(byafParts), 'byaf');
+            const byafAnswer = await importCharacterCard(await createByafArchive(byafParts), 'byaf', on);
             expect(byafAnswer).toEqual({ status: 200, body: { file_name: 'Søren 桜' } });
             const expectedByafUrl = `/user/images/soren/scene-${hash16(PNG_SCENE)}.png`;
             const savedByaf = readStoredCard('Søren 桜');
@@ -593,6 +571,121 @@ describe('external media import (#952)', () => {
             const exported = await response.json();
             expect(exported.entries[0].content).toBe('<img src="https://files.catbox.moe/scene.png">');
             expect(answer.body.data.entries[0].content).toContain('/user/images/Atlas/');
+        });
+    });
+
+    describe('who can turn the import on', () => {
+        const SERVER_KEY = 'SILLYTAVERN_ALLOWEXTERNALMEDIAIMPORT';
+        const originalServerKey = process.env[SERVER_KEY];
+        const card = () => {
+            const value = createV2Card();
+            value.data.name = 'Switch';
+            value.data.first_mes = '![scene](https://files.catbox.moe/scene.png)';
+            return value;
+        };
+
+        beforeEach(() => {
+            delete process.env[SERVER_KEY];
+            fetchMock.mockResolvedValue(mockImageResponse(PNG_SCENE));
+        });
+
+        afterEach(() => {
+            if (originalServerKey === undefined) {
+                delete process.env[SERVER_KEY];
+            } else {
+                process.env[SERVER_KEY] = originalServerKey;
+            }
+        });
+
+        test.each([
+            ['true'],
+            ['TRUE'],
+            [' 1 '],
+        ])('the request field %j turns it on', async (value) => {
+            await importCharacterCard(createCardPng(card()), 'png', { import_external_media: value });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        test.each([
+            ['false'],
+            ['0'],
+            ['yes'],
+            ['on'],
+            [''],
+            ['2'],
+            ['[true]'],
+        ])('the request field %j leaves it off', async (value) => {
+            await importCharacterCard(createCardPng(card()), 'png', { import_external_media: value });
+
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        test('a saved setting of the user cannot turn it on without the request field', async () => {
+            fs.writeFileSync(path.join(directories.root, 'settings.json'), JSON.stringify({ power_user: { import_external_media: true } }));
+
+            const answer = await importCharacterCard(createCardPng(card()), 'png');
+
+            expect(answer.status).toBe(200);
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        test('the field turns it on over a saved setting of off', async () => {
+            fs.writeFileSync(path.join(directories.root, 'settings.json'), JSON.stringify({ power_user: { import_external_media: false } }));
+
+            await importCharacterCard(createCardPng(card()), 'png', { import_external_media: 'true' });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        test('the old server config key importExternalMedia cannot turn it on', async () => {
+            process.env.SILLYTAVERN_IMPORTEXTERNALMEDIA = 'true';
+            try {
+                await importCharacterCard(createCardPng(card()), 'png');
+            } finally {
+                delete process.env.SILLYTAVERN_IMPORTEXTERNALMEDIA;
+            }
+
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        test('the server config can forbid it for every user: the import succeeds without downloads and logs one line', async () => {
+            process.env[SERVER_KEY] = 'false';
+
+            const cardAnswer = await importCharacterCard(createCardPng(card()), 'png', { import_external_media: 'true' });
+            const world = { name: 'Forbidden', entries: { 0: { uid: 0, content: '![a](https://files.catbox.moe/scene.png)' } } };
+            const worldAnswer = await importWorldInfoFile(JSON.stringify(world), { filename: 'Forbidden.json', name: 'Forbidden', import_external_media: 'true' });
+
+            expect(cardAnswer.status).toBe(200);
+            expect(worldAnswer.status).toBe(200);
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(readStoredCard('Switch').first_mes).toBe('![scene](https://files.catbox.moe/scene.png)');
+            expect(fs.readdirSync(directories.userImages)).toEqual([]);
+            const lines = console.info.mock.calls.concat(console.warn.mock.calls).map(call => call.join(' ')).filter(text => text.includes('forbids'));
+            expect(lines).toHaveLength(2);
+        });
+
+        test('an existing config.yaml gets the key as allowed, and one that forbids the download keeps its value', async () => {
+            const { addMissingConfigValues } = await import('../src/config-init.js');
+            const yaml = (await import('yaml')).default;
+            const configPath = path.join(tempRoot, 'config.yaml');
+
+            fs.writeFileSync(configPath, 'port: 4444\n');
+            addMissingConfigValues(configPath);
+            expect(yaml.parse(fs.readFileSync(configPath, 'utf8')).allowExternalMediaImport).toBe(true);
+
+            fs.writeFileSync(configPath, 'allowExternalMediaImport: false\n');
+            addMissingConfigValues(configPath);
+            expect(yaml.parse(fs.readFileSync(configPath, 'utf8')).allowExternalMediaImport).toBe(false);
+        });
+
+        test('the server config does not log a line for an import that did not ask for the download', async () => {
+            process.env[SERVER_KEY] = 'false';
+
+            await importCharacterCard(createCardPng(card()), 'png', { import_external_media: 'false' });
+
+            const lines = console.info.mock.calls.concat(console.warn.mock.calls).map(call => call.join(' ')).filter(text => text.includes('forbids'));
+            expect(lines).toEqual([]);
         });
     });
 

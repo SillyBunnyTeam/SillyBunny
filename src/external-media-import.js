@@ -1,6 +1,5 @@
 import { Buffer } from 'node:buffer';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import http from 'node:http';
 import https from 'node:https';
@@ -10,11 +9,10 @@ import ipRegex from 'ip-regex';
 import fetch from 'node-fetch';
 import sanitize from 'sanitize-filename';
 
-import { SETTINGS_FILE } from './constants.js';
 import { getLocalExternalMediaUrl, recordExternalMediaOrigins } from './external-media-manifest.js';
 import { getImageExtension, isImageFile } from './image-file-type.js';
 import { getUntrustedRequestAgent } from './private-request-filter.js';
-import { ensureDirectory, getConfigValue, tryParse } from './util.js';
+import { ensureDirectory, getConfigValue } from './util.js';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.apng', '.jpg', '.jpeg', '.jfif', '.gif', '.webp', '.avif', '.bmp']);
 const MAX_EXTERNAL_MEDIA_BYTES = 25 * 1024 * 1024;
@@ -97,42 +95,34 @@ export function isValidExternalMediaUrl(urlString) {
 }
 
 /**
+ * Checks whether a request field is a true form. Anything that is not `true` or `1`, in any case and with spaces
+ * around it, is not.
+ * @param {unknown} value Field value from the request
+ * @returns {boolean} True for a true form
+ */
+function isTrueForm(value) {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    return typeof value === 'string' && ['true', '1'].includes(value.trim().toLowerCase());
+}
+
+/**
  * Resolves whether external media should be downloaded on import for the current request.
- * Checks the request body override first, then the user's persisted power_user setting, then config.yaml.
+ * Only the request field that the browser sends turns the download on, so a saved setting or another API client
+ * cannot do it on its own. The server config can forbid it for every user.
  * @param {import('express').Request} request Express request
  * @returns {boolean} Whether external media localization is enabled
  */
 export function shouldImportExternalMedia(request) {
-    const rawOverride = request?.body?.import_external_media;
-    if (typeof rawOverride === 'boolean') {
-        return rawOverride;
+    if (!isTrueForm(request?.body?.import_external_media)) {
+        return false;
     }
-    if (typeof rawOverride === 'string') {
-        const normalized = rawOverride.trim().toLowerCase();
-        if (normalized === 'true' || normalized === '1') {
-            return true;
-        }
-        if (normalized === 'false' || normalized === '0') {
-            return false;
-        }
+    if (!getConfigValue('allowExternalMediaImport', true, 'boolean')) {
+        console.info('The server config forbids downloading external media on import, so the URLs stay remote');
+        return false;
     }
-
-    const userRoot = request?.user?.directories?.root;
-    if (typeof userRoot === 'string' && userRoot) {
-        const settingsPath = path.join(userRoot, SETTINGS_FILE);
-        if (fs.existsSync(settingsPath)) {
-            try {
-                const settings = tryParse(fs.readFileSync(settingsPath, 'utf8'));
-                if (typeof settings?.power_user?.import_external_media === 'boolean') {
-                    return settings.power_user.import_external_media;
-                }
-            } catch {
-                // Fall back to config.yaml if settings.json cannot be read.
-            }
-        }
-    }
-
-    return Boolean(getConfigValue('importExternalMedia', false, 'boolean'));
+    return true;
 }
 
 /**
