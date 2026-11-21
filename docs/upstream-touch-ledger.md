@@ -2572,6 +2572,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-20, PR #870 audit. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/openai.js`, `public/scripts/extensions/shared.js` and `public/index.html` - Custom endpoint profile Additional Parameters
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js`, `public/scripts/extensions/shared.js`, `public/index.html` |
+| Area | Custom (OpenAI-compatible) endpoint profiles: the Additional Parameters (`custom_include_body`, `custom_exclude_body`, `custom_include_headers`) saved with a profile, applied when it is selected, and sent by requests through a connection profile that names it. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/openai-preset-utils.js`: `CUSTOM_ENDPOINT_PARAMETER_KEYS`, `pickCustomEndpointParameters()` and `normalizeCustomEndpointPreset()`, which keeps the three keys only when the profile holds them. |
+| Adapter shape | `openai.js`: `setCustomEndpointPreset()` takes a `parameters` option, stores the picked values on the profile and writes them to `oai_settings` and the dialog's textareas; the `// SillyBunny:` marker above the function explains the option. The Save handler reads the values from `oai_settings`, because the Additional Parameters dialog writes there (own marker). The dropdown change, Delete and `/custom-endpoint-profile` pass the selected profile as `parameters`; that code is SillyBunny's endpoint profile feature (#551), which has no upstream counterpart. `loadCustomEndpointPresets()` passes none, so the saved settings keep the values in effect, which a connection profile can set after its endpoint profile. A profile without the keys, and None, leave the current values unchanged. `shared.js`: `getChatCompletionProfileRequestOverrides()` gives a connection profile that records none of the three values the ones its `custom-endpoint-profile` stores, as applying the profile does (marker on the import and on the loop). `index.html`: the Endpoint Profiles description, under a `<!-- SillyBunny: -->` marker. |
+| Protecting tests | `tests/openai-preset-utils.test.js` (normalising and picking the parameters); `tests/openai-custom-endpoint-credentials.test.js` ("Custom endpoint profile Additional Parameters": Save of an existing and a new profile, reload, selection with and without stored parameters, Delete, `/custom-endpoint-profile`, and load); `tests/openai-proxy-preset-wiring.test.js` (the load-time apply passes no parameters, `/custom-endpoint-profile` passes the profile, the description text); `tests/connection-manager-profile-save.test.js` (a connection profile applies its own Additional Parameters after its endpoint profile); `tests/connection-profile-request-fields.test.js` ("Additional Parameters from the Custom endpoint profile"). |
+| Validation | 2026-11-21: root and tests lint with no errors; the focused unit tests, with each behaviour test failing when its code is removed; the full unit suite (612 suites, 11,489 passed, 2 skipped); `npm run check:frontend-budgets`; `e2e-related --run` (12 specs, 341 of 348 passed; the 7 failures are `nanogpt-controls.e2e.js`, which fails the same 7 tests on the base commit `cd33efbd5`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-21, Custom endpoint profile Additional Parameters. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

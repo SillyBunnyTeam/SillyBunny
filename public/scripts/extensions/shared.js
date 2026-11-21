@@ -1,7 +1,9 @@
 import { CONNECT_API_MAP, createModelIcon, getRequestHeaders, substituteParams } from '../../script.js';
 import { extension_settings, openThirdPartyExtensionMenu } from '../extensions.js';
 import { t } from '../i18n.js';
-import { oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
+// SillyBunny: profile requests read the Additional Parameters that a Custom endpoint profile stores.
+import { custom_endpoint_presets, oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
+import { pickCustomEndpointParameters } from '../openai-preset-utils.js';
 import { getPresetManager } from '../preset-manager.js';
 import { SECRET_KEYS, secret_state } from '../secrets.js';
 import { textgen_types, textgenerationwebui_settings } from '../textgen-settings.js';
@@ -37,6 +39,32 @@ const PRESET_BACKED_REASONING_FIELDS = Object.freeze({
     'reasoning-effort': 'reasoning_effort',
     'verbosity': 'verbosity',
 });
+
+/**
+ * Additional Parameters that a Custom endpoint profile can store, keyed by the connection profile field that
+ * overrides them. Applying a connection profile selects its endpoint profile first, which applies these, so a
+ * request through the profile must use them too when the profile records none of its own.
+ * @type {Record<string, string>}
+ */
+const ENDPOINT_PROFILE_PARAMETER_FIELDS = Object.freeze({
+    'custom-include-body': 'custom_include_body',
+    'custom-exclude-body': 'custom_exclude_body',
+    'custom-include-headers': 'custom_include_headers',
+});
+
+/**
+ * Gets the Additional Parameters that the Custom endpoint profile of a connection profile stores.
+ * @param {object} profile Connection profile
+ * @returns {Record<string, string>} Stored parameters, keyed by setting name
+ */
+function getProfileEndpointParameters(profile) {
+    const endpointProfileName = profile?.['custom-endpoint-profile'];
+    if (!endpointProfileName || endpointProfileName === 'None') {
+        return {};
+    }
+
+    return pickCustomEndpointParameters(custom_endpoint_presets?.find(preset => preset.name === endpointProfileName));
+}
 
 /**
  * Loads the completion preset a connection profile points at.
@@ -96,6 +124,18 @@ export function getChatCompletionProfileRequestOverrides(profile, overridePayloa
 
         const [, coerceValue] = CHAT_COMPLETION_PROFILE_REQUEST_FIELDS[profileKey];
         overrides[requestKey] = coerceValue(value);
+        profileFieldNames.push(requestKey);
+    }
+
+    // SillyBunny: a profile that records no Additional Parameters of its own uses the ones its Custom endpoint
+    // profile stores, as applying the profile does. A value on the profile, and anything the caller passes, still wins.
+    const endpointParameters = getProfileEndpointParameters(profile);
+    for (const [profileKey, requestKey] of Object.entries(ENDPOINT_PROFILE_PARAMETER_FIELDS)) {
+        if (Object.hasOwn(profile, profileKey) || Object.hasOwn(overridePayload, requestKey) || !Object.hasOwn(endpointParameters, requestKey)) {
+            continue;
+        }
+
+        overrides[requestKey] = endpointParameters[requestKey];
         profileFieldNames.push(requestKey);
     }
 

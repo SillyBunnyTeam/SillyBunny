@@ -2,7 +2,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { buildCustomEndpointPresetForSave, normalizeCustomEndpointPreset } from '../public/scripts/openai-preset-utils.js';
+import { buildCustomEndpointPresetForSave, normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../public/scripts/openai-preset-utils.js';
 import { createSettingsSync } from '../public/scripts/sillybunny-settings-sync.js';
 
 const source = readFileSync(new URL('../public/scripts/openai.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -13,6 +13,9 @@ const activateSource = source.match(/async function activateCustomEndpointPreset
 const setPresetSource = source.match(/async function setCustomEndpointPreset\([\s\S]*?\n\}/)[0];
 const saveSource = source.match(/\$\('#save_custom_endpoint'\)\.on\('click', async function \(\) \{[\s\S]*?\n\}\);/)[0];
 const changeSource = source.match(/async function onCustomEndpointPresetChange\([\s\S]*?\n\}/)[0];
+const loadSource = source.match(/export async function loadCustomEndpointPresets\(settings\) \{[\s\S]*?\n\}/)[0].replace('export ', '');
+const deleteSource = source.match(/\$\('#delete_custom_endpoint'\)\.on\('click', async function \(\) \{[\s\S]*?\n\}\);/)[0];
+const slashCommandSource = source.match(/async function runCustomEndpointPresetCallback\([\s\S]*?\n\}/)[0];
 const scriptSource = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const saverSource = ['saveSettings', 'saveSettingsInner', 'normalizeSettingsVersion']
     .map(name => scriptSource.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`))[0]).join('\n');
@@ -40,7 +43,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
     const attributes = new Map();
     const secretState = { [keys.CUSTOM]: [{ id: 'unrelated-active-id', active: true }] };
     let persistedSettings;
-    let saveHandler;
+    const clickHandlers = new Map();
     const context = {
         ...Object.fromEntries([
             'firstRun', 'currentVersion', 'name1', 'active_character', 'active_group', 'user_avatar',
@@ -74,21 +77,26 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         custom_endpoint_presets: [profile],
         normalizeCustomEndpointPreset,
         buildCustomEndpointPresetForSave,
+        pickCustomEndpointParameters,
         secret_state: secretState,
         console: { warn: jest.fn(), error: jest.fn(), log: jest.fn() },
         t: strings => strings.join(''),
-        toastr: { success: jest.fn(), error: jest.fn() },
+        toastr: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
         refreshModelIdSearchControlsForSource: jest.fn(),
         reconnectOpenAi: jest.fn(),
         updateCustomEndpointPresetOption: jest.fn(),
         appendCustomEndpointPresetOption: jest.fn(),
+        getCustomEndpointPresetOption: () => ({ remove() {} }),
         rotateSecret: jest.fn(async () => {}),
         $: selector => ({
             find() {
                 return this;
             },
+            empty() {
+                return this;
+            },
             on(event, handler) {
-                saveHandler = handler;
+                clickHandlers.set(selector, handler);
             },
             val(value) {
                 if (value === undefined) return values.get(selector) ?? '';
@@ -116,14 +124,15 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         isTemporaryChat: () => false,
         getStatusOpen: jest.fn(async () => context.selected_custom_endpoint_preset?.secretId),
     };
-    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${saveSource}`, context);
+    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${loadSource}\n${slashCommandSource}\n${saveSource}\n${deleteSource}`, context);
     return {
         context,
         profile,
         values,
         attributes,
         connect: () => context.onConnectButtonClick({ stopPropagation() {} }),
-        save: () => saveHandler(),
+        save: () => clickHandlers.get('#save_custom_endpoint')(),
+        remove: () => clickHandlers.get('#delete_custom_endpoint')(),
         reload: () => createHarness({ profile: persistedSettings.selected_custom_endpoint_preset }),
         persisted: () => persistedSettings,
     };
@@ -316,6 +325,100 @@ describe('Custom endpoint profile credentials on Connect', () => {
         expect(harness.profile.secretId).toBe('replacement-id');
         expect(otherProfile.secretId).toBe('saved-id');
         expect(harness.attributes.has('#api_key_custom:placeholder')).toBe(false);
+    });
+});
+
+describe('Custom endpoint profile Additional Parameters', () => {
+    const storedParameters = {
+        custom_include_body: '  top_k: 20\n  min_p: 0.05\n',
+        custom_exclude_body: '',
+        custom_include_headers: 'X-Title: Story',
+    };
+
+    test('Save stores the current Additional Parameters with the profile and keeps them after a reload', async () => {
+        const harness = createHarness();
+        Object.assign(harness.context.oai_settings, storedParameters);
+
+        await harness.save();
+
+        expect(harness.context.toastr.success).toHaveBeenCalledTimes(1);
+        expect(harness.profile).toMatchObject(storedParameters);
+        expect(harness.persisted().custom_endpoint_presets[0]).toMatchObject(storedParameters);
+
+        const reloaded = createHarness();
+        await reloaded.context.loadCustomEndpointPresets(harness.persisted());
+        expect(reloaded.context.selected_custom_endpoint_preset.name).toBe(harness.profile.name);
+        expect(reloaded.context.selected_custom_endpoint_preset).toMatchObject(storedParameters);
+    });
+
+    test('Save stores the Additional Parameters with a new profile', async () => {
+        const harness = createHarness();
+        Object.assign(harness.context.oai_settings, storedParameters);
+        harness.values.set('#custom_endpoint_preset_name', 'New endpoint');
+
+        await harness.save();
+
+        const created = harness.context.custom_endpoint_presets.find(preset => preset.name === 'New endpoint');
+        expect(created).toMatchObject({ secretId: 'unrelated-active-id', ...storedParameters });
+        expect(harness.context.selected_custom_endpoint_preset).toBe(created);
+        expect(harness.profile).not.toHaveProperty('custom_include_body');
+    });
+
+    test('Delete and /custom-endpoint-profile apply the Additional Parameters of the profile they select', async () => {
+        const harness = createHarness();
+        const stored = normalizeCustomEndpointPreset({ name: 'Stored', model: 'model-b', secretId: 'b-id', ...storedParameters });
+        const doomed = normalizeCustomEndpointPreset({ name: 'Doomed', secretId: 'd-id', custom_include_body: 'doomed: 1', custom_exclude_body: '', custom_include_headers: '' });
+        harness.context.custom_endpoint_presets.push(stored, doomed);
+
+        harness.values.set('#custom_endpoint_preset_name', 'Doomed');
+        await harness.remove();
+        expect(harness.context.custom_endpoint_presets).not.toContain(doomed);
+        expect(harness.context.selected_custom_endpoint_preset).toBe(stored);
+        expect(harness.context.oai_settings).toMatchObject(storedParameters);
+
+        Object.assign(harness.context.oai_settings, { custom_include_body: 'changed: 1' });
+        expect(await harness.context.runCustomEndpointPresetCallback(null, 'Stored')).toBe('Stored');
+        expect(harness.context.oai_settings).toMatchObject(storedParameters);
+    });
+
+    test('selecting a profile applies its Additional Parameters, and a profile without them keeps the current ones', async () => {
+        const harness = createHarness();
+        const stored = normalizeCustomEndpointPreset({ name: 'Stored', model: 'model-b', secretId: 'b-id', ...storedParameters });
+        const legacy = normalizeCustomEndpointPreset({ name: 'Legacy', model: 'model-c', secretId: 'c-id' });
+        harness.context.custom_endpoint_presets.push(normalizeCustomEndpointPreset({ name: 'None' }), stored, legacy);
+        Object.assign(harness.context.oai_settings, { custom_include_body: 'current: 1', custom_exclude_body: '- seed', custom_include_headers: '' });
+
+        harness.values.set('#custom_endpoint_preset', 'Stored');
+        await harness.context.onCustomEndpointPresetChange();
+        expect(harness.context.oai_settings).toMatchObject(storedParameters);
+        expect(harness.values.get('#custom_include_body')).toBe(storedParameters.custom_include_body);
+
+        harness.values.set('#custom_endpoint_preset', 'Legacy');
+        await harness.context.onCustomEndpointPresetChange();
+        expect(harness.context.oai_settings.custom_model).toBe('model-c');
+        expect(harness.context.oai_settings).toMatchObject(storedParameters);
+        expect(legacy).not.toHaveProperty('custom_include_body');
+
+        harness.values.set('#custom_endpoint_preset', 'None');
+        await harness.context.onCustomEndpointPresetChange();
+        expect(harness.context.oai_settings).toMatchObject(storedParameters);
+    });
+
+    test('loading the settings keeps the Additional Parameters that were in effect', async () => {
+        const harness = createHarness();
+        Object.assign(harness.context.oai_settings, { custom_include_body: 'set-by-connection-profile: 1' });
+
+        await harness.context.loadCustomEndpointPresets({
+            custom_endpoint_presets: [
+                { name: 'None' },
+                { name: 'Saved endpoint', url: 'https://endpoint.example/v1', model: 'test-model', secretId: 'saved-id', ...storedParameters },
+            ],
+            selected_custom_endpoint_preset: { name: 'Saved endpoint' },
+        });
+
+        expect(harness.context.oai_settings.custom_url).toBe('https://endpoint.example/v1');
+        expect(harness.context.oai_settings.custom_include_body).toBe('set-by-connection-profile: 1');
+        expect(harness.context.selected_custom_endpoint_preset).toMatchObject(storedParameters);
     });
 });
 
