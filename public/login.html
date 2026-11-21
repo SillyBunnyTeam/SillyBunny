@@ -12,25 +12,34 @@
     <style>
         /* Put critical CSS here. The rest should go in stylesheets. */
         body {
-            background-color: #130f0d;
+            background-color: #222226;
+        }
+        /* SillyBunny: the page follows the system colour scheme, so the first paint does too. */
+        @media (prefers-color-scheme: light) {
+            body {
+                background-color: #ebebed;
+            }
         }
     </style>
     <link rel="preload" as="style" href="style.css">
-    <link rel="icon" type="image/png" sizes="256x256" href="img/sillybunny-pixel-logo-og.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="img/icon-16x16.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="img/icon-32x32.png">
-    <link rel="icon" type="image/png" sizes="48x48" href="img/icon-48x48.png">
+    <!-- SillyBunny: favicons are the logo set in img/sillybunny; the 16 and 32 px files are drawn by hand, so no SVG link is offered. -->
+    <link rel="icon" type="image/png" sizes="16x16" href="img/sillybunny/logo-16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="img/sillybunny/logo-32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="img/sillybunny/logo-48.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="img/sillybunny/logo-64.png">
     <link rel="apple-touch-icon" sizes="57x57" href="img/apple-icon-57x57.png" />
     <link rel="apple-touch-icon" sizes="72x72" href="img/apple-icon-72x72.png" />
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link href="webfonts/Figtree/stylesheet.css?v=20260422b" rel="stylesheet">
+    <link href="webfonts/AdwaitaSans/stylesheet.css?v=20261001a" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="style.css">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
-    <link rel="stylesheet" type="text/css" href="css/login.css">
+    <!-- SillyBunny: the key follows login.css, which the service worker answers stale-while-revalidate, so a changed rule reaches the first load. -->
+    <link rel="stylesheet" type="text/css" href="css/login.css?v=20261118m">
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
     <link href="webfonts/NotoSans/stylesheet.css" rel="stylesheet">
+    <link href="webfonts/AdwaitaMono/stylesheet.css?v=20261030a" rel="stylesheet">
     <link href="webfonts/NotoSansMono/stylesheet.css" rel="stylesheet">
     <!-- fontawesome webfonts-->
     <link href="css/fontawesome.min.css" rel="stylesheet">
@@ -43,10 +52,13 @@
     <div id="shadow_popup" style="opacity: 0;">
         <div id="dialogue_popup">
             <div id="dialogue_popup_holder">
+                <!-- SillyBunny: the illustration slot; its name is the key of its size and a spec finds it by it. It is a decoration, so assistive technology skips it. -->
+                <div id="loginArt" class="sbHomeArt" data-sb-art-placeholder="login-both" aria-hidden="true"></div>
                 <div id="dialogue_popup_text">
                     <div id="userSelectBlock" class="flex-container flexFlowColumn alignItemsCenter">
                         <h2 id="logoBlock" class="flex-container">
-                            <img src="img/sillybunny-pixel-logo-og.png" alt="SillyBunny" class="logo">
+                            <!-- SillyBunny: the login logo is the vector of the logo set. -->
+                            <img src="img/sillybunny/logo.svg" alt="SillyBunny" class="logo">
                             <span>Welcome to SillyBunny</span>
                         </h2>
                         <h3 id="normalLoginPrompt">
@@ -55,6 +67,7 @@
                         <h3 id="discreetLoginPrompt">
                             Enter Login Details
                         </h3>
+                        <!-- SillyBunny: Login and Send carry menu_button_primary, the suggested action; the error line has no whitespace so :empty can collapse it, and it is an alert so the first failure is announced. -->
                         <div id="userListBlock" class="wide100p">
                             <div id="userList" class="flex-container justifySpaceEvenly"></div>
                             <div id="handleEntryBlock" style="display:none;" class="flex-container flexFlowColumn alignItemsCenter">
@@ -65,7 +78,7 @@
                                 <input id="userPassword" class="text_pole" type="password" placeholder="Password" autocomplete="current-password">
                                 <a id="recoverPassword" href="#" onclick="return false;">Forgot password?</a>
                                 <div class="flex-container">
-                                    <div id="loginButton" class="menu_button">Login</div>
+                                    <div id="loginButton" class="menu_button menu_button_primary">Login</div>
                                 </div>
                             </div>
                             <div id="passwordRecoveryBlock" style="display:none;" class="flex-container flexFlowColumn alignItemsCenter">
@@ -75,13 +88,12 @@
                                 <input id="recoveryCode" class="text_pole" type="text" placeholder="Recovery code">
                                 <input id="newPassword" class="text_pole" type="password" placeholder="New password" autocomplete="new-password">
                                 <div class="flex-container flexGap10">
-                                    <div id="sendRecovery" class="menu_button">Send</div>
+                                    <div id="sendRecovery" class="menu_button menu_button_primary">Send</div>
                                     <div id="cancelRecovery" class="menu_button">Cancel</div>
                                 </div>
                             </div>
                         </div>
-                        <div class="neutral_warning" id="errorMessage">
-                        </div>
+                        <div class="neutral_warning" id="errorMessage" role="alert"></div>
                     </div>
                 </div>
             </div>

@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "welcome-both--reisen--breath-b.png",
+    "sha256": "5818cefb132537d4a5e40374dccddf5120b4503e83c10861d5ad10a71cc52760",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:a7ad4961261ca27ccbdc9520699dee65af2d85041032e3cba9dc2c963f20a5da"
+}

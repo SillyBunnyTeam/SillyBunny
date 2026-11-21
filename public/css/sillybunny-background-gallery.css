@@ -1,0 +1,261 @@
+/* The Backgrounds gallery's folder sections, search bar, tab row buttons, thumbnail menus and selection mode.
+   Loaded as a deferred stylesheet with the gallery module (sillybunny-background-gallery.js), so it stays out of the blocking-CSS budget. */
+
+/* The tab row: the buttons end where the thumbnail grid ends. The scroll button leads the group and is out of the layout
+   until it shows, so a hidden button leaves no gap at the end of the row. */
+#sb-settings-page #Backgrounds #bg_tabs .heading-controls {
+    justify-content: flex-end;
+    justify-self: end;
+    margin-inline-end: var(--sb-bg-grid-inset, 0px);
+}
+
+#sb-settings-page #Backgrounds #bg-scroll-top:not(.visible) {
+    display: none;
+}
+
+#sb-settings-page #Backgrounds #bg_tabs .heading-controls > :is(.menu_button, label.menu_button) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--sb-bg-icon-size);
+    min-width: var(--sb-bg-icon-size);
+    padding: 0;
+}
+
+#sb-settings-page #Backgrounds #bg_tabs .heading-controls > .sb-bg-list-menu[hidden] {
+    display: none;
+}
+
+/* The Auto-select button stays in the document for its id and handler; the gallery menu presses it. */
+#Backgrounds #auto_background[hidden] {
+    display: none;
+}
+
+/* What is left of the first header row, once its buttons have moved, is empty. */
+#sb-settings-page #Backgrounds .bg-header-row-1:not(:has(select)) {
+    display: none;
+}
+
+/* The search bar: the search entry with Sort at its end. */
+#sb-settings-page #Backgrounds .sb-bg-bar {
+    padding-inline: var(--sb-density-row-padding-inline, 12px);
+}
+
+#sb-settings-page #Backgrounds .sb-bg-search-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-inline-end: 0;
+}
+
+#sb-settings-page #Backgrounds .sb-bg-sort-button {
+    flex: none;
+    width: var(--sb-bg-icon-size);
+    min-width: var(--sb-bg-icon-size);
+    padding: 0;
+    margin-inline-start: 6px;
+    background: transparent;
+}
+
+#sb-settings-page #Backgrounds .sb-bg-sort-button[aria-pressed='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+/* Sections replace the flat grid of #bg_menu_content. */
+#Backgrounds #bg_menu_content.sb-bg-sections {
+    display: block;
+    width: 100%;
+}
+
+.sb-bg-section {
+    --sb-folder-section-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    margin-block-end: 9px;
+    border: 1px solid var(--sb-folder-section-edge);
+    border-radius: var(--sb-radius-card);
+    overflow: hidden;
+}
+
+.sb-bg-section__head .ds-entity-list__rows {
+    display: block;
+}
+
+.sb-bg-section .sb-bg-section__head.ds-entity-list {
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.sb-bg-section .sb-bg-section__head .sb-folder-row {
+    width: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.sb-bg-section .sb-folder-row .ds-entity-row__avatar {
+    display: grid;
+    flex-basis: 18px;
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    background: transparent;
+}
+
+.sb-bg-section .sb-folder-row__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-folder-color, var(--sb-muted-fg));
+}
+
+.sb-bg-section .sb-folder-row .ds-entity-row__chevron {
+    margin-inline-start: 3px;
+}
+
+.sb-bg-section__body {
+    padding: 9px;
+    border-block-start: 1px solid var(--sb-folder-section-edge);
+}
+
+.sb-bg-section__body[hidden] {
+    display: none;
+}
+
+.sb-bg-section__empty {
+    margin: 0;
+    padding: 3px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+}
+
+.sb-bg-grid.bg_list {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    grid-template-columns: repeat(var(--bg-thumb-columns, 5), minmax(0, 1fr));
+}
+
+@media screen and (max-width: 620px) {
+    .sb-bg-grid.bg_list {
+        grid-template-columns: repeat(min(var(--bg-thumb-columns, 5), 3), minmax(0, 1fr));
+    }
+}
+
+/* Backgrounds in no folder follow the folders under a heading of their own, so they do not read as the last folder's. */
+.sb-bg-unfiled__heading {
+    margin: 18px 0 6px;
+    padding-inline: 3px;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+}
+
+/* A thumbnail's own menu button: in the corner on hover or focus with a fine pointer. A touch screen has no button over the
+   picture, because a tap sets the background and a long press opens the menu. The button stays in the document for the
+   keyboard and for screen readers and shows when it has focus. */
+.sb-bg-cell-menu {
+    position: absolute;
+    top: 6px;
+    inset-inline-end: 6px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-osd-bg);
+    color: var(--sb-osd-ink);
+    opacity: 0;
+    cursor: pointer;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    transition: opacity var(--sb-transition-fast);
+}
+
+.sb-bg-cell-menu:focus {
+    opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .bg_example:hover .sb-bg-cell-menu,
+    .bg_example:focus-visible .sb-bg-cell-menu,
+    .sb-bg-cell-menu[aria-expanded='true'] {
+        opacity: 1;
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-bg-cell-menu {
+        width: 44px;
+        height: 44px;
+        pointer-events: none;
+    }
+
+    .sb-bg-cell-menu:focus {
+        pointer-events: auto;
+    }
+
+    #Backgrounds #bg_menu_content .bg_example {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+}
+
+/* Selection mode: the shared check sits at the top start of each thumbnail; the selection header and the action bar replace the bars. */
+#Backgrounds[data-selection-mode='true'] :is(.sb-bg-cell-menu, .bg-header-row-1, .bg-header-row-2, .bg_tabs_list, #bg_tabs > .heading-controls) {
+    display: none;
+}
+
+#Backgrounds[data-selection-mode='true'] .sb-folder-row {
+    pointer-events: none;
+}
+
+#Backgrounds[data-selection-mode='true'] .sb-folder-row[aria-disabled='true'] {
+    opacity: var(--sb-disabled-opacity);
+}
+
+#bg_menu_content .bg_example > .sb-selection-check {
+    position: absolute;
+    inset-block-start: 8px;
+    inset-inline-start: 8px;
+    z-index: 5;
+}
+
+#bg_menu_content .bg_example.is-selection-selected {
+    outline: 2px solid var(--sb-accent, var(--SmartThemeQuoteColor));
+    outline-offset: -2px;
+}
+
+#Backgrounds[data-selection-mode='true'] .bg_example.selected-background::before {
+    display: none;
+}
+
+.sb-bg-selection-header[hidden],
+.sb-bg-selection-bar[hidden] {
+    display: none;
+}
+
+.sb-bg-selection-header {
+    padding: var(--sb-density-row-padding-inline, 12px);
+}
+
+#sb-settings-page #Backgrounds :is(.sb-bg-selection-bar, .sb-bg-selection-header) .menu_button {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+.sb-bg-selection-bar {
+    margin-block-start: 9px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-bg-cell-menu {
+        transition: none;
+    }
+}

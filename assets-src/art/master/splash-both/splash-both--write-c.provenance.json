@@ -1,0 +1,33 @@
+{
+    "format": 1,
+    "file": "splash-both--write-c.png",
+    "sha256": "e033af63e9dfb5b34bd5f6ec80ffc11f40675bdd03eeff2e098276de52e2e16f",
+    "characters": [
+        "reisen",
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-03"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-hand-fix",
+        "splash-frames"
+    ],
+    "handEdits": true,
+    "record": "sha256:9fb1912e7667a5a3a8bdf9d101ba97a2f29cd3704d37f670d9a054725fc4942c",
+    "incomplete": "1 source is not in the generation log."
+}

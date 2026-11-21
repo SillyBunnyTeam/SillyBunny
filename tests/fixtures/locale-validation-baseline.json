@@ -92,8 +92,8 @@
     },
     "dataI18n": {
         "more than one text token": {
-            "-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N.": 1,
-            "-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N.": 1,
+            "-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N": 1,
+            "-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N": 1,
             "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": 1
         },
         "text before the [attribute] part": {

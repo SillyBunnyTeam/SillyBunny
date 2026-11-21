@@ -1,0 +1,77 @@
+{
+    "scene": "hero-duo-night",
+    "grid": {
+        "cell": 2.752688172043011,
+        "width": 361,
+        "height": 362
+    },
+    "rhythm": {
+        "cycleSeconds": 3.5,
+        "breathsPerCycle": 2
+    },
+    "poses": [
+        "c",
+        "b"
+    ],
+    "backdrop": "hero-duo-night--backdrop@native.webp",
+    "layers": [
+        {
+            "id": "reisen",
+            "z": 3,
+            "left": 2,
+            "top": 2,
+            "width": 203,
+            "height": 358,
+            "waist": 196,
+            "images": {
+                "c": {
+                    "base": "hero-duo-night--reisen--breath-c@native.webp",
+                    "half": "hero-duo-night--reisen--breath-c-half@native.webp",
+                    "closed": "hero-duo-night--reisen--breath-c-closed@native.webp"
+                },
+                "b": {
+                    "base": "hero-duo-night--reisen--breath-b@native.webp",
+                    "half": "hero-duo-night--reisen--breath-b-half@native.webp",
+                    "closed": "hero-duo-night--reisen--breath-b-closed@native.webp"
+                }
+            }
+        },
+        {
+            "id": "tewi",
+            "z": 3,
+            "left": 183,
+            "top": 61,
+            "width": 136,
+            "height": 299,
+            "waist": 164,
+            "images": {
+                "c": {
+                    "base": "hero-duo-night--tewi--breath-c@native.webp"
+                },
+                "b": {
+                    "base": "hero-duo-night--tewi--breath-b@native.webp"
+                }
+            }
+        }
+    ],
+    "blinks": {
+        "steps": [
+            {
+                "variant": "half",
+                "ms": 70
+            },
+            {
+                "variant": "closed",
+                "ms": 110
+            },
+            {
+                "variant": "half",
+                "ms": 70
+            }
+        ],
+        "gapMs": [
+            3600,
+            5400
+        ]
+    }
+}

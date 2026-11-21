@@ -44,14 +44,14 @@ describe('group chat greetings QoL', () => {
         const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
 
         expect(indexSource).toContain('id="group_add_greeting"');
-        expect(indexSource).toContain('class="fa-solid fa-hand-sparkles"');
         expect(indexSource).toContain('Add New Greeting');
+        // The three buttons are label-only: no icon in the markup, and no rule that hides their labels at any width.
+        expect(indexSource).not.toContain('fa-hand-sparkles');
         expect(groupChatSource).toContain('container.on(\'click\', \'#group_add_greeting\', addSelectedGroupGreeting);');
-        expect(styleSource).toContain('grid-template-areas: "typing typing typing typing" "avatars greeting speak hide";');
-        expect(styleSource).toContain('#group_add_greeting span,');
-        expect(styleSource).toMatch(/#group_add_greeting\s*\{[\s\S]*?grid-area:\s*greeting;\s*}/);
-        expect(mobileStyleSource).toContain('grid-template-areas: "avatars greeting speak hide" !important;');
-        expect(mobileStyleSource).toContain('#group_add_greeting span,');
+        expect(styleSource).not.toMatch(/#group_add_greeting, #group_speaker_now, #group_speaker_hide\) > span/);
+        // Phone: the chips take a row, and the three label-only buttons share the row under them.
+        expect(mobileStyleSource).toContain('grid-template-areas: "avatars avatars avatars" "greeting speak hide" !important;');
+        expect(mobileStyleSource).not.toContain('#group_add_greeting span,');
         expect(mobileStyleSource).toMatch(/#group_add_greeting\s*\{[\s\S]*?grid-area:\s*greeting\s*!important;\s*}/);
     });
 
@@ -76,11 +76,25 @@ describe('group chat greetings QoL', () => {
         expect(styleSource).toMatch(/#extensionsMenu>#wand_group_speaker_controls\s*\{\s*display:\s*none;\s*}/);
         expect(styleSource).toMatch(/body\.groupSpeakerControlsHidden\s+#extensionsMenu>#wand_group_speaker_controls\s*\{\s*display:\s*flex;\s*}/);
 
-        // The mobile grids reserve a column for the new button instead of overlapping the avatars.
-        expect(styleSource).toContain('grid-template-columns: minmax(0, 1fr) 34px 34px 34px;');
-        expect(styleSource).toContain('grid-template-columns: minmax(0, 1fr) 30px 30px 30px;');
-        expect(styleSource).toMatch(/#group_speaker_hide\s*\{[\s\S]*?grid-area:\s*hide;\s*}/);
+        // The phone grid (mobile-styles.css) reserves a column for each button instead of overlapping the avatars.
+        expect(mobileStyleSource).toMatch(/\.group_speaker_controls\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)\s*!important;/);
         expect(mobileStyleSource).toMatch(/#group_speaker_hide\s*\{[\s\S]*?grid-area:\s*hide\s*!important;\s*}/);
+    });
+
+    test('the typing line is a row of its own on a phone and never hides the speaker chips', async () => {
+        const mobileStyleSource = await fs.readFile(fileURLToPath(new URL('../public/css/mobile-styles.css', import.meta.url)), 'utf8');
+
+        expect(mobileStyleSource).toMatch(/\.group_speaker_controls\.is-typing\s*\{[^}]*grid-template-areas:\s*"typing typing typing" "avatars avatars avatars" "greeting speak hide"\s*!important;/);
+        expect(mobileStyleSource).toMatch(/\.group_typing_indicator\s*\{[^}]*grid-area:\s*typing\s*!important;/);
+        expect(mobileStyleSource).not.toMatch(/\.is-typing \.group_speaker_list\s*\{[^}]*visibility:\s*hidden/);
+    });
+
+    test('speaker chips report the chosen speaker as a pressed state', async () => {
+        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
+
+        expect(groupChatSource).toContain('item.attr(\'aria-pressed\', String(avatarId === selectedGroupSpeakerAvatar));');
+        expect(groupChatSource).toContain('$(this).attr(\'aria-pressed\', String(avatarId === selectedGroupSpeakerAvatar));');
+        expect(groupChatSource).toContain('.removeClass(\'selected\').attr(\'aria-pressed\', \'false\');');
     });
 
     test('clears a stale typing indicator when generation finishes', async () => {

@@ -168,7 +168,7 @@ function createFakeXMLHttpRequest() {
     };
 }
 
-function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5 } = {}) {
+function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5, performance } = {}) {
     const document = new FakeDocument();
     const timers = [];
     const listeners = new Map();
@@ -180,6 +180,7 @@ function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 
         clearTimeout: jest.fn(),
         location: { reload: jest.fn() },
         navigator: fakeNavigator,
+        performance,
         setTimeout: (callback, delay) => {
             timers.push({ callback, delay });
             return timers.length;
@@ -232,6 +233,26 @@ describe('SillyBunny boot guard', () => {
         expect(preloader.querySelector('button')).toBeNull();
     });
 
+    test.each([
+        ['iOS WebKit', {}],
+        ['a browser the guard does not watch', { maxTouchPoints: 0, platform: 'Linux x86_64', userAgent: DESKTOP_CHROME_USER_AGENT }],
+    ])('marks the end of the splash once on %s, for the boot timing', (_name, browser) => {
+        const performance = { mark: jest.fn() };
+        const { window } = createBootGuardHarness({ ...browser, performance });
+
+        window.SillyBunnyBootGuard.bootCompleted();
+        window.SillyBunnyBootGuard.bootCompleted();
+
+        expect(performance.mark).toHaveBeenCalledTimes(1);
+        expect(performance.mark).toHaveBeenCalledWith('sb-boot-dismiss');
+    });
+
+    test('completes the boot without a failure where the browser has no performance marks', () => {
+        const { window } = createBootGuardHarness({ performance: {} });
+
+        expect(() => window.SillyBunnyBootGuard.bootCompleted()).not.toThrow();
+    });
+
     test('removes startup loader artifacts before showing the recovery panel', () => {
         const { document, window } = createBootGuardHarness();
         const preloader = addPreloader(document);
@@ -246,7 +267,7 @@ describe('SillyBunny boot guard', () => {
         expect(document.getElementById('loader')).toBeNull();
         expect(document.querySelector('._poly_dialog_overlay')).toBeNull();
         expect(preloader.attributes.has('aria-hidden')).toBe(false);
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button').textContent).toBe('Clear Frontend Cache and Reload');
     });
 
     test('defers timeout failures while the normal startup loader is active', () => {
@@ -266,7 +287,7 @@ describe('SillyBunny boot guard', () => {
         setNow(36000);
         timers.shift().callback();
 
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button').textContent).toBe('Clear Frontend Cache and Reload');
     });
 
     test('offers a dismiss button that removes the panel and suppresses later failures', () => {
@@ -276,7 +297,7 @@ describe('SillyBunny boot guard', () => {
         window.SillyBunnyBootGuard.showFailure('boom');
 
         const preloader = document.getElementById('preloader');
-        const dismissButton = preloader.querySelectorAll('button').find(button => button.textContent === 'Continue anyway');
+        const dismissButton = preloader.querySelectorAll('button').find(button => button.textContent === 'Continue Anyway');
         expect(dismissButton).toBeDefined();
 
         dismissButton.listeners.get('click')();
@@ -321,7 +342,7 @@ describe('SillyBunny boot guard', () => {
 
         timers.slice(initialTimerCount).forEach(timer => timer.callback());
 
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button').textContent).toBe('Clear Frontend Cache and Reload');
     });
 
     test('describes message-less thrown objects instead of showing [object Object]', () => {

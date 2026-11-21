@@ -14,6 +14,9 @@ import { write } from '../character-card-parser.js';
 import { serverDirectory } from '../server-directory.js';
 import { Jimp, JimpMime } from '../jimp.js';
 import { DEFAULT_AVATAR_PATH } from '../constants.js';
+// SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass, and a replaced card loses its cached thumbnails.
+import { reconcileManagedContent } from '../sillybunny-managed-content.js';
+import { invalidateThumbnail } from './thumbnails.js';
 
 const contentDirectory = path.join(serverDirectory, 'default/content');
 const scaffoldDirectory = path.join(serverDirectory, 'default/scaffold');
@@ -143,6 +146,236 @@ const MANAGED_BUNDLED_QUICK_REPLIES = Object.freeze([
         bundledPath: 'presets/quick-replies/Memory Sharding.json',
         staleHashes: Object.freeze([]),
     },
+]);
+
+// SillyBunny divergence: seeding never overwrites an existing theme file, so a bundled theme that changes
+// after users copied it would stay stale in their data folder. A managed theme is replaced only while the
+// user's copy has the SHA-256 of an earlier bundled file; an edited copy has another hash and is left alone.
+// The Libadwaita Light entry lists the files of its pre-release builds, the last of them from before its text colours
+// were raised to the DESIGN.md contrast floor. CONTRAST_REVISED_THEME_HASHES maps every other
+// theme that had text colours raised to the hash of its file from before. A value is one hash, or an array of
+// hashes when pre-release builds also shipped an earlier revision of the file (the first entry is the last release's).
+const CONTRAST_REVISED_THEME_HASHES = Object.freeze({
+    'Amber Dusk': [
+        '8f82f538222d0c006c49acb8c9246fcc434a67fed004153a708ff1fbca92d848',
+        '605bad6844d5c1bbf5f5a953cdd1ccf7ffe9cfa577fd558d40ee9c498c6b8d1f',
+    ],
+    Azure: [
+        '87426170fa7018df583aeda71f440ceb8f6234794265b6427371706d7fb064b1',
+        '74959a9c276c60e4d1deaab37f6cc6b0b2f2fd2246184aac59d9cb014beaa0f0',
+    ],
+    'Burnt Orange': [
+        '2cde7d3f33c697ce1a70173c873722c5a814bf8580caf743680ad84ca5b7c988',
+        '873c70e6bf24b5207865c89343acaeb338ec871888778fc3f54f92f2078cfc78',
+    ],
+    Cappuccino: '06cea473697a1fd4042a3a57f40b1194c1d1db577b253486b893f3c17e941b95',
+    'Catppuccin Latte': [
+        '0a9d693c0f8f864eb4e4c104c7ea04ed18d3adfcd71cc5d02dcf85fb73b57a8c',
+        'ef4426efa9aea5f9ecccf02f3be32dec7d8b0af79f0032b69e30980803612f2d',
+    ],
+    'Catppuccin Mocha': [
+        '4b437cb39d8aaf614c6d010f0bf388e17f175b4bedc2bf4816e1c0f679ec8ee4',
+        '9eeb768830f556359701b3c332a274c943440f8c695451bff3f41aedee92695d',
+    ],
+    'Celestial Macaron': 'd670ff830f0b4184d44fdc689bf394c33e0cd0d47b99e15026ac14fc008561e0',
+    Cerulean: [
+        '499b1744aa6d861ae12a94b28c09654a83cb809676d158b8c8e681b3719fdf83',
+        '8058cd14dabd182bcc8f9a2b31a3426332b31cff412c84b061cff85172ac7704',
+    ],
+    Cinder: [
+        'a163b45775fe91c41ad631442fcdd7dbecb5075f4e208fe0789f541d4ec9fb1a',
+        '5405e21c56021529831098d7e82c68471d8169ddd2b3859937b57194ae218400',
+    ],
+    'Dark Lite': 'f894d42f22426d645f4b742ecf927a5901540050c26de3524bf9b3990c49f497',
+    'Dark V 1.0': 'cda9c1274c89350bc35c29ebca0edf251fd8b10be2b94f060c5b2a47b68d7018',
+    Dracula: [
+        'c2bc89024d193955028b24d602568004e9b85d0ee0b6982e5273d35bfa497317',
+        '1ba1d5ce34c621ff08473a08c6c5bf75753e05407b639805c58ea2cb7fc34cf8',
+    ],
+    'Dracula Light': [
+        'fe0bcf898a273b6a4f9f18bae92829130d6c7facfd1eb6757d50e26839faf3e6',
+        '567dc2d4d06abdfc92981507127ab2fcd280801369a3499144aa065020b4be5d',
+    ],
+    'Everforest Dark': [
+        '1314da6c6174a33a4c9721638bec3e711fac5d96bac0375968d901219c4b6a19',
+        'dccf9d8382cc4fec3170f0046ad423c6201dd1f4ee7b7268ee0d7acd50d7fec5',
+    ],
+    'Everforest Light': [
+        '448b6acab6b2194c39c6f44a990dbf4dc33d482d70bbd6a8e559b980d0a5135b',
+        'e01b47dea044b6739ccef047aa36833c8cd506b4795883837169e1f0c701a979',
+    ],
+    Glacier: [
+        '330021d9fb6182c7433037a2ef950ed86170a3e4683a3c149d6ded88ecb6d660',
+        '7b3f8ebf13e5f8cd5294e2f0c60397234dc12b1c7a37b246edbf508554fb21e7',
+    ],
+    'Gruvbox Dark': [
+        'dc2917da738305e3d3eb0d3336042505f28d081f8c98b6fad5f06efd00d75445',
+        '096bdae184d865a13397f2c9885e238dbbe93269debfaeed48c20364b8b35978',
+    ],
+    'Gruvbox Light': [
+        '676929397107f356e222d9f0668eef72679ceb062ed904047726a72a4e65c0f7',
+        'b7f256fed7b35ad8732979ec3bed7e1e532b3faa1e642ab08168c5d30320aa2c',
+    ],
+    'Hacker-Terminal-Light': [
+        'fa555e534a2ae0cf61a60ad5207b7e8823e43e7565e88d93889cb1841cd50672',
+        '29e64f1c60de4c513a317858f52ea64a0fa8fb14d957b3b385b525c2b21c438c',
+    ],
+    Lavender: [
+        '55aa33a93b8f678717d47ad109b1f95c32f6bad7d578c2135fd28b15840cd936',
+        '08f3f49e214eb2bcb9c79bf476ba828dc3485f331df6a599015f4b70e6fb643a',
+    ],
+    Lime: [
+        '90cddb5b87d3c0368f7473214498bdf3a922785704d08c055ef4496a3979797b',
+        'e71545164e248260968225504fcadc49730bd83174bc7be39b239f8127ca763c',
+    ],
+    Magenta: [
+        'a8d41ba8b0252d3b137acbb012a8b776f5919329e955922a0e51c70c8a7dc9c6',
+        'd658ab7233a27e2c05064fb824b6e68374569605c9079535d26a3976f2047722',
+    ],
+    Mint: [
+        'f53fc0bbf962a4c8d84e3ea8e03edf72b643956a1019771ad34a4681c9bc29b2',
+        'f99f6a0de58c843db06da164e2d5f11cf1a328543afae8407ae1c034673a0ed8',
+    ],
+    Monochrome: [
+        'fe6606c7ff5697878280da1431530c7d8c7947cac69173dbc4c39f475030b339',
+        'f3d67363e2e85e1706b9f9ab014e8aee3008b4e1de9ee79c930fa57769d881b0',
+    ],
+    'Neon Abyss': [
+        'ebef37330912ed4a0ddbf28d316b358b9a766f877950a1ecf5628e1bdb145da3',
+        '5425b2e480f4c383f46602a3d4f29cfd994b1d77069d6f8e2fbd37573a15960e',
+    ],
+    'Neon Yellow': [
+        '9965a3b7cac8c6f1ac8e2037d3fdcbae1562c61b8b6b4063517b5086ce4de7c1',
+        '5543184dc885233a44bd7b2cd01e674587c6989edff8adaf738a088c94025e96',
+    ],
+    Nord: [
+        '4f652df094a96403fe38cb47f9b0b27c0e0ea66356df291cfd428ee7c125b14f',
+        '19107c7937aaf1e8a21f14baed85519b7f026a2b55fa5e74f2110c151a258fab',
+    ],
+    'Nord Light': [
+        '39b971d8c8a7140b4c66bb6a3b1a4c46280a0508d883d77bbdd092b13e63e671',
+        '93a579bfb8ccf84b409275d582f84f00b17a597fc5aef84755e7098379c65ecd',
+    ],
+    Plum: [
+        'e9927741990141dd73e6a9778e0b0458051e211e81c74485f47babfed35a439e',
+        'c0795d29ede23803fcc6e839e323db784b8e2e7a26bd4dd317db040a1480c0c6',
+    ],
+    Rose: [
+        'df951ec20b01efdd76cde448e6049df45a1180d5d71b322dd71a8450c282ab95',
+        'c72cc90a732f3480d1d889b1f93db00602644e401dd1ee3f4f635e2411a0affc',
+    ],
+    'Rosé Pine': [
+        'ae8c33dde31b5410ac1fd1ea8ffe95387a952d6018881b61525959ab88ad4854',
+        '2fa4ce7372df21e82fb80ce3a38234e3a10a47dc21f0c85502af073aca973d06',
+    ],
+    'Rosé Pine Dawn': [
+        '2056de45032c4f23c56caeab37b7562ed6c23c0ce329be1672ecbde5edc3958e',
+        '66ea41e69c570e3e0231b7a22daa3da6a38d946b9aa273a2be5a89c2f2932d23',
+    ],
+    Sage: [
+        'bbfcef2913e10ae3d48c08dde23a79d931ce01723668f6f8128063ec658b7ce7',
+        '49c298d5a4eb939b1e8e8d29a62e80689927fd5d48e76d563e1ebd4b9f9fc855',
+    ],
+    Slate: [
+        'cf80b17b2c4ef1d133830d17f0c7a2de5e8a9e262e9736b46facd1ef34f0ef2d',
+        '1a30ea76873cd5254c4235fa4d60eeb522209f19d6cdaaacfab21899ca4841f3',
+    ],
+    'Solarized Dark': [
+        'c8d84b6f3ce7e1e2c75df81aa5cffe90eed69c8109ecd70babc0f27a1ac10a6e',
+        '322051819bea3c5a85874d490cede036959ab660bae39ac765a3b38ecf0a75fd',
+    ],
+    'Solarized Light': [
+        'f84c47d1e427fff57cde2ce8cd8f2bf031837ec568561bc4402bd2b3af7bd41f',
+        '92752cb6c794d2c56d95e5c163a511464b38035ddcf60c700653a44d112d73ba',
+    ],
+    'Sonokai Andromeda': [
+        '27d9c84e863e5b3087b47d9c41d9cde153ba7fcdccef1583be5343db30e2f0b1',
+        '0083859ecdba7bd8ecde039ffbd0f491a430d78e239a34011f97e518db848f72',
+    ],
+    'Sonokai Andromeda Light': [
+        '0872ccb77466781c2bd91ec2b6e67a17ff4143402b6bda8a5259101580129275',
+        '55a4369ec91b2007bb8712f7e3c154c7a05eaeab877294c07e7f1af1cbcac3c7',
+    ],
+    'Sonokai Atlantis': [
+        '3dd8c04362cbbda64f041121052f687dcacfa87ec976a9ab94b5a5bbb05c7292',
+        '7c3cb026954c8aeabdfc0678364b30e1a497a12f18bbf463bf30f8c3215a76db',
+    ],
+    'Sonokai Atlantis Light': [
+        'ad12b5ecf8f42fd3cb72de7e4a9b33b5a505d547039e818353602beb83e3c2bf',
+        '9e1810ac8ea689dc881eea53a7046dcabcd4f831a5356b592e34a2cc13e32bfe',
+    ],
+    'Sonokai Default': [
+        '1df968101c458f1661c5bcb3678fb9f300a66019a5525c41d974d88873df20ce',
+        'd9eeeb3f572321b538c029ab4fe3b2040f0d3f597f8651add5e9a8f01fc06912',
+    ],
+    'Sonokai Default Light': [
+        '85de22d75041b5debb0ab5635dfcd8f00111780d7c8fa3e2679e3053e7440e46',
+        '57db8001edb08f5947d584dd54714cb5e757fd87cc9843052f78022415c54765',
+    ],
+    'Sonokai Espresso': '93e21b80027281643663cff6a8bda5888550fa0757641aa4b7a0691f08c88f3e',
+    'Sonokai Espresso Light': [
+        '1a0a28b6db578f3a8d391db2fbe5b30d663cc981a746a7afe0ef4cb63956669d',
+        '97ff7346a1f6ad0b557abd2456e1e42419ce6e8fae69d8c96a45d9a7ec9f05c5',
+    ],
+    'Sonokai Maia': [
+        '82b443123a5dd13d0d8a5280e56cc7bd1a0d6db182ad1c1e713fa992e9634f7b',
+        'b542a609ee948dbaecabc1eed7e6af96feb6a42d7d75f60d3cbccd860867ad20',
+    ],
+    'Sonokai Maia Light': [
+        '0b1880cc056959f28f42524cdaaa74f61f3d31b1d6280273ced726d533e89bef',
+        '6557a90b232ede7c9360199461292439d87dc76e8aa9b5affb2e85c18b423f00',
+    ],
+    'Sonokai Shusia': [
+        '02781a915b2fc3f0e5e2c5ec34d402e2c0dfac84bad96b6feda85e780f2badc7',
+        '22fe7f05c06826e2e305f041b4a9c2d5ccbb85305db64c04761215efa5fc83e7',
+    ],
+    'Sonokai Shusia Light': [
+        '82d2b8f3473066874f1c8302ebec61c39f288ffa45e4ac3f70e324b1c959338f',
+        'b9c8914522a6c3714403d588d5591e73da3d458e7e32e1385431e071ca436cce',
+    ],
+    'Tokyo Night': [
+        '9317ef4b915372eaf01fa7355a1e8cd13cf82c79ab07a7a9082b76cd01e1d53d',
+        'd3abe4df3bf554f9ea23f5a9167db7a18fdca108e5f156e4075702fe8e505baa',
+    ],
+    'Tokyo Night Day': [
+        '9b3c57d38826a79885db4332ef2751c043aee2ef2ec25063c923f1f00e31a803',
+        'e77c706371e3a5a67a16e04a5817a299a89f0ec34d04beffebe6ce558ba01288',
+    ],
+    'Verdant Light': [
+        'dfc5acb859d8821d4dc77ad37fa8314b670fcdbc535f758318da4192ba38a493',
+        '8f3228635d7eee2765e2e8d439b8d1393f0f03f3095d78ad692433a9f2d01604',
+    ],
+});
+
+// SillyBunny divergence: the bundled theme "Libadwaita" is now "Libadwaita Dark". A user's `Libadwaita.json` is
+// deleted only while its SHA-256 is listed here, which covers every version that was shipped. An edited copy has
+// another hash, stays, and becomes the user's own theme. The client selects "Libadwaita Dark" for a user whose
+// selected theme no longer exists.
+const RETIRED_BUNDLED_THEMES = Object.freeze([
+    {
+        filename: 'Libadwaita.json',
+        shippedHashes: Object.freeze([
+            'ce420dcde11cec505b2112515e1aeccea5937768911971817f3089c96f412b97',
+            'c0e039effbc0c83883b551d4e74b2c29a506079f09f9e2a66b3b6659cd7c536d',
+            'afcaa383c6b4ab81a3704e6f58eaec18eeaff63d9c95d0de76a4ef1ca75c30d9',
+            'c09b7f589beab4cc8e752e74c37a31f39cdda2a540b7e1e5ce0314eccc53c2dd',
+        ]),
+    },
+]);
+
+const MANAGED_BUNDLED_THEMES = Object.freeze([
+    {
+        bundledPath: 'themes/Libadwaita Light.json',
+        staleHashes: Object.freeze([
+            '750603511a68a6823629bf706a095f728fadcc80f11af8321a109d237566bbb1',
+            'fdfc96c9fd2b29d2dc76104911c2f452830067352e07f20c5fb6b26604121f45',
+            'f7cba0d205b5fd26fa1fb28da45a66d3bf7eee2bdde95133680a6adf98d2eea8',
+        ]),
+    },
+    ...Object.entries(CONTRAST_REVISED_THEME_HASHES).map(([name, staleHashes]) => ({
+        bundledPath: `themes/${name}.json`,
+        staleHashes: Object.freeze(Array.isArray(staleHashes) ? staleHashes : [staleHashes]),
+    })),
 ]);
 
 function isPresetContentType(type) {
@@ -340,10 +573,12 @@ export function findDefaultPreset(directories, { folder, name }) {
 }
 
 /**
- * Restores bundled default preset files for a user.
+ * Restores the bundled default preset files that a user is missing, whether they deleted them or never had them.
+ * A file that is there is never written over, edited or not: the copy is exclusive, so a file that appears
+ * while the restore runs is kept as well. A kept file is not reported as restored.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string[]|null} types Content types to restore, or null for all preset types
- * @returns {{restored: string[], failed: {filename: string, error: string}[]}}
+ * @returns {{restored: string[], failed: {filename: string, error: string}[]}} `restored` holds the presets that were written
  */
 export function restoreDefaultPresetFiles(directories, types = null) {
     const allowedTypes = Array.isArray(types) && types.length ? new Set(types) : null;
@@ -364,7 +599,15 @@ export function restoreDefaultPresetFiles(directories, types = null) {
             }
 
             fs.mkdirSync(targetFolder, { recursive: true });
-            fs.cpSync(sourcePath, targetPath, { recursive: true, force: true });
+            try {
+                // SillyBunny: an exclusive copy, so a restore never overwrites a preset that is there.
+                fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+            } catch (error) {
+                if (error?.code === 'EEXIST') {
+                    continue;
+                }
+                throw error;
+            }
             setPermissionsSync(targetPath);
             clearDefaultPresetDeletion(directories, preset);
             restored.push(preset.filename);
@@ -610,13 +853,60 @@ export function reconcileManagedBundledQuickReplies(directories) {
 }
 
 /**
+ * Replaces stale pre-release copies of bundled themes and removes retired ones, without touching user-modified files.
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ */
+export function reconcileManagedBundledThemes(directories) {
+    const themesDirectory = getUserTargetByType(CONTENT_TYPES.THEME, directories);
+
+    if (!themesDirectory || !fs.existsSync(themesDirectory)) {
+        return;
+    }
+
+    for (const retiredTheme of RETIRED_BUNDLED_THEMES) {
+        const targetPath = path.join(themesDirectory, retiredTheme.filename);
+
+        try {
+            if (!fs.existsSync(targetPath) || !retiredTheme.shippedHashes.includes(getSha256(fs.readFileSync(targetPath)))) {
+                continue;
+            }
+
+            fs.rmSync(targetPath);
+            console.info(`Retired bundled theme removed from ${targetPath}`);
+        } catch (error) {
+            console.warn(`Failed to retire bundled theme ${retiredTheme.filename}`, error);
+        }
+    }
+
+    for (const managedTheme of MANAGED_BUNDLED_THEMES) {
+        const targetPath = path.join(themesDirectory, path.parse(managedTheme.bundledPath).base);
+
+        try {
+            if (!fs.existsSync(targetPath) || !managedTheme.staleHashes.includes(getSha256(fs.readFileSync(targetPath)))) {
+                continue;
+            }
+
+            const bundledContent = fs.readFileSync(path.join(contentDirectory, managedTheme.bundledPath));
+            writeFileAtomicSync(targetPath, bundledContent);
+            setPermissionsSync(targetPath);
+            console.info(`Stale bundled theme replaced at ${targetPath}`);
+        } catch (error) {
+            console.warn(`Failed to reconcile bundled theme ${managedTheme.bundledPath}`, error);
+        }
+    }
+}
+
+// SillyBunny: exported, with a managed content directory, so seeding is testable against fixtures.
+/**
  * Seeds content for a user.
  * @param {ContentItem[]} contentIndex Content index
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string[]} forceCategories List of categories to force check (even if content check is skipped)
+ * @param {object} [options]
+ * @param {string} [options.managedDirectory] Where the managed content manifest is; tests point it at fixtures.
  * @returns {Promise<boolean>} Whether any content was added
  */
-async function seedContentForUser(contentIndex, directories, forceCategories) {
+export async function seedContentForUser(contentIndex, directories, forceCategories, { managedDirectory = contentDirectory } = {}) {
     if (!fs.existsSync(directories.root)) {
         fs.mkdirSync(directories.root, { recursive: true });
     }
@@ -626,6 +916,15 @@ async function seedContentForUser(contentIndex, directories, forceCategories) {
     removeObsoleteContent(contentLog, directories);
     writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
     reconcileManagedBundledQuickReplies(directories);
+    reconcileManagedBundledThemes(directories);
+    // SillyBunny: managed content is reconciled per user; a content directory without a manifest manages nothing. A card
+    // it replaces loses its cached thumbnails, which the thumbnail route would otherwise keep serving.
+    reconcileManagedContent({
+        bundledDirectory: managedDirectory,
+        directories,
+        setPermissions: setPermissionsSync,
+        invalidateThumbnail: file => invalidateThumbnail(directories, 'avatar', file),
+    });
     const filteredContentIndex = contentIndex.filter(contentItem => {
         if (!isPresetContentType(contentItem.type)) {
             return true;

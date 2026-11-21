@@ -120,6 +120,41 @@ describe('in-chat agent scoped enabled state', () => {
         expect(saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
+    test('switching the scoped lists on and back off puts the saved lists back (F-113)', async () => {
+        const store = await importStore();
+        useAgents(store);
+        const saved = structuredClone(store.getGlobalSettings().enabledAgentIdsByChatType);
+        const initialized = store.getGlobalSettings().scopedEnabledAgentIdsInitialized;
+
+        const before = store.captureScopedEnableState();
+        store.setGlobalSettings({ separateRecentChats: true });
+        store.initializeScopedAgentEnableState();
+        const seeded = store.captureScopedEnableState();
+        expect(store.getGlobalSettings().enabledAgentIdsByChatType).not.toEqual(saved);
+
+        store.setGlobalSettings({ separateRecentChats: false });
+        expect(store.restoreScopedEnableState(before, seeded)).toBe(true);
+        expect(store.getGlobalSettings().enabledAgentIdsByChatType).toEqual(saved);
+        expect(store.getGlobalSettings().scopedEnabledAgentIdsInitialized).toBe(initialized);
+        expect(store.getEnabledAgents().map(agent => agent.id)).toEqual(['agent-individual']);
+    });
+
+    test('switching the scoped lists off keeps lists that were edited while they were in use', async () => {
+        const store = await importStore();
+        useAgents(store);
+
+        const before = store.captureScopedEnableState();
+        store.setGlobalSettings({ separateRecentChats: true });
+        store.initializeScopedAgentEnableState();
+        const seeded = store.captureScopedEnableState();
+        context.groupId = 'group-1';
+        store.setAgentEnabledForCurrentScope(store.getAgentById('agent-group'), true);
+
+        store.setGlobalSettings({ separateRecentChats: false });
+        expect(store.restoreScopedEnableState(before, seeded)).toBe(false);
+        expect(store.getGlobalSettings().enabledAgentIdsByChatType.group).toEqual(['agent-group']);
+    });
+
     test('exposes an empty helper prefill global setting by default', async () => {
         const store = await importStore();
 

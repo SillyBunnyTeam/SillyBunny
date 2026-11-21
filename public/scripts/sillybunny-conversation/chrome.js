@@ -3,11 +3,13 @@ import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { getUserAvatar } from '../personas.js';
+import { POPUP_RESULT, POPUP_TYPE, Popup } from '../popup.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { CHROME_IDS, CONVERSATION_THREAD_OPENED_EVENT, DEFAULT_BRANCH_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
     createConversationBranchForAvatar,
     deleteConversationBranch,
@@ -31,7 +33,6 @@ import {
     applySettingsToPanel,
     handleCharacterMessagePolish,
     saveCurrentPanelSettings,
-    syncConversationToolsVisibility,
     updateConversationChrome,
     updateConversationHeader,
 } from './interface.js';
@@ -39,11 +40,10 @@ import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
 import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
 import { switchConversationPersona } from './persona-switch.js';
-import { editUserPersonaStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
+import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
     addWeeklyScheduleRow,
-    handleCreateConversationGroupFromPicker,
-    hideConversationStartPicker,
+    hideConversationPickers,
     openAddMemberPicker,
     renderConversationPersonaPicker,
     toggleAddDmPicker,
@@ -52,18 +52,23 @@ import {
     toggleUserStatusPicker,
     updateUserFooter,
 } from './pickers.js';
-import { scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
+import { afterConversationRender, scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
 import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
 import {
     clearConversationMemoryFromPanel,
     closeConversationSettings,
     closePalsRail,
+    dismissConversationSettings,
+    dismissConversationSettingsOnEscape,
     forceCreateMemoryFromPanel,
+    isConversationPagesLayout,
+    observeConversationLayout,
     openConversationSettings,
     openScheduleEditorModal,
     refreshConversationMemoryFromPanel,
     renderConversationMemoryPanel,
     renderScheduleDisplay,
+    syncConversationPage,
     togglePalsRail,
 } from './settings-panel.js';
 import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
@@ -84,32 +89,107 @@ import {
     regenerateConversationMessage,
     replyToConversationMessage,
     setConversationTimelineChannel,
+    toggleConversationSearchBar,
     speakConversationMessage,
     toggleConversationMessagePin,
-    updateConversationNotificationSettingsVisibility,
     updateConversationSearchQuery,
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
+import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
+import { openActionMenu } from '../sillybunny-action-menu.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20260808c';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261118zzj';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261118zzu';
+const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
+
+/**
+ * Sizes the composer entry to its content. Border-box height must include the border that
+ * scrollHeight leaves out, or the entry stays 2px short and scrolls with a single line.
+ * @param {HTMLTextAreaElement} input
+ */
+function resizeConversationInput(input) {
+    // An empty entry uses the CSS height. Measuring before the lazy stylesheet applies, or while
+    // the workspace is hidden, would pin a stale inline height until the next keystroke.
+    if (!input.value) {
+        input.style.removeProperty('height');
+        input.dataset.sbOverflowing = 'false';
+        return;
+    }
+    if (!input.clientWidth) {
+        return;
+    }
+    input.style.height = 'auto';
+    const style = getComputedStyle(input);
+    const border = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    const maxHeight = parseFloat(style.maxHeight) || Infinity;
+    const needed = input.scrollHeight + border;
+    input.style.height = `${Math.min(needed, maxHeight)}px`;
+    input.dataset.sbOverflowing = needed > maxHeight + 1 ? 'true' : 'false';
+}
 const CONVERSATION_STYLESHEET_ID = 'sb-conversation-css';
 
-function ensureConversationStylesheet() {
-    if (conversationState.conversationCssLoaded) {
+// User custom CSS (#custom-style) must keep winning, so the lazily loaded sheet is inserted before it
+// instead of being appended to the end of <head>. loadStylesheetAsync then adopts the link by id.
+function insertConversationStylesheetLink() {
+    const customStyle = document.getElementById('custom-style');
+    if (document.getElementById(CONVERSATION_STYLESHEET_ID) || !(customStyle instanceof HTMLElement) || !customStyle.parentNode) {
+        return;
+    }
+    const link = document.createElement('link');
+    link.id = CONVERSATION_STYLESHEET_ID;
+    link.rel = 'stylesheet';
+    link.type = 'text/css';
+    link.media = 'print';
+    link.href = CONVERSATION_STYLESHEET_HREF;
+    customStyle.before(link);
+}
+
+// 'idle' | 'loading' | 'ready' | 'failed'. The chrome stays hidden while 'loading': revealing it
+// before the lazy sheet applies paints one or more frames of unstyled markup on the first open.
+let conversationStylesheetStatus = 'idle';
+
+export function isConversationStylesheetLoading() {
+    return conversationStylesheetStatus === 'loading';
+}
+
+// The composer focus requested by the open path waits for this refresh: the chrome stays hidden
+// while the first sheet loads, and the composer is only enabled by the render flush.
+function revealConversationWorkspaceAfterStylesheet() {
+    if (!conversationState.conversationWorkspaceOpen) {
         return;
     }
 
-    conversationState.conversationCssLoaded = true;
-    loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
+    conversationState.timelineBottomScrollPending = true;
+    scheduleInterfaceRefresh({ syncControls: false });
+}
+
+function ensureConversationStylesheet() {
+    if (conversationStylesheetStatus === 'loading' || conversationStylesheetStatus === 'ready') {
+        return;
+    }
+
+    conversationStylesheetStatus = 'loading';
+    insertConversationStylesheetLink();
+    // The settings pane is built from shared rows whose button, text-area and insensitive styles live in the editor shell.
+    Promise.all([
+        loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID }),
+        loadStylesheetAsync(EDITOR_SHELL_STYLESHEET_HREF, { id: EDITOR_SHELL_STYLESHEET_ID }),
+    ])
         .then(() => {
-            if (conversationState.conversationWorkspaceOpen) {
-                conversationState.timelineBottomScrollPending = true;
-                scheduleTimelineRender();
+            conversationStylesheetStatus = 'ready';
+            const input = document.getElementById(CHROME_IDS.input);
+            if (input instanceof HTMLTextAreaElement) {
+                resizeConversationInput(input);
             }
+            revealConversationWorkspaceAfterStylesheet();
         })
         .catch(error => {
-            conversationState.conversationCssLoaded = false;
+            // Reveal unstyled rather than leave the workspace stuck closed. Drop the dead link:
+            // loadStylesheetAsync adopts an existing link by id and would wait on it forever.
+            conversationStylesheetStatus = 'failed';
+            document.getElementById(CONVERSATION_STYLESHEET_ID)?.remove();
             console.warn('Conversation Mode: stylesheet failed to load', error);
+            revealConversationWorkspaceAfterStylesheet();
         });
 }
 
@@ -117,144 +197,58 @@ function requestConversationRuntimeStart() {
     window.dispatchEvent(new CustomEvent('sb:conversation-runtime-needed'));
 }
 
-function getConversationToolsVisible() {
-    try {
-        return localStorage.getItem('sb_conv_tools_visible') === 'true';
-    } catch {
-        return false;
-    }
-}
-
-function setConversationToolsVisible(visible) {
-    try {
-        localStorage.setItem('sb_conv_tools_visible', String(visible));
-    } catch {
-        // Ignore storage write failures in Safari Private Browsing.
-    }
-}
-
-function closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement) {
-    overlay.remove();
-    if (previouslyFocusedElement instanceof HTMLElement) {
-        previouslyFocusedElement.focus({ preventScroll: true });
-    }
-}
-
-function openGroundedDialogueRulesEditor() {
+async function openGroundedDialogueRulesEditor() {
     const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
     if (!(backingInput instanceof HTMLTextAreaElement)) {
-        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules.');
+        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules');
         return;
     }
 
-    const previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const overlay = document.createElement('div');
-    overlay.id = 'sb_conversation_grounded_rules_modal';
-    overlay.className = 'sb-conversation-schedule-modal-overlay';
-    overlay.style.cssText = `
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        display: grid;
-        place-items: center;
-        padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
-        background: rgba(0, 0, 0, 0.7);
-        box-sizing: border-box;
-    `;
+    const content = document.createElement('div');
+    content.id = 'sb_conversation_grounded_rules_modal';
+    content.className = 'sb-conversation-grounded-rules-editor';
 
-    const modal = document.createElement('div');
-    modal.className = 'sb-conversation-schedule-modal';
-    modal.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        inline-size: min(720px, calc(100vw - 24px));
-        max-block-size: min(78vh, 760px);
-        padding: 16px;
-        border: 1px solid color-mix(in srgb, var(--sb-shell-border, #666) 70%, transparent);
-        border-radius: var(--sb-radius-lg, 16px);
-        background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor));
-        color: var(--SmartThemeBodyColorContrast);
-        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-    `;
-
-    const header = document.createElement('div');
-    header.className = 'sb-conversation-field-row';
-    header.style.cssText = 'align-items: center; justify-content: space-between; gap: 10px;';
-
-    const title = document.createElement('div');
-    title.innerHTML = '<div class="sb-conversation-settings-kicker">Global prompt style</div><div class="sb-conversation-settings-title">Grounded Dialogue Rules</div>';
-    header.appendChild(title);
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'menu_button menu_button_icon';
-    closeButton.title = 'Close editor';
-    closeButton.setAttribute('aria-label', 'Close Grounded Dialogue Rules editor');
-    closeButton.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-    header.appendChild(closeButton);
+    const title = document.createElement('h3');
+    title.id = 'sb_conversation_grounded_rules_title';
+    title.textContent = 'Grounded Dialogue Rules';
 
     const hint = document.createElement('p');
     hint.className = 'sb-conversation-field-hint';
     hint.textContent = 'This global block is added to Conversation Mode prompts only when the Grounded Dialogue Rules toggle is on.';
 
     const editor = document.createElement('textarea');
-    editor.className = 'text_pole textarea_compact wide100p';
+    editor.className = 'text_pole textarea_compact wide100p sb-conversation-grounded-rules-input';
     editor.rows = 18;
     editor.value = backingInput.value || DEFAULT_GROUNDED_DIALOGUE_RULES;
-    editor.style.cssText = 'min-block-size: 340px; resize: vertical; font-family: var(--monoFontFamily, monospace);';
+    editor.setAttribute('aria-labelledby', title.id);
+    content.append(title, hint, editor);
 
-    const actions = document.createElement('div');
-    actions.className = 'sb-conversation-field-row';
-    actions.style.cssText = 'justify-content: flex-end; gap: 8px;';
-
-    const resetButton = document.createElement('button');
-    resetButton.type = 'button';
-    resetButton.className = 'menu_button';
-    resetButton.textContent = 'Reset';
-
-    const cancelButton = document.createElement('button');
-    cancelButton.type = 'button';
-    cancelButton.className = 'menu_button';
-    cancelButton.textContent = 'Cancel';
-
-    const saveButton = document.createElement('button');
-    saveButton.type = 'button';
-    saveButton.className = 'menu_button';
-    saveButton.textContent = 'Save Rules';
-
-    actions.append(resetButton, cancelButton, saveButton);
-    modal.append(header, hint, editor, actions);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    const closeEditor = () => closeGroundedDialogueRulesEditor(overlay, previouslyFocusedElement);
-    closeButton.addEventListener('click', closeEditor);
-    cancelButton.addEventListener('click', closeEditor);
-    resetButton.addEventListener('click', () => {
-        editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
-        editor.focus({ preventScroll: true });
+    const popup = new Popup(content, POPUP_TYPE.TEXT, null, {
+        okButton: 'Save',
+        cancelButton: 'Cancel',
+        wider: true,
+        leftAlign: true,
+        allowVerticalScrolling: true,
+        customButtons: [{
+            text: 'Reset to Default',
+            classes: ['sb-conversation-dialog-reset'],
+            action: () => {
+                editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
+                editor.focus({ preventScroll: true });
+            },
+        }],
+        onOpen: () => editor.focus({ preventScroll: true }),
     });
-    saveButton.addEventListener('click', () => {
-        backingInput.value = editor.value;
-        backingInput.dispatchEvent(new Event('input', { bubbles: true }));
-        saveCurrentPanelSettings();
-        toastr.success('Grounded Dialogue Rules updated.');
-        closeEditor();
-    });
-    overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) {
-            closeEditor();
-        }
-    });
-    overlay.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            closeEditor();
-        }
-    });
+    popup.dlg.classList.add('sb-conversation-dialog', 'sb-conversation-grounded-rules-dialog');
+    popup.dlg.setAttribute('aria-labelledby', title.id);
+    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) {
+        return;
+    }
 
-    requestAnimationFrame(() => editor.focus({ preventScroll: true }));
+    backingInput.value = editor.value;
+    backingInput.dispatchEvent(new Event('input', { bubbles: true }));
+    saveCurrentPanelSettings();
+    toastr.success('Grounded Dialogue Rules updated');
 }
 
 function focusConversationInput({ skipIOS = false } = {}) {
@@ -266,6 +260,27 @@ function focusConversationInput({ skipIOS = false } = {}) {
     if (input instanceof HTMLTextAreaElement) {
         input.focus({ preventScroll: true });
     }
+}
+
+// The composer is disabled until the render flush picks a thread and hidden until the lazy sheet
+// applies, so focus follows those instead of a fixed delay.
+function focusConversationInputAfterRender() {
+    afterConversationRender(() => {
+        if (!conversationState.conversationWorkspaceOpen || !conversationState.conversationSelectedAvatar) {
+            return true;
+        }
+        if (isConversationStylesheetLoading()) {
+            return false;
+        }
+
+        const input = document.getElementById(CHROME_IDS.input);
+        if (!(input instanceof HTMLTextAreaElement) || input.disabled) {
+            return false;
+        }
+
+        input.focus({ preventScroll: true });
+        return true;
+    });
 }
 
 function getConversationFullAvatarUrl(file, type) {
@@ -325,7 +340,7 @@ function showConversationZoomedAvatar(target) {
     const newElement = $(template);
     newElement.attr('forChar', avatarKey);
     newElement.attr('id', `zoomFor_${safeId}`);
-    newElement.addClass('draggable');
+    newElement.addClass('draggable sb-conversation-zoomed-avatar');
     newElement.find('.drag-grabber').attr('id', `zoomFor_${safeId}header`);
 
     const zoomedAvatarImgElement = newElement.find('.zoomed_avatar_img');
@@ -353,6 +368,38 @@ function showConversationZoomedAvatar(target) {
     }
 }
 
+function closeConversationZoomedAvatars() {
+    const $avatars = $('.zoomed_avatar.sb-conversation-zoomed-avatar:visible');
+    if (!$avatars.length) {
+        return false;
+    }
+
+    $avatars.each(function () {
+        removeConversationZoomedAvatar($(this));
+    });
+    return true;
+}
+
+let conversationZoomEscapeBound = false;
+
+function bindConversationZoomEscape() {
+    if (conversationZoomEscapeBound || typeof document === 'undefined') {
+        return;
+    }
+
+    conversationZoomEscapeBound = true;
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
+            return;
+        }
+
+        if (closeConversationZoomedAvatars()) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    }, true);
+}
+
 export async function selectConversationThread(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
     if (!avatar) {
         return false;
@@ -370,12 +417,638 @@ export async function selectConversationThread(avatar, { branchId = '', groupId 
     });
 }
 
+const USER_STATUS_MENU_ITEMS = Object.freeze([
+    { status: 'online', label: 'Online' },
+    { status: 'idle', label: 'Idle' },
+    { status: 'dnd', label: 'Do Not Disturb' },
+    { status: 'offline', label: 'Invisible' },
+]);
+
+function getActiveThreadIdentity() {
+    const avatar = getCurrentCharAvatar();
+    return { avatar, groupId: avatar ? getConversationGroupIdForAvatar(avatar) : '' };
+}
+
+function runFromMenu(action, data = {}, trigger = null) {
+    return () => void runConversationAction(action, data, trigger);
+}
+
+function openConversationBranchMenu(trigger) {
+    const { avatar, groupId } = getActiveThreadIdentity();
+    if (!avatar) {
+        togglePalsRail();
+        return;
+    }
+
+    const activeBranchId = getConversationThreadStore(avatar, { create: false, groupId })?.activeBranchId || DEFAULT_BRANCH_ID;
+    const branches = getConversationBranches(avatar, { groupId });
+    const activeBranch = branches.find(branch => branch.id === activeBranchId);
+    const identity = { avatar, groupId };
+    openActionMenu({
+        trigger,
+        title: 'Branches',
+        sections: [
+            {
+                items: branches.map(branch => ({
+                    label: branch.name || 'Conversation',
+                    checked: branch.id === activeBranchId,
+                    detail: branch.unread > 0 ? String(branch.unread) : '',
+                    onSelect: runFromMenu('select-branch', { ...identity, branchId: branch.id }),
+                })),
+            },
+            {
+                items: [
+                    { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-branch', identity) },
+                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeBranch, onSelect: runFromMenu('rename-branch', { ...identity, branchId: activeBranchId }) },
+                ],
+            },
+            {
+                items: [
+                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeBranch, onSelect: runFromMenu('delete-branch', { ...identity, branchId: activeBranchId }) },
+                ],
+            },
+        ],
+    });
+}
+
+function openConversationOverflowMenu(trigger) {
+    const { avatar, groupId } = getActiveThreadIdentity();
+    const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
+    const addMemberLabel = groupId ? 'Add Member to Group…' : 'Add Member…';
+    openActionMenu({
+        trigger,
+        title: 'Conversation',
+        sections: [
+            {
+                items: [
+                    ...(avatar ? [{ label: addMemberLabel, icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
+                    { label: 'New Chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
+                    { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
+                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
+                    // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.
+                    ...(isConversationPagesLayout()
+                        ? [{ label: 'Conversation Settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
+                        : []),
+                ],
+            },
+            {
+                items: avatar
+                    ? [{ label: 'Delete Conversation History…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-dm', { avatar, groupId }) }]
+                    : [],
+            },
+        ],
+    });
+}
+
+function openConversationComposerMenu(trigger) {
+    const hasThread = Boolean(getCurrentCharAvatar());
+    openActionMenu({
+        trigger,
+        title: 'Add to Message',
+        sections: [
+            {
+                items: [
+                    { label: 'Attach Files', icon: 'fa-solid fa-paperclip', disabled: !hasThread, onSelect: runFromMenu('attach-file') },
+                    { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled: !hasThread, onSelect: runFromMenu('quick-selfie') },
+                    { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled: !hasThread, onSelect: runFromMenu('quick-remind') },
+                    { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled: !hasThread, onSelect: runFromMenu('quick-summarize') },
+                    { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled: !hasThread, onSelect: runFromMenu('force-response') },
+                ],
+            },
+        ],
+    });
+}
+
+function openConversationPersonaMenu(trigger) {
+    const current = getUserStatus();
+    openActionMenu({
+        trigger,
+        title: 'Your Status',
+        sections: [
+            {
+                items: USER_STATUS_MENU_ITEMS.map(({ status, label }) => ({
+                    label,
+                    checked: status === current,
+                    data: { sbStatus: status },
+                    onSelect: runFromMenu('set-user-status', { status }),
+                })),
+            },
+            {
+                items: [
+                    { label: 'Set Status Message…', icon: 'fa-solid fa-user-pen', onSelect: runFromMenu('edit-user-persona-status') },
+                    { label: 'Switch Persona…', icon: 'fa-solid fa-users', onSelect: runFromMenu('open-persona-picker', {}, trigger) },
+                ],
+            },
+        ],
+    });
+}
+
+function openConversationNewMenu(trigger) {
+    openActionMenu({
+        trigger,
+        title: 'New Conversation',
+        sections: [
+            {
+                items: [
+                    { label: 'New DM', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-dm', {}, trigger) },
+                    { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: runFromMenu('open-new-group-chat', {}, trigger) },
+                ],
+            },
+            {
+                items: [
+                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
+                ],
+            },
+        ],
+    });
+}
+
+/**
+ * Runs one Conversation chrome action. Delegated clicks pass the clicked element; menu rows pass
+ * their trigger and a plain dataset object so both paths share one implementation.
+ * @param {string} action
+ * @param {Record<string, string|undefined>} [data]
+ * @param {HTMLElement|null} [target]
+ * @param {Event|null} [event]
+ */
+export async function runConversationAction(action, data = {}, target = null, event = null) {
+    switch (action) {
+        case 'zoom-avatar':
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            showConversationZoomedAvatar(target);
+            break;
+        case 'toggle-search':
+            toggleConversationSearchBar();
+            break;
+        case 'open-branch-menu':
+            openConversationBranchMenu(target);
+            break;
+        case 'open-conversation-menu':
+            openConversationOverflowMenu(target);
+            break;
+        case 'open-composer-menu':
+            openConversationComposerMenu(target);
+            break;
+        case 'open-persona-menu':
+            openConversationPersonaMenu(target);
+            break;
+        case 'open-new-menu':
+            openConversationNewMenu(target);
+            break;
+        case 'toggle-pals':
+            togglePalsRail();
+            break;
+        case 'close-pals':
+            closePalsRail();
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+            break;
+        case 'open-settings':
+            hideConversationPickers();
+            openConversationSettings();
+            break;
+        case 'close-settings':
+            closeConversationSettings();
+            break;
+        case 'polish-character-message':
+            await handleCharacterMessagePolish(data.messageId, target);
+            break;
+        case 'open-add-member':
+            openAddMemberPicker();
+            break;
+        case 'open-add-dm':
+            toggleAddDmPicker(target);
+            break;
+        case 'open-new-group-chat':
+            toggleConversationGroupPicker({ anchor: target });
+            break;
+        case 'mark-all-read': {
+            const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
+            schedulePalsRailRender();
+            if (cleared > 0 || removedLegacy > 0) {
+                toastr.success('Marked all Conversation pings as read');
+            } else {
+                toastr.info('No Conversation pings to clear');
+            }
+            break;
+        }
+        case 'attach-file': {
+            const fileInput = document.getElementById(CHROME_IDS.fileInput);
+            if (fileInput instanceof HTMLInputElement) {
+                fileInput.click();
+            }
+            break;
+        }
+        case 'clear-attachments':
+            clearConversationAttachmentInput();
+            break;
+        case 'clear-reply-target':
+            clearConversationReplyTarget();
+            break;
+        case 'create-memory':
+            await forceCreateMemoryFromPanel();
+            break;
+        case 'refresh-memory':
+            await refreshConversationMemoryFromPanel();
+            break;
+        case 'clear-memory':
+            await clearConversationMemoryFromPanel();
+            break;
+        case 'stop-image-generation':
+            conversationState.imageGenerationAbortController?.abort?.();
+            conversationState.imageGenerationActive = false;
+            conversationState.imageGenerationAbortController = null;
+            scheduleTimelineRender();
+            toastr.info('Image generation stopped');
+            break;
+        case 'add-character-dm': {
+            const index = parsePositiveInt(data.characterIndex, -1, 0);
+            if (index >= 0) {
+                const char = characters[index];
+                if (char?.avatar) {
+                    if (isIOSWebKitPlatform()) {
+                        focusConversationInput();
+                    }
+
+                    const charSettings = getSettings(char.avatar, { groupId: '' });
+                    charSettings.enabled = true;
+                    saveSettings(char.avatar, charSettings, { groupId: '' });
+                    hideConversationPickers();
+                    closePalsRail();
+                    await selectConversationThread(char.avatar, {
+                        groupId: null,
+                        showToast: false,
+                    });
+                    schedulePalsRailRender();
+                }
+            }
+            break;
+        }
+        case 'select-branch': {
+            const avatar = data.avatar;
+            const groupId = data.groupId || '';
+            const branchId = data.branchId;
+            if (avatar && branchId) {
+                setActiveConversationBranch(avatar, branchId, { groupId });
+                openConversationWorkspaceForAvatar(avatar, {
+                    groupId: groupId || null,
+                    showToast: false,
+                });
+                scheduleInterfaceRefresh({ syncControls: false });
+                renderConversationMemoryPanel();
+                document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+            }
+            break;
+        }
+        case 'new-branch': {
+            const avatar = data.avatar;
+            const groupId = data.groupId || '';
+            const character = getCharacterForAvatar(avatar);
+            if (!avatar) {
+                break;
+            }
+            const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
+            const enteredName = await promptConversationText({
+                title: 'New Branch',
+                text: `Name this Conversation branch for ${character?.name || 'this character'}`,
+                defaultValue: fallbackName,
+                confirmLabel: 'Create',
+            });
+            if (enteredName === null) {
+                break;
+            }
+            const name = enteredName.trim() || fallbackName;
+            createConversationBranchForAvatar(avatar, name, { groupId });
+            openConversationWorkspaceForAvatar(avatar, {
+                groupId: groupId || null,
+                showToast: false,
+            });
+            scheduleInterfaceRefresh({ syncControls: false });
+            renderConversationMemoryPanel();
+            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
+            break;
+        }
+        case 'rename-branch': {
+            const avatar = data.avatar;
+            const groupId = data.groupId || '';
+            const branchId = data.branchId;
+            const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
+            if (avatar && branchId && branch) {
+                const name = await promptConversationText({
+                    title: 'Rename Branch',
+                    defaultValue: branch.name || 'Conversation',
+                    confirmLabel: 'Rename',
+                });
+                if (name?.trim()) {
+                    renameConversationBranch(avatar, branchId, name, { groupId });
+                    schedulePalsRailRender();
+                    if (isConversationActiveThread(avatar, groupId)) {
+                        updateConversationHeader(getSettings(avatar, { groupId }));
+                        renderConversationMemoryPanel();
+                    }
+                }
+            }
+            break;
+        }
+        case 'delete-branch': {
+            const avatar = data.avatar;
+            const groupId = data.groupId || '';
+            const branchId = data.branchId;
+            const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
+            if (avatar && branchId && branch) {
+                const confirmed = await confirmConversationAction({
+                    title: `Delete the "${branch.name || 'Conversation'}" branch?`,
+                    text: 'This cannot be undone',
+                });
+                if (confirmed) {
+                    deleteConversationBranch(avatar, branchId, { groupId });
+                    if (isConversationActiveThread(avatar, groupId)) {
+                        scheduleInterfaceRefresh({ syncControls: false });
+                        renderConversationMemoryPanel();
+                    } else {
+                        schedulePalsRailRender();
+                    }
+                }
+            }
+            break;
+        }
+        case 'delete-dm': {
+            const avatar = data.avatar;
+            const groupId = data.groupId || '';
+            const character = getCharacterForAvatar(avatar);
+            if (!avatar) {
+                break;
+            }
+            const name = character?.name || 'this character';
+            const historyLabel = groupId ? `group Conversation history with ${name}` : `solo DM history with ${name}`;
+            const confirmed = await confirmConversationAction({
+                title: `Delete your previous ${historyLabel}?`,
+                text: 'This cannot be undone',
+            });
+            if (confirmed) {
+                resetCharacterConversationBranches(avatar, { groupId });
+                setLastConversationPreview(avatar, 'Conversation ready', { groupId });
+                clearUnreadCount(avatar, { groupId });
+                resetFollowupCount(avatar, { groupId });
+
+                if (!groupId) {
+                    const charSettings = getSettings(avatar, { groupId: '' });
+                    charSettings.enabled = false;
+                    saveSettings(avatar, charSettings, { groupId: '' });
+                }
+
+                if (isConversationActiveThread(avatar, groupId)) {
+                    const remainingPals = getConversationRailItems()
+                        .filter(item => !(item.character.avatar === avatar && item.groupId === groupId));
+                    if (remainingPals.length > 0) {
+                        const nextPal = remainingPals[0];
+                        openConversationWorkspaceForAvatar(nextPal.character.avatar, { groupId: nextPal.groupId || null, showToast: false });
+                        scheduleInterfaceRefresh({ syncControls: true });
+                    } else {
+                        conversationState.conversationWorkspaceOpen = false;
+                        emitConversationWorkspaceStateChange();
+                        scheduleInterfaceRefresh({ syncControls: false });
+                    }
+                } else {
+                    schedulePalsRailRender();
+                }
+                toastr.success(`Deleted ${historyLabel}`);
+            }
+            break;
+        }
+        case 'new-chat': {
+            const avatar = getCurrentCharAvatar();
+            if (!avatar) {
+                toastr.warning('Pick a DM first');
+                break;
+            }
+            const groupId = getConversationGroupIdForAvatar(avatar);
+            createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
+            updateLastUserActivity(avatar, { groupId });
+            scheduleInterfaceRefresh({ syncControls: false });
+            renderConversationMemoryPanel();
+            toastr.success('New Conversation branch started');
+            break;
+        }
+        case 'edit-message':
+            editConversationMessage(data.messageId);
+            break;
+        case 'reply-message':
+            replyToConversationMessage(data.messageId);
+            break;
+        case 'copy-message':
+            await copyConversationMessage(data.messageId);
+            break;
+        case 'speak-message':
+            await speakConversationMessage(data.messageId);
+            break;
+        case 'toggle-message-pin':
+            toggleConversationMessagePin(data.messageId);
+            break;
+        case 'react-message':
+            reactConversationMessage(data.messageId, data.reaction);
+            break;
+        case 'branch-from-message':
+            branchConversationFromMessage(data.messageId);
+            break;
+        case 'regenerate-message':
+            await regenerateConversationMessage(data.messageId);
+            break;
+        case 'delete-message': {
+            const messageId = data.messageId;
+            if (await confirmMessageDeletion({ text: 'Delete this Conversation message?' })) {
+                deleteConversationMessage(messageId);
+            }
+            break;
+        }
+        case 'quick-selfie':
+            await quickConversationSelfie();
+            break;
+        case 'generate-selfie-command':
+            await generateConversationSelfieFromMessageCommand(data.messageId, data.selfieIndex);
+            break;
+        case 'quick-remind':
+            await quickConversationReminder();
+            break;
+        case 'quick-summarize':
+            await quickConversationSummarize();
+            break;
+        case 'force-response': {
+            const avatar = getCurrentCharAvatar();
+            if (avatar) {
+                const groupId = conversationState.conversationSelectedGroupId || '';
+                const personaId = getConversationPersonaId();
+                const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+                const branchId = threadStore?.activeBranchId || '';
+                const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+                sendQueue.push(createForcedConversationQueueItem({
+                    avatar,
+                    branchId,
+                    groupId,
+                    personaId,
+                    threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+                    createdAt: Date.now(),
+                }, messages));
+                void processSendQueue();
+            }
+            break;
+        }
+        case 'set-channel':
+            setConversationTimelineChannel(data.channel);
+            break;
+        case 'weekly-add':
+            addWeeklyScheduleRow();
+            break;
+        case 'edit-schedule': {
+            const avatar = getCurrentCharAvatar();
+            if (avatar || getCurrentGroupConversationMembers().length) {
+                openScheduleEditorModal(avatar);
+            }
+            break;
+        }
+        case 'reset-prompt': {
+            const area = document.getElementById('sb_conv_geechan_chatroom_prompt');
+            if (area instanceof HTMLTextAreaElement) {
+                area.value = GEECHAN_DEFAULT_PROMPT;
+                area.dispatchEvent(new Event('input', { bubbles: true }));
+                toastr.success('System prompt reset to default Geechan preset');
+            }
+            break;
+        }
+        case 'edit-grounded-dialogue-rules':
+            openGroundedDialogueRulesEditor();
+            break;
+        case 'weekly-remove': {
+            const row = target?.closest?.('.sb-conversation-weekly-row');
+            if (row instanceof HTMLElement) {
+                row.remove();
+                saveCurrentPanelSettings();
+            }
+            break;
+        }
+        case 'set-user-status': {
+            const status = data.status;
+            if (status) {
+                setUserStatus(status);
+                updateUserFooter();
+                hideConversationPickers({ restoreFocus: true });
+            }
+            break;
+        }
+        case 'open-user-status-picker':
+            toggleUserStatusPicker(target);
+            break;
+        case 'edit-user-persona-status':
+            await editUserPersonaStatus();
+            break;
+        case 'open-persona-picker':
+            togglePersonaPicker(target);
+            break;
+        case 'pick-persona': {
+            const avatarId = data.personaAvatar;
+            if (avatarId) {
+                if (!await switchConversationPersona(avatarId)) {
+                    break;
+                }
+                updateUserFooter();
+                const picker = document.getElementById(CHROME_IDS.personaPicker);
+                if (picker instanceof HTMLElement) {
+                    renderConversationPersonaPicker(picker);
+                }
+            }
+            break;
+        }
+        case 'generate-schedule': {
+            if (conversationState.scheduleGenerationBusy) {
+                break;
+            }
+            const character = getCurrentCharacter();
+            const genAvatar = getCurrentCharAvatar();
+            if (!character || !genAvatar) {
+                toastr.warning('No character selected');
+                break;
+            }
+            conversationState.scheduleGenerationBusy = true;
+            const genBtn = target instanceof HTMLElement ? target : document.createElement('button');
+            const personaId = getConversationPersonaId();
+            genBtn.setAttribute('disabled', '');
+            toastr.info(`Generating schedule for ${character.name}…`);
+            try {
+                const groupId = getConversationGroupIdForAvatar(genAvatar);
+                const schedule = await generateCharacterSchedule(character, { groupId, personaId });
+                if (schedule) {
+                    saveStoredSchedule(genAvatar, schedule, { personaId });
+                    const genSettings = getSettings(genAvatar, { groupId, personaId });
+                    genSettings.auto_schedule = JSON.stringify(schedule);
+                    genSettings.talkativeness = schedule.talkativeness;
+                    genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
+                    genSettings.schedule_generated_at = Date.now();
+                    if (groupId) {
+                        saveGroupConversationSettings(groupId, genSettings, { personaId });
+                    }
+                    saveSettings(genAvatar, genSettings, { groupId, personaId });
+                    if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
+                        applySettingsToPanel(genSettings);
+                        renderScheduleDisplay();
+                        updateConversationChrome(genSettings);
+                    }
+                    toastr.success(`Schedule generated for ${character.name}`);
+                } else {
+                    toastr.warning('Schedule generation returned no data. Try again.');
+                }
+            } catch (err) {
+                console.error('Schedule generation error:', err);
+                toastr.error('Schedule generation failed');
+            } finally {
+                conversationState.scheduleGenerationBusy = false;
+                genBtn.removeAttribute('disabled');
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 export function bindConversationChromeControls(sheld) {
     if (sheld.dataset.sbConversationChromeBound === 'true') {
         return;
     }
 
     sheld.dataset.sbConversationChromeBound = 'true';
+    bindConversationZoomEscape();
+    sheld.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
+            return;
+        }
+
+        const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
+        if (drawer instanceof HTMLElement && !drawer.hidden && event.target instanceof Node && drawer.contains(event.target)) {
+            event.preventDefault();
+            dismissConversationSettings();
+            return;
+        }
+
+        const palsRail = document.getElementById(CHROME_IDS.palsRail);
+        if (sheld.dataset.sbConversationPage === 'pals' && getCurrentCharAvatar() && palsRail instanceof HTMLElement && event.target instanceof Node && palsRail.contains(event.target)) {
+            event.preventDefault();
+            void runConversationAction('close-pals');
+            return;
+        }
+
+        const tools = document.getElementById(CHROME_IDS.tools);
+        if (tools instanceof HTMLElement && tools.dataset.open === 'true' && event.target instanceof Node && tools.contains(event.target)) {
+            event.preventDefault();
+            toggleConversationSearchBar(false);
+            document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="toggle-search"]`)?.focus?.({ preventScroll: true });
+        }
+    });
+    // After the handlers above, so an open search or the rail still takes its Escape first.
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !event.isComposing && !event.defaultPrevented && dismissConversationSettingsOnEscape(event.target)) {
+            event.preventDefault();
+        }
+    });
     sheld.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') {
             return;
@@ -391,35 +1064,10 @@ export function bindConversationChromeControls(sheld) {
     });
 
     sheld.addEventListener('click', async (event) => {
-        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal, .sb-conversation-mobile-menu-trigger') : null;
-
-        if (!target || (!target.closest('.sb-conversation-message-actions') && !target.closest('.sb-conversation-mobile-menu-trigger'))) {
-            document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
-                el.classList.remove('open');
-            });
-        }
+        // Message menu triggers are handled by sillybunny-conversation/message-menu.js.
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal') : null;
 
         if (!(target instanceof HTMLElement)) {
-            return;
-        }
-
-        if (target.classList.contains('sb-conversation-mobile-menu-trigger')) {
-            event.stopPropagation();
-            const currentBubble = target.closest('.sb-conversation-message-bubble');
-            const currentActionBar = currentBubble?.querySelector('.sb-conversation-message-actions');
-            if (currentActionBar) {
-                const isOpen = currentActionBar.classList.contains('open');
-                document.querySelectorAll('.sb-conversation-message-actions.open').forEach(el => {
-                    if (el !== currentActionBar) {
-                        el.classList.remove('open');
-                    }
-                });
-                if (isOpen) {
-                    currentActionBar.classList.remove('open');
-                } else {
-                    currentActionBar.classList.add('open');
-                }
-            }
             return;
         }
 
@@ -436,424 +1084,7 @@ export function bindConversationChromeControls(sheld) {
             return;
         }
 
-        switch (target.dataset.sbConversationAction) {
-            case 'zoom-avatar':
-                event.preventDefault();
-                event.stopPropagation();
-                showConversationZoomedAvatar(target);
-                break;
-            case 'toggle-tools': {
-                const currentVisible = getConversationToolsVisible();
-                setConversationToolsVisible(!currentVisible);
-                syncConversationToolsVisibility();
-                break;
-            }
-            case 'toggle-pals':
-                togglePalsRail();
-                break;
-            case 'close-pals':
-                closePalsRail();
-                break;
-            case 'open-settings':
-                openConversationSettings();
-                break;
-            case 'close-settings':
-                closeConversationSettings();
-                break;
-            case 'polish-character-message':
-                await handleCharacterMessagePolish(target.dataset.messageId, target);
-                break;
-            case 'open-add-member':
-                openAddMemberPicker();
-                break;
-            case 'open-add-dm':
-                toggleAddDmPicker();
-                break;
-            case 'open-new-group-chat':
-                toggleConversationGroupPicker();
-                break;
-            case 'mark-all-read': {
-                const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
-                schedulePalsRailRender();
-                if (cleared > 0 || removedLegacy > 0) {
-                    toastr.success('Marked all Conversation pings as read.');
-                } else {
-                    toastr.info('No Conversation pings to clear.');
-                }
-                break;
-            }
-            case 'create-conversation-group':
-                await handleCreateConversationGroupFromPicker();
-                break;
-            case 'cancel-conversation-group':
-                hideConversationStartPicker();
-                break;
-            case 'attach-file': {
-                const fileInput = document.getElementById(CHROME_IDS.fileInput);
-                if (fileInput instanceof HTMLInputElement) {
-                    fileInput.click();
-                }
-                break;
-            }
-            case 'clear-attachments':
-                clearConversationAttachmentInput();
-                break;
-            case 'clear-reply-target':
-                clearConversationReplyTarget();
-                break;
-            case 'create-memory':
-                await forceCreateMemoryFromPanel();
-                break;
-            case 'refresh-memory':
-                await refreshConversationMemoryFromPanel();
-                break;
-            case 'clear-memory':
-                clearConversationMemoryFromPanel();
-                break;
-            case 'stop-image-generation':
-                conversationState.imageGenerationAbortController?.abort?.();
-                conversationState.imageGenerationActive = false;
-                conversationState.imageGenerationAbortController = null;
-                scheduleTimelineRender();
-                toastr.info('Image generation stopped.');
-                break;
-            case 'add-character-dm': {
-                const index = parsePositiveInt(target.dataset.characterIndex, -1, 0);
-                if (index >= 0) {
-                    const char = characters[index];
-                    if (char?.avatar) {
-                        if (isIOSWebKitPlatform()) {
-                            focusConversationInput();
-                        }
-
-                        const charSettings = getSettings(char.avatar, { groupId: '' });
-                        charSettings.enabled = true;
-                        saveSettings(char.avatar, charSettings, { groupId: '' });
-                        document.getElementById('sb_conversation_add_dm_picker')?.setAttribute('hidden', '');
-                        closePalsRail();
-                        await selectConversationThread(char.avatar, {
-                            groupId: null,
-                            showToast: false,
-                        });
-                        schedulePalsRailRender();
-                        setTimeout(() => {
-                            focusConversationInput({ skipIOS: true });
-                        }, 100);
-                    }
-                }
-                break;
-            }
-            case 'select-branch': {
-                const avatar = target.dataset.avatar;
-                const groupId = target.dataset.groupId || '';
-                const branchId = target.dataset.branchId;
-                if (avatar && branchId) {
-                    setActiveConversationBranch(avatar, branchId, { groupId });
-                    openConversationWorkspaceForAvatar(avatar, {
-                        groupId: groupId || null,
-                        showToast: false,
-                    });
-                    scheduleInterfaceRefresh({ syncControls: false });
-                    renderConversationMemoryPanel();
-                    document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-                }
-                break;
-            }
-            case 'new-branch': {
-                const avatar = target.dataset.avatar;
-                const groupId = target.dataset.groupId || '';
-                const character = getCharacterForAvatar(avatar);
-                if (!avatar) {
-                    break;
-                }
-                const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
-                const name = globalThis.prompt?.(`Name this Conversation branch for ${character?.name || 'this character'}`, fallbackName) || fallbackName;
-                createConversationBranchForAvatar(avatar, name, { groupId });
-                openConversationWorkspaceForAvatar(avatar, {
-                    groupId: groupId || null,
-                    showToast: false,
-                });
-                scheduleInterfaceRefresh({ syncControls: false });
-                renderConversationMemoryPanel();
-                document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-                break;
-            }
-            case 'rename-branch': {
-                const avatar = target.dataset.avatar;
-                const groupId = target.dataset.groupId || '';
-                const branchId = target.dataset.branchId;
-                const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
-                if (avatar && branchId && branch) {
-                    const name = globalThis.prompt?.('Rename Conversation branch', branch.name || 'Conversation');
-                    if (name?.trim()) {
-                        renameConversationBranch(avatar, branchId, name, { groupId });
-                        schedulePalsRailRender();
-                        if (isConversationActiveThread(avatar, groupId)) {
-                            updateConversationHeader(getSettings(avatar, { groupId }));
-                            renderConversationMemoryPanel();
-                        }
-                    }
-                }
-                break;
-            }
-            case 'delete-branch': {
-                const avatar = target.dataset.avatar;
-                const groupId = target.dataset.groupId || '';
-                const branchId = target.dataset.branchId;
-                const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
-                if (avatar && branchId && branch) {
-                    const confirmed = typeof globalThis.confirm === 'function'
-                        ? globalThis.confirm(`Delete the "${branch.name || 'Conversation'}" branch? This cannot be undone.`)
-                        : true;
-                    if (confirmed) {
-                        deleteConversationBranch(avatar, branchId, { groupId });
-                        if (isConversationActiveThread(avatar, groupId)) {
-                            scheduleInterfaceRefresh({ syncControls: false });
-                            renderConversationMemoryPanel();
-                        } else {
-                            schedulePalsRailRender();
-                        }
-                    }
-                }
-                break;
-            }
-            case 'delete-dm': {
-                const avatar = target.dataset.avatar;
-                const groupId = target.dataset.groupId || '';
-                const character = getCharacterForAvatar(avatar);
-                if (!avatar) {
-                    break;
-                }
-                const name = character?.name || 'this character';
-                const historyLabel = groupId ? `group Conversation history with ${name}` : `solo DM history with ${name}`;
-                const confirmed = typeof globalThis.confirm === 'function'
-                    ? globalThis.confirm(`Delete your previous ${historyLabel}? This cannot be undone.`)
-                    : true;
-                if (confirmed) {
-                    resetCharacterConversationBranches(avatar, { groupId });
-                    setLastConversationPreview(avatar, 'Conversation ready', { groupId });
-                    clearUnreadCount(avatar, { groupId });
-                    resetFollowupCount(avatar, { groupId });
-
-                    if (!groupId) {
-                        const charSettings = getSettings(avatar, { groupId: '' });
-                        charSettings.enabled = false;
-                        saveSettings(avatar, charSettings, { groupId: '' });
-                    }
-
-                    if (isConversationActiveThread(avatar, groupId)) {
-                        const remainingPals = getConversationRailItems()
-                            .filter(item => !(item.character.avatar === avatar && item.groupId === groupId));
-                        if (remainingPals.length > 0) {
-                            const nextPal = remainingPals[0];
-                            openConversationWorkspaceForAvatar(nextPal.character.avatar, { groupId: nextPal.groupId || null, showToast: false });
-                            scheduleInterfaceRefresh({ syncControls: true });
-                        } else {
-                            conversationState.conversationWorkspaceOpen = false;
-                            emitConversationWorkspaceStateChange();
-                            scheduleInterfaceRefresh({ syncControls: false });
-                        }
-                    } else {
-                        schedulePalsRailRender();
-                    }
-                    toastr.success(`Deleted ${historyLabel}.`);
-                }
-                break;
-            }
-            case 'new-chat': {
-                const avatar = getCurrentCharAvatar();
-                if (!avatar) {
-                    toastr.warning('Pick a DM first.');
-                    break;
-                }
-                const groupId = getConversationGroupIdForAvatar(avatar);
-                createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
-                updateLastUserActivity(avatar, { groupId });
-                scheduleInterfaceRefresh({ syncControls: false });
-                renderConversationMemoryPanel();
-                toastr.success('New Conversation branch started.');
-                break;
-            }
-            case 'edit-message':
-                editConversationMessage(target.dataset.messageId);
-                break;
-            case 'reply-message':
-                replyToConversationMessage(target.dataset.messageId);
-                break;
-            case 'copy-message':
-                await copyConversationMessage(target.dataset.messageId);
-                break;
-            case 'speak-message':
-                await speakConversationMessage(target.dataset.messageId);
-                break;
-            case 'toggle-message-pin':
-                toggleConversationMessagePin(target.dataset.messageId);
-                break;
-            case 'react-message':
-                reactConversationMessage(target.dataset.messageId, target.dataset.reaction);
-                break;
-            case 'branch-from-message':
-                branchConversationFromMessage(target.dataset.messageId);
-                break;
-            case 'regenerate-message':
-                await regenerateConversationMessage(target.dataset.messageId);
-                break;
-            case 'delete-message': {
-                const confirmed = typeof globalThis.confirm === 'function'
-                    ? globalThis.confirm('Delete this Conversation message?')
-                    : true;
-                if (confirmed) {
-                    deleteConversationMessage(target.dataset.messageId);
-                }
-                break;
-            }
-            case 'quick-selfie':
-                await quickConversationSelfie();
-                break;
-            case 'generate-selfie-command':
-                await generateConversationSelfieFromMessageCommand(target.dataset.messageId, target.dataset.selfieIndex);
-                break;
-            case 'quick-remind':
-                await quickConversationReminder();
-                break;
-            case 'quick-summarize':
-                await quickConversationSummarize();
-                break;
-            case 'force-response': {
-                const avatar = getCurrentCharAvatar();
-                if (avatar) {
-                    const groupId = conversationState.conversationSelectedGroupId || '';
-                    const personaId = getConversationPersonaId();
-                    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-                    const branchId = threadStore?.activeBranchId || '';
-                    const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-                    sendQueue.push(createForcedConversationQueueItem({
-                        avatar,
-                        branchId,
-                        groupId,
-                        personaId,
-                        threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
-                        createdAt: Date.now(),
-                    }, messages));
-                    void processSendQueue();
-                }
-                break;
-            }
-            case 'set-channel':
-                setConversationTimelineChannel(target.dataset.channel);
-                break;
-            case 'weekly-add':
-                addWeeklyScheduleRow();
-                break;
-            case 'edit-schedule': {
-                const avatar = getCurrentCharAvatar();
-                if (avatar || getCurrentGroupConversationMembers().length) {
-                    openScheduleEditorModal(avatar);
-                }
-                break;
-            }
-            case 'reset-prompt': {
-                const area = document.getElementById('sb_conv_geechan_chatroom_prompt');
-                if (area instanceof HTMLTextAreaElement) {
-                    area.value = GEECHAN_DEFAULT_PROMPT;
-                    area.dispatchEvent(new Event('input', { bubbles: true }));
-                    toastr.success('System prompt reset to default Geechan preset.');
-                }
-                break;
-            }
-            case 'edit-grounded-dialogue-rules':
-                openGroundedDialogueRulesEditor();
-                break;
-            case 'weekly-remove': {
-                const row = target.closest('.sb-conversation-weekly-row');
-                if (row instanceof HTMLElement) {
-                    row.remove();
-                    saveCurrentPanelSettings();
-                }
-                break;
-            }
-            case 'set-user-status': {
-                const status = target.dataset.status;
-                if (status) {
-                    setUserStatus(status);
-                    updateUserFooter();
-                    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
-                }
-                break;
-            }
-            case 'open-user-status-picker':
-                toggleUserStatusPicker();
-                break;
-            case 'edit-user-persona-status':
-                editUserPersonaStatus();
-                break;
-            case 'open-persona-picker':
-                togglePersonaPicker();
-                break;
-            case 'pick-persona': {
-                const avatarId = target.dataset.personaAvatar;
-                if (avatarId) {
-                    if (!await switchConversationPersona(avatarId)) {
-                        break;
-                    }
-                    updateUserFooter();
-                    const picker = document.getElementById(CHROME_IDS.personaPicker);
-                    if (picker instanceof HTMLElement) {
-                        renderConversationPersonaPicker(picker);
-                    }
-                }
-                break;
-            }
-            case 'generate-schedule': {
-                if (conversationState.scheduleGenerationBusy) {
-                    break;
-                }
-                const character = getCurrentCharacter();
-                const genAvatar = getCurrentCharAvatar();
-                if (!character || !genAvatar) {
-                    toastr.warning('No character selected.');
-                    break;
-                }
-                conversationState.scheduleGenerationBusy = true;
-                const genBtn = target;
-                const personaId = getConversationPersonaId();
-                genBtn.setAttribute('disabled', '');
-                toastr.info(`Generating schedule for ${character.name}…`);
-                try {
-                    const groupId = getConversationGroupIdForAvatar(genAvatar);
-                    const schedule = await generateCharacterSchedule(character, { groupId, personaId });
-                    if (schedule) {
-                        saveStoredSchedule(genAvatar, schedule, { personaId });
-                        const genSettings = getSettings(genAvatar, { groupId, personaId });
-                        genSettings.auto_schedule = JSON.stringify(schedule);
-                        genSettings.talkativeness = schedule.talkativeness;
-                        genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
-                        genSettings.schedule_generated_at = Date.now();
-                        if (groupId) {
-                            saveGroupConversationSettings(groupId, genSettings, { personaId });
-                        }
-                        saveSettings(genAvatar, genSettings, { groupId, personaId });
-                        if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
-                            applySettingsToPanel(genSettings);
-                            renderScheduleDisplay();
-                            updateConversationChrome(genSettings);
-                        }
-                        toastr.success(`Schedule generated for ${character.name}.`);
-                    } else {
-                        toastr.warning('Schedule generation returned no data. Try again.');
-                    }
-                } catch (err) {
-                    console.error('Schedule generation error:', err);
-                    toastr.error('Schedule generation failed.');
-                } finally {
-                    conversationState.scheduleGenerationBusy = false;
-                    genBtn.removeAttribute('disabled');
-                }
-                break;
-            }
-            default:
-                break;
-        }
+        await runConversationAction(target.dataset.sbConversationAction, target.dataset, target, event);
     });
 
     const form = document.getElementById(CHROME_IDS.form);
@@ -876,10 +1107,8 @@ export function bindConversationChromeControls(sheld) {
             event.preventDefault();
             void submitConversationInput();
         });
-        input.addEventListener('input', () => {
-            input.style.height = 'auto';
-            input.style.height = `${input.scrollHeight}px`;
-        });
+        input.addEventListener('input', () => resizeConversationInput(input));
+        resizeConversationInput(input);
         input.addEventListener('paste', (event) => {
             const files = Array.from(event.clipboardData?.files || []);
             if (!files.length) {
@@ -901,12 +1130,6 @@ export function bindConversationChromeControls(sheld) {
     if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
         drawer.dataset.sbConversationBound = 'true';
         drawer.addEventListener('change', saveCurrentPanelSettings);
-    }
-
-    const notificationMuted = document.getElementById('sb_conv_notifications_muted');
-    if (notificationMuted instanceof HTMLInputElement && notificationMuted.dataset.sbConversationBound !== 'true') {
-        notificationMuted.dataset.sbConversationBound = 'true';
-        notificationMuted.addEventListener('change', updateConversationNotificationSettingsVisibility);
     }
 
     const searchInput = document.getElementById(CHROME_IDS.search);
@@ -950,7 +1173,7 @@ export function bindConversationChromeControls(sheld) {
     if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
         backdrop.dataset.sbConversationBound = 'true';
         backdrop.addEventListener('click', () => {
-            closeConversationSettings();
+            dismissConversationSettings();
             closePalsRail();
         });
     }
@@ -1060,11 +1283,11 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh({ syncControls: false });
-        setTimeout(() => {
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-        }, 100);
         return false;
     }
+
+    // Every way into a thread ends here, and Conversation opens no chat of the app, so Home hears about it from this event (Getting Started, step 3).
+    window.dispatchEvent(new CustomEvent(CONVERSATION_THREAD_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
 
     if (branchId) {
         setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
@@ -1080,11 +1303,9 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
     applySettingsToPanel(settings);
     scheduleInterfaceRefresh({ syncControls: true });
     if (showToast && enable && !wasEnabled) {
-        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
+        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
     }
-    setTimeout(() => {
-        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-    }, 100);
+    focusConversationInputAfterRender();
     return true;
 }
 
@@ -1093,7 +1314,7 @@ export function openConversationWorkspaceFromWelcome() {
     const selectedGroupId = conversationState.conversationSelectedGroupId || '';
     const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
     if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
-        toastr.warning('Pick or import a character before opening Conversation Mode.');
+        toastr.warning('Pick or import a character before opening Conversation Mode');
         return false;
     }
 
@@ -1132,6 +1353,9 @@ export function setConversationInterfaceActive(active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
         closeConversationSettings();
         closePalsRail();
+        hideConversationPickers();
+        observeConversationLayout(false);
+        chrome.sheld.removeAttribute('data-sb-conversation-page');
         for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
             const element = document.getElementById(id);
             if (element instanceof HTMLElement) {
@@ -1160,4 +1384,6 @@ export function setConversationInterfaceActive(active) {
         }
     }
     updateUserFooter();
+    observeConversationLayout(true);
+    syncConversationPage();
 }

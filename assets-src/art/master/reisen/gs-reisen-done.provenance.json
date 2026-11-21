@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "gs-reisen-done.png",
+    "sha256": "51c7d6af95577ba6a6c0dc96921581818812d972aeec00bf8405d1afb655bb46",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:ab57ca84c67ca008525d547c0fc5c3c5cd5267c701f4095436039a19b615c478"
+}

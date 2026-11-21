@@ -1,0 +1,27 @@
+{
+    "format": 1,
+    "file": "platform-72.png",
+    "sha256": "d7288faaeb4c0ba53af82614c05b6a5e4baaed6af0011a447367a6553de7c5cc",
+    "characters": [],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "vectorize",
+        "icons"
+    ],
+    "handEdits": false,
+    "record": "sha256:4c886a46a2b0ab9f1d511dde14016f42a6af8b68691b8ed37ae9607ea5364a77"
+}
