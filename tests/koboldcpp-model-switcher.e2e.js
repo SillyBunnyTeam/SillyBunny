@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.setTimeout(90000);
@@ -6,6 +7,7 @@ test.setTimeout(90000);
 const OLD_URL = 'http://127.0.0.1:5001';
 const NEW_URL = 'http://127.0.0.1:5002';
 const STOPPED_WAITING = 'Stopped waiting for KoboldCpp';
+const MODEL_HINT = 'Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.';
 const READ_ONLY_POSTS = new Set([
     '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
     '/api/avatars/get', '/api/stats/get', '/api/users/me',
@@ -64,6 +66,7 @@ async function connectKoboldCpp(page, baseURL, mode = 'text') {
             const data = await response.json();
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
+            applyWelcomeSettings(settings);
             settings._version = version;
             settings.main_api = mode === 'chat' ? 'openai' : 'textgenerationwebui';
             settings.power_user = { ...settings.power_user, auto_connect: false };
@@ -75,15 +78,16 @@ async function connectKoboldCpp(page, baseURL, mode = 'text') {
             if (mode === 'chat') {
                 settings.oai_settings = { ...settings.oai_settings, chat_completion_source: 'koboldcpp', koboldcpp_url: OLD_URL };
             }
-            settings.extension_settings ??= {};
-            settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ response, json: data });
         }
         if (url.pathname === '/api/extensions/discover') {
             const response = await route.fetch();
-            return route.fulfill({ json: (await response.json()).filter(extension => !extension.name.startsWith('third-party/')) });
+            // Quick Image Gen reads its settings back from the server at startup. This mock never stores a save, so the
+            // read-back fails and the extension queues two warning toasts. The app shows one toast at a time, so those
+            // toasts would hide the toast under test. These tests do not use the extension.
+            return route.fulfill({ json: (await response.json()).filter(extension => !extension.name.startsWith('third-party/') && extension.name !== 'quick-image-gen') });
         }
         if (url.pathname === '/api/settings/save') return route.fulfill({ json: { result: 'ok', version: ++version } });
         if (url.pathname === '/api/secrets/read') return route.fulfill({ json: {} });
@@ -169,8 +173,11 @@ test.describe('KoboldCpp model switch', () => {
         await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
         await expect(page.locator('#api_button_openai')).toHaveClass(/\bdisabled\b/);
         await expect(page.locator('#api_button_openai ~ .api_loading')).toBeVisible();
+        // The switch ended without stopping the loading state, so the page stays in the connecting state until the later check ends.
+        await expect(page.locator('html')).toHaveAttribute('data-sb-connection', 'connecting');
         answerStatus();
         await expectConnectEnabled(page);
+        await expect(page.locator('html')).not.toHaveAttribute('data-sb-connection', 'connecting');
         await expectNoMorePolls(page, polls);
     });
 
@@ -334,19 +341,23 @@ test.describe('KoboldCpp model switch', () => {
     });
 });
 
-test.describe('KoboldCpp model switcher on a narrow screen', () => {
-    // Narrow screens keep the native select, because Select2 replaces it only on wider screens.
+test.describe('KoboldCpp model switcher controls on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('the model select and the picker have accessible names', async ({ page, baseURL }) => {
+    test('the model row and the picker have accessible names', async ({ page, baseURL }) => {
         await connectKoboldCpp(page, baseURL);
 
-        const select = page.locator('#koboldcpp_model');
-        await expect(select).toHaveAccessibleName('KoboldCpp Model');
-        await expect(select).toHaveAccessibleDescription('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+        // The shared select row hides the native select from assistive technology at every width. Its trigger button is
+        // the control that a user reaches, so it carries the name and the description.
+        const trigger = page.getByRole('button', { name: 'KoboldCpp Model alpha.gguf' });
+        await expect(trigger).toHaveAccessibleDescription(MODEL_HINT);
+
+        // The hint belongs to the Model group, below its row, and not to the Advanced group.
+        const modelGroup = page.locator('[data-sb-connections-group="model"]:has(#koboldcpp_model)');
+        await expect(modelGroup.locator('.ds-select-row:has(#koboldcpp_model) ~ * #koboldcpp_model_hint')).toBeVisible();
 
         const result = page.evaluate(() => window.SillyTavern.getContext().executeSlashCommandsWithOptions('/kcpp-model'));
-        const picker = page.getByRole('dialog').filter({ hasText: 'Load a KoboldCpp model' });
+        const picker = page.getByRole('dialog').filter({ hasText: 'Load a KoboldCpp Model' });
         await expect(picker.getByRole('searchbox')).toHaveAttribute('aria-label', 'Search...');
         await expect(picker.getByRole('button', { name: 'Loaded alpha.gguf', exact: true })).toBeVisible();
         await expect(picker.getByRole('img', { name: 'Loaded', exact: true })).toBeVisible();
