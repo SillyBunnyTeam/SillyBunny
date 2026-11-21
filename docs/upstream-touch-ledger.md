@@ -1148,6 +1148,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 route input types and errors. |
 | Owner | Server and data compatibility integrator. |
 
+### `src/endpoints/characters.js`, `src/endpoints/worldinfo.js`, `public/script.js`, `public/scripts/world-info.js`, `public/scripts/power-user.js`, and `public/index.html` - external media download on import
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`, `src/endpoints/worldinfo.js`, `public/script.js`, `public/scripts/world-info.js`, `public/scripts/power-user.js`, `public/index.html`. |
+| Area | Character card and World Info / lorebook import (`POST /api/characters/import`, `POST /api/worldinfo/import`) and Character Handling settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/external-media-import.js`. |
+| Adapter shape | `importFromYaml()`, `importFromCharX()`, `importFromByaf()`, `importFromJson()` and `importFromPng()` in `src/endpoints/characters.js` call `localizeCharacterExternalMedia()` before persisting the card (and before writing BYAF scenario chats). `POST /import` in `src/endpoints/worldinfo.js` calls `localizeWorldInfoExternalMedia()`, writes the updated JSON when external URLs were replaced, and returns `{ name, data }` so `importWorldInfo()` in `public/scripts/world-info.js` caches the rewritten payload. `public/index.html` and `public/scripts/power-user.js` bind `power_user.import_external_media` (default `false`), and `importCharacter()` in `public/script.js` and `importWorldInfo()` in `public/scripts/world-info.js` pass `import_external_media` (`'true'` or `'false'`) on the import form. |
+| Protecting tests | `tests/external-media-import.test.js`, `tests/world-info-save.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- external-media-import.test.js world-info-save.test.js world-info-endpoint-utils.test.js character-archive-assets.test.js`, `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-10 issue `#952` external media import. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/sprites.js` - sprite file types
 | Field | Value |
 | --- | --- |

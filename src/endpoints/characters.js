@@ -27,6 +27,7 @@ import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
+import { localizeCharacterExternalMedia } from '../external-media-import.js';
 import { isImageFile } from '../image-file-type.js';
 import {
     clearChatRecoveryState,
@@ -1023,6 +1024,8 @@ async function importFromYaml(uploadPath, context, preservedFileName) {
         'creator': '',
         'tags': '',
     }, context.request.user.directories);
+    // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+    await localizeCharacterExternalMedia(char, { request: context.request, fileName });
     const result = await writeCharacterData(DEFAULT_AVATAR_PATH, JSON.stringify(char), fileName, context.request);
     return result ? fileName : '';
 }
@@ -1086,6 +1089,8 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
         console.warn('CharX: Skipped the auxiliary assets, because neither the card name nor its file name can name an asset folder');
     }
 
+    // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+    await localizeCharacterExternalMedia(processedCard, { request, fileName });
     const result = await writeCharacterData(avatar, JSON.stringify(processedCard), fileName, request);
     return result ? fileName : '';
 }
@@ -1098,6 +1103,12 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
     const byafData = await new ByafParser(data).parse();
     const card = readFromV2(byafData.card);
     const fileName = preservedFileName || getPngName(sanitize(byafData.character.displayName || card.name, { replacement: sanitizeSafeCharacterReplacements }), request.user.directories);
+    // SillyBunny: optionally download external media on import before scenario chats and card data are persisted.
+    await localizeCharacterExternalMedia(card, {
+        request,
+        fileName,
+        scenarios: preservedFileName ? undefined : byafData.scenarios,
+    });
 
     // Don't import chats and images if the character is being replaced or updated, instead of newly imported.
     if (!preservedFileName) {
@@ -1191,6 +1202,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         jsonData = readFromV2(jsonData);
         jsonData.create_date = new Date().toISOString();
         const pngName = preservedFileName || getPngName(jsonData.name, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(jsonData, { request, fileName: pngName });
         const char = JSON.stringify(jsonData);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, char, pngName, request);
         return result ? pngName : '';
@@ -1217,6 +1230,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
             'tags': jsonData.tags ?? '',
         };
         char = convertToV2(char, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         let charJSON = JSON.stringify(char);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, charJSON, pngName, request);
         return result ? pngName : '';
@@ -1244,6 +1259,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
             'tags': jsonData.tags ?? '',
         };
         char = convertToV2(char, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         const charJSON = JSON.stringify(char);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, charJSON, pngName, request);
         return result ? pngName : '';
@@ -1274,6 +1291,8 @@ async function importFromPng(uploadPath, { request }, preservedFileName) {
         unsetPrivateFields(jsonData);
         jsonData = readFromV2(jsonData);
         jsonData.create_date = new Date().toISOString();
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(jsonData, { request, fileName: pngName });
         const char = JSON.stringify(jsonData);
         const result = await writeCharacterData(uploadPath, char, pngName, request);
         fs.unlinkSync(uploadPath);
@@ -1301,6 +1320,8 @@ async function importFromPng(uploadPath, { request }, preservedFileName) {
             'tags': jsonData.tags ?? '',
         };
         char = convertToV2(char, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         const charJSON = JSON.stringify(char);
         const result = await writeCharacterData(uploadPath, charJSON, pngName, request);
         fs.unlinkSync(uploadPath);

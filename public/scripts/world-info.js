@@ -6927,6 +6927,8 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
         return returnResult ? failed(t`Failed to import World Info`) : false;
     }
     formData.set('name', persistedWorldName);
+    // SillyBunny: pass the user's external media import setting explicitly to avoid stale persisted settings races.
+    formData.set('import_external_media', power_user.import_external_media ? 'true' : 'false');
     const releaseSaveBlock = blockWorldInfoSaves(persistedWorldName);
     let saveTarget = persistedWorldName;
     let importedName;
@@ -6959,7 +6961,9 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
 
         if (data.name) {
             importedName = data.name;
-            importedData = cloneWorldInfoData(formData.has('convertedData') ? JSON.parse(String(formData.get('convertedData'))) : jsonData, new Map());
+            // SillyBunny: when the server rewrites imported media URLs, cache the server's updated World Info payload.
+            const sourceWorldData = data.data ?? (formData.has('convertedData') ? JSON.parse(String(formData.get('convertedData'))) : jsonData);
+            importedData = cloneWorldInfoData(sourceWorldData, new Map());
             worldInfoCommittedEntryInstances.set(data.name, worldInfoEntryInstances.get(importedData));
             invalidateWorldInfoCache(data.name);
             worldInfoCache.set(data.name, importedData);

@@ -115,8 +115,19 @@ function createHost(initialBook = book()) {
                 break;
             case '/api/worldinfo/import': {
                 const name = String(body.get('name'));
-                books.set(name, JSON.parse(String(body.get('convertedData') ?? await body.get('avatar').text())));
-                result = { name };
+                const importedBook = JSON.parse(String(body.get('convertedData') ?? await body.get('avatar').text()));
+                if (body.get('import_external_media') === 'true') {
+                    for (const entry of Object.values(importedBook.entries ?? {})) {
+                        if (typeof entry?.content === 'string') {
+                            entry.content = entry.content.replaceAll('https://files.catbox.moe/scene.png', '/user/images/Lore/scene-12345678.png');
+                        }
+                    }
+                    books.set(name, importedBook);
+                    result = { name, data: importedBook };
+                } else {
+                    books.set(name, importedBook);
+                    result = { name };
+                }
                 break;
             }
             default: throw new Error(`Unexpected request ${url}`);
@@ -771,6 +782,21 @@ describe('World Info lifecycle coordination', () => {
         expect(saved.entries[0]).toMatchObject({ uid: 0, content: 'Imported', extensions: characterBook.entries[0].extensions });
         expect(saved.extensions).toEqual(characterBook.extensions);
         expect(saved.originalData).toEqual(characterBook);
+        expect(host.context.worldInfoCache.get('Lore')).toEqual(saved);
+        expect(host.context.eventSource.emit).toHaveBeenLastCalledWith(event_types.WORLDINFO_UPDATED, 'Lore', saved, { replaced: true });
+    });
+
+    test('imports with import_external_media enabled cache and publish the server-rewritten media URLs', async () => {
+        const host = createHost();
+        host.context.power_user.import_external_media = true;
+        const incoming = {
+            entries: {
+                0: { uid: 0, content: '![map](https://files.catbox.moe/scene.png)' },
+            },
+        };
+        await host.context.importWorldInfo(new File([JSON.stringify(incoming)], 'Lore.json'));
+        const saved = host.books.get('Lore');
+        expect(saved.entries[0].content).toBe('![map](/user/images/Lore/scene-12345678.png)');
         expect(host.context.worldInfoCache.get('Lore')).toEqual(saved);
         expect(host.context.eventSource.emit).toHaveBeenLastCalledWith(event_types.WORLDINFO_UPDATED, 'Lore', saved, { replaced: true });
     });
