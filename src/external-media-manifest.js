@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import writeFileAtomic from 'write-file-atomic';
 
+import { read as readCharacterCardText } from './character-card-parser.js';
+
 export const EXTERNAL_MEDIA_MANIFEST_FILE = '.external-media.json';
 
 const LOCAL_URL_PREFIX = '/user/images/';
@@ -112,6 +114,92 @@ function decodeMediaFolder(encodedFolder, userImages) {
     }
     const root = path.resolve(userImages);
     return folder && path.dirname(path.resolve(root, folder)) === root ? folder : null;
+}
+
+/**
+ * Lists the files of a folder that have one extension.
+ * @param {string} directory Folder to list
+ * @param {string} extension Lower-case extension with the dot
+ * @returns {Promise<string[]>} Absolute file paths, empty when the folder does not exist
+ */
+async function listFilesWithExtension(directory, extension) {
+    try {
+        const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+        return entries
+            .filter(entry => entry.isFile() && path.extname(entry.name).toLowerCase() === extension)
+            .map(entry => path.join(directory, entry.name));
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return [];
+        }
+        throw error;
+    }
+}
+
+/**
+ * Collects the stored files that the text of the user's character cards and lorebooks names by local URL.
+ * @param {import('./users.js').UserDirectoryList} directories User directories
+ * @returns {Promise<Set<string>>} Keys of the form `<folder>/<file name>`
+ * @throws {Error} When a card or a lorebook cannot be read
+ */
+async function collectMediaNamedByCardsAndLorebooks(directories) {
+    const named = new Set();
+    const noteText = (/** @type {string} */ text) => {
+        for (const match of text.matchAll(LOCAL_URL_REGEX)) {
+            const folder = decodeMediaFolder(match[1], directories.userImages);
+            if (folder) {
+                named.add(`${folder}/${match[2].replace(/\.+$/, '')}`);
+            }
+        }
+    };
+
+    for (const cardPath of await listFilesWithExtension(directories.characters, '.png')) {
+        noteText(readCharacterCardText(await fs.promises.readFile(cardPath)));
+    }
+    for (const lorebookPath of await listFilesWithExtension(directories.worlds, '.json')) {
+        noteText(await fs.promises.readFile(lorebookPath, 'utf8'));
+    }
+    return named;
+}
+
+/**
+ * Lists the files of the user's image folders that Data Maid must not offer for deletion: each manifest, and each
+ * stored file that its manifest lists while a character card or a lorebook still names its local URL. A file that
+ * nothing names any more is loose again. When a card or a lorebook cannot be read, every listed file is kept, because
+ * that text may be the one that names it.
+ * @param {import('./users.js').UserDirectoryList} directories User directories
+ * @returns {Promise<Set<string>>} Absolute file paths
+ */
+export async function getKeptExternalMediaPaths(directories) {
+    /** @type {Set<string>} */
+    const kept = new Set();
+    /** @type {Map<string, string>} */
+    const listedFiles = new Map();
+
+    const folders = (await fs.promises.readdir(directories.userImages, { withFileTypes: true })).filter(entry => entry.isDirectory());
+    for (const folder of folders) {
+        const folderPath = path.join(directories.userImages, folder.name);
+        kept.add(path.join(folderPath, EXTERNAL_MEDIA_MANIFEST_FILE));
+        for (const fileName of readExternalMediaManifest(folderPath).keys()) {
+            listedFiles.set(`${folder.name}/${fileName}`, path.join(folderPath, fileName));
+        }
+    }
+    if (listedFiles.size === 0) {
+        return kept;
+    }
+
+    let named = null;
+    try {
+        named = await collectMediaNamedByCardsAndLorebooks(directories);
+    } catch (error) {
+        console.warn('Data Maid could not read every card and lorebook, so it keeps the external media that imports stored:', error);
+    }
+    for (const [key, filePath] of listedFiles) {
+        if (!named || named.has(key)) {
+            kept.add(filePath);
+        }
+    }
+    return kept;
 }
 
 /**
