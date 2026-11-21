@@ -38,6 +38,7 @@ import { GENERATION_COMMIT_PLAN_VERSION, getMessageIdentity, hashCommitText } fr
 import { t } from './i18n.js';
 import { getCurrentReasoningEffort } from './openai.js';
 import { parseAutoReasoningFromString, parseReasoningInSwipes } from './reasoning.js';
+import { isTemporaryChat } from './sillybunny-temporary-chat-state.js';
 import { getActiveGenerationIds, onActiveGenerationsChange, onServerOwnedReplyMissing, pageId } from './resumable-generation.js';
 
 const EVENTS_URL = '/api/resumable-generations/events';
@@ -73,6 +74,10 @@ const shownIds = new Set();
  * @returns {{ chat: { avatar?: string, group?: string }, file: string }|null} Where the open chat lives on disk
  */
 function getOpenChatTarget() {
+    // A temporary chat has no file, so the server has nothing to commit a reply to or to watch.
+    if (isTemporaryChat()) {
+        return null;
+    }
     if (selected_group) {
         const chatId = getCurrentChatId();
         return chatId ? { chat: { group: String(selected_group) }, file: String(chatId) } : null;
@@ -313,7 +318,7 @@ function showLostToast(item) {
                 toastr.clear(toast);
             }
             if (isGenerating()) {
-                toastr.warning(t`Wait for the current reply to finish, then regenerate.`);
+                toastr.warning(t`Wait for the current reply to finish, then regenerate`);
                 return;
             }
             retry();
@@ -427,9 +432,9 @@ function onPendingGenerations(chatKey, pending) {
         if (item.state === 'lost') {
             showLostToast(item);
         } else if (CHAT_CHANGED_REASONS.has(item.reason)) {
-            toastr.warning(t`A reply generated while this chat was closed was not added, because the chat changed in the meantime.`, t`Reply discarded`);
+            toastr.warning(t`A reply generated while this chat was closed was not added, because the chat changed in the meantime`, t`Reply discarded`);
         } else {
-            toastr.error(t`A reply generated while this chat was closed failed and was not added.`, t`Reply failed`);
+            toastr.error(t`A reply generated while this chat was closed failed and was not added`, t`Reply failed`);
         }
     }
     acknowledge(outcomes.map(item => item.id));
@@ -528,7 +533,7 @@ async function onChatChanged() {
     watchedTarget = target;
     syncChatEvents();
     if (round.length && selected_group && !isGenerating()) {
-        toastr.info(t`Continuing the group round that was interrupted.`);
+        toastr.info(t`Continuing the group round that was interrupted`);
         resumeGroupRound(round).catch(error => console.warn('Could not continue the group round:', error));
     }
 }

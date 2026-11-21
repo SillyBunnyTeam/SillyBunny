@@ -1,0 +1,39 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 420,
+                "y": 130,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 532,
+                "y": 130,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "hand at the chest",
+            "box": {
+                "x": 435,
+                "y": 210,
+                "width": 110,
+                "height": 150
+            }
+        },
+        {
+            "name": "lower hand",
+            "box": {
+                "x": 620,
+                "y": 500,
+                "width": 100,
+                "height": 100
+            }
+        }
+    ]
+}

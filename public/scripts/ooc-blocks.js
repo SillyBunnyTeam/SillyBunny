@@ -184,7 +184,7 @@ export function restoreOocBlocksForDisplay(html, blocks) {
 export function renderOocBlock(content) {
     const normalizedContent = String(content ?? '').trim().replace(/\r\n?/g, '\n') || '(empty)';
     const safeContent = escapeHtml(normalizedContent).replace(/\n/g, '<br />');
-    return `<details class="ooc_block"><summary><span class="ooc_label">Out-of-Character</span></summary><div class="ooc_content">${safeContent}</div></details>`;
+    return `<details class="ooc_block"><summary><span class="ooc_label">Out-Of-Character</span></summary><div class="ooc_content">${safeContent}</div></details>`;
 }
 
 /**

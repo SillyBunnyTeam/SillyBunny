@@ -1,35 +1,237 @@
+/* SillyBunny: this page loads style.css but not sillybunny-theme.css, so the shell tokens it needs are declared here,
+   once per tone, with the values of the Libadwaita Dark and Libadwaita Light themes. The page has no theme choice of its
+   own, so the system colour scheme picks the tone. Keep the values in step with those two theme files. */
+body.login {
+    --SmartThemeBodyColor: rgb(255, 255, 255);
+    --SmartThemeEmColor: rgb(170, 170, 172);
+    --SmartThemeQuoteColor: rgb(129, 208, 255);
+    --SmartThemeBlurTintColor: rgb(34, 34, 38);
+    --SmartThemeShadowColor: rgba(0, 0, 6, 0.36);
+    --SmartThemeBorderColor: rgba(0, 0, 6, 0.5);
+    --sb-login-canvas: rgb(34, 34, 38);
+    --sb-login-dialog: color-mix(in srgb, var(--sb-login-canvas) 91.8%, var(--SmartThemeBodyColor) 8.2%);
+    --sb-login-backdrop: rgb(0 0 6 / 0.5);
+    --sb-login-field: color-mix(in srgb, var(--sb-login-dialog) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-login-card: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    --sb-login-card-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
+    --sb-accent: color-mix(in srgb, var(--SmartThemeQuoteColor) 62%, var(--SmartThemeBodyColor) 38%);
+    --sb-on-accent: rgb(0, 0, 0);
+    --sb-focus-ring: color-mix(in srgb, var(--sb-accent) 70%, transparent);
+    --color-danger: #ff938c;
+    --sb-radius-control: 9px;
+    --sb-radius-card: 12px;
+    --sb-radius-alert: 18px;
+    --sb-duration-fast: 200ms;
+    --sb-login-control-height: 38px;
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+    body.login {
+        --SmartThemeBodyColor: rgb(51, 51, 56);
+        --SmartThemeEmColor: rgb(92, 92, 97);
+        --SmartThemeQuoteColor: rgb(4, 97, 190);
+        --SmartThemeBlurTintColor: rgb(250, 250, 251);
+        --SmartThemeShadowColor: rgba(0, 0, 6, 0.12);
+        --SmartThemeBorderColor: rgba(0, 0, 6, 0.15);
+        --sb-login-canvas: rgb(235, 235, 237);
+        --sb-login-dialog: rgb(250, 250, 251);
+        --sb-login-backdrop: rgb(0 0 6 / 0.14);
+        --sb-login-field: rgb(255, 255, 255);
+        --sb-login-card: rgb(255, 255, 255);
+        --sb-login-card-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+        --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
+        --sb-on-accent: rgb(255, 255, 255);
+        --sb-focus-ring: color-mix(in srgb, var(--sb-accent) 85%, transparent);
+        --color-danger: #c30000;
+        color-scheme: light;
+    }
+}
+
+body.login {
+    --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
+    --color-primary: var(--sb-accent);
+    --color-focus-ring: var(--sb-focus-ring-color);
+    --warning: color-mix(in srgb, var(--color-danger) 72%, var(--SmartThemeBodyColor) 28%);
+    background-color: var(--sb-login-canvas);
+}
+
+@media (pointer: coarse) {
+    body.login {
+        --sb-login-control-height: 44px;
+    }
+}
+
 body.login #shadow_popup {
     opacity: 1;
     display: flex;
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    margin: 0;
+    padding: 16px;
+    overflow-y: auto;
+    background-color: var(--sb-login-backdrop);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 
-body.login .logo {
-    max-width: 30px;
-    image-rendering: pixelated;
+/* The dialog is the Alert tier: layer, radius and shadow of a dialog, with no blur. It sits in the flow of the
+   backdrop, and `margin: auto` centres it without clipping its top edge when the page is shorter than the dialog. */
+body.login #dialogue_popup {
+    position: relative;
+    inset: auto;
+    transform: none;
+    flex: none;
+    width: min(100%, 25rem);
+    max-width: none;
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: var(--sb-radius-alert);
+    background: var(--sb-login-dialog);
+    box-shadow:
+        0 0 14px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent),
+        0 0 5px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 60%, transparent);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 
+/* SillyBunny: the illustration slot goes above the content, or beside it where the content column keeps its minimum
+   width (360px) and the window is tall enough for the figure, as the dialog rule of the design asks. */
+body.login #dialogue_popup_holder {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 24px;
+}
+
+body.login #dialogue_popup_text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+body.login #loginArt {
+    box-sizing: border-box;
+    width: 100%;
+    height: min(30dvh, 8.75rem);
+    border-radius: var(--sb-radius-card);
+}
+
+/* Too short for a banner of a useful size: the content gets the room. */
+@media (max-height: 30rem) {
+    body.login #loginArt {
+        display: none;
+    }
+}
+
+@media (min-width: 50rem) and (min-height: 32.5rem) {
+    body.login #dialogue_popup {
+        width: min(100%, 44rem);
+    }
+
+    body.login #dialogue_popup_holder {
+        grid-template-columns: 13rem minmax(22.5rem, 1fr);
+        gap: 24px;
+    }
+
+    body.login #loginArt {
+        height: auto;
+        min-height: 16rem;
+    }
+}
+
+body.login #userSelectBlock {
+    gap: 8px;
+    text-align: center;
+}
+
+/* The logo stands above the title, both centred. */
 body.login #logoBlock {
+    flex-direction: column;
     align-items: center;
-    margin: 0 auto;
-    gap: 10px;
+    margin: 0;
+    padding: 0;
+    gap: 12px;
+    border: 0;
+    background: none;
+    font-size: var(--sb-type-headline);
+    font-weight: var(--sb-weight-title);
+    line-height: var(--sb-line-title);
+    text-wrap: balance;
+}
+
+/* SillyBunny: the logo is a vector, so it is drawn smooth and not pixelated */
+body.login .logo {
+    width: 48px;
+    max-width: 48px;
+    height: 48px;
+}
+
+body.login #normalLoginPrompt,
+body.login #discreetLoginPrompt {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-body);
+    font-weight: 400;
+    line-height: var(--sb-line-body);
+}
+
+body.login #userListBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+body.login #userList {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 8px;
 }
 
 body.login .userSelect {
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    color: var(--SmartThemeBodyColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 5px;
-    padding: 3px 5px;
-    width: 30%;
-    cursor: pointer;
-    margin: 5px 0;
-    transition: background-color var(--sb-transition);
-    display: flex;
     align-items: center;
     justify-content: center;
-    text-align: center;
+    gap: 2px;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    padding: 12px 8px;
     overflow: hidden;
+    border: 0;
+    border-radius: var(--sb-radius-card);
+    background-color: var(--sb-login-card);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    color: var(--SmartThemeBodyColor);
+    text-align: center;
+    cursor: pointer;
+}
+
+body.login .userSelect .avatar {
+    flex: none;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 4px;
+}
+
+body.login .userSelect .avatar img {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 50%;
+    box-shadow: none;
 }
 
 body.login .userSelect .userName,
@@ -40,12 +242,193 @@ body.login .userSelect .userHandle {
     white-space: nowrap;
 }
 
-body.login .userSelect:hover {
-    background-color: var(--black30a);
+body.login .userSelect .userName {
+    font-weight: var(--sb-weight-control);
+}
+
+/* style.css sets `small { opacity: 0.7 }`, which would lower the muted colour a second time. */
+body.login .userSelect .userHandle {
+    color: var(--sb-muted-fg);
+    opacity: 1;
+    font-size: var(--sb-type-caption);
 }
 
 body.login #handleEntryBlock,
 body.login #passwordEntryBlock,
 body.login #passwordRecoveryBlock {
-    margin: 2px;
+    margin: 0;
+    gap: 8px;
+}
+
+body.login #handleEntryBlock,
+body.login #passwordEntryBlock,
+body.login #passwordRecoveryBlock,
+body.login #passwordEntryBlock > .flex-container,
+body.login #passwordRecoveryBlock > .flex-container {
+    align-self: stretch;
+    align-items: stretch;
+}
+
+body.login #passwordEntryBlock > .flex-container,
+body.login #passwordRecoveryBlock > .flex-container {
+    flex-wrap: nowrap;
+    width: 100%;
+    gap: 8px;
+}
+
+body.login #recoverMessage {
+    color: var(--sb-muted-fg);
+}
+
+body.login .text_pole {
+    box-sizing: border-box;
+    min-height: var(--sb-login-control-height);
+    margin: 0;
+    padding: 6px 12px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    border-radius: var(--sb-radius-control);
+    background-color: var(--sb-login-field);
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-control);
+}
+
+body.login .text_pole::placeholder {
+    color: var(--sb-muted-fg);
+    opacity: 1;
+}
+
+@media (hover: hover) {
+    body.login .text_pole:hover {
+        border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    }
+}
+
+body.login .text_pole:focus,
+body.login .text_pole:focus-visible {
+    border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+body.login #recoverPassword {
+    align-self: flex-start;
+    color: var(--sb-accent);
+    font-size: var(--sb-type-control);
+}
+
+body.login .menu_button {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    min-height: var(--sb-login-control-height);
+    margin: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-control);
+    font-weight: var(--sb-weight-control);
+}
+
+body.login .menu_button.menu_button_primary {
+    background-color: var(--sb-accent);
+    color: var(--sb-on-accent);
+}
+
+/* style.css fills a hovered .menu_button without a hover media query, so a touch screen keeps the hover fill after a
+   tap. These rules put the resting fill back outside a hover-capable pointer; the rules in the media query below draw
+   the hover fill. */
+body.login .menu_button:not(.disabled):not([disabled]):hover {
+    border-color: transparent;
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+body.login .menu_button.menu_button_primary:not(.disabled):not([disabled]):hover {
+    background-color: var(--sb-accent);
+    filter: none;
+}
+
+@media (hover: hover) {
+    body.login .userSelect:hover {
+        background-color: var(--sb-login-card-hover);
+    }
+
+    body.login .menu_button:not(.menu_button_primary):not(.disabled):not([disabled]):hover {
+        background-color: var(--sb-login-card-hover);
+    }
+
+    body.login #loginButton:not(.disabled):not([disabled]):hover,
+    body.login #sendRecovery:not(.disabled):not([disabled]):hover {
+        filter: brightness(1.1);
+    }
+}
+
+body.login .userSelect:focus-visible,
+body.login .menu_button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+}
+
+/* The card sits flush with the edges of the content column, which clips an outside ring, so its ring is inside. */
+body.login .userSelect:focus-visible {
+    outline-offset: -2px;
+}
+
+body.login #errorMessage {
+    font-size: var(--sb-type-control);
+    font-weight: var(--sb-weight-control);
+}
+
+body.login #errorMessage:not(:empty) {
+    margin-top: 4px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    body.login .userSelect,
+    body.login .menu_button,
+    body.login .text_pole {
+        transition:
+            background-color var(--sb-duration-fast) ease,
+            border-color var(--sb-duration-fast) ease,
+            box-shadow var(--sb-duration-fast) ease;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.login .userSelect,
+    body.login .menu_button,
+    body.login .text_pole {
+        transition: none;
+    }
+}
+
+/* Forced colours remove shadows and replace fills. The dialog, the cards, the fields and the buttons each get an edge,
+   and the focus ring becomes an outline, which survives. The slot keeps its room and loses its tint, as the art panels
+   do. */
+@media (forced-colors: active) {
+    body.login #dialogue_popup {
+        border: 1px solid CanvasText;
+    }
+
+    body.login #loginArt {
+        background: none;
+    }
+
+    body.login .userSelect,
+    body.login .menu_button,
+    body.login .text_pole {
+        border: 1px solid ButtonText;
+    }
+
+    body.login .text_pole:focus,
+    body.login .text_pole:focus-visible,
+    body.login .userSelect:focus-visible,
+    body.login .menu_button:focus-visible {
+        outline: 2px solid Highlight;
+        outline-offset: 1px;
+    }
+
+    body.login .userSelect:focus-visible {
+        outline-offset: -2px;
+    }
 }

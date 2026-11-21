@@ -1,28 +1,19 @@
 :root {
-    /* Base spacing scale - 4px increments */
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
+    /* libadwaita's spacing rhythm (DESIGN.md Layout) */
+    --spacing-2xs: 3px;
+    --spacing-xs: 6px;
+    --spacing-sm: 9px;
     --spacing-md: 12px;
-    --spacing-lg: 16px;
-    --spacing-xl: 20px;
-    --spacing-2xl: 24px;
-    --spacing-3xl: 32px;
-    --spacing-4xl: 40px;
+    --spacing-lg: 18px;
+    --spacing-xl: 24px;
+    --spacing-2xl: 36px;
 
     /* Button sizing */
     --button-size-sm: 38px;
     --button-size-md: 42px;
     --button-size-lg: 48px;
-    --button-padding-x: 16px;
-    --button-padding-y: 12px;
-
-    /* Input sizing */
-    --input-padding-x: 16px;
-    --input-padding-y: 14px;
 
     /* Card/Panel spacing */
-    --card-padding: 18px;
-    --card-gap: 18px;
     --panel-padding: 18px;
     --panel-gap: 12px;
 
@@ -38,19 +29,16 @@
 }
 
 /* Mobile adjustments */
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1024px) {
     :root {
         --button-size-md: 40px;
-        --card-padding: 16px;
         --panel-padding: 16px;
-        --input-padding-y: 12px;
     }
 }
 
 @media screen and (max-width: 620px) {
     :root {
         --button-size-md: 38px;
-        --card-padding: 14px;
         --panel-padding: 14px;
     }
 }

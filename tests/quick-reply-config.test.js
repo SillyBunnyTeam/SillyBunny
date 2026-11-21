@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+// The presentation adapters build shared rows and need a DOM; these tests are about the extension's own logic.
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/adapters/utility-dialogs.js', () => ({
+    adoptQuickReplyRow: () => {},
+    adoptQuickReplySetLink: () => {},
+    adoptQuickReplySetPicker: () => {},
+}));
+
 await jest.unstable_mockModule('../public/script.js', () => ({
     getRequestHeaders: jest.fn(() => ({})),
     substituteParams: value => value,

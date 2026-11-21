@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "splash-reisen--rise.png",
+    "sha256": "4c685ddd00b84f3684d96b210de7f4c6e5da6ab38e480a8cdc43a862db740622",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:fee7449f2baf1477c8473ebb13addcb4af116a9dff3e2d659e712c49fb96eb65",
+    "incomplete": "1 source is not in the generation log."
+}

@@ -1,0 +1,2022 @@
+/** @jest-environment jsdom */
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use parameterized synchronous DOM assertions. */
+import { jest, describe, test, expect, afterEach } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import {
+    createRow,
+    createSwitchRow,
+    createCheckRow,
+    createComboRow,
+    createSpinRow,
+    createEntryRow,
+    createTextAreaField,
+    createPropertyRow,
+    createExpanderRow,
+    adoptExpanderRow,
+    createButtonRow,
+    createPrefGroup,
+    moveCaption,
+    adoptEditorFields,
+} from '../../public/scripts/sillybunny-editor/rows.js';
+
+function node(tag, text = '') {
+    const element = document.createElement(tag);
+    element.textContent = text;
+    return element;
+}
+
+function input(type, value) {
+    const control = document.createElement('input');
+    control.type = type;
+    control.id = `existing-${type}`;
+    control.name = 'preserved-name';
+    if (value !== undefined) control.value = value;
+    return control;
+}
+
+function change(control, value) {
+    if (value !== undefined) control.value = value;
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function assertAssociation({ row, control }, label) {
+    const caption = row.matches('label') ? row : row.querySelector('label');
+    expect(caption.htmlFor).toBe(control.id);
+    expect(control.id).not.toBe('');
+    expect(row.querySelector('.ds-row-label').textContent).toBe(label);
+    const description = row.querySelector('small.ds-row-subtitle');
+    expect(description.textContent).toBe('Helpful description');
+    expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(description.id);
+}
+
+const controlFactories = [
+    ['switch', createSwitchRow, true, false],
+    ['check', createCheckRow, true, false],
+    ['combo', options => createComboRow({ options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], ...options }), 'a', 'b'],
+    ['spin', createSpinRow, 3, 4],
+    ['entry', createEntryRow, 'first', 'second'],
+];
+
+describe('moveCaption', () => {
+    function caption({ id = '', i18n = '', html = '<b>Name</b> text:' } = {}) {
+        const source = node('span');
+        source.innerHTML = html;
+        if (id) source.id = id;
+        if (i18n) source.dataset.i18n = i18n;
+        document.body.replaceChildren(source);
+        return source;
+    }
+
+    test('moves the caption children and data-i18n, then removes the emptied caption', () => {
+        const source = caption({ i18n: 'Name' });
+        const bold = source.firstChild;
+        const target = node('span', 'old');
+
+        moveCaption(target, source);
+
+        expect(target.firstChild).toBe(bold);
+        expect(target.textContent).toBe('Name text:');
+        expect(target.dataset.i18n).toBe('Name');
+        expect(target.id).toBe('');
+        expect(source.isConnected).toBe(false);
+    });
+
+    test('leaves the target as it is without a caption', () => {
+        const target = node('span', 'kept');
+
+        moveCaption(target, null);
+        moveCaption(target, undefined);
+
+        expect(target.textContent).toBe('kept');
+        expect(target.hasAttribute('data-i18n')).toBe(false);
+    });
+
+    test('copyId moves the caption id for references that name it', () => {
+        const source = caption({ id: 'caption-id' });
+        const target = node('span');
+
+        moveCaption(target, source, { copyId: true });
+
+        expect(target.id).toBe('caption-id');
+    });
+
+    test('keepSource leaves the emptied caption in the document', () => {
+        const source = caption();
+        const target = node('span');
+
+        moveCaption(target, source, { keepSource: true });
+
+        expect(source.isConnected).toBe(true);
+        expect(source.childNodes).toHaveLength(0);
+        expect(target.textContent).toBe('Name text:');
+    });
+
+    test('stripColon flattens to trimmed plain text without the trailing colon', () => {
+        const target = node('span');
+
+        moveCaption(target, caption({ html: ' <b>Name</b> text： ' }), { stripColon: true });
+
+        expect(target.children).toHaveLength(0);
+        expect(target.textContent).toBe('Name text');
+    });
+});
+
+/** Evaluates rows.js as a script, with its motion import replaced by calls that finish at once. */
+function evaluateRows(exposed) {
+    const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8').replace(/^import .*$/m, '');
+    const motion = {
+        animateHeightFrom: () => null,
+        stopMotion: () => {},
+        MOTION_SLOW: 250,
+        play: (_element, _keyframes, { onFinish, onEnd } = {}) => {
+            onFinish?.();
+            onEnd?.();
+            return null;
+        },
+    };
+    return runInNewContext(`${source.replaceAll('export ', '')}\n(${exposed});`, { document, ...motion });
+}
+
+describe('shared row behavior', () => {
+    test('destroying nested rows releases generated, explicit, heading and description reservations', () => {
+        const api = evaluateRows('{ createEntryRow, createRow, createPrefGroup, createExpanderRow, reservationCount: () => reservedIds.size }');
+        for (let index = 0; index < 50; index++) {
+            const entry = api.createEntryRow({ label: 'Entry', field: 'entry', subtitle: 'Description' });
+            const explicit = api.createRow({ label: 'Row', field: 'row', id: `explicit-${index}`, subtitle: 'Description', activatable: true });
+            const expander = api.createExpanderRow({ label: 'Expander', field: 'expander', children: [entry, explicit] });
+            const group = api.createPrefGroup({ title: 'Group', subtitle: 'Description', field: 'group', rows: [expander] });
+            document.body.append(group.section);
+            expect(api.reservationCount()).toBe(7);
+            entry.control.removeAttribute('id');
+            group.destroy();
+            group.destroy();
+            entry.destroy();
+            expect(group.section.isConnected).toBe(false);
+            expect(api.reservationCount()).toBe(0);
+        }
+    });
+
+    test('destroying one row cannot release an id still owned by another detached control', () => {
+        const api = evaluateRows('{ createEntryRow, reservationCount: () => reservedIds.size }');
+        const first = api.createEntryRow({ label: 'First', field: 'first', id: 'sb-row-1' });
+        const adopted = input('text');
+        adopted.id = 'sb-row-1';
+        const second = api.createEntryRow({ label: 'Second', field: 'second', input: adopted });
+        expect(api.reservationCount()).toBe(1);
+        first.destroy();
+        expect(api.reservationCount()).toBe(1);
+        const generated = api.createEntryRow({ label: 'Generated', field: 'generated' });
+        expect(generated.control.id).toBe('sb-row-2');
+        second.destroy();
+        generated.destroy();
+        expect(api.reservationCount()).toBe(0);
+    });
+
+    test.each(controlFactories)('%s labels and descriptions are associated with the control', (_name, factory) => {
+        const row = factory({ label: 'Translated label', subtitle: 'Helpful description', field: 'field-key' });
+        expect(row.row.dataset.sbEditorField).toBe('field-key');
+        expect(row.row.classList.contains('ds-row')).toBe(true);
+        assertAssociation(row, 'Translated label');
+    });
+
+    test.each(controlFactories)('%s honors an explicit control id', (name, factory) => {
+        const { control } = factory({ label: 'Title', field: 'field', id: `explicit-${name}` });
+        expect(control.id).toBe(`explicit-${name}`);
+    });
+
+    test.each(controlFactories)('%s setters are silent by default and optionally notify once', (_name, factory, first, second) => {
+        const onChange = jest.fn();
+        const onInput = jest.fn();
+        const row = factory({ label: 'Title', field: 'field', onChange, onInput });
+        expect(onChange).not.toHaveBeenCalled();
+
+        row.setValue(first);
+
+        expect(row.getValue()).toBe(first);
+        expect(onChange).not.toHaveBeenCalled();
+        row.setValue(second, { silent: false });
+        expect(row.getValue()).toBe(second);
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange).toHaveBeenCalledWith(second);
+        expect(onInput).not.toHaveBeenCalled();
+    });
+
+    test.each(controlFactories)('%s disabling and visibility are reversible', (_name, factory) => {
+        const row = factory({ label: 'Title', field: 'field' });
+
+        row.setDisabled(true);
+        row.setVisible(false);
+
+        expect(row.control.disabled).toBe(true);
+        expect(row.row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.row.classList.contains('is-insensitive')).toBe(true);
+        expect(row.row.hidden).toBe(true);
+        row.setDisabled(false);
+        row.setVisible(true);
+        expect(row.control.disabled).toBe(false);
+        expect(row.row.getAttribute('aria-disabled')).toBe('false');
+        expect(row.row.classList.contains('is-insensitive')).toBe(false);
+        expect(row.row.hidden).toBe(false);
+    });
+
+    test('generated control and subtitle ids are unique and avoid attached elements', () => {
+        const generated = [];
+        for (let index = 0; index < 10; index++) {
+            const { row, control } = createEntryRow({ label: 'Title', subtitle: 'Description', field: 'field' });
+            generated.push(control.id, row.querySelector('small').id);
+        }
+        expect(new Set(generated).size).toBe(generated.length);
+        expect(generated.every(id => /^sb-row-\d+$/.test(id))).toBe(true);
+
+        const blocked = node('div');
+        blocked.id = `sb-row-${Number(generated.at(-1).split('-').at(-1)) + 1}`;
+        document.body.append(blocked);
+        const next = createSwitchRow({ label: 'Title', field: 'field' });
+        expect(next.control.id).not.toBe(blocked.id);
+        blocked.remove();
+    });
+
+    test('untrusted labels and descriptions stay text', () => {
+        const payload = '<img src=x onerror=alert(1)>';
+        const { row } = createEntryRow({ label: payload, subtitle: payload, field: payload, value: payload });
+        expect(row.querySelector('img')).toBeNull();
+        expect(row.querySelector('label').textContent).toBe(payload);
+        expect(row.querySelector('small').textContent).toBe(payload);
+        expect(row.dataset.sbEditorField).toBe(payload);
+    });
+
+    test('generated descriptions do not collide with detached explicit or adopted ids', () => {
+        const lastId = createEntryRow({ label: 'Title', field: 'field' }).control.id;
+        const explicitId = `sb-row-${Number(lastId.split('-').at(-1)) + 1}`;
+        const explicit = createEntryRow({ label: 'Title', field: 'field', id: explicitId, subtitle: 'Description' });
+        expect(explicit.row.querySelector('small').id).not.toBe(explicitId);
+        const adoptedId = `sb-row-${Number(explicit.row.querySelector('small').id.split('-').at(-1)) + 1}`;
+        const adoptedInput = input('text');
+        adoptedInput.id = adoptedId;
+        const adopted = createEntryRow({ label: 'Title', field: 'field', input: adoptedInput, subtitle: 'Description' });
+        expect(adopted.row.querySelector('small').id).not.toBe(adoptedId);
+    });
+
+    test.each([
+        ['switch', createSwitchRow, 'text'],
+        ['spin', createSpinRow, 'text'],
+        ['entry', createEntryRow, 'number'],
+    ])('%s rejects incompatible adopted input types', (_name, factory, type) => {
+        expect(() => factory({ label: 'Title', field: 'field', input: input(type) })).toThrow(TypeError);
+    });
+});
+
+describe('createRow', () => {
+    test('builds a plain row with prefix, text and node-array suffix', () => {
+        const prefix = node('i');
+        const first = node('span', 'First suffix');
+        const second = node('span', 'Second suffix');
+        const { row } = createRow({ label: 'Title', subtitle: 'Description', field: 'plain', prefix, suffix: [first, second] });
+        expect(row.tagName).toBe('DIV');
+        expect(row.className).toBe('ds-row');
+        expect(row.dataset.sbEditorField).toBe('plain');
+        expect(row.firstChild).toBe(prefix);
+        expect(row.querySelector('.ds-row-text').textContent).toBe('TitleDescription');
+        expect([...row.querySelector('.ds-row-suffix').children]).toEqual([first, second]);
+        expect(row.querySelector('.ds-row__chevron')).toBeNull();
+    });
+
+    test('accepts a single suffix and omits optional markup when absent', () => {
+        const suffix = node('span');
+        expect(createRow({ label: 'Title', field: 'a', suffix }).row.lastChild.firstChild).toBe(suffix);
+        const { row } = createRow({ label: 'Title', field: 'b' });
+        expect(row.children).toHaveLength(1);
+        expect(row.querySelector('small')).toBeNull();
+    });
+
+    test('activatable rows are native buttons with a trailing chevron', () => {
+        const onActivate = jest.fn();
+        const result = createRow({ label: 'Open', subtitle: 'Description', field: 'open', activatable: true, onActivate });
+        const { row } = result;
+        expect(row.tagName).toBe('BUTTON');
+        expect(row.type).toBe('button');
+        expect(row.classList.contains('ds-row--activatable')).toBe(true);
+        expect(row.lastChild.className).toBe('fa-solid fa-chevron-right ds-row__chevron');
+        expect(row.lastChild.getAttribute('aria-hidden')).toBe('true');
+        expect(row.getAttribute('aria-describedby')).toBe(row.querySelector('small').id);
+        row.click();
+        expect(onActivate).toHaveBeenCalledTimes(1);
+        result.setDisabled(true);
+        row.click();
+        expect(onActivate).toHaveBeenCalledTimes(1);
+        expect(row.disabled).toBe(true);
+    });
+});
+
+describe('createSwitchRow', () => {
+    test('uses the existing switch markup and notifies on change only', () => {
+        const onChange = jest.fn();
+        const { row, control } = createSwitchRow({ label: 'Enabled', field: 'enabled', checked: true, disabled: true, onChange });
+        expect(row.tagName).toBe('LABEL');
+        expect(row.className).toBe('ds-row ds-row-switch is-insensitive');
+        expect(row.lastChild).toBe(control);
+        expect(row.firstChild.className).toBe('ds-row-text');
+        expect(control.type).toBe('checkbox');
+        expect(control.classList.contains('sb-switch')).toBe(true);
+        expect(control.getAttribute('role')).toBe('switch');
+        // ARIA in HTML forbids aria-checked on a native checkbox; its checked state is the switch state.
+        expect(control.hasAttribute('aria-checked')).toBe(false);
+        expect(control.checked).toBe(true);
+        expect(control.disabled).toBe(true);
+        control.disabled = false;
+        control.checked = false;
+        control.dispatchEvent(new Event('input'));
+        expect(onChange).not.toHaveBeenCalled();
+        change(control);
+        expect(onChange).toHaveBeenCalledWith(false);
+        expect(control.hasAttribute('aria-checked')).toBe(false);
+    });
+
+    test('destroy unbinds its listener from an adopted checkbox', () => {
+        const control = document.createElement('input');
+        control.type = 'checkbox';
+        document.body.append(control);
+        const onChange = jest.fn();
+        const result = createSwitchRow({ label: 'Enabled', field: 'enabled', input: control, onChange });
+        result.destroy();
+        change(control);
+        expect(onChange).not.toHaveBeenCalled();
+        control.remove();
+    });
+
+    test('setValue changes the checked state without adding aria-checked', () => {
+        const result = createSwitchRow({ label: 'Enabled', field: 'enabled' });
+        result.setValue(true);
+        expect(result.control.checked).toBe(true);
+        expect(result.control.hasAttribute('aria-checked')).toBe(false);
+    });
+
+    test('adoption removes a stale aria-checked from the native checkbox', () => {
+        const control = input('checkbox');
+        control.setAttribute('aria-checked', 'false');
+        control.checked = true;
+        createSwitchRow({ label: 'Enabled', field: 'enabled', input: control });
+        expect(control.hasAttribute('aria-checked')).toBe(false);
+    });
+
+    test('adoption moves the input without losing identity, state, descriptions or listeners', () => {
+        const control = input('checkbox');
+        control.checked = true;
+        control.disabled = true;
+        control.className = 'legacy';
+        control.setAttribute('aria-describedby', 'existing-description');
+        const existingChange = jest.fn();
+        control.addEventListener('change', existingChange);
+        const old = node('div');
+        old.append(control);
+
+        const result = createSwitchRow({ label: 'Enabled', subtitle: 'Helpful description', field: 'enabled', id: 'ignored', input: control });
+
+        expect(result.control).toBe(control);
+        expect(old.children).toHaveLength(0);
+        expect(control.id).toBe('existing-checkbox');
+        expect(control.name).toBe('preserved-name');
+        expect(result.getValue()).toBe(true);
+        expect(control.disabled).toBe(true);
+        expect(control.classList.contains('legacy')).toBe(true);
+        expect(control.getAttribute('aria-describedby').split(' ')).toContain('existing-description');
+        assertAssociation(result, 'Enabled');
+        change(control);
+        expect(existingChange).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('createCheckRow', () => {
+    test('puts a plain native checkbox at the start of a whole-row label, before its text', () => {
+        const onChange = jest.fn();
+        const { row, control } = createCheckRow({ label: 'Model', subtitle: 'Helpful description', field: 'model', checked: true, onChange });
+        expect(row.tagName).toBe('LABEL');
+        expect(row.className).toBe('ds-row ds-row-check');
+        expect(row.htmlFor).toBe(control.id);
+        expect(row.firstChild).toBe(control);
+        expect(row.lastChild.className).toBe('ds-row-text');
+        expect(row.children).toHaveLength(2);
+        expect(control.type).toBe('checkbox');
+        expect(control.classList.contains('sb-switch')).toBe(false);
+        expect(control.hasAttribute('role')).toBe(false);
+        expect(control.hasAttribute('aria-checked')).toBe(false);
+        assertAssociation({ row, control }, 'Model');
+        control.checked = false;
+        change(control);
+        expect(onChange).toHaveBeenCalledWith(false);
+    });
+
+    test('adopting an upstream checkbox keeps its id, name, value and listeners, and drops switch semantics', () => {
+        const control = input('checkbox');
+        control.value = 'api-url';
+        control.classList.add('sb-switch');
+        control.setAttribute('role', 'switch');
+        const existing = jest.fn();
+        control.addEventListener('input', existing);
+        const result = createCheckRow({ label: 'API URL', field: 'exclude', input: control });
+        expect(result.control).toBe(control);
+        expect(result.row.firstChild).toBe(control);
+        expect([control.id, control.name, control.value]).toEqual(['existing-checkbox', 'preserved-name', 'api-url']);
+        expect(control.classList.contains('sb-switch')).toBe(false);
+        expect(control.hasAttribute('role')).toBe(false);
+        control.dispatchEvent(new Event('input'));
+        expect(existing).toHaveBeenCalledTimes(1);
+        result.setValue(false);
+        expect(result.getValue()).toBe(false);
+    });
+
+    test('rejects a non-checkbox input', () => {
+        expect(() => createCheckRow({ label: 'Title', field: 'field', input: input('text') })).toThrow(TypeError);
+    });
+});
+
+describe('createComboRow', () => {
+    test('builds options, a label and suffix, with optional flexible width', () => {
+        const onChange = jest.fn();
+        const { row, control } = createComboRow({
+            label: 'Mode', field: 'mode', value: 'two', wide: true, onChange,
+            options: [{ value: 'one', label: '<One>' }, { value: 'two', label: 'Two', disabled: true }],
+        });
+        expect(row.querySelector('.ds-row-suffix').firstChild).toBe(control);
+        expect(control.classList.contains('ds-control-flex')).toBe(true);
+        expect(control.options[0].textContent).toBe('<One>');
+        expect(control.options[1].disabled).toBe(true);
+        expect(control.value).toBe('two');
+        control.value = 'one';
+        control.dispatchEvent(new Event('input'));
+        expect(onChange).not.toHaveBeenCalled();
+        change(control);
+        expect(onChange).toHaveBeenCalledWith('one');
+        expect(createComboRow({ label: 'Mode', field: 'mode' }).control.classList.contains('ds-control-flex')).toBe(false);
+    });
+
+    test('adoption retains options, selected value, id, name and listeners', () => {
+        const select = node('select');
+        select.id = 'existing-select';
+        select.name = 'preserved-select';
+        const option = node('option', 'Existing option');
+        option.value = 'existing';
+        select.append(option);
+        const listener = jest.fn();
+        select.addEventListener('change', listener);
+        const old = node('div');
+        old.append(select);
+
+        const result = createComboRow({ label: 'Mode', field: 'mode', select, id: 'ignored' });
+
+        expect(result.control).toBe(select);
+        expect(old.children).toHaveLength(0);
+        expect(select.id).toBe('existing-select');
+        expect(select.name).toBe('preserved-select');
+        expect(select.options[0]).toBe(option);
+        expect(result.getValue()).toBe('existing');
+        change(select);
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    test('explicit replacement options preserve an available adopted selection', () => {
+        const select = node('select');
+        const option = node('option', 'Old');
+        option.value = 'old';
+        select.append(option);
+        const result = createComboRow({ label: 'Mode', field: 'mode', select, options: [{ value: 'new', label: 'New' }, { value: 'old', label: 'Old' }] });
+        expect(result.getValue()).toBe('old');
+    });
+
+    test('rejects a non-select control', () => {
+        expect(() => createComboRow({ label: 'Mode', field: 'mode', select: input('text') })).toThrow(TypeError);
+    });
+});
+
+describe('createSpinRow', () => {
+    test('configures numeric attributes and commits only on change, clamping in both directions', () => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8, step: 2, placeholder: 'Count', onChange });
+        const { row, control } = result;
+        expect(row.querySelector('.ds-row-suffix').firstChild).toBe(control);
+        expect(control.type).toBe('number');
+        expect(control.inputMode).toBe('numeric');
+        expect([control.min, control.max, control.step, control.placeholder]).toEqual(['2', '8', '2', 'Count']);
+        control.value = '99';
+        control.dispatchEvent(new Event('input'));
+        expect(onChange).not.toHaveBeenCalled();
+        change(control);
+        expect(onChange).toHaveBeenLastCalledWith(8);
+        expect(control.value).toBe('8');
+        change(control, '-99');
+        expect(onChange).toHaveBeenLastCalledWith(2);
+        expect(control.value).toBe('2');
+    });
+
+    test.each(['', 'not-a-number'])('non-nullable %j restores the previous valid value', value => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8, onChange });
+        change(result.control, '6');
+        change(result.control, value);
+        expect(result.control.value).toBe('6');
+        expect(result.getValue()).toBe(6);
+        expect(onChange).toHaveBeenLastCalledWith(6);
+    });
+
+    test('nullable empty values report null and setters normalize bounds', () => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8, nullable: true, onChange });
+        change(result.control, '');
+        expect(result.getValue()).toBeNull();
+        expect(result.control.value).toBe('');
+        expect(onChange).toHaveBeenLastCalledWith(null);
+        onChange.mockClear();
+        result.setValue(99);
+        expect(result.getValue()).toBe(8);
+        expect(onChange).not.toHaveBeenCalled();
+        result.setValue(null, { silent: false });
+        expect(result.control.value).toBe('');
+        expect(onChange).toHaveBeenCalledWith(null);
+    });
+
+    test('clamps initial values and rewrites invalid edits without an onChange callback', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 99, min: 2, max: 8 });
+        expect(result.getValue()).toBe(8);
+        change(result.control, '-10');
+        expect(result.control.value).toBe('2');
+        change(result.control, '');
+        expect(result.control.value).toBe('2');
+        expect(createSpinRow({ label: 'Count', field: 'count' }).control.step).toBe('1');
+    });
+
+    test('adoption retains id, name, value, constraints and existing listeners', () => {
+        const control = input('number', '5');
+        control.min = '2';
+        control.max = '8';
+        const listener = jest.fn();
+        control.addEventListener('change', listener);
+        const old = node('div');
+        old.append(control);
+        const result = createSpinRow({ label: 'Count', field: 'count', input: control, id: 'ignored' });
+        expect(result.control).toBe(control);
+        expect(control.id).toBe('existing-number');
+        expect(control.name).toBe('preserved-name');
+        expect(result.getValue()).toBe(5);
+        expect(old.children).toHaveLength(0);
+        change(control, '12');
+        expect(control.value).toBe('8');
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    test('rejects inverted numeric bounds', () => {
+        expect(() => createSpinRow({ label: 'Count', field: 'count', min: 10, max: 2 })).toThrow(RangeError);
+    });
+});
+
+describe('createSpinRow buttons', () => {
+    const buttonsOf = ({ row }) => ({
+        down: row.querySelector('.ds-row-suffix > .ds-spin-btn--down'),
+        up: row.querySelector('.ds-row-suffix > .ds-spin-btn--up'),
+    });
+    const press = button => button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const typed = (control, value) => {
+        control.value = value;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    test.each([
+        ['a created input', () => createSpinRow({ label: 'Count', field: 'count', value: 4 })],
+        ['an adopted input', () => createSpinRow({ label: 'Count', field: 'count', input: input('number', '4') })],
+        ['an adopted text input without normalizing', () => createSpinRow({ label: 'Count', field: 'count', input: input('text', '4'), normalize: false })],
+        ['an adopted number input without normalizing', () => createSpinRow({ label: 'Count', field: 'count', input: input('number', '4'), normalize: false })],
+    ])('%s gets a minus and a plus button after the field, named by a copy placeholder', (_name, make) => {
+        const result = make();
+        const { down, up } = buttonsOf(result);
+        const suffix = result.row.querySelector('.ds-row-suffix');
+        expect([...suffix.children]).toEqual([result.control, down, up]);
+        expect(result.row.classList.contains('ds-row--spin')).toBe(true);
+        for (const [button, icon, name] of [[down, 'fa-minus', 'Decrease'], [up, 'fa-plus', 'Increase']]) {
+            expect(button.tagName).toBe('BUTTON');
+            expect(button.type).toBe('button');
+            expect(button.getAttribute('aria-label')).toBe(name);
+            expect(button.title).toBe(name);
+            expect(button.dataset.sbCopyPlaceholder).toBeUndefined();
+            const glyph = button.querySelector('i');
+            expect(glyph.classList.contains(icon)).toBe(true);
+            expect(glyph.getAttribute('aria-hidden')).toBe('true');
+        }
+    });
+
+    test('steps by the input step and dispatches input then change on the native input', () => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 0, max: 20, step: 2, onChange });
+        const { down, up } = buttonsOf(result);
+        const events = [];
+        let bubbled = true;
+        for (const type of ['input', 'change']) {
+            result.control.addEventListener(type, event => {
+                events.push(`${type}:${result.control.value}`);
+                bubbled &&= event.bubbles;
+            });
+        }
+        press(up);
+        expect(result.control.value).toBe('6');
+        expect(events).toEqual(['input:6', 'change:6']);
+        expect(bubbled).toBe(true);
+        expect(onChange).toHaveBeenLastCalledWith(6);
+        press(down);
+        press(down);
+        expect(result.control.value).toBe('2');
+        expect(onChange).toHaveBeenLastCalledWith(2);
+        expect(result.getValue()).toBe(2);
+    });
+
+    test('listeners that existed before the row see the stepped value', () => {
+        const control = input('number', '5');
+        const listener = jest.fn(() => control.value);
+        control.addEventListener('input', listener);
+        control.addEventListener('change', listener);
+        const result = createSpinRow({ label: 'Count', field: 'count', input: control });
+        press(buttonsOf(result).up);
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(listener.mock.results.map(entry => entry.value)).toEqual(['6', '6']);
+    });
+
+    test.each([['any'], [undefined], ['0'], ['-2'], ['abc']])('step %j steps by 1', step => {
+        const control = input('number', '10');
+        if (step !== undefined) control.setAttribute('step', step);
+        const result = createSpinRow({ label: 'Count', field: 'count', input: control, normalize: false });
+        press(buttonsOf(result).up);
+        expect(control.value).toBe('11');
+        press(buttonsOf(result).down);
+        press(buttonsOf(result).down);
+        expect(control.value).toBe('9');
+    });
+
+    test('the any step of a created row also steps by 1', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 3, step: 'any', nullable: true });
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('4');
+    });
+
+    test('decimal steps carry no floating point noise', () => {
+        const result = createSpinRow({ label: 'Rate', field: 'rate', value: 0.2, step: 0.1 });
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('0.3');
+        press(buttonsOf(result).up);
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('0.5');
+        typed(result.control, '1.005');
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('1.105');
+    });
+
+    test('clamps to min and max, and disables the button that cannot move', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 7, min: 2, max: 8, step: 2 });
+        const { down, up } = buttonsOf(result);
+        expect([down.disabled, up.disabled]).toEqual([false, false]);
+        press(up);
+        expect(result.control.value).toBe('8');
+        expect([down.disabled, up.disabled]).toEqual([false, true]);
+        press(up);
+        expect(result.control.value).toBe('8');
+        for (let index = 0; index < 5; index++) press(down);
+        expect(result.control.value).toBe('2');
+        expect([down.disabled, up.disabled]).toEqual([true, false]);
+    });
+
+    test('a disabled button does nothing and sends no event', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 8, min: 2, max: 8 });
+        const listener = jest.fn();
+        result.control.addEventListener('input', listener);
+        result.control.addEventListener('change', listener);
+        buttonsOf(result).up.click();
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('bounds are read when pressed, so limits written after the row exists apply', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 3, nullable: true, step: 'any' });
+        result.control.min = '0';
+        result.control.max = '4';
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('4');
+        expect(buttonsOf(result).up.disabled).toBe(true);
+    });
+
+    describe('an empty nullable value', () => {
+        test('counts as 0, so the first press adds or subtracts one step, then the bounds apply', () => {
+            const plain = createSpinRow({ label: 'Count', field: 'count', nullable: true, step: 3 });
+            expect(plain.control.value).toBe('');
+            press(buttonsOf(plain).up);
+            expect(plain.control.value).toBe('3');
+            const lower = createSpinRow({ label: 'Count', field: 'count', nullable: true });
+            press(buttonsOf(lower).down);
+            expect(lower.control.value).toBe('-1');
+        });
+
+        test('with a minimum above 0 the first press of either button sets the minimum', () => {
+            for (const key of ['up', 'down']) {
+                const result = createSpinRow({ label: 'Depth', field: 'depth', nullable: true, min: 2, max: 9 });
+                expect([buttonsOf(result).down.disabled, buttonsOf(result).up.disabled]).toEqual([false, false]);
+                press(buttonsOf(result)[key]);
+                expect(result.control.value).toBe('2');
+            }
+        });
+
+        test('with a minimum of 0 the plus button sets the step and the minus button sets 0', () => {
+            const up = createSpinRow({ label: 'Sticky', field: 'sticky', nullable: true, min: 0, step: 'any' });
+            press(buttonsOf(up).up);
+            expect(up.control.value).toBe('1');
+            const down = createSpinRow({ label: 'Sticky', field: 'sticky', nullable: true, min: 0, step: 'any' });
+            press(buttonsOf(down).down);
+            expect(down.control.value).toBe('0');
+        });
+
+        test('unparsable text in an unnormalized text field counts as empty', () => {
+            const control = input('text', 'abc');
+            const result = createSpinRow({ label: 'Count', field: 'count', input: control, normalize: false });
+            press(buttonsOf(result).up);
+            expect(control.value).toBe('1');
+        });
+    });
+
+    test('a normalized row reports the stepped value to onChange once per press', () => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8, nullable: true, onChange });
+        press(buttonsOf(result).up);
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange).toHaveBeenCalledWith(5);
+    });
+
+    test('keeps the buttons in step with typing, setValue and the bounds of the field', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8 });
+        const { down, up } = buttonsOf(result);
+        typed(result.control, '8');
+        expect(up.disabled).toBe(true);
+        typed(result.control, '2');
+        expect([down.disabled, up.disabled]).toEqual([true, false]);
+        result.setValue(8);
+        expect([down.disabled, up.disabled]).toEqual([false, true]);
+        result.setValue(5);
+        expect([down.disabled, up.disabled]).toEqual([false, false]);
+    });
+
+    test('a value written by other code is picked up when the pointer or focus reaches the row', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8 });
+        result.control.value = '8';
+        expect(buttonsOf(result).up.disabled).toBe(false);
+        result.row.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        expect(buttonsOf(result).up.disabled).toBe(true);
+        result.control.value = '3';
+        result.control.dispatchEvent(new Event('focusin', { bubbles: true }));
+        expect(buttonsOf(result).up.disabled).toBe(false);
+    });
+
+    test('a disabled or read-only field disables both buttons, and setDisabled follows', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8 });
+        const { down, up } = buttonsOf(result);
+        result.setDisabled(true);
+        expect([result.control.disabled, down.disabled, up.disabled]).toEqual([true, true, true]);
+        result.setDisabled(false);
+        expect([down.disabled, up.disabled]).toEqual([false, false]);
+        result.control.readOnly = true;
+        result.setValue(5);
+        expect([down.disabled, up.disabled]).toEqual([true, true]);
+        const locked = input('number', '4');
+        locked.disabled = true;
+        const adopted = createSpinRow({ label: 'Count', field: 'count', input: locked });
+        expect([buttonsOf(adopted).down.disabled, buttonsOf(adopted).up.disabled]).toEqual([true, true]);
+    });
+
+    test('focus moves to the field when the focused button reaches its bound', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 7, min: 2, max: 8 });
+        document.body.replaceChildren(result.row);
+        const { up } = buttonsOf(result);
+        up.focus();
+        expect(document.activeElement).toBe(up);
+        press(up);
+        expect(up.disabled).toBe(true);
+        expect(document.activeElement).toBe(result.control);
+    });
+
+    test('a placeholder reserves its width in the row through --sb-spin-chars', () => {
+        const withHint = createSpinRow({ label: 'Count', field: 'count', nullable: true, placeholder: 'Use global setting' });
+        expect(withHint.row.style.getPropertyValue('--sb-spin-chars')).toBe('18');
+        const without = createSpinRow({ label: 'Count', field: 'count' });
+        expect(without.row.style.getPropertyValue('--sb-spin-chars')).toBe('');
+        const adopted = input('number', '');
+        adopted.placeholder = 'No delay';
+        expect(createSpinRow({ label: 'Count', field: 'count', input: adopted, normalize: false }).row.style.getPropertyValue('--sb-spin-chars')).toBe('8');
+    });
+
+    test('destroy removes the row and stops the field from driving the buttons', () => {
+        const adopted = input('number', '7');
+        adopted.max = '8';
+        const result = createSpinRow({ label: 'Count', field: 'count', input: adopted, normalize: false });
+        const { up } = buttonsOf(result);
+        document.body.replaceChildren(result.row);
+        result.destroy();
+        expect(document.body.contains(result.row)).toBe(false);
+        typed(result.control, '8');
+        expect(up.disabled).toBe(false);
+    });
+});
+
+describe('createEntryRow', () => {
+    test('adopts Popup mainInput without changing textarea identity, classes or results', () => {
+        const input = document.createElement('textarea');
+        input.className = 'popup-input';
+        input.name = 'profile-name';
+        input.rows = 1;
+        input.value = 'Original name';
+        const onInput = jest.fn();
+        input.addEventListener('input', onInput);
+        const entry = createEntryRow({ label: 'Profile name:', field: 'name', input });
+        expect(entry.control).toBe(input);
+        expect(entry.row.querySelector('label').htmlFor).toBe(input.id);
+        expect(input.name).toBe('profile-name');
+        expect(input.className).toBe('popup-input');
+        entry.setValue('New name');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(onInput).toHaveBeenCalledTimes(1);
+        expect(entry.getValue()).toBe('New name');
+        entry.destroy();
+    });
+
+    test('a floating row keeps a textarea, at one line, so a value with line breaks keeps them', () => {
+        const input = document.createElement('textarea');
+        input.id = 'creator_textarea';
+        input.rows = 2;
+        input.value = 'Maker\nContact';
+        const entry = createEntryRow({ label: 'Created by', field: 'creator', floating: true, input });
+        expect(entry.control).toBe(input);
+        expect(input.rows).toBe(1);
+        expect(input.value).toBe('Maker\nContact');
+        expect(entry.row.querySelector('.ds-row-entry__field > textarea')).toBe(input);
+        expect(entry.row.querySelector('.ds-row-entry__title').htmlFor).toBe('creator_textarea');
+        expect(() => createEntryRow({ label: 'Created by', field: 'creator', floating: true, input: document.createElement('textarea'), type: 'text' })).toThrow(TypeError);
+        entry.destroy();
+    });
+    test('places the entry below its label, with separate input and change notifications', () => {
+        const onInput = jest.fn();
+        const onChange = jest.fn();
+        const result = createEntryRow({ label: 'Name', subtitle: 'Helpful description', field: 'name', value: 'Initial', placeholder: 'Name', maxLength: 16, onInput, onChange });
+        const { row, control } = result;
+        expect(row.classList.contains('ds-row-entry')).toBe(true);
+        expect(control.type).toBe('text');
+        expect(control.parentElement.className).toBe('ds-row-text');
+        expect(control.previousSibling.className).toBe('ds-row-subtitle');
+        expect(control.previousSibling.previousSibling.tagName).toBe('LABEL');
+        expect(control.placeholder).toBe('Name');
+        expect(control.maxLength).toBe(16);
+        control.value = 'Updated';
+        control.dispatchEvent(new Event('input'));
+        expect(onInput).toHaveBeenCalledWith('Updated');
+        expect(onChange).not.toHaveBeenCalled();
+        change(control);
+        expect(onChange).toHaveBeenCalledWith('Updated');
+        expect(onInput).toHaveBeenCalledTimes(1);
+    });
+
+    test('adoption preserves id, name, value, placeholder, maximum length and both listeners', () => {
+        const control = input('text', 'Existing');
+        control.placeholder = 'Existing placeholder';
+        control.maxLength = 24;
+        const listener = jest.fn();
+        control.addEventListener('input', listener);
+        control.addEventListener('change', listener);
+        const old = node('div');
+        old.append(control);
+
+        const result = createEntryRow({ label: 'Name', field: 'name', input: control, id: 'ignored' });
+
+        expect(result.control).toBe(control);
+        expect(control.id).toBe('existing-text');
+        expect(control.name).toBe('preserved-name');
+        expect(result.getValue()).toBe('Existing');
+        expect(control.placeholder).toBe('Existing placeholder');
+        expect(control.maxLength).toBe(24);
+        expect(old.children).toHaveLength(0);
+        control.dispatchEvent(new Event('input'));
+        change(control);
+        expect(listener).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('createEntryRow floating title', () => {
+    test('the title is a label inside the field, before the input, with the full text as its accessible name', () => {
+        const { row, control } = createEntryRow({ label: 'A Long Server URL Title', field: 'url', floating: true });
+        expect(row.classList.contains('ds-row-entry--floating')).toBe(true);
+        const field = control.parentElement;
+        expect(field.classList.contains('ds-row-entry__field')).toBe(true);
+        const title = field.querySelector('label.ds-row-entry__title');
+        expect(title.htmlFor).toBe(control.id);
+        expect(title.textContent).toBe('A Long Server URL Title');
+        expect(title.nextElementSibling).toBe(control);
+        expect(control.labels[0]).toBe(title);
+    });
+
+    test('a pencil that is hidden from assistive technology ends the editable area', () => {
+        const { control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
+        const pencil = control.parentElement.querySelector('i.ds-row-entry__edit.fa-pencil');
+        expect(pencil.getAttribute('aria-hidden')).toBe('true');
+        expect(control.nextElementSibling).toBe(pencil);
+        expect(createEntryRow({ label: 'Name', field: 'name' }).row.querySelector('.ds-row-entry__edit')).toBeNull();
+    });
+
+    test('a press on the row but not on a control starts editing', () => {
+        const { row, control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
+        document.body.append(row);
+        row.querySelector('.ds-row-entry__title').click();
+        expect(document.activeElement).toBe(control);
+        control.blur();
+        row.querySelector('.ds-row-entry__edit').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(document.activeElement).toBe(control);
+        row.remove();
+    });
+
+    test('a floating hint moves to aria-description and the placeholder stays blank', () => {
+        const { control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
+        expect(control.getAttribute('placeholder')).toBe(' ');
+        const filled = createEntryRow({ label: 'Name', field: 'name', floating: true, placeholder: 'Model name' });
+        expect(filled.control.getAttribute('placeholder')).toBe(' ');
+        expect(filled.control.getAttribute('aria-description')).toBe('Model name');
+    });
+
+    test('adoption keeps identity, type, accessible hint and listeners for text, URL and search inputs', () => {
+        for (const type of ['text', 'url', 'search']) {
+            const control = input(type, 'value');
+            control.placeholder = 'Example';
+            const listener = jest.fn();
+            control.addEventListener('change', listener);
+            const old = node('div');
+            old.append(control);
+            const result = createEntryRow({ label: 'Field', field: 'field', floating: true, input: control });
+            expect(result.control).toBe(control);
+            expect(control.type).toBe(type);
+            expect(control.id).toBe(`existing-${type}`);
+            expect(control.getAttribute('placeholder')).toBe(' ');
+            expect(control.getAttribute('aria-description')).toBe('Example');
+            expect(old.children).toHaveLength(0);
+            change(control);
+            expect(listener).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    test('an adopted input without a placeholder gets a blank marker', () => {
+        const control = input('text');
+        createEntryRow({ label: 'Field', field: 'field', floating: true, input: control });
+        expect(control.getAttribute('placeholder')).toBe(' ');
+        expect(control.hasAttribute('aria-description')).toBe(false);
+    });
+
+    test('rejects inputs whose type is not single-line text', () => {
+        expect(() => createEntryRow({ label: 'Field', field: 'field', floating: true, input: input('number') })).toThrow(TypeError);
+        expect(() => createEntryRow({ label: 'Field', field: 'field', floating: true, input: input('checkbox') })).toThrow(TypeError);
+    });
+
+    test('the subtitle becomes a caption under the field, linked by aria-describedby', () => {
+        const { row, control } = createEntryRow({ label: 'Key', subtitle: 'Helpful description', field: 'key', floating: true });
+        const caption = row.querySelector('small.ds-row-entry__caption');
+        expect(caption.textContent).toBe('Helpful description');
+        expect(caption.parentElement).toBe(row);
+        expect(caption.previousElementSibling.contains(control)).toBe(true);
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+    });
+
+    test('suffix nodes sit in a trailing suffix after the field', () => {
+        const button = node('button', 'Refresh');
+        const { row, control } = createEntryRow({ label: 'Model', field: 'model', floating: true, suffix: button });
+        const suffix = row.querySelector('.ds-row-suffix');
+        expect(suffix.contains(button)).toBe(true);
+        expect(suffix.previousElementSibling.contains(control)).toBe(true);
+    });
+
+    test('setValue writes the value without notifying unless asked', () => {
+        const onChange = jest.fn();
+        const result = createEntryRow({ label: 'Name', field: 'name', floating: true, onChange });
+        result.setValue('Programmatic');
+        expect(result.control.value).toBe('Programmatic');
+        expect(onChange).not.toHaveBeenCalled();
+        result.setValue('Again', { silent: false });
+        expect(onChange).toHaveBeenCalledWith('Again');
+    });
+});
+
+describe('createEntryRow secret', () => {
+    const secret = { savedText: '✔️ Key saved', missingText: '❌ Missing key', revealLabel: 'Show Key' };
+
+    function status(row) {
+        return row.querySelector('.ds-row-entry__status');
+    }
+
+    test('mirrors the key status from the placeholder into a trailing status with text', async () => {
+        const control = input('text');
+        control.placeholder = '❌ Missing key';
+        const { row } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        expect(status(row).dataset.state).toBe('missing');
+        expect(status(row).querySelector('.sr-only').textContent).toBe('❌ Missing key');
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(status(row).id);
+        control.setAttribute('placeholder', '✔️ Key saved (Work)');
+        await Promise.resolve();
+        expect(status(row).dataset.state).toBe('saved');
+        expect(status(row).querySelector('.sr-only').textContent).toBe('✔️ Key saved (Work)');
+    });
+
+    test('keeps the key status in the field, before the pencil, and the Reveal button after it in the suffix', () => {
+        const control = input('text');
+        control.placeholder = '❌ Missing key';
+        const { row } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        const field = row.querySelector('.ds-row-entry__field');
+        expect(status(row).parentElement).toBe(field);
+        expect(status(row).nextElementSibling).toBe(field.querySelector('.ds-row-entry__edit'));
+        expect(row.querySelector('.ds-row-suffix')?.contains(status(row)) ?? false).toBe(false);
+    });
+
+    test('an unrecognised placeholder hides the status', () => {
+        const control = input('text');
+        control.placeholder = 'sk-…';
+        const { row } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        expect(status(row).dataset.state).toBe('unknown');
+        expect(status(row).hidden).toBe(true);
+    });
+
+    test('never changes the input type', () => {
+        const control = input('text');
+        createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        expect(control.type).toBe('text');
+        expect(control.getAttribute('type')).toBe('text');
+    });
+
+    test('offers no reveal toggle when the browser cannot mask text', () => {
+        const supports = globalThis.CSS?.supports;
+        globalThis.CSS = { ...(globalThis.CSS ?? {}), supports: () => false };
+        try {
+            const { row, control } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: input('text') });
+            expect(row.querySelector('.ds-row-entry__reveal')).toBeNull();
+            expect(control.classList.contains('is-masked')).toBe(false);
+        } finally {
+            globalThis.CSS.supports = supports;
+        }
+    });
+
+    test('masks and offers a pressed-state reveal toggle where masking is supported', () => {
+        const supports = globalThis.CSS?.supports;
+        globalThis.CSS = { ...(globalThis.CSS ?? {}), supports: (property, value) => property === '-webkit-text-security' && value === 'disc' };
+        try {
+            const { row, control } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: input('text') });
+            const reveal = row.querySelector('button.ds-row-entry__reveal');
+            expect(control.classList.contains('is-masked')).toBe(true);
+            expect(reveal.type).toBe('button');
+            expect(reveal.getAttribute('aria-pressed')).toBe('false');
+            expect(reveal.getAttribute('aria-label')).toBe('Show Key');
+            expect(reveal.title).toBe('Show Key');
+            expect(reveal.getAttribute('aria-controls')).toBe(control.id);
+            reveal.click();
+            expect(control.classList.contains('is-masked')).toBe(false);
+            expect(reveal.getAttribute('aria-pressed')).toBe('true');
+            reveal.click();
+            expect(control.classList.contains('is-masked')).toBe(true);
+        } finally {
+            globalThis.CSS.supports = supports;
+        }
+    });
+
+    test('destroy stops following the placeholder', async () => {
+        const control = input('text');
+        control.placeholder = '❌ Missing key';
+        const result = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        const statusNode = status(result.row);
+        result.destroy();
+        control.setAttribute('placeholder', '✔️ Key saved');
+        await Promise.resolve();
+        expect(statusNode.dataset.state).toBe('missing');
+    });
+
+    test('requires the floating layout', () => {
+        expect(() => createEntryRow({ label: 'API Key', field: 'key', secret })).toThrow(TypeError);
+    });
+});
+
+describe.each([['floating', true], ['stacked', false]])('createEntryRow error state (%s)', (_name, floating) => {
+    const make = options => createEntryRow({ label: 'Name', field: 'name', floating, ...options });
+
+    test('setError marks the control invalid and links a caption that carries the caller text', () => {
+        const { row, control, setError } = make({});
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+        setError('Name is already taken');
+        const caption = row.querySelector('.ds-row-entry__error');
+        expect(caption.textContent).toBe('Name is already taken');
+        expect(caption.id).not.toBe('');
+        expect(control.getAttribute('aria-invalid')).toBe('true');
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+        expect(row.querySelectorAll('.ds-row-entry__error')).toHaveLength(1);
+    });
+
+    test('the caption sits directly under the field', () => {
+        const { row, control, setError } = make({ subtitle: 'Helpful description' });
+        setError('Required');
+        const caption = row.querySelector('.ds-row-entry__error');
+        expect(caption.previousElementSibling).toBe(floating ? control.parentElement.parentElement : control);
+    });
+
+    test('a help caption keeps its place after the error', () => {
+        const { row, setError } = make({ subtitle: 'Helpful description' });
+        setError('Required');
+        const help = row.querySelector('small.ds-row-subtitle:not(.ds-row-entry__error)');
+        const order = row.querySelector('.ds-row-entry__error').compareDocumentPosition(help);
+        expect(Boolean(order & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(floating);
+    });
+
+    test('a second message replaces the text and keeps one caption and one description id', () => {
+        const { row, control, setError } = make({});
+        setError('First');
+        setError('Second');
+        expect(row.querySelectorAll('.ds-row-entry__error')).toHaveLength(1);
+        expect(row.querySelector('.ds-row-entry__error').textContent).toBe('Second');
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toHaveLength(1);
+    });
+
+    test('clearError removes the caption, aria-invalid and only its own description id', () => {
+        const { row, control, setError, clearError } = make({ subtitle: 'Helpful description' });
+        const helpId = control.getAttribute('aria-describedby');
+        setError('Required');
+        clearError();
+        expect(row.querySelector('.ds-row-entry__error')).toBeNull();
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+        expect(control.getAttribute('aria-describedby')).toBe(helpId);
+    });
+
+    test('clearError drops aria-describedby when the error was its only entry', () => {
+        const { control, setError, clearError } = make({});
+        setError('Required');
+        clearError();
+        expect(control.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    test('an empty message clears the error and clearError without an error does nothing', () => {
+        const { row, control, setError, clearError } = make({});
+        clearError();
+        setError('Required');
+        setError('  ');
+        expect(row.querySelector('.ds-row-entry__error')).toBeNull();
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+    });
+
+    test('the caption is text, never markup', () => {
+        const { row, setError } = make({});
+        setError('<img src=x onerror=alert(1)>');
+        const caption = row.querySelector('.ds-row-entry__error');
+        expect(caption.children).toHaveLength(0);
+        expect(caption.textContent).toBe('<img src=x onerror=alert(1)>');
+    });
+
+    test('adds no wording of its own: without a message nothing is shown', () => {
+        const { row, control } = make({});
+        expect(row.querySelector('.ds-row-entry__error')).toBeNull();
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+    });
+
+    test('destroy leaves an adopted control without the error state', () => {
+        const adopted = input('text');
+        const result = make({ input: adopted });
+        result.setError('Required');
+        result.destroy();
+        expect(adopted.hasAttribute('aria-invalid')).toBe(false);
+        expect(adopted.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    test('the error caption id is released with the row', () => {
+        const api = evaluateRows('{ createEntryRow, reservationCount: () => reservedIds.size }');
+        const entry = api.createEntryRow({ label: 'Name', field: 'name', floating });
+        expect(api.reservationCount()).toBe(1);
+        entry.setError('Required');
+        expect(api.reservationCount()).toBe(2);
+        entry.clearError();
+        expect(api.reservationCount()).toBe(1);
+        entry.setError('Required');
+        entry.destroy();
+        expect(api.reservationCount()).toBe(0);
+    });
+});
+
+describe('createEntryRow disabled', () => {
+    test.each([['floating', true], ['stacked', false]])('%s: setDisabled makes the row insensitive and the input unfocusable', (_name, floating) => {
+        const { row, control, setDisabled } = createEntryRow({ label: 'Name', field: 'name', floating });
+        document.body.replaceChildren(row);
+        setDisabled(true);
+        expect(control.disabled).toBe(true);
+        expect(row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.classList.contains('is-insensitive')).toBe(true);
+        control.focus();
+        expect(document.activeElement).not.toBe(control);
+        setDisabled(false);
+        expect(control.disabled).toBe(false);
+        expect(row.classList.contains('is-insensitive')).toBe(false);
+        control.focus();
+        expect(document.activeElement).toBe(control);
+    });
+
+    test('an adopted disabled input starts insensitive, and its title is inside the faded row', () => {
+        const adopted = input('text', 'Alex');
+        adopted.disabled = true;
+        const { row, control } = createEntryRow({ label: 'Name', field: 'name', floating: true, input: adopted });
+        expect(control.disabled).toBe(true);
+        expect(row.classList.contains('is-insensitive')).toBe(true);
+        expect(row.contains(row.querySelector('label.ds-row-entry__title'))).toBe(true);
+    });
+});
+
+describe('createEntryRow password', () => {
+    test('creates a password input in the floating layout and keeps the browser masking', () => {
+        const { row, control } = createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password' });
+        expect(control.type).toBe('password');
+        expect(control.getAttribute('type')).toBe('password');
+        expect(control.classList.contains('is-masked')).toBe(false);
+        expect(row.querySelector('.ds-row-entry__reveal')).toBeNull();
+        expect(control.getAttribute('placeholder')).toBe(' ');
+        expect(control.labels[0].textContent).toBe('Password');
+    });
+
+    test('creates a password input in the stacked layout', () => {
+        const { control } = createEntryRow({ label: 'Password', field: 'password', type: 'password' });
+        expect(control.type).toBe('password');
+    });
+
+    test('adopts an upstream password input in place, with its identity, hint and listeners', () => {
+        const control = input('password', 'secret');
+        control.name = 'current';
+        control.placeholder = '[ No password ]';
+        control.autocomplete = 'current-password';
+        const listener = jest.fn();
+        control.addEventListener('input', listener);
+        const old = node('div');
+        old.append(control);
+        const result = createEntryRow({ label: 'Current Password:', field: 'current', floating: true, input: control });
+        expect(result.control).toBe(control);
+        expect(control.type).toBe('password');
+        expect(control.name).toBe('current');
+        expect(control.autocomplete).toBe('current-password');
+        expect(control.getAttribute('aria-description')).toBe('[ No password ]');
+        expect(result.getValue()).toBe('secret');
+        expect(old.children).toHaveLength(0);
+        control.dispatchEvent(new Event('input'));
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    test('a type that disagrees with an adopted input, or that the layout cannot hold, throws', () => {
+        expect(() => createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password', input: input('text') })).toThrow(TypeError);
+        expect(() => createEntryRow({ label: 'Count', field: 'count', floating: true, type: 'number' })).toThrow(TypeError);
+    });
+
+    test('a secret status mirror does not apply to a password input', () => {
+        const secret = { savedText: 'saved', missingText: 'missing', revealLabel: 'Show' };
+        expect(() => createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password', secret })).toThrow(TypeError);
+    });
+
+    test('error and disabled states work on a password row', () => {
+        const result = createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password' });
+        result.setError('Passwords do not match');
+        expect(result.control.getAttribute('aria-invalid')).toBe('true');
+        result.setDisabled(true);
+        expect(result.control.disabled).toBe(true);
+    });
+});
+
+describe('createTextAreaField', () => {
+    const make = (options = {}) => createTextAreaField({ label: 'Notes', field: 'notes', expandLabel: 'Expand the editor', ...options });
+
+    function textarea(value = '') {
+        const control = document.createElement('textarea');
+        control.id = 'existing-notes';
+        control.name = 'preserved-name';
+        control.className = 'text_pole preserved-class';
+        control.value = value;
+        return control;
+    }
+
+    test('the label row holds a real label for the textarea, then Expand at the inline end', () => {
+        const { row, control, labelRow } = make();
+        const label = labelRow.querySelector('label.ds-row-textarea__label');
+        expect(row.dataset.sbEditorField).toBe('notes');
+        expect(row.classList.contains('ds-row--stacked')).toBe(true);
+        expect(control.tagName).toBe('TEXTAREA');
+        expect(control.id).not.toBe('');
+        expect(label.htmlFor).toBe(control.id);
+        expect(label.textContent).toBe('Notes');
+        expect(labelRow.classList.contains('sb-editor-label-row')).toBe(true);
+        expect(row.firstElementChild).toBe(labelRow);
+        expect(labelRow.firstElementChild).toBe(label);
+        expect(row.querySelectorAll('label')).toHaveLength(1);
+        expect(labelRow.nextElementSibling).toBe(control);
+    });
+
+    test('Expand is the existing expanded-editor trigger, named, wired to the textarea and last in the row', () => {
+        const { control, labelRow, expand } = make({ count: { label: 'Tokens:' } });
+        expect(expand.tagName).toBe('BUTTON');
+        expect(expand.type).toBe('button');
+        expect(expand.classList.contains('editor_maximize')).toBe(true);
+        expect(expand.dataset.for).toBe(control.id);
+        expect(expand.getAttribute('aria-label')).toBe('Expand the editor');
+        expect(expand.title).toBe('Expand the editor');
+        expect(expand.querySelector('i').getAttribute('aria-hidden')).toBe('true');
+        expect(labelRow.lastElementChild).toBe(expand);
+    });
+
+    test('Expand needs its translated label and can be left out', () => {
+        expect(() => createTextAreaField({ label: 'Notes', field: 'notes' })).toThrow(TypeError);
+        const { labelRow, expand } = createTextAreaField({ label: 'Notes', field: 'notes', expand: false });
+        expect(expand).toBeNull();
+        expect(labelRow.querySelector('button')).toBeNull();
+    });
+
+    test('a field token count is a dimmed caption between the label and Expand and counts only this field', () => {
+        const { labelRow, setCount } = make({ count: { label: 'Tokens:' } });
+        const count = labelRow.querySelector('.ds-row-textarea__count');
+        expect(count.classList.contains('ds-row-subtitle')).toBe(true);
+        expect(count.textContent).toBe('Tokens: ');
+        expect(count.previousElementSibling).toBe(labelRow.querySelector('label'));
+        expect(count.nextElementSibling).toBe(labelRow.querySelector('.editor_maximize'));
+        setCount(42);
+        expect(count.textContent).toBe('Tokens: 42');
+        setCount(null);
+        expect(count.textContent).toBe('Tokens: ');
+    });
+
+    test('an existing count element is adopted in place of a new one and keeps its id', () => {
+        const value = document.createElement('span');
+        value.id = 'existing-counter';
+        value.textContent = '7';
+        const { labelRow, setCount } = make({ count: { label: 'Tokens:', element: value } });
+        expect(labelRow.querySelector('#existing-counter')).toBe(value);
+        expect(labelRow.querySelectorAll('.ds-row-textarea__count-value')).toHaveLength(1);
+        expect(labelRow.querySelector('.ds-row-textarea__count').textContent).toBe('Tokens: 7');
+        setCount(9);
+        expect(value.textContent).toBe('9');
+    });
+
+    test('has no count unless one is asked for', () => {
+        const { labelRow, setCount } = make();
+        expect(labelRow.querySelector('.ds-row-textarea__count')).toBeNull();
+        expect(() => setCount(3)).not.toThrow();
+    });
+
+    test('a help caption sits under the field and is linked by aria-describedby', () => {
+        const { row, control } = make({ subtitle: 'Helpful description' });
+        const caption = row.querySelector('small.ds-row-textarea__caption');
+        expect(caption.textContent).toBe('Helpful description');
+        expect(caption.classList.contains('ds-row-subtitle')).toBe(true);
+        expect(control.nextElementSibling).toBe(caption);
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+        expect(caption.id).not.toBe('');
+    });
+
+    test('has no caption and no aria-describedby without a subtitle', () => {
+        const { row, control } = make();
+        expect(row.querySelector('.ds-row-textarea__caption')).toBeNull();
+        expect(control.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    test('creates a themed textarea that takes the value, placeholder, rows and length limit', () => {
+        const { control } = make({ id: 'made-notes', value: 'abc', placeholder: 'Write here', rows: 6, maxLength: 40 });
+        expect(control.id).toBe('made-notes');
+        expect(control.classList.contains('text_pole')).toBe(true);
+        expect(control.classList.contains('ds-row-textarea__input')).toBe(true);
+        expect(control.value).toBe('abc');
+        expect(control.placeholder).toBe('Write here');
+        expect(control.rows).toBe(6);
+        expect(control.maxLength).toBe(40);
+    });
+
+    test('adopts an existing textarea in place: same node, id, name, classes and listeners', () => {
+        const adopted = textarea('kept');
+        const upstream = jest.fn();
+        adopted.addEventListener('input', upstream);
+        const onInput = jest.fn();
+        const onChange = jest.fn();
+        const { row, control, labelRow } = make({ input: adopted, onInput, onChange });
+        document.body.replaceChildren(row);
+        expect(control).toBe(adopted);
+        expect(row.contains(adopted)).toBe(true);
+        expect(adopted.id).toBe('existing-notes');
+        expect(adopted.name).toBe('preserved-name');
+        expect(adopted.classList.contains('preserved-class')).toBe(true);
+        expect(adopted.value).toBe('kept');
+        expect(labelRow.querySelector('label').htmlFor).toBe('existing-notes');
+        expect(labelRow.querySelector('.editor_maximize').dataset.for).toBe('existing-notes');
+        adopted.value = 'typed';
+        adopted.dispatchEvent(new Event('input', { bubbles: true }));
+        adopted.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(upstream).toHaveBeenCalledTimes(1);
+        expect(onInput).toHaveBeenCalledWith('typed');
+        expect(onChange).toHaveBeenCalledWith('typed');
+    });
+
+    test('adoption leaves a jQuery-style listener of the adopter working', () => {
+        const adopted = textarea();
+        const seen = [];
+        adopted.addEventListener('input', () => seen.push(adopted.value));
+        make({ input: adopted });
+        adopted.value = 'one';
+        adopted.dispatchEvent(new Event('input'));
+        expect(seen).toEqual(['one']);
+    });
+
+    test('refuses anything that is not a textarea', () => {
+        expect(() => make({ input: input('text') })).toThrow(TypeError);
+    });
+
+    test('setValue and getValue read and write the textarea, silently unless asked', () => {
+        const onChange = jest.fn();
+        const field = make({ onChange });
+        field.setValue('first');
+        expect(field.getValue()).toBe('first');
+        expect(field.control.value).toBe('first');
+        expect(onChange).not.toHaveBeenCalled();
+        field.setValue('second', { silent: false });
+        expect(onChange).toHaveBeenCalledWith('second');
+    });
+
+    test('setDisabled disables the textarea and dims the row; setVisible hides the row', () => {
+        const { row, control, setDisabled, setVisible } = make();
+        setDisabled(true);
+        expect(control.disabled).toBe(true);
+        expect(row.classList.contains('is-insensitive')).toBe(true);
+        setVisible(false);
+        expect(row.hidden).toBe(true);
+    });
+
+    describe('error state', () => {
+        test('setError marks the textarea invalid and links a caption that carries the caller text', () => {
+            const { row, control, setError } = make();
+            setError('Too long');
+            const caption = row.querySelector('.ds-row-textarea__error');
+            expect(caption.textContent).toBe('Too long');
+            expect(control.getAttribute('aria-invalid')).toBe('true');
+            expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+            expect(control.nextElementSibling).toBe(caption);
+        });
+
+        test('the error comes before the help caption and each keeps its own description id', () => {
+            const { row, control, setError, clearError } = make({ subtitle: 'Helpful description' });
+            const helpId = control.getAttribute('aria-describedby');
+            setError('Required');
+            const error = row.querySelector('.ds-row-textarea__error');
+            expect(error.nextElementSibling).toBe(row.querySelector('.ds-row-textarea__caption'));
+            expect(control.getAttribute('aria-describedby').split(/\s+/)).toHaveLength(2);
+            clearError();
+            expect(row.querySelector('.ds-row-textarea__error')).toBeNull();
+            expect(control.hasAttribute('aria-invalid')).toBe(false);
+            expect(control.getAttribute('aria-describedby')).toBe(helpId);
+        });
+
+        test('a second message replaces the first and an empty one clears', () => {
+            const { row, control, setError } = make();
+            setError('First');
+            setError('Second');
+            expect(row.querySelectorAll('.ds-row-textarea__error')).toHaveLength(1);
+            expect(row.querySelector('.ds-row-textarea__error').textContent).toBe('Second');
+            setError('  ');
+            expect(row.querySelector('.ds-row-textarea__error')).toBeNull();
+            expect(control.hasAttribute('aria-describedby')).toBe(false);
+        });
+
+        test('the message is text, never markup', () => {
+            const { row, setError } = make();
+            setError('<img src=x onerror=alert(1)>');
+            expect(row.querySelector('.ds-row-textarea__error').children).toHaveLength(0);
+        });
+
+        test('destroy leaves an adopted textarea without the error state', () => {
+            const adopted = textarea();
+            const field = make({ input: adopted, subtitle: 'Help' });
+            field.setError('Required');
+            field.destroy();
+            expect(adopted.hasAttribute('aria-invalid')).toBe(false);
+        });
+    });
+
+    test('every id the field reserves is released with it', () => {
+        const api = evaluateRows('{ createTextAreaField, reservationCount: () => reservedIds.size }');
+        const field = api.createTextAreaField({ label: 'Notes', field: 'notes', subtitle: 'Help', expandLabel: 'Expand' });
+        expect(api.reservationCount()).toBe(2);
+        field.setError('Required');
+        expect(api.reservationCount()).toBe(3);
+        field.destroy();
+        expect(api.reservationCount()).toBe(0);
+    });
+});
+
+describe('createPropertyRow', () => {
+    test('places the caption above a selectable read-only value and safely updates it', () => {
+        const result = createPropertyRow({ label: 'Identifier', field: 'identifier', value: 'abc' });
+        expect(result.row.className).toBe('ds-row ds-row-property');
+        expect(result.row.dataset.sbEditorField).toBe('identifier');
+        const text = result.row.firstChild;
+        expect(text.firstChild.className).toBe('ds-row-subtitle');
+        expect(text.firstChild.textContent).toBe('Identifier');
+        expect(text.lastChild.className).toBe('ds-row-label ds-row-property__value');
+        expect(text.lastChild.textContent).toBe('abc');
+        expect(text.lastChild.style.userSelect).toBe('text');
+        expect(result.row.querySelector('input')).toBeNull();
+        result.setValue('<b>Updated</b>');
+        expect(text.lastChild.textContent).toBe('<b>Updated</b>');
+        expect(text.lastChild.children).toHaveLength(0);
+    });
+
+    test('a code or identifier value takes the Mono role, and no other value does', () => {
+        const code = createPropertyRow({ label: 'Commit', field: 'commit', value: 'a1b2c3d', mono: true });
+        expect(code.row.querySelector('.ds-row-property__value').classList.contains('is-monospace')).toBe(true);
+        const prose = createPropertyRow({ label: 'Name', field: 'name', value: 'Reisen' });
+        expect(prose.row.querySelector('.ds-row-property__value').classList.contains('is-monospace')).toBe(false);
+    });
+
+    test('can opt out of selection', () => {
+        const { row } = createPropertyRow({ label: 'Identifier', field: 'identifier', value: 0, selectable: false });
+        expect(row.querySelector('.ds-row-property__value').style.userSelect).toBe('none');
+        expect(row.querySelector('.ds-row-property__value').textContent).toBe('0');
+    });
+});
+
+describe('createExpanderRow', () => {
+    afterEach(() => {
+        document.body.replaceChildren();
+        document.body.classList.remove('reduced-motion');
+        delete window.matchMedia;
+    });
+
+    test('builds a header row with a toggle button, supplied content, a description and toggle notifications', () => {
+        const child = createPropertyRow({ label: 'Value', field: 'value', value: 'child' });
+        const extra = node('div');
+        const onToggle = jest.fn();
+        const result = createExpanderRow({ label: 'Advanced', subtitle: 'Description', field: 'advanced', children: [child, extra], onToggle });
+        const { row, header, toggle, content } = result;
+        expect(row.tagName).toBe('DIV');
+        expect(row.className).toBe('ds-row-expander');
+        expect(row.dataset.sbEditorField).toBe('advanced');
+        expect(row.firstChild).toBe(header);
+        expect(header.className).toBe('ds-row ds-row-expander__header');
+        expect(toggle.tagName).toBe('BUTTON');
+        expect(toggle.type).toBe('button');
+        expect(toggle.parentElement).toBe(header);
+        expect(toggle.querySelector('.ds-row-label').textContent).toBe('Advanced');
+        expect(toggle.getAttribute('aria-describedby')).toBe(row.querySelector('small').id);
+        expect(header.lastChild.className).toBe('ds-row-expander__arrow');
+        expect(header.lastChild.getAttribute('aria-hidden')).toBe('true');
+        expect(content.className).toBe('ds-row-expander-content');
+        expect(row.lastChild).toBe(content);
+        expect([...content.children]).toEqual([child.row, extra]);
+        expect(onToggle).not.toHaveBeenCalled();
+    });
+
+    test('names the content it controls and reports its state with aria-expanded', () => {
+        const { toggle, content, row, isOpen } = createExpanderRow({ label: 'Advanced', field: 'advanced' });
+        expect(content.id).not.toBe('');
+        expect(toggle.getAttribute('aria-controls')).toBe(content.id);
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(isOpen()).toBe(false);
+        expect(row.classList.contains('is-open')).toBe(false);
+    });
+
+    test('the toggle opens and closes the content, which is hidden while closed', () => {
+        const onToggle = jest.fn();
+        const field = input('text');
+        const { toggle, content, row, isOpen } = createExpanderRow({ label: 'Advanced', field: 'advanced', children: [node('div')], onToggle });
+        content.append(field);
+        document.body.append(row);
+        expect(content.hidden).toBe(true);
+        toggle.click();
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(row.classList.contains('is-open')).toBe(true);
+        expect(content.hidden).toBe(false);
+        expect(isOpen()).toBe(true);
+        expect(onToggle).toHaveBeenLastCalledWith(true);
+        toggle.click();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(content.hidden).toBe(true);
+        expect(onToggle).toHaveBeenLastCalledWith(false);
+        expect(onToggle).toHaveBeenCalledTimes(2);
+    });
+
+    test('is a native button, so Enter and Space activate it and no key handler runs twice', () => {
+        const { toggle } = createExpanderRow({ label: 'Advanced', field: 'advanced' });
+        document.body.append(toggle);
+        for (const key of ['Enter', ' ']) {
+            const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+            toggle.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+        }
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.disabled).toBe(false);
+        expect(toggle.tabIndex).toBe(0);
+    });
+
+    test('focus stays on the toggle when it opens and closes', () => {
+        const { toggle, row } = createExpanderRow({ label: 'Advanced', field: 'advanced' });
+        document.body.append(row);
+        toggle.focus();
+        toggle.click();
+        expect(document.activeElement).toBe(toggle);
+        toggle.click();
+        expect(document.activeElement).toBe(toggle);
+    });
+
+    test('closing from code returns focus from the content to the toggle', () => {
+        const field = input('text');
+        const { toggle, row, setOpen } = createExpanderRow({ label: 'Advanced', field: 'advanced', open: true, children: [node('div')] });
+        row.querySelector('.ds-row-expander-content').append(field);
+        document.body.append(row);
+        field.focus();
+        expect(document.activeElement).toBe(field);
+        setOpen(false);
+        expect(document.activeElement).toBe(toggle);
+    });
+
+    test('several expanders stay open together', () => {
+        const first = createExpanderRow({ label: 'First', field: 'first' });
+        const second = createExpanderRow({ label: 'Second', field: 'second' });
+        document.body.append(first.row, second.row);
+        first.toggle.click();
+        second.toggle.click();
+        expect(first.isOpen()).toBe(true);
+        expect(second.isOpen()).toBe(true);
+    });
+
+    test('can start open, and setOpen can skip the motion', () => {
+        const result = createExpanderRow({ label: 'Advanced', field: 'advanced', open: true });
+        expect(result.isOpen()).toBe(true);
+        expect(result.content.hidden).toBe(false);
+        expect(result.toggle.getAttribute('aria-expanded')).toBe('true');
+        result.setOpen(false, { animate: false });
+        expect(result.content.hidden).toBe(true);
+    });
+
+    test('a suffix switch keeps its own focus and does not toggle the row', () => {
+        const enabled = createSwitchRow({ label: 'Enabled', field: 'enabled' });
+        const { toggle, header, row, isOpen } = createExpanderRow({ label: 'Note', field: 'note', suffix: enabled.row });
+        document.body.append(row);
+        expect(enabled.row.closest('.ds-row-suffix').parentElement).toBe(header);
+        expect(toggle.contains(enabled.row)).toBe(false);
+        enabled.control.focus();
+        expect(document.activeElement).toBe(enabled.control);
+        enabled.control.click();
+        expect(enabled.control.checked).toBe(true);
+        expect(isOpen()).toBe(false);
+        expect(header.querySelector('.ds-row-expander__arrow').previousElementSibling).toBe(enabled.row.closest('.ds-row-suffix'));
+        toggle.click();
+        expect(isOpen()).toBe(true);
+        expect(enabled.control.checked).toBe(true);
+    });
+
+    test('disabling the row makes all of it inert and declines the toggle', () => {
+        const result = createExpanderRow({ label: 'Advanced', field: 'advanced', open: true });
+        result.setDisabled(true);
+        expect(result.row.hasAttribute('inert')).toBe(true);
+        expect(result.row.getAttribute('aria-disabled')).toBe('true');
+        result.toggle.click();
+        expect(result.isOpen()).toBe(true);
+        result.setDisabled(false);
+        expect(result.row.hasAttribute('inert')).toBe(false);
+        result.toggle.click();
+        expect(result.isOpen()).toBe(false);
+    });
+
+    describe('reveal motion', () => {
+        function motionStub({ reduced = false, bodyClass = false } = {}) {
+            window.matchMedia = query => ({ matches: reduced && query.includes('reduce') });
+            document.body.classList.toggle('reduced-motion', bodyClass);
+            let finish;
+            const animation = { finished: new Promise(resolve => { finish = resolve; }), cancel: jest.fn() };
+            const animate = jest.fn(() => animation);
+            const result = createExpanderRow({ label: 'Advanced', field: 'advanced', children: [node('div')] });
+            document.body.append(result.row);
+            result.content.animate = animate;
+            result.content.getBoundingClientRect = () => ({ height: 80 });
+            return { ...result, animate, finish };
+        }
+
+        test('opens over the expander motion and hides the content once it has closed', async () => {
+            const { toggle, content, animate, finish } = motionStub();
+            toggle.click();
+            expect(content.hidden).toBe(false);
+            expect(animate).toHaveBeenCalledTimes(1);
+            expect(animate.mock.calls[0][0]).toEqual([{ height: '0px' }, { height: '80px' }]);
+            expect(animate.mock.calls[0][1]).toMatchObject({ duration: 250 });
+            toggle.click();
+            expect(animate).toHaveBeenCalledTimes(2);
+            expect(animate.mock.calls[1][0]).toEqual([{ height: '80px' }, { height: '0px' }]);
+            expect(content.hidden).toBe(false);
+            finish();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(content.hidden).toBe(true);
+        });
+
+        test('does not animate under prefers-reduced-motion', () => {
+            const { toggle, content, animate } = motionStub({ reduced: true });
+            toggle.click();
+            expect(content.hidden).toBe(false);
+            toggle.click();
+            expect(content.hidden).toBe(true);
+            expect(animate).not.toHaveBeenCalled();
+        });
+
+        test('does not animate under the Reduced Motion setting', () => {
+            const { toggle, content, animate } = motionStub({ bodyClass: true });
+            toggle.click();
+            expect(content.hidden).toBe(false);
+            toggle.click();
+            expect(content.hidden).toBe(true);
+            expect(animate).not.toHaveBeenCalled();
+        });
+    });
+});
+
+describe('adoptExpanderRow', () => {
+    function markup() {
+        document.body.innerHTML = `<div class="ds-row-expander" id="adopted">
+            <div class="ds-row ds-row-expander__header">
+                <button type="button" class="ds-row-expander__toggle"><span class="ds-row-text"><span class="ds-row-label">Group</span></span></button>
+                <span class="ds-row-suffix"><span id="count">2</span></span>
+                <span class="ds-row-expander__arrow" aria-hidden="true"></span>
+            </div>
+            <div class="ds-row-expander-content" hidden><input id="inside"></div>
+        </div>`;
+        return document.getElementById('adopted');
+    }
+
+    test('wires authored markup the way the factory does', () => {
+        const row = markup();
+        const onToggle = jest.fn();
+        const result = adoptExpanderRow(row, { onToggle });
+        const toggle = row.querySelector('.ds-row-expander__toggle');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.getAttribute('aria-controls')).toBe(result.content.id);
+        expect(result.content.hidden).toBe(true);
+        toggle.click();
+        expect(result.content.hidden).toBe(false);
+        expect(row.classList.contains('is-open')).toBe(true);
+        expect(onToggle).toHaveBeenCalledWith(true);
+        result.setOpen(false);
+        expect(result.isOpen()).toBe(false);
+    });
+
+    test('refuses markup without a header toggle and content', () => {
+        expect(() => adoptExpanderRow(node('div'))).toThrow(TypeError);
+    });
+});
+
+describe('createButtonRow', () => {
+    test('uses a native destructive button with a decorative start icon', () => {
+        const onActivate = jest.fn();
+        const result = createButtonRow({ label: 'Delete', icon: 'trash', field: 'delete', danger: true, onActivate });
+        expect(result.row.tagName).toBe('BUTTON');
+        expect(result.row.type).toBe('button');
+        expect(result.row.className).toBe('ds-row ds-button-row is-destructive');
+        expect(result.row.dataset.sbEditorField).toBe('delete');
+        expect(result.row.firstChild.className).toBe('fa-solid fa-trash');
+        expect(result.row.firstChild.getAttribute('aria-hidden')).toBe('true');
+        expect(result.row.lastChild.textContent).toBe('Delete');
+        result.row.click();
+        expect(onActivate).toHaveBeenCalledTimes(1);
+        result.setDisabled(true);
+        result.row.click();
+        expect(onActivate).toHaveBeenCalledTimes(1);
+        expect(result.control.disabled).toBe(true);
+    });
+
+    test('omits the icon and destructive state by default', () => {
+        const { row } = createButtonRow({ label: 'Apply', field: 'apply' });
+        expect(row.querySelector('i')).toBeNull();
+        expect(row.classList.contains('is-destructive')).toBe(false);
+        expect(row.classList.contains('ds-button-row--arrow')).toBe(false);
+        expect(row.querySelector('.ds-row__chevron')).toBeNull();
+    });
+
+    test('ends with a decorative arrow when it opens a window', () => {
+        const { row } = createButtonRow({ label: 'Account', field: 'account', arrow: true });
+        expect(row.classList.contains('ds-button-row--arrow')).toBe(true);
+        expect(row.lastChild.matches('i.ds-row__chevron')).toBe(true);
+        expect(row.lastChild.getAttribute('aria-hidden')).toBe('true');
+        expect(row.querySelector('.ds-row-label').textContent).toBe('Account');
+    });
+
+    describe('adopting an upstream button', () => {
+        test('a native button is the row, with its id and handler, and its caption key moves to the title', () => {
+            document.body.innerHTML = '<button id="backup" type="button" class="margin0 menu_button menu_button_icon" data-i18n="Download Backup">Download Backup</button>';
+            const button = document.getElementById('backup');
+            const handler = jest.fn();
+            button.addEventListener('click', handler);
+            const result = createButtonRow({ label: 'Download Backup', field: 'download-backup', button });
+            expect(result.row).toBe(button);
+            expect(document.getElementById('backup')).toBe(button);
+            expect(button.className).toBe('ds-row ds-button-row');
+            expect(button.hasAttribute('data-i18n')).toBe(false);
+            expect(button.dataset.sbEditorField).toBe('download-backup');
+            expect(button.querySelector('.ds-row-label').dataset.i18n).toBe('Download Backup');
+            expect(button.textContent).toBe('Download Backup');
+            button.click();
+            expect(handler).toHaveBeenCalledTimes(1);
+            result.setDisabled(true);
+            expect(button.disabled).toBe(true);
+        });
+
+        test('another element gets the button role, a tab stop and Enter and Space, and keeps its inline display', () => {
+            document.body.innerHTML = '<div id="logout" class="margin0 menu_button" style="display: none"><i class="fa-solid fa-right-from-bracket"></i><span data-i18n="Logout">Logout</span></div>';
+            const node = document.getElementById('logout');
+            const handler = jest.fn();
+            node.addEventListener('click', handler);
+            const result = createButtonRow({ label: 'Logout', field: 'logout', button: node });
+            expect(result.row).toBe(node);
+            expect(node.getAttribute('role')).toBe('button');
+            expect(node.tabIndex).toBe(0);
+            expect(node.style.display).toBe('none');
+            expect(node.querySelector('i')).toBeNull();
+            expect(node.querySelector('.ds-row-label').dataset.i18n).toBe('Logout');
+            node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            node.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+            node.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true }));
+            expect(handler).toHaveBeenCalledTimes(2);
+            result.destroy();
+            expect(document.getElementById('logout')).toBeNull();
+        });
+    });
+});
+
+describe('createPrefGroup', () => {
+    test('builds the section and accessible heading, adds a header suffix and appends row nodes or controllers', () => {
+        const first = createRow({ label: 'First', field: 'first' });
+        const second = node('div');
+        const headerSuffix = node('button', 'Header action');
+        const result = createPrefGroup({ title: 'Preferences', subtitle: 'Description', field: 'preferences', rows: [first], headerSuffix });
+        const { section, group } = result;
+        expect(result.row).toBe(section);
+        expect(section.tagName).toBe('SECTION');
+        expect(section.className).toBe('sb-editor-section');
+        expect(section.dataset.sbEditorField).toBe('preferences');
+        expect(group.className).toBe('ds-pref-group');
+        expect(group.getAttribute('role')).toBe('group');
+        const header = section.firstChild;
+        expect(header.className).toBe('ds-pref-group-header');
+        expect(header.querySelector('h3').textContent).toBe('Preferences');
+        expect(header.querySelector('h3').className).toBe('ds-pref-group-heading');
+        expect(group.getAttribute('aria-labelledby')).toBe(header.querySelector('h3').id);
+        expect(header.querySelector('p').className).toBe('ds-pref-group-subtitle');
+        expect(header.lastChild).toBe(headerSuffix);
+        expect(group.firstChild).toBe(first.row);
+        result.append(second, createRow({ label: 'Third', field: 'third' }));
+        expect(group.children).toHaveLength(3);
+        expect(group.children[1]).toBe(second);
+        expect(group.lastChild.dataset.sbEditorField).toBe('third');
+    });
+
+    test('omits an empty header, including an orphan header suffix', () => {
+        const { section, group } = createPrefGroup({ field: 'group', headerSuffix: node('button') });
+        expect(section.children).toHaveLength(1);
+        expect(section.firstChild).toBe(group);
+        expect(group.hasAttribute('aria-labelledby')).toBe(false);
+    });
+
+    test('subtitle-only groups do not create an empty heading or dangling labelledby', () => {
+        const { section, group } = createPrefGroup({ field: 'group', subtitle: 'Description' });
+        expect(section.querySelector('h3')).toBeNull();
+        expect(group.hasAttribute('aria-labelledby')).toBe(false);
+        expect(group.getAttribute('aria-describedby')).toBe(section.querySelector('p').id);
+    });
+});
+
+describe('display-only row controllers', () => {
+    test.each([
+        ['row', () => createRow({ label: 'Label', field: 'field' })],
+        ['property', () => createPropertyRow({ label: 'Label', field: 'field', value: 'Value' })],
+        ['expander', () => createExpanderRow({ label: 'Label', field: 'field' })],
+        ['button', () => createButtonRow({ label: 'Label', field: 'field' })],
+        ['group', () => createPrefGroup({ field: 'field' })],
+    ])('%s supports disabling and visibility without a value control', (_name, factory) => {
+        const result = factory();
+        result.setDisabled(true);
+        result.setVisible(false);
+        expect(result.row.classList.contains('is-insensitive')).toBe(true);
+        expect(result.row.getAttribute('aria-disabled')).toBe('true');
+        expect(result.row.hidden).toBe(true);
+        result.setDisabled(false);
+        result.setVisible(true);
+        expect(result.row.classList.contains('is-insensitive')).toBe(false);
+        expect(result.row.getAttribute('aria-disabled')).toBe('false');
+        expect(result.row.hidden).toBe(false);
+    });
+});
+
+describe('createPrefGroup heading level', () => {
+    test('titles a group with an h3 unless the page above it asks for another level', () => {
+        const heading = options => createPrefGroup({ title: 'Group', field: 'group', ...options }).section.querySelector('.ds-pref-group-heading');
+
+        expect(heading().tagName).toBe('H3');
+        expect(heading({ headingLevel: 4 }).tagName).toBe('H4');
+        expect(heading({ headingLevel: 2 }).tagName).toBe('H2');
+    });
+
+    test('keeps the group named by its heading at any level', () => {
+        const { group, section } = createPrefGroup({ title: 'Group', field: 'group', headingLevel: 4 });
+
+        expect(group.getAttribute('aria-labelledby')).toBe(section.querySelector('h4').id);
+    });
+
+    test.each([0, 7, 3.5, '4', Number.NaN])('refuses the heading level %p', (headingLevel) => {
+        expect(() => createPrefGroup({ title: 'Group', field: 'group', headingLevel })).toThrow(RangeError);
+    });
+});
+
+describe('adoptEditorFields', () => {
+    const t = strings => strings.join('');
+
+    function sheet() {
+        document.body.innerHTML = `<form id="sheet">
+            <div id="name_div" class="ds-field">
+                <label class="ds-field-label" for="name_input">Name</label>
+                <input id="name_input" name="ch_name" class="text_pole" data-sb-editor-field="name" data-i18n="[placeholder]Name this" placeholder="Name this">
+                <div class="extension_token_counter"><span>Tokens:</span> <span data-token-counter="name_input">3</span></div>
+            </div>
+            <div id="tags_div" class="ds-field">
+                <label class="ds-field-label" for="tagInput">Tags</label>
+                <div class="tag_controls"><input id="tagInput" class="text_pole"><button type="button" class="tags_view">View</button></div>
+                <div id="tagList" class="tags"></div>
+            </div>
+            <div id="descriptionWrapper" class="ds-field">
+                <div class="ds-field-header">
+                    <label class="ds-field-label" for="description_textarea">Description</label>
+                    <a class="notes-link" href="#help">?</a>
+                    <span class="ds-field-actions">
+                        <button type="button" class="sb-preview-toggle" data-sb-preview-for="description_textarea">Preview</button>
+                        <i class="editor_maximize" data-for="description_textarea"></i>
+                    </span>
+                </div>
+                <textarea id="description_textarea" name="description" data-sb-editor-field="description"></textarea>
+                <div class="sb-preview-pane" data-sb-preview-pane-for="description_textarea" hidden></div>
+                <div class="extension_token_counter"><span>Tokens:</span> <span data-token-counter="description_textarea">12</span></div>
+            </div>
+        </form>`;
+        return document.getElementById('sheet');
+    }
+
+    test('turns single-line fields into floating entry rows that keep their input and move the count and buttons in', () => {
+        const root = sheet();
+        const name = document.getElementById('name_input');
+        const tags = document.getElementById('tagInput');
+        adoptEditorFields(root, { t });
+        const nameRow = document.getElementById('name_div').querySelector(':scope > .ds-row-entry--floating');
+        expect(nameRow.contains(name)).toBe(true);
+        expect(name.name).toBe('ch_name');
+        expect(name.dataset.sbEditorField).toBe('name');
+        expect(name.dataset.i18n).toBeUndefined();
+        expect(nameRow.querySelector('.ds-row-entry__title').textContent).toBe('Name');
+        expect(nameRow.querySelector('.ds-row-suffix [data-token-counter="name_input"]').textContent).toBe('3');
+        expect(document.querySelector('#name_div .extension_token_counter')).toBeNull();
+        const tagRow = document.getElementById('tags_div').querySelector(':scope > .ds-row-entry--floating');
+        expect(tagRow.contains(tags)).toBe(true);
+        expect(tagRow.querySelector('.ds-row-suffix .tags_view')).not.toBeNull();
+        expect(document.querySelector('.tag_controls')).toBeNull();
+    });
+
+    test('turns a text area into a text-area field with its help, count, preview toggle and Expand in the label row', () => {
+        const root = sheet();
+        const area = document.getElementById('description_textarea');
+        adoptEditorFields(root, { t });
+        const wrapper = document.getElementById('descriptionWrapper');
+        const field = wrapper.querySelector(':scope > .ds-row-textarea');
+        const labelRow = field.querySelector('.ds-row-textarea__label-row');
+        expect(field.contains(area)).toBe(true);
+        expect(area.dataset.sbEditorField).toBe('description');
+        expect(labelRow.querySelector('.ds-row-textarea__label').textContent).toBe('Description');
+        expect(labelRow.querySelector('.notes-link')).not.toBeNull();
+        expect(labelRow.querySelector('[data-token-counter="description_textarea"]').textContent).toBe('12');
+        expect(labelRow.querySelector('.sb-preview-toggle[data-sb-preview-for="description_textarea"]')).not.toBeNull();
+        expect(labelRow.querySelector('.editor_maximize[data-for="description_textarea"]')).not.toBeNull();
+        expect(area.nextElementSibling.matches('.sb-preview-pane')).toBe(true);
+        expect(wrapper.querySelector(':scope > .ds-field-header, :scope > .extension_token_counter')).toBeNull();
+        expect(wrapper.closest('form').querySelectorAll('.editor_maximize')).toHaveLength(1);
+    });
+
+    test('a text area named in entryTextAreas becomes an entry row; the others stay text-area fields', () => {
+        const root = sheet();
+        root.insertAdjacentHTML('beforeend', `<div id="creator_div" class="ds-field">
+            <label class="ds-field-label" for="creator_textarea">Created by</label>
+            <textarea id="creator_textarea" name="creator" data-sb-editor-field="creator" rows="2" placeholder="(Botmaker's name)"></textarea>
+        </div>`);
+        const creator = document.getElementById('creator_textarea');
+        adoptEditorFields(root, { t, entryTextAreas: ['creator_textarea'] });
+        const row = document.getElementById('creator_div').querySelector(':scope > .ds-row-entry--floating');
+        expect(row.contains(creator)).toBe(true);
+        expect(creator.rows).toBe(1);
+        expect(creator.name).toBe('creator');
+        expect(row.querySelector('.ds-row-entry__title').textContent).toBe('Created by');
+        expect(document.getElementById('descriptionWrapper').querySelector(':scope > .ds-row-textarea')).not.toBeNull();
+    });
+
+    test('adopting twice, or a sheet with no fields, changes nothing', () => {
+        const root = sheet();
+        adoptEditorFields(root, { t });
+        const html = root.innerHTML;
+        adoptEditorFields(root, { t });
+        expect(root.innerHTML).toBe(html);
+        expect(() => adoptEditorFields(null, { t })).not.toThrow();
+    });
+});

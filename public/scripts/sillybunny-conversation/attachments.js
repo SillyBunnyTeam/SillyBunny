@@ -1,4 +1,4 @@
-import { is_send_press } from '../../script.js';
+import { is_send_press, online_status } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
@@ -8,6 +8,7 @@ import {
     CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS,
     CONVERSATION_ATTACHMENT_MAX_BYTES,
     CONVERSATION_ATTACHMENT_MAX_FILES,
+    CONVERSATION_MESSAGE_SENT_EVENT,
     DEFAULT_SETTINGS,
     GROUP_MAX_CONCURRENT_SPEAKERS,
     GROUP_SECOND_REPLY_CHANCE,
@@ -55,6 +56,7 @@ import {
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
+import { notifyNotConnected } from '../sillybunny-connection-notices.js';
 import {
     coalesceConversationQueueItems,
     createConversationMessageRevisionEntries,
@@ -161,7 +163,7 @@ export function updateConversationAttachmentPreview() {
 
     preview.innerHTML = `
         <div class="sb-conversation-attachment-list">${fileRows.join('')}</div>
-        <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="clear-attachments" title="Clear attachments" aria-label="Clear attachments">
+        <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="clear-attachments" title="Clear Attachments" aria-label="Clear Attachments">
             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
         </button>
     `;
@@ -748,6 +750,10 @@ export async function processSendQueue({ processItem = processQueuedConversation
 }
 
 export async function submitConversationInput() {
+    if (online_status === 'no_connection') {
+        notifyNotConnected();
+        return;
+    }
     if (is_send_press || conversationState.conversationUploadActive) {
         return;
     }
@@ -867,6 +873,8 @@ export async function submitConversationInput() {
         clearConversationAttachmentInput();
         updateLastUserActivity(avatar, { branchId, groupId, personaId });
         scheduleInterfaceRefresh({ syncControls: false });
+        // Conversation mode has no MESSAGE_SENT, so Home hears about the first message here (Getting Started, step 4).
+        window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_SENT_EVENT));
 
         const queuedText = text || attachmentContextParts.join('\n') || 'Sent an attachment.';
         const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
@@ -886,9 +894,7 @@ export async function submitConversationInput() {
         void processSendQueue();
     } finally {
         conversationState.conversationUploadActive = false;
-        if (sendButton instanceof HTMLButtonElement) {
-            sendButton.disabled = false;
-        }
+        scheduleInterfaceRefresh({ syncControls: false });
     }
 }
 

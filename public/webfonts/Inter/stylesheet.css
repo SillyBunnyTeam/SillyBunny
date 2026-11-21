@@ -1,0 +1,16 @@
+/* Inter 4.1 (SIL OFL 1.1, see LICENSE.txt), unmodified upstream variable files. Axes: opsz 14-32, wght 100-900. */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('InterVariable.woff2?v=20261118r') format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: italic;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('InterVariable-Italic.woff2?v=20261118r') format('woff2');
+}

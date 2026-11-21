@@ -14,3 +14,4 @@ access.log
 /public/scripts/extensions/third-party
 /colab
 .gemini
+/assets-src

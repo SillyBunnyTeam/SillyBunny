@@ -7,9 +7,11 @@ import { DOMPurify } from '../../../lib.js';
 import { getRequestHeaders, processDroppedFiles, eventSource, event_types } from '../../../script.js';
 import { deleteExtension, EMPTY_AUTHOR, extensionNames, getAuthorFromUrl, getContext, installExtension, renderExtensionTemplateAsync, isOfficialExtension } from '../../extensions.js';
 import { POPUP_TYPE, Popup, callGenericPopup } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml, flashHighlight, getStringHash, isValidUrl } from '../../utils.js';
 import { t, translate } from '../../i18n.js';
+import { setIconBusy } from '../../sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner in place of a spinning glyph
 import { SlashCommandParser } from '/scripts/slash-commands/SlashCommandParser.js';
 export { MODULE_NAME };
 
@@ -78,13 +80,13 @@ function createAssetButton(asset, assetType, index) {
     const assetInstall = async function () {
         element.off('click');
         label.removeClass('fa-download');
+        setIconBusy(label[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
         this.classList.add('asset-download-button-loading');
         const result = await installAsset(asset.url, assetType, asset.id);
+        setIconBusy(label[0], false);
         if (!result) {
             this.classList.remove('asset-download-button-loading');
             label.addClass('fa-download');
-            label.removeClass('fa-spinner');
-            label.removeClass('fa-spin');
             element.on('click', assetInstall);
             return;
         }
@@ -484,13 +486,12 @@ async function openCharacterBrowser(forceDefault) {
         const isInstalled = isAssetInstalled('character', character.id);
 
         downloadButton.toggle(!isInstalled).on('click', async () => {
-            downloadButton.toggleClass('fa-download fa-spinner fa-spin');
+            setIconBusy(downloadButton[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
             const result = await installAsset(character.url, 'character', character.id);
+            setIconBusy(downloadButton[0], false);
             if (result) {
                 downloadButton.hide();
                 checkMark.show();
-            } else {
-                downloadButton.toggleClass('fa-download fa-spinner fa-spin');
             }
         });
 
@@ -502,7 +503,8 @@ async function openCharacterBrowser(forceDefault) {
         listElement.append(characterElement);
     }
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: true, large: true, allowVerticalScrolling: true, allowHorizontalScrolling: false });
+    // SillyBunny: keep the long catalogue in the shared Window frame.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: true, large: true, tier: 'window', title: t`Characters`, allowVerticalScrolling: true, allowHorizontalScrolling: false });
 }
 
 //#############################//
@@ -561,6 +563,8 @@ export async function init() {
         const skipConfirm = accountStorage.getItem(rememberKey) === 'true';
 
         const confirmation = skipConfirm || await Popup.show.confirm(t`Loading Asset List`, '<span>' + t`Are you sure you want to connect to the following url?` + `</span><var>${escapeHtml(url.href)}</var>`, {
+            // SillyBunny: names the response with a verb (confirmVerb).
+            ...confirmVerb(t`Connect`),
             customInputs: [{ id: 'assets-remember', label: 'Don\'t ask again for this URL' }],
             onClose: popup => {
                 if (popup.result) {

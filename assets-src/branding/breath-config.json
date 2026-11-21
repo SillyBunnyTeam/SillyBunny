@@ -1,0 +1,7 @@
+{
+    "waist": 0.55,
+    "cycleSeconds": 3.5,
+    "breathsPerCycle": 2,
+    "stills": [],
+    "scenes": ["hero-duo", "hero-duo-night", "welcome-both"]
+}
