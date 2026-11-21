@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
@@ -8,7 +9,6 @@ import path from 'node:path';
 import ipRegex from 'ip-regex';
 import fetch from 'node-fetch';
 import sanitize from 'sanitize-filename';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { SETTINGS_FILE } from './constants.js';
 import { getLocalExternalMediaUrl, recordExternalMediaOrigins } from './external-media-manifest.js';
@@ -23,6 +23,7 @@ const MAX_REDIRECTS = 5;
 const MAX_URLS_PER_IMPORT = 100;
 const MAX_CONCURRENT_DOWNLOADS = 4;
 const MAX_STEM_LENGTH = 24;
+const STORED_HASH_LENGTH = 16;
 const USER_AGENT = 'SillyTavern';
 
 // The scan runs on the server's only thread for every text field of an imported file. Each open-ended class also
@@ -399,7 +400,7 @@ function buildContentAddressedFileName(originalUrl, finalUrl, buffer) {
         .replace(/[^a-zA-Z0-9_-]+/g, '_')
         .replace(/^_+|_+$/g, '')
         .slice(0, MAX_STEM_LENGTH) || 'media';
-    const hash = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 8);
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, STORED_HASH_LENGTH);
 
     return `${stem}-${hash}${ext}`;
 }
@@ -446,6 +447,52 @@ export function requestWithNodeHttp(url, { headers = {}, agent, signal } = {}) {
         request.on('error', reject);
         request.end();
     });
+}
+
+/**
+ * Checks whether a path holds a regular file with exactly the given bytes. A larger file is not read, so a file that
+ * the user keeps under the same name cannot make the import read a large amount of data.
+ * @param {string} filePath Path to check
+ * @param {Buffer} buffer Expected content
+ * @returns {Promise<boolean>} True when the file has this content
+ */
+async function holdsSameBytes(filePath, buffer) {
+    const stats = await fsPromises.lstat(filePath);
+    return stats.isFile() && stats.size === buffer.length && (await fsPromises.readFile(filePath)).equals(buffer);
+}
+
+/**
+ * Stores a file under a name that does not exist yet, and never replaces a file that has the name.
+ * The bytes go to a temporary file first and then to the name by a hard link that fails when the name exists, so the
+ * name never holds a part of the content. A file system without hard links gets an exclusive create instead.
+ * @param {string} filePath Target path
+ * @param {Buffer} buffer Content
+ * @returns {Promise<boolean>} True when the path now holds exactly this content, because it was created or already had it
+ */
+async function storeWithoutReplacing(filePath, buffer) {
+    const tempPath = path.join(path.dirname(filePath), `.${crypto.randomBytes(8).toString('hex')}.tmp`);
+    try {
+        await fsPromises.writeFile(tempPath, buffer, { flag: 'wx' });
+        try {
+            await fsPromises.link(tempPath, filePath);
+            return true;
+        } catch (error) {
+            if (error?.code === 'EEXIST') {
+                return await holdsSameBytes(filePath, buffer);
+            }
+        }
+        try {
+            await fsPromises.writeFile(filePath, buffer, { flag: 'wx' });
+            return true;
+        } catch (error) {
+            if (error?.code === 'EEXIST') {
+                return await holdsSameBytes(filePath, buffer);
+            }
+            throw error;
+        }
+    } finally {
+        await fsPromises.rm(tempPath, { force: true });
+    }
 }
 
 async function downloadAndStoreExternalImage(url, { directories, folder, fetchImpl = fetch, timeoutMs = DEFAULT_DOWNLOAD_TIMEOUT_MS, maxBytes = MAX_EXTERNAL_MEDIA_BYTES }) {
@@ -512,7 +559,10 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
         return null;
     }
 
-    writeFileAtomicSync(filePath, buffer);
+    if (!await storeWithoutReplacing(filePath, buffer)) {
+        console.warn(`External media import kept the existing file ${quoteForLog(fileName)}, because its content is other than the download, so the URL stays remote`);
+        return null;
+    }
     return { fileName, localPath: getLocalExternalMediaUrl(folder, fileName) };
 }
 

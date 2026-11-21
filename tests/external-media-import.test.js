@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -36,7 +37,7 @@ const GIF_BG = await new Jimp({ width: 2, height: 2, color: 0xcc8800ff }).getBuf
 const HTML_PAGE = Buffer.from('<!doctype html><title>Not an image</title>', 'utf8');
 const SVG_VECTOR = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"></svg>', 'utf8');
 
-const hash8 = buffer => crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 8);
+const hash16 = buffer => crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);
 
 function mockImageResponse(buffer, status = 200, headers = {}) {
     const normalizedHeaders = Object.fromEntries(
@@ -312,10 +313,10 @@ describe('external media import (#952)', () => {
                 expect(options.redirect).toBe('manual');
             }
 
-            const expectedScene = `/user/images/Seraphina/scene-${hash8(PNG_SCENE)}.png`;
-            const expectedAlt = `/user/images/Seraphina/alt-${hash8(PNG_ALT)}.png`;
-            const expectedRender = `/user/images/Seraphina/render-${hash8(JPEG_PHOTO)}.jpg`;
-            const expectedBg = `/user/images/Seraphina/bg-${hash8(GIF_BG)}.gif`;
+            const expectedScene = `/user/images/Seraphina/scene-${hash16(PNG_SCENE)}.png`;
+            const expectedAlt = `/user/images/Seraphina/alt-${hash16(PNG_ALT)}.png`;
+            const expectedRender = `/user/images/Seraphina/render-${hash16(JPEG_PHOTO)}.jpg`;
+            const expectedBg = `/user/images/Seraphina/bg-${hash16(GIF_BG)}.gif`;
 
             const saved = readStoredCard('Seraphina');
             expect(saved.description).toBe(`Outfit reference: ${expectedScene}.`);
@@ -344,10 +345,10 @@ describe('external media import (#952)', () => {
 
             // Verify actual files on disk match original bytes
             const folderPath = path.join(directories.userImages, 'Seraphina');
-            expect(fs.readFileSync(path.join(folderPath, `scene-${hash8(PNG_SCENE)}.png`)).equals(PNG_SCENE)).toBe(true);
-            expect(fs.readFileSync(path.join(folderPath, `alt-${hash8(PNG_ALT)}.png`)).equals(PNG_ALT)).toBe(true);
-            expect(fs.readFileSync(path.join(folderPath, `render-${hash8(JPEG_PHOTO)}.jpg`)).equals(JPEG_PHOTO)).toBe(true);
-            expect(fs.readFileSync(path.join(folderPath, `bg-${hash8(GIF_BG)}.gif`)).equals(GIF_BG)).toBe(true);
+            expect(fs.readFileSync(path.join(folderPath, `scene-${hash16(PNG_SCENE)}.png`)).equals(PNG_SCENE)).toBe(true);
+            expect(fs.readFileSync(path.join(folderPath, `alt-${hash16(PNG_ALT)}.png`)).equals(PNG_ALT)).toBe(true);
+            expect(fs.readFileSync(path.join(folderPath, `render-${hash16(JPEG_PHOTO)}.jpg`)).equals(JPEG_PHOTO)).toBe(true);
+            expect(fs.readFileSync(path.join(folderPath, `bg-${hash16(GIF_BG)}.gif`)).equals(GIF_BG)).toBe(true);
         });
 
         test('honours explicit import_external_media=false override even when settings.json has it enabled', async () => {
@@ -382,7 +383,7 @@ describe('external media import (#952)', () => {
             v1.first_mes = '![v1](https://files.catbox.moe/scene.png)';
             const v1Answer = await importCharacterCard(Buffer.from(JSON.stringify(v1)), 'json');
             expect(v1Answer).toEqual({ status: 200, body: { file_name: 'V1 Hero' } });
-            const expectedV1Url = `/user/images/${encodeURIComponent('V1 Hero')}/scene-${hash8(PNG_SCENE)}.png`;
+            const expectedV1Url = `/user/images/${encodeURIComponent('V1 Hero')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(readStoredCard('V1 Hero').first_mes).toBe(`![v1](${expectedV1Url})`);
 
             // 2. YAML card
@@ -393,7 +394,7 @@ describe('external media import (#952)', () => {
             ].join('\n');
             const yamlAnswer = await importCharacterCard(Buffer.from(yamlText, 'utf8'), 'yaml');
             expect(yamlAnswer).toEqual({ status: 200, body: { file_name: 'Yaml Hero' } });
-            const expectedYamlUrl = `/user/images/${encodeURIComponent('Yaml Hero')}/scene-${hash8(PNG_SCENE)}.png`;
+            const expectedYamlUrl = `/user/images/${encodeURIComponent('Yaml Hero')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(readStoredCard('Yaml Hero').first_mes).toBe(`Hello ![yaml](${expectedYamlUrl})`);
 
             // 3. CharX archive
@@ -403,7 +404,7 @@ describe('external media import (#952)', () => {
             const charxZip = await createZip([{ name: 'card.json', content: JSON.stringify(charxCard) }]);
             const charxAnswer = await importCharacterCard(charxZip, 'charx');
             expect(charxAnswer).toEqual({ status: 200, body: { file_name: 'CharX Hero' } });
-            const expectedCharxUrl = `/user/images/${encodeURIComponent('CharX Hero')}/scene-${hash8(PNG_SCENE)}.png`;
+            const expectedCharxUrl = `/user/images/${encodeURIComponent('CharX Hero')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(readStoredCard('CharX Hero').first_mes).toBe(`![charx](${expectedCharxUrl})`);
 
             // 4. BYAF archive (card + scenario chat messages)
@@ -413,7 +414,7 @@ describe('external media import (#952)', () => {
             byafParts.scenarios[0].messages[0].text = 'Look at https://files.catbox.moe/scene.png';
             const byafAnswer = await importCharacterCard(await createByafArchive(byafParts), 'byaf');
             expect(byafAnswer).toEqual({ status: 200, body: { file_name: 'Søren 桜' } });
-            const expectedByafUrl = `/user/images/soren/scene-${hash8(PNG_SCENE)}.png`;
+            const expectedByafUrl = `/user/images/soren/scene-${hash16(PNG_SCENE)}.png`;
             const savedByaf = readStoredCard('Søren 桜');
             expect(savedByaf.first_mes).toBe(`Welcome ![byaf](${expectedByafUrl})`);
             expect(savedByaf.data.character_book.entries[0].content).toBe(`Lore pic: ${expectedByafUrl}`);
@@ -481,7 +482,7 @@ describe('external media import (#952)', () => {
 
             const folder = path.join(directories.userImages, 'Mapper');
             const manifest = JSON.parse(fs.readFileSync(path.join(folder, MANIFEST), 'utf8'));
-            expect(manifest).toEqual({ [`scene-${hash8(PNG_SCENE)}.png`]: { url: 'https://files.catbox.moe/scene.png' } });
+            expect(manifest).toEqual({ [`scene-${hash16(PNG_SCENE)}.png`]: { url: 'https://files.catbox.moe/scene.png' } });
         });
 
         test('restores a folder name that the stored URL encodes', async () => {
@@ -630,7 +631,7 @@ describe('external media import (#952)', () => {
                 import_external_media: 'true',
             });
 
-            const expectedUrl = `/user/images/${encodeURIComponent('Eldoria Atlas')}/scene-${hash8(PNG_SCENE)}.png`;
+            const expectedUrl = `/user/images/${encodeURIComponent('Eldoria Atlas')}/scene-${hash16(PNG_SCENE)}.png`;
             expect(answer.status).toBe(200);
             expect(answer.body.name).toBe('Eldoria Atlas');
             expect(answer.body.data.description).toBe(`Map: ![map](${expectedUrl})`);
@@ -641,7 +642,7 @@ describe('external media import (#952)', () => {
             expect(persisted.entries[0].content).toBe(`<img src="${expectedUrl}">`);
             expect(persisted.originalData.entries[0].content).toBe(`<img src="${expectedUrl}">`);
             expect(
-                fs.readFileSync(path.join(directories.userImages, 'Eldoria Atlas', `scene-${hash8(PNG_SCENE)}.png`)).equals(PNG_SCENE),
+                fs.readFileSync(path.join(directories.userImages, 'Eldoria Atlas', `scene-${hash16(PNG_SCENE)}.png`)).equals(PNG_SCENE),
             ).toBe(true);
         });
     });
@@ -657,7 +658,7 @@ describe('external media import (#952)', () => {
 
             const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'card', fetchImpl });
 
-            const fileName = `scene-${hash8(PNG_SCENE)}.png`;
+            const fileName = `scene-${hash16(PNG_SCENE)}.png`;
             expect(result).toEqual({ changed: true, downloaded: 1 });
             expect(card.data.description).toBe(`![scene](/user/images/D%27Artagnan%20%28alt%29%21/${fileName})`);
             expect(fs.readFileSync(path.join(directories.userImages, name, fileName)).equals(PNG_SCENE)).toBe(true);
@@ -687,6 +688,81 @@ describe('external media import (#952)', () => {
             expect(line).toContain('\\u009b31mb\\u202e.png');
             expect(line).toContain('refused\\u001b[2J\\u009d0;title');
             expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
+        });
+
+        describe('a stored file name that is already taken', () => {
+            const fileName = () => `scene-${hash16(PNG_SCENE)}.png`;
+
+            test('names the file with 16 hex digits of the hash', async () => {
+                const card = cardWith('Digits', '![scene](https://files.catbox.moe/scene.png)');
+
+                await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Digits', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
+
+                const stored = fs.readdirSync(path.join(directories.userImages, 'Digits')).filter(name => !name.startsWith('.'));
+                expect(stored).toEqual([fileName()]);
+                expect(stored[0]).toMatch(/^scene-[0-9a-f]{16}\.png$/);
+            });
+
+            test('never replaces a file that has other content, keeps the URL remote and logs one line', async () => {
+                const folder = path.join(directories.userImages, 'Clash');
+                fs.mkdirSync(folder, { recursive: true });
+                fs.writeFileSync(path.join(folder, fileName()), 'USER-OWNED-FILE');
+                const card = cardWith('Clash', '![scene](https://files.catbox.moe/scene.png)');
+
+                const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Clash', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
+
+                expect(result).toEqual({ changed: false, downloaded: 0 });
+                expect(card.data.description).toBe('![scene](https://files.catbox.moe/scene.png)');
+                expect(fs.readFileSync(path.join(folder, fileName()), 'utf8')).toBe('USER-OWNED-FILE');
+                expect(fs.readdirSync(folder)).toEqual([fileName()]);
+                const lines = console.warn.mock.calls.map(call => call.join(' ')).filter(text => text.includes(fileName()));
+                expect(lines).toHaveLength(1);
+            });
+
+            test('reuses a file that has the same content and lists it in the manifest', async () => {
+                const folder = path.join(directories.userImages, 'Again');
+                fs.mkdirSync(folder, { recursive: true });
+                fs.writeFileSync(path.join(folder, fileName()), PNG_SCENE);
+                const before = fs.statSync(path.join(folder, fileName()));
+                const card = cardWith('Again', '![scene](https://files.catbox.moe/scene.png)');
+
+                const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Again', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
+
+                expect(result).toEqual({ changed: true, downloaded: 1 });
+                expect(card.data.description).toBe(`![scene](/user/images/Again/${fileName()})`);
+                expect(fs.statSync(path.join(folder, fileName())).ino).toBe(before.ino);
+                expect(JSON.parse(fs.readFileSync(path.join(folder, '.external-media.json'), 'utf8'))).toEqual({
+                    [fileName()]: { url: 'https://files.catbox.moe/scene.png' },
+                });
+            });
+
+            test.each([
+                ['stores the file', null, true],
+                ['still keeps a file that has other content', 'USER-OWNED-FILE', false],
+            ])('on a file system without hard links %s', async (_label, existing, stored) => {
+                const linkSpy = jest.spyOn(fsPromises, 'link').mockRejectedValue(Object.assign(new Error('not permitted'), { code: 'EPERM' }));
+                const folder = path.join(directories.userImages, 'NoLinks');
+                fs.mkdirSync(folder, { recursive: true });
+                if (existing) {
+                    fs.writeFileSync(path.join(folder, fileName()), existing);
+                }
+                const card = cardWith('NoLinks', '![scene](https://files.catbox.moe/scene.png)');
+
+                const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'NoLinks', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
+
+                expect(linkSpy).toHaveBeenCalled();
+                expect(result.downloaded).toBe(stored ? 1 : 0);
+                expect(fs.readFileSync(path.join(folder, fileName())).equals(stored ? PNG_SCENE : Buffer.from(existing))).toBe(true);
+                expect(fs.readdirSync(folder).filter(name => name.endsWith('.tmp'))).toEqual([]);
+            });
+
+            test('leaves no temporary file in the folder', async () => {
+                const card = cardWith('Tidy', '![scene](https://files.catbox.moe/scene.png)');
+
+                await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Tidy', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
+
+                expect(fs.readdirSync(path.join(directories.userImages, 'Tidy')).sort()).toEqual(['.external-media.json', fileName()]);
+            });
         });
 
         test('blocks SSRF redirects to localhost or private IPs, rejects non-image payloads, and fails open so valid images still import', async () => {
@@ -733,7 +809,7 @@ describe('external media import (#952)', () => {
                 'https://files.catbox.moe/valid.png',
             ]);
 
-            const expectedValid = `/user/images/character/valid-${hash8(PNG_SCENE)}.png`;
+            const expectedValid = `/user/images/character/valid-${hash16(PNG_SCENE)}.png`;
             const saved = readStoredCard('character');
             expect(saved.first_mes).toBe([
                 '![local](http://127.0.0.1/private.png)',
@@ -745,7 +821,7 @@ describe('external media import (#952)', () => {
             ].join('\n'));
             expect(fs.readdirSync(path.join(directories.userImages, 'character')).sort()).toEqual([
                 '.external-media.json',
-                `valid-${hash8(PNG_SCENE)}.png`,
+                `valid-${hash16(PNG_SCENE)}.png`,
             ]);
         });
 
