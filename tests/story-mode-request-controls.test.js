@@ -654,6 +654,13 @@ describe('owned host generation flow', () => {
         expect(context.oai_settings.openai_max_tokens).toBe(8192);
     });
 
+    test('generateRaw sends its responseLength to AI Horde as max_length', async () => {
+        const { context, requests } = makeRuntime({ api: 'koboldhorde' });
+        await context.generateRaw({ prompt: 'helper', responseLength: 512 });
+        expect(requests[0].body).toMatchObject({ max_length: 512, max_context_length: 32768 });
+        expect(context.amount_gen).toBe(8192);
+    });
+
     test.each(['generateRaw', 'generateQuietPrompt'])('%s preserves the exact real text-completion reasoning payload, not a backend default', async method => {
         const { context, requests } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1' });
         loadTextGeneration(context);
