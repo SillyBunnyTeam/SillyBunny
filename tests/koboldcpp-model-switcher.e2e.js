@@ -68,15 +68,16 @@ async function connectKoboldCpp(page, baseURL) {
                 type: 'koboldcpp',
                 server_urls: { ...settings.textgenerationwebui_settings?.server_urls, koboldcpp: OLD_URL, llamacpp: '' },
             };
-            settings.extension_settings ??= {};
-            settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ response, json: data });
         }
         if (url.pathname === '/api/extensions/discover') {
             const response = await route.fetch();
-            return route.fulfill({ json: (await response.json()).filter(extension => !extension.name.startsWith('third-party/')) });
+            // Quick Image Gen reads its settings back from the server at startup. This mock never stores a save, so the
+            // read-back fails and the extension queues two warning toasts. The app shows one toast at a time, so those
+            // toasts would hide the toast under test. These tests do not use the extension.
+            return route.fulfill({ json: (await response.json()).filter(extension => !extension.name.startsWith('third-party/') && extension.name !== 'quick-image-gen') });
         }
         if (url.pathname === '/api/settings/save') return route.fulfill({ json: { result: 'ok', version: ++version } });
         if (url.pathname === '/api/secrets/read') return route.fulfill({ json: {} });
