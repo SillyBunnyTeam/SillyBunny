@@ -147,7 +147,7 @@ describe('OpenAI proxy preset wiring', () => {
         expect(indexHtml).toContain('id="save_custom_endpoint"');
         expect(indexHtml).toContain('id="delete_custom_endpoint"');
         expect(indexHtml).toContain('id="custom_endpoint_preset_name"');
-        expect(indexHtml).toContain('Saved Custom OpenAI-compatible URLs, API keys, model IDs, and Additional Parameters.');
+        expect(indexHtml).toMatch(/<span data-i18n="Saved Custom OpenAI-compatible URLs, API keys, model IDs, and Additional Parameters">\s*Saved Custom OpenAI-compatible URLs, API keys, model IDs, and Additional Parameters\s*<\/span>/);
     });
 
     test('saves Custom endpoint profiles with URL, key, model, and secret fields', () => {
