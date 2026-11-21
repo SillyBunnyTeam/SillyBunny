@@ -9,12 +9,13 @@ import { power_user } from './power-user.js';
 import { debounce, waitUntilCondition, escapeHtml, uuidv4 } from './utils.js';
 import { debounce_timeout } from './constants.js';
 import { renderTemplateAsync } from './templates.js';
-import { Popup } from './popup.js';
+import { Popup, POPUP_RESULT } from './popup.js';
 import { t } from './i18n.js';
 import { isMobile } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { createCommentOnlyContentCheck, getPromptDisplayTokenCounts, getPromptSourceTokenCounts, getRuntimePreparedPromptContent, mergePromptTokenCounts } from './prompt-token-counts.js';
 import { getRenderedMarkerPrompt } from './prompt-manager-marker-preview.js';
+import { reorderPromptOrder } from './prompt-manager-order.js';
 import { clearPromptSetVariables } from './prompt-variable-cleanup.js';
 import { RUNTIME_AGENTS_IDENTIFIER, resolveInChatAgentTokenUsage } from './in-chat-agent-inspection.js';
 import {
@@ -813,7 +814,8 @@ class PromptManager {
 
         // Save prompt edit form to settings and close form.
         this.handleSavePrompt = (event) => {
-            const promptId = event.target.dataset.pmPrompt;
+            // SillyBunny: the prompt editor calls this handler with a synthetic event that has only currentTarget.
+            const promptId = event.currentTarget.dataset.pmPrompt;
             const prompt = this.getPromptById(promptId);
             const isDesktopSplit = this.isDesktopSplitLayout();
             this.#queuePromptManagerScrollRestore();
@@ -925,7 +927,8 @@ class PromptManager {
 
         // Delete selected prompt from list form and close edit form
         this.handleDeletePrompt = async (event) => {
-            Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null).then((userChoice) => {
+            // SillyBunny: prompt deletion names the destructive action.
+            Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') }).then((userChoice) => {
                 if (!userChoice) return;
                 const appendPromptFooter = /** @type {HTMLSelectElement} */(document.getElementById(this.configuration.prefix + 'prompt_manager_footer_append_prompt'));
                 const promptID = appendPromptFooter.value;
@@ -1009,7 +1012,12 @@ class PromptManager {
 
         // Import prompts for the selected character
         this.handleImport = () => {
-            Popup.show.confirm(t`Existing prompts with the same ID will be overridden. Do you want to proceed?`, null)
+            // SillyBunny: prompt import names the import action.
+            Popup.show.confirm(t`Existing prompts with the same ID will be overridden. Do you want to proceed?`, null, {
+                okButton: t`Import`,
+                defaultResult: POPUP_RESULT.NEGATIVE,
+                onOpening: popup => popup.okButton.classList.add('is-destructive'),
+            })
                 .then(userChoice => {
                     if (!userChoice) return;
 
@@ -1046,7 +1054,8 @@ class PromptManager {
 
         // Restore default state of a characters prompt order
         this.handleCharacterReset = () => {
-            Popup.show.confirm(t`This will reset the prompt order for this character. You will not lose any prompts.`, null)
+            // SillyBunny: prompt reset names the reset action.
+            Popup.show.confirm(t`This will reset the prompt order for this character. You will not lose any prompts.`, null, { okButton: t`Reset` })
                 .then(userChoice => {
                     if (!userChoice) return;
 
@@ -1286,6 +1295,8 @@ class PromptManager {
 
                 this.makeDraggable();
                 this.#setScrollPosition(scrollPosition);
+                // SillyBunny: notify the owned editor only after the current render and token counts commit.
+                document.dispatchEvent(new CustomEvent('sb:prompt-manager-rendered', { detail: { manager: this } }));
             } finally {
                 this.profileEnd('render');
             }
@@ -2613,8 +2624,7 @@ class PromptManager {
             update: (event, ui) => {
                 const promptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
                 const promptListElement = $(`#${this.configuration.prefix}prompt_manager_list`).sortable('toArray', { attribute: 'data-pm-identifier' });
-                const idToObjectMap = new Map(promptOrder.map(prompt => [prompt.identifier, prompt]));
-                const updatedPromptOrder = promptListElement.map(identifier => idToObjectMap.get(identifier));
+                const updatedPromptOrder = reorderPromptOrder(promptOrder, promptListElement);
 
                 this.removePromptOrderForCharacter(this.activeCharacter);
                 this.addPromptOrderForCharacter(this.activeCharacter, updatedPromptOrder);
@@ -2622,6 +2632,7 @@ class PromptManager {
                 this.log(`Prompt order updated for ${this.activeCharacter.name}.`);
 
                 this.saveServiceSettings();
+                this.renderDebounced(false);
             },
         });
         this.updateDragLockState();

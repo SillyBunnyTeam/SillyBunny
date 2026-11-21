@@ -15,6 +15,7 @@ import {
     measureStreamingRender,
     parseCpuThrottleRate,
     parseProfileNames,
+    readBootMarksFromPage,
     STREAM_RENDER_CODE_REPEAT,
     STREAM_RENDER_FILLER_REPEAT,
     STREAM_RENDER_STEP_COUNT,
@@ -198,7 +199,7 @@ describe('frontend performance measurement helpers', () => {
             is_system: false,
         }));
         expect(fixture.messages.at(1)).toEqual(expect.objectContaining({
-            name: 'Bunny Guide',
+            name: 'Seraphina',
             is_user: false,
             is_system: false,
         }));
@@ -656,5 +657,45 @@ describe('frontend performance measurement helpers', () => {
             url: 'http://example.test', serviceWorkers: 'block', instrumentation: false, cpuThrottleRate: 4,
         })).rejects.toThrow('CPU setup failed');
         expect(calls).toEqual(['detach', 'close']);
+    });
+});
+
+describe('boot marks of a measured page', () => {
+    /** A page whose `evaluate` runs in this process, with the browser's `performance` replaced. */
+    function createMarkedPage(entries) {
+        return {
+            evaluate: async (callback, argument) => {
+                const previousPerformance = globalThis.performance;
+                try {
+                    globalThis.performance = {
+                        getEntriesByName: name => entries.filter(entry => entry.name === name),
+                    };
+                    return await callback(argument);
+                } finally {
+                    globalThis.performance = previousPerformance;
+                }
+            },
+        };
+    }
+
+    test('are read in boot order with their times, and a mark that was not made is left out', async () => {
+        const page = createMarkedPage([
+            { name: 'sb-app-ready', startTime: 1900 },
+            { name: 'sb-boot-inline', startTime: 20 },
+            { name: 'sb-boot-init-start', startTime: 400 },
+            { name: 'sb-boot-init-start', startTime: 9000 },
+        ]);
+
+        await expect(readBootMarksFromPage(page)).resolves.toEqual([
+            { name: 'sb-boot-inline', startTime: 20 },
+            { name: 'sb-boot-init-start', startTime: 400 },
+            { name: 'sb-app-ready', startTime: 1900 },
+        ]);
+    });
+
+    test('read as none when the page cannot be evaluated, so a measurement does not fail for them', async () => {
+        const page = { evaluate: async () => { throw new Error('Execution context was destroyed'); } };
+
+        await expect(readBootMarksFromPage(page)).resolves.toEqual([]);
     });
 });

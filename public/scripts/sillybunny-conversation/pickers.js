@@ -6,7 +6,12 @@ import {
     name1,
 } from '../../script.js';
 import { user_avatar } from '../personas.js';
-import { selectConversationThread } from './chrome.js';
+import { runConversationAction, selectConversationThread } from './chrome.js';
+import { MENU_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
+import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
+import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
+import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
 import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
 import {
     createConversationBranch,
@@ -30,8 +35,8 @@ import {
     safeParseWeeklySchedule,
 } from './personas.js';
 import { schedulePalsRailRender } from './render-scheduler.js';
-import { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
-import { closePalsRail, setConversationBackdropVisible } from './settings-panel.js';
+import { escapeHtmlAttribute } from './render-utils.js';
+import { closePalsRail } from './settings-panel.js';
 import { conversationState } from './state.js';
 
 export function renderWeeklyScheduleEditor(container, scheduleJson) {
@@ -52,13 +57,13 @@ export function createWeeklyScheduleRow(entry = {}) {
     row.innerHTML = `
         <div class="sb-conversation-day-pills">${dayPills}</div>
         <div class="sb-conversation-weekly-row-meta">
-            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule time" />
-            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule message" />
-            <label class="checkbox_label sb-conv-weekly-enabled">
-                <input type="checkbox" class="sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
+            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule Time" />
+            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule Message" />
+            <label class="sb-conv-weekly-enabled">
                 <span>On</span>
+                <input type="checkbox" role="switch" class="sb-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
             </label>
-            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove slot" aria-label="Remove slot">
+            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove Slot" aria-label="Remove Slot">
                 <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
             </button>
         </div>
@@ -124,6 +129,244 @@ export function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
 }
 
+// Pickers are bottom sheets under the menu condition, like every other menu (sillybunny-conversation.css repeats it).
+const PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;
+const PICKER_GAP = 6;
+const PICKER_MARGIN = 8;
+let activePicker = null;
+let pickerDismissBound = false;
+const swipeBoundPickers = new WeakSet();
+const exitingPickers = new WeakSet();
+
+function isPickerSheetLayout() {
+    return window.matchMedia(PICKER_MOBILE_QUERY).matches;
+}
+
+function setPickerExpanded(anchor, expanded) {
+    if (anchor instanceof HTMLElement) {
+        anchor.setAttribute('aria-expanded', String(Boolean(expanded)));
+    }
+}
+
+function clearPickerPosition(picker) {
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+    picker.style.removeProperty('top');
+    picker.style.removeProperty('left');
+    picker.style.removeProperty('inset');
+    picker.style.removeProperty('max-block-size');
+}
+
+// Pickers are absolutely positioned inside #sheld, so coordinates are relative to its padding box.
+function positionConversationPicker(picker, anchor, { preferBelow = false } = {}) {
+    clearPickerPosition(picker);
+    const container = picker.offsetParent;
+    if (isPickerSheetLayout() || !(anchor instanceof HTMLElement) || !anchor.isConnected || !(container instanceof HTMLElement)) {
+        return;
+    }
+
+    const bounds = container.getBoundingClientRect();
+    const originX = bounds.left + container.clientLeft;
+    const originY = bounds.top + container.clientTop;
+    const rect = anchor.getBoundingClientRect();
+    const width = picker.offsetWidth;
+    const natural = picker.scrollHeight + 2;
+    const viewBottom = Math.min(bounds.bottom, window.innerHeight);
+    const viewTop = Math.max(bounds.top, 0);
+    const below = viewBottom - rect.bottom - PICKER_GAP - PICKER_MARGIN;
+    const above = rect.top - viewTop - PICKER_GAP - PICKER_MARGIN;
+    const placeAbove = preferBelow
+        ? below < 160 && above > below
+        : natural > below && above > below;
+    const available = Math.max(160, placeAbove ? above : below);
+    const height = Math.min(natural, available);
+    const startAligned = (rect.left + rect.right) / 2 < (bounds.left + bounds.right) / 2;
+    let left = startAligned ? rect.left : rect.right - width;
+    const minLeft = bounds.left + PICKER_MARGIN;
+    const maxLeft = bounds.right - PICKER_MARGIN - width;
+    left = maxLeft < minLeft
+        ? Math.max(bounds.left, Math.min(left, bounds.right - width))
+        : Math.min(Math.max(left, minLeft), maxLeft);
+    const top = placeAbove ? rect.top - PICKER_GAP - height : rect.bottom + PICKER_GAP;
+    picker.style.maxBlockSize = `${Math.floor(available)}px`;
+    picker.style.left = `${Math.round(left - originX)}px`;
+    picker.style.top = `${Math.round(Math.max(top, viewTop + PICKER_MARGIN) - originY)}px`;
+}
+
+// Renderers replace the picker's children, so the handle is put back after each render.
+function ensureSheetHandle(picker) {
+    if (!picker.querySelector(':scope > .sb-dialog__handle')) picker.prepend(createSheetHandle());
+}
+
+function bindPickerSwipe(picker) {
+    if (swipeBoundPickers.has(picker)) return;
+    swipeBoundPickers.add(picker);
+    bindSheetGestures({
+        surface: picker,
+        scrim: document.getElementById(CHROME_IDS.pickerBackdrop),
+        targets: [picker],
+        startSelector: '.sb-dialog__handle',
+        isActive: () => isPickerSheetLayout() && activePicker?.picker === picker,
+        requestClose: () => {
+            hideConversationPickers({ restoreFocus: true, animate: true });
+            return true;
+        },
+    });
+}
+
+function clearSheetDrag(picker) {
+    stopMotion(picker);
+    picker.style.removeProperty('transform');
+}
+
+/**
+ * Slides a picker down from where a swipe left it. The picker stays unhidden until the slide ends,
+ * because its sheet layout only applies while it is not hidden.
+ */
+function slideOutPicker(picker, backdrop, pickerFrom, backdropFrom) {
+    const options = { duration: MOTION_FAST, easing: MOTION_EASE_OUT_CUBIC, fill: 'forwards' };
+    picker.style.removeProperty('transform');
+    exitingPickers.add(picker);
+    if (backdrop) play(backdrop, [{ opacity: backdropFrom }, { opacity: 0 }], options);
+    play(picker, [{ transform: pickerFrom }, { transform: 'translateY(100%)' }], {
+        ...options,
+        inert: true,
+        styles: { 'pointer-events': 'none' },
+        onEnd: () => {
+            exitingPickers.delete(picker);
+            picker.setAttribute('hidden', '');
+            clearPickerPosition(picker);
+            if (backdrop) {
+                stopMotion(backdrop);
+                backdrop.style.removeProperty('opacity');
+            }
+            syncPickerBackdrop();
+        },
+    });
+}
+
+function syncPickerBackdrop() {
+    const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
+    if (backdrop instanceof HTMLElement) {
+        backdrop.dataset.open = String(Boolean(activePicker));
+    }
+}
+
+function handlePickerPointerDown(event) {
+    if (!activePicker) {
+        return;
+    }
+    const target = event.target instanceof Node ? event.target : null;
+    if (target && (activePicker.picker.contains(target) || activePicker.anchor?.contains?.(target))) {
+        return;
+    }
+    // Menus opened from inside a picker live in document.body; leave the picker alone for them.
+    if (target instanceof Element && target.closest('.sb-action-popover, .sb-action-sheet, .sb-action-sheet-backdrop, .popup, dialog')) {
+        return;
+    }
+    hideConversationPickers();
+}
+
+function handlePickerKeydown(event) {
+    if (!activePicker || event.key !== 'Escape' || event.isComposing) {
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    hideConversationPickers({ restoreFocus: true });
+}
+
+function handlePickerLayoutChange() {
+    if (activePicker) {
+        clearSheetDrag(activePicker.picker);
+        positionConversationPicker(activePicker.picker, activePicker.anchor, { preferBelow: activePicker.preferBelow });
+    }
+}
+
+function bindPickerDismissal() {
+    if (pickerDismissBound) {
+        return;
+    }
+    pickerDismissBound = true;
+    window.addEventListener('pointerdown', handlePickerPointerDown, true);
+    window.addEventListener('keydown', handlePickerKeydown, true);
+    window.addEventListener('resize', handlePickerLayoutChange, { passive: true });
+    const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
+    if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
+        backdrop.dataset.sbConversationBound = 'true';
+        backdrop.addEventListener('click', () => hideConversationPickers({ restoreFocus: true }));
+    }
+}
+
+/** Shows one Conversation picker: an anchored popover on desktop, a bottom sheet on mobile. */
+export function showConversationPicker(picker, anchor = null, { preferBelow = false } = {}) {
+    if (!(picker instanceof HTMLElement)) {
+        return;
+    }
+    bindPickerDismissal();
+    // Showing a picker that is still sliding out ends the slide, which hides it first.
+    if (exitingPickers.has(picker)) stopMotion(picker);
+    if (activePicker && activePicker.picker !== picker) {
+        activePicker.picker.hidden = true;
+        setPickerExpanded(activePicker.anchor, false);
+    }
+    const fallbackAnchor = activePicker?.picker === picker ? activePicker.anchor : null;
+    const fallbackPreferBelow = activePicker?.picker === picker ? Boolean(activePicker.preferBelow) : false;
+    activePicker = {
+        picker,
+        anchor: anchor instanceof HTMLElement ? anchor : fallbackAnchor,
+        preferBelow: Boolean(preferBelow || fallbackPreferBelow),
+    };
+    const wasHidden = picker.hidden;
+    picker.hidden = false;
+    ensureSheetHandle(picker);
+    bindPickerSwipe(picker);
+    setPickerExpanded(activePicker.anchor, true);
+    positionConversationPicker(picker, activePicker.anchor, { preferBelow: activePicker.preferBelow });
+    syncPickerBackdrop();
+    // Played through the motion helper, not CSS, so a drag during the entry cancels it and follows the finger.
+    if (wasHidden && isPickerSheetLayout()) play(picker, [{ transform: 'translateY(100%)' }, { transform: 'none' }], SPRING_SHEET);
+}
+
+/**
+ * Hides the open picker. With `animate`, a bottom sheet slides out from its dragged position instead
+ * of vanishing; every other close path hides at once.
+ */
+export function hideConversationPickers({ restoreFocus = false, animate = false } = {}) {
+    const state = activePicker;
+    activePicker = null;
+    closeStartPicker({ restoreFocus });
+    const backdrop = document.getElementById(CHROME_IDS.pickerBackdrop);
+    const exiting = animate && state && isPickerSheetLayout() ? state.picker : null;
+    // The slide starts where the swipe left the sheet, so read the drag state before it is cleared.
+    const pickerFrom = exiting?.style.transform || 'none';
+    const backdropFrom = backdrop?.style.opacity || '1';
+    for (const id of [CHROME_IDS.personaPicker, CHROME_IDS.userStatusPicker]) {
+        const picker = document.getElementById(id);
+        if (picker instanceof HTMLElement && picker !== exiting) {
+            picker.setAttribute('hidden', '');
+            clearPickerPosition(picker);
+            clearSheetDrag(picker);
+        }
+    }
+    if (backdrop instanceof HTMLElement) {
+        stopMotion(backdrop);
+        backdrop.style.removeProperty('opacity');
+    }
+    setPickerExpanded(state?.anchor, false);
+    if (exiting) slideOutPicker(exiting, backdrop, pickerFrom, backdropFrom);
+    else syncPickerBackdrop();
+    if (restoreFocus && state?.anchor?.isConnected) {
+        state.anchor.focus({ preventScroll: true });
+    }
+}
+
+function getPickerAnchor(selector) {
+    const anchor = document.querySelector(selector);
+    return anchor instanceof HTMLElement && anchor.getClientRects().length ? anchor : null;
+}
+
 export function updateUserFooter() {
     const footer = document.getElementById(CHROME_IDS.railFooter);
     if (!(footer instanceof HTMLElement)) {
@@ -156,26 +399,41 @@ export function updateUserFooter() {
     if (activeDot instanceof HTMLElement) {
         activeDot.dataset.status = status;
     }
+    const personaButton = footer.querySelector('[data-sb-conversation-action="open-persona-menu"]');
+    if (personaButton instanceof HTMLElement) {
+        const label = `${personaName}: ${personaStatus || statusCopy.label}`;
+        personaButton.title = label;
+        personaButton.setAttribute('aria-label', label);
+    }
 }
 
-export function toggleUserStatusPicker() {
+export function toggleUserStatusPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]')) {
     const picker = document.getElementById(CHROME_IDS.userStatusPicker);
     if (!(picker instanceof HTMLElement)) {
         return;
     }
 
-    const isHidden = picker.hidden;
-    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
-    picker.hidden = !isHidden;
+    if (!picker.hidden) {
+        hideConversationPickers({ restoreFocus: true });
+        return;
+    }
+    const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]');
+    showConversationPicker(picker, resolvedAnchor, { preferBelow: true });
+    picker.querySelector('button')?.focus?.({ preventScroll: true });
 }
 
 export function renderConversationPersonaPicker(picker) {
+    renderPersonaOptions(picker);
+    ensureSheetHandle(picker);
+}
+
+function renderPersonaOptions(picker) {
     picker.innerHTML = '';
     const personas = getPersonaOptions();
     const threadAvatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(threadAvatar);
     if (!personas.length) {
-        picker.innerHTML = '<div class="sb-conversation-empty">No personas configured.</div>';
+        picker.append(createStatusPage({ state: 'empty', title: 'No Personas Configured', compact: true }).element);
         return;
     }
 
@@ -240,20 +498,20 @@ export function renderConversationPersonaPicker(picker) {
     }
 }
 
-export function togglePersonaPicker() {
+export function togglePersonaPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]')) {
     const picker = document.getElementById(CHROME_IDS.personaPicker);
     if (!(picker instanceof HTMLElement)) {
         return;
     }
 
-    const isHidden = picker.hidden;
-    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
-
-    if (isHidden) {
-        renderConversationPersonaPicker(picker);
+    if (!picker.hidden) {
+        hideConversationPickers({ restoreFocus: true });
+        return;
     }
-
-    picker.hidden = !isHidden;
+    renderConversationPersonaPicker(picker);
+    const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]');
+    showConversationPicker(picker, resolvedAnchor, { preferBelow: true });
+    (picker.querySelector('[aria-selected="true"]') || picker.querySelector('button'))?.focus?.({ preventScroll: true });
 }
 
 export function bindWeeklyScheduleEditor() {
@@ -305,80 +563,69 @@ export function bindPartnerList(listId, searchId) {
     }
 }
 
-export function toggleAddDmPicker() {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
-    if (!(picker instanceof HTMLElement)) {
+const START_PICKER_ANCHOR = '[data-sb-conversation-action="open-new-menu"]';
+let activeStartPicker = null;
+
+function closeStartPicker({ restoreFocus = false } = {}) {
+    const state = activeStartPicker;
+    activeStartPicker = null;
+    if (state?.handle?.isOpen) {
+        closePicker({ animate: false, restoreFocus });
+    }
+}
+
+function openStartPicker(key, anchor, options) {
+    const trigger = anchor instanceof HTMLElement ? anchor : getPickerAnchor(START_PICKER_ANCHOR);
+    if (!(trigger instanceof HTMLElement)) {
+        return;
+    }
+    if (activeStartPicker?.key === key && activeStartPicker.handle?.isOpen) {
+        closeStartPicker({ restoreFocus: true });
         return;
     }
 
-    if (!picker.hasAttribute('hidden') && picker.dataset.pickerType === 'solo') {
-        picker.setAttribute('hidden', '');
-        return;
-    }
+    // The shared picker toggles shut when reopened from its own trigger, which would swallow a switch between solo and group.
+    hideConversationPickers();
+    const state = { key, handle: null };
+    activeStartPicker = state;
+    state.handle = openPicker({
+        trigger,
+        bounds: document.getElementById('sheld'),
+        searchLabel: 'Search Characters…',
+        searchPlaceholder: 'Search characters…',
+        emptyText: 'No matching characters found.',
+        ...options,
+        onClose: () => {
+            if (activeStartPicker === state) {
+                activeStartPicker = null;
+            }
+        },
+    });
+}
 
-    picker.dataset.pickerType = 'solo';
-    picker.dataset.selectedMembers = '';
-    picker.onchange = null;
-    picker.removeAttribute('hidden');
-    picker.innerHTML = `
-        <div class="sb-conversation-add-dm-header">
-            <span style="font-weight: var(--sb-weight-title); font-size: var(--sb-type-meta);">Create a solo DM</span>
-            <p class="sb-conversation-field-hint" style="margin: 4px 0 0;">Create a new solo DM with a character card of your choice.</p>
-            <input type="text" id="sb_conversation_add_dm_search" class="text_pole textarea_compact" placeholder="Search characters..." style="inline-size: 100%; margin-top: 8px;" />
-        </div>
-        <div class="sb-conversation-add-dm-list" id="sb_conversation_add_dm_list" style="margin-top: 8px; max-block-size: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
-    `;
-
-    const listContainer = document.getElementById('sb_conversation_add_dm_list');
-    const searchInput = document.getElementById('sb_conversation_add_dm_search');
-
-    function renderList(query = '') {
-        if (!listContainer) return;
-        const rows = [];
-        (Array.isArray(characters) ? characters : []).forEach((character, idx) => {
-            if (!character?.avatar) return;
-            const name = character.name || 'Character';
-            if (query && !name.toLowerCase().includes(query)) return;
-
-            const thumb = getThumbnailUrl('avatar', character.avatar);
-            rows.push(`
-                <button type="button" class="sb-conversation-add-dm-option" data-sb-conversation-action="add-character-dm" data-character-index="${idx}" style="display: flex; align-items: center; gap: 8px; inline-size: 100%; background: none; border: none; padding: 6px; border-radius: var(--sb-radius-sm); text-align: left; cursor: pointer; color: inherit;">
-                    <img src="${escapeHtmlAttribute(thumb)}" alt="" style="inline-size: 24px; block-size: 24px; border-radius: 50%; object-fit: cover;" loading="lazy" />
-                    <span style="font-size: var(--sb-type-caption);">${escapeHtmlText(name)}</span>
-                </button>
-            `);
-        });
-
-        if (!rows.length) {
-            listContainer.innerHTML = '<div class="sb-conversation-empty" style="padding: 8px; font-size: var(--sb-type-meta); opacity: 0.7;">No matching characters found.</div>';
-        } else {
-            listContainer.innerHTML = rows.join('');
+function getCharacterPickerItems() {
+    const items = [];
+    (Array.isArray(characters) ? characters : []).forEach((character, index) => {
+        if (!character?.avatar) {
+            return;
         }
-    }
 
-    renderList();
-
-    if (searchInput instanceof HTMLInputElement) {
-        searchInput.focus({ preventScroll: true });
-        searchInput.addEventListener('input', () => {
-            renderList(searchInput.value.toLowerCase().trim());
-        });
-    }
+        const avatar = document.createElement('img');
+        avatar.className = 'sb-conversation-picker-avatar';
+        avatar.src = getThumbnailUrl('avatar', character.avatar);
+        avatar.alt = '';
+        avatar.loading = 'lazy';
+        items.push({ value: index, label: character.name || 'Character', icon: avatar });
+    });
+    return items;
 }
 
-export function hideConversationStartPicker() {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
-    if (picker instanceof HTMLElement) {
-        picker.setAttribute('hidden', '');
-    }
-}
-
-export function openPalsRail() {
-    const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (palsRail instanceof HTMLElement) {
-        palsRail.dataset.open = 'true';
-    }
-    setConversationBackdropVisible();
+export function toggleAddDmPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
+    openStartPicker('solo', anchor, {
+        title: 'Create a Solo DM',
+        items: getCharacterPickerItems(),
+        onSelect: index => void runConversationAction('add-character-dm', { characterIndex: String(index) }),
+    });
 }
 
 export function getUniqueConversationGroupMembers(memberAvatars) {
@@ -447,7 +694,7 @@ export function copyConversationThreadToGroup(sourceAvatar, targetGroupId, { sou
 export async function createConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
     const members = getUniqueConversationGroupMembers(memberAvatars);
     if (members.length < 2) {
-        toastr.warning('Pick at least two characters for a group Conversation.');
+        toastr.warning('Pick at least two characters for a group Conversation');
         return null;
     }
 
@@ -457,7 +704,7 @@ export async function createConversationGroup(memberAvatars, { sourceAvatar = ''
         settings: getDefaultGroupConversationSettings(),
     });
     if (!group?.id) {
-        toastr.error('Could not create group Conversation.');
+        toastr.error('Could not create group Conversation');
         return null;
     }
 
@@ -478,11 +725,11 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
         ? sourceAvatar
         : group.members.find(avatar => getCharacterForAvatar(avatar));
     if (!targetAvatar) {
-        toastr.warning('This group does not have any available character cards for Conversation Mode.');
+        toastr.warning('This group does not have any available character cards for Conversation Mode');
         return false;
     }
 
-    hideConversationStartPicker();
+    hideConversationPickers();
     closePalsRail();
     const opened = await selectConversationThread(targetAvatar, {
         groupId: String(group.id),
@@ -490,10 +737,7 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
     });
     if (opened) {
         schedulePalsRailRender();
-        setTimeout(() => {
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-        }, 100);
-        toastr.success(`Opened group Conversation for ${group.name || 'this group'}.`);
+        toastr.success(`Opened group Conversation for ${group.name || 'this group'}`);
     }
 
     return opened;
@@ -508,151 +752,54 @@ export function getCurrentGroupMemberAvatars(groupId) {
     return group.members.filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
 }
 
-export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '' } = {}) {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
-    if (!(picker instanceof HTMLElement)) {
-        return;
-    }
-
+export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '', anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
     const normalizedSourceGroupId = sourceGroupId || '';
     const sourceMembers = normalizedSourceGroupId ? getCurrentGroupMemberAvatars(normalizedSourceGroupId) : [];
     const lockedMembers = new Set(sourceAvatar ? (sourceMembers.length ? sourceMembers : [sourceAvatar]) : []);
     const selectedMembers = new Set(lockedMembers);
-    const copyFromCurrentThread = false;
-
-    if (!picker.hasAttribute('hidden')
-        && picker.dataset.pickerType === 'group'
-        && picker.dataset.sourceAvatar === (sourceAvatar || '')
-        && picker.dataset.copySourceGroupId === normalizedSourceGroupId) {
-        picker.setAttribute('hidden', '');
-        return;
-    }
-
-    picker.dataset.pickerType = 'group';
-    picker.dataset.sourceAvatar = sourceAvatar || '';
-    picker.dataset.copySource = String(copyFromCurrentThread);
-    picker.dataset.copySourceGroupId = normalizedSourceGroupId;
-    picker.removeAttribute('hidden');
+    const avatarOf = index => characters[index]?.avatar;
+    const items = getCharacterPickerItems().map(item => ({ ...item, muted: lockedMembers.has(avatarOf(item.value)) }));
 
     const title = sourceAvatar
-        ? (normalizedSourceGroupId ? 'Add members to this group' : 'Add members to this DM')
-        : 'Create a group DM';
-    const description = sourceAvatar
-        ? 'Selected members will open as a separate group Conversation with its own history and group controls.'
-        : 'Create a new group DM with two or more of your character cards.';
+        ? (normalizedSourceGroupId ? 'Add Members to This Group' : 'Add Members to This DM')
+        : 'Create a Group DM';
 
-    picker.innerHTML = `
-        <div class="sb-conversation-add-dm-header">
-            <span class="sb-conversation-add-dm-title">${escapeHtmlText(title)}</span>
-            <p class="sb-conversation-field-hint sb-conversation-add-dm-description">${escapeHtmlText(description)}</p>
-            <input type="text" id="sb_conversation_group_search" class="text_pole textarea_compact sb-conversation-add-dm-search" placeholder="Search characters..." />
-        </div>
-        <div class="sb-conversation-add-dm-list sb-conversation-group-list" id="sb_conversation_group_list"></div>
-        <div class="sb-conversation-group-picker-actions">
-            <span id="sb_conversation_group_selected_count" class="sb-conversation-field-hint sb-conversation-group-selected-count"></span>
-            <span class="sb-conversation-group-picker-buttons">
-                <button type="button" class="menu_button" data-sb-conversation-action="cancel-conversation-group">Cancel</button>
-                <button type="button" class="menu_button" data-sb-conversation-action="create-conversation-group">Create Group</button>
-            </span>
-        </div>
-    `;
-
-    const listContainer = document.getElementById('sb_conversation_group_list');
-    const searchInput = document.getElementById('sb_conversation_group_search');
-    const selectedCount = document.getElementById('sb_conversation_group_selected_count');
-    const createButton = picker.querySelector('[data-sb-conversation-action="create-conversation-group"]');
-
-    function syncSelectedMembers() {
-        lockedMembers.forEach(avatar => selectedMembers.add(avatar));
-        picker.dataset.selectedMembers = JSON.stringify([...selectedMembers]);
-        if (selectedCount instanceof HTMLElement) {
-            selectedCount.textContent = `${selectedMembers.size} selected`;
-        }
-        if (createButton instanceof HTMLButtonElement) {
-            createButton.disabled = selectedMembers.size < 2;
-        }
-    }
-
-    function renderList(query = '') {
-        if (!(listContainer instanceof HTMLElement)) return;
-        const rows = [];
-        (Array.isArray(characters) ? characters : []).forEach((character) => {
-            if (!character?.avatar) return;
-            const name = character.name || 'Character';
-            if (query && !name.toLowerCase().includes(query)) return;
-
-            const checked = selectedMembers.has(character.avatar) ? ' checked' : '';
-            const disabled = lockedMembers.has(character.avatar) ? ' disabled' : '';
-            const thumb = getThumbnailUrl('avatar', character.avatar);
-            rows.push(`
-                <label class="sb-conversation-add-dm-option sb-conversation-group-member-option">
-                    <input type="checkbox" class="sb-conversation-group-member-checkbox" value="${escapeHtmlAttribute(character.avatar)}"${checked}${disabled} />
-                    <img src="${escapeHtmlAttribute(thumb)}" alt="" class="sb-conversation-group-member-avatar" loading="lazy" />
-                    <span class="sb-conversation-group-member-name">${escapeHtmlText(name)}</span>
-                </label>
-            `);
-        });
-
-        listContainer.innerHTML = rows.length
-            ? rows.join('')
-            : '<div class="sb-conversation-empty sb-conversation-group-empty">No matching characters found.</div>';
-        syncSelectedMembers();
-    }
-
-    picker.onchange = (event) => {
-        const checkbox = event.target instanceof HTMLInputElement && event.target.classList.contains('sb-conversation-group-member-checkbox')
-            ? event.target
-            : null;
-        if (!checkbox) {
-            return;
-        }
-
-        if (checkbox.checked) {
-            selectedMembers.add(checkbox.value);
-        } else if (!lockedMembers.has(checkbox.value)) {
-            selectedMembers.delete(checkbox.value);
-        }
-        syncSelectedMembers();
-    };
-
-    renderList();
-
-    if (searchInput instanceof HTMLInputElement) {
-        searchInput.focus({ preventScroll: true });
-        searchInput.addEventListener('input', () => {
-            renderList(searchInput.value.toLowerCase().trim());
-        });
-    }
-}
-
-export async function handleCreateConversationGroupFromPicker() {
-    const picker = document.getElementById('sb_conversation_add_dm_picker');
-    if (!(picker instanceof HTMLElement)) {
-        return false;
-    }
-
-    let members = [];
-    try {
-        members = JSON.parse(picker.dataset.selectedMembers || '[]');
-    } catch {
-        members = [];
-    }
-
-    const sourceAvatar = picker.dataset.sourceAvatar || '';
-    const copySourceGroupId = picker.dataset.copySource === 'true' ? picker.dataset.copySourceGroupId || '' : null;
-    return createAndOpenConversationGroup(members, { sourceAvatar, copySourceGroupId });
+    openStartPicker(`group:${sourceAvatar || ''}:${normalizedSourceGroupId}`, anchor, {
+        title,
+        items,
+        multiple: true,
+        getItemState: index => (selectedMembers.has(avatarOf(index)) ? 'selected' : null),
+        selectionCount: () => `${selectedMembers.size} selected`,
+        onSelect: index => {
+            const avatar = avatarOf(index);
+            if (!avatar || lockedMembers.has(avatar)) {
+                return;
+            }
+            if (selectedMembers.has(avatar)) {
+                selectedMembers.delete(avatar);
+            } else {
+                selectedMembers.add(avatar);
+            }
+        },
+        footer: [{
+            label: 'Create Group',
+            icon: 'fa-solid fa-user-group',
+            disabled: () => selectedMembers.size < 2,
+            onSelect: () => void createAndOpenConversationGroup([...selectedMembers], { sourceAvatar, copySourceGroupId: null }),
+        }],
+    });
 }
 
 export function openAddMemberPicker() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        toastr.warning('Open a Conversation before adding members.');
+        toastr.warning('Open a Conversation before adding members');
         return;
     }
 
-    openPalsRail();
     toggleConversationGroupPicker({
         sourceAvatar: avatar,
         sourceGroupId: conversationState.conversationSelectedGroupId || '',
+        anchor: getPickerAnchor(`#${CHROME_IDS.header} [data-sb-conversation-action="open-conversation-menu"]`),
     });
 }

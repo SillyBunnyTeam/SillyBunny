@@ -17,6 +17,8 @@ import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnum
 import { slashCommandReturnHelper } from '../../slash-commands/SlashCommandReturnHelper.js';
 import { generateWebLlmChatPrompt, isWebLlmSupported } from '../shared.js';
 import { Popup, POPUP_RESULT } from '../../popup.js';
+import { adoptExpressionsSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the page's loose controls are shared rows.
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import {
@@ -176,6 +178,8 @@ function getPlaceholderImage(expression, isCustom = false) {
         expression: expression,
         isCustom: isCustom,
         canGenerate: true,
+        // SillyBunny: the template draws a symbolic icon for a tile with no sprite, in place of the placeholder picture.
+        isPlaceholder: true,
         title: 'No Image',
         type: 'failure',
         fileName: 'No-Image-Placeholder.svg',
@@ -419,7 +423,8 @@ export async function visualNovelUpdateLayers(container) {
 
         const avatar = element.data('avatar');
         const layerIndex = layerIndices.indexOf(avatar);
-        element.css('z-index', layerIndex);
+        // SillyBunny: sprite layers sit above chat but below zoomed avatars (the shared layer ladder).
+        element.css('z-index', `calc(var(--sb-z-sprites, 100) + ${layerIndex})`);
         element.show();
 
         const promise = new Promise(resolve => {
@@ -751,6 +756,8 @@ function getFolderNameByMessage(message) {
  */
 export async function sendExpressionCall(spriteFolderName, expression, { force = false, vnMode = null, overrideSpriteFile = null } = {}) {
     lastExpression[spriteFolderName.split('/')[0]] = expression;
+    // SillyBunny: tells the chat style sprite slot that the current expression of this character changed.
+    document.dispatchEvent(new CustomEvent('sb:expression-changed', { detail: { spriteFolderName, expression } }));
     if (vnMode === null) {
         vnMode = isVisualNovelMode();
     }
@@ -1069,13 +1076,13 @@ function throwIfExpressionGenerationStopped() {
 
 async function requestExpressionGenerationStop() {
     if (!inSpriteGeneration) {
-        toastr.info(t`No sprite generation is running.`, t`Sprite Generation`);
+        toastr.info(t`No sprite generation is running`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     expressionGenerationCancelRequested = true;
     const stopped = await stopExpressionSpriteGeneration();
-    toastr.info(stopped ? t`Stopping sprite generation...` : t`Stopping after the current step...`, t`Sprite Generation`);
+    toastr.info(stopped ? t`Stopping sprite generation...` : t`Stopping after the current step...`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
 }
 
 function getExpressionSpriteGenerationMode() {
@@ -1103,13 +1110,13 @@ function getExpressionGenerationTarget(spriteFolderName) {
 
 async function generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast = true, spriteName = null, replaceExisting = false } = {}) {
     if (!expression || !spriteFolderName) {
-        toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before generating expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return false;
     }
 
     const existingFiles = spriteCache[spriteFolderName]?.find(x => x.label === expression)?.files || [];
     if (!replaceExisting && existingFiles.length > 0 && !extension_settings.expressions.allowMultiple) {
-        toastr.warning(t`Enable multiple sprites per expression before generating another sprite for ${expression}.`, t`Sprite Generation`);
+        toastr.warning(t`Enable multiple sprites per expression before generating another sprite for ${expression}`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return false;
     }
 
@@ -1122,7 +1129,7 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
     throwIfExpressionGenerationStopped();
 
     if (!imageUrl) {
-        if (showToast) toastr.warning(t`Quick Image Gen did not return an image.`, t`Sprite Generation`);
+        if (showToast) toastr.warning(t`Quick Image Gen did not return an image`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return false;
     }
 
@@ -1153,7 +1160,7 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
         if (!uploadedSpriteName) return false;
         if (showToast) {
             const message = replaceExisting ? t`Regenerated sprite for ${expression}.` : t`Generated sprite for ${expression}.`;
-            toastr.success(message, t`Sprite Generation`);
+            toastr.success(message, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         }
         return true;
     } finally {
@@ -1565,7 +1572,7 @@ async function splitAndUploadExpressionSpriteSheet(imageUrl, grid, expressions, 
     } catch (error) {
         if (isExpressionGenerationAbortError(error)) throw error;
         console.error('[Expressions] Failed to split sprite sheet:', error);
-        toastr.warning(splitErrorMessage, t`Sprite Generation`);
+        toastr.warning(splitErrorMessage, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         return { generatedCount: 0, failedCount: labels.length };
     }
 
@@ -1614,7 +1621,7 @@ async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderN
 
 async function withExpressionGenerationLock(task) {
     if (inSpriteGeneration) {
-        toastr.info(t`Sprite generation is already running.`, t`Sprite Generation`);
+        toastr.info(t`Sprite generation is already running`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return null;
     }
 
@@ -1623,7 +1630,7 @@ async function withExpressionGenerationLock(task) {
         return await task();
     } catch (error) {
         if (isExpressionGenerationAbortError(error)) {
-            toastr.info(t`Sprite generation stopped.`, t`Sprite Generation`);
+            toastr.info(t`Sprite generation stopped`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
             return null;
         }
         throw error;
@@ -1707,13 +1714,15 @@ async function onClickExpressionRegenerate(event) {
     const spriteName = withoutExtension(fileName);
 
     if (!spriteName) {
-        toastr.warning(t`Choose an existing sprite before regenerating.`, t`Sprite Generation`);
+        toastr.warning(t`Choose an existing sprite before regenerating`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const confirmed = await Popup.show.confirm(
         t`Regenerate Sprite`,
         t`Replace ${fileName} for ${expression} with a new Quick Image Gen sprite? This can use provider credits.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Regenerate`, { destructive: true }),
     );
 
     if (!confirmed) return;
@@ -1733,31 +1742,33 @@ async function onClickRemoveAllSprites(event) {
     event.stopPropagation();
 
     if (inSpriteGeneration) {
-        toastr.info(t`Stop sprite generation before removing sprites.`, t`Sprite Generation`);
+        toastr.info(t`Stop sprite generation before removing sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const name = $('#image_list').data('name');
     if (!name) {
-        toastr.warning(t`Open a chat before removing expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before removing expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     await validateImages(name);
     const spriteFiles = getSpriteFilesForFolder(name);
     if (spriteFiles.length === 0) {
-        toastr.info(t`This sprite set has no images to remove.`, t`Sprite Generation`);
+        toastr.info(t`This sprite set has no images to remove`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const confirmed = await Popup.show.confirm(
         t`Remove All Sprites`,
         t`Remove ${spriteFiles.length} sprite image(s) from ${name}? This cannot be undone.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Remove`, { destructive: true }),
     );
 
     if (!confirmed) return;
 
-    const deleteToast = toastr.info(t`Removing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+    const deleteToast = toastr.info(t`Removing expression sprites…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
     let deletedCount = 0;
     let failedCount = 0;
 
@@ -1779,11 +1790,11 @@ async function onClickRemoveAllSprites(event) {
     }
 
     if (deletedCount > 0) {
-        toastr.success(t`Removed ${deletedCount} expression sprite(s).`, t`Sprite Generation`);
+        toastr.success(t`Removed ${deletedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
 
     if (failedCount > 0) {
-        toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite Generation`);
+        toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
     }
 }
 
@@ -1792,26 +1803,28 @@ async function onClickRedoSpriteCleanup(event) {
 
     const name = $('#image_list').data('name');
     if (!name) {
-        toastr.warning(t`Open a chat before cleaning expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before cleaning expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     await validateImages(name);
     const spriteFiles = getSpriteFilesForFolder(name);
     if (spriteFiles.length === 0) {
-        toastr.info(t`This sprite set has no images to clean.`, t`Sprite Generation`);
+        toastr.info(t`This sprite set has no images to clean`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const confirmed = await Popup.show.confirm(
         t`Redo Crop and Transparency`,
         t`Reprocess ${spriteFiles.length} sprite image(s) in ${name} with the improved crop and transparency cleanup? Existing sprite files will be overwritten.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`, { destructive: true }),
     );
 
     if (!confirmed) return;
 
     await withExpressionGenerationLock(async () => {
-        const cleanupToast = toastr.info(t`Cleaning expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        const cleanupToast = toastr.info(t`Cleaning expression sprites…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
         const { uploadName } = getExpressionGenerationTarget(name);
         let cleanedCount = 0;
         let failedCount = 0;
@@ -1837,11 +1850,11 @@ async function onClickRedoSpriteCleanup(event) {
         }
 
         if (cleanedCount > 0) {
-            toastr.success(t`Cleaned ${cleanedCount} expression sprite(s).`, t`Sprite Generation`);
+            toastr.success(t`Cleaned ${cleanedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         }
 
         if (failedCount > 0) {
-            toastr.warning(t`${failedCount} expression sprite(s) could not be cleaned. Check the console.`, t`Sprite Generation`);
+            toastr.warning(t`${failedCount} expression sprite(s) could not be cleaned. Check the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         }
     });
 }
@@ -1851,13 +1864,13 @@ async function onClickUploadSpriteSheet(event) {
 
     const spriteFolderName = $('#image_list').data('name');
     if (!spriteFolderName) {
-        toastr.warning(t`Open a chat before uploading a character sheet.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before uploading a character sheet`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const missingLabels = await getMissingSpriteLabels(spriteFolderName);
     if (missingLabels.length === 0) {
-        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        toastr.success(t`This sprite set already has images for every expression`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1865,6 +1878,8 @@ async function onClickUploadSpriteSheet(event) {
     const confirmed = await Popup.show.confirm(
         t`Upload Character Sheet`,
         t`Upload a character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}. The extension will split it as a ${grid.columns} x ${grid.rows} grid, left-to-right, top-to-bottom in this order: ${missingLabels.join(', ')}.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`),
     );
 
     if (!confirmed) return;
@@ -1877,7 +1892,7 @@ async function onClickUploadSpriteSheet(event) {
             if (!file) return;
 
             await withExpressionGenerationLock(async () => {
-                const uploadToast = toastr.info(t`Splitting uploaded character sheet...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+                const uploadToast = toastr.info(t`Splitting uploaded character sheet…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
                 const sourceUrl = URL.createObjectURL(file);
                 let generatedCount = 0;
                 let failedCount = 0;
@@ -1894,11 +1909,11 @@ async function onClickUploadSpriteSheet(event) {
                 }
 
                 if (generatedCount > 0) {
-                    toastr.success(t`Uploaded ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+                    toastr.success(t`Uploaded ${generatedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
                 }
 
                 if (failedCount > 0) {
-                    toastr.warning(t`${failedCount} expression sprite(s) could not be uploaded from the sheet. Check the image layout and the console.`, t`Sprite Generation`);
+                    toastr.warning(t`${failedCount} expression sprite(s) could not be uploaded from the sheet. Check the image layout and the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
                 }
             });
         } finally {
@@ -1917,13 +1932,13 @@ async function onClickGenerateMissingSprites(event) {
 
     const spriteFolderName = $('#image_list').data('name');
     if (!spriteFolderName) {
-        toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before generating expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const missingLabels = await getMissingSpriteLabels(spriteFolderName);
     if (missingLabels.length === 0) {
-        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        toastr.success(t`This sprite set already has images for every expression`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1932,12 +1947,14 @@ async function onClickGenerateMissingSprites(event) {
         getExpressionSpriteGenerationMode() === EXPRESSION_SPRITE_GENERATION_MODE.sheet && missingLabels.length > 1
             ? t`Generate one character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}, then split it into individual expression images? This can use provider credits.`
             : t`Generate ${missingLabels.length} missing sprite(s) for ${spriteFolderName} with Quick Image Gen? This may take a while and can use provider credits.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`),
     );
 
     if (!confirmed) return;
 
     await withExpressionGenerationLock(async () => {
-        const generationToast = toastr.info(t`Generating missing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        const generationToast = toastr.info(t`Generating missing expression sprites…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
         let generatedCount = 0;
         let failedCount = 0;
 
@@ -1958,19 +1975,13 @@ async function onClickGenerateMissingSprites(event) {
         }
 
         if (generatedCount > 0) {
-            toastr.success(t`Generated ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+            toastr.success(t`Generated ${generatedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         }
 
         if (failedCount > 0) {
-            toastr.warning(t`${failedCount} expression sprite(s) could not be generated. Check Quick Image Gen settings and the console.`, t`Sprite Generation`);
+            toastr.warning(t`${failedCount} expression sprite(s) could not be generated. Check Quick Image Gen settings and the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         }
     });
-}
-
-function onExpressionGenerationKeydown(event) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    $(event.currentTarget).trigger('click');
 }
 
 /**
@@ -2252,7 +2263,8 @@ function getLastCharacterMessage({ characterName = '' } = {}) {
 function removeExpression() {
     lastMessage = null;
     $('img.expression').off('error');
-    $('img.expression').prop('src', '');
+    // SillyBunny: the no-character poll must not keep assigning an already empty image source.
+    $('img.expression').filter((_index, image) => image.getAttribute('src') !== '').prop('src', '');
     $('img.expression').removeClass('default');
     $('#open_chat_expressions').hide();
     $('#no_chat_expressions').show();
@@ -2282,6 +2294,8 @@ async function validateImages(spriteFolderName, forceRedrawCached = false) {
     const sprites = await getSpritesList(spriteFolderName);
     let validExpressions = await drawSpritesList(spriteFolderName, labels, sprites);
     spriteCache[spriteFolderName] = validExpressions;
+    // SillyBunny: upload, delete, generation and the folder override all re-validate here, so this is the one place that tells the chat style sprite slot that a folder's sprites changed.
+    document.dispatchEvent(new CustomEvent('sb:expression-sprites-changed', { detail: { spriteFolderName } }));
 }
 
 /**
@@ -2361,7 +2375,9 @@ async function drawSpritesList(spriteFolderName, labels, sprites) {
  * @returns {Promise<string>} Rendered list item template
  */
 async function getListItem(expression, { images, isCustom = false } = {}) {
-    return renderExtensionTemplateAsync(MODULE_NAME, 'list-item', { expression, images, isCustom: isCustom ?? false });
+    // SillyBunny: sprites of one expression carry their file name on the tile, so that they can be told apart without a tooltip.
+    const captioned = images?.map(image => ({ ...image, showFileName: images.length > 1 }));
+    return renderExtensionTemplateAsync(MODULE_NAME, 'list-item', { expression, images: captioned, isCustom: isCustom ?? false });
 }
 
 /**
@@ -2784,7 +2800,8 @@ function onClickExpressionImage() {
 
 async function onClickExpressionAddCustom() {
     const template = await renderExtensionTemplateAsync(MODULE_NAME, 'add-custom-expression');
-    let expressionName = await Popup.show.input(null, template);
+    // SillyBunny: names the response with a verb.
+    let expressionName = await Popup.show.input(null, template, '', { okButton: t`Add` });
 
     if (!expressionName) {
         console.debug('No custom expression name provided');
@@ -2828,7 +2845,8 @@ async function onClickExpressionRemoveCustom() {
     }
 
     const template = await renderExtensionTemplateAsync(MODULE_NAME, 'remove-custom-expression', { expression: selectedExpression });
-    const confirmation = await Popup.show.confirm(null, template);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = await Popup.show.confirm(null, template, confirmVerb(t`Remove`));
 
     if (!confirmation) {
         console.debug('Custom expression removal cancelled');
@@ -3006,6 +3024,8 @@ async function onClickExpressionUpload(event) {
                     customButtons.push({
                         text: t`Replace Existing`,
                         result: POPUP_RESULT.NEGATIVE,
+                        // SillyBunny: replacing overwrites the sprite file, so the response takes Destructive Red.
+                        classes: ['is-destructive'],
                         action: () => {
                             console.debug('Replacing existing sprite');
                             spriteName = withoutExtension(clickedFileName);
@@ -3186,9 +3206,10 @@ async function onClickExpressionDelete(event) {
         return;
     }
 
+    // SillyBunny: names the response with a verb (confirmVerb).
     const confirmation = await Popup.show.confirm(t`Delete Expression`, t`Are you sure you want to delete this expression? Once deleted, it\'s gone forever!`
         + '<br /><br />'
-        + t`Expression:` + ' <tt>' + expressionListItem.attr('data-filename') + '</tt>');
+        + t`Expression:` + ' <tt>' + expressionListItem.attr('data-filename') + '</tt>', confirmVerb(t`Delete`, { destructive: true }));
     if (!confirmation) {
         return;
     }
@@ -3359,21 +3380,12 @@ export async function init() {
         $('#expressions_container').append(template);
         $('#expression_override_button').on('click', onClickExpressionOverrideButton);
         $('#expression_upload_pack_button').on('click', onClickExpressionUploadPackButton);
-        $('#expressions_generate_missing_sprites')
-            .on('click', onClickGenerateMissingSprites)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_upload_sprite_sheet')
-            .on('click', onClickUploadSpriteSheet)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_redo_sprite_cleanup')
-            .on('click', onClickRedoSpriteCleanup)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_stop_sprite_generation')
-            .on('click', onClickStopExpressionGeneration)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_remove_all_sprites')
-            .on('click', onClickRemoveAllSprites)
-            .on('keydown', onExpressionGenerationKeydown);
+        // SillyBunny: the sprite actions are native buttons, which answer Enter and Space themselves, so they bind no keydown handler.
+        $('#expressions_generate_missing_sprites').on('click', onClickGenerateMissingSprites);
+        $('#expressions_upload_sprite_sheet').on('click', onClickUploadSpriteSheet);
+        $('#expressions_redo_sprite_cleanup').on('click', onClickRedoSpriteCleanup);
+        $('#expressions_stop_sprite_generation').on('click', onClickStopExpressionGeneration);
+        $('#expressions_remove_all_sprites').on('click', onClickRemoveAllSprites);
         setExpressionGenerationBusy(inSpriteGeneration);
         $('#expression_translate').prop('checked', extension_settings.expressions.translate).on('input', function () {
             extension_settings.expressions.translate = !!$(this).prop('checked');
@@ -3400,10 +3412,16 @@ export async function init() {
         $(document).on('click', '.expression_list_upload', onClickExpressionUpload);
         $(document).on('click', '.expression_list_generate', onClickExpressionGenerate);
         $(document).on('click', '.expression_list_regenerate', onClickExpressionRegenerate);
-        $(document).on('keydown', '.expression_list_generate', onExpressionGenerationKeydown);
-        $(document).on('keydown', '.expression_list_regenerate', onExpressionGenerationKeydown);
         $(document).on('click', '.expression_list_delete', onClickExpressionDelete);
         $(window).on('resize', () => updateVisualNovelModeDebounced());
+        // SillyBunny: docked panels change the Visual Novel canvas width without a viewport resize.
+        window.addEventListener('sb:side-panel-layout', () => {
+            if (isVisualNovelMode()) {
+                void visualNovelUpdateLayers($('#visual-novel-wrapper')).catch(error => {
+                    console.error('Failed to reposition Visual Novel sprites after a side-panel layout change.', error);
+                });
+            }
+        });
         $('#open_chat_expressions').hide();
 
         await renderAdditionalExpressionSettings();
@@ -3416,7 +3434,7 @@ export async function init() {
                 extension_settings.expressions.agentAutoGenerateSprites = !!$(this).prop('checked');
                 if (extension_settings.expressions.agentAutoGenerateSprites && extension_settings.expressions.api !== EXPRESSION_API.agent) {
                     $('#expression_api').val(EXPRESSION_API.agent).trigger('change');
-                    toastr.info(t`Classifier API switched to In-Chat Agent for expression auto-generation.`, t`Expressions Agent`);
+                    toastr.info(t`Classifier API switched to In-Chat Agent for expression auto-generation`, t`Expressions agent`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
                     return;
                 }
                 saveSettingsDebounced();
@@ -3489,6 +3507,8 @@ export async function init() {
         $('#expression_custom_remove').on('click', onClickExpressionRemoveCustom);
         $('#expression_fallback').on('change', onExpressionFallbackChanged);
         $('#expression_api').on('change', onExpressionApiChanged);
+        // SillyBunny: the prompt strategy, the agent status, the folder override and the sprite actions are shared rows. The rows follow the controls, so this comes after they have their saved values.
+        adoptExpressionsSettings($('#expressions_container')[0]);
     }
 
     addExpressionImage();
@@ -3500,6 +3520,31 @@ export async function init() {
     setInterval(updateFunction, UPDATE_INTERVAL);
     moduleWorker();
     dragElement($('#expression-holder'));
+    // SillyBunny: loads the sprite slot of the Echo, Whisper and Ripple chat styles on first use, so the default style pays no start-up cost.
+    let chatStyleSpritesRequested = false;
+    const loadChatStyleSprites = async () => {
+        if (chatStyleSpritesRequested || !['echostyle', 'whisperstyle', 'ripplestyle'].some(name => document.body.classList.contains(name))) {
+            return;
+        }
+
+        chatStyleSpritesRequested = true;
+        try {
+            const { initChatStyleSprites } = await import('./chat-style-sprites.js');
+            initChatStyleSprites({
+                getExpressionsList,
+                getSpritesList,
+                getSpriteFolderName,
+                getLastExpression: folderKey => lastExpression[folderKey],
+                getContext,
+                getFallbackExpression: () => extension_settings.expressions.fallback_expression,
+            });
+        } catch (error) {
+            chatStyleSpritesRequested = false;
+            console.error('Expressions: failed to load the chat style sprites', error);
+        }
+    };
+    document.addEventListener('sb:chat-style-updated', loadChatStyleSprites);
+    loadChatStyleSprites();
     eventSource.on(event_types.CHAT_CHANGED, () => {
         // character changed
         removeExpression();

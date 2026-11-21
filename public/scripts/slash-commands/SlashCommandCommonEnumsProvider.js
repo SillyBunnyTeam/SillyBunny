@@ -5,6 +5,8 @@ import { power_user } from '../power-user.js';
 import { searchCharByName, getTagsList, tags, tag_map } from '../tags.js';
 import { onlyUniqueJson, sortIgnoreCaseAndAccents } from '../utils.js';
 import { world_names } from '../world-info.js';
+// SillyBunny: the list includes backgrounds whose thumbnails are not built
+import { getBackgroundTargets } from '../backgrounds.js';
 import { SlashCommandClosure } from './SlashCommandClosure.js';
 import { SlashCommandEnumValue, enumTypes } from './SlashCommandEnumValue.js';
 
@@ -342,8 +344,8 @@ export const commonEnumProviders = {
         new SlashCommandEnumValue('system', null, enumTypes.enum, enumIcons.system),
     ],
 
-    backgrounds: () => Array.from(document.querySelectorAll('.bg_example'))
-        .map(it => new SlashCommandEnumValue(it.getAttribute('bgfile')))
+    backgrounds: () => getBackgroundTargets()
+        .map(it => new SlashCommandEnumValue(it.bgfile))
         .filter(it => it.value?.length),
 
     connectionProfiles: ({ includeNone = false } = {}) => () => [

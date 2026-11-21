@@ -1,7 +1,8 @@
 import { characters, eventSource, event_types, getCurrentChatId, messageFormatting, reloadCurrentChat, saveSettingsDebounced, this_chid } from '../../../script.js';
 import { extension_settings, renderExtensionTemplateAsync } from '../../extensions.js';
 import { selected_group } from '../../group-chats.js';
-import { callGenericPopup, Popup, POPUP_TYPE } from '../../popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders, enumIcons } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -12,6 +13,12 @@ import { allowPresetScripts, allowScopedScripts, disallowPresetScripts, disallow
 import { t } from '../../i18n.js';
 import { accountStorage } from '../../util/AccountStorage.js';
 import { getPresetManager } from '../../preset-manager.js';
+// SillyBunny: adopt the import target radios into a shared segmented row, and the script rows into shared entity rows.
+import { adoptRegexScriptList, adoptRegexScriptRow, regexImportOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
+// SillyBunny: present debugger controls with shared rows while retaining the live source elements.
+import { createToggleRow } from '../../sillybunny-editor/toggle-row.js';
+import { createSelectRow } from '../../sillybunny-editor/select-row.js';
+import { createEntryRow } from '../../sillybunny-editor/rows.js';
 
 // Re-exports for legacy extensions
 export { getRegexScripts };
@@ -460,7 +467,8 @@ class RegexPresetManager {
         }
 
         const presetName = extension_settings.regex_presets[presetIndex].name;
-        const confirm = await Popup.show.confirm(t`Are you sure you want to delete this regex preset?`, presetName);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(t`Are you sure you want to delete this regex preset?`, presetName, confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }
@@ -628,6 +636,8 @@ async function loadRegexScripts() {
     $('#saved_regex_scripts').empty();
     $('#saved_scoped_scripts').empty();
     $('#saved_preset_scripts').empty();
+    // SillyBunny: the script lists hold shared entity rows.
+    $('#saved_regex_scripts, #saved_scoped_scripts, #saved_preset_scripts').each((_, list) => adoptRegexScriptList(list));
     setToggleAllIcon(false);
 
     const scriptTemplate = $(await renderExtensionTemplateAsync('regex', 'scriptTemplate'));
@@ -665,7 +675,8 @@ async function loadRegexScripts() {
             await onRegexEditorOpenClick(scriptHtml.attr('id'), scriptType);
         });
         scriptHtml.find('.move_to_global').on('click', async function () {
-            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to global?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: regex confirmations use explicit action labels.
+            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to global?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Move` });
 
             if (!confirm) {
                 return;
@@ -681,16 +692,20 @@ async function loadRegexScripts() {
                 toastr.error(t`Cannot edit scoped scripts in group chats.`);
                 return;
             }
-            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to scoped?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: regex confirmation names the move action.
+            const confirm = await callGenericPopup(t`Are you sure you want to move this regex script to scoped?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Move` });
             if (!confirm) {
                 return;
             }
             await moveRegexScript(script, SCRIPT_TYPES.SCOPED, scriptType);
         });
         scriptHtml.find('.move_to_preset').on('click', async function () {
+            // SillyBunny: regex confirmation names the move action.
             const confirm = await callGenericPopup(
                 t`Are you sure you want to move this regex script to preset?`,
                 POPUP_TYPE.CONFIRM,
+                '',
+                { okButton: t`Move` },
             );
             if (!confirm) {
                 return;
@@ -703,7 +718,8 @@ async function loadRegexScripts() {
             download(fileData, fileName, 'application/json');
         });
         scriptHtml.find('.delete_regex').on('click', async function () {
-            const confirm = await callGenericPopup(t`Are you sure you want to delete this regex script?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: deleting a regex script is destructive and names the delete action.
+            const confirm = await callGenericPopup(t`Are you sure you want to delete this regex script?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
             if (!confirm) {
                 return;
             }
@@ -741,6 +757,8 @@ async function loadRegexScripts() {
             }, 0);
         });
 
+        // SillyBunny: the row is built from the template's nodes after every handler above is bound.
+        adoptRegexScriptRow(scriptHtml.filter('.regex-script-label').get(0));
         $(container).append(scriptHtml);
     }
 
@@ -843,7 +861,10 @@ async function onRegexEditorOpenClick(existingId, scriptType) {
     editorHtml.find('input, textarea, select').on('input', updateTestResult);
     updateInfoBlock(editorHtml);
 
-    const popupResult = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: t`Save`, cancelButton: t`Cancel`, allowVerticalScrolling: true });
+    // SillyBunny: the editor is a Window-tier surface and becomes a page when opened from another Window. Its fields are shared rows, built after the values above are set; the adapter loads when an editor opens, so it is not a startup module.
+    const { adaptRegexEditor } = await import('./sillybunny-editor.js');
+    const editor = adaptRegexEditor(editorHtml[0]);
+    const popupResult = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { tier: 'window', okButton: t`Save`, cancelButton: t`Cancel`, allowVerticalScrolling: true, ...editor.options });
     if (popupResult) {
         const newRegexScript = {
             id: existingId ? String(existingId) : uuidv4(),
@@ -1139,22 +1160,23 @@ function populateDebuggerRuleList(container) {
         return ruleElementContent;
     };
 
+    // SillyBunny: keep scope headings outside each boxed list so the shared group rhythm remains visible.
     if (globalScripts.length > 0) {
-        rulesContainer.append('<div class="list-header regex-debugger-list-header">' + t`Global Rules` + '</div>');
+        rulesContainer.append('<div class="list-header regex-debugger-list-header ds-pref-group-heading">' + t`Global Rules` + '</div>');
         const globalList = $('<ul id="regex_debugger_rules_global" class="sortable-list"></ul>');
         globalScripts.forEach(script => globalList.append(renderRule(script)));
         rulesContainer.append(globalList);
     }
 
     if (presetScripts.length > 0) {
-        rulesContainer.append('<div class="list-header regex-debugger-list-header">' + t`Preset Rules` + '</div>');
+        rulesContainer.append('<div class="list-header regex-debugger-list-header ds-pref-group-heading">' + t`Preset Rules` + '</div>');
         const presetList = $('<ul id="regex_debugger_rules_preset" class="sortable-list"></ul>');
         presetScripts.forEach(script => presetList.append(renderRule(script)));
         rulesContainer.append(presetList);
     }
 
     if (scopedScripts.length > 0) {
-        rulesContainer.append('<div class="list-header regex-debugger-list-header">' + t`Scoped Rules` + '</div>');
+        rulesContainer.append('<div class="list-header regex-debugger-list-header ds-pref-group-heading">' + t`Scoped Rules` + '</div>');
         const scopedList = $('<ul id="regex_debugger_rules_scoped" class="sortable-list"></ul>');
         scopedScripts.forEach(script => scopedList.append(renderRule(script)));
         rulesContainer.append(scopedList);
@@ -1172,6 +1194,38 @@ async function onRegexDebuggerOpenClick() {
     const stepTemplate = debuggerHtml.find('#regex_debugger_step_template');
 
     populateDebuggerRuleList(debuggerHtml);
+
+    // SillyBunny: adopt the live debugger controls into shared rows without replacing their source inputs.
+    const rawInput = debuggerHtml.find('#regex_debugger_raw_input').get(0);
+    const rawInputContainer = rawInput.parentElement;
+    const rawInputRow = createEntryRow({ label: t`Raw Input`, field: 'regex-debugger-raw-input', input: rawInput });
+    rawInputRow.row.classList.add('ds-row--stacked');
+    rawInputContainer.replaceWith(rawInputRow.row);
+
+    const displayModeInputs = [...debuggerHtml.find('input[name="display_mode"]').get()];
+    const displayModeRow = createToggleRow({
+        label: t`Display`,
+        field: 'regex-debugger-display-mode',
+        value: displayModeInputs.find(input => input.checked)?.value ?? 'replace',
+        choices: [['replace', t`Replace`], ['highlight', t`Highlight`]],
+        inputs: displayModeInputs,
+    });
+    const controlOptions = debuggerHtml.find('.regex-debugger-control-options').get(0);
+    const renderSelect = debuggerHtml.find('#regex_debugger_render_mode').get(0);
+    renderSelect.remove();
+    const renderRow = createSelectRow({
+        select: renderSelect,
+        label: t`Render`,
+        field: 'regex-debugger-render-mode',
+        title: t`Render`,
+        searchLabel: t`Search`,
+        emptyText: t`No Results`, // SillyBunny: the empty-state title of the picker is in header capitalisation by DESIGN.md
+    });
+    controlOptions.replaceWith(displayModeRow.row, renderRow.row);
+
+    const runButton = debuggerHtml.find('#regex_debugger_run_test').get(0);
+    runButton.classList.add('ds-row', 'ds-button-row');
+    debuggerHtml.find('#regex_debugger_run_test_header').replaceWith(runButton);
 
     // @ts-ignore
     debuggerHtml.find('#regex_debugger_rules_global').sortable({ delay: getSortableDelay() }).disableSelection();
@@ -1311,8 +1365,15 @@ async function onRegexDebuggerOpenClick() {
                 const targetElement = contentPanel.find(`#${targetId}`);
 
                 if (targetElement.length) {
-                    const scrollTo = contentPanel.scrollTop() + targetElement.position().top;
-                    contentPanel.animate({ scrollTop: scrollTo }, 300);
+                    const frameBody = popupContainer.closest('.popup-content').get(0);
+                    const scrollTo = frameBody
+                        ? frameBody.scrollTop + targetElement[0].getBoundingClientRect().top - frameBody.getBoundingClientRect().top
+                        : 0;
+                    // SillyBunny: respect reduced motion when focusing a transformed rule.
+                    frameBody?.scrollTo({
+                        top: scrollTo,
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                    });
 
                     targetElement.css('transition', 'background-color 0.5s').css('background-color', 'var(--highlight_color)');
                     setTimeout(() => targetElement.css('background-color', ''), 1000);
@@ -1323,16 +1384,26 @@ async function onRegexDebuggerOpenClick() {
         });
 
         popupContainer.append(navPanel).append(contentPanel);
-        callGenericPopup(popupContainer, POPUP_TYPE.TEXT, t`Step-by-step Transformation`, { wide: true, allowVerticalScrolling: false });
+        // SillyBunny: expanded debugger views are Window-tier pages; the shared frame owns scrolling.
+        callGenericPopup(popupContainer, POPUP_TYPE.TEXT, t`Step-By-Step Transformation`, { tier: 'window', title: t`Step-By-Step Transformation`, wide: true, allowVerticalScrolling: false });
     });
 
     debuggerHtml.find('#regex_debugger_expand_final').on('click', function () {
         const content = $('#regex_debugger_final_output').html();
         const popupContent = $('<div class="regex-popup-content"></div>').html(content);
-        callGenericPopup(popupContent, POPUP_TYPE.TEXT, t`Final Output`, { wide: true, large: true, allowVerticalScrolling: true });
+        // SillyBunny: expanded debugger views are Window-tier pages; the shared frame owns scrolling.
+        popupContent.addClass('sb-document');
+        callGenericPopup(popupContent, POPUP_TYPE.TEXT, t`Final Output`, { tier: 'window', title: t`Final Output`, wide: true, large: true, allowVerticalScrolling: true });
     });
 
-    await callGenericPopup(debuggerHtml.children(), POPUP_TYPE.TEXT, '', { wide: true, allowVerticalScrolling: true });
+    // SillyBunny: keep the debugger in the Window tier so expanded views can be pushed pages.
+    await callGenericPopup(debuggerHtml.children(), POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`Advanced Regex Debugger`,
+        wide: true,
+        allowVerticalScrolling: true,
+        onClose: () => renderRow.destroy(),
+    });
 }
 
 /**
@@ -1616,7 +1687,8 @@ async function checkCharEmbeddedRegexScripts() {
                 if (!accountStorage.getItem(checkKey)) {
                     accountStorage.setItem(checkKey, 'true');
                     const template = await renderExtensionTemplateAsync('regex', 'embeddedScripts', {});
-                    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '');
+                    // SillyBunny: "No" means "do not allow" and the prompt is not shown again, so the negative keeps its own label (confirmVerb).
+                    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Allow`, { negative: t`No` }));
 
                     if (result) {
                         allowScopedScripts(character);
@@ -1659,7 +1731,8 @@ async function checkPresetEmbeddedRegexScripts() {
             if (!accountStorage.getItem(checkKey)) {
                 accountStorage.setItem(checkKey, 'true');
                 const template = await renderExtensionTemplateAsync('regex', 'presetEmbeddedScripts', {});
-                const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '');
+                // SillyBunny: "No" means "do not allow" and the prompt is not shown again, so the negative keeps its own label (confirmVerb).
+                const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Allow`, { negative: t`No` }));
 
                 if (result) {
                     allowPresetScripts(apiId, name);
@@ -1754,7 +1827,8 @@ export async function init() {
         template.find('#regex_import_target_scoped').on('input', () => (target = SCRIPT_TYPES.SCOPED));
         template.find('#regex_import_target_preset').on('input', () => (target = SCRIPT_TYPES.PRESET));
 
-        await callGenericPopup(template, POPUP_TYPE.TEXT);
+        // SillyBunny: retain the native target input handlers and import-on-close behavior.
+        await callGenericPopup(template, POPUP_TYPE.TEXT, '', regexImportOptions(template));
 
         const inputElement = this instanceof HTMLInputElement && this;
         for (const file of inputElement.files) {
@@ -1848,7 +1922,8 @@ export async function init() {
     }
 
     $('#bulk_regex_move_to_global').on('click', async () => {
-        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to global?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to global?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Move`));
         if (!confirm) {
             return;
         }
@@ -1864,7 +1939,8 @@ export async function init() {
             toastr.error(t`Cannot edit scoped scripts in group chats.`);
             return;
         }
-        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to scoped?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to scoped?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Move`));
         if (!confirm) {
             return;
         }
@@ -1872,7 +1948,8 @@ export async function init() {
     });
 
     $('#bulk_regex_move_to_preset').on('click', async function () {
-        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to preset?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to preset?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Move`));
         if (!confirm) {
             return;
         }
@@ -1885,7 +1962,8 @@ export async function init() {
             toastr.warning(t`No regex scripts selected for deletion.`);
             return;
         }
-        const confirm = await callGenericPopup(t`Are you sure you want to delete the selected regex scripts?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to delete the selected regex scripts?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }

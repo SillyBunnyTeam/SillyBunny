@@ -11,6 +11,15 @@ const powerUser = {
     },
 };
 
+await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
+    POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null },
+    POPUP_TYPE: { TEXT: 1, CONFIRM: 2, INPUT: 3 },
+    Popup: class Popup {},
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({
+    confirmConversationAction: jest.fn(async () => false),
+    promptConversationText: jest.fn(async () => null),
+}));
 await jest.unstable_mockModule('../public/script.js', () => ({
     name1: 'Active',
     saveSettingsDebounced,

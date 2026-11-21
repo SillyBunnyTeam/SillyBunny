@@ -92,3 +92,22 @@ jobs:
 
       - name: Verify README mirror is in sync
         run: bash scripts/sync-readme-mirror.sh --check
+
+  check-copy-placeholders:
+    name: ✅ Check Placeholder Copy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # A release must not ship copy that still waits for its words.
+      - name: Find TODO(copy) and lorum ipsum
+        run: node scripts/check-copy-placeholders.js

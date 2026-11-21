@@ -25,6 +25,9 @@ import { kai_settings } from './kai-settings.js';
 import { convertNovelPreset } from './nai-settings.js';
 import { getChatCompletionPreset, getPresetApplicationPromise, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+// SillyBunny: adopt preset choices into shared dialog rows without changing their values.
+import { presetChoicesOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 import { context_presets, getContextSettings, power_user } from './power-user.js';
 import {
     createPresetSelectTouchGuardState,
@@ -52,14 +55,15 @@ const presetManagers = {};
 const PRESET_CHANGE_EVENT_APIS = new Set(['kobold', 'novel', 'openai', 'textgenerationwebui']);
 const PRESET_CHANGE_TIMEOUT_MS = 10000;
 const PRESET_TEXT_FIELD_SELECTOR = 'textarea, input[type="text"]';
+// SillyBunny: track live text fields independently of their Presets/Editor placement, including relocated context bodies.
 const PRESET_TEXT_FIELD_PANEL_SELECTORS = Object.freeze({
-    kobold: '#kobold_api-settings',
+    kobold: '#kobold_api-settings, #grammar',
     novel: '#range_block_novel, #novel_api-settings',
-    openai: '#range_block_openai, #openai_settings',
+    openai: '#range_block_openai, #openai_settings, #completion_prompt_manager, #sb-editor-utility',
     textgenerationwebui: '#textgenerationwebui_api-settings',
-    context: '#ContextSettings',
-    instruct: '#InstructSettingsColumn',
-    sysprompt: '#SystemPromptBlock',
+    context: '#ContextSettings, #context_story_string, #context_example_separator, #context_chat_start',
+    instruct: '#InstructSettingsColumn, #InstructSequencesColumn',
+    sysprompt: '#SystemPromptBlock, #sysprompt_content, #sysprompt_post_history',
     reasoning: '#reasoning_prefix, #reasoning_suffix, #reasoning_separator',
 });
 
@@ -163,6 +167,13 @@ function snapshotAllPresetManagers() {
     Object.values(presetManagers).forEach(manager => manager.scheduleSnapshotTextFields());
 }
 
+/**
+ * SillyBunny: re-evaluates unload warnings after the preset autosave setting changes.
+ */
+export function refreshPresetDirtyGuards() {
+    Object.values(presetManagers).forEach(manager => manager._updateBeforeUnload());
+}
+
 function registerPresetDirtySnapshots() {
     // SillyBunny: keep preset dirty-state tracking aligned with the extra
     // text fields and template drawers added outside the upstream preset UI.
@@ -182,8 +193,9 @@ function injectRestoreDefaultPresetButtons() {
 
         const button = $('<div></div>', {
             class: 'menu_button menu_button_icon',
-            title: t`Restore default presets`,
-            'aria-label': t`Restore default presets`,
+            // SillyBunny: capitalisation by DESIGN.md
+            title: t`Restore Default Presets`,
+            'aria-label': t`Restore Default Presets`,
             'data-i18n': '[title]Restore default presets',
             'data-preset-manager-restore-defaults': apiId,
             html: '<i class="fa-solid fa-box-open" aria-hidden="true"></i>',
@@ -403,6 +415,8 @@ class PresetManager {
 
         const html = $(await renderTemplateAsync('masterImport', { sections: sectionNames }));
         const popup = new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: templates remain the source of translated captions and native controls.
+            ...presetChoicesOptions(html.filter('div')[0]),
             okButton: t`Import`,
             cancelButton: t`Cancel`,
         });
@@ -415,7 +429,8 @@ class PresetManager {
         }
 
         const importedSections = [];
-        const confirmedSections = html.find('input:checked').map((_, el) => el instanceof HTMLInputElement && el.value).get();
+        // SillyBunny: Select All is presentation, not an imported section.
+        const confirmedSections = html.find('input:checked:not([data-sb-select-all])').map((_, el) => el instanceof HTMLInputElement && el.value).get();
 
         if (confirmedSections.length === 0) {
             toastr.info(t`No sections selected for import`);
@@ -446,6 +461,8 @@ class PresetManager {
         const html = $(await renderTemplateAsync('masterExport', { sections: sectionNames }));
 
         const popup = new Popup(html, POPUP_TYPE.CONFIRM, '', {
+            // SillyBunny: preserve upstream export defaults and checked section values.
+            ...presetChoicesOptions(html.filter('div')[0]),
             okButton: t`Export`,
             cancelButton: t`Cancel`,
         });
@@ -457,7 +474,8 @@ class PresetManager {
             return;
         }
 
-        const confirmedSections = html.find('input:checked').map((_, el) => el instanceof HTMLInputElement && el.value).get();
+        // SillyBunny: Select All must never become an exported settings key.
+        const confirmedSections = html.find('input:checked:not([data-sb-select-all])').map((_, el) => el instanceof HTMLInputElement && el.value).get();
         const data = {};
 
         if (confirmedSections.length === 0) {
@@ -700,6 +718,15 @@ class PresetManager {
     }
 
     _updateBeforeUnload() {
+        // SillyBunny: with preset autosave on, edits are saved (and flushed on unload) instead of discarded.
+        if (power_user.sb_preset_autosave === true) {
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
+            }
+            return;
+        }
+
         if (this._dirty && !this._beforeUnloadHandler) {
             this._beforeUnloadHandler = (event) => {
                 event.preventDefault();
@@ -744,7 +771,8 @@ class PresetManager {
             this._checkDirty({ force: true });
         }
 
-        if (this._allowPresetSelectChange || !this._dirty) {
+        // SillyBunny: autosave flushes pending edits before the switch, so there is nothing to discard.
+        if (this._allowPresetSelectChange || !this._dirty || power_user.sb_preset_autosave === true) {
             this.scheduleSnapshotTextFields();
             return;
         }
@@ -776,7 +804,12 @@ class PresetManager {
         const bodyText = !this.isAdvancedFormatting()
             ? t`You have unsaved changes to this preset. Discard them?`
             : t`You have unsaved changes to this template. Discard them?`;
-        const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText);
+        // SillyBunny: unsaved-change confirmation names the discard action.
+        const confirm = await Popup.show.confirm(t`Unsaved Changes`, bodyText, {
+            okButton: t`Discard`,
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            onOpening: popup => popup.okButton.classList.add('is-destructive'),
+        });
 
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -829,7 +862,8 @@ class PresetManager {
         const bodyText = !this.isAdvancedFormatting()
             ? t`This will overwrite the selected preset.`
             : t`This will overwrite the selected template.`;
-        const confirm = await Popup.show.confirm(headerText, bodyText);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(headerText, bodyText, confirmVerb(t`Save`));
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             console.debug(!this.isAdvancedFormatting() ? 'Preset update cancelled' : 'Template update cancelled');
             return;
@@ -1257,7 +1291,7 @@ class PresetManager {
         const presetNames = this.getAllPresets().filter(name => name !== 'gui');
 
         if (presetNames.length === 0) {
-            toastr.info(t`No deletable presets found.`);
+            toastr.info(t`No deletable presets found`); // SillyBunny: no trailing period, by DESIGN.md
             return [];
         }
 
@@ -1282,7 +1316,10 @@ class PresetManager {
         );
 
         const result = await new Popup(html, POPUP_TYPE.CONFIRM, '', {
-            okButton: t`Delete selected`,
+            // SillyBunny: trailing checks, Select All and a Cancel-focused destructive response.
+            ...presetChoicesOptions(html[0], { deletion: true }),
+            defaultResult: POPUP_RESULT.NEGATIVE,
+            okButton: t`Delete Selected`,
             cancelButton: t`Cancel`,
             wide: true,
         }).show();
@@ -1291,7 +1328,8 @@ class PresetManager {
             return [];
         }
 
-        return html.find('input:checked').map((_, el) => String($(el).val())).get();
+        // SillyBunny: only real preset choices contribute deletion results.
+        return html.find('input:checked:not([data-sb-select-all])').map((_, el) => String($(el).val())).get();
     }
 
     /**
@@ -1667,7 +1705,8 @@ export async function initPresetManager() {
         }
 
         const headerText = !presetManager.isAdvancedFormatting() ? t`Delete this preset?` : t`Delete this template?`;
-        const confirm = await Popup.show.confirm(headerText, t`This action is irreversible and your current settings will be overwritten.`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(headerText, t`This action is irreversible and your current settings will be overwritten.`, confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }
@@ -1706,6 +1745,8 @@ export async function initPresetManager() {
         const confirm = await Popup.show.confirm(
             t`Delete selected ${pluralNoun}?`,
             t`This will permanently delete ${presetNames.length} selected ${pluralNoun} for this section. The built-in GUI preset is kept.`,
+            // SillyBunny: Return must cancel the final destructive confirmation too (confirmVerb).
+            confirmVerb(t`Delete`, { destructive: true }),
         );
 
         if (!confirm) {
@@ -1715,14 +1756,14 @@ export async function initPresetManager() {
         const { deleted, failed } = await presetManager.deletePresets(presetNames);
 
         if (deleted.length) {
-            toastr.success(t`Deleted ${deleted.length} ${deleted.length === 1 ? noun : pluralNoun}.`);
+            toastr.success(t`Deleted ${deleted.length} ${deleted.length === 1 ? noun : pluralNoun}`); // SillyBunny: no trailing period, by DESIGN.md
             for (const name of deleted) {
                 await eventSource.emit(event_types.PRESET_DELETED, { apiId, name });
             }
         }
 
         if (failed.length) {
-            toastr.warning(t`Failed to delete ${failed.length} ${failed.length === 1 ? noun : pluralNoun} from the server.`);
+            toastr.warning(t`Failed to delete ${failed.length} ${failed.length === 1 ? noun : pluralNoun} from the server`); // SillyBunny: no trailing period, by DESIGN.md
         }
 
         saveSettingsDebounced();
@@ -1759,7 +1800,8 @@ export async function initPresetManager() {
             const confirmText = !presetManager.isAdvancedFormatting()
                 ? t`Resetting a <b>default preset</b> will restore the default settings.`
                 : t`Resetting a <b>default template</b> will restore the default settings.`;
-            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText, confirmVerb(t`Restore`, { destructive: true }));
             if (!confirm) {
                 return;
             }
@@ -1774,7 +1816,8 @@ export async function initPresetManager() {
             const confirmText = !presetManager.isAdvancedFormatting()
                 ? t`Resetting a <b>custom preset</b> will restore to the last saved state.`
                 : t`Resetting a <b>custom template</b> will restore to the last saved state.`;
-            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText, confirmVerb(t`Restore`, { destructive: true }));
             if (!confirm) {
                 return;
             }
@@ -1799,6 +1842,8 @@ export async function initPresetManager() {
         const confirm = await Popup.show.confirm(
             t`Restore default presets?`,
             t`Deleted bundled default ${noun} for this section will be restored. Custom ${noun} are kept.`,
+            // SillyBunny: names the response with a verb (confirmVerb).
+            confirmVerb(t`Restore`),
         );
 
         if (!confirm) {
@@ -1811,7 +1856,7 @@ export async function initPresetManager() {
         }
 
         await presetManager.refreshRestoredDefaultOptions(result.restored);
-        toastr.success(t`Restored ${result.restored.length} default ${noun}.`);
+        toastr.success(t`Restored ${result.restored.length} default ${noun}`); // SillyBunny: no trailing period, by DESIGN.md
         saveSettingsDebounced();
     });
 

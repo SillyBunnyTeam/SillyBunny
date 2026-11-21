@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 const MESSAGE_ID = 9876;
 
@@ -58,8 +59,10 @@ async function installMarkedCardScriptMessage(page, scriptHtml) {
 
 test.describe('card script sandbox runtime', () => {
     test.beforeEach(async ({ page }) => {
-        // A fresh data root stalls startup on the first-run onboarding prompt; APP_READY means
-        // no startup popup is waiting to intercept clicks on the injected message buttons.
+        // A fresh data root holds startup on the first-run Welcome dialog; APP_READY means
+        // no startup dialog is waiting to intercept clicks on the injected message buttons.
+        // The test turns on card scripts, and the app would save that to the server.
+        await protectMaintainerServer(page);
         await page.goto('/');
         await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
         await testSetup.waitForAppReady({ page });
@@ -68,7 +71,15 @@ test.describe('card script sandbox runtime', () => {
     test('shows the opt-in run button and creates a locked iframe sandbox', async ({ page }) => {
         await installMarkedCardScriptMessage(page, '<script>window.triggerSlash("/echo sandbox e2e")</script>');
 
-        const runButton = page.locator(`.mes[mesid="${MESSAGE_ID}"] .mes_run_card_scripts`);
+        // The message actions hide the extra buttons until Shift is pressed over the message.
+        const message = page.locator(`.mes[mesid="${MESSAGE_ID}"]`);
+        const runButton = message.locator('.mes_run_card_scripts');
+        await expect(runButton).toBeHidden();
+        await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+        await message.hover();
+        await page.keyboard.down('Shift');
+        await page.keyboard.up('Shift');
+        await expect(message).toHaveAttribute('data-sb-actions-expanded', '');
         await expect(runButton).toBeVisible();
 
         await runButton.click();

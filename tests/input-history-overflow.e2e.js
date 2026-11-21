@@ -100,4 +100,28 @@ test.describe('input history overflow menu', () => {
         expect(geometry.maxScrollY).toBeLessThanOrEqual(1);
         expect(geometry.historyScrollHeight).toBeGreaterThan(geometry.historyClientHeight);
     });
+    for (const pointer of ['fine', 'coarse']) {
+        test.describe(`history rows on a ${pointer} pointer`, () => {
+            test.use({ hasTouch: pointer === 'coarse', isMobile: pointer === 'coarse' });
+
+            test('meet the menu row floor at full opacity', async ({ page }) => {
+                const inputHistoryCss = await fs.readFile(
+                    path.join(repoRoot, 'public/scripts/extensions/input-history/style.css'),
+                    'utf8',
+                );
+                await page.setContent(`<!doctype html><html><head><style>${inputHistoryCss}</style></head><body>
+                    <div class="stih--buttons"><div class="stih--history stih--active">
+                        <div class="stih--item"><div class="stih--label"><div class="stih--title">one</div></div></div>
+                    </div></div></body></html>`);
+                const row = await page.locator('.stih--item').evaluate(item => ({
+                    height: item.getBoundingClientRect().height,
+                    opacity: getComputedStyle(item).opacity,
+                    paddingStart: getComputedStyle(item).paddingInlineStart,
+                }));
+                expect(row.height).toBeGreaterThanOrEqual(pointer === 'coarse' ? 44 : 32);
+                expect(row.opacity).toBe('1');
+                expect(row.paddingStart).toBe('12px');
+            });
+        });
+    }
 });

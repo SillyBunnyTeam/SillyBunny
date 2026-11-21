@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import express from 'express';
 import sanitize from 'sanitize-filename';
 
-import { ensureDirectory, tryWriteFileSync } from '../util.js';
+import { tryWriteFileSync } from '../util.js';
+// SillyBunny: shared exclusive-create helper for /create and Bundled Extras.
+import { publishNewFile } from '../sillybunny-publish-file.js';
 
 export const router = express.Router();
 
@@ -25,35 +27,13 @@ router.post('/create', (request, response) => {
         return response.sendStatus(400);
     }
 
-    let tempDirectory;
     try {
-        const directory = request.user.directories.themes;
-        const filename = path.join(directory, sanitize(`${request.body.name}.json`));
-        if (!ensureDirectory(directory)) return response.sendStatus(500);
-        tempDirectory = fs.mkdtempSync(path.join(directory, '.theme-create-'));
-        const tempPath = path.join(tempDirectory, 'theme.json');
-        tryWriteFileSync(tempPath, JSON.stringify(request.body, null, 4), 'utf8', { expectedFileAbsent: true, durable: true });
-        // Linking is exclusive across processes; partial writes stay outside the theme inventory.
-        try {
-            fs.linkSync(tempPath, filename);
-        } catch (error) {
-            if (error?.code === 'EEXIST') {
-                return response.sendStatus(409);
-            }
-            throw error;
-        }
-        return response.sendStatus(201);
+        // SillyBunny: the shared helper links exclusively, and copies exclusively where the file system has no hard links.
+        const created = publishNewFile(request.user.directories.themes, sanitize(`${request.body.name}.json`), JSON.stringify(request.body, null, 4));
+        return response.sendStatus(created ? 201 : 409);
     } catch (error) {
         console.error(error);
         return response.sendStatus(500);
-    } finally {
-        if (tempDirectory) {
-            try {
-                fs.rmSync(tempDirectory, { recursive: true, force: true });
-            } catch (error) {
-                console.error(error);
-            }
-        }
     }
 });
 
