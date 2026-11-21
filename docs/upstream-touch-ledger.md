@@ -479,11 +479,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Generation lifecycle. |
 | Divergence reason | SillyBunny generation flow needs explicit UI lock, stop, agent-generation, and unblock decisions while preserving provider calls, prompt assembly, token accounting, and persistence in the existing generation path. |
 | Target seam | `public/scripts/generation-lifecycle/`. |
-| Adapter shape | Keep exported generation functions in `public/script.js`; delegate send-button lock state, stop-generation request state, and unblock cleanup decisions to the lifecycle module. |
-| Protecting tests | `tests/generation-lifecycle.test.js`, `tests/generation-lifecycle-wiring.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, existing export-surface coverage. |
-| Validation | `npm run test:unit --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run lint --prefix tests -- generation-lifecycle.test.js generation-lifecycle-wiring.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run lint`, `npm run check:frontend-budgets`. |
-| Rollback path | Revert lifecycle calls in `public/script.js` while keeping existing provider and prompt paths intact. |
-| Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
+| Adapter shape | Keep exported generation functions in `public/script.js`; delegate send-button lock state, stop-generation request state, and unblock cleanup decisions to the lifecycle module. `Generate()` also asks the module whether to buffer and intercept the main output: `shouldBufferMainGenerationOutput()` and `applyMainGenerationOutputInterceptors()` call `resolveGenerationOutputBufferState()`. After interception, `Generate()` reads `messageChunk` again from the intercepted text only for a reply that is not a continuation. A continuation keeps the chunk of text that the model added, as in SillyTavern, so that auto-continue stops on a continuation that adds no text. |
+| Protecting tests | `tests/generation-lifecycle.test.js`, `tests/generation-lifecycle-wiring.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, `tests/story-mode-request-controls.test.js` (auto-continue after a continuation with and without new text, and the chunk after an interceptor rewrite), existing export-surface coverage. |
+| Validation | `npm run test:unit --prefix tests -- story-mode-request-controls.test.js generation-lifecycle.test.js generation-lifecycle-wiring.test.js pathfinder-generation-wiring.test.js script-export-surface.test.js`, full `npm run test:unit --prefix tests`, `npm run lint`, `npm run lint --prefix tests`, `npm run check:frontend-budgets`, and a Chromium run of the app against a local stub of a Chat Completion model that answers each continuation with no text: 2 requests with the `if (!isContinue)` conditions, and requests that repeat until Stop without them. |
+| Rollback path | Revert lifecycle calls in `public/script.js` while keeping existing provider and prompt paths intact. For the auto-continue chunk, remove the two `if (!isContinue)` conditions after the `applyMainGenerationOutputInterceptors()` calls. Auto-continue then repeats a non-streamed or buffered continuation that adds no text until the user stops it. The conditions write no persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-12 issue #972 auto-continue after a continuation that adds no text. |
 | Owner | Refactor integrator. |
 
 ### `public/script.js`, `public/scripts/openai.js`, `public/scripts/textgen-settings.js`, `public/scripts/kai-settings.js`, `public/scripts/nai-settings.js`, `public/scripts/horde.js`, `public/scripts/custom-request.js`, `src/util.js`, and `src/endpoints/backends/chat-completions.js` - provider request errors
@@ -540,6 +540,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js generation-lifecycle resumable-generation-frontend.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against a Bun 1.4.4 server at 1440x900 and at 390x844 with an iPhone user agent. |
 | Rollback path | Remove the `finalizeStoppedMessage()` call from `stopGeneration()` and the method. Stop then leaves the stopped reply unsaved and its reasoning in the thinking state, with a null `extra.reasoning_duration`. `#isOriginMessage()` can stay, because `#isCurrent()` returns the same result through it. Saved chats need no change, because the method writes only existing message fields. |
 | Last reviewed | 2026-10-29 Stop during streamed reasoning fix. |
+| Owner | Generation lifecycle owner. |
+
+### `public/script.js` - temporary response lengths
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Generation lifecycle and settings. |
+| Divergence reason | SillyBunny runs requests with their own `responseLength` at the same time. Conversation Mode sends the replies of a group DM together, and In-Chat Agents, Summarize and Conversation Mode's memory summary and schedule pass their own lengths through `generateRaw()` and `generateQuietPrompt()`. SillyTavern's `TempResponseLength` keeps one saved value. When two such calls overlap, the second call saves the temporary length of the first as the original, and that length stays in `amount_gen` or `oai_settings.openai_max_tokens`, where the next settings save stores it as the user's Response (tokens) or Chat Completion max tokens. Each call must remove only its own change, so that the setting returns to the user's value in every order. |
+| Target seam | `public/scripts/generation-response-length-overrides.js`. |
+| Adapter shape | `TempResponseLength` keeps its name and holds one `createResponseLengthOverrides()` object that reads and writes `oai_settings.openai_max_tokens` and `amount_gen`. `save()` returns the override of its call. `generateQuietPrompt()` and `generateRawData()` keep it in `responseLengthOverride`, pass it to `restore()` and `setupEventHook()`, and restore it in their `finally` blocks. `restore(null)`, which `saveSettingsInner()` calls, removes every override. `setupEventHook()` makes the override wait for its event and registers one listener for each of `CHAT_COMPLETION_SETTINGS_READY` and `GENERATE_AFTER_DATA`, and an event removes the override of its setting that started to wait last. `removeEventHook()` and the `eventHook` variables of the two callers are removed. |
+| Protecting tests | `tests/generation-response-length-overrides.test.js`, `tests/story-mode-request-controls.test.js` (`overlapping temporary response lengths`). |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js generation-response-length-overrides.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, and a Chromium run of the app with stubbed generation routes: two `generateRaw()` calls with a `responseLength` that start together or nest, on Chat Completion, Text Completion and KoboldAI, leave both settings as they were. With the `script.js` of `4e82939a7` the setting ends at the length of the first call and the next settings save sends that length. Linux: full `npm run test:unit --prefix tests`. |
+| Rollback path | Put back SillyTavern's `TempResponseLength` class and its calls in `generateQuietPrompt()` and `generateRawData()`, remove the import, and delete the module and `tests/generation-response-length-overrides.test.js`. In `tests/story-mode-request-controls.test.js`, remove the import of the module, the `createResponseLengthOverrides` line of the context and the `overlapping temporary response lengths` block, because the suite does not load without the module. Generations that overlap then leave a temporary length in the Response (tokens) preset or in the Chat Completion max tokens again. The overrides write no persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-12 overlapping temporary response lengths. |
 | Owner | Generation lifecycle owner. |
 
 ### `public/script.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Gemini replies that end early
@@ -1204,6 +1218,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 account route guards. |
 | Owner | Server and data compatibility integrator. |
 
+### `src/endpoints/characters.js` and `src/server-main.js` - character card index
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`, `src/server-main.js`. |
+| Area | Character card cache. |
+| Divergence reason | SillyBunny must keep parsed character cards in a SQLite index in place of upstream's node-persist disk cache. An entry counts only while its card file keeps the stored size and modification time, so card files stay the source of truth and the index can be deleted at any time. |
+| Target seam | `src/character-index.js`. |
+| Adapter shape | `characters.js` exports `characterIndex` in place of upstream's `DiskCache` class and `diskCache` export. `readCharacterData()` reads the card's stat once, checks the memory cache and then `characterIndex.get()`, and stores a parsed card with `characterIndex.set()`. `writeCharacterData()` calls `characterIndex.delete()` for the output card where upstream queued a disk cache sync. `importFromPng()` calls `characterIndex.delete()` for the uploaded file right after it reads it, because the import deletes that file. `POST /all` calls `characterIndex.pruneDirectory()` with its directory listing. `server-main.js` calls `characterIndex.prune()` in the deferred startup tasks and `characterIndex.close()` on exit, where upstream calls `diskCache.verify()` and `diskCache.dispose()`. |
+| Protecting tests | `tests/character-index.test.js`, which also runs under `bun test`. `tests/pr-checks-workflow.test.js` checks that the Bun job in `.github/workflows/pr-checks.yml` runs it. |
+| Validation | `npm run test:unit --prefix tests -- character-index.test.js pr-checks-workflow.test.js`, `bun test ./tests/character-index.test.js`, `npm run lint`, boot with `bun run start` and `npm run start:node`. |
+| Rollback path | Set `performance.useDiskCache: false` to turn the index off, so cards are parsed from their files after each restart. For a full rollback, restore the node-persist `DiskCache` with the stale-entry cleanup from PR #937, its calls in both files, and `tests/character-disk-cache.test.js`. The index never writes card files, so no data migration is needed: `_cache/characters.sqlite` and its `-wal` and `-shm` files can be deleted, and the restored cache fills `_cache/characters` again as it reads cards. After a full rollback, the Node.js minimum can go back to 20, because only `node:sqlite` needs 22.13. |
+| Last reviewed | 2026-11-11 PR #938 SQLite character index replaces the node-persist disk cache. |
+| Owner | Server and data compatibility integrator. |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
@@ -1408,6 +1436,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert the `SillyBunny:` hunks in `src/endpoints/settings.js` and `public/script.js`, and delete `public/scripts/sillybunny-settings-sync.js` and `isUnchangedSettingsSave()`. Every boot then saves and raises the settings version again, and other open tabs and devices show the conflict prompt at their next save. No stored data or settings format changes. |
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | Server and data compatibility integrator. |
+
+### `public/scripts/power-user.js` - Markdown auto-fix
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js`. |
+| Area | Message formatting: Auto-fix Markdown on displayed and stored messages. |
+| Divergence reason | SillyBunny pairs whole `*` and `_` runs line by line and skips code in Auto-fix Markdown, because the upstream regex removes the spaces around nested emphasis, joins a `*` list marker to the bold label after it, and changes thematic breaks and code, in displayed and stored messages (issue `#955`). |
+| Target seam | `public/scripts/auto-fix-markdown.js`. |
+| Adapter shape | `fixMarkdown()` keeps its export, signature and upstream doc comment. Its body is a `SillyBunny:` comment and `return autoFixMarkdown(text, forDisplay);`. The file imports `autoFixMarkdown` from `./auto-fix-markdown.js`, and its `./utils.js` import no longer names `countOccurrences` and `isOdd`, which only the upstream body used. `messageFormatting()` (display, `forDisplay` true) and `cleanUpMessage()` (stored text, `forDisplay` false) in `public/script.js` call `fixMarkdown()` without change. |
+| Protecting tests | `tests/auto-fix-markdown.test.js` (the issue #955 cases, a comparison with the upstream function on ordinary text, a check that stored text only loses horizontal whitespace, and a time budget for long lines), `tests/auto-fix-markdown-wiring.test.js` (the import, the marker, and `fixMarkdown()` run from the source of `power-user.js` against the module). |
+| Validation | `npm run test:unit -- auto-fix-markdown.test.js auto-fix-markdown-wiring.test.js` in `tests/`, the 19 other unit suites that name `power-user.js`, `script-module-identity.test.js` and `webkit-prefix-companions.test.js`, `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`. |
+| Rollback path | Put the upstream body back in `fixMarkdown()`, put `countOccurrences` and `isOdd` back in its `./utils.js` import, remove the `autoFixMarkdown` import, and delete `public/scripts/auto-fix-markdown.js`, `tests/auto-fix-markdown.test.js` and `tests/auto-fix-markdown-wiring.test.js`. Messages saved in the meantime keep their text, and no settings or stored formats change. |
+| Last reviewed | 2026-11-12 `fix/auto-fix-markdown-nested-emphasis` (issue #955). |
+| Owner | Bugfix integrator. |
 
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
