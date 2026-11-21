@@ -19,6 +19,7 @@ import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCom
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { getWorldInfoExportText } from './sillybunny-world-info-export.js'; // SillyBunny: gives an exported lorebook the original URLs of imported media.
 import { StructuredCloneMap } from './util/StructuredCloneMap.js';
 import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
@@ -2873,9 +2874,10 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         }
     });
 
-    $('#world_popup_export').off('click').on('click', () => {
+    // SillyBunny: the handler is async because the export text comes from the server.
+    $('#world_popup_export').off('click').on('click', async () => {
         if (name && data) {
-            const jsonValue = JSON.stringify(data);
+            const jsonValue = await getWorldInfoExportText(data);
             const fileName = `${name}.json`;
             download(jsonValue, fileName, 'application/json');
         }

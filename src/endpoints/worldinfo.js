@@ -6,6 +6,7 @@ import sanitize from 'sanitize-filename';
 import _ from 'lodash';
 import { tryParse, tryWriteFileSync } from '../util.js';
 import { localizeWorldInfoExternalMedia } from '../external-media-import.js';
+import { restoreExternalMediaUrls } from '../external-media-manifest.js';
 
 const WORLD_INFO_EXTENSION = '.json';
 // SillyBunny divergence: canonical World Info filenames are UTF-8 bounded and written through the fork's safe persistence path.
@@ -246,6 +247,17 @@ router.post('/import', async (request, response) => {
     } finally {
         fs.rmSync(pathToUpload, { force: true });
     }
+});
+
+// SillyBunny: the editor builds a lorebook export in the browser, so it asks here for the copy with the author's URLs back for the media that an import stored.
+router.post('/export', (request, response) => {
+    const data = request.body?.data;
+    if (!isValidWorldInfoData(data)) {
+        return response.status(400).send('Is not a valid world info file');
+    }
+
+    restoreExternalMediaUrls(data, request.user.directories);
+    return response.type('json').send(JSON.stringify(data));
 });
 
 router.post('/edit', (request, response) => {

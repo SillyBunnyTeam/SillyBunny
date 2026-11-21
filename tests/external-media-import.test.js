@@ -424,6 +424,177 @@ describe('external media import (#952)', () => {
         });
     });
 
+    describe('original URLs on export', () => {
+        const MANIFEST = '.external-media.json';
+
+        async function exportCharacter(avatarUrl, format) {
+            const response = await fetch(`${baseUrl}/api/characters/export`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ avatar_url: avatarUrl, format }),
+            });
+            return { status: response.status, bytes: Buffer.from(await response.arrayBuffer()) };
+        }
+
+        const exportedCard = async (avatarUrl, format) => {
+            const { status, bytes } = await exportCharacter(avatarUrl, format);
+            expect(status).toBe(200);
+            return format === 'png' ? JSON.parse(readCharacterData(bytes)) : JSON.parse(bytes.toString('utf8'));
+        };
+
+        function routeImages(routes) {
+            fetchMock.mockImplementation(async url => routes.get(String(url)) ?? mockImageResponse(Buffer.alloc(0), 404));
+        }
+
+        test('an exported card carries the URLs of its author, byte for byte, in Markdown, HTML and CSS', async () => {
+            routeImages(new Map([
+                ['https://files.catbox.moe/scene.png', mockImageResponse(PNG_SCENE)],
+                ['https://file.garden/u/alt.png?fmt=webp&w=200', mockImageResponse(PNG_ALT)],
+                ['https://files.catbox.moe/bg.gif', mockImageResponse(GIF_BG)],
+            ]));
+            const card = createV2Card();
+            card.data.name = 'Exporter';
+            card.data.first_mes = 'Hi ![scene](https://files.catbox.moe/scene.png "Title") there';
+            card.data.description = '<img class="a" src="https://file.garden/u/alt.png?fmt=webp&amp;w=200" alt="x">';
+            card.data.scenario = '<div style="background: url(\'https://files.catbox.moe/bg.gif\')"></div>';
+            const answer = await importCharacterCard(createCardPng(card), 'png', { import_external_media: 'true' });
+            expect(answer.status).toBe(200);
+            const stored = readStoredCard('Exporter');
+            expect(stored.data.first_mes).toContain('/user/images/Exporter/');
+
+            for (const format of ['json', 'png']) {
+                const exported = await exportedCard('Exporter.png', format);
+                expect(exported.data.first_mes).toBe(card.data.first_mes);
+                expect(exported.data.description).toBe(card.data.description);
+                expect(exported.data.scenario).toBe(card.data.scenario);
+            }
+            // The stored card keeps the local paths.
+            expect(readStoredCard('Exporter').data.first_mes).toBe(stored.data.first_mes);
+        });
+
+        test('writes one manifest per folder that maps each stored file to its original URL', async () => {
+            routeImages(new Map([['https://files.catbox.moe/scene.png', mockImageResponse(PNG_SCENE)]]));
+            const card = createV2Card();
+            card.data.name = 'Mapper';
+            card.data.first_mes = '![scene](https://files.catbox.moe/scene.png)';
+            await importCharacterCard(createCardPng(card), 'png', { import_external_media: 'true' });
+
+            const folder = path.join(directories.userImages, 'Mapper');
+            const manifest = JSON.parse(fs.readFileSync(path.join(folder, MANIFEST), 'utf8'));
+            expect(manifest).toEqual({ [`scene-${hash8(PNG_SCENE)}.png`]: { url: 'https://files.catbox.moe/scene.png' } });
+        });
+
+        test('restores a folder name that the stored URL encodes', async () => {
+            routeImages(new Map([['https://files.catbox.moe/scene.png', mockImageResponse(PNG_SCENE)]]));
+            const card = createV2Card();
+            card.data.name = 'D\'Artagnan (alt)';
+            card.data.first_mes = '![scene](https://files.catbox.moe/scene.png)';
+            const answer = await importCharacterCard(createCardPng(card), 'png', { import_external_media: 'true' });
+            expect(answer.status).toBe(200);
+            expect(readStoredCard(answer.body.file_name).data.first_mes).toContain('D%27Artagnan%20%28alt%29');
+
+            const exported = await exportedCard(`${answer.body.file_name}.png`, 'json');
+            expect(exported.data.first_mes).toBe('![scene](https://files.catbox.moe/scene.png)');
+        });
+
+        test('a local path that no manifest lists stays as it is', async () => {
+            routeImages(new Map([['https://files.catbox.moe/scene.png', mockImageResponse(PNG_SCENE)]]));
+            const card = createV2Card();
+            card.data.name = 'Unlisted';
+            card.data.first_mes = '![scene](https://files.catbox.moe/scene.png)';
+            card.data.description = 'Mine: ![own](/user/images/Unlisted/own-0123456789abcdef.png) and ![other](/user/images/Nowhere/x-0123456789abcdef.png)';
+            await importCharacterCard(createCardPng(card), 'png', { import_external_media: 'true' });
+
+            const exported = await exportedCard('Unlisted.png', 'json');
+            expect(exported.data.first_mes).toBe('![scene](https://files.catbox.moe/scene.png)');
+            expect(exported.data.description).toBe(card.data.description);
+        });
+
+        test('a damaged manifest does not break the export', async () => {
+            routeImages(new Map([['https://files.catbox.moe/scene.png', mockImageResponse(PNG_SCENE)]]));
+            const card = createV2Card();
+            card.data.name = 'Damaged';
+            card.data.first_mes = '![scene](https://files.catbox.moe/scene.png)';
+            await importCharacterCard(createCardPng(card), 'png', { import_external_media: 'true' });
+            const localPath = readStoredCard('Damaged').data.first_mes;
+
+            for (const damage of ['{not json', '[]', 'null', '{"x":{"url":42}}', '{"__proto__":{"url":"https://evil.test/a.png"}}']) {
+                fs.writeFileSync(path.join(directories.userImages, 'Damaged', MANIFEST), damage);
+                for (const format of ['json', 'png']) {
+                    const exported = await exportedCard('Damaged.png', format);
+                    expect(exported.data.first_mes).toBe(localPath);
+                }
+            }
+            fs.rmSync(path.join(directories.userImages, 'Damaged', MANIFEST));
+            expect((await exportedCard('Damaged.png', 'json')).data.first_mes).toBe(localPath);
+        });
+
+        test('two cards that share a folder keep both mappings', async () => {
+            routeImages(new Map([
+                ['https://files.catbox.moe/one.png', mockImageResponse(PNG_SCENE)],
+                ['https://files.catbox.moe/two.png', mockImageResponse(PNG_ALT)],
+            ]));
+            const first = createV2Card();
+            first.data.name = 'Twins';
+            first.data.first_mes = '![one](https://files.catbox.moe/one.png)';
+            const second = createV2Card();
+            second.data.name = 'Twins';
+            second.data.first_mes = '![two](https://files.catbox.moe/two.png)';
+            const a = await importCharacterCard(createCardPng(first), 'png', { import_external_media: 'true' });
+            const b = await importCharacterCard(createCardPng(second), 'png', { import_external_media: 'true' });
+            expect(a.status).toBe(200);
+            expect(b.status).toBe(200);
+
+            const manifest = JSON.parse(fs.readFileSync(path.join(directories.userImages, 'Twins', MANIFEST), 'utf8'));
+            expect(Object.values(manifest).map(entry => entry.url).sort()).toEqual([
+                'https://files.catbox.moe/one.png',
+                'https://files.catbox.moe/two.png',
+            ]);
+            const texts = [];
+            for (const name of [a.body.file_name, b.body.file_name]) {
+                texts.push((await exportedCard(`${name}.png`, 'json')).data.first_mes);
+            }
+            expect(texts.sort()).toEqual([
+                '![one](https://files.catbox.moe/one.png)',
+                '![two](https://files.catbox.moe/two.png)',
+            ]);
+        });
+
+        test('imports that write into one folder at once keep every mapping', async () => {
+            const { recordExternalMediaOrigins, readExternalMediaManifest } = await import('../src/external-media-manifest.js');
+            const folder = path.join(directories.userImages, 'Parallel');
+            fs.mkdirSync(folder, { recursive: true });
+
+            await Promise.all(Array.from({ length: 20 }, (_, index) =>
+                recordExternalMediaOrigins(folder, new Map([[`file-${index}.png`, `https://files.catbox.moe/${index}.png`]]))));
+
+            const manifest = readExternalMediaManifest(folder);
+            expect(manifest.size).toBe(20);
+            expect(manifest.get('file-7.png')).toBe('https://files.catbox.moe/7.png');
+        });
+
+        test('a lorebook export gets the URLs of its author back', async () => {
+            routeImages(new Map([['https://files.catbox.moe/scene.png', mockImageResponse(PNG_SCENE)]]));
+            const world = {
+                name: 'Atlas',
+                entries: { 0: { uid: 0, key: ['a'], content: '<img src="https://files.catbox.moe/scene.png">' } },
+            };
+            const answer = await importWorldInfoFile(JSON.stringify(world), { filename: 'Atlas.json', name: 'Atlas', import_external_media: 'true' });
+            expect(answer.status).toBe(200);
+            expect(answer.body.data.entries[0].content).toContain('/user/images/Atlas/');
+
+            const response = await fetch(`${baseUrl}/api/worldinfo/export`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: answer.body.data }),
+            });
+            expect(response.status).toBe(200);
+            const exported = await response.json();
+            expect(exported.entries[0].content).toBe('<img src="https://files.catbox.moe/scene.png">');
+            expect(answer.body.data.entries[0].content).toContain('/user/images/Atlas/');
+        });
+    });
+
     describe('World Info / lorebook imports', () => {
         test('downloads external media in World Info entries and originalData and returns the updated payload', async () => {
             fetchMock.mockResolvedValue(mockImageResponse(PNG_SCENE));
@@ -572,7 +743,8 @@ describe('external media import (#952)', () => {
                 '![missing](https://files.catbox.moe/missing.png)',
                 `![valid](${expectedValid})`,
             ].join('\n'));
-            expect(fs.readdirSync(path.join(directories.userImages, 'character'))).toEqual([
+            expect(fs.readdirSync(path.join(directories.userImages, 'character')).sort()).toEqual([
+                '.external-media.json',
                 `valid-${hash8(PNG_SCENE)}.png`,
             ]);
         });

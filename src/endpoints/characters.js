@@ -28,6 +28,7 @@ import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-g
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
 import { localizeCharacterExternalMedia } from '../external-media-import.js';
+import { restoreExternalMediaUrls } from '../external-media-manifest.js';
 import { isImageFile } from '../image-file-type.js';
 import {
     clearChatRecoveryState,
@@ -2212,7 +2213,11 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
                 recoverFileWriteSync(filename);
                 const rawBuffer = await fsPromises.readFile(filename);
                 const rawData = read(rawBuffer);
-                const mutatedData = mutateJsonString(rawData, unsetPrivateFields);
+                // SillyBunny: an exported copy gives the author's URLs back for the media that an import stored.
+                const mutatedData = mutateJsonString(rawData, char => {
+                    unsetPrivateFields(char);
+                    restoreExternalMediaUrls(char, request.user.directories);
+                });
                 const mutatedBuffer = write(rawBuffer, mutatedData);
                 const contentType = mime.lookup(filename) || 'image/png';
                 response.setHeader('Content-Type', contentType);
@@ -2225,6 +2230,8 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
                     if (json === undefined) return response.sendStatus(400);
                     const jsonObject = getCharaCardV2(JSON.parse(json), request.user.directories);
                     unsetPrivateFields(jsonObject);
+                    // SillyBunny: an exported copy gives the author's URLs back for the media that an import stored.
+                    restoreExternalMediaUrls(jsonObject, request.user.directories);
                     return response.type('json').send(JSON.stringify(jsonObject, null, 4));
                 } catch {
                     return response.sendStatus(400);

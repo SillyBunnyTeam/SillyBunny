@@ -11,6 +11,7 @@ import sanitize from 'sanitize-filename';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { SETTINGS_FILE } from './constants.js';
+import { getLocalExternalMediaUrl, recordExternalMediaOrigins } from './external-media-manifest.js';
 import { getImageExtension, isImageFile } from './image-file-type.js';
 import { getUntrustedRequestAgent } from './private-request-filter.js';
 import { ensureDirectory, getConfigValue, tryParse } from './util.js';
@@ -166,16 +167,6 @@ export function getExternalMediaFolder(name, fallbackName, directories) {
     }
 
     return folder;
-}
-
-/**
- * Encodes a folder name for the stored URL. `encodeURIComponent()` keeps `!'()*~`, and a quote or a parenthesis ends
- * the URL early inside a single-quoted attribute, a Markdown image or a CSS `url()`.
- * @param {string} folder Folder name
- * @returns {string} Path segment
- */
-function encodeFolderForUrl(folder) {
-    return encodeURIComponent(folder).replace(/[!'()*~]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 /**
@@ -522,7 +513,7 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
     }
 
     writeFileAtomicSync(filePath, buffer);
-    return `/user/images/${encodeFolderForUrl(folder)}/${fileName}`;
+    return { fileName, localPath: getLocalExternalMediaUrl(folder, fileName) };
 }
 
 /**
@@ -538,6 +529,10 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
 function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, timeoutMs = DEFAULT_DOWNLOAD_TIMEOUT_MS, maxBytes = MAX_EXTERNAL_MEDIA_BYTES }) {
     /** @type {Set<string>} */
     const candidateUrls = new Set();
+    // The URL as the file wrote it, for the first place that names it. The manifest keeps this form, so an export
+    // gives the same text back.
+    /** @type {Map<string, string>} */
+    const writtenForms = new Map();
     /** @type {Map<string, string|null>} */
     const resolvedUrls = new Map();
 
@@ -552,6 +547,9 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
                 }
                 if (isValidExternalMediaUrl(span.fetchUrl)) {
                     candidateUrls.add(span.fetchUrl);
+                    if (!writtenForms.has(span.fetchUrl)) {
+                        writtenForms.set(span.fetchUrl, span.rawUrl);
+                    }
                 }
             }
         },
@@ -563,6 +561,9 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
             const trimmed = url.trim();
             if (isValidExternalMediaUrl(trimmed)) {
                 candidateUrls.add(trimmed);
+                if (!writtenForms.has(trimmed)) {
+                    writtenForms.set(trimmed, url);
+                }
             }
         },
 
@@ -572,28 +573,43 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
             }
 
             const urls = [...candidateUrls];
+            /** @type {Map<string, string>} */
+            const storedOrigins = new Map();
             let downloadedCount = 0;
 
             for (let i = 0; i < urls.length; i += MAX_CONCURRENT_DOWNLOADS) {
                 const batch = urls.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
                 await Promise.all(batch.map(async (url) => {
                     try {
-                        const localPath = await downloadAndStoreExternalImage(url, {
+                        const stored = await downloadAndStoreExternalImage(url, {
                             directories,
                             folder,
                             fetchImpl,
                             timeoutMs,
                             maxBytes,
                         });
-                        resolvedUrls.set(url, localPath);
-                        if (localPath) {
+                        resolvedUrls.set(url, stored?.localPath ?? null);
+                        if (stored) {
                             downloadedCount++;
+                            storedOrigins.set(stored.fileName, writtenForms.get(url) ?? url);
                         }
                     } catch (error) {
                         console.warn(`External media import failed for ${quoteForLog(url)}: ${quoteForLog(error?.message || error)}`);
                         resolvedUrls.set(url, null);
                     }
                 }));
+            }
+
+            // The manifest is the only place that keeps the author's URL, and the caller replaces that URL in the card.
+            // Without the manifest every URL stays remote.
+            try {
+                await recordExternalMediaOrigins(path.join(directories.userImages, folder), storedOrigins);
+            } catch (error) {
+                console.warn(`External media import could not write its manifest, so the URLs stay remote: ${quoteForLog(error?.message || error)}`);
+                for (const url of resolvedUrls.keys()) {
+                    resolvedUrls.set(url, null);
+                }
+                return 0;
             }
 
             return downloadedCount;
