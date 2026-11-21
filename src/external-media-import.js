@@ -12,6 +12,7 @@ import sanitize from 'sanitize-filename';
 import { getLocalExternalMediaUrl, recordExternalMediaOrigins } from './external-media-manifest.js';
 import { getImageExtension, isImageFile } from './image-file-type.js';
 import { getUntrustedRequestAgent } from './private-request-filter.js';
+import { NO_HARD_LINK_CODES } from './sillybunny-publish-file.js';
 import { ensureDirectory, getConfigValue } from './util.js';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.apng', '.jpg', '.jpeg', '.jfif', '.gif', '.webp', '.avif', '.bmp']);
@@ -482,6 +483,9 @@ async function storeWithoutReplacing(filePath, buffer) {
         } catch (error) {
             if (error?.code === 'EEXIST') {
                 return await holdsSameBytes(filePath, buffer);
+            }
+            if (!NO_HARD_LINK_CODES.has(error?.code)) {
+                throw error;
             }
         }
         try {
