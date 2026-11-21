@@ -699,7 +699,7 @@ function createExternalMediaLocalizer({
             const urls = [...candidateUrls];
             const budget = createImportBudget({ totalMaxBytes, totalTimeoutMs });
             /** @type {Map<string, string>} */
-            const storedOrigins = new Map();
+            const storedFileNames = new Map();
             let downloadedCount = 0;
             let skippedForBudget = 0;
 
@@ -723,7 +723,7 @@ function createExternalMediaLocalizer({
                         resolvedUrls.set(url, stored?.localPath ?? null);
                         if (stored) {
                             downloadedCount++;
-                            storedOrigins.set(stored.fileName, writtenForms.get(url) ?? url);
+                            storedFileNames.set(url, stored.fileName);
                         }
                     } catch (error) {
                         console.warn(`External media import failed for ${quoteForLog(url)}: ${quoteForLog(error?.message || error)}`);
@@ -734,6 +734,17 @@ function createExternalMediaLocalizer({
 
             if (skippedForBudget > 0) {
                 console.warn(`External media import used up its size or time limit for one import, so ${skippedForBudget} URL(s) stay remote`);
+            }
+
+            // Two URLs with the same file stem and the same bytes give one stored file. The manifest keeps the first of
+            // them in text order, whatever order the downloads ended in.
+            /** @type {Map<string, string>} */
+            const storedOrigins = new Map();
+            for (const url of urls) {
+                const fileName = storedFileNames.get(url);
+                if (fileName && !storedOrigins.has(fileName)) {
+                    storedOrigins.set(fileName, writtenForms.get(url) ?? url);
+                }
             }
 
             // The manifest is the only place that keeps the author's URL, and the caller replaces that URL in the card.

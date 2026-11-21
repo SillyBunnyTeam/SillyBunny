@@ -560,6 +560,23 @@ describe('external media import (#952)', () => {
             ]);
         });
 
+        test('two URLs that give one stored file keep the first URL in the text order, whatever order the downloads finish in', async () => {
+            fetchMock.mockImplementation(async (url) => {
+                if (String(url).endsWith('v=2')) {
+                    await new Promise(resolve => setTimeout(resolve, 60));
+                }
+                return mockImageResponse(PNG_SCENE);
+            });
+            const card = createV2Card();
+            card.data.name = 'Same';
+            card.data.first_mes = '![a](https://files.catbox.moe/img.png?v=1) and ![b](https://files.catbox.moe/img.png?v=2)';
+            await importCharacterCard(createCardPng(card), 'png', { import_external_media: 'true' });
+
+            const manifest = JSON.parse(fs.readFileSync(path.join(directories.userImages, 'Same', MANIFEST), 'utf8'));
+            expect(manifest).toEqual({ [`img-${hash16(PNG_SCENE)}.png`]: { url: 'https://files.catbox.moe/img.png?v=1' } });
+            expect((await exportedCard('Same.png', 'json')).data.first_mes).toBe('![a](https://files.catbox.moe/img.png?v=1) and ![b](https://files.catbox.moe/img.png?v=1)');
+        });
+
         test('imports that write into one folder at once keep every mapping', async () => {
             const { recordExternalMediaOrigins, readExternalMediaManifest } = await import('../src/external-media-manifest.js');
             const folder = path.join(directories.userImages, 'Parallel');
