@@ -1,8 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { getNpmCommand } from '../../src/npm-launcher.js';
 
-export { findNpmCli } from '../../src/npm-launcher.js';
-
 /**
  * Runs a command with inherited stdio and throws when it does not exit with status 0.
  * @param {string} command Executable name or path.
