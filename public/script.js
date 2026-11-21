@@ -438,6 +438,8 @@ import {
 import { configureCardScriptRuntime, initCardScriptRuntime } from './scripts/card-script-runtime.js';
 // SillyBunny: a page sends no settings save when nothing changed since its last load or save.
 import { createSettingsSync } from './scripts/sillybunny-settings-sync.js';
+// SillyBunny: a KoboldCpp model switch must not end the loading state of a status check that started after it.
+import { countStatusLoadingStart } from './scripts/sillybunny-koboldcpp-models.js';
 
 const DEFERRED_STARTUP_STYLESHEETS = Object.freeze([
     { href: 'css/bright.min.css', id: 'deferred-highlight-theme-css' },
@@ -1347,6 +1349,8 @@ export function setActiveGroup(entityOrKey) {
 export function startStatusLoading() {
     $('.api_loading').show();
     $('.api_button').addClass('disabled');
+    // SillyBunny: a KoboldCpp model switch must not end the loading state of a status check that started after it.
+    countStatusLoadingStart();
     setStatusCheckPending(true); // SillyBunny: `online_status` is `no_connection` until a check ends, so a check in flight must not read as offline.
 }
 
