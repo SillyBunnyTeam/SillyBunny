@@ -2586,6 +2586,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-20, PR #870 audit. |
 | Owner | `TODO(copy)` |
 
+### `src/private-request-filter.js` - addresses that reach a private host in another form
+| Field | Value |
+| --- | --- |
+| File | `src/private-request-filter.js` |
+| Area | Outbound request filtering (SSRF protection). |
+| Divergence reason | Upstream's private ranges hold loopback, the private networks and link-local, and compare the address as written. A connection to an unspecified address (`0.0.0.0`, `::`) reaches a service on the server's own host, and an IPv4-mapped IPv6 address (`::ffff:127.0.0.1`) reaches the IPv4 host that it names, so both passed the filter and the strict agent of untrusted requests. SillyBunny blocks them as it blocks the plain form. |
+| Target seam | `src/private-address-forms.js` (`unmapIpv4Address()`). |
+| Adapter shape | One import, two added ranges (`0.0.0.0/8`, `::/128`) in `privateIpRanges`, and one `unmapIpv4Address()` call each in `#isPrivateIp()` and `#isAllowedPrivateAddress()`, each under a marker. The socket still connects to the address as resolved. |
+| Protecting tests | `tests/private-request-filter.test.js` (`addresses that reach this host or a private host in another form`); `tests/search-visit.test.js`. |
+| Validation | 2026-11-21: root and `tests/` lint, the two test files, and a live probe under Node.js 24.22.2 and Bun 1.4.4 (a dual-stack loopback server was reached through `0.0.0.0`, `::` and `::ffff:127.0.0.1` before the change and through none of them after it). |
+| Rollback path | Remove the import, the two ranges and the two `unmapIpv4Address()` calls from `src/private-request-filter.js`, then delete `src/private-address-forms.js` and the test block. No setting or stored data changes: `privateAddressWhitelist` keeps its format, and a whitelisted IPv4 host stays allowed in its mapped form. |
+| Last reviewed | 2026-11-21, open pull request audit (security audit of #1002). |
+| Owner | Server runtime integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
