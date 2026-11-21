@@ -24,12 +24,16 @@ const MAX_CONCURRENT_DOWNLOADS = 4;
 const MAX_STEM_LENGTH = 24;
 const USER_AGENT = 'SillyTavern';
 
-const MARKDOWN_IMAGE_REGEX = /!\[[^\]]*\]\(\s*(?:<([^>\r\n]+)>|([^\s()"']+))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/dg;
-const HTML_MEDIA_TAG_REGEX = /<(?:img|source|video|audio|image|embed|object)\b[^>]*>/dgi;
+// The scan runs on the server's only thread for every text field of an imported file. Each open-ended class also
+// excludes the character that starts the next candidate (`[`, `<`, `(`), so a match that fails stops there and the
+// scan time stays linear in the text length. Without that, a field of repeated `![`, `<img ` or `url(` takes
+// quadratic time.
+const MARKDOWN_IMAGE_REGEX = /!\[[^[\]]*\]\(\s*(?:<([^<>\r\n]+)>|([^\s()"']+))(?:\s+(?:"[^"]*"|'[^']*'))?\s*\)/dg;
+const HTML_MEDIA_TAG_REGEX = /<(?:img|source|video|audio|image|embed|object)\b[^<>]*>/dgi;
 const HTML_MEDIA_ATTR_REGEX = /\b(?:src|poster|data|xlink:href|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/dgi;
 const HTML_SRCSET_ATTR_REGEX = /\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/dgi;
 const SRCSET_CANDIDATE_REGEX = /([^\s,]+)(?:\s+[^,]*)?(?:,|$)/dg;
-const CSS_URL_REGEX = /\burl\(\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^)\s"']+))\s*\)/dgi;
+const CSS_URL_REGEX = /\burl\(\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^()\s"']+))\s*\)/dgi;
 const BARE_HTTP_URL_REGEX = /https?:\/\/[^\s"'<>)\]]+/dgi;
 
 function decodeURIComponentSafe(value) {
@@ -149,6 +153,53 @@ export function getExternalMediaFolder(name, fallbackName, directories) {
 }
 
 /**
+ * Checks whether a range overlaps one of the spans of a list that is sorted by start and has no overlaps.
+ * @param {{start: number, end: number}[]} sortedSpans Spans in text order
+ * @param {number} start Range start
+ * @param {number} end Range end, exclusive
+ * @returns {boolean} True when a span overlaps the range
+ */
+function overlapsSortedSpans(sortedSpans, start, end) {
+    let low = 0;
+    let high = sortedSpans.length;
+    while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (sortedSpans[middle].end <= start) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return low < sortedSpans.length && sortedSpans[low].start < end;
+}
+
+/**
+ * Merges two span lists that are each sorted by start and do not overlap each other.
+ * @template {{start: number}} T
+ * @param {T[]} first Spans in text order
+ * @param {T[]} second Spans in text order
+ * @returns {T[]} All spans in text order
+ */
+function mergeSortedSpans(first, second) {
+    if (second.length === 0) {
+        return first;
+    }
+    const merged = [];
+    let firstIndex = 0;
+    let secondIndex = 0;
+    while (firstIndex < first.length && secondIndex < second.length) {
+        merged.push(first[firstIndex].start <= second[secondIndex].start ? first[firstIndex++] : second[secondIndex++]);
+    }
+    while (firstIndex < first.length) {
+        merged.push(first[firstIndex++]);
+    }
+    while (secondIndex < second.length) {
+        merged.push(second[secondIndex++]);
+    }
+    return merged;
+}
+
+/**
  * Extracts non-overlapping external media URL spans from a text string.
  * Covers Markdown images, HTML media attributes (including srcset), CSS url(), and bare image URLs.
  * @param {string} text Input text
@@ -160,7 +211,9 @@ export function extractExternalMediaSpans(text) {
     }
 
     /** @type {{start: number, end: number, rawUrl: string, fetchUrl: string}[]} */
-    const spans = [];
+    let spans = [];
+    /** @type {{start: number, end: number, rawUrl: string, fetchUrl: string}[]} */
+    let passSpans = [];
 
     const addSpan = (start, end) => {
         if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) {
@@ -174,10 +227,17 @@ export function extractExternalMediaSpans(text) {
         if (!/^https?:\/\//i.test(fetchUrl)) {
             return;
         }
-        if (spans.some(existing => start < existing.end && end > existing.start)) {
+        if (overlapsSortedSpans(spans, start, end)) {
             return;
         }
-        spans.push({ start, end, rawUrl, fetchUrl });
+        passSpans.push({ start, end, rawUrl, fetchUrl });
+    };
+
+    // A pass finds its spans in text order and they cannot overlap each other, so a span is checked only against
+    // the spans of the earlier passes, which take priority, and the two sorted lists are merged once per pass.
+    const endPass = () => {
+        spans = mergeSortedSpans(spans, passSpans);
+        passSpans = [];
     };
 
     for (const match of text.matchAll(MARKDOWN_IMAGE_REGEX)) {
@@ -186,25 +246,32 @@ export function extractExternalMediaSpans(text) {
             addSpan(range[0], range[1]);
         }
     }
+    endPass();
 
+    /** @type {{text: string, start: number}[]} */
+    const mediaTags = [];
     for (const tagMatch of text.matchAll(HTML_MEDIA_TAG_REGEX)) {
-        const tagText = tagMatch[0];
-        const tagStart = tagMatch.index ?? 0;
+        mediaTags.push({ text: tagMatch[0], start: tagMatch.index ?? 0 });
+    }
 
-        for (const attrMatch of tagText.matchAll(HTML_MEDIA_ATTR_REGEX)) {
+    for (const tag of mediaTags) {
+        for (const attrMatch of tag.text.matchAll(HTML_MEDIA_ATTR_REGEX)) {
             const range = attrMatch.indices?.[1] ?? attrMatch.indices?.[2] ?? attrMatch.indices?.[3];
             if (range) {
-                addSpan(tagStart + range[0], tagStart + range[1]);
+                addSpan(tag.start + range[0], tag.start + range[1]);
             }
         }
+    }
+    endPass();
 
-        for (const srcsetMatch of tagText.matchAll(HTML_SRCSET_ATTR_REGEX)) {
+    for (const tag of mediaTags) {
+        for (const srcsetMatch of tag.text.matchAll(HTML_SRCSET_ATTR_REGEX)) {
             const srcsetRange = srcsetMatch.indices?.[1] ?? srcsetMatch.indices?.[2];
             if (!srcsetRange) {
                 continue;
             }
-            const srcsetText = tagText.slice(srcsetRange[0], srcsetRange[1]);
-            const srcsetOffset = tagStart + srcsetRange[0];
+            const srcsetText = tag.text.slice(srcsetRange[0], srcsetRange[1]);
+            const srcsetOffset = tag.start + srcsetRange[0];
             for (const candidateMatch of srcsetText.matchAll(SRCSET_CANDIDATE_REGEX)) {
                 const urlRange = candidateMatch.indices?.[1];
                 if (urlRange) {
@@ -213,6 +280,7 @@ export function extractExternalMediaSpans(text) {
             }
         }
     }
+    endPass();
 
     for (const cssMatch of text.matchAll(CSS_URL_REGEX)) {
         const range = cssMatch.indices?.[1] ?? cssMatch.indices?.[2] ?? cssMatch.indices?.[3];
@@ -220,6 +288,7 @@ export function extractExternalMediaSpans(text) {
             addSpan(range[0], range[1]);
         }
     }
+    endPass();
 
     for (const bareMatch of text.matchAll(BARE_HTTP_URL_REGEX)) {
         const rawStart = bareMatch.index ?? 0;
@@ -241,8 +310,9 @@ export function extractExternalMediaSpans(text) {
             // Ignore malformed bare URLs.
         }
     }
+    endPass();
 
-    return spans.sort((a, b) => a.start - b.start);
+    return spans;
 }
 
 function discardResponseBody(response) {

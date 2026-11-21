@@ -210,6 +210,37 @@ describe('external media import (#952)', () => {
                 'https://file.garden/u/other.webp',
             ]);
         });
+
+        test('an unclosed image or media tag does not take the link after it', () => {
+            expect(extractExternalMediaSpans('![ and [profile](https://chub.ai/users/creator)')).toEqual([]);
+            expect(extractExternalMediaSpans('<img and <a href="https://chub.ai/users/creator">profile</a>')).toEqual([]);
+            expect(extractExternalMediaSpans('url( and (https://chub.ai/users/creator)')).toEqual([]);
+        });
+
+        // The scan runs on the server's only thread. Before the classes were bounded, each of these texts took
+        // seconds and the time grew with the square of the length.
+        test.each([
+            ['unclosed Markdown images', '!['],
+            ['unclosed Markdown images with an angle URL', '![a](<'],
+            ['unclosed media tags', '<img '],
+            ['unclosed CSS url()', 'url('],
+        ])('scans 200,000 repeated %s within the time budget', (_label, fragment) => {
+            const text = `https://files.catbox.moe/a.png ${fragment.repeat(200_000)}`;
+            const startedAt = performance.now();
+            const spans = extractExternalMediaSpans(text);
+            expect(performance.now() - startedAt).toBeLessThan(2000);
+            expect(spans.map(span => span.fetchUrl)).toEqual(['https://files.catbox.moe/a.png']);
+        });
+
+        test('scans a field with 50,000 image URLs within the time budget and keeps their order', () => {
+            const urls = Array.from({ length: 50_000 }, (_, index) => `https://files.catbox.moe/${index}.png`);
+            const text = `<img srcset="${urls.map(url => `${url} 1x`).join(', ')}"> ${urls.map(url => `![scene](${url})`).join(' ')}`;
+            const startedAt = performance.now();
+            const spans = extractExternalMediaSpans(text);
+            expect(performance.now() - startedAt).toBeLessThan(5000);
+            expect(spans).toHaveLength(100_000);
+            expect(spans.every((span, index) => index === 0 || spans[index - 1].end <= span.start)).toBe(true);
+        });
     });
 
     describe('character card imports', () => {
