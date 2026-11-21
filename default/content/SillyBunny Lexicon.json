@@ -708,11 +708,15 @@
             "key": [
                 "text completion",
                 "text completions",
-                "legacy completions"
+                "legacy completions",
+                "kcpp-model",
+                "koboldcpp model switcher",
+                "switch koboldcpp model",
+                "change koboldcpp model"
             ],
             "keysecondary": [],
             "comment": "A16 Text Completion",
-            "content": "Text Completion sends the whole prompt as one long text and the model continues it. It appears as Text Completions in the Backend Type toggle. Sources include KoboldCpp, llama.cpp, Ollama, Text Generation WebUI (oobabooga), TabbyAPI, vLLM and Aphrodite, and also hosted ones such as OpenRouter, TogetherAI, Featherless and Mancer (upstream calls this list \"API Type\"). It is not an older or legacy format and is not local-only. It exposes many more samplers. Instruct-tuned models need the matching Instruct Template and Context Template. Tool calling and image inlining are Chat Completion only.",
+            "content": "Text Completion sends the whole prompt as one long text and the model continues it. It appears as Text Completions in the Backend Type toggle. Sources include KoboldCpp, llama.cpp, Ollama, Text Generation WebUI (oobabooga), TabbyAPI, vLLM and Aphrodite, and also hosted ones such as OpenRouter, TogetherAI, Featherless and Mancer (upstream calls this list \"API Type\"). It is not an older or legacy format and is not local-only. It exposes many more samplers. Instruct-tuned models need the matching Instruct Template and Context Template. Tool calling and image inlining are Chat Completion only. KoboldCpp can switch its loaded model from SillyBunny when it runs in admin mode (started with --admin and --admindir). Backend ▸ Connections then shows a \"KoboldCpp Model\" row that lists the model and config files of that folder, plus \"Reload launch model\" and \"Unload model\". Choosing an entry makes KoboldCpp load it, and SillyBunny reconnects when it is ready. The /kcpp-model slash command does the same. An admin password goes in the KoboldCpp API key field.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
