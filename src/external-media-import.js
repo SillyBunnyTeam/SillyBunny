@@ -36,6 +36,15 @@ const SRCSET_CANDIDATE_REGEX = /([^\s,]+)(?:\s+[^,]*)?(?:,|$)/dg;
 const CSS_URL_REGEX = /\burl\(\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^()\s"']+))\s*\)/dgi;
 const BARE_HTTP_URL_REGEX = /https?:\/\/[^\s"'<>)\]]+/dgi;
 
+/**
+ * Quotes text from an imported file or a remote host for the console, so that its control characters are escaped.
+ * @param {unknown} value Text to log
+ * @returns {string} JSON string literal
+ */
+function quoteForLog(value) {
+    return JSON.stringify(String(value));
+}
+
 function decodeURIComponentSafe(value) {
     try {
         return decodeURIComponent(value);
@@ -481,7 +490,7 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
     const buffer = await readResponseBufferBounded(response, maxBytes);
     const fileName = buildContentAddressedFileName(url, currentUrl, buffer);
     if (!fileName) {
-        console.warn(`External media import skipped non-image response from ${url}`);
+        console.warn(`External media import skipped non-image response from ${quoteForLog(url)}`);
         return null;
     }
 
@@ -564,7 +573,7 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
                             downloadedCount++;
                         }
                     } catch (error) {
-                        console.warn(`External media import failed for ${url}: ${error?.message || error}`);
+                        console.warn(`External media import failed for ${quoteForLog(url)}: ${quoteForLog(error?.message || error)}`);
                         resolvedUrls.set(url, null);
                     }
                 }));
