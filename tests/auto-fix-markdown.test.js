@@ -64,6 +64,9 @@ function upstreamFixMarkdown(text, forDisplay) {
 }
 
 const keptTexts = [
+    '*a *b* c*',
+    '*She waves.* *"Hello"*',
+    '*she says softly *ing',
     '*italic **bold and italic** italic*',
     '*She said **no** and left.*',
     '**bold *italic* bold**',
@@ -94,6 +97,8 @@ const fixedTexts = [
     ['*a ** b ** c*', '*a **b** c*'],
     ['\\\\*a *', '\\\\*a*'],
     ['file_name and _ spaced _', 'file_name and _spaced_'],
+    ['*She smiles *"Hello there."', '*She smiles*"Hello there."'],
+    ['*She smiles *, then waves.', '*She smiles*, then waves.'],
 ];
 
 const ordinaryTexts = [
@@ -120,6 +125,12 @@ const ordinaryTexts = [
     'Line one.\r\n*Line two\r\nLine three.',
     '*She waves.*\n\n"Hi!" she says.\n*He nods*',
     '*The rain had not stopped for hours.* She pulled her coat tighter. "We should go," *she whispered, glancing at the door.*',
+    '*She smiles *"Hello there."',
+    '*She smiles *.',
+    'She said *hello* and then * waved goodbye *.',
+    '**Stop **"now"',
+    '_she whispers _"hi"',
+    '<span style="color: red">*hi *</span>',
 ];
 
 function generateTexts(count, seed) {

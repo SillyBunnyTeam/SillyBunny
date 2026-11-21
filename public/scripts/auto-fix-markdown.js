@@ -96,9 +96,11 @@ function fixEmphasisSpacing(line) {
         const canClose = before !== undefined && !WHITESPACE.test(before);
         // A run with whitespace on both sides is a broken mark. It closes the nearest opener, as in "*text *", or opens, as in "* text*".
         const floating = !canOpen && !canClose;
+        // A run after whitespace and directly before punctuation or a quote is a broken closing mark, as in `*text *"speech"`. Before a letter or a digit it opens a nested pair, as in `*a *b* c*`.
+        const closesBeforePunctuation = canOpen && before !== undefined && !canClose && !isWordCharacter(after);
         const key = char + (index - start);
 
-        if (canClose || floating) {
+        if (canClose || floating || closesBeforePunctuation) {
             const top = topOpenerByKey.get(key);
             if (top !== undefined && openers[top].contentStart < start) {
                 const opener = openers[top];
