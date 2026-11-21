@@ -6,6 +6,7 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    fillMissingCustomEndpointParameters,
     getChatCompletionConnectionPresetKeys,
     getChatCompletionSamplingProfileLookupKeys,
     getChatCompletionSamplingPresetKeys,
@@ -273,12 +274,16 @@ describe('Chat Completion preset utilities', () => {
             url: 'https://proxy.example/v1',
             key: 'sk-story',
             model: 'gpt-4o',
+            custom_include_body: 'top_k: 20',
         })).toEqual({
             name: 'None',
             url: '',
             key: '',
             model: '',
             secretId: '',
+            custom_include_body: '',
+            custom_exclude_body: '',
+            custom_include_headers: '',
         });
     });
 
@@ -312,7 +317,23 @@ describe('Chat Completion preset utilities', () => {
             secretId: '',
             custom_include_body: 'top_k: 20',
         });
-        expect(normalizeCustomEndpointPreset({ name: 'None', custom_include_body: 'top_k: 20' })).not.toHaveProperty('custom_include_body');
+    });
+
+    test('fills the Additional Parameters that a profile lacks with the live ones, and leaves None and stored values alone', () => {
+        const settings = { custom_include_body: '  top_k: 20\n', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' };
+        const none = normalizeCustomEndpointPreset({ name: 'None' });
+        const legacy = normalizeCustomEndpointPreset({ name: 'Legacy', url: 'https://legacy.example/v1' });
+        const partial = normalizeCustomEndpointPreset({ name: 'Partial', custom_include_body: 'min_p: 0.1' });
+        const stored = normalizeCustomEndpointPreset({ name: 'Stored', custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+
+        expect(fillMissingCustomEndpointParameters([none, legacy, partial, stored], settings)).toBe(true);
+
+        expect(legacy).toMatchObject(settings);
+        expect(partial).toMatchObject({ custom_include_body: 'min_p: 0.1', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' });
+        expect(stored).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(fillMissingCustomEndpointParameters([none, legacy, partial, stored], { ...settings, custom_include_body: 'changed: 1' })).toBe(false);
+        expect(legacy.custom_include_body).toBe('  top_k: 20\n');
     });
 
     test('picks only the Additional Parameters from live settings or a profile', () => {

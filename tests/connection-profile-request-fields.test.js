@@ -359,8 +359,14 @@ describe('Additional Parameters from the Custom endpoint profile', () => {
         expect(profileFieldNames).not.toContain('custom_include_headers');
     });
 
-    test('None, a missing endpoint profile and one that stores none send nothing extra', () => {
-        for (const name of ['None', 'Deleted', 'Legacy', undefined]) {
+    test('None sends empty values, as applying the profile clears them', () => {
+        const { overrides } = getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': 'None' }, {});
+
+        expect(overrides).toEqual({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+    });
+
+    test('a missing endpoint profile and one that stores none send nothing extra', () => {
+        for (const name of ['Deleted', 'Legacy', undefined]) {
             expect(getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': name }, {}).overrides).toEqual({});
         }
     });

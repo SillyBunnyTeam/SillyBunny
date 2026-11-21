@@ -316,8 +316,38 @@ export function pickCustomEndpointParameters(source) {
 }
 
 /**
+ * Gives each endpoint profile the live value of every Additional Parameter that it does not store.
+ * A profile without them uses the live values, so this keeps its requests the same while each profile
+ * keeps its own values from then on. None is left out because it stores empty values.
+ *
+ * @param {Record<string, any>[]} presets Custom endpoint profiles, changed in place
+ * @param {Record<string, any>} settings Live OpenAI settings
+ * @returns {boolean} True when a profile changed
+ */
+export function fillMissingCustomEndpointParameters(presets, settings) {
+    const liveParameters = pickCustomEndpointParameters(settings);
+    let changed = false;
+
+    for (const preset of presets ?? []) {
+        if (!preset || preset.name === 'None') {
+            continue;
+        }
+
+        for (const [parameterKey, value] of Object.entries(liveParameters)) {
+            if (!Object.hasOwn(preset, parameterKey)) {
+                preset[parameterKey] = value;
+                changed = true;
+            }
+        }
+    }
+
+    return changed;
+}
+
+/**
  * Normalizes a Custom OpenAI-compatible endpoint profile.
- * A profile without Additional Parameters gets none, so selecting it leaves the current ones in place.
+ * None stores empty Additional Parameters, as it stores an empty URL, key and model, so selecting it clears them.
+ * Another profile without them gets none, so selecting it leaves the current ones in place.
  *
  * @param {Record<string, any>} preset Custom endpoint profile
  * @returns {{name: string, url: string, key: string, model: string, secretId: string} & CustomEndpointParameters}
@@ -333,6 +363,7 @@ export function normalizeCustomEndpointPreset(preset) {
             key: '',
             model: '',
             secretId: '',
+            ...Object.fromEntries(CUSTOM_ENDPOINT_PARAMETER_KEYS.map(parameterKey => [parameterKey, ''])),
         };
     }
 

@@ -3,7 +3,7 @@ import { extension_settings, openThirdPartyExtensionMenu } from '../extensions.j
 import { t } from '../i18n.js';
 // SillyBunny: profile requests read the Additional Parameters that a Custom endpoint profile stores.
 import { custom_endpoint_presets, oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
-import { pickCustomEndpointParameters } from '../openai-preset-utils.js';
+import { normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../openai-preset-utils.js';
 import { getPresetManager } from '../preset-manager.js';
 import { SECRET_KEYS, secret_state } from '../secrets.js';
 import { textgen_types, textgenerationwebui_settings } from '../textgen-settings.js';
@@ -59,11 +59,13 @@ const ENDPOINT_PROFILE_PARAMETER_FIELDS = Object.freeze({
  */
 function getProfileEndpointParameters(profile) {
     const endpointProfileName = profile?.['custom-endpoint-profile'];
-    if (!endpointProfileName || endpointProfileName === 'None') {
+    const endpointProfile = endpointProfileName ? custom_endpoint_presets?.find(preset => preset.name === endpointProfileName) : null;
+    if (!endpointProfile) {
         return {};
     }
 
-    return pickCustomEndpointParameters(custom_endpoint_presets?.find(preset => preset.name === endpointProfileName));
+    // Normalise so that None gives its empty values, which are the values that applying the profile sets.
+    return pickCustomEndpointParameters(normalizeCustomEndpointPreset(endpointProfile));
 }
 
 /**

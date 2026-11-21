@@ -262,7 +262,8 @@ describe('OpenAI proxy preset wiring', () => {
         expect(applyPresetIndex).toBeGreaterThanOrEqual(0);
         expect(optionsIndex).toBeGreaterThan(applyPresetIndex);
         // The saved settings already hold the Additional Parameters in effect, which a connection profile can set after the endpoint profile.
-        expect(loadCustomEndpointSource).not.toMatch(/\bparameters\b/);
+        const applyCallSource = loadCustomEndpointSource.slice(applyPresetIndex, loadCustomEndpointSource.indexOf(');', applyPresetIndex));
+        expect(applyCallSource).not.toMatch(/\bparameters\b/);
     });
 
     test('resolves the saved selection to the same object as the presets array entry', () => {

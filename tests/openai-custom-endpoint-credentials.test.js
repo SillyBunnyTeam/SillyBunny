@@ -2,7 +2,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { buildCustomEndpointPresetForSave, normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../public/scripts/openai-preset-utils.js';
+import { buildCustomEndpointPresetForSave, fillMissingCustomEndpointParameters, normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../public/scripts/openai-preset-utils.js';
 import { createSettingsSync } from '../public/scripts/sillybunny-settings-sync.js';
 
 const source = readFileSync(new URL('../public/scripts/openai.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -78,6 +78,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         normalizeCustomEndpointPreset,
         buildCustomEndpointPresetForSave,
         pickCustomEndpointParameters,
+        fillMissingCustomEndpointParameters,
         secret_state: secretState,
         console: { warn: jest.fn(), error: jest.fn(), log: jest.fn() },
         t: strings => strings.join(''),
@@ -381,7 +382,7 @@ describe('Custom endpoint profile Additional Parameters', () => {
         expect(harness.context.oai_settings).toMatchObject(storedParameters);
     });
 
-    test('selecting a profile applies its Additional Parameters, and a profile without them keeps the current ones', async () => {
+    test('selecting a profile applies its Additional Parameters, a profile without them keeps the current ones, and None clears them', async () => {
         const harness = createHarness();
         const stored = normalizeCustomEndpointPreset({ name: 'Stored', model: 'model-b', secretId: 'b-id', ...storedParameters });
         const legacy = normalizeCustomEndpointPreset({ name: 'Legacy', model: 'model-c', secretId: 'c-id' });
@@ -401,7 +402,8 @@ describe('Custom endpoint profile Additional Parameters', () => {
 
         harness.values.set('#custom_endpoint_preset', 'None');
         await harness.context.onCustomEndpointPresetChange();
-        expect(harness.context.oai_settings).toMatchObject(storedParameters);
+        expect(harness.context.oai_settings).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(harness.values.get('#custom_include_headers')).toBe('');
     });
 
     test('loading the settings keeps the Additional Parameters that were in effect', async () => {
@@ -419,6 +421,34 @@ describe('Custom endpoint profile Additional Parameters', () => {
         expect(harness.context.oai_settings.custom_url).toBe('https://endpoint.example/v1');
         expect(harness.context.oai_settings.custom_include_body).toBe('set-by-connection-profile: 1');
         expect(harness.context.selected_custom_endpoint_preset).toMatchObject(storedParameters);
+        expect(harness.context.saveSettingsDebounced).not.toHaveBeenCalled();
+    });
+
+    test('loading the settings gives each profile without Additional Parameters the live ones once, and saves them', async () => {
+        const harness = createHarness();
+        const liveParameters = { custom_include_body: 'top_k: 40', custom_exclude_body: '- seed', custom_include_headers: 'X-Live: 1' };
+        Object.assign(harness.context.oai_settings, liveParameters);
+
+        await harness.context.loadCustomEndpointPresets({
+            custom_endpoint_presets: [
+                { name: 'None', url: '', key: '', model: '', secretId: '' },
+                { name: 'Legacy', url: 'https://legacy.example/v1', model: 'legacy-model', secretId: 'legacy-id' },
+                { name: 'Saved endpoint', url: 'https://endpoint.example/v1', model: 'test-model', secretId: 'saved-id', ...storedParameters },
+            ],
+            selected_custom_endpoint_preset: { name: 'Saved endpoint' },
+        });
+
+        const [none, legacy, saved] = harness.context.custom_endpoint_presets;
+        expect(legacy).toMatchObject(liveParameters);
+        expect(saved).toMatchObject(storedParameters);
+        expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(harness.context.oai_settings).toMatchObject(liveParameters);
+        expect(harness.context.saveSettingsDebounced).toHaveBeenCalledTimes(1);
+
+        harness.values.set('#custom_endpoint_preset', 'Legacy');
+        Object.assign(harness.context.oai_settings, storedParameters);
+        await harness.context.onCustomEndpointPresetChange();
+        expect(harness.context.oai_settings).toMatchObject(liveParameters);
     });
 });
 

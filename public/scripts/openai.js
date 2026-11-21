@@ -104,6 +104,7 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    fillMissingCustomEndpointParameters,
     getChatCompletionSamplingProfileLookupKeys,
     getCustomEndpointFavoritesKey,
     migrateNanoGptProviderSettings,
@@ -10338,6 +10339,12 @@ export async function loadCustomEndpointPresets(settings) {
         custom_endpoint_presets.push(selected_custom_endpoint_preset);
     }
 
+    // SillyBunny: an endpoint profile without Additional Parameters takes the live ones, so its requests do not
+    // change and it keeps its own values from then on. The settings save stores the filled values, so this runs once.
+    if (fillMissingCustomEndpointParameters(custom_endpoint_presets, oai_settings)) {
+        saveSettingsDebounced();
+    }
+
     $('#custom_endpoint_preset').empty();
 
     for (const preset of custom_endpoint_presets) {
@@ -10447,13 +10454,14 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
 // endpoint profile.
 async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true, parameters = null } = {}) {
     const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId, ...pickCustomEndpointParameters(parameters) });
+    const parametersToApply = parameters ? pickCustomEndpointParameters(normalizedPreset) : {};
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
     if (preset) {
         preset.url = normalizedPreset.url;
         preset.key = normalizedPreset.key;
         preset.model = normalizedPreset.model;
         preset.secretId = normalizedPreset.secretId || preset.secretId || '';
-        Object.assign(preset, pickCustomEndpointParameters(normalizedPreset));
+        Object.assign(preset, parametersToApply);
         selected_custom_endpoint_preset = preset;
     } else {
         const newPreset = normalizedPreset;
@@ -10469,7 +10477,7 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
     $('#custom_model_id').val(oai_settings.custom_model);
     $('#model_custom_select').val(oai_settings.custom_model);
     refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
-    for (const [parameterKey, value] of Object.entries(pickCustomEndpointParameters(normalizedPreset))) {
+    for (const [parameterKey, value] of Object.entries(parametersToApply)) {
         oai_settings[parameterKey] = value;
         $(`#${parameterKey}`).val(value);
     }
