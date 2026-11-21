@@ -2,6 +2,7 @@ const RENDER_ORDER = ['interface', 'timeline', 'palsRail'];
 
 const registeredRenderers = new Map();
 const pendingRenderers = new Set();
+const renderObservers = new Set();
 
 let pendingFrameId = null;
 let pendingInterfaceSyncControls = false;
@@ -62,6 +63,33 @@ export function schedulePalsRailRender() {
     scheduleRenderer('palsRail');
 }
 
+/**
+ * Runs `callback` after each render flush until it returns true, so work that needs the rendered
+ * workspace (an enabled composer, say) follows the render instead of guessing a delay.
+ */
+export function afterConversationRender(callback) {
+    if (typeof callback !== 'function') {
+        return;
+    }
+
+    renderObservers.add(callback);
+    requestFlush();
+}
+
+function runRenderObservers() {
+    for (const observer of [...renderObservers]) {
+        let done = true;
+        try {
+            done = observer() === true;
+        } catch (error) {
+            console.error('Conversation Mode: render observer failed', error);
+        }
+        if (done) {
+            renderObservers.delete(observer);
+        }
+    }
+}
+
 export function flushConversationRenders() {
     if (pendingFrameId !== null) {
         cancelRenderFrame(pendingFrameId);
@@ -70,6 +98,7 @@ export function flushConversationRenders() {
 
     if (!pendingRenderers.size) {
         pendingInterfaceSyncControls = false;
+        runRenderObservers();
         return;
     }
 
@@ -98,6 +127,7 @@ export function flushConversationRenders() {
         }
     } finally {
         flushingRenders = false;
+        runRenderObservers();
         if (pendingRenderers.size) {
             requestFlush();
         }

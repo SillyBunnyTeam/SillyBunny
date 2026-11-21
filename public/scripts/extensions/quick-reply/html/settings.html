@@ -24,7 +24,8 @@
 						<div class="qr--setListAdd menu_button menu_button_icon fa-solid fa-plus" id="qr--global-setListAdd" title="Add quick reply set"></div>
 					</div>
 				</div>
-				<div id="qr--global-setList" class="qr--setList"></div>
+				<!-- SillyBunny: the set links render as entity rows, so the list role gives screen readers its count. -->
+				<div id="qr--global-setList" class="qr--setList" role="list"></div>
 			</div>
 
 			<hr>
@@ -36,7 +37,8 @@
 						<div class="qr--setListAdd menu_button menu_button_icon fa-solid fa-plus" id="qr--chat-setListAdd" title="Add quick reply set"></div>
 					</div>
 				</div>
-				<div id="qr--chat-setList" class="qr--setList"></div>
+				<!-- SillyBunny: the set links render as entity rows, so the list role gives screen readers its count. -->
+				<div id="qr--chat-setList" class="qr--setList" role="list"></div>
 			</div>
 
 			<hr>
@@ -49,7 +51,8 @@
 						<div class="qr--setListAdd menu_button menu_button_icon fa-solid fa-plus" id="qr--character-setListAdd" title="Add quick reply set"></div>
 					</div>
 				</div>
-				<div id="qr--character-setList" class="qr--setList"></div>
+				<!-- SillyBunny: the set links render as entity rows, so the list role gives screen readers its count. -->
+				<div id="qr--character-setList" class="qr--setList" role="list"></div>
 			</div>
 
 			<hr>
@@ -87,7 +90,8 @@
 						<input type="checkbox" id="qr--onlyBorderColor"> <span data-i18n="Only apply color as accent">Only apply color as accent</span>
 					</label>
 				</div>
-				<div id="qr--set-qrList" class="qr--qrList"></div>
+				<!-- SillyBunny: empty-set text, read by the :has() rule in style.css. -->
+				<div id="qr--set-qrList" class="qr--qrList" data-no-qrs-text="No Quick Replies" data-i18n="[data-no-qrs-text]No Quick Replies"></div>
 				<div class="qr--set-qrListActions">
 					<div class="qr--add menu_button menu_button_icon fa-solid fa-plus" id="qr--set-add" title="Add quick reply"></div>
 					<div class="qr--paste menu_button menu_button_icon fa-solid fa-paste" id="qr--set-paste" title="Paste quick reply from clipboard"></div>

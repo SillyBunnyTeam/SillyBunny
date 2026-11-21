@@ -5,6 +5,7 @@
 
 import { t } from '/scripts/i18n.js';
 import { Popup, POPUP_RESULT } from '/scripts/popup.js';
+import { confirmVerb } from '/scripts/sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { power_user } from '/scripts/power-user.js';
 import { accountStorage } from '/scripts/util/AccountStorage.js';
 import { SimpleMutex } from '/scripts/util/SimpleMutex.js';
@@ -57,7 +58,9 @@ async function onboardingExperimentalMacroEngineUnsafe(feature = null) {
             </div>` : ''}
         <p>${t`For more information on the new macro engine, visit the <br />${`<a href="https://docs.sillytavern.app/usage/core-concepts/macros/">${t`Macro Documentation`}</a>`}.`}</p>
         <p>${t`You can enable the engine any time under:<br />${t`User Settings`} → ${t`Experimental Macro Engine`}`}</p>
-        <p>${t`Would you like to enable it now?`}</p>`);
+        <p>${t`Would you like to enable it now?`}</p>`,
+    // SillyBunny: "No" means "not now" and the prompt is shown once, so the negative keeps its own label (confirmVerb).
+    confirmVerb(t`Enable`, { negative: t`No` }));
     if (result == POPUP_RESULT.AFFIRMATIVE) {
         power_user.experimental_macro_engine = true;
         $('#experimental_macro_engine').prop('checked', power_user.experimental_macro_engine).trigger('input');

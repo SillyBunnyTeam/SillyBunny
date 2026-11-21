@@ -28,7 +28,7 @@ function addLaunchButton() {
     launchButton.id = 'inspectNextPromptButton';
     launchButton.classList.add('list-group-item', 'flex-container', 'flexGap5', 'interactable');
     launchButton.tabIndex = 0;
-    launchButton.title = t`Toggle prompt inspection`;
+    launchButton.title = t`Toggle Prompt Inspection`;
     const icon = document.createElement('i');
     icon.className = getIcon();
     launchButton.appendChild(icon);
@@ -42,9 +42,7 @@ function addLaunchButton() {
         throw new Error('Could not find the extensions menu');
     }
 
-    extensionsMenu.classList.add('interactable');
-    extensionsMenu.tabIndex = 0;
-
+    // SillyBunny: the menu entry above is the control, so the container that holds it takes no tab stop of its own.
     extensionsMenu.appendChild(launchButton);
     launchButton.addEventListener('click', () => {
         toggleInspectNext();
@@ -188,7 +186,7 @@ async function showPromptInspector(input) {
 
     /** @type {import('../../popup.js').CustomPopupButton} */
     const customButton = {
-        text: 'Cancel generation',
+        text: 'Cancel Generation',
         result: POPUP_RESULT.CANCELLED,
         appendAtEnd: true,
         action: async () => {
@@ -196,7 +194,11 @@ async function showPromptInspector(input) {
             await popup.complete(POPUP_RESULT.CANCELLED);
         },
     };
-    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: 'Save changes', cancelButton: 'Discard changes', customButtons: [customButton] });
+    // SillyBunny: the prompt textarea owns scrolling in its shared Window frame.
+    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, tier: 'window', okButton: 'Save Changes', cancelButton: 'Discard Changes', customButtons: [customButton] });
+    popup.dlg.classList.add('sb-prompt-inspector-window');
+    // SillyBunny: the prompt text is a document, so its Window body uses the View surface.
+    popup.dlg.classList.add('sb-document');
     const result = await popup.show();
 
     // If the user cancels, return the original input

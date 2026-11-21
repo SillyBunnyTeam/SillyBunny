@@ -1,12 +1,13 @@
+<!-- SillyBunny: one checkbox per applied command, keyed by command id so its value is the id that goes into exclude. -->
 <div>
     <h2 data-i18n="Creating a Connection Profile">
         Creating a Connection Profile
     </h2>
     <div class="justifyLeft flex-container flexFlowColumn flexNoGap">
-        {{#each profile}}
+        {{#each rows}}
         <label class="checkbox_label">
-            <input type="checkbox" value="{{@key}}" name="exclude" checked>
-            <span><strong data-i18n="{{@key}}">{{@key}}:</strong>&nbsp;{{this}}</span>
+            <input type="checkbox" value="{{id}}" name="exclude" checked>
+            <span><strong data-i18n="{{label}}">{{label}}:</strong>&nbsp;{{value}}</span>
         </label>
         {{/each}}
     </div>

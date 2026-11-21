@@ -109,9 +109,17 @@ export class SubMenu {
         const menuWidth = Math.min(initialRect.width, viewport.width);
         const menuHeight = Math.min(initialRect.height, viewport.height);
         const fitsToRight = parentRect.right + menuWidth <= viewport.right;
+        const fitsToLeft = parentRect.left - menuWidth >= viewport.left;
         const preferredLeft = fitsToRight ? parentRect.right : parentRect.left - menuWidth;
-        const left = clamp(preferredLeft, viewport.left, Math.max(viewport.left, viewport.right - menuWidth));
-        const top = clamp(parentRect.top, viewport.top, Math.max(viewport.top, viewport.bottom - menuHeight));
+        const maxLeft = Math.max(viewport.left, viewport.right - menuWidth);
+        const maxTop = Math.max(viewport.top, viewport.bottom - menuHeight);
+        let left = clamp(preferredLeft, viewport.left, maxLeft);
+        let top = clamp(parentRect.top, viewport.top, maxTop);
+        // SillyBunny: with room on neither side (a phone) the clamp laid the submenu over its parent item's label. It opens under the item, or above it when the window ends there.
+        if (!fitsToRight && !fitsToLeft) {
+            left = clamp(parentRect.left, viewport.left, maxLeft);
+            top = clamp(parentRect.bottom + menuHeight <= viewport.bottom ? parentRect.bottom : parentRect.top - menuHeight, viewport.top, maxTop);
+        }
 
         this.root.style.left = `${Math.round(left - layerRect.left)}px`;
         this.root.style.top = `${Math.round(top - layerRect.top)}px`;

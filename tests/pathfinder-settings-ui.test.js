@@ -96,6 +96,8 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
 await jest.unstable_mockModule('../public/scripts/util/AccountStorage.js', () => ({
     accountStorage: { getItem: () => null, setItem: jest.fn() },
 }));
+// The shared row pass needs a browser document; the panel here is a jQuery double.
+await jest.unstable_mockModule('../public/scripts/sillybunny-settings-presentation.js', () => ({ normalizeBackendSettingsRows: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: ['Book A', 'Book B'], loadWorldInfo }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/textarea-fullscreen.js', () => ({ attachTextareaFullscreen: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder-init.js', () => ({ runDiagnostics: jest.fn(async () => ({})) }));
@@ -175,6 +177,7 @@ beforeEach(() => {
     globalThis.$ = value => value instanceof Control ? value : new Control();
     globalThis.toastr = { info: jest.fn(), error: jest.fn(), warning: jest.fn(), success: jest.fn() };
     globalThis.window = { SillyTavern: { getContext: () => context }, matchMedia: () => ({ matches: true }) };
+    globalThis.document = new EventTarget();
     globalThis.fetch = jest.fn(async () => ({ ok: true }));
     profiles = [];
     generation = { chatId: 'chat-a', runId: 1, cancelRevision: 0 };

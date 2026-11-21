@@ -2177,7 +2177,7 @@ export async function applyAgentPostPassesToCompanionResult(transformerAgentId, 
     const transformer = getAgentById(transformerAgentId);
     const message = chat[messageIndex];
     if (!transformer || isCompanionAgent(transformer) || !message || message.is_system) {
-        toastr.warning('This agent cannot be applied to that companion note.');
+        toastr.warning('This agent cannot be applied to that companion note');
         return null;
     }
     const isRuntimeAllowed = () => isAgentRuntimeAllowed(transformer) && isAgentRuntimeAllowed(getAgentById(companionAgentId));
@@ -2185,7 +2185,7 @@ export async function applyAgentPostPassesToCompanionResult(transformerAgentId, 
 
     const result = getCompanionResults(message)[companionAgentId];
     if (result?.status !== 'done' || !normalizeText(result?.content)) {
-        toastr.info('No finished companion note to apply this agent to.');
+        toastr.info('No finished companion note to apply this agent to');
         return null;
     }
 
@@ -2201,7 +2201,7 @@ export async function applyAgentPostPassesToCompanionResult(transformerAgentId, 
     }
 
     if (!passResult.changed) {
-        toastr.info(`"${transformer.name}" made no changes to the companion note.`, 'In-Chat Agents');
+        toastr.info(`"${transformer.name}" made no changes to the companion note`, 'In-Chat Agents');
         return passResult;
     }
 

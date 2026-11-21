@@ -9,6 +9,11 @@ await jest.unstable_mockModule('../public/scripts/RossAscends-mods.js', () => ({
     dragElement: jest.fn(),
 }));
 
+// ButtonUi names the popout's Close button with `t`, whose module pulls in browser-only libraries.
+await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => String.raw({ raw: strings }, ...values),
+}));
+
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
     loadMovingUIState: jest.fn(),
 }));

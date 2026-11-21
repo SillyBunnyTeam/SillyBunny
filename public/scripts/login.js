@@ -234,11 +234,21 @@ function configureNormalLogin(userList) {
     for (const user of userList) {
         const userBlock = $('<div></div>').addClass('userSelect');
         const avatarBlock = $('<div></div>').addClass('avatar');
-        avatarBlock.append($('<img>').attr('src', user.avatar));
+        // SillyBunny: the card is named by its text, so the avatar is decoration.
+        avatarBlock.append($('<img>').attr({ src: user.avatar, alt: '' }));
         userBlock.append(avatarBlock);
         userBlock.append($('<span></span>').addClass('userName').text(user.name));
         userBlock.append($('<small></small>').addClass('userHandle').text(user.handle));
         userBlock.on('click', () => onUserSelected(user));
+        // SillyBunny: the card is a button for the keyboard and for assistive technology; Enter and Space act as a click.
+        // Its name comes from its text (the user's name and handle), so a label cannot differ from what is shown.
+        userBlock.attr({ role: 'button', tabindex: '0' });
+        userBlock.on('keydown', (evt) => {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+                evt.preventDefault();
+                userBlock.trigger('click');
+            }
+        });
         $('#userList').append(userBlock);
     }
 }

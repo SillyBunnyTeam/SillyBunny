@@ -1,5 +1,5 @@
 /* global globalThis */
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { EventEmitter } from 'node:events';
 
 const PAGE_ID = 'page-a';
@@ -18,6 +18,7 @@ function fakeEditor(mesId, value) {
 }
 
 const script = {
+    characters: [{ avatar: 'Seraphina.png', chat: 'Seraphina - chat' }],
     chat: [],
     reloadCurrentChat: jest.fn(async () => scriptEvents.emit(CHAT_CHANGED)),
     isGenerating: jest.fn(() => false),
@@ -27,7 +28,7 @@ const script = {
     setEditedMessageId: jest.fn(),
 };
 await jest.unstable_mockModule('../public/script.js', () => ({
-    characters: [{ avatar: 'Seraphina.png', chat: 'Seraphina - chat' }],
+    characters: script.characters,
     chat: script.chat,
     cleanUpMessage: ({ getMessage }) => getMessage,
     event_types: { CHAT_CHANGED, MESSAGE_RECEIVED: 'message_received', CHARACTER_MESSAGE_RENDERED: 'character_message_rendered' },
@@ -128,7 +129,8 @@ globalThis.$ = () => toast;
 globalThis.toastr = { info: jest.fn(() => ({})), warning: jest.fn(() => ({})), error: jest.fn(() => ({})), clear: jest.fn() };
 globalThis.fetch = jest.fn(async () => new Response(null, { status: 204 }));
 
-const { initServerGenerations } = await import('../public/scripts/server-generations.js');
+const { createGenerationCommitPlan, initServerGenerations } = await import('../public/scripts/server-generations.js');
+const temporaryChat = await import('../public/scripts/sillybunny-temporary-chat-state.js');
 initServerGenerations();
 
 /** Lets CHAT_CHANGED handling and reload chains settle. */
@@ -168,6 +170,32 @@ beforeEach(async () => {
     scriptEvents.emit(CHAT_CHANGED);
     await settle();
     jest.clearAllMocks();
+});
+
+describe('generation commit plan', () => {
+    const plan = () => createGenerationCommitPlan({ type: 'normal', started: new Date('2026-01-01T00:00:00Z') });
+
+    // The other tests in this file read the same character, so each one here puts it back.
+    afterEach(() => {
+        script.characters[0].chat = 'Seraphina - chat';
+        temporaryChat.exitTemporaryState();
+    });
+
+    test('tells the server to write the reply into the open chat file', () => {
+        expect(plan()).toMatchObject({ chat: { avatar: 'Seraphina.png' }, file: 'Seraphina - chat', kind: 'append' });
+    });
+
+    test('plans nothing for a character without a chat file name', () => {
+        script.characters[0].chat = '';
+
+        expect(plan()).toBeNull();
+    });
+
+    test('plans nothing for a temporary chat, so the server never writes a reply into a file', () => {
+        script.characters[0].chat = temporaryChat.enterTemporaryState({ avatar: 'Seraphina.png', previousChatName: 'Seraphina - chat' });
+
+        expect(plan()).toBeNull();
+    });
 });
 
 describe('server-generations event stream', () => {

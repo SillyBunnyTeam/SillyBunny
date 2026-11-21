@@ -1,0 +1,191 @@
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, posix, relative, sep } from 'node:path';
+import { placementOf } from './derive.js';
+import { masterFile, MASTER_ROOT, mastersOf, outputFile, outputsOf, picturesOf } from './manifest.js';
+import { ArtProblem } from './problem.js';
+import { needsRecord, recordPathOf, validateRecord } from './provenance.js';
+import { hasBinaryAlpha, isOpaque, readRaster, sha256 } from './raster.js';
+import { measureRings } from './rings.js';
+
+/** Every file in this folder ships through the manifest, so a file the manifest does not list is a stale one. */
+const SHIPPED_ART_FOLDER = 'public/img/sillybunny';
+
+/**
+ * The folders whose every file must be an output: the shipped art folder, and each folder under `default/content/`
+ * that holds an output, such as an expression pack.
+ * @param {any} manifest
+ */
+export function inventoryFolders(manifest) {
+    const folders = new Set([SHIPPED_ART_FOLDER]);
+    for (const asset of Object.values(manifest.assets)) {
+        for (const { path } of outputsOf(asset)) {
+            const folder = posix.dirname(path);
+            if (folder.startsWith('default/content/')) {
+                folders.add(folder);
+            }
+        }
+    }
+    return [...folders].sort();
+}
+
+/**
+ * @param {string} root
+ * @param {any} manifest
+ * @returns {{ code: 'unlisted-file', path: string, message: string }[]}
+ */
+export function unlistedFiles(root, manifest) {
+    const listed = new Set(Object.values(manifest.assets).flatMap((asset) => outputsOf(asset).map(({ path }) => path)));
+    const problems = [];
+    for (const folder of inventoryFolders(manifest)) {
+        if (!existsSync(join(root, folder))) {
+            continue;
+        }
+        for (const name of readdirSync(join(root, folder)).sort()) {
+            const path = `${folder}/${name}`;
+            if (statSync(join(root, folder, name)).isFile() && !listed.has(path)) {
+                problems.push({ code: 'unlisted-file', path, message: `${path} ships, but the art manifest does not list it.` });
+            }
+        }
+    }
+    return problems;
+}
+
+function filesUnder(folder) {
+    if (!existsSync(folder)) {
+        return [];
+    }
+    return readdirSync(folder).flatMap((name) => {
+        const path = join(folder, name);
+        return statSync(path).isDirectory() ? filesUnder(path) : [path];
+    });
+}
+
+/**
+ * How a still is brought onto its grid, to measure its rings there; null when it names no rings, or when its ratio is
+ * one the derive refuses, which `derive` and `prove` report.
+ */
+function ringPlacementOf(id, asset) {
+    if (asset.type !== 'still' || !asset.rings) {
+        return null;
+    }
+    try {
+        return placementOf({ id }, asset);
+    } catch (error) {
+        if (error instanceof ArtProblem) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+/**
+ * A warning when the rings of a figure, on its grid and before its frame is cut, measure other widths than the
+ * manifest gives.
+ */
+function ringWarnings(id, asset, master, placed) {
+    const measured = measureRings(placed);
+    if (measured.rim === asset.rings.rim && measured.band === asset.rings.band) {
+        return [];
+    }
+    return [{
+        code: 'ring-width',
+        asset: id,
+        path: master,
+        expected: asset.rings,
+        actual: measured,
+        message: `The rings of ${master} measure ${measured.rim}+${measured.band} art pixels, but the manifest gives ${asset.rings.rim}+${asset.rings.band}.`,
+    }];
+}
+
+/**
+ * Checks everything that needs no encoding: the masters exist and are native-grid, each picture master has a current
+ * provenance record, no master is left over, every output exists, every pinned file is the one pinned, and nothing
+ * ships unlisted. The rings of each figure that names them are measured, and other widths are a warning.
+ * @param {string} root
+ * @param {any} manifest A manifest that passed `validateManifest`.
+ * @returns {Promise<{ summary: Record<string, number>, problems: object[], warnings: object[] }>}
+ */
+export async function checkArt(root, manifest) {
+    const problems = [];
+    const warnings = [];
+    const masters = new Set();
+    const used = new Set();
+    let records = 0;
+    let incomplete = 0;
+    for (const [id, asset] of Object.entries(manifest.assets)) {
+        const nativePictures = new Set(picturesOf(asset).map(({ master }) => master));
+        const place = ringPlacementOf(id, asset);
+        for (const master of mastersOf(asset)) {
+            masters.add(master);
+            used.add(master);
+            const path = masterFile(root, master);
+            if (!existsSync(path)) {
+                problems.push({ code: 'master-missing', asset: id, path: master, message: `The master ${master} does not exist.` });
+                continue;
+            }
+            const bytes = readFileSync(path);
+            if (nativePictures.has(master) && ['still', 'scene', 'pair', 'card', 'pack'].includes(asset.type)) {
+                const raster = await readRaster(bytes);
+                if (!hasBinaryAlpha(raster)) {
+                    problems.push({ code: 'master-not-native', asset: id, path: master, message: `The master ${master} has translucent pixels.` });
+                } else if (asset.opaque && !isOpaque(raster)) {
+                    problems.push({ code: 'master-not-opaque', asset: id, path: master, message: `The master ${master} has transparent pixels, but the pair is opaque.` });
+                } else if (place) {
+                    warnings.push(...ringWarnings(id, asset, master, place(raster)));
+                }
+            }
+            if (!needsRecord(master)) {
+                continue;
+            }
+            const recordPath = recordPathOf(master);
+            used.add(recordPath);
+            if (!existsSync(masterFile(root, recordPath))) {
+                problems.push({ code: 'provenance-missing', asset: id, path: recordPath, message: `The master ${master} has no provenance record.` });
+                continue;
+            }
+            let record;
+            try {
+                record = JSON.parse(readFileSync(masterFile(root, recordPath), 'utf8'));
+            } catch (error) {
+                problems.push({ code: 'provenance-invalid', asset: id, path: recordPath, message: `${recordPath} is not JSON: ${error.message}` });
+                continue;
+            }
+            records++;
+            incomplete += record.incomplete === undefined ? 0 : 1;
+            for (const problem of validateRecord(record, { file: posix.basename(master), sha256: sha256(bytes) })) {
+                problems.push({ ...problem, asset: id, path: recordPath });
+            }
+        }
+        for (const output of outputsOf(asset)) {
+            const path = outputFile(root, output.path);
+            if (!existsSync(path)) {
+                problems.push({ code: 'output-missing', asset: id, path: output.path, message: `${output.path} does not exist.` });
+            } else if (asset.type === 'pinned' && sha256(readFileSync(path)) !== output.sha256) {
+                problems.push({ code: 'pinned-changed', asset: id, path: output.path, message: `${output.path} is not the pinned file, and it has no master to derive it from.` });
+            }
+        }
+    }
+    const masterRoot = join(root, MASTER_ROOT);
+    for (const path of filesUnder(masterRoot)) {
+        const master = relative(masterRoot, path).split(sep).join('/');
+        if (!used.has(master)) {
+            problems.push({ code: 'master-unused', path: master, message: `${MASTER_ROOT}/${master} is neither a master of the manifest nor a record of one.` });
+        }
+    }
+    problems.push(...unlistedFiles(root, manifest));
+    const assets = Object.values(manifest.assets);
+    return {
+        summary: {
+            assets: assets.length,
+            derived: assets.filter((asset) => asset.type !== 'pinned').length,
+            pinned: assets.filter((asset) => asset.type === 'pinned').length,
+            outputs: assets.reduce((sum, asset) => sum + outputsOf(asset).length, 0),
+            pinnedFiles: assets.filter((asset) => asset.type === 'pinned').reduce((sum, asset) => sum + asset.outputs.length, 0),
+            masters: masters.size,
+            records,
+            incompleteRecords: incomplete,
+        },
+        problems,
+        warnings,
+    };
+}

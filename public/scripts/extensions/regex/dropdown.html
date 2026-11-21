@@ -78,7 +78,8 @@
                     Save and switch between groups of enabled regex scripts.
                 </small>
                 <div class="flex-container marginTop5">
-                    <select id="regex_presets" class="text_pole flex1"></select>
+                    <!-- SillyBunny: the description above is the block's caption; the select row needs a title of its own. -->
+                    <select id="regex_presets" class="text_pole flex1" aria-label="Preset" data-i18n="[aria-label]Preset"></select>
                     <div id="regex_preset_create" class="menu_button fa-solid fa-file-circle-plus" data-i18n="[title]ext_regex_preset_create" title="Create a new regex preset"></div>
                     <div id="regex_preset_update" class="menu_button fa-solid fa-save" data-i18n="[title]ext_regex_preset_update" title="Update existing regex preset"></div>
                     <div id="regex_preset_apply" class="menu_button fa-solid fa-recycle" data-i18n="[title]ext_regex_preset_apply" title="Re-apply current preset"></div>
@@ -93,7 +94,8 @@
                 <small data-i18n="ext_regex_global_scripts_desc">
                     Available for all characters. Saved to local settings.
                 </small>
-                <div id="saved_regex_scripts" no-scripts-text="No scripts found" data-i18n="[no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
+                <!-- SillyBunny: DOMPurify drops non-data attributes, so the empty-list text lives in data-no-scripts-text. -->
+                <div id="saved_regex_scripts" data-no-scripts-text="No scripts found" data-i18n="[data-no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
             </div>
             <hr />
             <div id="preset_scripts_block">
@@ -108,7 +110,8 @@
                 <small data-i18n="ext_regex_preset_scripts_desc">
                     Only available for this preset. Saved to the preset data.
                 </small>
-                <div id="saved_preset_scripts" no-scripts-text="No scripts found" data-i18n="[no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
+                <!-- SillyBunny: DOMPurify drops non-data attributes, so the empty-list text lives in data-no-scripts-text. -->
+                <div id="saved_preset_scripts" data-no-scripts-text="No scripts found" data-i18n="[data-no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
             </div>
             <hr />
             <div id="scoped_scripts_block">
@@ -123,7 +126,8 @@
                 <small data-i18n="ext_regex_scoped_scripts_desc">
                     Only available for this character. Saved to the card data.
                 </small>
-                <div id="saved_scoped_scripts" no-scripts-text="No scripts found" data-i18n="[no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
+                <!-- SillyBunny: DOMPurify drops non-data attributes, so the empty-list text lives in data-no-scripts-text. -->
+                <div id="saved_scoped_scripts" data-no-scripts-text="No scripts found" data-i18n="[data-no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
             </div>
         </div>
     </div>

@@ -1,3 +1,5 @@
+import { reorderPromptOrder } from '../../../prompt-manager-order.js';
+
 function getDatasetValue(row, key) {
     return row?.dataset?.[key] ?? row?.[key] ?? '';
 }
@@ -186,9 +188,14 @@ export function computeReorderedOrder(order, blocks, fromSectionId, toSectionId)
         }
     }
 
-    return [
+    const reorderedEntries = [
         ...remainingEntries.slice(0, targetIndex),
         ...movingEntries,
         ...remainingEntries.slice(targetIndex),
     ];
+    // Collapsed marker children are absent from section rows; keep them with their rendered parent.
+    const renderedIds = new Set(sectionBlocks.flatMap(block => Array.from(block?.promptIds || []).map(normalizeKey)));
+    return reorderPromptOrder(promptOrder, reorderedEntries
+        .filter(entry => renderedIds.has(normalizeKey(entry?.identifier)))
+        .map(entry => entry.identifier));
 }

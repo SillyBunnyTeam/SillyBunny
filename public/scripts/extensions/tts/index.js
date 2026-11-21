@@ -40,6 +40,8 @@ import { ChutesTtsProvider } from './chutes.js';
 import { VolcengineTtsProvider } from './volcengine.js';
 import { applyLocale, t } from '/scripts/i18n.js';
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
+// SillyBunny: voice previews use shared action rows while preserving upstream TTS controls and IDs.
+import { createButtonRow, createPrefGroup, releaseRowIds } from '../../sillybunny-editor/rows.js';
 
 const UPDATE_INTERVAL = 1000;
 const wrapper = new ModuleWorkerWrapper(moduleWorker);
@@ -363,7 +365,7 @@ export async function narrateTtsMessage(message, { messageId = null, manual = fa
         return false;
     }
     if (!String(message.mes || '').trim() && !message.extra?.display_text) {
-        if (isManual) toastr.info('No text to narrate.');
+        if (isManual) toastr.info('No text to narrate'); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 
@@ -580,28 +582,68 @@ globalThis.tts_preview = function (id) {
     }
 };
 
+function cleanupVoicePreviewContent(content) {
+    content.querySelectorAll('audio').forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.removeAttribute('src');
+        audio.load?.();
+    });
+    releaseRowIds(content);
+}
+
 async function onTtsVoicesClick() {
-    let popupText = '';
+    let voiceIds = [];
+    let error = null;
 
     try {
-        const voiceIds = await ttsProvider.fetchTtsVoiceObjects();
-
-        for (const voice of voiceIds) {
-            popupText += `
-            <div class="voice_preview">
-                <span class="voice_lang">${voice.lang || ''}</span>
-                <b class="voice_name">${voice.name}</b>
-                <i onclick="tts_preview('${voice.voice_id}')" class="fa-solid fa-play"></i>
-            </div>`;
-            if (voice.preview_url) {
-                popupText += `<audio id="${voice.voice_id}" src="${voice.preview_url}" data-disabled="${voice.preview_url == false}"></audio>`;
-            }
-        }
+        voiceIds = await ttsProvider.fetchTtsVoiceObjects();
     } catch {
-        popupText = 'Could not load voices list. Check your API key.';
+        error = t`Could not load voices list. Check your API key.`;
     }
 
-    callGenericPopup(popupText, POPUP_TYPE.TEXT, '', { allowVerticalScrolling: true });
+    const content = document.createElement('div');
+    content.className = 'sb-dialog-rows';
+    if (error) {
+        content.textContent = error;
+    } else {
+        const rows = voiceIds.map((voice, index) => {
+            const row = createButtonRow({
+                label: voice.name || voice.voice_id || String(index + 1),
+                icon: 'play',
+                start: true, // SillyBunny: a voice is one choice of the list, so its name starts the row.
+                field: `tts-voice-${index}`,
+                onActivate: () => globalThis.tts_preview?.(voice.voice_id),
+            });
+            row.row.classList.add('voice_preview');
+            const label = row.row.querySelector('.ds-row-label');
+            const language = document.createElement('span');
+            language.className = 'voice_lang';
+            language.textContent = voice.lang || '';
+            const name = document.createElement('b');
+            name.className = 'voice_name';
+            name.textContent = voice.name || voice.voice_id || '';
+            label.replaceChildren(language, name);
+            if (voice.preview_url) {
+                const audio = document.createElement('audio');
+                audio.id = voice.voice_id;
+                audio.src = voice.preview_url;
+                audio.dataset.disabled = String(voice.preview_url == false);
+                audio.hidden = true;
+                row.row.append(audio);
+            }
+            return row;
+        });
+        content.append(createPrefGroup({ field: 'tts-voices', rows }).section);
+    }
+    // SillyBunny: keep preview audio from playing after the voice Dialog closes.
+    void callGenericPopup(content, POPUP_TYPE.TEXT, '', {
+        tier: 'dialog',
+        // SillyBunny: capitalisation by DESIGN.md
+        title: t`Available Voices`,
+        allowVerticalScrolling: true,
+        onClose: () => cleanupVoicePreviewContent(content),
+    });
 }
 
 function updateUiAudioPlayState() {
@@ -635,9 +677,10 @@ function onAudioControlClicked() {
 }
 
 function addAudioControl() {
+    // SillyBunny: the control starts with the play icon, so the wand menu row never shows an empty icon slot before the first state update.
     $('#tts_wand_container').append(applyLocale(`
         <div id="ttsExtensionMenuItem" class="list-group-item flex-container flexGap5">
-            <div id="tts_media_control" class="extensionsMenuExtensionButton "/></div>
+            <div id="tts_media_control" class="fa-solid fa-circle-play extensionsMenuExtensionButton"></div>
             <span data-i18n="TTS Playback">TTS Playback</span>
         </div>`));
     $('#tts_wand_container').append(applyLocale(`
@@ -1205,7 +1248,8 @@ function loadSettings() {
     $('#playback_rate_counter').val(Number(extension_settings.tts.playback_rate).toFixed(2));
     $('#playback_rate_block').toggle(extension_settings.tts.currentProvider !== 'System');
 
-    $('body').toggleClass('tts', extension_settings.tts.enabled);
+    // SillyBunny: `enabled` is undefined until the switch is first used, and jQuery's toggleClass flips the class for an undefined state, which showed Narrate All Chat with TTS off.
+    $('body').toggleClass('tts', Boolean(extension_settings.tts.enabled));
 }
 
 const defaultSettings = {
