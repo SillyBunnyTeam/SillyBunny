@@ -441,6 +441,22 @@ describe('Custom endpoint profile Additional Parameters', () => {
         expect(harness.context.oai_settings).toMatchObject(storedParameters);
     });
 
+    test.each([
+        ['the profile after None', harness => harness.context.custom_endpoint_presets.unshift(normalizeCustomEndpointPreset({ name: 'None' }))],
+        ['the only profile', () => {}],
+    ])('Delete of %s falls back to None, which clears the Additional Parameters in effect', async (_, arrange) => {
+        const harness = createHarness();
+        arrange(harness);
+        Object.assign(harness.profile, storedParameters);
+        Object.assign(harness.context.oai_settings, storedParameters);
+
+        await harness.remove();
+
+        expect(harness.context.custom_endpoint_presets).not.toContain(harness.profile);
+        expect(harness.context.selected_custom_endpoint_preset.name).toBe('None');
+        expect(harness.context.oai_settings).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+    });
+
     test('selecting a profile applies its Additional Parameters, a profile without them keeps the current ones, and None clears them', async () => {
         const harness = createHarness();
         const stored = normalizeCustomEndpointPreset({ name: 'Stored', model: 'model-b', secretId: 'b-id', ...storedParameters });
