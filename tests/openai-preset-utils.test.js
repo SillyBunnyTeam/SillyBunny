@@ -6,13 +6,16 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    fillMissingCustomEndpointParameters,
     getChatCompletionConnectionPresetKeys,
     getChatCompletionSamplingProfileLookupKeys,
     getChatCompletionSamplingPresetKeys,
     getChatCompletionSamplingSettingsKeys,
     getCustomEndpointFavoritesKey,
+    getCustomEndpointProfileRequestOverrides,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
+    pickCustomEndpointParameters,
     shouldIncludeConnectionFieldsInPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from '../public/scripts/openai-preset-utils.js';
@@ -272,13 +275,152 @@ describe('Chat Completion preset utilities', () => {
             url: 'https://proxy.example/v1',
             key: 'sk-story',
             model: 'gpt-4o',
+            custom_include_body: 'top_k: 20',
         })).toEqual({
             name: 'None',
             url: '',
             key: '',
             model: '',
             secretId: '',
+            custom_include_body: '',
+            custom_exclude_body: '',
+            custom_include_headers: '',
         });
+    });
+
+    test('saves Custom endpoint profiles with their Additional Parameters verbatim, empty values included', () => {
+        expect(buildCustomEndpointPresetForSave({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            model: 'gpt-4o',
+            secretId: 'secret-story',
+            custom_include_body: '  top_k: 20\n  min_p: 0.05\n',
+            custom_exclude_body: '',
+            custom_include_headers: 'X-Title: Story',
+        })).toEqual({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            key: '',
+            model: 'gpt-4o',
+            secretId: 'secret-story',
+            custom_include_body: '  top_k: 20\n  min_p: 0.05\n',
+            custom_exclude_body: '',
+            custom_include_headers: 'X-Title: Story',
+        });
+    });
+
+    test('gives a Custom endpoint profile only the Additional Parameters it holds', () => {
+        expect(normalizeCustomEndpointPreset({ name: 'Partial', custom_include_body: 'top_k: 20', custom_exclude_body: null })).toEqual({
+            name: 'Partial',
+            url: '',
+            key: '',
+            model: '',
+            secretId: '',
+            custom_include_body: 'top_k: 20',
+        });
+    });
+
+    test('fills the Additional Parameters that one profile lacks with the live ones, and leaves None and stored values alone', () => {
+        const settings = { custom_include_body: '  top_k: 20\n', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' };
+        const none = normalizeCustomEndpointPreset({ name: 'None' });
+        const legacy = normalizeCustomEndpointPreset({ name: 'Legacy', url: 'https://legacy.example/v1' });
+        const partial = normalizeCustomEndpointPreset({ name: 'Partial', custom_include_body: 'min_p: 0.1' });
+        const stored = normalizeCustomEndpointPreset({ name: 'Stored', custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+
+        expect(fillMissingCustomEndpointParameters(legacy, settings)).toBe(true);
+        expect(fillMissingCustomEndpointParameters(partial, settings)).toBe(true);
+        expect(fillMissingCustomEndpointParameters(stored, settings)).toBe(false);
+        expect(fillMissingCustomEndpointParameters(none, settings)).toBe(false);
+
+        expect(legacy).toMatchObject(settings);
+        expect(partial).toMatchObject({ custom_include_body: 'min_p: 0.1', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' });
+        expect(stored).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(fillMissingCustomEndpointParameters(legacy, { ...settings, custom_include_body: 'changed: 1' })).toBe(false);
+        expect(legacy.custom_include_body).toBe('  top_k: 20\n');
+    });
+
+    test('fills nothing when there is no profile or the live settings hold none of the parameters', () => {
+        const legacy = normalizeCustomEndpointPreset({ name: 'Legacy' });
+
+        expect(fillMissingCustomEndpointParameters(null, { custom_include_body: 'top_k: 20' })).toBe(false);
+        expect(fillMissingCustomEndpointParameters(undefined, { custom_include_body: 'top_k: 20' })).toBe(false);
+        expect(fillMissingCustomEndpointParameters(legacy, {})).toBe(false);
+        expect(legacy).toEqual({ name: 'Legacy', url: '', key: '', model: '', secretId: '' });
+    });
+
+    describe('request overrides from the Custom endpoint profile of a connection profile', () => {
+        const endpointProfiles = [
+            normalizeCustomEndpointPreset({ name: 'None' }),
+            normalizeCustomEndpointPreset({ name: 'Local', custom_include_body: '  top_k: 20\n', custom_exclude_body: '', custom_include_headers: 'X-Title: Story' }),
+            normalizeCustomEndpointPreset({ name: 'Legacy', url: 'http://127.0.0.1:5001/v1' }),
+        ];
+        const connectionProfile = { api: 'custom', 'custom-endpoint-profile': 'Local' };
+        const overridesFor = (profile, { overridePayload = {}, isCustomSource = true, profiles = endpointProfiles } = {}) =>
+            getCustomEndpointProfileRequestOverrides({ profile, endpointProfiles: profiles, overridePayload, isCustomSource });
+
+        test('gives a connection profile that records none the values its endpoint profile stores, empty ones included', () => {
+            expect(overridesFor(connectionProfile)).toEqual({
+                custom_include_body: '  top_k: 20\n',
+                custom_exclude_body: '',
+                custom_include_headers: 'X-Title: Story',
+            });
+        });
+
+        test('leaves a value that the connection profile records and a value that the caller passes to them', () => {
+            const profile = { ...connectionProfile, 'custom-include-body': 'min_p: 0.1' };
+
+            expect(overridesFor(profile, { overridePayload: { custom_include_headers: 'X-Caller: 1' } })).toEqual({ custom_exclude_body: '' });
+            expect(overridesFor({ ...connectionProfile, 'custom-include-body': '' })).not.toHaveProperty('custom_include_body');
+        });
+
+        test('gives empty values for None, as applying the profile clears them', () => {
+            expect(overridesFor({ ...connectionProfile, 'custom-endpoint-profile': 'None' })).toEqual({
+                custom_include_body: '',
+                custom_exclude_body: '',
+                custom_include_headers: '',
+            });
+        });
+
+        test.each([
+            ['a name that no endpoint profile has', { ...connectionProfile, 'custom-endpoint-profile': 'Deleted' }],
+            ['an endpoint profile that stores none', { ...connectionProfile, 'custom-endpoint-profile': 'Legacy' }],
+            ['no name', { api: 'custom' }],
+            ['no connection profile', undefined],
+        ])('gives nothing for %s', (_, profile) => {
+            expect(overridesFor(profile)).toEqual({});
+        });
+
+        test('gives nothing when the connection profile is not of the Custom source, or there are no endpoint profiles', () => {
+            expect(overridesFor(connectionProfile, { isCustomSource: false })).toEqual({});
+            expect(overridesFor(connectionProfile, { profiles: null })).toEqual({});
+            expect(overridesFor(connectionProfile, { profiles: [] })).toEqual({});
+        });
+
+        test('changes neither the connection profile, the endpoint profiles nor the caller payload', () => {
+            const profile = { ...connectionProfile };
+            const overridePayload = { custom_include_headers: 'X-Caller: 1' };
+            const before = structuredClone({ profile, endpointProfiles, overridePayload });
+
+            overridesFor(profile, { overridePayload });
+
+            expect({ profile, endpointProfiles, overridePayload }).toEqual(before);
+        });
+    });
+
+    test('picks only the Additional Parameters from live settings or a profile', () => {
+        expect(pickCustomEndpointParameters({
+            custom_url: 'https://proxy.example/v1',
+            custom_include_body: 'top_k: 20',
+            custom_exclude_body: '- frequency_penalty',
+            custom_include_headers: '',
+        })).toEqual({
+            custom_include_body: 'top_k: 20',
+            custom_exclude_body: '- frequency_penalty',
+            custom_include_headers: '',
+        });
+        expect(pickCustomEndpointParameters(null)).toEqual({});
+        expect(pickCustomEndpointParameters({ name: 'Legacy', url: 'https://legacy.example/v1' })).toEqual({});
     });
 
     test('can build a preset without sampling fields', () => {

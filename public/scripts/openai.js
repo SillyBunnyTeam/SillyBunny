@@ -104,11 +104,14 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    CUSTOM_ENDPOINT_PARAMETER_KEYS,
+    fillMissingCustomEndpointParameters,
     getChatCompletionSamplingProfileLookupKeys,
     getCustomEndpointFavoritesKey,
     migrateNanoGptProviderSettings,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
+    pickCustomEndpointParameters,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
 import {
@@ -9835,6 +9838,46 @@ function onProxyAccessKeyShowClick() {
     $(this).toggleClass('fa-eye-slash fa-eye');
 }
 
+// SillyBunny: the live Additional Parameters belong to the selected endpoint profile. An edit goes to both, so the
+// next settings save stores it and selecting the profile again brings it back. None stores no edit of its own, so with
+// None selected the live settings are the only store.
+function writeCustomEndpointParameter(parameterKey, value) {
+    oai_settings[parameterKey] = value;
+
+    if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== 'None') {
+        selected_custom_endpoint_preset[parameterKey] = value;
+    }
+}
+
+// SillyBunny: fills the Additional Parameters fields from the live settings and stores each edit with the selected
+// endpoint profile. The fields show the values of the profile that was selected when they were filled. When the
+// selection changes while the dialog is open, the text in the fields belongs to the previous profile, and an edit
+// would write it into the new one. The fields then show the live values again and that edit is dropped.
+function bindCustomEndpointParameterFields(template) {
+    let shownForProfile;
+
+    const showLiveValues = () => {
+        for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+            template.find(`#${parameterKey}`).val(oai_settings[parameterKey]);
+        }
+        shownForProfile = selected_custom_endpoint_preset?.name;
+    };
+
+    showLiveValues();
+
+    for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+        template.find(`#${parameterKey}`).on('input', function () {
+            if (shownForProfile !== selected_custom_endpoint_preset?.name) {
+                showLiveValues();
+                return;
+            }
+
+            writeCustomEndpointParameter(parameterKey, String($(this).val()));
+            saveSettingsDebounced();
+        });
+    }
+}
+
 async function onCustomizeParametersClick() {
     const template = $(await renderTemplateAsync('customEndpointAdditionalParameters'));
 
@@ -9843,20 +9886,7 @@ async function onCustomizeParametersClick() {
         return showKoboldCppAdditionalParameters(template);
     }
 
-    template.find('#custom_include_body').val(oai_settings.custom_include_body).on('input', function () {
-        oai_settings.custom_include_body = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    template.find('#custom_exclude_body').val(oai_settings.custom_exclude_body).on('input', function () {
-        oai_settings.custom_exclude_body = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    template.find('#custom_include_headers').val(oai_settings.custom_include_headers).on('input', function () {
-        oai_settings.custom_include_headers = String($(this).val());
-        saveSettingsDebounced();
-    });
+    bindCustomEndpointParameterFields(template); // SillyBunny: the three fields also store their edits with the selected endpoint profile.
 
     const syncCustomReasoningPopup = () => {
         template.find('#custom_reasoning_preset').val(oai_settings.custom_reasoning_preset);
@@ -10449,6 +10479,13 @@ export async function loadCustomEndpointPresets(settings) {
         custom_endpoint_presets.push(selected_custom_endpoint_preset);
     }
 
+    // SillyBunny: the live Additional Parameters belong to the selected endpoint profile. A selected profile that
+    // stores none takes them, so it keeps them from then on. No other profile takes them, because that would send
+    // the headers of one provider to another. The settings save stores the filled values, so this runs once.
+    if (fillMissingCustomEndpointParameters(selected_custom_endpoint_preset, oai_settings)) {
+        saveSettingsDebounced();
+    }
+
     $('#custom_endpoint_preset').empty();
 
     for (const preset of custom_endpoint_presets) {
@@ -10528,6 +10565,10 @@ function updateCustomEndpointKeyInput(preset, key) {
 }
 
 // SillyBunny: connection profiles can rotate CUSTOM secrets without using the endpoint preset dropdown.
+// This runs only while a connection profile is applied, and that sets the profile's own Additional Parameters
+// afterwards. A new selection therefore takes the Additional Parameters that its endpoint profile stores, so the
+// live ones do not stay with the profile that was selected before. A caller outside that application would change
+// the live parameters with no profile values to follow.
 export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
     const normalizedSecretId = String(secretId ?? '').trim();
     if (!normalizedSecretId) {
@@ -10536,9 +10577,13 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
 
     const matchedPreset = custom_endpoint_presets.find(preset => preset.name !== 'None' && String(preset.secretId ?? '').trim() === normalizedSecretId);
     if (matchedPreset) {
+        const selectionChanged = matchedPreset !== selected_custom_endpoint_preset;
         selected_custom_endpoint_preset = matchedPreset;
         $('#custom_endpoint_preset').val(matchedPreset.name);
         updateCustomEndpointKeyInput(matchedPreset, matchedPreset.key);
+        if (selectionChanged) {
+            Object.assign(oai_settings, pickCustomEndpointParameters(matchedPreset));
+        }
         return true;
     }
 
@@ -10547,20 +10592,26 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
         selected_custom_endpoint_preset = custom_endpoint_presets.find(preset => preset.name === 'None') ?? normalizeCustomEndpointPreset({ name: 'None' });
         $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
         updateCustomEndpointKeyInput(selected_custom_endpoint_preset, '');
+        Object.assign(oai_settings, pickCustomEndpointParameters(selected_custom_endpoint_preset));
         return true;
     }
 
     return false;
 }
 
-async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
-    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
+// SillyBunny: endpoint profiles also store the Additional Parameters. Without `parameters` the stored and the live
+// values stay as they are, because the live values can differ from the stored ones on purpose, for example when a
+// connection profile sets its own.
+async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true, parameters = null } = {}) {
+    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId, ...pickCustomEndpointParameters(parameters) });
+    const parametersToApply = parameters ? pickCustomEndpointParameters(normalizedPreset) : {};
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
     if (preset) {
         preset.url = normalizedPreset.url;
         preset.key = normalizedPreset.key;
         preset.model = normalizedPreset.model;
         preset.secretId = normalizedPreset.secretId || preset.secretId || '';
+        Object.assign(preset, parametersToApply);
         selected_custom_endpoint_preset = preset;
     } else {
         const newPreset = normalizedPreset;
@@ -10576,6 +10627,7 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
     $('#custom_model_id').val(oai_settings.custom_model);
     $('#model_custom_select').val(oai_settings.custom_model);
     refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
+    Object.assign(oai_settings, parametersToApply);
 
     if (writeKey) {
         await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
@@ -10592,7 +10644,7 @@ async function onCustomEndpointPresetChange() {
     const selectedPreset = custom_endpoint_presets.find(preset => preset.name === value);
 
     if (selectedPreset) {
-        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId });
+        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId, parameters: selectedPreset });
     } else {
         console.error(t`Custom endpoint profile '${value}' not found in custom endpoint profiles array.`);
     }
@@ -10615,6 +10667,9 @@ $('#save_custom_endpoint').on('click', async function () {
         key: keyInputValue,
         model: $('#custom_model_id').val(),
         secretId: keyInputValue ? '' : existingPreset?.secretId,
+        // SillyBunny: Save stores the Additional Parameters in effect, which are the live ones. The selected profile
+        // can hold other values when a connection profile set its own.
+        ...pickCustomEndpointParameters(oai_settings),
     });
 
     // Bind the active CUSTOM secret when saving without typing a new key (e.g. picked via the secrets manager)
@@ -10632,7 +10687,7 @@ $('#save_custom_endpoint').on('click', async function () {
         }
     }
 
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false, parameters: preset });
     // SillyBunny: update selection before yielding to persistence so a later user selection wins.
     updateCustomEndpointPresetOption(preset);
     $('#custom_endpoint_preset').val(preset.name);
@@ -10663,7 +10718,7 @@ $('#delete_custom_endpoint').on('click', async function () {
             selected_custom_endpoint_preset.url,
             selected_custom_endpoint_preset.key,
             selected_custom_endpoint_preset.model,
-            { secretId: selected_custom_endpoint_preset.secretId },
+            { secretId: selected_custom_endpoint_preset.secretId, parameters: selected_custom_endpoint_preset },
         );
 
         saveSettingsDebounced();
@@ -10696,7 +10751,7 @@ async function runCustomEndpointPresetCallback(_, value) {
     }
 
     $('#custom_endpoint_preset').val(preset.name);
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, parameters: preset });
     saveSettingsDebounced();
     return preset.name;
 }
