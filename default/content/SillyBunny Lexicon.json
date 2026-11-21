@@ -670,11 +670,13 @@
             "uid": 15,
             "key": [
                 "chat completion",
-                "chat completions"
+                "chat completions",
+                "koboldcpp chat completion",
+                "koboldcpp chat completions"
             ],
             "keysecondary": [],
             "comment": "A15 Chat Completion",
-            "content": "Chat Completion sends the prompt as a list of role-tagged messages (system, user, assistant), the format ChatGPT-style APIs use. It appears as Chat Completions in the Backend Type toggle, with a Source picker for the provider. It is not cloud-only: a local server can be reached through Custom (OpenAI-compatible), and many cloud sources also exist as Text Completion (OpenRouter, for example). The difference is the prompt format, not where the model runs. The prompt is built with the Prompt Manager (Backend ▸ Editor); instruct and context templates do not apply. Function calling, web search, inline media, reasoning toggles and Prompt Post-Processing exist only here.",
+            "content": "Chat Completion sends the prompt as a list of role-tagged messages (system, user, assistant), the format ChatGPT-style APIs use. It appears as Chat Completions in the Backend Type toggle, with a Source picker for the provider. It is not cloud-only: a local server can be reached through Custom (OpenAI-compatible), and many cloud sources also exist as Text Completion (OpenRouter, for example). The difference is the prompt format, not where the model runs. The prompt is built with the Prompt Manager (Backend ▸ Editor); instruct and context templates do not apply. Function calling, web search, inline media, reasoning toggles and Prompt Post-Processing exist only here. KoboldCpp is also a Chat Completion source of its own, where KoboldCpp builds the prompt with the model's own chat template. It has its own URL field and shares the KoboldCpp API key and URL history with the Text Completion KoboldCpp type. Connect shows the loaded model, and the \"KoboldCpp Model\" row and /kcpp-model work here too in admin mode. Its samplers are Temperature, Top P, Top K, Min P, Top A, Repetition Penalty, Presence Penalty and Seed, and it has Additional Parameters of its own for anything else KoboldCpp accepts.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,

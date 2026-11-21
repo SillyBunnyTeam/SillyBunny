@@ -174,9 +174,10 @@ describe('KoboldCpp admin endpoints', () => {
 
     test('lists switcher entries and the loaded file when admin mode is on', async () => {
         mockKoboldCpp({
-            '/api/extra/version': () => ({ json: { result: 'KoboldCpp', version: '1.123.1', admin: 1 } }),
+            '/api/extra/version': () => ({ json: { result: 'KoboldCpp', version: '1.123.1', admin: 1, vision: true, audio: false } }),
             '/api/admin/list_options': () => ({ json: ['beta.gguf', 'alpha.gguf', 'TLD.kcpps', 'initial_model', 'unload_model'] }),
             '/v1/models': () => ({ json: { data: [{ id: 'koboldcpp/beta' }] } }),
+            '/api/extra/true_max_context_length': () => ({ json: { value: 8192 } }),
         });
 
         const result = await post('models', { api_server: 'http://localhost:5001/v1/' });
@@ -195,6 +196,9 @@ describe('KoboldCpp admin endpoints', () => {
                 loadedModel: 'koboldcpp/beta',
                 loadedFiles: ['beta.gguf'],
                 loadedFile: 'beta.gguf',
+                contextSize: 8192,
+                vision: true,
+                audio: false,
             },
         });
         for (const [url, options] of nodeFetchMock.mock.calls) {
@@ -226,6 +230,28 @@ describe('KoboldCpp admin endpoints', () => {
         const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
 
         expect(result.body).toMatchObject({ admin: 2, entries: [], loadedModel: 'koboldcpp/alpha', loadedFile: null });
+    });
+
+    test('reports no context size or media support when KoboldCpp does not give them', async () => {
+        for (const context of [{ value: -1 }, { value: 'abc' }, { value: 0 }, {}]) {
+            mockKoboldCpp({
+                '/api/extra/version': () => ({ json: { admin: 0, vision: 'yes' } }),
+                '/v1/models': () => ({ json: { data: [{ id: 'koboldcpp/alpha' }] } }),
+                '/api/extra/true_max_context_length': () => ({ json: context }),
+            });
+
+            const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
+
+            expect(result.body).toMatchObject({ contextSize: null, vision: false, audio: false });
+        }
+
+        mockKoboldCpp({
+            '/api/extra/version': () => ({ json: { admin: 0 } }),
+        });
+
+        const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
+
+        expect(result.body).toEqual({ admin: 0, entries: [], loadedModel: null, loadedFiles: [], loadedFile: null, contextSize: null, vision: false, audio: false });
     });
 
     test('fails the model list when KoboldCpp is unreachable', async () => {

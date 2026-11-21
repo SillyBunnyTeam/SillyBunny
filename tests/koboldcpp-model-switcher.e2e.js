@@ -32,6 +32,11 @@ const SERVERS = new Map([
     [NEW_URL, modelList(['gamma.gguf'])],
 ]);
 
+const MODE_CONTROLS = {
+    text: { connect: '#api_button_textgenerationwebui', select: '#koboldcpp_model' },
+    chat: { connect: '#api_button_openai', select: '#koboldcpp_chat_model' },
+};
+
 /**
  * @param {import('@playwright/test').Request} request Request for one KoboldCpp server
  * @returns {string} URL of the mocked server the request names
@@ -44,9 +49,10 @@ function getServerUrl(request) {
 /**
  * Opens the API panel connected to a mocked KoboldCpp in admin mode. The mock accepts every load request, and its old
  * worker keeps answering afterwards, so a model switch waits until something stops it.
+ * @param {'text'|'chat'} [mode] KoboldCpp as the Text Completion API or as the Chat Completion source
  * @returns {Promise<Record<string, number>>} Restart polls by server URL, updated as the page polls
  */
-async function connectKoboldCpp(page, baseURL) {
+async function connectKoboldCpp(page, baseURL, mode = 'text') {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
     const polls = { [OLD_URL]: 0, [NEW_URL]: 0 };
@@ -62,13 +68,16 @@ async function connectKoboldCpp(page, baseURL) {
             settings.firstRun = false;
             applyWelcomeSettings(settings);
             settings._version = version;
-            settings.main_api = 'textgenerationwebui';
+            settings.main_api = mode === 'chat' ? 'openai' : 'textgenerationwebui';
             settings.power_user = { ...settings.power_user, auto_connect: false };
             settings.textgenerationwebui_settings = {
                 ...settings.textgenerationwebui_settings,
                 type: 'koboldcpp',
                 server_urls: { ...settings.textgenerationwebui_settings?.server_urls, koboldcpp: OLD_URL, llamacpp: '' },
             };
+            if (mode === 'chat') {
+                settings.oai_settings = { ...settings.oai_settings, chat_completion_source: 'koboldcpp', koboldcpp_url: OLD_URL };
+            }
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ response, json: data });
@@ -85,6 +94,7 @@ async function connectKoboldCpp(page, baseURL) {
         if (url.pathname === '/api/backends/text-completions/status') {
             return route.fulfill({ json: { result: SERVERS.get(getServerUrl(request))?.loadedModel ?? '' } });
         }
+        if (url.pathname === '/api/backends/chat-completions/status') return route.fulfill({ json: { data: [] } });
         if (url.pathname === '/api/backends/text-completions/koboldcpp/models') {
             return route.fulfill({ json: SERVERS.get(getServerUrl(request)) });
         }
@@ -102,18 +112,20 @@ async function connectKoboldCpp(page, baseURL) {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'api'));
-    await page.locator('#api_button_textgenerationwebui').click();
-    await expect(page.locator('#koboldcpp_model')).toHaveValue('alpha.gguf');
+    await page.locator(MODE_CONTROLS[mode].connect).click();
+    await expect(page.locator(MODE_CONTROLS[mode].select)).toHaveValue('alpha.gguf');
     return polls;
 }
 
 /**
  * Chooses beta.gguf in the switcher, as Select2 does, and waits until the switch polls for the restart.
+ * @param {'text'|'chat'} [mode] Connection mode whose switcher to use
  */
-async function startSwitch(page, polls) {
-    await page.evaluate(() => window.$('#koboldcpp_model').val('beta.gguf').trigger('change'));
+async function startSwitch(page, polls, mode = 'text') {
+    const { connect, select } = MODE_CONTROLS[mode];
+    await page.evaluate(selector => window.$(selector).val('beta.gguf').trigger('change'), select);
     await expect.poll(() => polls[OLD_URL]).toBeGreaterThan(0);
-    await expect(page.locator('#api_button_textgenerationwebui')).toHaveClass(/\bdisabled\b/);
+    await expect(page.locator(connect)).toHaveClass(/\bdisabled\b/);
 }
 
 async function expectConnectEnabled(page) {
@@ -169,6 +181,22 @@ test.describe('KoboldCpp model switch', () => {
         await expectNoMorePolls(page, polls);
     });
 
+    test('the Chat Completion reconnect after a change of the main API lists the KoboldCpp models once the wait ends', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL);
+        await page.evaluate(url => Object.assign(window.SillyTavern.getContext().chatCompletionSettings, {
+            chat_completion_source: 'koboldcpp',
+            koboldcpp_url: url,
+        }), OLD_URL);
+        await startSwitch(page, polls);
+
+        await page.locator('#main_api').selectOption('openai');
+
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expect(page.locator('#koboldcpp_chat_model')).toHaveValue('alpha.gguf');
+        await expectConnectEnabled(page);
+        await expectNoMorePolls(page, polls);
+    });
+
     test('a Text Completion type without a URL stops the wait and enables Connect again', async ({ page, baseURL }) => {
         const polls = await connectKoboldCpp(page, baseURL);
         await startSwitch(page, polls);
@@ -189,6 +217,59 @@ test.describe('KoboldCpp model switch', () => {
         await page.locator('#api_button_textgenerationwebui').click();
 
         await expect(page.locator('#koboldcpp_model')).toHaveValue('gamma.gguf');
+        await expectNoMorePolls(page, polls);
+    });
+
+    test('a KoboldCpp URL typed during a Chat Completion switch enables Connect, which lists the new server', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL, 'chat');
+        await startSwitch(page, polls, 'chat');
+
+        await page.locator('#koboldcpp_chat_url_text').fill(NEW_URL);
+        await expectConnectEnabled(page);
+        await page.locator('#api_button_openai').click();
+
+        await expect(page.locator('#koboldcpp_chat_model')).toHaveValue('gamma.gguf');
+        await expectNoMorePolls(page, polls);
+    });
+
+    test('the reconnect after a change of the Chat Completion source keeps Cancel until it answers', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL, 'chat');
+        let answerStatus;
+        const statusAnswer = new Promise(resolve => {
+            answerStatus = resolve;
+        });
+        await page.route('**/api/backends/chat-completions/status', async route => {
+            await statusAnswer;
+            await route.fulfill({ json: { data: [] } });
+        });
+        await page.evaluate(() => {
+            window.SillyTavern.getContext().chatCompletionSettings.custom_url = 'http://127.0.0.1:5003/v1';
+        });
+        await startSwitch(page, polls, 'chat');
+
+        await page.locator('#chat_completion_source').selectOption('custom');
+
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expect(page.locator('#api_button_openai')).toHaveClass(/\bdisabled\b/);
+        await expect(page.locator('#api_button_openai ~ .api_loading')).toBeVisible();
+        // The switch ended without stopping the loading state, so the page stays in the connecting state until the later check ends.
+        await expect(page.locator('html')).toHaveAttribute('data-sb-connection', 'connecting');
+        answerStatus();
+        await expectConnectEnabled(page);
+        await expect(page.locator('html')).not.toHaveAttribute('data-sb-connection', 'connecting');
+        await expectNoMorePolls(page, polls);
+    });
+
+    test('Connect right after Cancel lists the loaded model in Chat Completion once the wait ends', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL, 'chat');
+        await startSwitch(page, polls, 'chat');
+
+        await page.locator('#api_button_openai ~ .api_loading').click();
+        await page.locator('#api_button_openai').click();
+
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expect(page.locator('#koboldcpp_chat_model')).toHaveValue('alpha.gguf');
+        await expectConnectEnabled(page);
         await expectNoMorePolls(page, polls);
     });
 
@@ -288,5 +369,15 @@ test.describe('KoboldCpp model switcher controls on a phone', () => {
         await page.keyboard.press('Escape');
         await expect(picker).toBeHidden();
         expect((await result).pipe).toBe('');
+    });
+
+    test('the Chat Completion model row has the same accessible name and description, and its hint sits in the Model group', async ({ page, baseURL }) => {
+        await connectKoboldCpp(page, baseURL, 'chat');
+
+        const trigger = page.getByRole('button', { name: 'KoboldCpp Model alpha.gguf' });
+        await expect(trigger).toHaveAccessibleDescription(MODEL_HINT);
+
+        const modelGroup = page.locator('[data-sb-connections-group="model"]:has(#koboldcpp_chat_model)');
+        await expect(modelGroup.locator('.ds-select-row:has(#koboldcpp_chat_model) ~ * #koboldcpp_chat_model_hint')).toBeVisible();
     });
 });
