@@ -382,7 +382,7 @@ describe('request-local output controls', () => {
 });
 
 describe('Gemini replies that end early', () => {
-    const REASONING_ONLY_WARNING = 'The model finished reasoning but returned no reply text.';
+    const REASONING_ONLY_WARNING = 'The model finished reasoning but returned no reply text';
     const STREAM_MODES = [['stream', false], ['buffered stream', true]];
     const CONTINUE = { suppressUserMessage: true, suppressAutoContinue: true };
 

@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "welcome-next-reisen--breath-b.png",
+    "sha256": "9413d2f4771cb854a87a5a8d7340794d6c1a2743a044f214eb5721794ca2f83b",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:ff477115404c1ef4bd95686a64e00df5a69252f60239d11450fbe604722e56fd"
+}

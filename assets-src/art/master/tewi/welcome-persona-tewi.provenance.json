@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "welcome-persona-tewi.png",
+    "sha256": "d6572fdde4c87825142eaf5373bfd653debe78a3a8f5d406566e6b572f392ac3",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:53db99b800264f3c66950c2d2b162822c30db9e4af1467d9122e9af0d8c82896"
+}

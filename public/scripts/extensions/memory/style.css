@@ -12,6 +12,11 @@
     width: max-content;
 }
 
+/* SillyBunny: upstream's `small { opacity: 0.7 }` leaves this label under 4.5:1 on the opaque Window layer of the summary popout. */
+#memory_restore small {
+    opacity: 1;
+}
+
 label[for="memory_frozen"],
 label[for="memory_skipWIAN"] {
     display: flex;

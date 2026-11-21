@@ -3,6 +3,8 @@ import { shouldSendOnEnter } from './RossAscends-mods.js';
 import { t } from './i18n.js';
 import { power_user, toastPositionClasses } from './power-user.js';
 import { clamp, removeFromArray, runAfterAnimation, uuidv4 } from './utils.js';
+// SillyBunny: frames popups in the shared Alert/Dialog/Window tiers (docs/upstream-touch-ledger.md).
+import { framePopup } from './sillybunny-editor/popup-frame.js';
 
 /** @readonly */
 /** @enum {Number} */
@@ -60,6 +62,10 @@ export const POPUP_RESULT = {
  * @property {(popup: Popup) => Promise<void?>|void?} [onOpen=null] - Handler called after the popup opens
  * @property {number?} [cropAspect=null] - Aspect ratio for the crop popup
  * @property {string?} [cropImage=null] - Image URL to display in the crop popup
+ * @property {('alert'|'dialog'|'window')?} [tier=null] - SillyBunny: explicit dialog presentation tier.
+ * @property {string?} [title=null] - SillyBunny: header title; null promotes the content's leading heading
+ * @property {'content'|'fill'} [size='fill'] - SillyBunny: whether a Window fills its frame.
+ * @property {(popup: Popup) => void} [onOpening=null] - SillyBunny: handler called in `show()` once the frame is built and before the first paint, so the popup never shows its upstream layout. A throw is logged and the popup still opens. `onOpen` still runs later, after the opening animation, and is the place for code that reads bounding rects.
  */
 
 /**
@@ -146,6 +152,9 @@ const showPopupHelper = {
     },
 };
 
+// SillyBunny: the longest `show()` waits for a closing popup that holds the same ids. The exit animation takes 200ms and `runAfterAnimation` falls back at 500ms.
+const POPUP_CLOSING_TWIN_WAIT_MS = 1000;
+
 export class Popup {
     /** @readonly @type {POPUP_TYPE} */ type;
 
@@ -169,6 +178,7 @@ export class Popup {
     /** @type {(popup: Popup) => Promise<boolean?>|boolean?} */ onClosing;
     /** @type {(popup: Popup) => Promise<void?>|void?} */ onClose;
     /** @type {(popup: Popup) => Promise<void?>|void?} */ onOpen;
+    /** SillyBunny: `show()` calls this before the first paint. @type {(popup: Popup) => void} */ onOpening;
 
     /** @type {POPUP_RESULT|number} */ result;
     /** @type {any} */ value;
@@ -216,6 +226,12 @@ export class Popup {
         onOpen = null,
         cropAspect = null,
         cropImage = null,
+        // SillyBunny: tier and title for the shared dialog frame.
+        tier = null,
+        title = null,
+        size = 'fill',
+        // SillyBunny: `onOpen` runs after the opening animation, so a layout change there shows as a jump.
+        onOpening = null,
     } = {}) {
         Popup.util.popups.push(this);
 
@@ -230,6 +246,8 @@ export class Popup {
         this.onClosing = onClosing;
         this.onClose = onClose;
         this.onOpen = onOpen;
+        // SillyBunny: `show()` calls this before the first paint.
+        this.onOpening = onOpening;
 
         /**@type {HTMLTemplateElement}*/
         const template = document.querySelector('#popup_template');
@@ -272,7 +290,8 @@ export class Popup {
         this.okButton.textContent = typeof okButton === 'string' ? okButton : 'OK';
         this.okButton.dataset.i18n = this.okButton.textContent;
         this.cancelButton.textContent = typeof cancelButton === 'string' ? cancelButton : template.getAttribute('popup-button-cancel');
-        this.cancelButton.dataset.i18n = this.cancelButton.textContent;
+        // SillyBunny: a default caption is translated by the template key it was read from, not by its already translated text.
+        this.cancelButton.dataset.i18n = typeof cancelButton === 'string' ? this.cancelButton.textContent : 'popup-button-cancel';
 
         /** @param {HTMLElement} control @param {string} text Sets the title attribute and translation, if text is provided  */
         function setTitleFromTooltip(control, text) {
@@ -467,8 +486,15 @@ export class Popup {
                 if (okButton === false) this.okButton.style.display = 'none';
                 if (cancelButton === false) this.cancelButton.style.display = 'none';
                 // Override default captions for confirm on OK->Yes, CANCEL->No
-                if (!okButton) this.okButton.textContent = template.getAttribute('popup-button-yes');
-                if (!cancelButton) this.cancelButton.textContent = template.getAttribute('popup-button-no');
+                // SillyBunny: each default caption keeps the template key it came from, so a later locale pass translates it as Yes and No, not as OK and Cancel.
+                if (!okButton) {
+                    this.okButton.textContent = template.getAttribute('popup-button-yes');
+                    this.okButton.dataset.i18n = 'popup-button-yes';
+                }
+                if (!cancelButton) {
+                    this.cancelButton.textContent = template.getAttribute('popup-button-no');
+                    this.cancelButton.dataset.i18n = 'popup-button-no';
+                }
                 break;
             }
             case POPUP_TYPE.INPUT: {
@@ -477,7 +503,11 @@ export class Popup {
                 if (okButton === false) this.okButton.style.display = 'none';
                 if (cancelButton === false) this.cancelButton.style.display = 'none';
                 // Override default captions for input on OK->Save
-                if (!okButton) this.okButton.textContent = template.getAttribute('popup-button-save');
+                // SillyBunny: the default caption keeps its template key, as in the confirm branch.
+                if (!okButton) {
+                    this.okButton.textContent = template.getAttribute('popup-button-save');
+                    this.okButton.dataset.i18n = 'popup-button-save';
+                }
                 break;
             }
             case POPUP_TYPE.DISPLAY: {
@@ -503,7 +533,11 @@ export class Popup {
                 if (okButton === false) this.okButton.style.display = 'none';
                 if (cancelButton === false) this.cancelButton.style.display = 'none';
                 // Override default captions for crop on OK->Crop
-                if (!okButton) this.okButton.textContent = template.getAttribute('popup-button-crop');
+                // SillyBunny: the default caption keeps its template key, as in the confirm branch.
+                if (!okButton) {
+                    this.okButton.textContent = template.getAttribute('popup-button-crop');
+                    this.okButton.dataset.i18n = 'popup-button-crop';
+                }
                 break;
             }
             default: {
@@ -668,6 +702,16 @@ export class Popup {
             }
         };
         this.dlg.addEventListener('keydown', keyListener.bind(this));
+
+        // SillyBunny: the frame lays itself out in show(), once the popup is in the DOM.
+        this.sbFrame = framePopup(this, {
+            tier,
+            title,
+            // SillyBunny: pass Window sizing to the shared frame without changing Popup behavior.
+            size,
+            allowEscapeClose,
+            cancelButtonProvided: Object.prototype.hasOwnProperty.call(arguments[3] ?? {}, 'cancelButton'),
+        });
     }
 
     /**
@@ -677,12 +721,24 @@ export class Popup {
      * @returns {Promise<string|number|boolean?>} A promise that resolves with the value of the popup when it is completed.
      */
     async show() {
+        // SillyBunny: a closing popup stays in the document until its exit animation ends. Content with the same ids would then exist twice, so wait for it.
+        // The wait is bounded: a closing popup whose `onClose` handler awaits this popup would otherwise never finish.
+        const closingTwins = this.#closingPopupsSharingIds();
+        if (closingTwins.length > 0) {
+            await Promise.race([
+                Promise.all(closingTwins.map(popup => popup.#promise)),
+                new Promise(resolve => setTimeout(resolve, POPUP_CLOSING_TWIN_WAIT_MS)),
+            ]);
+        }
+
         document.body.append(this.dlg);
 
         // Run opening animation
         this.dlg.setAttribute('opening', '');
 
         this.dlg.showModal();
+        // SillyBunny: tier and layout are applied before the first paint; promotion needs layout. `opened()` also runs `onOpening`.
+        this.sbFrame?.opened();
 
         // We need to fix the toastr to be present inside this dialog
         fixToastrForDialogs();
@@ -700,6 +756,19 @@ export class Popup {
             this.#resolver = resolve;
         });
         return this.#promise;
+    }
+
+    /**
+     * SillyBunny: the popups that are closing and whose content holds an id that this popup's content also holds.
+     * @returns {Popup[]}
+     */
+    #closingPopupsSharingIds() {
+        const ids = Array.from(this.dlg.querySelectorAll('[id]'), element => element.id).filter(Boolean);
+        if (ids.length === 0) return [];
+        return Popup.util.popups.filter(popup => popup !== this
+            && popup.dlg.hasAttribute('closing')
+            && popup.#promise
+            && ids.some(id => popup.dlg.querySelector(`[id="${CSS.escape(id)}"]`)));
     }
 
     setAutoFocus({ applyAutoFocus = false } = {}) {
@@ -820,12 +889,17 @@ export class Popup {
     #hide() {
         // We close the dialog, first running the animation
         this.dlg.setAttribute('closing', '');
+        // SillyBunny: uncover a parent page and release menus hosted in this dialog.
+        this.sbFrame?.closing();
 
         // Once the hiding starts, we need to fix the toastr to the layer below
         fixToastrForDialogs();
 
         // After the dialog is actually completely closed, remove it from the DOM
-        runAfterAnimation(this.dlg, async () => {
+        // SillyBunny: the theme's exit animation ignores `popup--animation-none`, and WebKit does not report the end
+        // of that popup's 0ms backdrop animation, so the popup would wait out the 200ms exit. It is removed at once instead.
+        const afterExit = this.dlg.classList.contains('popup--animation-none') ? (_dlg, callback) => callback() : runAfterAnimation;
+        afterExit(this.dlg, async () => {
             // Call the close on the dialog
             this.dlg.close();
 
@@ -836,6 +910,8 @@ export class Popup {
 
             // Remove it from the dom
             this.dlg.remove();
+            // SillyBunny: unbind the frame's listeners.
+            this.sbFrame?.dispose();
 
             // Remove it from the popup references
             removeFromArray(Popup.util.popups, this);

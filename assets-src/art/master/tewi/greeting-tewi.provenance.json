@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "greeting-tewi.png",
+    "sha256": "e5c0eb67ee74004a2cdeb8cb7ecef0beb45bae8e6714e631911b68e520cae39f",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:aaf006701d9cd0827131cf7a506e81f05d075390798c2f1d1b4ba3ca79de9118"
+}

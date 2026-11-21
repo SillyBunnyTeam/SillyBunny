@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "help-reisen.png",
+    "sha256": "e726ab7acf707fb9bdd7933e9cd53652e15384e3c3a8a3db77bfa89ed84a30e9",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:631dd6847d4737270a8a258747a5810660f8f4710c99c9b05f2e13702c19b2ad"
+}

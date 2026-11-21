@@ -113,6 +113,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         }),
         startStatusLoading: jest.fn(),
         saveSettingsDebounced: jest.fn(),
+        isTemporaryChat: () => false,
         getStatusOpen: jest.fn(async () => context.selected_custom_endpoint_preset?.secretId),
     };
     runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${saveSource}`, context);

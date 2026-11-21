@@ -1,3 +1,11 @@
+import { yaml } from '../lib.js';
+import { openAlert } from './sillybunny-editor/dialog.js';
+import { loadListEditorStyles } from './sillybunny-editor/list-shell.js';
+import { createButtonRow, createPropertyRow, createRow, createSpinRow, createSwitchRow, createTextAreaField } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
+import { createDataSecurityGroup } from './sillybunny-data-security.js';
+import { t } from './i18n.js';
+
 const SB_CONSOLE_LOG_LIMIT = 260;
 const SB_CONSOLE_LOG_REFRESH_MS = 2500;
 const SB_CONSOLE_LOG_STICKY_THRESHOLD = 28;
@@ -16,8 +24,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             busy: false,
             restarting: false,
             configLoaded: false,
+            autoStashEnabled: false,
         },
         consoleLogs: {
+            /** @type {{ statusPill: HTMLElement, refreshRow: { setDisabled: (disabled: boolean) => void }, pauseLabel: HTMLElement, statusNote: HTMLElement, output: HTMLElement, verboseLoggingStatus: HTMLElement, verboseLoggingActionButton: HTMLInputElement } | null} */
             refs: null,
             entries: [],
             latestId: 0,
@@ -109,9 +119,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        refs.pauseButton.textContent = state.paused ? 'Resume Live' : 'Pause Live';
-        setButtonDisabled(refs.refreshButton, state.busy);
-        setButtonDisabled(refs.verboseLoggingActionButton, state.busy || state.configBusy || !state.configLoaded);
+        refs.pauseLabel.textContent = state.paused ? 'Resume Live' : 'Pause Live';
+        refs.refreshRow.setDisabled(state.busy);
+        refs.verboseLoggingActionButton.disabled = state.busy || state.configBusy || !state.configLoaded;
     }
 
     function setConsoleLogsVerboseLoggingUI(value) {
@@ -124,14 +134,12 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         if (refs?.verboseLoggingStatus instanceof HTMLElement) {
             refs.verboseLoggingStatus.textContent = enabled
                 ? 'Verbose logging is enabled.'
-                : 'Standard logging is enabled.';
+                : 'Standard logging is enabled';
             refs.verboseLoggingStatus.dataset.state = enabled ? 'warn' : 'neutral';
         }
 
-        if (refs?.verboseLoggingActionButton instanceof HTMLButtonElement) {
-            refs.verboseLoggingActionButton.textContent = enabled
-                ? 'Debug Logging: Enabled'
-                : 'Debug Logging: Disabled';
+        if (refs?.verboseLoggingActionButton instanceof HTMLInputElement) {
+            refs.verboseLoggingActionButton.checked = enabled;
         }
 
         updateConsoleLogsInteractivity();
@@ -227,12 +235,13 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             }
             globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
         } catch (error) {
+            setConsoleLogsVerboseLoggingUI(state.verboseLoggingEnabled ? 0 : 1);
             console.error('Failed to save logging config for Console Logs.', error);
             if (refs?.verboseLoggingStatus instanceof HTMLElement) {
                 refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
                 refs.verboseLoggingStatus.dataset.state = 'danger';
             }
-            globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console logs');
+            globalThis.toastr?.error?.(error?.message || 'Failed to save logging config', 'Console logs');
         } finally {
             state.configBusy = false;
             updateConsoleLogsInteractivity();
@@ -255,22 +264,23 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         const linesShown = state.entries.length;
         const totalBuffered = state.totalBuffered || linesShown;
-        const noteParts = [`Showing ${linesShown} of ${totalBuffered} recent console line${totalBuffered === 1 ? '' : 's'}.`];
+        const noteParts = [`Showing ${linesShown} of ${totalBuffered} recent console line${totalBuffered === 1 ? '' : 's'}`];
 
         if (state.captureStartedAt) {
-            noteParts.push(`Capture started ${formatConsoleLogDateTime(state.captureStartedAt)}.`);
+            noteParts.push(`Capture started ${formatConsoleLogDateTime(state.captureStartedAt)}`);
         }
 
         if (state.lastUpdatedAt) {
-            noteParts.push(`Last updated ${formatConsoleLogTime(state.lastUpdatedAt)}.`);
+            noteParts.push(`Last updated ${formatConsoleLogTime(state.lastUpdatedAt)}`);
         }
 
         noteParts.push(state.paused
-            ? 'Live polling is paused.'
-            : `Refreshes every ${(SB_CONSOLE_LOG_REFRESH_MS / 1000).toFixed(1).replace(/\.0$/, '')} seconds while this tab is open.`);
+            ? 'Live polling is paused'
+            : `Refreshes every ${(SB_CONSOLE_LOG_REFRESH_MS / 1000).toFixed(1).replace(/\.0$/, '')} seconds while this tab is open`);
 
         setServerAdminPill(refs.statusPill, state.busy ? 'Loading…' : state.paused ? 'Paused' : 'Live', state.paused ? 'warn' : 'good');
-        setServerAdminMessage(refs.statusNote, noteParts.join(' '), state.paused ? 'warn' : 'neutral');
+        // The parts carry no period of their own, so the note is one text whose sentences are joined here and not several captions.
+        setServerAdminMessage(refs.statusNote, `${noteParts.join('. ')}.`, state.paused ? 'warn' : 'neutral');
     }
 
     function renderConsoleLogsOutput({ preserveScroll = true } = {}) {
@@ -428,16 +438,23 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         return data;
     }
 
+    /** A button row keeps its text in `.ds-row-label`; setting the button's own text would drop the label node. */
+    function getServerButtonLabel(button) {
+        return button.querySelector('.ds-row-label') ?? button;
+    }
+
     function setServerAdminButtonLabel(button, isBusy, busyLabel) {
         if (!(button instanceof HTMLButtonElement)) {
             return;
         }
 
+        const label = getServerButtonLabel(button);
+
         if (!button.dataset.idleLabel) {
-            button.dataset.idleLabel = button.textContent || '';
+            button.dataset.idleLabel = label.textContent || '';
         }
 
-        button.textContent = isBusy ? busyLabel : button.dataset.idleLabel;
+        label.textContent = isBusy ? busyLabel : button.dataset.idleLabel;
     }
 
     function describeAutoStashState(result) {
@@ -524,52 +541,105 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         refs.thumbnailMobileAvatarHeight.value = String(mobileSettings.dimensions?.avatar?.[1] ?? 480);
         refs.thumbnailMobilePersonaWidth.value = String(mobileSettings.dimensions?.persona?.[0] ?? 320);
         refs.thumbnailMobilePersonaHeight.value = String(mobileSettings.dimensions?.persona?.[1] ?? 480);
+
+        // The picker rows show the select's value only when asked; the switches decide which rows are available.
+        refs.thumbnailFormatRow.sync();
+        refs.thumbnailMobileFormatRow.sync();
+        setThumbnailInputsDisabled(isThumbnailLocked(), refs);
     }
 
-    function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
-        const controls = [
-            refs?.thumbnailEnabled,
-            refs?.thumbnailFormat,
-            refs?.thumbnailQuality,
-            refs?.thumbnailBgWidth,
-            refs?.thumbnailBgHeight,
-            refs?.thumbnailAvatarWidth,
-            refs?.thumbnailAvatarHeight,
-            refs?.thumbnailPersonaWidth,
-            refs?.thumbnailPersonaHeight,
-            refs?.thumbnailUseRecommendedButton,
-            refs?.thumbnailUseRecommendedMobileButton,
-            refs?.thumbnailSaveButton,
-            refs?.thumbnailSaveClearButton,
-            refs?.thumbnailClearButton,
-            refs?.thumbnailMobileEnabled,
-            refs?.thumbnailMobileFormat,
-            refs?.thumbnailMobileQuality,
-            refs?.thumbnailMobileBgWidth,
-            refs?.thumbnailMobileBgHeight,
-            refs?.thumbnailMobileAvatarWidth,
-            refs?.thumbnailMobileAvatarHeight,
-            refs?.thumbnailMobilePersonaWidth,
-            refs?.thumbnailMobilePersonaHeight,
-        ];
+    function isThumbnailLocked() {
+        const state = getServerAdminState();
+        return state.busy || state.restarting || !state.thumbnailSettingsLoaded;
+    }
 
-        for (const control of controls) {
-            if (control instanceof HTMLElement) {
-                control.disabled = disabled;
-            }
+    function setThumbnailRowDisabled(row, disabled) {
+        row.setDisabled(disabled);
+        if (row.control instanceof HTMLSelectElement) {
+            row.control.disabled = disabled;
         }
     }
 
-    function appendServerAdminStat(target, label, value) {
-        if (!(target instanceof HTMLElement)) {
+    /**
+     * Every thumbnail control follows `locked`. The rows of a preset also wait for its switch, because
+     * nothing is generated while it is off.
+     */
+    function setThumbnailInputsDisabled(locked, refs = getServerAdminRefs()) {
+        if (!refs?.thumbnailRows) {
             return;
         }
 
-        const item = createElement('div', { className: 'sb-server-stat' });
-        const title = createElement('small', { className: 'sb-server-stat-label', text: label });
-        const content = createElement('strong', { className: 'sb-server-stat-value', text: value || '—' });
-        item.append(title, content);
-        target.appendChild(item);
+        refs.thumbnailEnabledRow.setDisabled(locked);
+        refs.thumbnailMobileEnabledRow.setDisabled(locked);
+
+        const desktopOff = locked || !refs.thumbnailEnabled.checked;
+        const mobileOff = locked || !refs.thumbnailMobileEnabled.checked;
+        refs.thumbnailRows.desktop.forEach(row => setThumbnailRowDisabled(row, desktopOff));
+        refs.thumbnailRows.mobile.forEach(row => setThumbnailRowDisabled(row, mobileOff));
+
+        for (const button of [
+            refs.thumbnailUseRecommendedButton,
+            refs.thumbnailUseRecommendedMobileButton,
+            refs.thumbnailSaveButton,
+            refs.thumbnailSaveClearButton,
+            refs.thumbnailClearButton,
+        ]) {
+            button.disabled = locked;
+        }
+    }
+
+    function createServerToolsHeading(title, description) {
+        const header = createElement('div', { className: 'sb-settings-flat-header sb-settings-category-header' });
+        const heading = createElement('div', { className: 'flex-container flexFlowColumn sb-settings-category-heading' });
+        heading.append(
+            createElement('h3', { className: 'ds-pref-group-heading sb-settings-category-title', text: title }),
+            createElement('small', { text: description }),
+        );
+        header.append(heading);
+        return header;
+    }
+
+    function createServerToolsGroup(title, description, className) {
+        const section = createElement('section', { className: 'sb-settings-flat-section sb-settings-category', attrs: { 'data-sb-presentation': 'manual' } });
+        const header = createServerToolsHeading(title, description);
+        const body = createElement('div', { className: `ds-pref-group sb-settings-category-body ${className}` });
+        section.append(header, body);
+        return { section, header, body };
+    }
+
+    /** A group of the Data & Security page, built from the shared boxed-list factories. */
+    function createServerSection(title, description, field, headerSuffix, searchAliases) {
+        return createDataSecurityGroup({ title, description, field, headerSuffix, searchAliases });
+    }
+
+    /** A note under the rows of a group. The element takes the text, tone and `hidden` of `setServerAdminMessage`. */
+    function createServerStatusRow(text = '') {
+        return createElement('div', { className: 'ds-row sb-server-note', text });
+    }
+
+    function createServerButtonRow(label, field, onActivate) {
+        return createButtonRow({ label, field, onActivate }).row;
+    }
+
+    /** The status rows exist while a status is shown; each render replaces them and keeps the notes after them. */
+    function clearServerAdminStats() {
+        const refs = getServerAdminRefs();
+        refs?.statusRows.splice(0).forEach(row => row.destroy());
+    }
+
+    function appendServerAdminStat(label, value, { monospace = false } = {}) {
+        const refs = getServerAdminRefs();
+        if (!refs) {
+            return;
+        }
+
+        const stat = createPropertyRow({ label, value: value || '—', field: `status-${label.toLowerCase()}` });
+        stat.row.querySelector('.ds-row-property__value').classList.add('sb-server-stat-value');
+        if (monospace) {
+            stat.row.querySelector('.ds-row-property__value').classList.add('is-monospace');
+        }
+        refs.statusGrid.insertBefore(stat.row, refs.statusNote);
+        refs.statusRows.push(stat);
     }
 
     function updateServerConfigDirtyState() {
@@ -605,6 +675,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         setButtonDisabled(refs.restartButton, locked);
         setButtonDisabled(refs.saveConfigButton, locked || !hasConfigContent);
         setButtonDisabled(refs.saveConfigRestartButton, locked || !hasConfigContent);
+        const repository = state.lastStatusData?.repository;
+        refs.autoStashRow.setDisabled(locked || !state.configLoaded
+            || state.lastStatusData?.installType === 'docker' || !repository?.supported || !repository?.isRepo);
         setThumbnailInputsDisabled(thumbnailLocked);
 
         if (refs.configEditor instanceof HTMLTextAreaElement) {
@@ -625,21 +698,15 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const installType = data?.installType || (repository?.isRepo ? 'git' : 'unsupported');
         const isDockerInstall = installType === 'docker';
         const isGitInstall = !isDockerInstall && Boolean(repository?.supported && repository?.isRepo);
-        const statusGrid = refs.statusGrid;
-        statusGrid.replaceChildren();
+        clearServerAdminStats();
 
-        appendServerAdminStat(statusGrid, 'Runtime', data?.runtime || 'Unknown');
-        appendServerAdminStat(statusGrid, 'Version', version?.pkgVersion ? `v${version.pkgVersion}` : 'Unknown');
+        appendServerAdminStat('Runtime', data?.runtime || 'Unknown');
+        appendServerAdminStat('Version', version?.pkgVersion ? `v${version.pkgVersion}` : 'Unknown');
 
         // Branch selector instead of static text
-        const branchContainer = createElement('div', { className: 'sb-server-stat' });
-        const branchLabel = createElement('div', { className: 'sb-server-stat-label' });
-        branchLabel.textContent = isGitInstall ? 'Branch' : 'Install';
-        const branchValue = createElement('div', { className: 'sb-server-stat-value' });
         const branchSelect = createElement('select', {
             id: 'sb-branch-select',
-            className: 'text_pole',
-            attrs: { style: 'width: 100%; max-width: 200px;' },
+            className: 'text_pole ds-control-flex',
         });
         branchSelect.disabled = !isGitInstall;
         const currentBranch = isGitInstall
@@ -652,22 +719,22 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const currentOption = createElement('option', { attrs: currentOptionAttributes });
         currentOption.textContent = currentBranch || 'Unknown';
         branchSelect.appendChild(currentOption);
-        branchValue.appendChild(branchSelect);
-        branchContainer.append(branchLabel, branchValue);
-        statusGrid.appendChild(branchContainer);
+        const branchRow = createSelectRow({ select: branchSelect, label: isGitInstall ? 'Branch' : 'Install', field: 'status-branch' });
+        refs.statusGrid.insertBefore(branchRow.row, refs.statusNote);
+        refs.statusRows.push(branchRow);
 
         // Load available branches
         if (isGitInstall) {
-            loadServerAdminBranches(branchSelect, currentBranch);
+            loadServerAdminBranches(branchSelect, currentBranch, branchRow);
         }
 
         if (isGitInstall) {
-            appendServerAdminStat(statusGrid, 'Commit', repository?.currentCommit || version?.gitRevision || 'Unknown');
-            appendServerAdminStat(statusGrid, 'Tracking', repository?.trackingBranch || 'Not set');
-            appendServerAdminStat(statusGrid, 'Ahead', String(repository?.ahead ?? 0));
-            appendServerAdminStat(statusGrid, 'Behind', String(repository?.behind ?? 0));
+            appendServerAdminStat('Commit', repository?.currentCommit || version?.gitRevision || 'Unknown', { monospace: true });
+            appendServerAdminStat('Tracking', repository?.trackingBranch || 'Not set');
+            appendServerAdminStat('Ahead', String(repository?.ahead ?? 0));
+            appendServerAdminStat('Behind', String(repository?.behind ?? 0));
         }
-        appendServerAdminStat(statusGrid, 'Config', data?.configPath || 'Unknown');
+        appendServerAdminStat('Config', data?.configPath || 'Unknown', { monospace: true });
 
         state.lastStatusData = {
             runtime: data?.runtime || '',
@@ -710,7 +777,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         refs.updateButton.dataset.sbCanUpdate = String(Boolean(updateMode));
         refs.updateButton.dataset.sbUpdateMode = updateMode;
         refs.updateButton.hidden = !isGitInstall;
-        refs.refreshButton.textContent = isGitInstall ? 'Check for updates' : 'Refresh status';
+        getServerButtonLabel(refs.refreshButton).textContent = isGitInstall ? 'Check for Updates' : 'Refresh Status';
 
         // SillyBunny: Docker and non-Git copies have no in-app updater; the note explains how they update instead.
         const installNote = isDockerInstall
@@ -734,8 +801,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
 
         if (refs.autoStashCheckbox) {
-            refs.autoStashCheckbox.checked = Boolean(repository?.autoStash);
-            refs.autoStashCheckbox.disabled = !isGitInstall;
+            // The saved setting can differ from the running server until its next restart.
+            refs.autoStashCheckbox.checked = state.configLoaded ? state.autoStashEnabled : Boolean(repository?.autoStash);
         }
         updateServerAdminInteractivity();
     }
@@ -749,6 +816,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
 
         refs.configPath.textContent = data?.path || 'config.yaml';
+        syncSavedAutoStash(String(data?.content ?? ''));
         state.configLoaded = true;
 
         if (overwrite && refs.configEditor instanceof HTMLTextAreaElement) {
@@ -756,6 +824,90 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             state.originalConfig = refs.configEditor.value;
             state.lastModifiedMs = Number(data?.lastModifiedMs ?? 0) || 0;
             updateServerConfigDirtyState();
+        }
+    }
+
+    function parseServerConfig(content) {
+        const configDocument = yaml.parseDocument(content, { prettyErrors: true });
+        if (configDocument.errors.length) {
+            throw new Error(configDocument.errors.map(error => error.message).join('\n\n'));
+        }
+        return configDocument;
+    }
+
+    /**
+     * Capture the top-level setting separately from its spacing and trailing comment.
+     */
+    const AUTO_STASH_LINE_PATTERN = /^(autoStashBeforePull:)([ \t]*)([^#\s][^#\r\n]*?)?([ \t]*)(#.*)?$/m;
+
+    /**
+     * Replace only the setting value so YAML formatting and unrelated content survive.
+     * @param {string} content YAML text
+     * @param {boolean} enabled Setting value
+     * @returns {string} YAML text with only the autoStashBeforePull line changed or appended
+     */
+    function setAutoStashLine(content, enabled) {
+        const value = enabled ? 'true' : 'false';
+        if (!AUTO_STASH_LINE_PATTERN.test(content)) {
+            // A CRLF file keeps one line ending style, so the appended line takes the file's own terminator.
+            const lineEnding = content.includes('\r\n') ? '\r\n' : '\n';
+            const separator = content === '' || content.endsWith('\n') ? '' : lineEnding;
+            return `${content}${separator}autoStashBeforePull: ${value}${lineEnding}`;
+        }
+        return content.replace(AUTO_STASH_LINE_PATTERN, (_line, key, gap, oldValue, spacing, comment = '') => {
+            // A line without a value holds its whitespace in the gap, so the comment gets its own separator.
+            const commentGap = comment && oldValue === undefined ? ' ' : spacing;
+            return `${key}${gap || ' '}${value}${commentGap}${comment}`;
+        });
+    }
+
+    function syncSavedAutoStash(content) {
+        const value = parseServerConfig(content).get('autoStashBeforePull');
+        // Match the server's boolean conversion, including quoted YAML values.
+        const enabled = typeof value === 'string' && value.trim().toLowerCase() === 'false' ? false : Boolean(value);
+        getServerAdminState().autoStashEnabled = enabled;
+        getServerAdminRefs().autoStashCheckbox.checked = enabled;
+    }
+
+    async function handleAutoStashChange() {
+        const state = getServerAdminState();
+        const refs = getServerAdminRefs();
+        if (!refs || state.busy || state.restarting || !state.configLoaded) return;
+
+        const enabled = refs.autoStashCheckbox.checked;
+        const draft = refs.configEditor.value;
+        const isDirty = draft !== state.originalConfig;
+        state.busy = true;
+        updateServerAdminInteractivity();
+        try {
+            const data = await requestServerAdmin('/api/server-admin/config/get');
+            // Only the autoStashBeforePull line of the file on disk changes; the rest is written back
+            // byte for byte. Unrelated editor changes stay an unsaved draft with the same one-line edit.
+            const content = setAutoStashLine(String(data?.content ?? ''), enabled);
+            const configDocument = parseServerConfig(content);
+            if (configDocument.get('autoStashBeforePull') !== enabled) {
+                throw new Error('The autoStashBeforePull line in config.yaml could not be updated in place. Edit it in the config editor instead.');
+            }
+            const draftContent = isDirty ? setAutoStashLine(draft, enabled) : content;
+            const result = await requestServerAdmin('/api/server-admin/config/save', {
+                content,
+                expectedLastModifiedMs: isDirty ? state.lastModifiedMs : Number(data?.lastModifiedMs ?? 0),
+                restart: false,
+            });
+            refs.configEditor.value = draftContent;
+            // A textarea folds CRLF to LF. The saved text is kept in that form so the dirty check compares like with like.
+            state.originalConfig = isDirty ? content.replace(/\r\n?/g, '\n') : refs.configEditor.value;
+            state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
+            syncSavedAutoStash(content);
+            updateServerConfigDirtyState();
+            setServerAdminMessage(refs.statusNote, result?.message || 'Config saved.', 'good');
+            setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', 'good');
+        } catch (error) {
+            refs.autoStashCheckbox.checked = state.autoStashEnabled;
+            setServerAdminMessage(refs.statusNote, error.message || 'Failed to save config.yaml.', 'danger');
+        } finally {
+            state.busy = false;
+            updateServerAdminInteractivity();
         }
     }
 
@@ -879,7 +1031,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (error?.status !== 403) {
                 console.error('Failed to refresh server admin panel.', error);
             }
-            getServerAdminRefs()?.statusGrid.replaceChildren();
+            clearServerAdminStats();
             setServerAdminPill(getServerAdminRefs()?.statusPill, error?.status === 403 ? 'Admin Only' : 'Unavailable', tone);
             setServerAdminMessage(getServerAdminRefs()?.statusNote, error.message || 'Failed to load server tools.', tone);
         } finally {
@@ -895,8 +1047,15 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        if (updateServerConfigDirtyState() && !window.confirm('Discard your unsaved config edits and reload config.yaml from disk?')) {
-            return;
+        if (updateServerConfigDirtyState()) {
+            const response = await openAlert({
+                heading: 'Discard your unsaved config edits and reload config.yaml from disk?',
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'discard', label: t`Discard`, appearance: 'destructive' },
+                ],
+            });
+            if (response !== 'discard') return;
         }
 
         await refreshServerAdminPanel({ includeConfig: true, forceConfig: true });
@@ -927,9 +1086,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             refs.configEditor.value = normalizedContent;
             state.originalConfig = normalizedContent;
             state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
+            syncSavedAutoStash(normalizedContent);
             updateServerConfigDirtyState();
             setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', restart ? 'warn' : 'good');
-            toastr.success(result?.message || 'Config saved.', 'Server config');
+            toastr.success(result?.message || 'Config saved', 'Server config');
 
             if (restart) {
                 state.busy = false;
@@ -965,7 +1125,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         if (updateServerConfigDirtyState()) {
             setServerAdminMessage(refs.thumbnailNote, 'Save or reload the config.yaml editor before changing thumbnail settings.', 'warn');
-            toastr.warning('Save or reload the config.yaml editor before changing thumbnail settings.', 'Thumbnails');
+            toastr.warning('Save or reload the config.yaml editor before changing thumbnail settings', 'Thumbnails');
             return;
         }
 
@@ -985,12 +1145,12 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             renderServerThumbnailSettings(result);
             state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
             setServerAdminMessage(refs.thumbnailNote, result?.message || 'Thumbnail settings saved.', 'good');
-            toastr.success(result?.message || 'Thumbnail settings saved.', 'Thumbnails');
+            toastr.success(result?.message || 'Thumbnail settings saved', 'Thumbnails');
             renderServerAdminConfig(await requestServerAdmin('/api/server-admin/config/get'), { overwrite: true });
         } catch (error) {
             console.error('Failed to save thumbnail settings.', error);
             setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to save thumbnail settings.', 'danger');
-            toastr.error(error.message || 'Failed to save thumbnail settings.', 'Thumbnails');
+            toastr.error(error.message || 'Failed to save thumbnail settings', 'Thumbnails');
         } finally {
             state.busy = false;
             updateServerAdminInteractivity();
@@ -1005,7 +1165,16 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        if (!window.confirm('Clear cached thumbnails for this user? They will be rebuilt as images are loaded.')) {
+        const response = await openAlert({
+            heading: 'Clear cached thumbnails for this user?',
+            body: 'They will be rebuilt as images are loaded',
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'clear', label: t`Clear Cache`, appearance: 'suggested' },
+            ],
+            defaultResponse: 'clear',
+        });
+        if (response !== 'clear') {
             return;
         }
 
@@ -1016,11 +1185,11 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         try {
             const result = await requestServerAdmin('/api/server-admin/thumbnails/clear-cache');
             setServerAdminMessage(refs.thumbnailNote, result?.message || 'Thumbnail cache cleared.', 'good');
-            toastr.success(result?.message || 'Thumbnail cache cleared.', 'Thumbnails');
+            toastr.success(result?.message || 'Thumbnail cache cleared', 'Thumbnails');
         } catch (error) {
             console.error('Failed to clear thumbnail cache.', error);
             setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to clear thumbnail cache.', 'danger');
-            toastr.error(error.message || 'Failed to clear thumbnail cache.', 'Thumbnails');
+            toastr.error(error.message || 'Failed to clear thumbnail cache', 'Thumbnails');
         } finally {
             state.busy = false;
             updateServerAdminInteractivity();
@@ -1063,36 +1232,69 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         setServerAdminMessage(refs.thumbnailNote, 'Recommended mobile thumbnail settings are staged. Save them when ready.', 'warn');
     }
 
+    /** Width and height are one setting of two fields, so they share a row instead of taking a spin row each. */
     function createThumbnailSizeRow(label, key) {
-        const row = createElement('div', { className: 'sb-thumbnail-size-row' });
-        const rowLabel = createElement('span', { className: 'sb-thumbnail-size-label', text: label });
         const widthInput = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
+            className: 'text_pole',
             attrs: {
                 type: 'number',
                 inputmode: 'numeric',
                 min: '1',
                 max: '4096',
                 step: '1',
-                'aria-label': `${label} thumbnail width`,
+                'aria-label': `${label} Thumbnail Width`,
             },
         });
         const separator = createElement('span', { className: 'sb-thumbnail-size-separator', text: 'x' });
+        separator.setAttribute('aria-hidden', 'true');
         const heightInput = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
+            className: 'text_pole',
             attrs: {
                 type: 'number',
                 inputmode: 'numeric',
                 min: '1',
                 max: '4096',
                 step: '1',
-                'aria-label': `${label} thumbnail height`,
+                'aria-label': `${label} Thumbnail Height`,
             },
         });
 
-        row.dataset.thumbnailSize = key;
-        row.append(rowLabel, widthInput, separator, heightInput);
-        return { row, widthInput, heightInput };
+        const row = createRow({ label, field: `thumbnail-size-${key}`, suffix: [widthInput, separator, heightInput] });
+        row.row.classList.add('sb-thumbnail-size-row');
+        row.row.dataset.thumbnailSize = key;
+        return {
+            ...row,
+            widthInput,
+            heightInput,
+            setDisabled(disabled) {
+                row.setDisabled(disabled);
+                widthInput.disabled = Boolean(disabled);
+                heightInput.disabled = Boolean(disabled);
+            },
+        };
+    }
+
+    function createThumbnailQualityRow(label, field) {
+        const input = createElement('input', {
+            className: 'text_pole',
+            attrs: {
+                type: 'number',
+                inputmode: 'numeric',
+                min: '1',
+                max: '100',
+                step: '1',
+            },
+        });
+        return { input, row: createSpinRow({ label, field, input, normalize: false }) };
+    }
+
+    function createThumbnailFormatRow(label, field) {
+        const select = createElement('select', { className: 'text_pole ds-control-flex' });
+        select.append(
+            createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
+            createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
+        );
+        return { select, row: createSelectRow({ select, label, field }) };
     }
 
     async function handleServerAdminRestart() {
@@ -1126,7 +1328,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             state.busy = false;
             updateServerAdminInteractivity();
             setServerAdminMessage(refs.updateNote, error.message || 'Failed to restart SillyBunny.', 'danger');
-            toastr.error(error.message || 'Failed to restart SillyBunny.', 'Server');
+            toastr.error(error.message || 'Failed to restart SillyBunny', 'Server');
         }
     }
 
@@ -1165,7 +1367,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 if (stashMessage) {
                     toastr.info(stashMessage, 'Auto-stash');
                 }
-                toastr.success(result?.message || 'Already up to date.', 'Server update');
+                toastr.success(result?.message || 'Already up to date', 'Server update');
                 return;
             }
 
@@ -1208,7 +1410,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
             }
             setServerAdminMessage(refs.updateNote, [error.message || 'Failed to update SillyBunny.', stashMessage].filter(Boolean).join('\n'), 'danger');
-            toastr.error(error.message || 'Failed to update SillyBunny.', 'Server update');
+            toastr.error(error.message || 'Failed to update SillyBunny', 'Server update');
         } finally {
             setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
 
@@ -1219,7 +1421,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
     }
 
-    async function loadServerAdminBranches(selectElement, currentBranch) {
+    async function loadServerAdminBranches(selectElement, currentBranch, branchRow) {
         try {
             const result = await requestServerAdmin('/api/server-admin/branches');
             const branches = result?.branches || [];
@@ -1236,14 +1438,15 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             }
 
             // Add change handler
-            selectElement.addEventListener('change', () => handleServerAdminBranchSwitch(selectElement));
+            selectElement.addEventListener('change', () => handleServerAdminBranchSwitch(selectElement, branchRow.sync));
         } catch (error) {
             console.error('Failed to load branches.', error);
             // Keep the current branch option if loading fails
         }
     }
 
-    async function handleServerAdminBranchSwitch(selectElement) {
+    /** `syncRow` shows the select's value again in its picker row after the code resets it without an event. */
+    async function handleServerAdminBranchSwitch(selectElement, syncRow = () => {}) {
         const state = getServerAdminState();
         const refs = getServerAdminRefs();
 
@@ -1265,15 +1468,26 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             ? `\n\nChanged files: ${changedFiles.map(f => f.path).join(', ')}`
             : '';
 
-        const confirmMessage = hasLocalChanges
-            ? `You have local changes.${changedFilesText}\n\nDo you want to auto-stash your changes and switch to "${targetBranch}"?\n\nThe server will restart after switching.`
-            : `Switch to branch "${targetBranch}"?\n\nThe server will restart after switching.`;
+        const confirmHeading = hasLocalChanges
+            ? 'You have local changes'
+            : `Switch to Branch "${targetBranch}"?`;
+        const confirmBody = hasLocalChanges
+            ? `${changedFilesText}\n\nDo you want to auto-stash your changes and switch to "${targetBranch}"?\n\nThe server will restart after switching.`
+            : 'The server will restart after switching.';
+        const response = await openAlert({
+            heading: confirmHeading,
+            body: confirmBody,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'switch', label: t`Switch`, appearance: hasLocalChanges ? 'destructive' : 'suggested' },
+            ],
+            defaultResponse: hasLocalChanges ? null : 'switch',
+        });
 
-        const confirmed = confirm(confirmMessage);
-
-        if (!confirmed) {
+        if (response !== 'switch') {
             // Reset select to current branch
             selectElement.value = currentBranch;
+            syncRow();
             return;
         }
 
@@ -1297,10 +1511,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
             const message = result?.message || `Switched to branch "${targetBranch}". Restarting…`;
             setServerAdminMessage(refs.updateNote, message, 'warn');
-            toastr.info(message, 'Branch Switch');
+            toastr.info(message, 'Branch switch');
 
             if (result?.stashed && !result?.stashRestored) {
-                toastr.warning('Your changes were stashed but could not be automatically restored. Use "git stash pop" after restart.', 'Stash Warning', { timeOut: 10000 });
+                toastr.warning('Your changes were stashed but could not be automatically restored. Use "git stash pop" after restart.', 'Stash warning', { timeOut: 10000 });
             }
 
             const restarted = await waitForServerReturn();
@@ -1317,17 +1531,18 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
             // Reset select to current branch
             selectElement.value = currentBranch;
+            syncRow();
 
             if (error.name === 'AbortError') {
                 const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
                 setServerAdminMessage(refs.updateNote, timeoutMessage, 'warn');
-                toastr.warning(timeoutMessage, 'Branch Switch', { timeOut: 10000 });
+                toastr.warning(timeoutMessage, 'Branch switch', { timeOut: 10000 });
                 return;
             }
 
             const errorMessage = error.message || 'Failed to switch branch.';
             setServerAdminMessage(refs.updateNote, errorMessage, 'danger');
-            toastr.error(errorMessage, 'Branch Switch');
+            toastr.error(errorMessage, 'Branch switch');
         }
     }
 
@@ -1337,179 +1552,96 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         });
 
         const column = createElement('div', { className: 'sb-shell-column sb-server-column' });
-        const callout = createElement('div', { className: 'sb-shell-callout' });
-        callout.innerHTML = `
-            <strong>Server Tools</strong>
-            <p>Edit <code>config.yaml</code>, check for updates, and restart the app from inside Customize. Updates use Git and only run when the repository can fast-forward cleanly.</p>
-        `;
 
-        const statusCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
-        const statusHeader = createElement('div', { className: 'sb-admin-card-header' });
-        const statusCopy = createElement('div', { className: 'sb-admin-card-copy' });
-        const statusTitle = createElement('strong', { text: 'App Status' });
-        const statusDescription = createElement('p', { text: 'Review the current runtime, branch, commit, and whether this workspace can update safely.' });
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Checking…' });
-        const statusGrid = createElement('div', { className: 'sb-server-grid' });
-        const statusNote = createElement('div', { className: 'sb-server-note' });
+        const statusSection = createServerSection('App Status', 'Review the current runtime, branch, commit, and whether this workspace can update safely.', 'app-status', statusPill, ['Server Tools']);
+        const statusNote = createServerStatusRow();
         // SillyBunny: migration link for non-Git copies; the target is a placeholder until the bootstrap installer ships.
-        const installLink = createElement('div', { className: 'sb-server-note' });
+        const installLink = createServerStatusRow();
         installLink.dataset.tone = 'warn';
         installLink.appendChild(createElement('a', {
             text: 'Reinstall with the installer to get updates',
             attrs: { href: SB_INSTALLER_URL, target: '_blank', rel: 'noopener noreferrer' },
         }));
         installLink.hidden = true;
-        statusCopy.append(statusTitle, statusDescription);
-        statusHeader.append(statusCopy, statusPill);
-        statusCard.append(statusHeader, statusGrid, statusNote, installLink);
+        statusSection.append(statusNote, installLink);
 
-        const updateCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
-        const updateHeader = createElement('div', { className: 'sb-admin-card-header' });
-        const updateCopy = createElement('div', { className: 'sb-admin-card-copy' });
-        const updateTitle = createElement('strong', { text: 'Updates & Restart' });
-        const updateDescription = createElement('p', { text: 'Check upstream status, update the app, and relaunch automatically when it is safe to do so.' });
-        const updateActions = createElement('div', { className: 'sb-server-actions' });
-        const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Check for updates', attrs: { type: 'button' } });
-        const updateButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Update & Restart', attrs: { type: 'button' } });
-        const restartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Restart server', attrs: { type: 'button' } });
-        const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates restart automatically once they finish.' });
-        const autoStashLabel = createElement('label', { className: 'checkbox_label' });
-        const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull' } });
-        const autoStashText = createElement('small', { text: 'Auto-stash local changes before pulling' });
-        autoStashLabel.append(autoStashCheckbox, autoStashText);
+        const updateSection = createServerSection('Updates & Restart', t`Updates use Git and only run when the repository can fast-forward cleanly.`, 'updates-restart');
+        const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull', 'aria-label': 'Auto-Stash Local Changes Before Pulling' } });
+        const autoStashRow = createSwitchRow({ label: 'Auto-Stash Local Changes Before Pulling', field: 'auto-stash', input: autoStashCheckbox });
+        const refreshButton = createServerButtonRow('Check for Updates', 'check-for-updates', () => refreshServerAdminPanel({ includeConfig: false }));
+        const updateButton = createServerButtonRow('Update & Restart', 'update-restart', handleServerAdminUpdate);
+        const restartButton = createServerButtonRow('Restart Server', 'restart-server', handleServerAdminRestart);
+        const updateNote = createServerStatusRow('Git fast-forward updates restart automatically once they finish.');
         const updateOutput = createElement('pre', { className: 'sb-server-output' });
         updateOutput.hidden = true;
-        updateCopy.append(updateTitle, updateDescription);
-        updateActions.append(refreshButton, updateButton, restartButton);
-        updateHeader.append(updateCopy);
-        updateCard.append(updateHeader, updateActions, autoStashLabel, updateNote, updateOutput);
+        updateSection.append(autoStashRow, refreshButton, updateButton, restartButton, updateNote, updateOutput);
 
-        const thumbnailCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-thumbnail-card' });
-        const thumbnailHeader = createElement('div', { className: 'sb-admin-card-header' });
-        const thumbnailCopy = createElement('div', { className: 'sb-admin-card-copy' });
-        const thumbnailTitle = createElement('strong', { text: 'Thumbnail Quality' });
-        const thumbnailDescription = createElement('p', { text: 'Set thumbnail format, quality, and generated sizes without hand-editing config.yaml.' });
-        thumbnailCopy.append(thumbnailTitle, thumbnailDescription);
-        thumbnailHeader.append(thumbnailCopy);
-
-        const thumbnailControls = createElement('div', { className: 'sb-thumbnail-controls' });
-        const thumbnailEnabledLabel = createElement('label', { className: 'checkbox_label sb-thumbnail-enabled' });
-        const thumbnailEnabled = createElement('input', { attrs: { type: 'checkbox' } });
-        const thumbnailEnabledText = createElement('small', { text: 'Generate thumbnails' });
-        thumbnailEnabledLabel.append(thumbnailEnabled, thumbnailEnabledText);
-
-        const thumbnailFormatGroup = createElement('label', { className: 'sb-thumbnail-field' });
-        const thumbnailFormatText = createElement('span', { text: 'Format' });
-        const thumbnailFormat = createElement('select', { className: 'text_pole' });
-        thumbnailFormat.append(
-            createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
-            createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
-        );
-        thumbnailFormatGroup.append(thumbnailFormatText, thumbnailFormat);
-
-        const thumbnailQualityGroup = createElement('label', { className: 'sb-thumbnail-field' });
-        const thumbnailQualityText = createElement('span', { text: 'Quality' });
-        const thumbnailQuality = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
-            attrs: {
-                type: 'number',
-                inputmode: 'numeric',
-                min: '1',
-                max: '100',
-                step: '1',
-            },
-        });
-        thumbnailQualityGroup.append(thumbnailQualityText, thumbnailQuality);
-        thumbnailControls.append(thumbnailEnabledLabel, thumbnailFormatGroup, thumbnailQualityGroup);
-
-        const thumbnailSizes = createElement('div', { className: 'sb-thumbnail-sizes' });
+        const thumbnailSection = createServerSection('Thumbnail Quality', 'Set thumbnail format, quality, and generated sizes without hand-editing config.yaml.', 'thumbnail-quality');
+        const thumbnailEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate Thumbnails' } });
+        const thumbnailEnabledRow = createSwitchRow({ label: 'Generate Thumbnails', field: 'thumbnail-enabled', input: thumbnailEnabled });
+        const { select: thumbnailFormat, row: thumbnailFormatRow } = createThumbnailFormatRow('Format', 'thumbnail-format');
+        const { input: thumbnailQuality, row: thumbnailQualityRow } = createThumbnailQualityRow('Quality', 'thumbnail-quality');
         const bgSize = createThumbnailSizeRow('Background', 'bg');
         const avatarSize = createThumbnailSizeRow('Character', 'avatar');
         const personaSize = createThumbnailSizeRow('Persona', 'persona');
-        thumbnailSizes.append(bgSize.row, avatarSize.row, personaSize.row);
+        thumbnailSection.append(thumbnailEnabledRow, thumbnailFormatRow, thumbnailQualityRow, bgSize, avatarSize, personaSize);
 
-        const thumbnailActions = createElement('div', { className: 'sb-server-actions' });
-        const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use desktop recommended', attrs: { type: 'button' } });
-        const thumbnailUseRecommendedMobileButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use mobile recommended', attrs: { type: 'button' } });
-        const thumbnailSaveButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save thumbnails', attrs: { type: 'button' } });
-        const thumbnailSaveClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Clear Cache', attrs: { type: 'button' } });
-        const thumbnailClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Clear cache only', attrs: { type: 'button' } });
-        const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.' });
-
-        const thumbnailMobileHeading = createElement('div', { className: 'sb-thumbnail-mobile-heading', text: 'Mobile preset' });
-        const thumbnailMobileControls = createElement('div', { className: 'sb-thumbnail-controls' });
-        const thumbnailMobileEnabledLabel = createElement('label', { className: 'checkbox_label sb-thumbnail-enabled' });
-        const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox' } });
-        const thumbnailMobileEnabledText = createElement('small', { text: 'Generate mobile thumbnails' });
-        thumbnailMobileEnabledLabel.append(thumbnailMobileEnabled, thumbnailMobileEnabledText);
-
-        const thumbnailMobileFormatGroup = createElement('label', { className: 'sb-thumbnail-field' });
-        const thumbnailMobileFormatText = createElement('span', { text: 'Mobile format' });
-        const thumbnailMobileFormat = createElement('select', { className: 'text_pole' });
-        thumbnailMobileFormat.append(
-            createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
-            createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
+        const mobileSection = createServerSection('Mobile Preset', 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.', 'thumbnail-mobile');
+        const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate Mobile Thumbnails' } });
+        const thumbnailMobileEnabledRow = createSwitchRow({ label: 'Generate Mobile Thumbnails', field: 'thumbnail-mobile-enabled', input: thumbnailMobileEnabled });
+        const { select: thumbnailMobileFormat, row: thumbnailMobileFormatRow } = createThumbnailFormatRow('Mobile Format', 'thumbnail-mobile-format');
+        const { input: thumbnailMobileQuality, row: thumbnailMobileQualityRow } = createThumbnailQualityRow('Mobile Quality', 'thumbnail-mobile-quality');
+        const mobileBgSize = createThumbnailSizeRow('Mobile Background', 'mobile-bg');
+        const mobileAvatarSize = createThumbnailSizeRow('Mobile Character', 'mobile-avatar');
+        const mobilePersonaSize = createThumbnailSizeRow('Mobile Persona', 'mobile-persona');
+        const actionsSection = createServerSection(t`Thumbnail Actions`, undefined, 'thumbnail-actions');
+        const thumbnailUseRecommendedButton = createServerButtonRow('Use Desktop Recommended', 'thumbnail-use-recommended', handleUseRecommendedThumbnailSettings);
+        const thumbnailUseRecommendedMobileButton = createServerButtonRow('Use Mobile Recommended', 'thumbnail-use-recommended-mobile', handleUseRecommendedMobileThumbnailSettings);
+        const thumbnailSaveButton = createServerButtonRow('Save Thumbnails', 'thumbnail-save', () => handleServerThumbnailSave({ clearCache: false }));
+        const thumbnailSaveClearButton = createServerButtonRow('Save & Clear Cache', 'thumbnail-save-clear', () => handleServerThumbnailSave({ clearCache: true }));
+        const thumbnailClearButton = createServerButtonRow('Clear Cache Only', 'thumbnail-clear', handleServerThumbnailClearCache);
+        const thumbnailNote = createServerStatusRow();
+        thumbnailNote.hidden = true;
+        mobileSection.append(
+            thumbnailMobileEnabledRow, thumbnailMobileFormatRow, thumbnailMobileQualityRow,
+            mobileBgSize, mobileAvatarSize, mobilePersonaSize,
         );
-        thumbnailMobileFormatGroup.append(thumbnailMobileFormatText, thumbnailMobileFormat);
+        actionsSection.append(
+            thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton,
+            thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton,
+            thumbnailNote,
+        );
 
-        const thumbnailMobileQualityGroup = createElement('label', { className: 'sb-thumbnail-field' });
-        const thumbnailMobileQualityText = createElement('span', { text: 'Mobile quality' });
-        const thumbnailMobileQuality = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
-            attrs: {
-                type: 'number',
-                inputmode: 'numeric',
-                min: '1',
-                max: '100',
-                step: '1',
-            },
-        });
-        thumbnailMobileQualityGroup.append(thumbnailMobileQualityText, thumbnailMobileQuality);
-        thumbnailMobileControls.append(thumbnailMobileEnabledLabel, thumbnailMobileFormatGroup, thumbnailMobileQualityGroup);
-
-        const thumbnailMobileSizes = createElement('div', { className: 'sb-thumbnail-sizes' });
-        const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
-        const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
-        const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
-        thumbnailMobileSizes.append(mobileBgSize.row, mobileAvatarSize.row, mobilePersonaSize.row);
-
-        thumbnailActions.append(thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton, thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton);
-        thumbnailCard.append(thumbnailHeader, thumbnailControls, thumbnailSizes, thumbnailMobileHeading, thumbnailMobileControls, thumbnailMobileSizes, thumbnailActions, thumbnailNote);
-
-        const configCard = createElement('section', { className: 'sb-admin-card sb-server-card' });
-        const configHeader = createElement('div', { className: 'sb-admin-card-header' });
-        const configCopy = createElement('div', { className: 'sb-admin-card-copy' });
-        const configTitle = createElement('strong', { text: 'config.yaml Editor' });
-        const configDescription = createElement('p', { text: 'Edit the live config file directly here. Saves validate YAML before writing anything to disk.' });
         const configState = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-        const configPath = createElement('code', { className: 'sb-server-config-path', text: 'config.yaml' });
-        const configMeta = createElement('div', { className: 'sb-server-config-meta' });
+        const configPath = createElement('code', { text: 'config.yaml' });
         const configEditor = createElement('textarea', {
             className: 'text_pole sb-server-config-editor',
             attrs: {
                 spellcheck: 'false',
                 rows: '22',
-                'aria-label': 'config.yaml editor',
+                'aria-label': 'config.yaml Editor',
             },
         });
-        const configActions = createElement('div', { className: 'sb-server-actions' });
-        const reloadConfigButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Reload file', attrs: { type: 'button' } });
-        const saveConfigButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save config', attrs: { type: 'button' } });
-        const saveConfigRestartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Restart', attrs: { type: 'button' } });
-        const configNote = createElement('div', { className: 'sb-server-note', text: 'Most config changes only take effect after a restart.' });
-        configCopy.append(configTitle, configDescription);
-        configHeader.append(configCopy, configState);
-        configMeta.append(configPath);
-        configActions.append(reloadConfigButton, saveConfigButton, saveConfigRestartButton);
-        configCard.append(configHeader, configMeta, configEditor, configActions, configNote);
+        const configSection = createServerSection('config.yaml Editor', 'Edit the live config file directly here. Saves validate YAML before writing anything to disk.', 'config-editor');
+        // The editor fills the width of the group, and a code file has no use for Expand.
+        const configField = createTextAreaField({ label: 'config.yaml', field: 'config-file', input: configEditor, expand: false });
+        configField.row.querySelector('.ds-row-textarea__label').replaceChildren(configPath);
+        configField.labelRow.append(configState);
+        const reloadConfigButton = createServerButtonRow('Reload File', 'config-reload', handleServerAdminReloadConfig);
+        const saveConfigButton = createServerButtonRow('Save Config', 'config-save', () => handleServerAdminSaveConfig({ restart: false }));
+        const saveConfigRestartButton = createServerButtonRow('Save & Restart', 'config-save-restart', () => handleServerAdminSaveConfig({ restart: true }));
+        const configNote = createServerStatusRow('Most config changes only take effect after a restart.');
+        configSection.append(configField, reloadConfigButton, saveConfigButton, saveConfigRestartButton, configNote);
 
-        column.append(callout, statusCard, updateCard, thumbnailCard, configCard);
+        column.append(statusSection.section, updateSection.section, thumbnailSection.section, mobileSection.section, actionsSection.section, configSection.section);
         scroller.appendChild(column);
 
         const state = getServerAdminState();
         state.refs = {
             statusPill,
-            statusGrid,
+            statusGrid: statusSection.group,
+            statusRows: [],
             statusNote,
             installLink,
             refreshButton,
@@ -1518,8 +1650,11 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             updateNote,
             updateOutput,
             autoStashCheckbox,
+            autoStashRow,
             thumbnailEnabled,
+            thumbnailEnabledRow,
             thumbnailFormat,
+            thumbnailFormatRow,
             thumbnailQuality,
             thumbnailBgWidth: bgSize.widthInput,
             thumbnailBgHeight: bgSize.heightInput,
@@ -1534,7 +1669,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             thumbnailClearButton,
             thumbnailNote,
             thumbnailMobileEnabled,
+            thumbnailMobileEnabledRow,
             thumbnailMobileFormat,
+            thumbnailMobileFormatRow,
             thumbnailMobileQuality,
             thumbnailMobileBgWidth: mobileBgSize.widthInput,
             thumbnailMobileBgHeight: mobileBgSize.heightInput,
@@ -1542,6 +1679,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             thumbnailMobileAvatarHeight: mobileAvatarSize.heightInput,
             thumbnailMobilePersonaWidth: mobilePersonaSize.widthInput,
             thumbnailMobilePersonaHeight: mobilePersonaSize.heightInput,
+            thumbnailRows: {
+                desktop: [thumbnailFormatRow, thumbnailQualityRow, bgSize, avatarSize, personaSize],
+                mobile: [thumbnailMobileFormatRow, thumbnailMobileQualityRow, mobileBgSize, mobileAvatarSize, mobilePersonaSize],
+            },
             configPath,
             configState,
             configEditor,
@@ -1555,33 +1696,13 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         configState.textContent = 'Not loaded';
         configState.dataset.state = 'neutral';
 
-        refreshButton.addEventListener('click', () => refreshServerAdminPanel({ includeConfig: false }));
-        updateButton.addEventListener('click', handleServerAdminUpdate);
-        restartButton.addEventListener('click', handleServerAdminRestart);
-        thumbnailUseRecommendedButton.addEventListener('click', handleUseRecommendedThumbnailSettings);
-        thumbnailUseRecommendedMobileButton.addEventListener('click', handleUseRecommendedMobileThumbnailSettings);
-        thumbnailSaveButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: false }));
-        thumbnailSaveClearButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: true }));
-        thumbnailClearButton.addEventListener('click', handleServerThumbnailClearCache);
-        reloadConfigButton.addEventListener('click', handleServerAdminReloadConfig);
-        saveConfigButton.addEventListener('click', () => handleServerAdminSaveConfig({ restart: false }));
-        saveConfigRestartButton.addEventListener('click', () => handleServerAdminSaveConfig({ restart: true }));
         configEditor.addEventListener('input', () => {
             updateServerConfigDirtyState();
             updateServerAdminInteractivity();
         });
-        autoStashCheckbox.addEventListener('change', function () {
-            const refs = getServerAdminRefs();
-            if (!refs?.configEditor) return;
-            const yaml = refs.configEditor.value;
-            const newValue = this.checked ? 'true' : 'false';
-            if (/^autoStashBeforePull:\s*(true|false)/m.test(yaml)) {
-                refs.configEditor.value = yaml.replace(/^(autoStashBeforePull:\s*)(true|false)/m, `$1${newValue}`);
-            } else {
-                refs.configEditor.value = yaml + `\nautoStashBeforePull: ${newValue}\n`;
-            }
-            refs.configEditor.dispatchEvent(new Event('input'));
-        });
+        autoStashCheckbox.addEventListener('change', handleAutoStashChange);
+        thumbnailEnabled.addEventListener('change', () => setThumbnailInputsDisabled(isThumbnailLocked()));
+        thumbnailMobileEnabled.addEventListener('change', () => setThumbnailInputsDisabled(isThumbnailLocked()));
         updateServerAdminInteractivity();
 
         return {
@@ -1605,63 +1726,61 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         });
 
         const column = createElement('div', { className: 'sb-shell-column sb-console-log-column' });
-        const callout = createElement('div', { className: 'sb-shell-callout' });
-        callout.innerHTML = `
-            <strong>Console Logs</strong>
-            <p>Watch the recent terminal output from the running SillyBunny process here, without keeping a terminal window open on the side.</p>
-        `;
-
-        const card = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-card' });
-        const header = createElement('div', { className: 'sb-admin-card-header' });
-        const copy = createElement('div', { className: 'sb-admin-card-copy' });
-        const title = createElement('strong', { text: 'Live Server Console' });
-        const description = createElement('p', { text: 'This mirrors the current process output captured from stdout and stderr. Only logs from the current SillyBunny session are available here.' });
+        const { section: card, body: cardBody } = createServerToolsGroup('Console Logs', 'Watch the recent terminal output from the running SillyBunny process here, without keeping a terminal window open on the side. This mirrors the current process output captured from stdout and stderr. Only logs from the current SillyBunny session are available here.', 'sb-console-log-card');
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Loading…' });
-        const actions = createElement('div', { className: 'sb-server-actions sb-console-log-actions' });
-        const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Refresh Now', attrs: { type: 'button' } });
-        const pauseButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Pause Live', attrs: { type: 'button' } });
-        const statusNote = createElement('div', { className: 'sb-server-note' });
-        const output = createElement('pre', { className: 'sb-server-output sb-console-log-output' });
-        const verboseLoggingCard = createElement('section', { className: 'sb-admin-card sb-server-card sb-console-log-verbose-card' });
-        const verboseLoggingHeader = createElement('div', { className: 'sb-admin-card-header' });
-        const verboseLoggingCopy = createElement('div', { className: 'sb-admin-card-copy' });
-        const verboseLoggingTitle = createElement('strong', { text: 'Verbose Debug Logging' });
-        const verboseLoggingDescription = createElement('p', { text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
-        const verboseLoggingStatus = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-        const verboseLoggingActionButton = createElement('button', {
-            className: 'menu_button menu_button_icon sb-server-action interactable sb-console-log-verbose-action',
-            text: 'Debug Logging: Disabled',
-            attrs: { type: 'button' },
-        });
-
-        copy.append(title, description);
-        header.append(copy, statusPill);
-        actions.append(refreshButton, pauseButton);
-        card.append(header, actions, statusNote, output);
-        verboseLoggingCopy.append(verboseLoggingTitle, verboseLoggingDescription);
-        verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingStatus);
-        verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingActionButton);
-        column.append(callout, card);
-        column.append(verboseLoggingCard);
-        scroller.appendChild(column);
-
+        const statusNote = createElement('small', { className: 'ds-row-subtitle sb-console-log-note' });
+        const { row: header } = createRow({ label: '', field: 'console-log-status' });
+        header.querySelector('.ds-row-label')?.append(statusPill);
+        header.querySelector('.ds-row-text')?.append(statusNote);
         const state = getConsoleLogsState();
+        const refreshRow = createButtonRow({
+            label: 'Refresh Now',
+            field: 'console-log-refresh',
+            onActivate: () => {
+                void refreshConsoleLogs({ forceFull: state.latestId === 0 });
+            },
+        });
+        const pauseRow = createButtonRow({ label: 'Pause Live', field: 'console-log-pause', onActivate: toggleConsoleLogsPolling });
+        const pauseLabel = pauseRow.row.querySelector('.ds-row-label');
+
+        const outputFrame = createElement('div', { className: 'sb-console-log-frame' });
+        const output = createElement('pre', { className: 'sb-server-output sb-console-log-output', attrs: { tabindex: '0' } });
+        const verboseLoggingActionButton = createElement('input', {
+            className: 'sb-console-log-verbose-action',
+            attrs: { type: 'checkbox', 'aria-label': 'Verbose Debug Logging' },
+        });
+        const { row: verboseLoggingRow } = createSwitchRow({
+            label: 'Verbose Debug Logging',
+            subtitle: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.',
+            field: 'console-log-verbose',
+            input: verboseLoggingActionButton,
+        });
+        const verboseLoggingStatus = createElement('small', { className: 'ds-row-subtitle sb-console-log-state', text: 'Loading…' });
+        verboseLoggingRow.querySelector('.ds-row-text')?.append(verboseLoggingStatus);
+
+        outputFrame.append(output);
+        cardBody.append(header, outputFrame, refreshRow.row, pauseRow.row, verboseLoggingRow);
+        column.append(card);
+        scroller.appendChild(column);
+        void loadListEditorStyles();
+
         state.refs = {
             statusPill,
-            refreshButton,
-            pauseButton,
+            refreshRow,
+            pauseLabel,
             statusNote,
             output,
             verboseLoggingStatus,
             verboseLoggingActionButton,
         };
 
-        refreshButton.addEventListener('click', () => {
-            void refreshConsoleLogs({ forceFull: state.latestId === 0 });
-        });
-        pauseButton.addEventListener('click', toggleConsoleLogsPolling);
-        verboseLoggingActionButton.addEventListener('click', () => {
+        verboseLoggingActionButton.addEventListener('change', () => {
             void toggleConsoleLogsVerboseLogging();
+        });
+        verboseLoggingActionButton.addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            if (!event.repeat && !verboseLoggingActionButton.disabled) verboseLoggingActionButton.click();
         });
 
         renderConsoleLogsOutput({ preserveScroll: false });

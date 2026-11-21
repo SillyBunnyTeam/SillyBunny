@@ -70,6 +70,22 @@ describe('extension boot lifecycle wiring', () => {
         expect(source).toContain('activationState.shouldWaitForDependencyActivations');
     });
 
+    test('loads extension modules by a URL with no query', () => {
+        for (const name of ['addExtensionScript', 'callExtensionHook']) {
+            const source = getFunctionSource(name);
+
+            expect(source).toContain('buildExtensionModuleUrl(name, manifest.js)');
+            expect(source).not.toContain('getExtensionAssetUrl(');
+        }
+    });
+
+    test('gives other extension assets a version query and hints scripts by their module URL', () => {
+        expect(getFunctionSource('getExtensionAssetUrl')).toContain('buildExtensionAssetUrl(name, assetPath, CLIENT_VERSION)');
+        expect(getFunctionSource('addExtensionStyle')).toContain('getExtensionAssetUrl(name, manifest.css)');
+        expect(getFunctionSource('addExtensionLocale')).toContain('getExtensionAssetUrl(name, localeFile)');
+        expect(getFunctionSource('prefetchExtensionAsset')).toContain('as === \'script\' ? buildExtensionModuleUrl(name, assetPath)');
+    });
+
     test('routes activation warnings through lifecycle action names', () => {
         const source = getFunctionSource('activateExtensions');
 

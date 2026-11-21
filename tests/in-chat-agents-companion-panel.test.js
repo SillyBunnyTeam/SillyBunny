@@ -31,8 +31,13 @@ describe('companion tracker panel', () => {
         };
     }
 
-    async function importPanel() {
+    async function importPanel({ registerSidePanel = jest.fn() } = {}) {
         jest.resetModules();
+
+        await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: jest.fn() }));
+        await jest.unstable_mockModule('../public/scripts/sillybunny-editor/side-panel.js', () => ({
+            registerSidePanel,
+        }));
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat,
@@ -64,6 +69,8 @@ describe('companion tracker panel', () => {
                 MESSAGE_SWIPED: 'message_swiped',
             },
         }));
+
+        await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (parts, ...values) => parts.reduce((text, part, index) => text + part + (values[index] ?? ''), '') }));
 
         await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
             escapeHtml: jest.fn(value => String(value ?? '')
@@ -417,7 +424,7 @@ describe('companion tracker panel', () => {
 
         expect(html).toContain('data-agent-id="tracker-1" data-message-index="0" data-hidden="true"');
         expect(html).toContain('data-action="panel-hide"');
-        expect(html).toContain('aria-label="Unhide companion"');
+        expect(html).toContain('aria-label="Unhide Companion"');
         expect(html).toContain('data-action="panel-run-latest"');
     });
 
@@ -806,6 +813,73 @@ describe('companion tracker panel', () => {
         }
     });
 
+    test('is a registered side panel: it opens and closes through the controller and its handle makes way while it shows', async () => {
+        agents = [{ id: 'tracker-1', name: 'Scene Tracker', execution: 'companion', enabled: true }];
+        const controller = {
+            isOpen: false,
+            open: jest.fn(async () => { controller.isOpen = true; }),
+            close: jest.fn(() => { controller.isOpen = false; }),
+        };
+        const registerSidePanel = jest.fn(() => controller);
+        const panel = await importPanel({ registerSidePanel });
+        globalThis.HTMLElement = class {
+            querySelectorAll() {
+                return [];
+            }
+        };
+        try {
+            const panelNode = new globalThis.HTMLElement();
+            const elementStub = () => {
+                const element = {
+                    length: 0,
+                    on: jest.fn(() => element),
+                    append: jest.fn(() => element),
+                    html: jest.fn(() => element),
+                    toggle: jest.fn(() => element),
+                    attr: jest.fn(() => element),
+                    addClass: jest.fn(() => element),
+                    removeClass: jest.fn(() => element),
+                };
+                return element;
+            };
+            const panelElement = { ...elementStub(), 0: panelNode, length: 1 };
+            const handleElement = elementStub();
+            globalThis.$ = jest.fn(arg => {
+                if (arg === globalThis.document.body) return { append: jest.fn() };
+                if (arg === '#ica--tracker-panel') return panelElement;
+                if (arg === '#ica--tracker-panel-handle') return handleElement;
+                if (arg === '#ica_tracker_panel_wand_item') return { length: 1 };
+                return elementStub();
+            });
+
+            panel.initCompanionPanel();
+            expect(registerSidePanel).toHaveBeenCalledWith(expect.objectContaining({
+                id: 'ica-companion-panel',
+                element: panelNode,
+                title: 'Companions',
+                defaultSide: 'right',
+                onClose: expect.any(Function),
+            }));
+
+            await panel.openCompanionPanel();
+            expect(controller.open).toHaveBeenCalledTimes(1);
+            expect(panelElement.addClass).toHaveBeenCalledWith('is-open');
+            expect(handleElement.toggle).toHaveBeenLastCalledWith(false);
+
+            // The side panel closes itself on Escape, on its Close button and when a sheet replaces it.
+            registerSidePanel.mock.calls[0][0].onClose();
+            expect(panelElement.removeClass).toHaveBeenCalledWith('is-open');
+            expect(handleElement.toggle).toHaveBeenLastCalledWith(true);
+
+            await panel.openCompanionPanel();
+            panel.closeCompanionPanel();
+            expect(controller.close).toHaveBeenCalledWith({ restoreFocus: false, notify: false });
+            expect(handleElement.toggle).toHaveBeenLastCalledWith(true);
+        } finally {
+            delete globalThis.HTMLElement;
+        }
+    });
+
     test('restores the saved panel lock state', async () => {
         accountStorageValues.set('ica--tracker-panel-locked', 'true');
         const panel = await importPanel();
@@ -908,7 +982,7 @@ describe('companion tracker panel', () => {
         const html = panel.buildPanelHtml();
         expect(html).toContain('data-role="chat-only-input"');
         expect(html).toContain('data-action="panel-chat-only-send"');
-        expect(html).toContain('Private side chat');
+        expect(html).toContain('Private Side Chat');
 
         panel.initCompanionPanel();
         const actionHandler = panelElement.on.mock.calls.find(([, selector]) => selector === '[data-action]')[2];
@@ -998,7 +1072,7 @@ describe('companion tracker panel', () => {
         expect(inputField.prop).toHaveBeenCalledWith('disabled', false);
         expect(button.prop).toHaveBeenCalledWith('disabled', true);
         expect(button.prop).toHaveBeenCalledWith('disabled', false);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved.');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved');
     });
 
     test('closes after a panel choice inserts into the message box', async () => {

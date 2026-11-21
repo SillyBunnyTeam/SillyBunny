@@ -21,6 +21,12 @@ const RUNTIMES = ['bun', 'node'];
 const SEQUENTIAL_MODE = /describe\.configure\(\s*\{[^}]*\bmode:\s*['"](?:serial|default)['"]|describe\.serial\(/;
 // Playwright writes and removes its output folders while tests run, so the search must not enter them.
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'test-results', 'playwright-report']);
+/**
+ * Folders of the tests directory that the default suite does not run: `foundation/` runs under its own config and `audit/`
+ * under the audit config. A project replaces the config's `testIgnore` instead of adding to it, so the projects carry these.
+ */
+export const SUITE_IGNORED_DIRECTORIES = Object.freeze(['foundation', 'audit']);
+export const SUITE_IGNORE = Object.freeze(SUITE_IGNORED_DIRECTORIES.map(name => `**/${name}/**`));
 // A fresh data root has one account, and the server keeps its settings here.
 const SETTINGS_FILE = path.join('default-user', 'settings.json');
 
@@ -136,7 +142,8 @@ export function findSequentialSpecs(directory) {
         }
         for (const entry of entries) {
             const file = relative ? `${relative}/${entry.name}` : entry.name;
-            if (entry.isDirectory() && !SKIPPED_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) {
+            const ignoredBySuite = !relative && SUITE_IGNORED_DIRECTORIES.includes(entry.name);
+            if (entry.isDirectory() && !SKIPPED_DIRECTORIES.has(entry.name) && !ignoredBySuite && !entry.name.startsWith('.')) {
                 walk(file);
             } else if (entry.isFile() && entry.name.endsWith('.e2e.js')) {
                 specs.push(file);
@@ -160,8 +167,8 @@ export function getProjects(sequentialSpecs) {
     const escaped = sequentialSpecs.map(file => file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\//g, '[\\\\/]'));
     const pattern = new RegExp(`(^|[\\\\/])(${escaped.join('|')})$`);
     return [
-        { name: 'sequential', testMatch: pattern },
-        { name: 'parallel', testIgnore: pattern },
+        { name: 'sequential', testMatch: pattern, testIgnore: [...SUITE_IGNORE] },
+        { name: 'parallel', testIgnore: [pattern, ...SUITE_IGNORE] },
     ];
 }
 

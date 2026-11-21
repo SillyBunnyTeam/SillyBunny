@@ -7,7 +7,7 @@ const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 const powerUserSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'power-user.js'), 'utf8');
 const mobileStreamingSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'mobile-streaming.js'), 'utf8');
-const settingsTabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-settings-tabs.js'), 'utf8');
+const settingsContentSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-settings-content.js'), 'utf8');
 
 const androidSettingIds = [
     'android_conservative_streaming',
@@ -38,10 +38,8 @@ describe('Android streaming settings UI', () => {
         }
     });
 
-    test('promotes Android streaming settings into System & Device', () => {
-        expect(settingsTabsSource).toContain('const androidBlock = document.querySelector(\'[name="AndroidStreamingToggles"]\');');
-        expect(settingsTabsSource).toContain('androidDrawer.id = \'sb-android-streaming-drawer\';');
-        expect(settingsTabsSource).toContain('\'sb-android-streaming-drawer\': \'system-device\'');
+    test('moves Android streaming settings into the Messages tab with the rest of streaming', () => {
+        expect(settingsContentSource).toContain('\'[name="AndroidStreamingToggles"]\'');
     });
 
     test('routes reduced Android stream ticks through the plain-text preview path', () => {

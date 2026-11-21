@@ -1,0 +1,16 @@
+/* JetBrains Mono 2.304 (SIL OFL 1.1, see OFL.txt), unmodified upstream variable files. Axis: wght 100-800. */
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 100 800;
+    font-display: swap;
+    src: url('JetBrainsMono-wght.ttf?v=20261118r') format('truetype');
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: italic;
+    font-weight: 100 800;
+    font-display: swap;
+    src: url('JetBrainsMono-Italic-wght.ttf?v=20261118r') format('truetype');
+}

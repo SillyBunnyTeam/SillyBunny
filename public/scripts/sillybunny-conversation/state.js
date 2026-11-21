@@ -1,7 +1,6 @@
 export const conversationState = {
     initialized: false,
     autoWorkerStarted: false,
-    conversationCssLoaded: false,
     autoWorkerIntervalId: null,
     autoWorkerAbortController: null,
     autoWorkerBusy: false,
@@ -18,6 +17,7 @@ export const conversationState = {
     conversationUnavailableGroupId: null,
     conversationTimelineChannel: 'main',
     conversationTimelineSearchQuery: '',
+    conversationSearchOpen: false,
     conversationReplyTarget: null,
     imageGenerationActive: false,
     imageGenerationAbortController: null,

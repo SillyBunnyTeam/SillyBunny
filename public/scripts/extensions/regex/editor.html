@@ -1,19 +1,22 @@
 <div id="regex_editor_template">
     <div class="regex_editor">
+        <!-- SillyBunny: the checkbox labels are in sentence capitalisation; the data-i18n keys keep their upstream text. -->
         <h3 class="flex-container justifyCenter alignItemsBaseline">
             <strong data-i18n="Regex Editor">Regex Editor</strong>
             <a href="https://docs.sillytavern.app/extensions/regex/" class="notes-link" target="_blank" rel="noopener noreferrer">
                 <span class="note-link-span">?</span>
             </a>
-            <div id="regex_test_mode_toggle" class="menu_button menu_button_icon">
-                <i class="fa-solid fa-bug fa-sm"></i>
-                <span class="menu_button_text" data-i18n="Test Mode">Test Mode</span>
-            </div>
         </h3>
 
         <small class="flex-container extensions_info" data-i18n="ext_regex_desc">
             Regex is a tool to find/replace strings using regular expressions. If you want to learn more, click on the ? next to the title.
         </small>
+        <!-- SillyBunny: Test Mode sits in the body, so the window header stays one row. It is a label-only toggle button; sillybunny-editor.js keeps its aria-pressed. -->
+        <div class="flex-container">
+            <div id="regex_test_mode_toggle" class="menu_button menu_button_icon">
+                <span class="menu_button_text" data-i18n="Test Mode">Test Mode</span>
+            </div>
+        </div>
         <hr />
 
         <div id="regex_info_block_wrapper">
@@ -80,19 +83,19 @@
                 <div data-i18n="[title]ext_regex_user_input_desc" title="Messages sent by the user.">
                     <label class="checkbox flex-container">
                         <input type="checkbox" name="replace_position" value="1">
-                        <span data-i18n="ext_regex_user_input">User Input</span>
+                        <span data-i18n="ext_regex_user_input">User input</span>
                     </label>
                 </div>
                 <div data-i18n="[title]ext_regex_ai_input_desc" title="Messages received from the Generation API.">
                     <label class="checkbox flex-container">
                         <input type="checkbox" name="replace_position" value="2">
-                        <span data-i18n="ext_regex_ai_output">AI Output</span>
+                        <span data-i18n="ext_regex_ai_output">AI output</span>
                     </label>
                 </div>
                 <div data-i18n="[title]ext_regex_slash_desc" title="Messages sent using STscript commands.">
                     <label class="checkbox flex-container">
                         <input type="checkbox" name="replace_position" value="3">
-                        <span data-i18n="Slash Commands">Slash Commands</span>
+                        <span data-i18n="Slash Commands">Slash commands</span>
                     </label>
                 </div>
                 <div data-i18n="[title]ext_regex_wi_desc" title="Lorebook/World Info entry contents. Requires 'Only Format Prompt' to be checked!">
@@ -130,9 +133,10 @@
                     <input type="checkbox" name="disabled" />
                     <span data-i18n="Disabled">Disabled</span>
                 </label>
+                <!-- SillyBunny: capitalisation by DESIGN.md -->
                 <label class="checkbox flex-container" data-i18n="[title]ext_regex_run_on_edit_desc" title="Run the regex script when the message belonging a to specified role(s) is edited.">
                     <input type="checkbox" name="run_on_edit" />
-                    <span data-i18n="Run On Edit">Run On Edit</span>
+                    <span data-i18n="Run On Edit">Run on Edit</span>
                 </label>
                 <label class="checkbox flex-container flexNoGap marginBot5" data-i18n="[title]ext_regex_substitute_regex_desc" title="Substitute &lcub;&lcub;macros&rcub;&rcub; in Find Regex before running it">
                     <span>
@@ -149,10 +153,12 @@
                     <small data-i18n="Ephemerality">Ephemerality</small>
                     <span class="fa-solid fa-circle-question note-link-span" data-i18n="[title]ext_regex_other_options_desc" title="By default, regex scripts alter the chat file directly and irreversibly.&#13;Enabling either (or both) of the options below will prevent chat file alteration, while still altering the specified item(s)."></span>
                 </span>
+                <!-- SillyBunny: capitalisation by DESIGN.md -->
                 <label class="checkbox flex-container" data-i18n="[title]ext_regex_only_format_visual_desc" title="Chat history file contents won't change, but regex will be applied to the messages displayed in the Chat UI.">
                     <input type="checkbox" name="only_format_display" />
                     <span data-i18n="Only Format Display">Alter Chat Display</span>
                 </label>
+                <!-- SillyBunny: capitalisation by DESIGN.md -->
                 <label class="checkbox flex-container" data-i18n="[title]ext_regex_only_format_prompt_desc" title="Chat history file contents won't change, but regex will be applied to the outgoing prompt before it is sent to the LLM.">
                     <input type="checkbox" name="only_format_prompt" />
                     <span data-i18n="Only Format Prompt (?)">Alter Outgoing Prompt</span>

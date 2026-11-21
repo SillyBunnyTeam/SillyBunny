@@ -1,0 +1,249 @@
+{
+ "colours": {
+  "lavender": "#b99bf2",
+  "logo": "#8b64aa",
+  "plum": "#5b3c6b",
+  "ink": "#24152f",
+  "pale": "#f5e9ff",
+  "night": "#1c1228",
+  "cream": "#fff1dc",
+  "cloverGreen": "#4fa35a",
+  "darkGreen": "#2f7a40",
+  "bottleBlue": "#5aa3e0",
+  "gold": "#f3c969",
+  "orange": "#e8873a",
+  "quietPale": "#d9c8ef",
+  "panelDark": "#2e1c42",
+  "quietPlum": "#70507f"
+ },
+ "icons": {
+  "palettes": {
+   "light": {
+    "o": "plum",
+    "l": "lavender",
+    "c": "cream"
+   },
+   "dark": {
+    "o": "quietPale",
+    "l": "lavender",
+    "c": "cream"
+   }
+  },
+  "shapes": {
+   "features": {
+    "rows": [
+     "....oooooooo....",
+     "....ollllllo....",
+     "....ollllllo....",
+     "..ooooccccoooo..",
+     ".ooccccccccccoo.",
+     ".occcccccccccco.",
+     ".occcccccccccco.",
+     ".ocllllllllllco.",
+     ".ocllllllllllco.",
+     ".occcccccccccco.",
+     ".ocaaaaaaaaaaco.",
+     ".ocaaaaaaaaaaco.",
+     ".ocaaaaaaaaaaco.",
+     ".ocaaaaaaaaaaco.",
+     ".ooccccccccccoo.",
+     "..oooooooooooo.."
+    ],
+    "accent": "bottleBlue"
+   },
+   "install": {
+    "rows": [
+     "....oooooooo....",
+     "....occoocco....",
+     "....occoocco....",
+     "....occoocco....",
+     "..oooccooccooo..",
+     ".oolllllllllloo.",
+     ".ollllllllllllo.",
+     ".olcllllllllllo.",
+     ".ollllllllllllo.",
+     ".ollllllllllllo.",
+     ".oolllllllllloo.",
+     "..ooooccccoooo..",
+     ".....occcco.....",
+     ".....ooccoo.....",
+     "......occo......",
+     "......oooo......"
+    ]
+   },
+   "contributing": {
+    "rows": [
+     "oooooooooooooooo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "olllcccccccclllo",
+     "oooooocllloooooo",
+     ".....oclllo.....",
+     ".....oclllo.....",
+     ".....oclllo.....",
+     ".....oclllo.....",
+     "....oocllloo....",
+     "....ollllllo....",
+     "....ollllllo....",
+     "....oooooooo...."
+    ]
+   },
+   "credits": {
+    "rows": [
+     ".oooooo..oooooo.",
+     "ooaaaaooooaaaaoo",
+     "oacaaaaooaaaacao",
+     "oaaaaaaooaaaaaao",
+     "oaaaaaaooaaaaaao",
+     "ooaaaaooooaaaaoo",
+     ".ooooooaaoooooo.",
+     ".ooooooaaoooooo.",
+     "ooaaaaoaaoaaaaoo",
+     "oacaaaaaaaaaacao",
+     "oaaaaaaaaaaaaaao",
+     "oaaaaaaaaaaaaaao",
+     "ooaaaaoaaoaaaaoo",
+     ".ooooooaaoooooo.",
+     ".....oaaoo......",
+     ".....oooo......."
+    ],
+    "accent": "cloverGreen"
+   },
+   "community": {
+    "rows": [
+     "................",
+     "............oooo",
+     ".........oooocco",
+     ".........occocco",
+     ".........occocco",
+     "........oocclcco",
+     "....ooooollllcco",
+     "ooooollllllllcco",
+     "ollllllllllllcco",
+     "ollllllllllllcco",
+     "ollllllllllllcco",
+     "oooolllllllllcco",
+     "...ollooollllcco",
+     "...ollo.oooolcco",
+     "...oooo....ooooo",
+     "................"
+    ]
+   }
+  }
+ },
+ "ornaments": {
+  "moon": {
+   "rows": [
+    "..ooo..",
+    ".oyyyo.",
+    "oyyoo..",
+    "oyyo...",
+    "oyyoo..",
+    ".oyyyo.",
+    "..ooo.."
+   ],
+   "colours": {
+    "o": "plum",
+    "y": "gold"
+   }
+  },
+  "moon-dark": {
+   "rows": [
+    "..ooo..",
+    ".oyyyo.",
+    "oyyoo..",
+    "oyyo...",
+    "oyyoo..",
+    ".oyyyo.",
+    "..ooo.."
+   ],
+   "colours": {
+    "o": "pale",
+    "y": "gold"
+   }
+  },
+  "clover": {
+   "rows": [
+    ".gg.gg.",
+    "ggggggg",
+    ".ggdgg.",
+    "ggggggg",
+    ".gg.gg.",
+    "...d...",
+    "...d..."
+   ],
+   "colours": {
+    "g": "cloverGreen",
+    "d": "darkGreen"
+   }
+  },
+  "carrot": {
+   "rows": [
+    ".g.g.g.",
+    "..ggg..",
+    "..rrr..",
+    "..rrr..",
+    "...rr..",
+    "...rr..",
+    "....r.."
+   ],
+   "colours": {
+    "g": "cloverGreen",
+    "r": "orange"
+   }
+  }
+ },
+ "avatars": [
+  {
+   "id": "avatar-plate",
+   "asset": "avatar",
+   "note": "The approved plate as it is: pale squircle with transparent corners.",
+   "background": null,
+   "elements": [
+    {
+     "type": "plate",
+     "size": 500,
+     "at": {
+      "left": 0,
+      "top": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar-tile",
+   "asset": "avatar",
+   "note": "The plate at 84% on a full-bleed lavender square.",
+   "background": "lavender",
+   "elements": [
+    {
+     "type": "plate",
+     "size": 420,
+     "at": {
+      "centerX": 250,
+      "centerY": 250
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar-fill",
+   "asset": "avatar",
+   "note": "The plate at full size on lavender, so the lavender shows only in its corners.",
+   "background": "lavender",
+   "elements": [
+    {
+     "type": "plate",
+     "size": 500,
+     "at": {
+      "left": 0,
+      "top": 0
+     }
+    }
+   ]
+  }
+ ]
+}
