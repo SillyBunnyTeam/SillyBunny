@@ -104,11 +104,13 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    fillMissingCustomEndpointParameters,
     getChatCompletionSamplingProfileLookupKeys,
     getCustomEndpointFavoritesKey,
     migrateNanoGptProviderSettings,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
+    pickCustomEndpointParameters,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
 import {
@@ -10337,6 +10339,12 @@ export async function loadCustomEndpointPresets(settings) {
         custom_endpoint_presets.push(selected_custom_endpoint_preset);
     }
 
+    // SillyBunny: an endpoint profile without Additional Parameters takes the live ones, so its requests do not
+    // change and it keeps its own values from then on. The settings save stores the filled values, so this runs once.
+    if (fillMissingCustomEndpointParameters(custom_endpoint_presets, oai_settings)) {
+        saveSettingsDebounced();
+    }
+
     $('#custom_endpoint_preset').empty();
 
     for (const preset of custom_endpoint_presets) {
@@ -10441,14 +10449,19 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
     return false;
 }
 
-async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
-    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
+// SillyBunny: endpoint profiles also store the Additional Parameters. Without `parameters` the stored and the live
+// values stay as they are, so the load-time apply cannot replace values that a connection profile set after the
+// endpoint profile.
+async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true, parameters = null } = {}) {
+    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId, ...pickCustomEndpointParameters(parameters) });
+    const parametersToApply = parameters ? pickCustomEndpointParameters(normalizedPreset) : {};
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
     if (preset) {
         preset.url = normalizedPreset.url;
         preset.key = normalizedPreset.key;
         preset.model = normalizedPreset.model;
         preset.secretId = normalizedPreset.secretId || preset.secretId || '';
+        Object.assign(preset, parametersToApply);
         selected_custom_endpoint_preset = preset;
     } else {
         const newPreset = normalizedPreset;
@@ -10464,6 +10477,10 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
     $('#custom_model_id').val(oai_settings.custom_model);
     $('#model_custom_select').val(oai_settings.custom_model);
     refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
+    for (const [parameterKey, value] of Object.entries(parametersToApply)) {
+        oai_settings[parameterKey] = value;
+        $(`#${parameterKey}`).val(value);
+    }
 
     if (writeKey) {
         await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
@@ -10480,7 +10497,7 @@ async function onCustomEndpointPresetChange() {
     const selectedPreset = custom_endpoint_presets.find(preset => preset.name === value);
 
     if (selectedPreset) {
-        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId });
+        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId, parameters: selectedPreset });
     } else {
         console.error(t`Custom endpoint profile '${value}' not found in custom endpoint profiles array.`);
     }
@@ -10503,6 +10520,8 @@ $('#save_custom_endpoint').on('click', async function () {
         key: keyInputValue,
         model: $('#custom_model_id').val(),
         secretId: keyInputValue ? '' : existingPreset?.secretId,
+        // SillyBunny: the Additional Parameters dialog writes to the live settings, so Save reads them from there.
+        ...pickCustomEndpointParameters(oai_settings),
     });
 
     // Bind the active CUSTOM secret when saving without typing a new key (e.g. picked via the secrets manager)
@@ -10520,7 +10539,7 @@ $('#save_custom_endpoint').on('click', async function () {
         }
     }
 
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false, parameters: preset });
     // SillyBunny: update selection before yielding to persistence so a later user selection wins.
     updateCustomEndpointPresetOption(preset);
     $('#custom_endpoint_preset').val(preset.name);
@@ -10551,7 +10570,7 @@ $('#delete_custom_endpoint').on('click', async function () {
             selected_custom_endpoint_preset.url,
             selected_custom_endpoint_preset.key,
             selected_custom_endpoint_preset.model,
-            { secretId: selected_custom_endpoint_preset.secretId },
+            { secretId: selected_custom_endpoint_preset.secretId, parameters: selected_custom_endpoint_preset },
         );
 
         saveSettingsDebounced();
@@ -10584,7 +10603,7 @@ async function runCustomEndpointPresetCallback(_, value) {
     }
 
     $('#custom_endpoint_preset').val(preset.name);
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, parameters: preset });
     saveSettingsDebounced();
     return preset.name;
 }

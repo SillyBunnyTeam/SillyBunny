@@ -286,10 +286,71 @@ export function buildReverseProxyPresetForSave(preset, { supportedSources = [] }
 }
 
 /**
+ * The Custom source's Additional Parameters. Endpoint profiles store them under the same keys as the live settings.
+ */
+export const CUSTOM_ENDPOINT_PARAMETER_KEYS = Object.freeze(['custom_include_body', 'custom_exclude_body', 'custom_include_headers']);
+
+/**
+ * @typedef {Partial<Record<'custom_include_body'|'custom_exclude_body'|'custom_include_headers', string>>} CustomEndpointParameters
+ */
+
+/**
+ * Picks the Additional Parameters from an endpoint profile or from the live settings.
+ * The values are YAML, which is indentation-sensitive, so they are kept verbatim.
+ *
+ * @param {Record<string, any>|null|undefined} source Endpoint profile or live OpenAI settings
+ * @returns {CustomEndpointParameters} Only the parameters that the source holds
+ */
+export function pickCustomEndpointParameters(source) {
+    /** @type {CustomEndpointParameters} */
+    const parameters = {};
+
+    for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+        const value = source?.[parameterKey];
+        if (value !== undefined && value !== null) {
+            parameters[parameterKey] = String(value);
+        }
+    }
+
+    return parameters;
+}
+
+/**
+ * Gives each endpoint profile the live value of every Additional Parameter that it does not store.
+ * A profile without them uses the live values, so this keeps its requests the same while each profile
+ * keeps its own values from then on. None is left out because it stores empty values.
+ *
+ * @param {Record<string, any>[]} presets Custom endpoint profiles, changed in place
+ * @param {Record<string, any>} settings Live OpenAI settings
+ * @returns {boolean} True when a profile changed
+ */
+export function fillMissingCustomEndpointParameters(presets, settings) {
+    const liveParameters = pickCustomEndpointParameters(settings);
+    let changed = false;
+
+    for (const preset of presets ?? []) {
+        if (!preset || preset.name === 'None') {
+            continue;
+        }
+
+        for (const [parameterKey, value] of Object.entries(liveParameters)) {
+            if (!Object.hasOwn(preset, parameterKey)) {
+                preset[parameterKey] = value;
+                changed = true;
+            }
+        }
+    }
+
+    return changed;
+}
+
+/**
  * Normalizes a Custom OpenAI-compatible endpoint profile.
+ * None stores empty Additional Parameters, as it stores an empty URL, key and model, so selecting it clears them.
+ * Another profile without them gets none, so selecting it leaves the current ones in place.
  *
  * @param {Record<string, any>} preset Custom endpoint profile
- * @returns {{name: string, url: string, key: string, model: string, secretId: string}}
+ * @returns {{name: string, url: string, key: string, model: string, secretId: string} & CustomEndpointParameters}
  */
 export function normalizeCustomEndpointPreset(preset) {
     const name = String(preset?.name ?? 'None');
@@ -302,6 +363,7 @@ export function normalizeCustomEndpointPreset(preset) {
             key: '',
             model: '',
             secretId: '',
+            ...Object.fromEntries(CUSTOM_ENDPOINT_PARAMETER_KEYS.map(parameterKey => [parameterKey, ''])),
         };
     }
 
@@ -311,6 +373,7 @@ export function normalizeCustomEndpointPreset(preset) {
         key: secretId ? '' : String(preset?.key ?? ''), // Don't persist plaintext key if secretId exists
         model: String(preset?.model ?? ''),
         secretId,
+        ...pickCustomEndpointParameters(preset),
     };
 }
 
@@ -318,7 +381,7 @@ export function normalizeCustomEndpointPreset(preset) {
  * Builds a Custom OpenAI-compatible endpoint profile from the current form.
  *
  * @param {Record<string, any>} preset Custom endpoint profile data
- * @returns {{name: string, url: string, key: string, model: string, secretId: string}}
+ * @returns {{name: string, url: string, key: string, model: string, secretId: string} & CustomEndpointParameters}
  */
 export function buildCustomEndpointPresetForSave(preset) {
     return normalizeCustomEndpointPreset(preset);

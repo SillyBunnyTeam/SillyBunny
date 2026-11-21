@@ -137,8 +137,12 @@ describe('connection manager profile save wiring', () => {
         const allowEmptyStart = connectionManagerSource.indexOf('const ALLOW_EMPTY = [');
         const allowEmptySource = connectionManagerSource.slice(allowEmptyStart, connectionManagerSource.indexOf('];', allowEmptyStart));
 
+        const endpointProfileIndex = ccCommandsSource.indexOf('\'custom-endpoint-profile\'');
+        expect(endpointProfileIndex).toBeGreaterThan(-1);
         for (const command of ['custom-include-body', 'custom-exclude-body', 'custom-include-headers']) {
             expect(ccCommandsSource).toContain(`'${command}',`);
+            // A connection profile's own values must win over the ones that its endpoint profile applies.
+            expect(ccCommandsSource.indexOf(`'${command}'`)).toBeGreaterThan(endpointProfileIndex);
             expect(allowEmptySource).toContain(`'${command}',`);
             expect(sharedSource).toContain(`'${command}': ['${command.replaceAll('-', '_')}', value => String(value ?? '')],`);
         }

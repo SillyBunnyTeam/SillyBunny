@@ -6,6 +6,7 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    fillMissingCustomEndpointParameters,
     getChatCompletionConnectionPresetKeys,
     getChatCompletionSamplingProfileLookupKeys,
     getChatCompletionSamplingPresetKeys,
@@ -13,6 +14,7 @@ import {
     getCustomEndpointFavoritesKey,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
+    pickCustomEndpointParameters,
     shouldIncludeConnectionFieldsInPreset,
     shouldIncludeSamplingFieldsInPreset,
 } from '../public/scripts/openai-preset-utils.js';
@@ -272,13 +274,81 @@ describe('Chat Completion preset utilities', () => {
             url: 'https://proxy.example/v1',
             key: 'sk-story',
             model: 'gpt-4o',
+            custom_include_body: 'top_k: 20',
         })).toEqual({
             name: 'None',
             url: '',
             key: '',
             model: '',
             secretId: '',
+            custom_include_body: '',
+            custom_exclude_body: '',
+            custom_include_headers: '',
         });
+    });
+
+    test('saves Custom endpoint profiles with their Additional Parameters verbatim, empty values included', () => {
+        expect(buildCustomEndpointPresetForSave({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            model: 'gpt-4o',
+            secretId: 'secret-story',
+            custom_include_body: '  top_k: 20\n  min_p: 0.05\n',
+            custom_exclude_body: '',
+            custom_include_headers: 'X-Title: Story',
+        })).toEqual({
+            name: 'Story proxy',
+            url: 'https://proxy.example/v1',
+            key: '',
+            model: 'gpt-4o',
+            secretId: 'secret-story',
+            custom_include_body: '  top_k: 20\n  min_p: 0.05\n',
+            custom_exclude_body: '',
+            custom_include_headers: 'X-Title: Story',
+        });
+    });
+
+    test('gives a Custom endpoint profile only the Additional Parameters it holds', () => {
+        expect(normalizeCustomEndpointPreset({ name: 'Partial', custom_include_body: 'top_k: 20', custom_exclude_body: null })).toEqual({
+            name: 'Partial',
+            url: '',
+            key: '',
+            model: '',
+            secretId: '',
+            custom_include_body: 'top_k: 20',
+        });
+    });
+
+    test('fills the Additional Parameters that a profile lacks with the live ones, and leaves None and stored values alone', () => {
+        const settings = { custom_include_body: '  top_k: 20\n', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' };
+        const none = normalizeCustomEndpointPreset({ name: 'None' });
+        const legacy = normalizeCustomEndpointPreset({ name: 'Legacy', url: 'https://legacy.example/v1' });
+        const partial = normalizeCustomEndpointPreset({ name: 'Partial', custom_include_body: 'min_p: 0.1' });
+        const stored = normalizeCustomEndpointPreset({ name: 'Stored', custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+
+        expect(fillMissingCustomEndpointParameters([none, legacy, partial, stored], settings)).toBe(true);
+
+        expect(legacy).toMatchObject(settings);
+        expect(partial).toMatchObject({ custom_include_body: 'min_p: 0.1', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' });
+        expect(stored).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        expect(fillMissingCustomEndpointParameters([none, legacy, partial, stored], { ...settings, custom_include_body: 'changed: 1' })).toBe(false);
+        expect(legacy.custom_include_body).toBe('  top_k: 20\n');
+    });
+
+    test('picks only the Additional Parameters from live settings or a profile', () => {
+        expect(pickCustomEndpointParameters({
+            custom_url: 'https://proxy.example/v1',
+            custom_include_body: 'top_k: 20',
+            custom_exclude_body: '- frequency_penalty',
+            custom_include_headers: '',
+        })).toEqual({
+            custom_include_body: 'top_k: 20',
+            custom_exclude_body: '- frequency_penalty',
+            custom_include_headers: '',
+        });
+        expect(pickCustomEndpointParameters(null)).toEqual({});
+        expect(pickCustomEndpointParameters({ name: 'Legacy', url: 'https://legacy.example/v1' })).toEqual({});
     });
 
     test('can build a preset without sampling fields', () => {

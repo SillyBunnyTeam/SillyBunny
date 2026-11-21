@@ -147,7 +147,7 @@ describe('OpenAI proxy preset wiring', () => {
         expect(indexHtml).toContain('id="save_custom_endpoint"');
         expect(indexHtml).toContain('id="delete_custom_endpoint"');
         expect(indexHtml).toContain('id="custom_endpoint_preset_name"');
-        expect(indexHtml).toContain('Saved Custom OpenAI-compatible URLs, API keys, and model IDs.');
+        expect(indexHtml).toContain('Saved Custom OpenAI-compatible URLs, API keys, model IDs, and Additional Parameters.');
     });
 
     test('saves Custom endpoint profiles with URL, key, model, and secret fields', () => {
@@ -261,6 +261,9 @@ describe('OpenAI proxy preset wiring', () => {
 
         expect(applyPresetIndex).toBeGreaterThanOrEqual(0);
         expect(optionsIndex).toBeGreaterThan(applyPresetIndex);
+        // The saved settings already hold the Additional Parameters in effect, which a connection profile can set after the endpoint profile.
+        const applyCallSource = loadCustomEndpointSource.slice(applyPresetIndex, loadCustomEndpointSource.indexOf(');', applyPresetIndex));
+        expect(applyCallSource).not.toMatch(/\bparameters\b/);
     });
 
     test('resolves the saved selection to the same object as the presets array entry', () => {
@@ -301,7 +304,7 @@ describe('OpenAI proxy preset wiring', () => {
         expect(callbackSource).toContain('custom_endpoint_presets.find(p => p.name === name)');
         expect(callbackSource).not.toContain('new Fuse(');
         expect(callbackSource).toContain('$(\'#custom_endpoint_preset\').val(preset.name);');
-        expect(callbackSource).toContain('await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId });');
+        expect(callbackSource).toContain('await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, parameters: preset });');
     });
 
     test('stores Custom endpoint additional parameters verbatim through their slash commands', () => {
