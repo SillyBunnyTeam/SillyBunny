@@ -395,6 +395,53 @@ function escapeNonMarkdownLines(text, nonMarkdownStrings) {
 }
 
 /**
+ * @param {(message: string) => void} log Receives each message
+ * @returns {(name: string) => void} Logs one warning the first time that it receives a method name, and nothing the next times
+ */
+export function createWarnOncePerName(log) {
+    const warned = new Set();
+    return (name) => {
+        if (warned.has(name)) {
+            return;
+        }
+        warned.add(name);
+        log(`converter.${name}() has no effect while markdown-it is the Markdown engine, and Showdown can be chosen in the Markdown Engine setting under Customize > Messages.`);
+    };
+}
+
+// The page keeps one warning for each method, because a new converter is built whenever a setting that it reads changes.
+const warnShowdownMethodOnce = createWarnOncePerName(message => console.warn(message));
+
+/**
+ * Stands in for the methods of a Showdown converter that an extension can call on the shared converter object.
+ * A missing method throws a TypeError in the extension that calls it. Each stub does nothing, returns the type that
+ * Showdown returns, and warns, because the caller expects an effect that markdown-it cannot give.
+ * @param {object} converter The converter that gets the stubs; `listen` returns it, as Showdown does
+ * @param {(name: string) => void} warnUnsupported
+ * @returns {Record<string, (...args: any[]) => any>}
+ */
+function createShowdownMethodStubs(converter, warnUnsupported) {
+    const stub = (name, answer = () => undefined) => (...args) => {
+        warnUnsupported(name);
+        return answer(...args);
+    };
+    return {
+        addExtension: stub('addExtension'),
+        removeExtension: stub('removeExtension'),
+        useExtension: stub('useExtension'),
+        setOption: stub('setOption'),
+        getOption: stub('getOption'),
+        // A new object each time, so a caller that writes to it cannot change the next answer.
+        getOptions: stub('getOptions', () => ({})),
+        setFlavor: stub('setFlavor'),
+        getFlavor: stub('getFlavor', () => 'vanilla'),
+        listen: stub('listen', () => converter),
+        // The HTML comes back unchanged, so a caller that writes the result back loses nothing.
+        makeMarkdown: stub('makeMarkdown', html => typeof html === 'string' ? html : ''),
+    };
+}
+
+/**
  * Creates a markdown-it converter that renders chat Markdown like SillyBunny's Showdown converter, with
  * CommonMark emphasis. The libraries come in as arguments so that this module does not load the browser bundle.
  * @param {object} libraries Libraries from `lib.js` or `node_modules`
@@ -404,9 +451,12 @@ function escapeNonMarkdownLines(text, nonMarkdownStrings) {
  * @param {object} [options] Converter options
  * @param {() => string} [options.getNonMarkdownStrings] Returns the comma-separated "Non-markdown strings"
  * with macros resolved. Called for each conversion.
- * @returns {{ makeHtml: (text: string) => string }} Converter
+ * @param {(name: string) => void} [options.warnUnsupported] Receives the name of each Showdown method that a
+ * caller invokes. The default logs one console warning for each name, for the whole page.
+ * @returns {{ makeHtml: (text: string) => string } & Record<string, (...args: any[]) => any>} Converter with
+ * `makeHtml` and no-op stubs of the Showdown methods that an extension can call
  */
-export function createMarkdownItConverter({ markdownit, markdownItEmoji, markdownItCjkFriendly }, { getNonMarkdownStrings = () => '' } = {}) {
+export function createMarkdownItConverter({ markdownit, markdownItEmoji, markdownItCjkFriendly }, { getNonMarkdownStrings = () => '', warnUnsupported = warnShowdownMethodOnce } = {}) {
     const md = markdownit({ html: true, breaks: true, linkify: false });
     const { escapeHtml, unescapeAll } = md.utils;
 
@@ -438,5 +488,6 @@ export function createMarkdownItConverter({ markdownit, markdownItEmoji, markdow
     rules.strong_open = (tokens, idx) => tokens[idx].markup === '__' ? '<u>' : '<strong>';
     rules.strong_close = (tokens, idx) => tokens[idx].markup === '__' ? '</u>' : '</strong>';
 
-    return { makeHtml };
+    const converter = { makeHtml };
+    return Object.assign(converter, createShowdownMethodStubs(converter, warnUnsupported));
 }
