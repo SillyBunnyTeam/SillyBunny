@@ -7,6 +7,7 @@ test.setTimeout(90000);
 const OLD_URL = 'http://127.0.0.1:5001';
 const NEW_URL = 'http://127.0.0.1:5002';
 const STOPPED_WAITING = 'Stopped waiting for KoboldCpp';
+const MODEL_HINT = 'Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.';
 const READ_ONLY_POSTS = new Set([
     '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
     '/api/avatars/get', '/api/stats/get', '/api/users/me',
@@ -259,16 +260,20 @@ test.describe('KoboldCpp model switch', () => {
     });
 });
 
-test.describe('KoboldCpp model switcher on a narrow screen', () => {
-    // Narrow screens keep the native select, because Select2 replaces it only on wider screens.
+test.describe('KoboldCpp model switcher controls on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('the model select and the picker have accessible names', async ({ page, baseURL }) => {
+    test('the model row and the picker have accessible names', async ({ page, baseURL }) => {
         await connectKoboldCpp(page, baseURL);
 
-        const select = page.locator('#koboldcpp_model');
-        await expect(select).toHaveAccessibleName('KoboldCpp Model');
-        await expect(select).toHaveAccessibleDescription('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+        // The shared select row hides the native select from assistive technology at every width. Its trigger button is
+        // the control that a user reaches, so it carries the name and the description.
+        const trigger = page.getByRole('button', { name: 'KoboldCpp Model alpha.gguf' });
+        await expect(trigger).toHaveAccessibleDescription(MODEL_HINT);
+
+        // The hint belongs to the Model group, below its row, and not to the Advanced group.
+        const modelGroup = page.locator('[data-sb-connections-group="model"]:has(#koboldcpp_model)');
+        await expect(modelGroup.locator('.ds-select-row:has(#koboldcpp_model) ~ * #koboldcpp_model_hint')).toBeVisible();
 
         const result = page.evaluate(() => window.SillyTavern.getContext().executeSlashCommandsWithOptions('/kcpp-model'));
         const picker = page.getByRole('dialog').filter({ hasText: 'Load a KoboldCpp model' });
