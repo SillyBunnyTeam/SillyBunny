@@ -844,6 +844,19 @@ This is the largest class by a wide margin.
 - **Limit:** the Jest suites run `checkWorldInfo()` and its helpers cut out of `world-info.js` by `tests/util/world-info-harness.js`, with one token per word and settings that each test sets. `tests/frontend/WorldInfoActivation.e2e.js` runs seven rows of the table through the real module, tokenizer and macro engine.
 - **Fixes:** #393 (legacy string positions activated but never reached the prompt), `c11467f9b` and `612ea61d6` (scanning and serialization of lorebook entries).
 
+### Markdown auto-fix
+
+- **Breaks:** with Auto-fix Markdown on, nested emphasis loses the spaces around it, a `*` list marker joins the bold label of its item, `* * *` turns into `** **`, and code in a fence or in backticks loses spaces or gains a `*` (issue #955).
+- **Cause:** upstream `fixMarkdown()` in `public/scripts/power-user.js` matched pairs with the lazy regex `([*_]{1,2})([\s\S]*?)\1` across the whole message and deleted the horizontal whitespace next to every `*` and `_` inside each match. A match could end inside a `**` run, cross lines and reach into code. The display pass then added `*` or `"` to each line with an odd count, bullet lines and code lines included. `cleanUpMessage()` in `public/script.js` runs the first pass on the reply text that is saved, so stored messages changed too.
+- **Files:** `public/scripts/power-user.js` (upstream), `public/scripts/auto-fix-markdown.js`.
+- **Guards:** `fixMarkdown()` returns `autoFixMarkdown()`. It works line by line, pairs a whole run of `*` or `_` only with the nearest opener of the same character and length, and deletes only the horizontal whitespace directly inside a pair. A run that follows whitespace closes the open pair of its kind when punctuation or a quote follows it, as in `*She smiles *"Hello."`, which upstream also repairs; before a letter or a digit it opens a nested pair, as in `*a *b* c*`. Unpaired runs, such as list markers, stay. It skips fenced code (a fence that does not close runs to the end of the text, as in a reply that is still streaming), inline code, escaped marks, `_` between letters or digits, and lines made only of `*`, `_`, `-` and whitespace. The display pass skips the same code and lines, and does not count a `*` bullet marker at the start of a line.
+- **Tests:** `tests/auto-fix-markdown.test.js` (the issue cases, a comparison with the upstream function on ordinary text, a check that stored text only loses horizontal whitespace, and a time budget for long lines), `tests/auto-fix-markdown-wiring.test.js` (runs `fixMarkdown()` from the source of `power-user.js`).
+- **Limit:** pairs do not cross lines, so `*one\ntwo *` keeps its space. A list item whose text has a lone `*` with whitespace on both sides pairs it with the marker, as upstream does: `* 5 * 3 = 15` becomes `*5* 3 = 15`.
+- **Limit:** a fence that follows `> ` or a list marker on its line, and an indented code block, are not read as code, so `*` with spaces inside them is paired as in prose. Upstream does the same.
+- **Limit:** a run of `*` or `_` with whitespace on both sides pairs with the next run of the same length, so `Name: ___ Age: ___` loses the spaces between the runs. Upstream does the same for every length except four and eight.
+- **Limit:** the display pass counts an escaped `\*` as a mark, and a line with an odd count of both `*` and `"` gets only the `"`. Both match upstream.
+- **Fixes:** `617492876` (pairing module), `029a740e6` (`fixMarkdown()` adapter).
+
 ### Row menus and reordering
 
 - **Breaks:** lists built their own Move items: some showed them disabled at the ends, the group member menu kept them under a tag filter, where a move changes an order that is partly hidden, and only the prompt editor announced the new position.
