@@ -37,12 +37,15 @@ const CSS_URL_REGEX = /\burl\(\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^()\s"']+))\s*
 const BARE_HTTP_URL_REGEX = /https?:\/\/[^\s"'<>)\]]+/dgi;
 
 /**
- * Quotes text from an imported file or a remote host for the console, so that its control characters are escaped.
+ * Quotes text from an imported file or a remote host for the console.
+ * JSON escapes the C0 controls. DEL, the C1 controls and the direction marks are escaped here, because a terminal can
+ * act on a C1 control and a direction mark reorders the line.
  * @param {unknown} value Text to log
  * @returns {string} JSON string literal
  */
 function quoteForLog(value) {
-    return JSON.stringify(String(value));
+    return JSON.stringify(String(value)).replace(/[\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+        char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
 function decodeURIComponentSafe(value) {
@@ -146,6 +149,10 @@ export function getExternalMediaFolder(name, fallbackName, directories) {
     if (!folder) {
         return null;
     }
+    // The static route decodes the path once more than the router did, so it cannot serve a folder whose name has a percent sign.
+    if (folder.includes('%')) {
+        return null;
+    }
 
     const isChildFolder = directory => typeof directory === 'string'
         && Boolean(directory)
@@ -159,6 +166,16 @@ export function getExternalMediaFolder(name, fallbackName, directories) {
     }
 
     return folder;
+}
+
+/**
+ * Encodes a folder name for the stored URL. `encodeURIComponent()` keeps `!'()*~`, and a quote or a parenthesis ends
+ * the URL early inside a single-quoted attribute, a Markdown image or a CSS `url()`.
+ * @param {string} folder Folder name
+ * @returns {string} Path segment
+ */
+function encodeFolderForUrl(folder) {
+    return encodeURIComponent(folder).replace(/[!'()*~]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 /**
@@ -505,7 +522,7 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
     }
 
     writeFileAtomicSync(filePath, buffer);
-    return `/user/images/${encodeURIComponent(folder)}/${fileName}`;
+    return `/user/images/${encodeFolderForUrl(folder)}/${fileName}`;
 }
 
 /**

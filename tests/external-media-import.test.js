@@ -58,6 +58,7 @@ describe('external media import (#952)', () => {
     let directories;
     let extractExternalMediaSpans;
     let isValidExternalMediaUrl;
+    let localizeCharacterExternalMedia;
     let readCharacterData;
     let server;
     let tempRoot;
@@ -69,7 +70,7 @@ describe('external media import (#952)', () => {
         const repoRoot = path.resolve(originalWorkingDirectory, '..');
         process.chdir(repoRoot);
         setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
-        ({ extractExternalMediaSpans, isValidExternalMediaUrl } = await import('../src/external-media-import.js'));
+        ({ extractExternalMediaSpans, isValidExternalMediaUrl, localizeCharacterExternalMedia } = await import('../src/external-media-import.js'));
         ({ read: readCharacterData } = await import('../src/character-card-parser.js'));
         const { router: charactersRouter } = await import('../src/endpoints/characters.js');
         const { router: worldInfoRouter } = await import('../src/endpoints/worldinfo.js');
@@ -217,8 +218,7 @@ describe('external media import (#952)', () => {
             expect(extractExternalMediaSpans('url( and (https://chub.ai/users/creator)')).toEqual([]);
         });
 
-        // The scan runs on the server's only thread. Before the classes were bounded, each of these texts took
-        // seconds and the time grew with the square of the length.
+        // The scan runs on the server's only thread, so its time must stay linear in the length of a hostile field.
         test.each([
             ['unclosed Markdown images', '!['],
             ['unclosed Markdown images with an angle URL', '![a](<'],
@@ -476,6 +476,48 @@ describe('external media import (#952)', () => {
     });
 
     describe('security, SSRF, file-type validation, and fail-open resilience', () => {
+        const importRequest = () => ({ body: { import_external_media: 'true' }, user: { directories } });
+        const cardWith = (name, description) => ({ name, description, data: { name, description } });
+
+        test('a card name with a quote or a parenthesis gives a stored URL that no context ends early', async () => {
+            const name = 'D\'Artagnan (alt)!';
+            const card = cardWith(name, '![scene](https://files.catbox.moe/scene.png)');
+            const fetchImpl = jest.fn(async () => mockImageResponse(PNG_SCENE));
+
+            const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'card', fetchImpl });
+
+            const fileName = `scene-${hash8(PNG_SCENE)}.png`;
+            expect(result).toEqual({ changed: true, downloaded: 1 });
+            expect(card.data.description).toBe(`![scene](/user/images/D%27Artagnan%20%28alt%29%21/${fileName})`);
+            expect(fs.readFileSync(path.join(directories.userImages, name, fileName)).equals(PNG_SCENE)).toBe(true);
+        });
+
+        test('a card name with a percent sign keeps its remote URLs, because the static route cannot serve that folder', async () => {
+            const card = cardWith('100% Wolf', '![scene](https://files.catbox.moe/scene.png)');
+            const fetchImpl = jest.fn(async () => mockImageResponse(PNG_SCENE));
+
+            const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: '100% Wolf', fetchImpl });
+
+            expect(result).toEqual({ changed: false, downloaded: 0 });
+            expect(fetchImpl).not.toHaveBeenCalled();
+            expect(card.data.description).toBe('![scene](https://files.catbox.moe/scene.png)');
+            expect(fs.readdirSync(directories.userImages)).toEqual([]);
+        });
+
+        test('a log line escapes control characters and direction marks from the card and from the host', async () => {
+            const card = cardWith('Logger', '![scene](https://files.catbox.moe/a\u009b31mb\u202e.png)');
+            const fetchImpl = jest.fn(async () => {
+                throw new Error('refused\u001b[2J\u009d0;title');
+            });
+
+            await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Logger', fetchImpl });
+
+            const line = console.warn.mock.calls.map(call => call.join(' ')).find(text => text.includes('External media import failed'));
+            expect(line).toContain('\\u009b31mb\\u202e.png');
+            expect(line).toContain('refused\\u001b[2J\\u009d0;title');
+            expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
+        });
+
         test('blocks SSRF redirects to localhost or private IPs, rejects non-image payloads, and fails open so valid images still import', async () => {
             fetchMock.mockImplementation(async (url) => {
                 switch (String(url)) {
