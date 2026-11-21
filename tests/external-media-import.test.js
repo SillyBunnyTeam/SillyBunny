@@ -765,6 +765,83 @@ describe('external media import (#952)', () => {
             });
         });
 
+        describe('the budget of one import', () => {
+            const cardWithImages = (name, count) => cardWith(name, Array.from({ length: count }, (_, index) => `![i${index}](https://files.catbox.moe/${index}.png)`).join('\n'));
+            const localImages = card => (card.data.description.match(/\/user\/images\//g) ?? []).length;
+            const budgetLines = () => console.warn.mock.calls.map(call => call.join(' ')).filter(text => text.includes('limit for one import'));
+
+            test('stops downloading when the total bytes are used up, keeps the other URLs remote and still succeeds', async () => {
+                const card = cardWithImages('Bytes', 6);
+                const fetchImpl = jest.fn(async () => mockImageResponse(PNG_SCENE));
+
+                const result = await localizeCharacterExternalMedia(card, {
+                    request: importRequest(),
+                    fileName: 'Bytes',
+                    fetchImpl,
+                    maxBytes: PNG_SCENE.length + 5,
+                    totalMaxBytes: PNG_SCENE.length * 2 + 10,
+                });
+
+                expect(result.downloaded).toBeLessThanOrEqual(2);
+                expect(result.downloaded).toBeGreaterThanOrEqual(1);
+                expect(localImages(card)).toBe(result.downloaded);
+                expect(card.data.description).toContain('https://files.catbox.moe/5.png');
+                expect(fetchImpl.mock.calls.length).toBeLessThan(6);
+                expect(budgetLines()).toHaveLength(1);
+            });
+
+            test('a response that is larger than what is left of the budget stays remote', async () => {
+                const card = cardWithImages('Left', 2);
+                const fetchImpl = jest.fn(async url => mockImageResponse(String(url).endsWith('/0.png') ? PNG_SCENE : PNG_ALT));
+
+                const result = await localizeCharacterExternalMedia(card, {
+                    request: importRequest(),
+                    fileName: 'Left',
+                    fetchImpl,
+                    maxBytes: PNG_SCENE.length + 5,
+                    totalMaxBytes: PNG_SCENE.length + 20,
+                });
+
+                expect(result.downloaded).toBe(1);
+                expect(card.data.description).toContain('/user/images/Left/0-');
+                expect(card.data.description).toContain('https://files.catbox.moe/1.png');
+            });
+
+            test('stops when the total time is used up, aborts the requests that wait and still succeeds', async () => {
+                const card = cardWithImages('Time', 6);
+                const fetchImpl = jest.fn(async (url, { signal }) => {
+                    if (String(url).endsWith('/0.png')) {
+                        return mockImageResponse(PNG_SCENE);
+                    }
+                    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason)));
+                });
+
+                const startedAt = performance.now();
+                const result = await localizeCharacterExternalMedia(card, {
+                    request: importRequest(),
+                    fileName: 'Time',
+                    fetchImpl,
+                    timeoutMs: 30_000,
+                    totalTimeoutMs: 250,
+                });
+
+                expect(performance.now() - startedAt).toBeLessThan(5000);
+                expect(result.downloaded).toBe(1);
+                expect(localImages(card)).toBe(1);
+                expect(fetchImpl).toHaveBeenCalledTimes(4);
+                expect(card.data.description).toContain('https://files.catbox.moe/5.png');
+                expect(budgetLines()).toHaveLength(1);
+            });
+
+            test('a card within the budget logs no budget line', async () => {
+                const card = cardWithImages('Fine', 2);
+
+                await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Fine', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
+
+                expect(budgetLines()).toEqual([]);
+            });
+        });
+
         test('blocks SSRF redirects to localhost or private IPs, rejects non-image payloads, and fails open so valid images still import', async () => {
             fetchMock.mockImplementation(async (url) => {
                 switch (String(url)) {

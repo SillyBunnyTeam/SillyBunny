@@ -22,6 +22,8 @@ const DEFAULT_DOWNLOAD_TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 5;
 const MAX_URLS_PER_IMPORT = 100;
 const MAX_CONCURRENT_DOWNLOADS = 4;
+const MAX_TOTAL_BYTES_PER_IMPORT = 200 * 1024 * 1024;
+const MAX_TOTAL_TIME_PER_IMPORT_MS = 120_000;
 const MAX_STEM_LENGTH = 24;
 const STORED_HASH_LENGTH = 16;
 const USER_AGENT = 'SillyTavern';
@@ -344,7 +346,14 @@ function discardResponseBody(response) {
     }
 }
 
-async function readResponseBufferBounded(response, maxBytes) {
+/**
+ * Reads a response body up to a byte limit.
+ * @param {any} response Response of the request
+ * @param {number} maxBytes Most bytes to accept
+ * @param {{bytes: number}} received Receives the count of bytes read, also when the read fails
+ * @returns {Promise<Buffer>} Body
+ */
+async function readResponseBufferBounded(response, maxBytes, received = { bytes: 0 }) {
     const contentLength = Number(response.headers?.get?.('content-length'));
     if (Number.isFinite(contentLength) && contentLength > maxBytes) {
         discardResponseBody(response);
@@ -358,6 +367,7 @@ async function readResponseBufferBounded(response, maxBytes) {
             for await (const chunk of response.body) {
                 const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                 totalBytes += bufferChunk.length;
+                received.bytes = totalBytes;
                 if (totalBytes > maxBytes) {
                     throw new Error(`External media stream exceeded maximum size (${maxBytes} bytes)`);
                 }
@@ -371,6 +381,7 @@ async function readResponseBufferBounded(response, maxBytes) {
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());
+    received.bytes = buffer.length;
     if (buffer.length > maxBytes) {
         throw new Error(`External media buffer exceeded maximum size (${buffer.length} > ${maxBytes})`);
     }
@@ -495,7 +506,56 @@ async function storeWithoutReplacing(filePath, buffer) {
     }
 }
 
-async function downloadAndStoreExternalImage(url, { directories, folder, fetchImpl = fetch, timeoutMs = DEFAULT_DOWNLOAD_TIMEOUT_MS, maxBytes = MAX_EXTERNAL_MEDIA_BYTES }) {
+/**
+ * Tracks the bytes and the time that one import may use for all of its downloads together. A download reserves its
+ * byte limit before it starts and settles with the bytes it read, so downloads that run at the same time cannot pass
+ * the total.
+ * @param {{totalMaxBytes: number, totalTimeoutMs: number}} limits Total limits
+ */
+function createImportBudget({ totalMaxBytes, totalTimeoutMs }) {
+    let bytesLeft = totalMaxBytes;
+    const deadline = Date.now() + totalTimeoutMs;
+    return {
+        get remainingMs() {
+            return Math.max(0, deadline - Date.now());
+        },
+        get isUsedUp() {
+            return bytesLeft <= 0 || Date.now() >= deadline;
+        },
+        reserveBytes(limit) {
+            const granted = Math.max(0, Math.min(limit, bytesLeft));
+            bytesLeft -= granted;
+            return granted;
+        },
+        settleBytes(granted, used) {
+            bytesLeft += granted - used;
+        },
+    };
+}
+
+/**
+ * Downloads one image within the limits of the import and stores it.
+ * @param {string} url Image URL
+ * @param {object} options
+ * @param {import('./users.js').UserDirectoryList} options.directories User directories
+ * @param {string} options.folder Folder under user/images
+ * @param {typeof fetch} options.fetchImpl Fetch implementation
+ * @param {number} options.timeoutMs Time limit of one request
+ * @param {number} options.maxBytes Byte limit of one image
+ * @param {ReturnType<typeof createImportBudget>} options.budget Budget of the import
+ * @returns {Promise<{fileName: string, localPath: string}|null>} The stored file, or null when the URL stays remote
+ */
+async function downloadAndStoreExternalImage(url, { directories, folder, fetchImpl, timeoutMs, maxBytes, budget }) {
+    const reservedBytes = budget.reserveBytes(maxBytes);
+    const received = { bytes: 0 };
+    try {
+        return await fetchAndStoreExternalImage(url, { directories, folder, fetchImpl, timeoutMs, maxBytes: reservedBytes, received, budget });
+    } finally {
+        budget.settleBytes(reservedBytes, received.bytes);
+    }
+}
+
+async function fetchAndStoreExternalImage(url, { directories, folder, fetchImpl, timeoutMs, maxBytes, received, budget }) {
     if (!isValidExternalMediaUrl(url)) {
         return null;
     }
@@ -508,7 +568,7 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
     let response = null;
 
     for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
-        if (!isValidExternalMediaUrl(currentUrl)) {
+        if (!isValidExternalMediaUrl(currentUrl) || budget.remainingMs <= 0) {
             return null;
         }
 
@@ -520,7 +580,7 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
             },
             agent: /** @type {any} */ (getUntrustedRequestAgent()),
             redirect: 'manual',
-            signal: AbortSignal.timeout(timeoutMs),
+            signal: AbortSignal.timeout(Math.min(timeoutMs, budget.remainingMs)),
             size: maxBytes,
         });
 
@@ -542,7 +602,7 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
         return null;
     }
 
-    const buffer = await readResponseBufferBounded(response, maxBytes);
+    const buffer = await readResponseBufferBounded(response, maxBytes, received);
     const fileName = buildContentAddressedFileName(url, currentUrl, buffer);
     if (!fileName) {
         console.warn(`External media import skipped non-image response from ${quoteForLog(url)}`);
@@ -575,8 +635,18 @@ async function downloadAndStoreExternalImage(url, { directories, folder, fetchIm
  * @param {typeof fetch} [options.fetchImpl] Custom fetch implementation for testing
  * @param {number} [options.timeoutMs] Per-request timeout in milliseconds
  * @param {number} [options.maxBytes] Max bytes per downloaded image
+ * @param {number} [options.totalMaxBytes] Max bytes of all downloads of one import
+ * @param {number} [options.totalTimeoutMs] Max time of all downloads of one import in milliseconds
  */
-function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, timeoutMs = DEFAULT_DOWNLOAD_TIMEOUT_MS, maxBytes = MAX_EXTERNAL_MEDIA_BYTES }) {
+function createExternalMediaLocalizer({
+    directories,
+    folder,
+    fetchImpl = fetch,
+    timeoutMs = DEFAULT_DOWNLOAD_TIMEOUT_MS,
+    maxBytes = MAX_EXTERNAL_MEDIA_BYTES,
+    totalMaxBytes = MAX_TOTAL_BYTES_PER_IMPORT,
+    totalTimeoutMs = MAX_TOTAL_TIME_PER_IMPORT_MS,
+}) {
     /** @type {Set<string>} */
     const candidateUrls = new Set();
     // The URL as the file wrote it, for the first place that names it. The manifest keeps this form, so an export
@@ -623,13 +693,20 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
             }
 
             const urls = [...candidateUrls];
+            const budget = createImportBudget({ totalMaxBytes, totalTimeoutMs });
             /** @type {Map<string, string>} */
             const storedOrigins = new Map();
             let downloadedCount = 0;
+            let skippedForBudget = 0;
 
             for (let i = 0; i < urls.length; i += MAX_CONCURRENT_DOWNLOADS) {
                 const batch = urls.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
                 await Promise.all(batch.map(async (url) => {
+                    if (budget.isUsedUp) {
+                        skippedForBudget++;
+                        resolvedUrls.set(url, null);
+                        return;
+                    }
                     try {
                         const stored = await downloadAndStoreExternalImage(url, {
                             directories,
@@ -637,6 +714,7 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
                             fetchImpl,
                             timeoutMs,
                             maxBytes,
+                            budget,
                         });
                         resolvedUrls.set(url, stored?.localPath ?? null);
                         if (stored) {
@@ -648,6 +726,10 @@ function createExternalMediaLocalizer({ directories, folder, fetchImpl = fetch, 
                         resolvedUrls.set(url, null);
                     }
                 }));
+            }
+
+            if (skippedForBudget > 0) {
+                console.warn(`External media import used up its size or time limit for one import, so ${skippedForBudget} URL(s) stay remote`);
             }
 
             // The manifest is the only place that keeps the author's URL, and the caller replaces that URL in the card.
@@ -935,9 +1017,13 @@ function walkCharacterCard(card, visitText, visitDirectUrl, scenarios = undefine
  * @param {string} options.fileName Card file name without extension
  * @param {object[]} [options.scenarios] Optional BYAF scenarios array
  * @param {typeof fetch} [options.fetchImpl] Custom fetch implementation for testing
+ * @param {number} [options.maxBytes] Max bytes per downloaded image, for testing
+ * @param {number} [options.timeoutMs] Per-request timeout in milliseconds, for testing
+ * @param {number} [options.totalMaxBytes] Max bytes of all downloads of one import, for testing
+ * @param {number} [options.totalTimeoutMs] Max time of all downloads of one import in milliseconds, for testing
  * @returns {Promise<{changed: boolean, downloaded: number}>}
  */
-export async function localizeCharacterExternalMedia(card, { request, fileName, scenarios, fetchImpl = fetch }) {
+export async function localizeCharacterExternalMedia(card, { request, fileName, scenarios, fetchImpl = fetch, ...limits }) {
     if (!shouldImportExternalMedia(request)) {
         return { changed: false, downloaded: 0 };
     }
@@ -949,7 +1035,7 @@ export async function localizeCharacterExternalMedia(card, { request, fileName, 
         return { changed: false, downloaded: 0 };
     }
 
-    const localizer = createExternalMediaLocalizer({ directories, folder, fetchImpl });
+    const localizer = createExternalMediaLocalizer({ directories, folder, fetchImpl, ...limits });
     walkCharacterCard(
         card,
         (text) => {
@@ -985,9 +1071,13 @@ export async function localizeCharacterExternalMedia(card, { request, fileName, 
  * @param {import('express').Request} options.request Express request
  * @param {string} options.worldName Canonical World Info name
  * @param {typeof fetch} [options.fetchImpl] Custom fetch implementation for testing
+ * @param {number} [options.maxBytes] Max bytes per downloaded image, for testing
+ * @param {number} [options.timeoutMs] Per-request timeout in milliseconds, for testing
+ * @param {number} [options.totalMaxBytes] Max bytes of all downloads of one import, for testing
+ * @param {number} [options.totalTimeoutMs] Max time of all downloads of one import in milliseconds, for testing
  * @returns {Promise<{changed: boolean, downloaded: number}>}
  */
-export async function localizeWorldInfoExternalMedia(worldContent, { request, worldName, fetchImpl = fetch }) {
+export async function localizeWorldInfoExternalMedia(worldContent, { request, worldName, fetchImpl = fetch, ...limits }) {
     if (!shouldImportExternalMedia(request)) {
         return { changed: false, downloaded: 0 };
     }
@@ -998,7 +1088,7 @@ export async function localizeWorldInfoExternalMedia(worldContent, { request, wo
         return { changed: false, downloaded: 0 };
     }
 
-    const localizer = createExternalMediaLocalizer({ directories, folder, fetchImpl });
+    const localizer = createExternalMediaLocalizer({ directories, folder, fetchImpl, ...limits });
 
     walkCharacterBook(worldContent, (text) => {
         localizer.collectFromText(text);
