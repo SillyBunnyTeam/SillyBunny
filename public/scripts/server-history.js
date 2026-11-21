@@ -2,6 +2,19 @@ import { saveSettingsDebounced } from '../script.js';
 import { power_user } from './power-user.js';
 import { isValidUrl } from './utils.js';
 
+// SillyBunny: Text Completion and Chat Completion KoboldCpp share the "koboldcpp" history label, so inputs and
+// connect buttons are matched within their own API panel.
+const API_PANELS = '#kobold_api, #novel_api, #textgenerationwebui_api, #openai_api';
+
+/**
+ * @param {Element} element Server URL input or connect button
+ * @returns {JQuery} API panel that holds the element, or the whole document when it sits outside one
+ */
+function getApiPanel(element) {
+    const panel = $(element).closest(API_PANELS);
+    return panel.length ? panel : $(document);
+}
+
 /**
  * @param {{ term: string; }} request
  * @param {function} resolve
@@ -27,7 +40,8 @@ function selectServer(event, ui, serverLabel) {
     // unfocus the input
     $(event.target).val(ui.item.value).trigger('input').trigger('blur');
 
-    $('[data-server-connect]').each(function () {
+    // SillyBunny: only connect from the API panel that holds this input.
+    getApiPanel(event.target).find('[data-server-connect]').each(function () {
         const serverLabels = String($(this).data('server-connect')).split(',');
 
         if (serverLabels.includes(serverLabel)) {
@@ -54,15 +68,18 @@ function onInputFocus() {
     $(this).autocomplete('search', $(this).val());
 }
 
-function onServerConnectClick() {
+// SillyBunny: exported for a connect button whose own click handler stops the click before the document sees it.
+export function onServerConnectClick() {
     const serverLabels = String($(this).data('server-connect')).split(',');
+    // SillyBunny: save the URL from the API panel that holds this button.
+    const panel = getApiPanel(this);
 
     serverLabels.forEach(serverLabel => {
         if (!power_user.servers) {
             power_user.servers = [];
         }
 
-        const value = String($(`[data-server-history="${serverLabel}"]`).val()).toLowerCase().trim();
+        const value = String(panel.find(`[data-server-history="${serverLabel}"]`).val()).toLowerCase().trim();
 
         // Don't save empty values or invalid URLs
         if (!value || !isValidUrl(value)) {

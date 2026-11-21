@@ -670,11 +670,13 @@
             "uid": 15,
             "key": [
                 "chat completion",
-                "chat completions"
+                "chat completions",
+                "koboldcpp chat completion",
+                "koboldcpp chat completions"
             ],
             "keysecondary": [],
             "comment": "A15 Chat Completion",
-            "content": "Chat Completion sends the prompt as a list of role-tagged messages (system, user, assistant), the format ChatGPT-style APIs use. It appears as Chat Completions in the Backend Type toggle, with a Source picker for the provider. It is not cloud-only: a local server can be reached through Custom (OpenAI-compatible), and many cloud sources also exist as Text Completion (OpenRouter, for example). The difference is the prompt format, not where the model runs. The prompt is built with the Prompt Manager (Backend ▸ Editor); instruct and context templates do not apply. Function calling, web search, inline media, reasoning toggles and Prompt Post-Processing exist only here.",
+            "content": "Chat Completion sends the prompt as a list of role-tagged messages (system, user, assistant), the format ChatGPT-style APIs use. It appears as Chat Completions in the Backend Type toggle, with a Source picker for the provider. It is not cloud-only: a local server can be reached through Custom (OpenAI-compatible), and many cloud sources also exist as Text Completion (OpenRouter, for example). The difference is the prompt format, not where the model runs. The prompt is built with the Prompt Manager (Backend ▸ Editor); instruct and context templates do not apply. Function calling, web search, inline media, reasoning toggles and Prompt Post-Processing exist only here. KoboldCpp is also a Chat Completion source of its own, where KoboldCpp builds the prompt with the model's own chat template. It has its own URL field and shares the KoboldCpp API key and URL history with the Text Completion KoboldCpp type. Connect shows the loaded model, and the \"KoboldCpp Model\" row and /kcpp-model work here too in admin mode. Its samplers are Temperature, Top P, Top K, Min P, Top A, Repetition Penalty, Presence Penalty and Seed, and it has Additional Parameters of its own for anything else KoboldCpp accepts.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -708,11 +710,15 @@
             "key": [
                 "text completion",
                 "text completions",
-                "legacy completions"
+                "legacy completions",
+                "kcpp-model",
+                "koboldcpp model switcher",
+                "switch koboldcpp model",
+                "change koboldcpp model"
             ],
             "keysecondary": [],
             "comment": "A16 Text Completion",
-            "content": "Text Completion sends the whole prompt as one long text and the model continues it. It appears as Text Completions in the Backend Type toggle. Sources include KoboldCpp, llama.cpp, Ollama, Text Generation WebUI (oobabooga), TabbyAPI, vLLM and Aphrodite, and also hosted ones such as OpenRouter, TogetherAI, Featherless and Mancer (upstream calls this list \"API Type\"). It is not an older or legacy format and is not local-only. It exposes many more samplers. Instruct-tuned models need the matching Instruct Template and Context Template. Tool calling and image inlining are Chat Completion only.",
+            "content": "Text Completion sends the whole prompt as one long text and the model continues it. It appears as Text Completions in the Backend Type toggle. Sources include KoboldCpp, llama.cpp, Ollama, Text Generation WebUI (oobabooga), TabbyAPI, vLLM and Aphrodite, and also hosted ones such as OpenRouter, TogetherAI, Featherless and Mancer (upstream calls this list \"API Type\"). It is not an older or legacy format and is not local-only. It exposes many more samplers. Instruct-tuned models need the matching Instruct Template and Context Template. Tool calling and image inlining are Chat Completion only. KoboldCpp can switch its loaded model from SillyBunny when it runs in admin mode (started with --admin and --admindir). Backend ▸ Connections then shows a \"KoboldCpp Model\" row that lists the model and config files of that folder, plus \"Reload launch model\" and \"Unload model\". Choosing an entry makes KoboldCpp load it, and SillyBunny reconnects when it is ready. The /kcpp-model slash command does the same. An admin password goes in the KoboldCpp API key field.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
