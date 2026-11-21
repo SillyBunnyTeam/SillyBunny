@@ -252,8 +252,11 @@ test.describe('KoboldCpp model switch', () => {
         await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
         await expect(page.locator('#api_button_openai')).toHaveClass(/\bdisabled\b/);
         await expect(page.locator('#api_button_openai ~ .api_loading')).toBeVisible();
+        // The switch ended without stopping the loading state, so the page stays in the connecting state until the later check ends.
+        await expect(page.locator('html')).toHaveAttribute('data-sb-connection', 'connecting');
         answerStatus();
         await expectConnectEnabled(page);
+        await expect(page.locator('html')).not.toHaveAttribute('data-sb-connection', 'connecting');
         await expectNoMorePolls(page, polls);
     });
 
