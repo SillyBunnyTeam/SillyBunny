@@ -9,13 +9,18 @@ import {
     setOnlineStatus,
 } from '../script.js';
 import { SECRET_KEYS, writeSecret } from './secrets.js';
-import { delay } from './utils.js';
+import { delay, escapeHtml } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
 import { autoSelectInstructPreset } from './instruct-mode.js';
 import { t } from './i18n.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { kai_settings } from './kai-settings.js';
 import { fetchResumable } from './resumable-generation.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
+// SillyBunny: model details for the shared picker row of the Connections select row.
+import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+import { describeHordeModel, plainText } from './sillybunny-model-details.js';
 
 export {
     MIN_LENGTH,
@@ -227,8 +232,10 @@ export async function generateHorde(prompt, params, signal, reportProgress) {
     });
 
     if (!response.ok) {
-        toastr.error(response.statusText, 'Horde generation failed');
-        throw new Error(`Horde generation failed: ${response.statusText}`);
+        // SillyBunny: the provider's message and a hint replace the bare HTTP reason.
+        const errorBody = await response.text();
+        const { message } = showRequestError({ title: 'Horde generation failed', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        throw new Error(`Horde generation failed: ${message}`);
     }
 
     const responseJson = await response.json();
@@ -376,30 +383,26 @@ function getHordeModelTemplate(option) {
         return option.text;
     }
 
-    const strip = html => {
-        const tmp = document.createElement('DIV');
-        tmp.innerHTML = html || '';
-        return tmp.textContent || tmp.innerText || '';
-    };
-
+    // SillyBunny: catalogue fields are untrusted. They are reduced to text in an inert document (a detached
+    // element would load images and run their handlers) and escaped when interpolated, and only http(s) addresses become links.
     // how much do we trust the metadata from the models repo? about this much
-    const displayName = strip(model.display_name || model.name).replace(/.*\//g, '');
-    const description = strip(model.description);
-    const tags = model.tags ? model.tags.map(strip) : [];
-    const url = strip(model.url);
-    const style = strip(model.style);
+    const displayName = plainText(model.display_name || model.name).replace(/.*\//g, '');
+    const description = plainText(model.description);
+    const tags = model.tags ? model.tags.map(tag => plainText(tag)) : [];
+    const url = plainText(model.url);
+    const style = plainText(model.style);
 
     const workerInfo = hordeModelQueueStateString(model);
     const isPopular = model.tags?.includes('popular');
-    const descriptionDiv = description ? `<div class="horde-model-description">${description}</div>` : '';
+    const descriptionDiv = description ? `<div class="horde-model-description">${escapeHtml(description)}</div>` : '';
     const tagSpans = tags.length > 0 &&
-        `${tags.map(tag => `<span class="tag tag_name">${tag}</span>`).join('')}</span>` || '';
+        `${tags.map(tag => `<span class="tag tag_name">${escapeHtml(tag)}</span>`).join('')}</span>` || '';
 
-    const modelDetailsLink = url && `<a href="${url}" target="_blank" rel="noopener noreferrer" class="model-details-link fa-solid fa-circle-question"> </a>`;
+    const modelDetailsLink = /^https?:\/\//i.test(url) ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="model-details-link fa-solid fa-circle-question"> </a>` : '';
     const capitalize = s => s ? s[0].toUpperCase() + s.slice(1) : '';
     const innerContent = [
-        `<strong>${displayName}</strong> ${modelDetailsLink}`,
-        style ? `${capitalize(style)}` : '',
+        `<strong>${escapeHtml(displayName)}</strong> ${modelDetailsLink}`,
+        style ? escapeHtml(capitalize(style)) : '',
         tagSpans ? `<span class="tags tags_inline inline-flex margin-r2">${tagSpans}</span>` : '',
     ].filter(Boolean).join(' | ');
 
@@ -410,10 +413,17 @@ function getHordeModelTemplate(option) {
                 ${innerContent}
             </div>
             ${descriptionDiv}
-            <div><small>${workerInfo}</small></div>
+            <div><small>${escapeHtml(workerInfo)}</small></div>
         </div>
     `));
 }
+
+// SillyBunny: the Connections select row shows each model's details (what the select2 template shows)
+// as a picker subtitle at every width. The queue state is already in the option's text, so it is left out.
+// The link to the model's page is named with the existing string "Details" (sillybunny-tabs.js uses the same key).
+registerOptionDetails({
+    horde_model: option => describeHordeModel(models.find(x => x.name === option.value), t`Details`),
+});
 
 export function initHorde() {
     $('#horde_model').on('mousedown change', async function (e) {
@@ -465,7 +475,9 @@ export function initHorde() {
 
     // Not needed on mobile
     if (!isMobile()) {
-        const apiDropdownParent = $('#rm_api_block');
+        // SillyBunny: `#rm_api_block` is emptied by the Connections panel,
+        // so the dropdown renders in the panel when it exists and in the block otherwise.
+        const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
         $('#horde_model').select2({
             dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
             width: '100%',

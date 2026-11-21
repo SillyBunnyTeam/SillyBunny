@@ -86,7 +86,7 @@ describe('Android avatar resource budget', () => {
         expect(imageMetadataSource).toContain('persona: Object.freeze([320, 480])');
         expect(serverAdminSource).toContain('format: \'jpg\'');
         expect(serverAdminSource).toContain('quality: 82');
-        expect(serverToolsSource).toContain('Mobile preset');
+        expect(serverToolsSource).toContain('Mobile Preset');
         expect(serverToolsSource).toContain('Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens');
     });
 

@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "welcome-persona-tewi--breath-b.png",
+    "sha256": "e4fff056e58a03053f32c18f1e45d3aa00a0f8e6056356b0327c539e98bfb03b",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:28f6fc81796b5b23764e8ba9f7766c32eb97c55ca074e21bfeb0a14b4c607c8e"
+}

@@ -31,6 +31,9 @@ jest.unstable_mockModule('../public/scripts/power-user.js', () => ({
     MAX_RESPONSE_DEFAULT: 150,
     power_user: {},
 }));
+jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((text, part, index) => `${text}${part}${values[index] ?? ''}`, ''),
+}));
 jest.unstable_mockModule('../public/scripts/tokenizers.js', () => ({
     getTextTokens: jest.fn(),
     tokenizers: { NONE: 0, NERD: 1, NERD2: 2, LLAMA3: 3 },

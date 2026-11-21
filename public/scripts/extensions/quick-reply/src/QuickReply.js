@@ -1,5 +1,7 @@
 import { hljs, morphdom } from '../../../../lib.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
+import { confirmVerb } from '../../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from '../../../i18n.js'; // SillyBunny: translates the response verb.
 import { setSlashCommandAutoComplete } from '../../../slash-commands.js';
 import { SlashCommandAbortController } from '../../../slash-commands/SlashCommandAbortController.js';
 import { SlashCommandBreakPoint } from '../../../slash-commands/SlashCommandBreakPoint.js';
@@ -17,6 +19,9 @@ import { QuickReplyContextLink } from './QuickReplyContextLink.js';
 import { QuickReplySet } from './QuickReplySet.js';
 import { getUniqueQuickReplySetsByName } from './quick-reply-set-list.js';
 import { ContextMenu } from './ui/ctx/ContextMenu.js';
+// SillyBunny: adopt the editor controls without changing live-apply or debugger semantics.
+import { adaptQuickReplyEditor } from './sillybunny-editor.js';
+import { adoptQuickReplyRow } from '../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the settings row of a quick reply is a shared entity row.
 
 export class QuickReply {
     /**
@@ -363,6 +368,8 @@ export class QuickReply {
                                 const result = await Popup.show.confirm(
                                     'Remove Quick Reply',
                                     'Are you sure you want to remove this Quick Reply?',
+                                    // SillyBunny: names the response with a verb (confirmVerb).
+                                    confirmVerb(t`Remove`, { destructive: true }),
                                 );
                                 if (result != POPUP_RESULT.AFFIRMATIVE) {
                                     return;
@@ -374,6 +381,7 @@ export class QuickReply {
                     }
                     itemContent.append(actions);
                 }
+                adoptQuickReplyRow(item); // SillyBunny: the row is a shared entity row; the menu runs the buttons built above.
             }
         }
         return this.settingsDom;
@@ -390,7 +398,9 @@ export class QuickReply {
             // @ts-ignore
             const dom = this.template.cloneNode(true);
             this.editorDom = dom;
-            this.editorPopup = new Popup(dom, POPUP_TYPE.TEXT, undefined, { okButton: 'OK', wide: true, large: true, rows: 1 });
+            // SillyBunny: live edits use the Window header Close; nested pickers use its page stack.
+            const editor = adaptQuickReplyEditor(dom);
+            this.editorPopup = new Popup(dom, POPUP_TYPE.TEXT, undefined, { okButton: 'OK', wide: true, large: true, rows: 1, ...editor.options });
             const popupResult = this.editorPopup.show();
 
             // basics
@@ -986,6 +996,8 @@ export class QuickReply {
                         this.updateContext();
                     });
 
+                    // SillyBunny: adopt dynamically added context controls after upstream binding.
+                    editor.adoptContextItem(itemDom);
                     linkList.append(itemDom);
                 }
             };

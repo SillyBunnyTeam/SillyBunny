@@ -1,0 +1,282 @@
+import { expect, test } from '@playwright/test';
+import { testSetup } from './frontend/frontent-test-utils.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { expectOpensAtFinalSize, installOpeningSampler, MOTION } from './helpers/dialog-opening.js';
+import { MISC_VIEWPORTS } from './helpers/misc-dialogs.js';
+
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
+
+async function createSwipeFixture(page, count = 52, swipeId = 1) {
+    const messageId = await page.evaluate(async ({ count, swipeId }) => {
+        const { newAssistantChat, selectCharacterById } = await import('/script.js');
+        const powerUser = await import('/scripts/power-user.js');
+        const context = window.SillyTavern.getContext();
+        document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+        powerUser.power_user.confirm_message_delete = true;
+        const characterId = context.characters.findIndex(character => character?.avatar);
+        if (characterId >= 0) await selectCharacterById(characterId, { switchMenu: false });
+        else await newAssistantChat({ temporary: true });
+        const message = {
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            send_date: new Date().toISOString(),
+            mes: 'Swipe 1 preview text',
+            extra: {},
+            swipes: Array.from({ length: count }, (_, index) => `Swipe ${index + 1} preview text`),
+            swipe_id: swipeId,
+            swipe_info: Array.from({ length: count }, () => ({ send_date: Date.now(), extra: { token_count: 4 } })),
+        };
+        context.chat.push(message);
+        await context.addOneMessage(message);
+        const id = context.chat.length - 1;
+        document.querySelector(`.mes[mesid="${id}"] .swipes-counter`)?.classList.add('swipe-picker-enabled');
+        return id;
+    }, { count, swipeId });
+    await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
+    const dialog = page.locator('dialog[open].sb-dialog--window');
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+    await expect(dialog.locator('.swipe_picker_footer')).toBeVisible({ timeout: 15000 });
+    await expect(dialog).not.toHaveAttribute('opening', { timeout: 15000 });
+    await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport({ timeout: 15000 });
+    return messageId;
+}
+
+async function interceptChatSaves(page) {
+    const saves = [];
+    await page.route('**/api/chats/save', async route => {
+        saves.push(route.request().postData() ?? '');
+        await route.fulfill({ json: { integrity: 'swipe-picker-test' } });
+    });
+    return saves;
+}
+
+async function getSwipeState(page, messageId) {
+    return page.evaluate(messageId => {
+        const message = window.SillyTavern.getContext().chat[messageId];
+        return { swipeId: message.swipe_id, count: message.swipes.length };
+    }, messageId);
+}
+
+async function assertPickerLayout(page, messageId, screenshotPath) {
+    const dialog = page.locator('dialog[open].sb-dialog--window');
+    await expect(dialog).toHaveAttribute('data-presentation', 'floating');
+    await expect(dialog.locator('.sb-dialog__title')).toHaveText('Swipe Selection');
+    await expect(dialog.locator('.swipe_picker_block')).toHaveCount(52);
+    await expect(dialog.locator('.swipe_picker_block[highlight]')).toContainText('[Current]');
+    await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport();
+
+    const row = dialog.locator('.swipe_picker_block').first();
+    const title = row.locator('.select_chat_block_filename').first();
+    const metadata = row.locator('.select_chat_info');
+    await expect(title).toHaveCSS('color', /rgb\(/);
+    await expect(title).toHaveCSS('font-weight', '400');
+    // The dimmed ink is a mix, which a browser may report as `color(srgb ...)`.
+    await expect(metadata).toHaveCSS('color', /^(?:rgb|color)\(/);
+    // One trailing control: the four actions are in its menu, and their original controls stay in the row, hidden.
+    await expect(row.locator('.swipe_picker_menu, [data-sb-forwarded]:visible')).toHaveCount(1);
+    await expect(row.getByRole('button', { name: 'Menu' })).toBeVisible();
+    await expect(row.locator('[data-sb-forwarded]')).toHaveCount(4);
+    for (const node of await row.locator('[data-sb-forwarded]').all()) await expect(node).toBeHidden();
+    const geometry = await row.evaluate(node => {
+        const rowBounds = node.getBoundingClientRect();
+        const buttonBounds = node.querySelector('.swipe_picker_menu').getBoundingClientRect();
+        return { rowRight: rowBounds.right, actionRight: buttonBounds.right };
+    });
+    expect(geometry.actionRight).toBeLessThanOrEqual(geometry.rowRight);
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+}
+
+/** Opens a row's ⋮ menu and chooses an item from it. */
+async function chooseFromRowMenu(page, row, name) {
+    await row.locator('.swipe_picker_menu').click();
+    await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
+async function assertSwipeIdNavigation(page, messageId) {
+    const dialog = page.locator('dialog[open].sb-dialog--window');
+    const input = dialog.locator(`#swipe_picker_id_${messageId}`);
+    await input.fill('50');
+    await dialog.getByRole('button', { name: 'Go', exact: true }).click();
+    await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ swipeId: 49 });
+}
+
+test.describe('swipe picker shared Window', () => {
+    test.beforeEach(async ({ page }) => {
+        let settingsVersion = Date.now();
+        await page.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+        // The first character with an avatar can be a bundled one with an embedded lorebook. Opening it asks to import
+        // the lorebook, and that popup covers the chat. The settings save is stubbed, so the "seen" flag never persists.
+        await page.route('**/api/settings/get', async (route) => {
+            const data = await fetchJsonOrSkip(route);
+            if (!data) return;
+            const settings = JSON.parse(data.settings);
+            settings.power_user.world_import_dialog = false;
+            return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+        });
+        await testSetup.awaitST({ page });
+    });
+
+    test.describe('with motion on', () => {
+        test.use({ contextOptions: MOTION });
+
+        for (const viewport of MISC_VIEWPORTS) {
+            test(`opens with the current swipe in view at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+                await page.setViewportSize(viewport);
+                await installOpeningSampler(page, { scroller: '.swipe_picker_div' });
+                await expectOpensAtFinalSize(page, 'Swipe picker', () => createSwipeFixture(page, 52, 40), { keepOpen: true });
+                // At full size, this distance shows whether the scroll position was calculated with the opening scale.
+                const space = await page.locator('dialog[open] .swipe_picker_block[highlight]').evaluate(block => {
+                    return block.closest('.swipe_picker_div').getBoundingClientRect().bottom - block.getBoundingClientRect().bottom;
+                });
+                expect(Math.abs(space - 5)).toBeLessThanOrEqual(1);
+            });
+        }
+
+        test('hovering the row menu button takes the hover fill and does not spin the icon', async ({ page }) => {
+            await page.setViewportSize({ width: 1440, height: 900 });
+            await createSwipeFixture(page, 6, 1);
+            const deleteButton = page.locator('dialog[open] .swipe_picker_block .swipe_picker_menu').first();
+            await deleteButton.hover();
+            await expect.poll(() => deleteButton.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+            expect(await deleteButton.evaluate(node => ({ name: getComputedStyle(node).animationName, running: node.getAnimations().filter(animation => animation.animationName).length })))
+                .toEqual({ name: 'none', running: 0 });
+        });
+    });
+
+    test('desktop supports selection, actions, navigation, scrolling and safe deletion', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const saves = await interceptChatSaves(page);
+        const messageId = await createSwipeFixture(page);
+        await assertPickerLayout(page, messageId, testInfo.outputPath('after-desktop.png'));
+        const dialog = page.locator('dialog[open].sb-dialog--window');
+
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: text => window.__swipeCopied = text } });
+        });
+        await chooseFromRowMenu(page, dialog.locator('.swipe_picker_block').first(), 'Copy');
+        await expect.poll(() => page.evaluate(() => window.__swipeCopied)).toBe('Swipe 1 preview text');
+
+        const lastRow = dialog.locator('.swipe_picker_block').last();
+        await lastRow.scrollIntoViewIfNeeded();
+        await expect(lastRow).toBeInViewport();
+        await chooseFromRowMenu(page, lastRow, 'Delete Swipe');
+        const alert = page.locator('dialog[open][role="alertdialog"]');
+        await expect(alert).toBeVisible();
+        await expect(alert.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(alert).toHaveCount(0, { timeout: 15000 });
+        await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ count: 52 });
+        await chooseFromRowMenu(page, lastRow, 'Delete Swipe');
+        await page.locator('dialog[open][role="alertdialog"]').getByRole('button', { name: 'Delete Swipe', exact: true }).click();
+        await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ count: 51 });
+
+        await assertSwipeIdNavigation(page, messageId);
+        await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
+        await page.locator('dialog[open].sb-dialog--window').locator('.swipe_picker_block').first().click();
+        await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ swipeId: 0 });
+
+        await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
+        await page.route('**/api/chats/get', route => route.fulfill({ json: [{}] }));
+        const saveCount = saves.length;
+        await chooseFromRowMenu(page, page.locator('dialog[open].sb-dialog--window .swipe_picker_block').first(), 'Create Branch');
+        await expect.poll(() => saves.length).toBeGreaterThan(saveCount);
+        await page.keyboard.press('Escape');
+        await expect(page.locator('dialog[open].sb-dialog--window')).toBeHidden();
+    });
+
+    test('the row menu lists the actions, ends with Delete Swipe alone in red, and opens from the keyboard', async ({ page }) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const messageId = await createSwipeFixture(page, 6, 1);
+        const dialog = page.locator('dialog[open].sb-dialog--window');
+        const row = dialog.locator('.swipe_picker_block').nth(2);
+        const menuButton = row.locator('.swipe_picker_menu');
+        const selectButton = row.locator('.swipe_picker_select');
+
+        // The row is a plain container: the select and menu buttons are siblings, so no button sits inside another.
+        await expect(row).not.toHaveAttribute('role', 'button');
+        await expect(selectButton).toHaveCount(1);
+        await expect(selectButton).toHaveAccessibleName('#3');
+        await expect(selectButton).toHaveAccessibleDescription('Swipe 3 preview text');
+        // The menu button is reachable by Tab from the row.
+        await selectButton.focus();
+        await page.keyboard.press('Tab');
+        await expect(menuButton).toBeFocused();
+        await page.keyboard.press('Enter');
+        const menu = page.locator('[role="menu"].sb-action-menu');
+        await expect(menu).toBeVisible();
+        // A separator starts each section after the first.
+        const sections = await menu.evaluate(node => {
+            let section = 0;
+            const items = [];
+            for (const child of node.children) {
+                if (child.getAttribute('role') === 'separator') section += 1;
+                else items.push({ name: child.textContent.trim(), danger: child.classList.contains('is-danger'), section });
+            }
+            return items;
+        });
+        expect(sections.map(item => item.name)).toEqual(['Expand/Collapse', 'Copy', 'Create Branch', 'Delete Swipe']);
+        expect(sections.filter(item => item.danger).map(item => item.name)).toEqual(['Delete Swipe']);
+        expect(new Set(sections.slice(0, 3).map(item => item.section)).size).toBe(1);
+        expect(sections[3].section).not.toBe(sections[0].section);
+        // Opened with Enter, the menu takes the first row's focus, and Escape closes it without closing the picker.
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await expect(dialog).toBeVisible();
+        await expect(menuButton).toBeFocused();
+
+        // Shift+F10 and the Menu key on a row open it too.
+        await selectButton.focus();
+        await page.keyboard.press('Shift+F10');
+        await expect(menu).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await selectButton.focus();
+        await page.keyboard.press('ContextMenu');
+        await expect(menu).toBeVisible();
+
+        // Expand/Collapse forwards to the original control.
+        await page.getByRole('menuitem', { name: 'Expand/Collapse', exact: true }).click();
+        await expect(row.locator('.swipe_picker_expand_toggle')).toBeChecked();
+        // Choosing never selects the swipe or closes the picker.
+        await expect(dialog).toBeVisible();
+        expect((await getSwipeState(page, messageId)).swipeId).toBe(1);
+    });
+
+    test('phone is a bottom sheet with reachable rows and keyboard activation', async ({ page }, testInfo) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        const messageId = await createSwipeFixture(page);
+        const dialog = page.locator('dialog[open].sb-dialog--window');
+        await expect(dialog).toHaveAttribute('data-presentation', 'sheet');
+        await expect(dialog.locator('.swipe_picker_footer')).toBeVisible();
+        const footer = dialog.locator('.swipe_picker_footer');
+        const go = footer.getByRole('button', { name: 'Go', exact: true });
+        await expect(go).toBeVisible();
+        await expect(go).toHaveClass(/menu_button_primary/);
+        const footerBounds = await footer.evaluate(node => node.getBoundingClientRect().toJSON());
+        const goBounds = await go.evaluate(node => node.getBoundingClientRect().toJSON());
+        expect(goBounds.right).toBeLessThan(footerBounds.right - 8);
+        await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport();
+
+        const lastRow = dialog.locator('.swipe_picker_block').last();
+        await lastRow.scrollIntoViewIfNeeded();
+        await expect(lastRow).toBeInViewport();
+        const firstSelect = dialog.locator('.swipe_picker_block .swipe_picker_select').first();
+        await firstSelect.focus();
+        await expect(firstSelect).toBeFocused({ timeout: 15000 });
+        await page.keyboard.press('Space');
+        await expect.poll(() => getSwipeState(page, messageId), { timeout: 15000 }).toMatchObject({ swipeId: 0 });
+        await expect(dialog).toBeHidden();
+
+        await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
+        const input = page.locator('dialog[open].sb-dialog--window input[type="number"]');
+        await input.fill('52');
+        await expect(input).toHaveAttribute('max', '52');
+        await page.locator('dialog[open].sb-dialog--window').getByRole('button', { name: 'Go', exact: true }).click();
+        await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ swipeId: 51 });
+        await expect(page.locator('dialog[open].sb-dialog--window')).toBeHidden();
+        await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
+        await page.keyboard.press('Escape');
+        await expect(page.locator('dialog[open].sb-dialog--window')).toBeHidden();
+    });
+});

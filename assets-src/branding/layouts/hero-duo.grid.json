@@ -1,0 +1,41 @@
+{
+    "canvas": {
+        "width": 2048,
+        "height": 1024
+    },
+    "grid": {
+        "width": 752,
+        "height": 376
+    },
+    "layers": [
+        {
+            "id": "reisen",
+            "image": "raw/s5/masters/day-reisen.png",
+            "pixel": "raw/s5/pixel-body/hero-duo-reisen.png",
+            "z": 1,
+            "at": "bottom-centre",
+            "measure": "figure",
+            "anchor": {
+                "x": 803,
+                "y": 1001
+            },
+            "height": 925
+        },
+        {
+            "id": "tewi",
+            "image": "raw/s5/masters/day-tewi-2.png",
+            "pixel": "raw/s5/pixel-body/hero-duo-tewi.png",
+            "z": 1,
+            "at": "bottom-centre",
+            "measure": "figure",
+            "anchor": {
+                "x": 1237,
+                "y": 1001
+            },
+            "height": {
+                "ratio": 0.8333,
+                "of": "reisen"
+            }
+        }
+    ]
+}

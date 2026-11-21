@@ -6,7 +6,9 @@ import { renderExtensionTemplateAsync, getContext } from '../../extensions.js';
 import { eventSource, event_types, online_status } from '../../../script.js';
 import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml } from '../../utils.js';
+import { normalizeBackendSettingsRows } from '../../sillybunny-settings-presentation.js';
 import { attachTextareaFullscreen } from './textarea-fullscreen.js';
+import { createStatusPage } from '../../sillybunny-editor/status-page.js';
 import { world_names } from '../../world-info.js';
 import { areAgentsGloballyEnabled, getActiveAgentChatScope, getAgentById, getGlobalSettings, isAgentEnabledForCurrentScope, isPathfinderSubmoduleEnabled, persistAgentGlobalSettings, saveAgent, setAgentEnabledForScope } from './agent-store.js';
 import { runDiagnostics } from './pathfinder-init.js';
@@ -28,6 +30,7 @@ import { clearFeed, getFeedItems } from './pathfinder/activity-feed.js';
 import { getSummaryMemoryState, onSummaryMemoryChanged, saveSummaryMemoryContent } from './pathfinder/summary-memory-store.js';
 import { sidecarGenerate } from './pathfinder/llm-sidecar.js';
 import { createSeparateSummaryMemoryEntry, createSummaryMemoryEntry, deriveSummaryLorebookTitle } from './pathfinder/tools/summarize.js';
+export { isPathfinderAgent } from './catalogue.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
@@ -35,6 +38,36 @@ const PATHFINDER_LOG_MODE_KEY = 'pathfinder-retrieval-log-mode';
 const PATHFINDER_QUICKSTART_DISMISSED_KEY = 'pathfinder-quickstart-dismissed';
 const PATHFINDER_COLLAPSED_SECTIONS_KEY = 'pathfinder-collapsed-sections';
 const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
+
+/**
+ * The check boxes that apply the moment they change. Lists that pick several items (lorebooks,
+ * permissions, confirmed tools) are not here: they stay check boxes.
+ */
+const SWITCH_LABELS = '.pf--master-toggle > .checkbox_label, .pf--setting-group > .checkbox_label, .pf--mode-card-header > .checkbox_label';
+
+/** An empty region of the Pathfinder settings: the shared status page inside a wrapper that keeps the `pf--empty-state` hook. */
+function createEmptyPage(icon, title, description, extraClass = '') {
+    const wrapper = document.createElement('div');
+    wrapper.className = `pf--empty-state ${extraClass}`.trim();
+    wrapper.append(createStatusPage({ state: 'empty', icon, title, description, compact: true }).element);
+    return wrapper;
+}
+
+/**
+ * Pathfinder draws its page itself, so the shared settings pass does not reach it. This gives the
+ * apply-at-once check boxes the same switch rows as every other settings page, around the same nodes.
+ * @param {HTMLElement} panel
+ */
+function presentSwitchRows(panel) {
+    // The help line under a switch becomes the row's subtitle, the way other switch rows carry theirs.
+    for (const label of panel.querySelectorAll(SWITCH_LABELS)) {
+        const help = label.nextElementSibling;
+        if (!help?.matches('.pf--setting-help')) continue;
+        help.classList.add('ds-row-subtitle');
+        label.append(help);
+    }
+    normalizeBackendSettingsRows(panel, { fields: false, labels: SWITCH_LABELS, subtitles: 'titled' });
+}
 
 let settingsEl = null;
 let currentAgent = null;
@@ -70,7 +103,7 @@ export async function canClosePathfinderSettings(panel) {
 }
 
 export function refreshPathfinderSettings() {
-    if (!settingsSession) return;
+    if (!settingsSession || !isSettingsUiVisible()) return;
     const saved = getAgentById(currentAgent.id);
     if (!saved) return;
     const edits = Object.fromEntries([...settingsSession.dirtySettings].map(key => [key, currentAgent.settings[key]]));
@@ -79,6 +112,18 @@ export function refreshPathfinderSettings() {
     refreshLorebookList();
     updateModeCardStates();
     updateStatusBanner();
+}
+
+function isSettingsUiVisible() {
+    const element = settingsEl?.[0];
+    if (!element) return false;
+    // Detached panels are populated once before being handed to the host.
+    if (!element.isConnected) return true;
+    if (element.closest('[hidden], [aria-hidden="true"], .closedDrawer, .sb-subpage-store, dialog:not([open]), .sb-shell-panel:not(.sb-shell-panel-active), .sb-settings-mounted-shell:not(.sb-settings-active-root)')) return false;
+    for (let node = element; node; node = node.parentElement) {
+        if (node.style.display === 'none') return false;
+    }
+    return true;
 }
 
 function safeGetAccountStorageItem(key) {
@@ -231,7 +276,7 @@ function upsertLorebook(lorebooksByName, name, data = {}) {
  */
 export async function openPathfinderSettings(agent) {
     if (!isPathfinderSubmoduleEnabled()) {
-        toastr.warning('Pathfinder is disabled in In-Chat Agents settings.');
+        toastr.warning('Pathfinder is disabled in In-Chat Agents settings');
         return null;
     }
 
@@ -240,11 +285,13 @@ export async function openPathfinderSettings(agent) {
     const html = await renderExtensionTemplateAsync(MODULE_NAME, 'pathfinder-settings');
     if (openRevision !== settingsOpenRevision || !isPathfinderSubmoduleEnabled()) return null;
     if (!html) {
-        toastr.error('Could not load Pathfinder settings.');
+        toastr.error('Could not load Pathfinder settings');
         return null;
     }
 
     settingsEl = $(html);
+    const panelRoot = settingsEl.toArray?.().find(node => node.id === 'pf--settings');
+    if (panelRoot) presentSwitchRows(panelRoot);
     currentAgent = structuredClone(getAgentById(agent.id) ?? agent);
     currentAgent.settings = structuredClone({ ...SETTING_DEFAULTS, ...currentAgent.settings });
     const session = settingsSession = {
@@ -272,10 +319,24 @@ export async function openPathfinderSettings(agent) {
         session.element.find('#pf--settings-save-status').text('');
         session.element.find('#pf--settings-retry').hide();
         refreshPathfinderSettings();
-        loadSettingsIntoUI();
+        if (isSettingsUiVisible()) loadSettingsIntoUI();
     };
     eventSource.on(event_types.CHAT_CHANGED, refreshContext);
     session.cleanup.push(() => eventSource.removeListener(event_types.CHAT_CHANGED, refreshContext));
+    const refreshOnReveal = () => {
+        if (!isSettingsUiVisible()) return;
+        refreshPathfinderSettings();
+        loadSettingsIntoUI();
+    };
+    document.addEventListener('sb:shell-tab-activated', refreshOnReveal);
+    session.cleanup.push(() => document.removeEventListener('sb:shell-tab-activated', refreshOnReveal));
+    if (typeof IntersectionObserver !== 'undefined') {
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(entry => entry.isIntersecting)) refreshOnReveal();
+        });
+        observer.observe(settingsEl[0]);
+        session.cleanup.push(() => observer.disconnect());
+    }
     const refreshStatus = () => {
         updateStatusBanner();
         populateConnectionProfiles();
@@ -353,6 +414,30 @@ function getAvailableLorebooks() {
     return lorebooks;
 }
 
+/** A pick-several list has Select All when it has more than five items. */
+const SELECT_ALL_THRESHOLD = 5;
+
+function syncLorebookSelectAll(lorebooks = getAvailableLorebooks()) {
+    const enabled = new Set(getActiveTunnelVisionBooks(currentAgent.settings));
+    const picked = lorebooks.filter(book => enabled.has(book.name)).length;
+    settingsEl.find('#pf--lorebook-list input[data-lorebook-select-all]')
+        .prop('checked', lorebooks.length > 0 && picked === lorebooks.length)
+        .prop('indeterminate', picked > 0 && picked < lorebooks.length);
+}
+
+/** Enables or disables lorebooks, keeping the user's independent permission choices. */
+function setLorebooksEnabled(bookNames, checked) {
+    const s = currentAgent.settings;
+    const names = new Set(bookNames);
+    s.enabledLorebooks = ensureEnabledLorebooks(s).filter(name => !names.has(name));
+    if (checked) s.enabledLorebooks.push(...names);
+    s.bookPermissions = { ...s.bookPermissions };
+    for (const name of names) s.bookPermissions[name] = { ...s.bookPermissions[name], enabled: checked };
+    if (!s.selectedLorebook || (!checked && names.has(s.selectedLorebook))) {
+        s.selectedLorebook = getActiveTunnelVisionBooks(s)[0] ?? '';
+    }
+}
+
 /**
  * Refresh the lorebook list in the UI
  */
@@ -366,30 +451,29 @@ function refreshLorebookList() {
     const enabledBooks = getActiveTunnelVisionBooks(settings);
 
     if (lorebooks.length === 0) {
-        listEl.html(`
-            <div class="pf--empty-state">
-                <i class="fa-solid fa-book-open"></i>
-                <span>No lorebooks found. Create a lorebook in World Info first.</span>
-            </div>
-        `);
+        listEl.empty().append(createEmptyPage('book-open', 'No Lorebooks', 'No lorebooks found. Create a lorebook in World Info first.'));
         renderPermissionMatrix([]);
         return;
     }
 
+    if (lorebooks.length > SELECT_ALL_THRESHOLD) {
+        listEl.append($(checkRowHtml('data-lorebook-select-all', '<span data-i18n="Select All">Select All</span>')));
+    }
     for (const [index, book] of lorebooks.entries()) {
         const isEnabled = enabledBooks.includes(book.name);
         const item = $(`
-            <label class="pf--lorebook-item ${isEnabled ? 'selected' : ''}" data-book="${escapeHtml(book.name)}">
+            <label class="ds-row ds-row-check pf--lorebook-item ${isEnabled ? 'selected' : ''}" data-book="${escapeHtml(book.name)}">
                 <input type="checkbox" aria-labelledby="pf--lorebook-name-${index}" ${isEnabled ? 'checked' : ''} />
-                <span class="pf--lorebook-info">
-                    <span class="pf--lorebook-name" id="pf--lorebook-name-${index}">${escapeHtml(book.name)}</span>
-                    <span class="pf--lorebook-meta">${escapeHtml(book.type)}</span>
+                <span class="ds-row-text pf--lorebook-info">
+                    <span class="ds-row-label pf--lorebook-name" id="pf--lorebook-name-${index}">${escapeHtml(book.name)}</span>
+                    <span class="ds-row-subtitle pf--lorebook-meta">${escapeHtml(book.type)}</span>
                 </span>
             </label>
         `);
 
         listEl.append(item);
     }
+    syncLorebookSelectAll(lorebooks);
 
     renderPermissionMatrix(lorebooks);
 }
@@ -436,6 +520,32 @@ function getToolLabel(toolName) {
     }
 }
 
+/**
+ * One item of a pick-several list. It is a check row, so the box leads the row, and it does not carry
+ * `checkbox_label`: the theme draws every `.checkbox_label` box as a switch.
+ */
+function checkRowHtml(attributes, label) {
+    return `
+        <label class="ds-row ds-row-check">
+            <input type="checkbox" ${attributes} />
+            <span class="ds-row-text"><span class="ds-row-label">${label}</span></span>
+        </label>
+    `;
+}
+
+function getListedToolNames() {
+    return ALL_TOOL_NAMES.filter(toolName => toolName !== 'Pathfinder_Summarize');
+}
+
+/** A pick-several list of more than five items has Select All; its box is mixed while only some are checked. */
+function syncToolSelectAll() {
+    const toolNames = getListedToolNames();
+    const enabled = toolNames.filter(toolName => isPathfinderToolEnabled(toolName)).length;
+    settingsEl.find('.pf--tool-list input[data-tool-select-all]')
+        .prop('checked', toolNames.length > 0 && enabled === toolNames.length)
+        .prop('indeterminate', enabled > 0 && enabled < toolNames.length);
+}
+
 function renderToolToggles() {
     const toolList = settingsEl.find('.pf--tool-list:not(#pf--confirm-tool-list)');
     if (!toolList.length) {
@@ -443,20 +553,27 @@ function renderToolToggles() {
     }
 
     toolList.empty();
-    for (const toolName of ALL_TOOL_NAMES) {
-        if (toolName === 'Pathfinder_Summarize') {
-            continue;
-        }
-
-        const item = $(`
-            <label class="checkbox_label">
-                <input type="checkbox" data-tool="${escapeHtml(toolName)}" />
-                <span>${escapeHtml(getToolLabel(toolName))}</span>
-            </label>
-        `);
+    toolList.append($(checkRowHtml('data-tool-select-all', '<span data-i18n="Select All">Select All</span>')));
+    for (const toolName of getListedToolNames()) {
+        const item = $(checkRowHtml(`data-tool="${escapeHtml(toolName)}"`, escapeHtml(getToolLabel(toolName))));
         item.find('input').prop('checked', isPathfinderToolEnabled(toolName));
         toolList.append(item);
     }
+    syncToolSelectAll();
+}
+
+function getConfirmableToolNames() {
+    return ALL_TOOL_NAMES.filter(toolName => CONFIRMABLE_TOOLS.has(toolName));
+}
+
+/** A pick-several list of more than five items has Select All; its box is mixed while only some are checked. */
+function syncConfirmSelectAll() {
+    const toolNames = getConfirmableToolNames();
+    const confirmTools = currentAgent.settings.confirmTools ?? {};
+    const confirmed = toolNames.filter(toolName => confirmTools[toolName] === true).length;
+    settingsEl.find('#pf--confirm-tool-list input[data-confirm-select-all]')
+        .prop('checked', toolNames.length > 0 && confirmed === toolNames.length)
+        .prop('indeterminate', confirmed > 0 && confirmed < toolNames.length);
 }
 
 function renderConfirmToggles() {
@@ -467,20 +584,13 @@ function renderConfirmToggles() {
 
     const confirmTools = currentAgent.settings.confirmTools ?? {};
     confirmList.empty();
-    for (const toolName of ALL_TOOL_NAMES) {
-        if (!CONFIRMABLE_TOOLS.has(toolName)) {
-            continue;
-        }
-
-        const item = $(`
-            <label class="checkbox_label">
-                <input type="checkbox" data-confirm-tool="${escapeHtml(toolName)}" />
-                <span>${escapeHtml(getToolLabel(toolName))}</span>
-            </label>
-        `);
+    confirmList.append($(checkRowHtml('data-confirm-select-all', '<span data-i18n="Select All">Select All</span>')));
+    for (const toolName of getConfirmableToolNames()) {
+        const item = $(checkRowHtml(`data-confirm-tool="${escapeHtml(toolName)}"`, escapeHtml(getToolLabel(toolName))));
         item.find('input').prop('checked', confirmTools[toolName] === true);
         confirmList.append(item);
     }
+    syncConfirmSelectAll();
 }
 
 function renderPermissionMatrix(lorebooks = null) {
@@ -493,7 +603,7 @@ function renderPermissionMatrix(lorebooks = null) {
     const books = getEffectiveLorebooks(lorebooks, settings);
 
     if (books.length === 0) {
-        matrix.html('<div class="pf--empty-state pf--permission-empty"><i class="fa-solid fa-lock-open"></i><span>Select a lorebook above, or attach one to the current character/chat with auto-select enabled.</span></div>');
+        matrix.empty().append(createEmptyPage('lock-open', 'No Lorebook Selected', 'Select a lorebook above, or attach one to the current character/chat with auto-select enabled.', 'pf--permission-empty'));
         return;
     }
 
@@ -503,9 +613,9 @@ function renderPermissionMatrix(lorebooks = null) {
                 <strong id="pf--permission-book-${index}">${escapeHtml(book.name)}</strong>
                 <span>${escapeHtml(book.type || 'lorebook')}</span>
             </div>
-            <label class="checkbox_label"><input type="checkbox" data-permission="read" aria-labelledby="pf--permission-book-${index} pf--permission-read-${index}" ${canReadBook(book.name, settings) ? 'checked' : ''} /><span id="pf--permission-read-${index}">Read</span></label>
-            <label class="checkbox_label"><input type="checkbox" data-permission="write" aria-labelledby="pf--permission-book-${index} pf--permission-write-${index}" ${canWriteBook(book.name, settings) ? 'checked' : ''} /><span id="pf--permission-write-${index}">Write</span></label>
-            <label class="checkbox_label"><input type="checkbox" data-permission="delete" aria-labelledby="pf--permission-book-${index} pf--permission-delete-${index}" ${canDeleteBook(book.name, settings) ? 'checked' : ''} /><span id="pf--permission-delete-${index}">Delete</span></label>
+            <label class="ds-row ds-row-check"><input type="checkbox" data-permission="read" aria-labelledby="pf--permission-book-${index} pf--permission-read-${index}" ${canReadBook(book.name, settings) ? 'checked' : ''} /><span class="ds-row-text"><span class="ds-row-label" id="pf--permission-read-${index}">Read</span></span></label>
+            <label class="ds-row ds-row-check"><input type="checkbox" data-permission="write" aria-labelledby="pf--permission-book-${index} pf--permission-write-${index}" ${canWriteBook(book.name, settings) ? 'checked' : ''} /><span class="ds-row-text"><span class="ds-row-label" id="pf--permission-write-${index}">Write</span></span></label>
+            <label class="ds-row ds-row-check"><input type="checkbox" data-permission="delete" aria-labelledby="pf--permission-book-${index} pf--permission-delete-${index}" ${canDeleteBook(book.name, settings) ? 'checked' : ''} /><span class="ds-row-text"><span class="ds-row-label" id="pf--permission-delete-${index}">Delete</span></span></label>
         </div>
     `).join('');
 
@@ -555,6 +665,7 @@ function loadSettingsIntoUI() {
         const toolName = $(this).data('tool');
         $(this).prop('checked', isPathfinderToolEnabled(toolName));
     });
+    syncToolSelectAll();
 }
 
 /**
@@ -810,19 +921,25 @@ function bindEvents() {
     });
 
     settingsEl.on('change', '#pf--lorebook-list input', function () {
+        if ('lorebookSelectAll' in this.dataset) return;
         const item = $(this).closest('.pf--lorebook-item');
         const bookName = item.attr('data-book');
         const checked = this.checked;
-        const s = currentAgent.settings;
-        s.enabledLorebooks = ensureEnabledLorebooks(s).filter(name => name !== bookName);
-        if (checked) s.enabledLorebooks.push(bookName);
-        // Selection must not erase the user's independent permission choices.
-        s.bookPermissions = { ...s.bookPermissions, [bookName]: { ...s.bookPermissions?.[bookName], enabled: checked } };
-        if (!s.selectedLorebook || (!checked && s.selectedLorebook === bookName)) {
-            s.selectedLorebook = getActiveTunnelVisionBooks(s)[0] ?? '';
-        }
+        setLorebooksEnabled([bookName], checked);
         item.toggleClass('selected', checked);
+        syncLorebookSelectAll();
         renderPermissionMatrix(getAvailableLorebooks());
+        return save(['enabledLorebooks', 'selectedLorebook', 'bookPermissions']);
+    });
+
+    settingsEl.on('change', '#pf--lorebook-list input[data-lorebook-select-all]', function () {
+        const checked = this.checked;
+        const lorebooks = getAvailableLorebooks();
+        setLorebooksEnabled(lorebooks.map(book => book.name), checked);
+        settingsEl.find('#pf--lorebook-list .pf--lorebook-item').toggleClass('selected', checked);
+        settingsEl.find('#pf--lorebook-list .pf--lorebook-item input').prop('checked', checked);
+        syncLorebookSelectAll(lorebooks);
+        renderPermissionMatrix(lorebooks);
         return save(['enabledLorebooks', 'selectedLorebook', 'bookPermissions']);
     });
 
@@ -873,7 +990,7 @@ function bindEvents() {
 
         session.summaryBusy = true;
         renderSummaryMemoryEditor();
-        status.text('Saving entry...').removeClass('success error');
+        status.text('Saving entry…').removeClass('success error');
 
         try {
             const result = await createSeparateSummaryMemoryEntry(draft);
@@ -893,7 +1010,7 @@ function bindEvents() {
         const status = panel.find('#pf--summary-save-status');
         session.summaryBusy = true;
         renderSummaryMemoryEditor();
-        status.text('Creating summary...').removeClass('success error');
+        status.text('Creating summary…').removeClass('success error');
 
         try {
             const result = await createManualSummaryMemory();
@@ -911,11 +1028,33 @@ function bindEvents() {
     settingsEl.on('change', '#pf--confirm-tool-list input[data-confirm-tool]', function () {
         const toolName = $(this).data('confirmTool');
         currentAgent.settings.confirmTools = { ...currentAgent.settings.confirmTools, [toolName]: this.checked };
+        syncConfirmSelectAll();
+        return save(['confirmTools']);
+    });
+
+    settingsEl.on('change', '#pf--confirm-tool-list input[data-confirm-select-all]', function () {
+        const checked = this.checked;
+        currentAgent.settings.confirmTools = {
+            ...currentAgent.settings.confirmTools,
+            ...Object.fromEntries(getConfirmableToolNames().map(toolName => [toolName, checked])),
+        };
+        settingsEl.find('#pf--confirm-tool-list input[data-confirm-tool]').prop('checked', checked);
+        syncConfirmSelectAll();
         return save(['confirmTools']);
     });
 
     settingsEl.on('change', 'input[data-tool]', function () {
         setPathfinderToolEnabled($(this).data('tool'), this.checked);
+        syncToolSelectAll();
+        updateModeCardStates();
+        return save(['toolStates']);
+    });
+
+    settingsEl.on('change', '.pf--tool-list input[data-tool-select-all]', function () {
+        const checked = this.checked;
+        for (const toolName of getListedToolNames()) setPathfinderToolEnabled(toolName, checked);
+        settingsEl.find('.pf--tool-list input[data-tool]').prop('checked', checked);
+        syncToolSelectAll();
         updateModeCardStates();
         return save(['toolStates']);
     });
@@ -963,7 +1102,7 @@ function bindEvents() {
     // Diagnostics
     settingsEl.find('#pf--run-diagnostics').on('click', async () => {
         const output = settingsEl.find('#pf--diagnostics-output');
-        output.text('Running diagnostics...');
+        output.text('Running diagnostics…');
 
         try {
             const results = await runDiagnostics();
@@ -987,14 +1126,14 @@ function bindEvents() {
         const text = settingsEl.find('#pf--diagnostics-output').text() || '';
         try {
             await navigator.clipboard.writeText(text);
-            toastr.success('Pathfinder diagnostics copied.');
+            toastr.success('Pathfinder diagnostics copied');
         } catch {
             const textarea = $('<textarea>').val(text).css({ position: 'fixed', left: '-9999px', top: '0' });
             $('body').append(textarea);
             textarea[0].select();
             document.execCommand('copy');
             textarea.remove();
-            toastr.success('Pathfinder diagnostics copied.');
+            toastr.success('Pathfinder diagnostics copied');
         }
     });
 
@@ -1393,6 +1532,7 @@ function formatRetrievalLogItem(item) {
  * Update mode card visual states
  */
 function updateModeCardStates() {
+    if (!currentAgent || !isSettingsUiVisible()) return;
     const s = currentAgent.settings;
 
     const toolEnabled = Boolean(s.sidecarEnabled);
@@ -1589,13 +1729,4 @@ function showPromptStatus(message, type) {
 
 function clearPromptStatus() {
     settingsEl.find('#pf--prompt-status').text('');
-}
-
-/**
- * Check if an agent is Pathfinder
- */
-export function isPathfinderAgent(agent) {
-    return agent?.sourceTemplateId === 'tpl-pathfinder' ||
-           agent?.name === 'Pathfinder' ||
-           (agent?.category === 'tool' && agent?.tools?.some(t => t.name?.startsWith('Pathfinder_')));
 }

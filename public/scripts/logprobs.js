@@ -1,5 +1,4 @@
 import {
-    animation_duration,
     chat,
     cleanUpMessage,
     event_types,
@@ -10,12 +9,16 @@ import {
     isStreamingEnabled,
     substituteParamsExtended,
 } from '../script.js';
-import { debounce, delay, getStringHash } from './utils.js';
+// SillyBunny: the Token Probabilities adapter owns visibility while this module keeps rendering and keyboard behavior.
+import { closeTokenProbabilitiesPanel, registerTokenProbabilitiesPanel, toggleTokenProbabilitiesPanel } from './sillybunny-editor/adapters/side-panels.js';
+import { debounce, getStringHash } from './utils.js';
 import { decodeTextTokens, getTokenizerBestMatch } from './tokenizers.js';
 import { power_user } from './power-user.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { t } from './i18n.js';
 import { isSmoothStreamingEffectivelyEnabled } from './mobile-streaming.js';
+// SillyBunny: the shared status page draws the empty view.
+import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 const TINTS = 4;
 const MAX_MESSAGE_LOGPROBS = 100;
@@ -90,15 +93,16 @@ function renderAlternativeTokensView() {
         androidDisableSmoothStreaming: power_user.android_disable_smooth_streaming,
     });
     if (!messageLogprobs?.length || usingSmoothStreaming) {
+        // SillyBunny: the empty view is a shared status page, one state for each reason that no probabilities show.
         const emptyState = $('<div></div>');
-        const noTokensMsg = !power_user.request_token_probabilities
-            ? '<span>Enable <b>Request token probabilities</b> in the User Settings menu to use this feature.</span>'
+        const page = !power_user.request_token_probabilities
+            ? { state: 'unavailable', title: t`Not Enabled`, description: 'Enable Request token probabilities in the User Settings menu to use this feature.' }
             : usingSmoothStreaming
-                ? t`Token probabilities are not available when using Smooth Streaming.`
+                ? { state: 'unavailable', title: t`Not Available`, description: t`Token probabilities are not available when using Smooth Streaming.` }
                 : is_send_press
-                    ? t`Generation in progress...`
-                    : t`No token probabilities available for the current message.`;
-        emptyState.html(noTokensMsg);
+                    ? { state: 'loading', title: t`Generating`, description: t`Generation in progress...` }
+                    : { state: 'empty', title: t`No Token Probabilities`, description: t`No token probabilities available for the current message.` };
+        emptyState.append(createStatusPage({ ...page, compact: true }).element);
         emptyState.addClass('logprobs_empty_state');
         view.append(emptyState);
         return;
@@ -336,36 +340,9 @@ function addGeneration(prompt) {
  * the logprobs view, such as clicking the Token Probabilities menu item or the
  * close button.
  */
+// SillyBunny: the dock controller owns visibility and renders the view once the panel is shown; the render skips a hidden view, so it cannot run before.
 function onToggleLogprobsPanel() {
-    const logprobsViewer = $('#logprobsViewer');
-
-    // largely copied from CFGScale toggle
-    if (logprobsViewer.css('display') === 'none') {
-        logprobsViewer.addClass('resizing');
-        logprobsViewer.css('display', 'flex');
-        logprobsViewer.css('opacity', 0.0);
-        renderAlternativeTokensView();
-        logprobsViewer.transition({
-            opacity: 1.0,
-            duration: animation_duration,
-        }, async function () {
-            await delay(50);
-            logprobsViewer.removeClass('resizing');
-        });
-    } else {
-        logprobsViewer.addClass('resizing');
-        logprobsViewer.transition({
-            opacity: 0.0,
-            duration: animation_duration,
-        },
-        async function () {
-            await delay(50);
-            logprobsViewer.removeClass('resizing');
-        });
-        setTimeout(function () {
-            logprobsViewer.hide();
-        }, animation_duration);
-    }
+    return toggleTokenProbabilitiesPanel(this);
 }
 
 /**
@@ -608,9 +585,12 @@ function convertTokenIdLogprobsToText(input) {
 }
 
 export function initLogprobs() {
+    // SillyBunny: register the original token view so menu toggles and Escape use docked visibility.
+    registerTokenProbabilitiesPanel(undefined, { onOpen: renderAlternativeTokensView });
     REROLL_BUTTON.hide();
     const debouncedRender = debounce(renderAlternativeTokensView);
-    $('#logprobsViewerClose').on('click', onToggleLogprobsPanel);
+    // SillyBunny: keep the upstream Escape target connected to the controller-owned panel state.
+    $('#logprobsViewerClose').on('click', () => closeTokenProbabilitiesPanel());
     $('#option_toggle_logprobs').on('click', onToggleLogprobsPanel);
     eventSource.on(event_types.CHAT_CHANGED, debouncedRender);
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, debouncedRender);

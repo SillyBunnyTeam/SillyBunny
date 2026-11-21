@@ -65,8 +65,8 @@ function enhanceTextarea(textarea) {
     toggle.type = 'button';
     toggle.className = `menu_button menu_button_icon editor_maximize ${TOGGLE_CLASS}`;
     toggle.dataset.for = textarea.id;
-    toggle.setAttribute('aria-label', 'Expand the editor');
-    toggle.title = 'Expand the editor';
+    toggle.setAttribute('aria-label', 'Expand the Editor');
+    toggle.title = 'Expand the Editor';
 
     const icon = document.createElement('i');
     icon.className = 'fa-solid fa-maximize';

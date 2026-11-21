@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { clamp, escapeHtml, getFileExtension, sortMoments, timestampToMoment } from './utils.js';
 import { displayPastChats, getRequestHeaders, importCharacterChat, refreshCsrfToken } from '/script.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -212,7 +212,8 @@ class BackupsBrowser {
      */
     async deleteBackup(name, { confirm = true, silent = false } = {}) {
         if (confirm) {
-            const confirmed = await Popup.show.confirm(t`Are you sure?`);
+            // SillyBunny: backup confirmations use an explicit destructive action.
+            const confirmed = await Popup.show.confirm(t`Are you sure?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
             if (!confirmed) {
                 return false;
             }
@@ -330,7 +331,7 @@ class BackupsBrowser {
     async previewCleanup() {
         const candidates = this.getCleanupCandidates();
         if (!candidates.length) {
-            toastr.info(t`No backups match those cleanup settings.`);
+            toastr.info(t`No backups match those cleanup settings`); // SillyBunny: no trailing period, by DESIGN.md
             this.setCleanupStatus(t`No backups match those cleanup settings.`);
             return;
         }
@@ -353,15 +354,17 @@ class BackupsBrowser {
     async cleanupOldBackups() {
         const candidates = this.getCleanupCandidates();
         if (!candidates.length) {
-            toastr.info(t`No backups match those cleanup settings.`);
+            toastr.info(t`No backups match those cleanup settings`); // SillyBunny: no trailing period, by DESIGN.md
             this.setCleanupStatus(t`No backups match those cleanup settings.`);
             return;
         }
 
+        // SillyBunny: backup cleanup is destructive and names the delete action.
         const confirmed = await Popup.show.confirm(
             t`Clean old backups?`,
             `<p>${escapeHtml(String(candidates.length))} ${t`backup(s) will be permanently deleted.`}</p>
             ${this.renderCleanupPreview(candidates)}`,
+            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
         );
         if (!confirmed) {
             return;
@@ -397,7 +400,8 @@ class BackupsBrowser {
         const ageField = document.createElement('label');
         ageField.classList.add('chatBackupsCleanupField', 'chatBackupsCleanupAgeField');
         const ageLabel = document.createElement('span');
-        ageLabel.textContent = t`Older than`;
+        // SillyBunny: capitalisation by DESIGN.md
+        ageLabel.textContent = t`Older Than`;
         const ageInput = document.createElement('input');
         ageInput.classList.add('text_pole');
         ageInput.type = 'number';
@@ -412,7 +416,8 @@ class BackupsBrowser {
 
         const unitSelect = document.createElement('select');
         unitSelect.classList.add('text_pole');
-        unitSelect.setAttribute('aria-label', t`Backup cleanup age unit`);
+        // SillyBunny: capitalisation by DESIGN.md
+        unitSelect.setAttribute('aria-label', t`Backup Cleanup Age Unit`);
         unitSelect.setAttribute('data-chat-backups-cleanup-unit', '');
         for (const unit of BACKUP_CLEANUP_UNITS) {
             const option = document.createElement('option');
@@ -424,7 +429,8 @@ class BackupsBrowser {
         const keepField = document.createElement('label');
         keepField.classList.add('chatBackupsCleanupField', 'chatBackupsCleanupKeepField');
         const keepLabel = document.createElement('span');
-        keepLabel.textContent = t`Keep newest`;
+        // SillyBunny: capitalisation by DESIGN.md
+        keepLabel.textContent = t`Keep Newest`;
         const keepInput = document.createElement('input');
         keepInput.classList.add('text_pole');
         keepInput.type = 'number';
@@ -437,20 +443,19 @@ class BackupsBrowser {
         keepField.appendChild(keepLabel);
         keepField.appendChild(keepInput);
 
+        // SillyBunny: Preview and Clean are label-only buttons (an icon or a label, not both).
         const previewButton = document.createElement('button');
         previewButton.type = 'button';
         previewButton.classList.add('menu_button', 'menu_button_icon', 'chatBackupsCleanupPreviewButton');
         previewButton.title = t`Preview old backups that match the cleanup settings`;
-        previewButton.innerHTML = '<i class="fa-solid fa-list-check"></i><span></span>';
-        previewButton.querySelector('span').textContent = t`Preview`;
+        previewButton.textContent = t`Preview`;
         previewButton.addEventListener('click', () => this.previewCleanup());
 
         const cleanupButton = document.createElement('button');
         cleanupButton.type = 'button';
         cleanupButton.classList.add('menu_button', 'menu_button_icon', 'chatBackupsCleanupCleanButton');
         cleanupButton.title = t`Delete old backups that match the cleanup settings`;
-        cleanupButton.innerHTML = '<i class="fa-solid fa-broom"></i><span></span>';
-        cleanupButton.querySelector('span').textContent = t`Clean`;
+        cleanupButton.textContent = t`Clean`;
         cleanupButton.addEventListener('click', () => this.cleanupOldBackups());
 
         const status = document.createElement('div');
@@ -675,7 +680,12 @@ class BackupsBrowser {
 
     renderButton() {
         if (this.#buttonElement) {
-            return;
+            if (this.#buttonElement.isConnected) {
+                return;
+            }
+            // SillyBunny: Chat History removes generated backup controls while restoring the legacy tree.
+            this.#buttonElement = null;
+            this.#buttonChevronIcon = null;
         }
 
         const sibling = document.getElementById('select_chat_search');
@@ -722,7 +732,11 @@ class BackupsBrowser {
 
     renderBackupsList() {
         if (this.#backupsListElement) {
-            return;
+            if (this.#backupsListElement.isConnected) {
+                return;
+            }
+            // SillyBunny: Chat History removes generated backup controls while restoring the legacy tree.
+            this.#backupsListElement = null;
         }
 
         const sibling = document.getElementById('select_chat_div');

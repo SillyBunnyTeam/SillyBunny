@@ -28,18 +28,38 @@
     justify-content: flex-end;
     gap: 5px;
     flex: 0 0 auto;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     max-width: 100%;
 }
 
 .gg-action-button {
-    width: var(--bottomFormBlockSize);
-    min-width: var(--bottomFormBlockSize);
-    height: var(--bottomFormBlockSize);
+    /* SillyBunny: never under the pointer's target floor. */
+    --gg-action-size: max(var(--bottomFormBlockSize), var(--sb-density-floor, 0px));
+    width: var(--gg-action-size);
+    min-width: var(--gg-action-size);
+    height: var(--gg-action-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--bottomFormBlockSize);
+    flex: 0 0 var(--gg-action-size);
+}
+
+/* The theme sets a display on the composer's .menu_button with an id in its selector; this one has to outrank it for a button that was folded into the overflow menu. */
+#send_form #gg-action-button-container .gg-action-button[hidden] {
+    display: none;
+}
+
+/* An empty Quick Reply host would hold back 260px of the row and push the buttons onto a row of their own. */
+.gg-qr-container:not(:has(.qr--button)) {
+    display: none;
+}
+
+/* The composer's width (see sillybunny-tabs.css) is that of the chat column, so the buttons keep their row and the Quick Replies take theirs. */
+@container sb-composer (max-width: 680px) {
+    .gg-qr-container {
+        order: 2;
+        flex-basis: 100%;
+    }
 }
 
 /*
@@ -65,7 +85,7 @@
     height: 13px;
     padding: 0 3px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 24%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, var(--SmartThemeBlurTintColor) 86%);
     color: var(--SmartThemeBodyColor);
     font-family: var(--mainFontFamily);
@@ -123,9 +143,9 @@
     min-width: 0;
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 620px) {
     .gg-action-buttons-container {
-        --gg-mobile-action-size: clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px);
+        --gg-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));
         --gg-mobile-action-icon-size: clamp(13px, calc(var(--bottomFormIconSize, 20px) * 0.75), 16px);
     }
 
@@ -154,7 +174,7 @@
         min-height: var(--gg-mobile-action-size) !important;
         max-height: var(--gg-mobile-action-size) !important;
         flex: 0 0 var(--gg-mobile-action-size) !important;
-        border-radius: 8px !important;
+        border-radius: var(--sb-radius-pill) !important;
         font-size: var(--gg-mobile-action-icon-size) !important;
         padding: 0 !important;
     }

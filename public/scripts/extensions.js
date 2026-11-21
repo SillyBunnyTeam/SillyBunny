@@ -2,6 +2,7 @@ import { DOMPurify, Popper } from '../lib.js';
 
 import { eventSource, event_types, saveSettings, saveSettingsDebounced, getRequestHeaders, animation_duration, CLIENT_VERSION, getChatGeneration } from '../script.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { renderTemplate, renderTemplateAsync } from './templates.js';
 import { delay, deleteValueByPath, equalsIgnoreCaseAndAccents, escapeHtml, sanitizeSelector, setValueByPath, versionCompare } from './utils.js';
 import { isAdmin } from './user.js';
@@ -11,8 +12,13 @@ import { accountStorage } from './util/AccountStorage.js';
 import { SimpleMutex } from './util/SimpleMutex.js';
 import { loadStylesheetAsync, prefetchAsset } from './dynamic-styles.js';
 import { createExtensionScriptLoadError, formatExtensionLoadError } from './extension-load-errors.js';
+// SillyBunny: shared rows adopt extension inputs without replacing installation or branch handlers.
+import { installExtensionOptions, switchBranchOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+import { setIconBusy, spinnerMarkup } from './sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
 import {
     EXTENSION_BOOT_ACTIVATION_ACTION,
+    buildExtensionAssetUrl,
+    buildExtensionModuleUrl,
     normalizeExtensionBootId,
     resolveExtensionActivationState,
     resolveExtensionManifestRegistration,
@@ -167,7 +173,8 @@ export function getAuthorFromUrl(url) {
 
 export const isOfficialExtension = (url) => {
     try {
-        return /^https:\/\/github\.com\/SillyTavern\/(.+)$/i.test(new URL(url).href);
+        // SillyBunny: SillyBunnyTeam repositories are first party, like SillyTavern's.
+        return /^https:\/\/github\.com\/(?:SillyTavern|SillyBunnyTeam)\/(.+)$/i.test(new URL(url).href);
     } catch {
         return false;
     }
@@ -177,12 +184,10 @@ let requiresReload = false;
 let stateChanged = false;
 let saveMetadataTimeout = null;
 
-function getExtensionAssetVersion() {
-    return encodeURIComponent(CLIENT_VERSION || 'dev');
-}
-
+// SillyBunny: templates, styles, manifests and locales carry a version query. JavaScript modules use
+// buildExtensionModuleUrl() instead, because a query makes an extension's own imports load a second copy.
 function getExtensionAssetUrl(name, assetPath) {
-    return `/scripts/extensions/${name}/${assetPath}?v=${getExtensionAssetVersion()}`;
+    return buildExtensionAssetUrl(name, assetPath, CLIENT_VERSION);
 }
 
 function scheduleIdleTask(callback, timeout = 4000) {
@@ -199,7 +204,9 @@ function prefetchExtensionAsset(name, assetPath, as) {
     }
 
     try {
-        prefetchAsset(getExtensionAssetUrl(name, assetPath), { as });
+        // SillyBunny: scripts load without a query, so the hint must name the same URL.
+        const url = as === 'script' ? buildExtensionModuleUrl(name, assetPath) : getExtensionAssetUrl(name, assetPath);
+        prefetchAsset(url, { as });
     } catch (error) {
         console.debug('Could not prefetch extension asset', name, assetPath, error);
     }
@@ -723,7 +730,8 @@ async function callExtensionHook(name, hookName) {
         return;
     }
 
-    const url = getExtensionAssetUrl(name, manifest.js);
+    // SillyBunny: the bare URL keeps this import and the extension's own imports on one module instance.
+    const url = buildExtensionModuleUrl(name, manifest.js);
     console.debug(`callExtensionHook: Calling hook "${hookName}" (function "${hookFunctionName}") for extension "${name}"`);
 
     try {
@@ -1265,7 +1273,8 @@ function addExtensionScript(name, manifest) {
     }
 
     return new Promise((resolve, reject) => {
-        const url = getExtensionAssetUrl(name, manifest.js);
+        // SillyBunny: the bare URL keeps the entry module and the files that import it on one module instance.
+        const url = buildExtensionModuleUrl(name, manifest.js);
         const id = sanitizeSelector(`${name}-js`);
         let ready = false;
 
@@ -1369,8 +1378,10 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     }
 
     let toggleElement = isActive || isDisabled ?
-        '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
-        `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="extension_missing ${checkboxClass}" disabled>`;
+        '<input type="checkbox" title="' + t`Click to toggle` + `" data-name="${name}" class="sb-switch ${isActive ? 'toggle_disable' : 'toggle_enable'} ${checkboxClass}" ${isActive ? 'checked' : ''}>` :
+        `<input type="checkbox" title="Cannot enable extension" data-name="${name}" class="sb-switch extension_missing ${checkboxClass}" disabled>`;
+    // SillyBunny: retain native checked state and identify each switch by its extension's name.
+    toggleElement = toggleElement.replace('<input ', `<input role="switch" aria-label="${escapeHtml(displayName)}" `);
 
     let deleteButton = isExternal ? `<button class="btn_delete menu_button" data-name="${externalId}" data-i18n="[title]Delete" title="Delete"><i class="fa-fw fa-solid fa-trash-can"></i></button>` : '';
     let cleanButton = isExternal && hasExtensionHook(externalId, 'clean') ? `<button class="btn_clean menu_button" data-name="${externalId}" data-i18n="[title]Clean extension data" title="Clean extension data"><i class="fa-fw fa-solid fa-broom"></i></button>` : '';
@@ -1378,7 +1389,8 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     let updateButton = isExternal ? `<button class="btn_update menu_button displayNone" data-name="${externalId}" title="Update available"><i class="fa-solid fa-download fa-fw"></i></button>` : '';
     let moveButton = isExternal && isUserAdmin ? `<button class="btn_move menu_button" data-name="${externalId}" data-i18n="[title]Move" title="Move"><i class="fa-solid fa-folder-tree fa-fw"></i></button>` : '';
     let branchButton = isExternal && isUserAdmin ? `<button class="btn_branch menu_button" data-name="${externalId}" data-i18n="[title]Switch branch" title="Switch branch"><i class="fa-solid fa-code-branch fa-fw"></i></button>` : '';
-    let syncButton = manifest.auto_update === true && !isExternal && isUserAdmin ? `<button class="btn_sync menu_button" data-name="${externalId}" title="Sync from upstream"><i class="fa-solid fa-arrows-rotate fa-fw"></i></button>` : '';
+    // SillyBunny: capitalisation by DESIGN.md
+    let syncButton = manifest.auto_update === true && !isExternal && isUserAdmin ? `<button class="btn_sync menu_button" data-name="${externalId}" title="Sync From Upstream"><i class="fa-solid fa-arrows-rotate fa-fw"></i></button>` : '';
     let modulesInfo = '';
 
     if (isActive && Array.isArray(manifest.optional)) {
@@ -1400,14 +1412,12 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     // if external, wrap the name in a link to the repo
 
     let extensionHtml = `
-        <div class="extension_block" data-name="${externalId}">
-            <div class="extension_toggle">
-                ${toggleElement}
-            </div>
+        <!-- SillyBunny: retain delegated controls while sharing preference-row geometry. -->
+        <div class="extension_block ds-row ds-row-switch" data-name="${externalId}">
             <div class="extension_icon">
                 ${extensionIcon}
             </div>
-            <div class="flexGrow extension_text_block">
+            <div class="extension_text_block ds-row-text">
                 ${originHtml}
                 <span class="${isActive ? 'extension_enabled' : isDisabled ? 'extension_disabled' : 'extension_missing'}">
                     <span class="extension_name">${DOMPurify.sanitize(displayName)}</span>
@@ -1415,16 +1425,10 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
                     ${modulesInfo}
                 </span>
                 ${isExternal ? '</a>' : ''}
+                <div class="extension_actions flex-container alignItemsCenter">${updateButton}${syncButton}${branchButton}${moveButton}${cleanButton}${reinstallButton}${deleteButton}</div>
             </div>
-
-            <div class="extension_actions flex-container alignItemsCenter">
-                ${updateButton}
-                ${syncButton}
-                ${branchButton}
-                ${moveButton}
-                ${cleanButton}
-                ${reinstallButton}
-                ${deleteButton}
+            <div class="extension_toggle ds-row-suffix">
+                ${toggleElement}
             </div>
         </div>`;
 
@@ -1491,12 +1495,15 @@ function getExtensionLoadErrorsHtml() {
 }
 
 /**
- * Generates the HTML strings for all extensions and displays them in a popup.
+ * Generates the HTML strings for all extensions and displays them in a full-screen popup.
  */
 async function showExtensionsDetails() {
     const abortController = new AbortController();
     let popupPromise;
     try {
+        // SillyBunny: load manager presentation only when its Window is requested.
+        const { adaptExtensionsManager, loadExtensionsManagerStyles } = await import('./sillybunny-editor/adapters/extensions-manager-dialog.js');
+        await loadExtensionsManagerStyles();
         // If we are updating an extension, the "old" popup is still active. We should close that.
         let initialScrollTop = 0;
         const oldPopup = Popup.util.popups.find(popup => popup.content.querySelector('.extensions_info'));
@@ -1515,9 +1522,11 @@ async function showExtensionsDetails() {
         </div>`);
 
         const htmlLoading = $(`<div class="flex-container alignItemsCenter justifyCenter marginTop10 marginBot5">
-            <i class="fa-solid fa-spinner fa-spin"></i>
+            ${spinnerMarkup(t`Loading third-party extensions`)}
             <span>` + t`Loading third-party extensions... Please wait...` + `</span>
         </div>`);
+        // SillyBunny: keep the loading state inside the installed-extension group.
+        htmlLoading.addClass('extensions_loading');
 
         htmlExternal.append(htmlLoading);
 
@@ -1547,15 +1556,17 @@ async function showExtensionsDetails() {
             .append(htmlExternal)
             .append(getModuleInformation());
 
+        // SillyBunny: mark the existing title for the shared Window header adapter.
+        const popupHeader = $('<header class="sb-popup-dialog-header"></header>')
+            .append($('<h2 class="sb-dialog__title"></h2>').text(t`Extensions`));
+
+        let extensionsPresentation;
         {
             const updateAction = async (force) => {
                 requiresReload = true;
                 await autoUpdateExtensions(force);
                 await popup.complete(POPUP_RESULT.AFFIRMATIVE);
             };
-
-            const toolbar = document.createElement('div');
-            toolbar.classList.add('extensions_toolbar');
 
             const updateAllButton = document.createElement('button');
             updateAllButton.classList.add('menu_button', 'menu_button_icon');
@@ -1615,9 +1626,7 @@ async function showExtensionsDetails() {
                 restoreBulkToggledExtensionsButton.classList.add('displayNone');
             });
 
-            const flexExpander = document.createElement('div');
-            flexExpander.classList.add('expander');
-
+            // SillyBunny: preserve sort/update behavior while moving controls to the shared frame header.
             const sortOrderButton = document.createElement('button');
             sortOrderButton.classList.add('menu_button', 'menu_button_icon');
             sortOrderButton.textContent = sortByName ? t`Sort: Display Name` : t`Sort: Loading Order`;
@@ -1627,19 +1636,29 @@ async function showExtensionsDetails() {
                 await showExtensionsDetails();
             });
 
-            toolbar.append(updateAllButton, updateEnabledOnlyButton, flexExpander, sortOrderButton);
             htmlExternal.find('.third_party_toolbar').append(restoreBulkToggledExtensionsButton, toggleAllExtensionsButton);
-            html.prepend(toolbar);
+            html.prepend(popupHeader);
+            // SillyBunny: move extension controls into shared Window chrome without replacing their handlers.
+            extensionsPresentation = adaptExtensionsManager(html, {
+                updateAllButton,
+                updateEnabledOnlyButton,
+                sortOrderButton,
+                sortByName,
+                toggleAllExtensionsButton,
+                restoreBulkToggledExtensionsButton,
+            });
         }
 
         let waitingForSave = false;
 
         const popup = new Popup(html, POPUP_TYPE.TEXT, '', {
             okButton: t`Close`,
-            wide: true,
-            large: true,
             customButtons: [],
             allowVerticalScrolling: true,
+            // SillyBunny: the Extensions manager needs a full-height scrolling surface.
+            tier: 'window',
+            size: 'fill',
+            ...extensionsPresentation,
             onClosing: async () => {
                 if (waitingForSave) {
                     return false;
@@ -1674,6 +1693,7 @@ async function showExtensionsDetails() {
                 return true;
             },
         });
+        popup.dlg.setAttribute('aria-label', t`Extensions`);
         popupPromise = popup.show();
         popup.content.scrollTop = initialScrollTop;
         checkForUpdatesManual(sortFn, abortController.signal).finally(() => htmlLoading.remove());
@@ -1706,16 +1726,16 @@ async function onUpdateClick() {
     }
 
     const icon = $(this).find('i');
-    icon.addClass('fa-spin');
+    setIconBusy(icon[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
     await updateExtension(extensionName, false);
     // updateExtension eats the error, but we can at least stop the spinner
-    icon.removeClass('fa-spin');
+    setIconBusy(icon[0], false);
 }
 
 async function onSyncClick() {
     const extensionName = $(this).data('name');
     const icon = $(this).find('i');
-    icon.addClass('fa-spin');
+    setIconBusy(icon[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
 
     try {
         const response = await fetch('/api/extensions/sync', {
@@ -1726,6 +1746,7 @@ async function onSyncClick() {
 
         if (!response.ok) {
             const text = await response.text();
+            // SillyBunny: capitalisation by DESIGN.md
             toastr.error(text || response.statusText, t`Extension sync failed`, { timeOut: 5000 });
             return;
         }
@@ -1733,14 +1754,14 @@ async function onSyncClick() {
         const data = await response.json();
         const versionText = data.version ? ` v${data.version}` : '';
         const commitText = data.shortCommitHash ? ` (${data.shortCommitHash})` : '';
-        toastr.success(t`Extension ${extensionName} synced${versionText}${commitText}.`, t`Reload the page to apply updates`);
+        toastr.success(t`Extension ${extensionName} synced${versionText}${commitText}`, t`Reload the page to apply updates`); // SillyBunny: no trailing period, by DESIGN.md
         requiresReload = true;
         await showExtensionsDetails();
     } catch (error) {
         console.error('Extension sync error:', error);
         toastr.error(t`Extension sync failed. See browser console for details.`);
     } finally {
-        icon.removeClass('fa-spin');
+        setIconBusy(icon[0], false);
     }
 }
 
@@ -1790,15 +1811,14 @@ async function updateExtension(extensionName, quiet, timeout = null) {
     }
 }
 
+// SillyBunny: exported so Bundled Extras confirms a removal exactly as the Extensions panel does.
 /**
- * Handles the click event for the delete button of an extension.
- * This function makes a POST request to '/api/extensions/delete' with the extension's name.
- * If the extension is deleted, it displays a success message.
+ * Asks the user to confirm the deletion of an extension, then deletes it.
  * Creates a popup for the user to confirm before delete.
  * If the extension has a clean hook, the user can optionally run it before delete.
+ * @param {string} extensionName Name of the extension
  */
-async function onDeleteClick() {
-    const extensionName = $(this).data('name');
+export async function confirmAndDeleteExtension(extensionName) {
     const isCurrentUserAdmin = isAdmin();
     const isGlobal = getExtensionType(extensionName) === 'global';
     if (isGlobal && !isCurrentUserAdmin) {
@@ -1813,7 +1833,7 @@ async function onDeleteClick() {
         type: 'checkbox',
         defaultState: false,
     }] : [];
-    const popup = new Popup(t`Are you sure you want to delete ${escapeHtml(extensionName)}?`, POPUP_TYPE.CONFIRM, '', { customInputs });
+    const popup = new Popup(t`Are you sure you want to delete ${escapeHtml(extensionName)}?`, POPUP_TYPE.CONFIRM, '', { customInputs, /* SillyBunny: names the response with a verb (confirmVerb). */ ...confirmVerb(t`Delete`, { destructive: true }) });
     const confirmation = await popup.show();
     if (confirmation === POPUP_RESULT.AFFIRMATIVE) {
         const shouldClean = hasCleanHook && Boolean(popup.inputResults?.get('extension_delete_cleanup'));
@@ -1822,12 +1842,23 @@ async function onDeleteClick() {
 }
 
 /**
+ * Handles the click event for the delete button of an extension.
+ * This function makes a POST request to '/api/extensions/delete' with the extension's name.
+ * If the extension is deleted, it displays a success message.
+ */
+async function onDeleteClick() {
+    // SillyBunny: the panel and Bundled Extras share one confirm-and-delete path.
+    await confirmAndDeleteExtension($(this).data('name'));
+}
+
+/**
  * Handles the click event for the clean button of an extension.
  */
 async function onCleanClick() {
     const extensionName = $(this).data('name');
 
-    const confirmation = await Popup.show.confirm(t`Clean extension data`, t`Are you sure you want to clean up data for ${escapeHtml(extensionName)}? This action cannot be undone.`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = await Popup.show.confirm(t`Clean extension data`, t`Are you sure you want to clean up data for ${escapeHtml(extensionName)}? This action cannot be undone.`, confirmVerb(t`Delete`, { destructive: true }));
     if (!confirmation) {
         return;
     }
@@ -1853,7 +1884,7 @@ async function onReinstallClick() {
     const isCurrentUserAdmin = isAdmin();
     const isGlobal = getExtensionType(extensionName) === 'global';
     if (isGlobal && !isCurrentUserAdmin) {
-        toastr.error(t`You don't have permission to reinstall global extensions.`);
+        toastr.error(t`You don't have permission to reinstall global extensions`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -1875,7 +1906,8 @@ async function onReinstallClick() {
         t`This will delete and reinstall ${extensionName} from ${repoUrl}. Any local changes will be lost. Continue?`,
         POPUP_TYPE.CONFIRM,
         '',
-        {},
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`, { destructive: true }),
     );
 
     if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
@@ -1884,7 +1916,8 @@ async function onReinstallClick() {
 
     try {
         // Delete the extension
-        toastr.info(t`Deleting ${extensionName}...`, t`Reinstalling extension`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Deleting ${extensionName}…`, t`Reinstalling extension`);
         await callExtensionHook(extensionName, 'delete');
 
         const deleteResponse = await fetch('/api/extensions/delete', {
@@ -1902,13 +1935,15 @@ async function onReinstallClick() {
         }
 
         // Reinstall the extension
-        toastr.info(t`Installing ${extensionName}...`, t`Reinstalling extension`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Installing ${extensionName}…`, t`Reinstalling extension`);
         await installExtension(repoUrl, isGlobal);
 
         toastr.success(t`Extension ${extensionName} reinstalled successfully`);
         delay(1000).then(() => location.reload());
     } catch (error) {
         console.error('Reinstall failed:', error);
+        // SillyBunny: capitalisation by DESIGN.md
         toastr.error(t`Failed to reinstall ${extensionName}: ${error.message}`, t`Reinstall failed`);
     }
 }
@@ -1939,6 +1974,8 @@ async function onBranchClick() {
     }
 
     const popup = new Popup(selectElement, POPUP_TYPE.CONFIRM, '', {
+        // SillyBunny: mirror the native branch select in a searchable dialog row.
+        ...switchBranchOptions(selectElement),
         okButton: t`Switch`,
         cancelButton: t`Cancel`,
     });
@@ -1968,13 +2005,14 @@ async function onMoveClick() {
         ? t`Are you sure you want to move ${extensionName} to your local extensions? This will make it available only for you.`
         : t`Are you sure you want to move ${extensionName} to the global extensions? This will make it available for all users.`;
 
-    const confirmation = await Popup.show.confirm(confirmationHeader, confirmationText);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = await Popup.show.confirm(confirmationHeader, confirmationText, confirmVerb(t`Move`));
 
     if (!confirmation) {
         return;
     }
 
-    $(this).find('i').addClass('fa-spin');
+    setIconBusy($(this).find('i')[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
     await moveExtension(extensionName, source, destination);
 }
 
@@ -2042,7 +2080,7 @@ export async function deleteExtension(extensionName, shouldClean = false) {
         }
     } catch (error) {
         console.error('Extension deletion failed:', error);
-        toastr.error(t`Failed to delete extension ${extensionName}.`);
+        toastr.error(t`Failed to delete extension ${extensionName}`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 
@@ -2716,7 +2754,8 @@ export async function writeExtensionFieldBulk(avatars, key, value, { filterPath 
  */
 export async function openThirdPartyExtensionMenu(suggestUrl = '') {
     const isCurrentUserAdmin = isAdmin();
-    const html = await renderTemplateAsync('installExtension', { isCurrentUserAdmin });
+    // SillyBunny: retain every template node in one adapter-owned content root.
+    const html = $('<div>').append(await renderTemplateAsync('installExtension', { isCurrentUserAdmin }));
     const okButton = isCurrentUserAdmin ? t`Install just for me` : t`Install`;
 
     let global = false;
@@ -2738,7 +2777,8 @@ export async function openThirdPartyExtensionMenu(suggestUrl = '') {
 
     const customButtons = isCurrentUserAdmin ? [installForAllButton] : [];
     const customInputs = [branchNameInput];
-    const popup = new Popup(html, POPUP_TYPE.INPUT, suggestUrl ?? '', { okButton, customButtons, customInputs });
+    // SillyBunny: move Popup-owned URL/branch controls into rows, preserving inputResults.
+    const popup = new Popup(html, POPUP_TYPE.INPUT, suggestUrl ?? '', { okButton, customButtons, customInputs, ...installExtensionOptions(html[0]) });
     const input = await popup.show();
 
     if (!input) {

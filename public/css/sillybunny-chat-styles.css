@@ -38,13 +38,19 @@
     --moonlit-sb-ripple-avatar-mobile-width: var(--customRippleAvatarMobileWidth, 100px);
     --moonlit-sb-ripple-avatar-desktop-width: min(var(--customRippleAvatarWidth, 180px), 35%);
     --moonlit-sb-ripple-left-bottom-gap: 10px;
-    --moonlit-sb-swipe-control-size: 24px;
+    --moonlit-sb-swipe-control-size: var(--sb-message-hit-size, 24px);
     --moonlit-sb-swipe-counter-width: 38px;
     --moonlit-sb-swipe-edge-offset: 8px;
     --moonlit-sb-swipe-gap: 4px;
     --moonlit-sb-swipe-inline-offset: 24px;
     --moonlit-sb-user-message-bg: color-mix(in srgb, var(--SmartThemeUserMesBlurTintColor) var(--sb-shell-surface-opacity-percent, 100%), transparent);
     --moonlit-sb-bot-message-bg: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor) var(--sb-shell-surface-opacity-percent, 100%), transparent);
+    /* libadwaita card vocabulary shared by the ported styles: card radius for message cards,
+       alert radius for chat bubbles, no borders or drop shadows (cards separate by tone). */
+    --moonlit-sb-card-radius: var(--sb-radius-card, 12px);
+    --moonlit-sb-bubble-radius: var(--sb-radius-alert, 18px);
+    --moonlit-sb-pill-bg: var(--sb-raised-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
+    --moonlit-sb-hairline: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --customCSS-bg-opacity: 1;
     --customCSS-bg-blur: 0;
     --sheldBackgroundColor: transparent;
@@ -68,15 +74,38 @@ body.sb-sheld-blur #sheld::before {
     -webkit-backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));
 }
 
-body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes:not(.smallSysMes) .mes_block {
+/* Flat has no fill per message: its column carries the bot tint over its own as one surface, and the tint follows Background Visibility on desktop.
+   A selected message takes the neutral fill, since upstream's dark red shows only around the message's own fill. */
+body.flatchat #chat {
+    --sb-flat-column-tint: var(--SmartThemeBotMesBlurTintColor);
+}
+
+@supports (color: rgb(from black r g b / 1)) {
+    @media screen and (min-width: 769px) {
+        body.flatchat #chat {
+            --sb-flat-column-tint: rgb(from var(--SmartThemeBotMesBlurTintColor) r g b / calc(alpha * var(--sb-page-card-opacity)));
+        }
+    }
+}
+
+body.flatchat :is(#chat, .sb-message-screenshot-surface) {
+    background-image: linear-gradient(var(--sb-flat-column-tint), var(--sb-flat-column-tint));
+}
+
+body.flatchat #chat .mes.selected {
+    background-color: var(--sb-flat-selected-bg);
+}
+
+/* Documents tint each message. */
+body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle):not(.flatchat) #chat .mes:not(.smallSysMes) .mes_block {
     background-color: var(--SmartThemeBotMesBlurTintColor);
 }
 
-body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes[is_user="true"]:not(.smallSysMes) .mes_block {
+body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle):not(.flatchat) #chat .mes[is_user="true"]:not(.smallSysMes) .mes_block {
     background-color: var(--SmartThemeUserMesBlurTintColor);
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     body.sb-sheld-blur #sheld::before {
         backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
         -webkit-backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
@@ -124,11 +153,11 @@ body.echostyle #chat {
         padding: 0;
         margin-top: 5px;
         margin-bottom: 0;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
 
         &::before {
             overflow: hidden;
-            border-radius: 15px;
+            border-radius: var(--moonlit-sb-card-radius);
         }
 
         .mes_block {
@@ -151,10 +180,8 @@ body.echostyle #chat {
             min-height: 200px;
             overflow: hidden;
             margin-top: calc(var(--custom-ChatAvatar) * 0.35);
-            border-radius: 10px;
-            backdrop-filter: var(--SmartThemeBackdropFilter);
-            -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-            box-shadow: 3px 3px 8px rgba(0, 0, 0, 3%);
+            border-radius: var(--moonlit-sb-card-radius);
+            box-shadow: none;
         }
 
         .mes_timer,
@@ -195,7 +222,7 @@ body.echostyle #chat {
                 position: relative;
                 right: 0;
                 left: auto;
-                border-radius: 10px;
+                border-radius: var(--moonlit-sb-card-radius);
                 overflow: hidden;
                 background-color: var(--moonlit-sb-user-message-bg);
 
@@ -210,21 +237,21 @@ body.echostyle #chat {
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     mask-image:
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
-                    border-radius: 10px 0 0 10px;
+                    border-radius: var(--moonlit-sb-card-radius) 0 0 var(--moonlit-sb-card-radius);
                     z-index: 3;
 
-                    @media screen and (max-width: 1000px) {
+                    @media screen and (max-width: 768px) {
                         width: var(--custom-EchoAvatarMobileWidth, 25%);
                         height: var(--custom-EchoAvatarMobileHeight, 250px);
                     }
@@ -240,7 +267,7 @@ body.echostyle #chat {
                 padding: 8px 14px 8px var(--custom-EchoAvatarWidth, 22%) !important;
                 background-color: var(--moonlit-sb-user-message-bg);
 
-                @media screen and (max-width: 1000px) {
+                @media screen and (max-width: 768px) {
                     padding: 8px 14px 8px var(--custom-EchoAvatarMobileWidth, 22%) !important;
                 }
             }
@@ -262,21 +289,21 @@ body.echostyle #chat {
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     mask-image:
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
-                    border-radius: 0 10px 10px 0;
+                    border-radius: 0 var(--moonlit-sb-card-radius) var(--moonlit-sb-card-radius) 0;
                     z-index: 3;
 
-                    @media screen and (max-width: 1000px) {
+                    @media screen and (max-width: 768px) {
                         width: var(--custom-EchoAvatarMobileWidth, 25%);
                         height: var(--custom-EchoAvatarMobileHeight, 250px);
                     }
@@ -286,7 +313,7 @@ body.echostyle #chat {
             .last_mes .mes_text {
                 padding: 8px var(--custom-EchoAvatarWidth, 22%) 8px 14px !important;
 
-                @media screen and (max-width: 1000px) {
+                @media screen and (max-width: 768px) {
                     padding: 8px var(--custom-EchoAvatarMobileWidth, 22%) 8px 14px !important;
                 }
             }
@@ -302,9 +329,9 @@ body.echostyle #chat {
         padding-top: 5px;
     }
     .mesIDDisplay {
-        background: rgba(225, 225, 225, 0.2);
+        background: var(--moonlit-sb-pill-bg);
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -352,13 +379,12 @@ body.echostyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 
     /* Desktop: keep swipe controls inside the message without clipping content. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .last_mes .swipeRightBlock {
             right: 15px;
         }
@@ -384,7 +410,7 @@ body.whisperstyle #chat {
         position: relative;
         padding: 0.8em;
         padding-top: 40px !important;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
 
         &::before {
             content: "";
@@ -395,56 +421,33 @@ body.whisperstyle #chat {
             height: 100px;
             background: var(--mes-avatar-url, var(--sb-message-avatar)) var(--customWhisperAvatarAlign) no-repeat;
             background-size: cover;
-            mask-image: linear-gradient(to bottom, black 60%, rgba(0, 0, 0, 0) 100%);
+            mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
             mask-size: 100% 100%;
             mask-repeat: no-repeat;
-            -webkit-mask-image: linear-gradient(to left, black 60%, rgba(0, 0, 0, 0) 100%);
+            -webkit-mask-image: linear-gradient(to left, black 60%, transparent 100%);
             -webkit-mask-size: 100% 100%;
             -webkit-mask-repeat: no-repeat;
             z-index: 0;
-            border-radius: 0 15px 0 0 !important;
+            border-radius: 0 var(--moonlit-sb-card-radius) 0 0 !important;
             opacity: 0.8;
         }
         &.last_mes::before {
             filter: none;
         }
-        &::after {
-            content: "";
-            position: absolute;
-            top: 70px;
-            right: 0;
-            width: 5px;
-            height: 30px;
-            opacity: 0.9;
-            z-index: 3;
-        }
-        @media screen and (max-width: 1000px) {
+        @media screen and (max-width: 768px) {
             &::before {
                 top: 0;
                 width: 55%;
-                min-height: 125px !important;
             }
-            &::after {
-                top: 95px;
-            }
-
         }
 
         /* Whisper: User Message 低語：使用者訊息 */
         &[is_user="true"] {
             background-color: var(--moonlit-sb-user-message-bg) !important;
-
-            &::after {
-                border-right: 3.5px solid var(--customThemeColor);
-            }
         }
         /* Whisper: Character Message 低語：角色訊息 */
         &[is_user="false"] {
             background-color: var(--moonlit-sb-bot-message-bg) !important;
-
-            &::after {
-                border-right: 3.5px solid var(--SmartThemeBodyColor);
-            }
         }
 
         .lastInContext {
@@ -503,9 +506,9 @@ body.whisperstyle #chat {
         min-height: 45px;
     }
     .mesIDDisplay {
-        background: var(--customBgColor1);
+        background: var(--customBgColor1, var(--moonlit-sb-pill-bg));
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -548,20 +551,19 @@ body.whisperstyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 
     /* Desktop: keep swipe controls inside the message without clipping content. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .last_mes .swipeRightBlock {
             right: 30px;
         }
     }
 
     .menu_button {
-        background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 25%, transparent);
+        background: transparent;
     }
 }
 
@@ -577,37 +579,19 @@ body.hushstyle #chat {
         color: var(--SmartThemeBodyColor);
         position: relative;
         padding: 1em;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
 
         &.last_mes::before {
             filter: none;
-        }
-        &::after {
-            content: "";
-            position: absolute;
-            top: 40px;
-            right: 0;
-            width: 5px;
-            height: 30px;
-            opacity: 0.9;
-            z-index: 3;
         }
 
         /* Soft: User Message 輕聲：使用者訊息 */
         &[is_user="true"] {
             background-color: var(--moonlit-sb-user-message-bg) !important;
-
-            &::after {
-                border-right: 3.5px solid var(--customThemeColor);
-            }
         }
         /* Soft: Character Message 輕聲：角色訊息 */
         &[is_user="false"] {
             background-color: var(--moonlit-sb-bot-message-bg) !important;
-
-            &::after {
-                border-right: 3.5px solid var(--SmartThemeBodyColor);
-            }
         }
 
         .lastInContext {
@@ -665,9 +649,9 @@ body.hushstyle #chat {
         min-height: 45px;
     }
     .mesIDDisplay {
-        background: var(--customBgColor1);
+        background: var(--customBgColor1, var(--moonlit-sb-pill-bg));
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -708,13 +692,12 @@ body.hushstyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 
     /* Desktop: keep swipe controls inside the message without clipping content. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .last_mes .swipeRightBlock {
             right: 30px;
         }
@@ -726,7 +709,8 @@ body.hushstyle #chat {
 body.ripplestyle #chat {
     .mes {
         background: var(--moonlit-sb-bot-message-bg) !important;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
+        overflow: clip;
         padding: 0 !important;
         margin: 8px 0 !important;
 
@@ -754,7 +738,7 @@ body.ripplestyle #chat {
                 aspect-ratio: 2 / 3;
                 border: none !important;
                 margin-right: unset;
-                border-radius: 15px 0 0 0 !important;
+                border-radius: var(--moonlit-sb-card-radius) 0 0 0 !important;
                 overflow: hidden;
                 flex: unset !important;
 
@@ -764,17 +748,17 @@ body.ripplestyle #chat {
                     min-width:var(--customRippleAvatarWidth);
                     min-height: calc(var(--customRippleAvatarWidth) * var(--customRippleAvatarRatio));
                     border: 0 !important;
-                    border-radius: 15px 0 0 0 !important;
+                    border-radius: var(--moonlit-sb-card-radius) 0 0 0 !important;
                     -webkit-mask-image:
-                        linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                        linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     mask-image:
-                        linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                        linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
                 }
@@ -793,10 +777,9 @@ body.ripplestyle #chat {
             .ch_name::after {
                 content: "";
                 width: 100%;
-                border-bottom: 1px solid var(--SmartThemeBodyColor);
+                border-bottom: 1px solid var(--moonlit-sb-hairline);
                 padding-bottom: 5px;
                 margin-bottom: 5px;
-                opacity: 0.45;
             }
         }
     }
@@ -809,7 +792,7 @@ body.ripplestyle #chat {
     }
 
     /* Desktop: reserve real flex space for Ripple avatars so text cannot slide underneath. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .mes .mesAvatarWrapper {
             box-sizing: border-box;
             flex: 0 0 var(--moonlit-sb-ripple-avatar-desktop-width);
@@ -844,7 +827,7 @@ body.ripplestyle #chat {
         }
     }
 
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         .mes .avatar {
             width: var(--customRippleAvatarMobileWidth) !important;
             height: calc(var(--customRippleAvatarMobileWidth) * var(--customRippleAvatarRatio)) !important;
@@ -880,7 +863,7 @@ body.ripplestyle.big-avatars #chat .mes {
         }
     }
 
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         .avatar {
             width: var(--customRippleAvatarMobileWidth) !important;
             height: calc(var(--customRippleAvatarMobileWidth) * var(--customRippleAvatarRatio)) !important;
@@ -903,7 +886,7 @@ body.ripplestyle.big-avatars #chat .mes {
 body.tidestyle #chat {
     padding: 0 12px;
 
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         padding: 0 0.8em;
     }
 
@@ -944,17 +927,23 @@ body.tidestyle #chat {
             padding-bottom: 0 !important;
             max-width: 74%;
 
-            p {
+            /* A list, quote or heading directly in the message text gets the bubble too; without it, it sits on the bare background picture. */
+            p,
+            & > :is(ol, ul, blockquote, h1, h2, h3, h4, h5, h6) {
                 display: block;
                 width: fit-content;
                 margin: 0;
                 margin-bottom: 8px !important;
                 background: var(--moonlit-sb-bot-message-bg);
-                padding: 5px 11px !important;
-                border-radius: 18px;
+                padding: 6px 12px !important;
+                border-radius: var(--moonlit-sb-bubble-radius);
             }
 
-            @media screen and (max-width: 1000px) {
+            & > :is(ol, ul) {
+                padding-inline-start: calc(12px + 2em) !important;
+            }
+
+            @media screen and (max-width: 768px) {
                 max-width: 92%;
             }
         }
@@ -997,7 +986,7 @@ body.tidestyle #chat {
                 position: relative;
                 right: 0;
                 left: auto;
-                border-radius: 10px;
+                border-radius: 0;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -1008,9 +997,10 @@ body.tidestyle #chat {
                 text-align: right;
             }
 
-            p {
+            p,
+            .mes_text > :is(ol, ul, blockquote, h1, h2, h3, h4, h5, h6) {
                 background: var(--moonlit-sb-user-message-bg);
-                border-radius: 18px;
+                border-radius: var(--moonlit-sb-bubble-radius);
             }
         }
     }
@@ -1031,9 +1021,9 @@ body.tidestyle #chat {
         padding-top: 10px;
     }
     .mesIDDisplay {
-        background: rgba(225, 225, 225, 0.2);
+        background: var(--moonlit-sb-pill-bg);
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -1078,8 +1068,7 @@ body.tidestyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 }
@@ -1094,10 +1083,10 @@ body.ripplestyle {
 }
 body.ripplestyle {
     .mesIDDisplay {
-        background: var(--customBgColor2) !important;
+        background: var(--customBgColor2, var(--moonlit-sb-pill-bg)) !important;
         width: fit-content;
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-pill);
         justify-self: center;
         text-align: center;
         margin-top: 5px !important;
@@ -1105,28 +1094,22 @@ body.ripplestyle {
     }
 }
 
-body.echostyle {
-    #chat .mes_text {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
+/* libadwaita cards and bubbles: no border or drop shadow. Tide bubbles sit close to the chat
+   view's tone, so they keep the card outline shade as an inset ring that takes no layout space. */
+body.echostyle #chat .mes_text,
+body:is(.whisperstyle, .hushstyle, .ripplestyle) #chat .mes,
+body.tidestyle #chat .mes_text p {
+    border: 0;
+    box-shadow: none;
 }
-body.whisperstyle,
-body.hushstyle,
-body.ripplestyle {
-    #chat .mes {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
 
-}
-body.tidestyle {
-    #chat .mes_text p {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent) !important;
-    }
+body.tidestyle #chat .mes_text p,
+body.tidestyle #chat .mes_text > :is(ol, ul, blockquote, h1, h2, h3, h4, h5, h6) {
+    box-shadow: inset 0 0 0 1px var(--moonlit-sb-hairline);
 }
 
 /* 滑動訊息編號 */
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle).swipeAllMessages #chat .mes:not(.last_mes) .swipes-counter {
-    opacity: 0.8 !important;
     margin-bottom: 20px !important;
     margin-right: var(--customMesPadding) !important;
 }
@@ -1201,18 +1184,18 @@ body.tidestyle {
         margin-top: 3px;
         margin-left: calc(var(--custom-echo-avatar) + 8px);
 
-        @media screen and (max-width: 1000px) {
+        @media screen and (max-width: 768px) {
             margin-left: calc(var(--custom-echo-avatar) + 11px)
         }
     }
 }
 body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes .ch_name .flex-container {
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         margin-bottom: 0 !important;
     }
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 769px) {
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
         flex: 0 0 auto;
         inline-size: auto;
@@ -1220,7 +1203,8 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes .ch_name .
         width: auto;
     }
 
-    body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes[is_user="false"]:not(.smallSysMes) .mesAvatarWrapper {
+    body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes[is_user="false"]:not(.smallSysMes) .mesAvatarWrapper,
+    body:is(.whisperstyle, .hushstyle) #chat .mes[is_user="true"]:not(.smallSysMes) .mesAvatarWrapper {
         flex-direction: row;
     }
 
@@ -1299,6 +1283,21 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     font-size: var(--userNameFontSize, 0.95rem) !important;
 }
 
+/* In these styles the name row has no card of its own, so a name sits on the background picture or on a banner image.
+   The name takes the message tint as its own surface, which keeps the name colour at the ratio the message text has.
+   The tint is painted twice: a tint at 0.96 alpha lets 4% of a bright picture through, which is enough to take a name colour that is
+   not the main text colour under 4.5:1. */
+body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes .name_text {
+    --moonlit-sb-name-surface: var(--moonlit-sb-bot-message-bg);
+    background: linear-gradient(var(--moonlit-sb-name-surface), var(--moonlit-sb-name-surface)), var(--moonlit-sb-name-surface);
+    border-radius: var(--moonlit-sb-bubble-radius);
+    box-sizing: border-box;
+    padding: 3px 9px;
+}
+body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes[is_user="true"] .name_text {
+    --moonlit-sb-name-surface: var(--moonlit-sb-user-message-bg);
+}
+
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes_text p {
     letter-spacing: var(--messageTextLetterSpacing, 0em) !important;
     line-height: var(--messageLineHeight, 1.55em) !important;
@@ -1325,11 +1324,12 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     right: var(--moonlit-sb-swipe-inline-offset) !important;
 }
 
+/* The previous arrow sits at the start edge and the next arrow with the counter at the end edge, as in the other styles, at every width. */
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipe_left {
     bottom: var(--moonlit-sb-swipe-edge-offset) !important;
-    left: auto !important;
+    left: var(--moonlit-sb-swipe-inline-offset) !important;
     position: absolute !important;
-    right: calc(var(--moonlit-sb-swipe-inline-offset) + var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + (var(--moonlit-sb-swipe-gap) * 2)) !important;
+    right: auto !important;
 }
 
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes :is(.swipe_left, .swipe_right) {
@@ -1347,6 +1347,12 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     width: var(--moonlit-sb-swipe-control-size);
 }
 
+/* The shared chevron rule above sets `position: relative` for both chevrons, but .swipe_left is a
+   direct child of .mes (not inside .swipeRightBlock), so in flow it pushed the message body down a line. */
+body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes.last_mes > .swipe_left {
+    position: absolute !important;
+}
+
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipes-counter {
     box-sizing: border-box;
     flex: 0 0 var(--moonlit-sb-swipe-counter-width);
@@ -1361,7 +1367,7 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     width: var(--moonlit-sb-swipe-counter-width) !important;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes {
         position: relative !important;
     }
@@ -1459,52 +1465,6 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
         display: block;
     }
 
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipeRightBlock {
-        align-items: center;
-        bottom: var(--moonlit-sb-swipe-edge-offset) !important;
-        display: flex;
-        flex-direction: row-reverse !important;
-        gap: var(--moonlit-sb-swipe-gap);
-        inline-size: calc(var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + var(--moonlit-sb-swipe-gap)) !important;
-        justify-content: flex-end;
-        left: auto !important;
-        max-inline-size: calc(100% - (var(--moonlit-sb-swipe-inline-offset) * 2));
-        min-inline-size: calc(var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + var(--moonlit-sb-swipe-gap));
-        pointer-events: none;
-        position: absolute !important;
-        right: var(--moonlit-sb-swipe-inline-offset) !important;
-    }
-
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipe_left {
-        bottom: var(--moonlit-sb-swipe-edge-offset) !important;
-        left: auto !important;
-        position: absolute !important;
-        right: calc(var(--moonlit-sb-swipe-inline-offset) + var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + (var(--moonlit-sb-swipe-gap) * 2)) !important;
-    }
-
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes :is(.swipe_left, .swipe_right) {
-        align-items: center;
-        display: inline-flex;
-        height: var(--moonlit-sb-swipe-control-size);
-        justify-content: center;
-        line-height: 1;
-        min-width: var(--moonlit-sb-swipe-control-size);
-        pointer-events: auto;
-        width: var(--moonlit-sb-swipe-control-size);
-        transform: none !important;
-    }
-
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipes-counter {
-        letter-spacing: 0;
-        margin: 0;
-        max-width: var(--moonlit-sb-swipe-counter-width);
-        min-width: var(--moonlit-sb-swipe-counter-width);
-        overflow: hidden;
-        pointer-events: auto;
-        text-overflow: ellipsis;
-        width: var(--moonlit-sb-swipe-counter-width) !important;
-    }
-
     body.ripplestyle #chat .mes:not(.smallSysMes) {
         align-items: start;
         display: grid !important;
@@ -1584,5 +1544,173 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     body.ripplestyle #chat .mes:not(.smallSysMes) .mes_text {
         margin-top: 0 !important;
         padding-top: 0 !important;
+    }
+}
+
+/* Whisper's banner picture sits behind its name row, so the actions on it are overlaid controls: the OSD fill and ink (DESIGN.md, Overlaid Controls). */
+body.whisperstyle #chat .mes:not(.smallSysMes) .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+    padding: 3px;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-osd-bg);
+}
+
+body.whisperstyle #chat .mes:not(.smallSysMes) .mes_buttons .mes_button {
+    color: var(--sb-osd-ink);
+}
+
+body.whisperstyle #chat .mes:not(.smallSysMes) .mes_edit_buttons .menu_button {
+    --sb-edit-action-color: var(--sb-osd-ink);
+}
+
+/* ---------- Message row parts that are not needed at first paint ---------- */
+
+/* Upstream shows only the last row (toggle-dependent.css). A coarse pointer gets the row of every message in the flow; a fine
+   pointer gets an overlaid toolbar at the corner on hover or focus. */
+@media (hover: hover) and (pointer: fine) {
+    body.documentstyle #chat .mes:not(.last_mes) .ch_name > .mes_buttons {
+        position: absolute;
+        inset-block-start: 3px;
+        inset-inline-end: 3px;
+        z-index: 3;
+        inline-size: max-content;
+        max-inline-size: calc(100% - 6px);
+        flex: none;
+        padding: 3px;
+        border-radius: var(--sb-radius-control);
+        background: var(--sb-osd-bg);
+    }
+
+    body.documentstyle #chat .mes:not(.last_mes) .ch_name > .mes_buttons .mes_button {
+        color: var(--sb-osd-ink);
+    }
+
+    body.documentstyle #chat .mes:not(.last_mes):not(.sb-message-actions-open, [data-sb-actions-expanded]):not(:hover, :focus-within) .ch_name > .mes_buttons {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* ---------- Delete mode ---------- */
+
+/* Cancel, the count, then Delete; the markup has the same order. */
+#dialogue_del_mes[style*='block'] {
+    padding-inline: 12px;
+    box-sizing: border-box;
+}
+
+#dialogue_del_mes > :is(.menu_button, [role='status']) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin: 0 6px;
+}
+
+#dialogue_del_mes_cancel {
+    border-color: transparent;
+    background: var(--sb-raised-bg);
+}
+
+#dialogue_del_mes_ok {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
+    color: var(--sb-color-danger);
+}
+
+@media (hover: hover) {
+    #dialogue_del_mes_cancel:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+
+    #dialogue_del_mes_ok:hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 26%, transparent);
+    }
+}
+
+#dialogue_del_mes_count {
+    min-inline-size: 9ch;
+    color: var(--sb-muted-fg);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* libadwaita's selection check: a 28px circle with a 2px outline. */
+#chat .mes .del_checkbox {
+    --sb-checkbox-size: 28px;
+    border-radius: var(--sb-radius-pill);
+    border-color: var(--sb-selection-check-outline);
+    opacity: 1;
+}
+
+#chat .mes .del_checkbox:checked {
+    border-color: var(--sb-accent);
+}
+
+@media (hover: hover) {
+    #chat .mes .del_checkbox:not(:checked):not(:disabled):hover {
+        border-color: var(--sb-selection-check-outline-hover);
+    }
+}
+
+/* Grows the 18px counter to the pointer's floor without moving it: up beside the arrow (which keeps its taps by z-index),
+   sideways into the gutter, never below, where the bottom bar sits. */
+#chat .mes .swipes-counter::after {
+    content: '';
+    position: absolute;
+    inset: calc(18px - var(--sb-density-floor)) -6px 0 -6px;
+    border-radius: inherit;
+}
+
+@media (pointer: coarse) {
+    #chat .mes .swipes-counter::after {
+        inset-inline-start: -16px;
+    }
+}
+
+/* --- Expression sprites in the picture slot of Echo, Whisper and Ripple ---
+   chat-style-sprites.js sets `data-sb-expression` and `--sb-message-expression` on the message of a character that has a valid
+   sprite. The small round avatar in the name row stays the profile picture. Each rule adds an attribute selector to the
+   selector it replaces, so none needs `!important`. */
+
+body.echostyle #chat .mes[data-sb-expression][is_user="false"] .mes_text::before {
+    background-image: var(--sb-message-expression);
+    /* `fixed` sizes the picture to the viewport, which shows only the edge of a sprite with a transparent background. */
+    background-attachment: scroll;
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+body.whisperstyle #chat .mes[data-sb-expression]::before {
+    background-image: var(--sb-message-expression);
+    /* Sprites put the face at different heights (a bust near the top, a full figure near the middle). A sprite that covers the
+       band by its width shows a sixth of its height, which misses the face of one framing or the other, so the sprite is
+       sized by the height of the band and shows the part of it that holds the face in both. */
+    background-position: center 25%;
+    background-repeat: no-repeat;
+    background-size: auto 220%;
+}
+
+body.ripplestyle #chat .mes[data-sb-expression] .mesAvatarWrapper .avatar {
+    background-image: var(--sb-message-expression);
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-size: cover;
+    -webkit-mask-image:
+        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
+    mask-image:
+        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
+    -webkit-mask-composite: destination-in;
+    mask-composite: intersect;
+
+    /* The image stays in the layout as the click target and keeps its alt text. */
+    > img {
+        opacity: 0;
     }
 }

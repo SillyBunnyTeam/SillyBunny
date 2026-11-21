@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "hero-duo--tewi--breath-c-closed.png",
+    "sha256": "3e3a5c0d42c35498c2f15615ad8c792436f73e2018abda30ef06e04253ed1c4a",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:f41568a422854ba0b5fa416be2e6359eaddbfe1899a75e6c262d6ab244beb091"
+}

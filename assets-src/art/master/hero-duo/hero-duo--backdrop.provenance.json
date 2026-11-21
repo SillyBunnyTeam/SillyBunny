@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "hero-duo--backdrop.png",
+    "sha256": "f69d9aa81d2cc2cfb8cf816ed1c2078714fbd306c42aa8e557d7db2ad6401df2",
+    "characters": [],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-04"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "compose-scene",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:ce6cfb6d786ae14c219a2c959ad586040c8a53a24af341b2da411d9e45744289"
+}

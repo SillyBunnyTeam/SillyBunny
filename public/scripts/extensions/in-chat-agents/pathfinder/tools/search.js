@@ -153,7 +153,7 @@ function findEntrySafe(entries, uid) {
 }
 
 async function searchFormatter(args) {
-    return '🔍 Pathfinder: Searching lorebook waypoints...';
+    return '🔍 Pathfinder: Searching lorebook waypoints…';
 }
 
 export function getDefinition() {

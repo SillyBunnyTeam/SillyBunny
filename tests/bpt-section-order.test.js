@@ -127,6 +127,65 @@ describe('BunnyPresetTools section order helpers', () => {
         ]);
     });
 
+    for (const [target, expectedOrder] of [
+        ['c', ['unsectioned', 'b-divider', 'b-child', 'a-divider', 'a-marker', 'a-hidden', 'c-divider']],
+        [null, ['unsectioned', 'b-divider', 'b-child', 'c-divider', 'a-divider', 'a-marker', 'a-hidden']],
+    ]) {
+        test(`moves omitted collapsed children with their section before ${target}`, () => {
+            const order = [
+                { identifier: 'unsectioned', enabled: false },
+                { identifier: 'a-divider', enabled: true },
+                { identifier: 'a-marker', enabled: true },
+                { identifier: 'a-hidden', enabled: false, metadata: { authored: 'keep' } },
+                { identifier: 'b-divider', enabled: true },
+                { identifier: 'b-child', enabled: true },
+                { identifier: 'c-divider', enabled: false },
+            ];
+            const blocks = buildSectionBlocks([
+                promptRow('unsectioned', ''),
+                sectionRow('a'),
+                promptRow('a-divider', 'a'),
+                promptRow('a-marker', 'a'),
+                sectionRow('b'),
+                promptRow('b-divider', 'b'),
+                promptRow('b-child', 'b'),
+                sectionRow('c'),
+                promptRow('c-divider', 'c'),
+            ]);
+
+            const result = computeReorderedOrder(order, blocks, 'a', target);
+
+            expect(result.map(entry => entry.identifier)).toEqual(expectedOrder);
+            expect(result).toHaveLength(order.length);
+            for (const entry of order) {
+                expect(result.find(candidate => candidate.identifier === entry.identifier)).toBe(entry);
+            }
+            expect(order.map(entry => entry.identifier)).toEqual([
+                'unsectioned', 'a-divider', 'a-marker', 'a-hidden', 'b-divider', 'b-child', 'c-divider',
+            ]);
+        });
+    }
+
+    test('moves a later collapsed section before an earlier collapsed section', () => {
+        const order = [
+            { identifier: 'unknown-leading', enabled: false },
+            { identifier: 'a-divider' },
+            { identifier: 'a-marker' },
+            { identifier: 'a-hidden' },
+            { identifier: 'b-divider' },
+            { identifier: 'b-marker' },
+            { identifier: 'b-hidden', enabled: false },
+        ];
+        const blocks = [
+            { sectionId: 'a', promptIds: ['a-divider', 'a-marker'] },
+            { sectionId: 'b', promptIds: ['b-divider', 'b-marker'] },
+        ];
+
+        expect(computeReorderedOrder(order, blocks, 'b', 'a')).toEqual([
+            order[0], order[4], order[5], order[6], order[1], order[2], order[3],
+        ]);
+    });
+
     test('leaves self drops and missing sections unchanged', () => {
         const order = [{ identifier: 'a-divider' }, { identifier: 'b-divider' }];
         const blocks = [

@@ -1,12 +1,3 @@
-export const PRESET_API_SYNC_CONNECT_BUTTON_SELECTORS = Object.freeze({
-    kobold: '#api_button',
-    koboldhorde: '#api_button',
-    horde: '#api_button',
-    novel: '#api_button_novel',
-    openai: '#api_button_openai',
-    textgenerationwebui: '#api_button_textgenerationwebui',
-});
-
 export const PRESET_API_SYNC_CONNECTION_SOURCE_STATE = Object.freeze({
     MISSING: 'missing',
     READY: 'ready',
@@ -46,19 +37,6 @@ export function resolvePresetMainApiValue({
 }
 
 /**
- * Resolves the connect button selector for the active API route.
- * @param {unknown} apiValue Main API id.
- * @param {Record<string, string>} [selectorMap] Optional selector map.
- * @returns {string|null} CSS selector, or null when unsupported.
- */
-export function resolvePresetApiConnectButtonSelector(
-    apiValue,
-    selectorMap = PRESET_API_SYNC_CONNECT_BUTTON_SELECTORS,
-) {
-    return selectorMap[normalizePresetApiId(apiValue)] ?? null;
-}
-
-/**
  * Resolves whether a connection-profile mirror should update the source select.
  * @param {object} options Options.
  * @param {unknown} [options.requestedValue=''] Requested profile id.
@@ -81,35 +59,23 @@ export function resolveConnectionProfileSelectionSync({
  * Resolves UI state for mirrored connection-profile controls.
  * @param {object} options Options.
  * @param {boolean} [options.hasConnectionProfiles=false] Whether source select exists.
- * @param {boolean} [options.isConnectionStripOpen=false] Whether desktop strip is open.
- * @param {boolean} [options.hasActiveConnectButton=false] Whether active API can connect.
- * @returns {{sourceState: string, shouldShowToggle: boolean, shouldShowDesktopStrip: boolean, shouldCloseDesktopStrip: boolean, shouldClearMirrors: boolean, shouldShowMobileSection: boolean, shouldDisableConnectButton: boolean}}
+ * @returns {{sourceState: string, shouldClearMirrors: boolean, shouldShowMobileSection: boolean}}
  */
 export function resolveConnectionProfileMirrorState({
     hasConnectionProfiles = false,
-    isConnectionStripOpen = false,
-    hasActiveConnectButton = false,
 } = {}) {
     if (!hasConnectionProfiles) {
         return {
             sourceState: PRESET_API_SYNC_CONNECTION_SOURCE_STATE.MISSING,
-            shouldShowToggle: false,
-            shouldShowDesktopStrip: false,
-            shouldCloseDesktopStrip: true,
             shouldClearMirrors: true,
             shouldShowMobileSection: false,
-            shouldDisableConnectButton: true,
         };
     }
 
     return {
         sourceState: PRESET_API_SYNC_CONNECTION_SOURCE_STATE.READY,
-        shouldShowToggle: true,
-        shouldShowDesktopStrip: Boolean(isConnectionStripOpen),
-        shouldCloseDesktopStrip: false,
         shouldClearMirrors: false,
         shouldShowMobileSection: true,
-        shouldDisableConnectButton: !hasActiveConnectButton,
     };
 }
 
@@ -121,10 +87,8 @@ export function resolveConnectionProfileMirrorState({
 export function createPresetApiSyncLifecycle() {
     return {
         api: {
-            connectButtonSelectors: PRESET_API_SYNC_CONNECT_BUTTON_SELECTORS,
             normalizeId: normalizePresetApiId,
             resolveMainValue: resolvePresetMainApiValue,
-            resolveConnectButtonSelector: resolvePresetApiConnectButtonSelector,
         },
         connectionProfiles: {
             sourceState: PRESET_API_SYNC_CONNECTION_SOURCE_STATE,

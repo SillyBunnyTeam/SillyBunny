@@ -95,7 +95,7 @@ async function notebookAction(args) {
 }
 
 async function notebookFormatter(args) {
-    return `📓 Pathfinder: ${args.action === 'write' ? 'Writing to' : args.action === 'delete' ? 'Deleting from' : 'Reading'} notebook...`;
+    return `📓 Pathfinder: ${args.action === 'write' ? 'Writing to' : args.action === 'delete' ? 'Deleting from' : 'Reading'} notebook…`;
 }
 
 export function resetNotebookWriteGuard() {
