@@ -424,31 +424,69 @@ describe('Custom endpoint profile Additional Parameters', () => {
         expect(harness.context.saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
-    test('loading the settings gives each profile without Additional Parameters the live ones once, and saves them', async () => {
-        const harness = createHarness();
-        const liveParameters = { custom_include_body: 'top_k: 40', custom_exclude_body: '- seed', custom_include_headers: 'X-Live: 1' };
-        Object.assign(harness.context.oai_settings, liveParameters);
+    describe('loading profiles that store no Additional Parameters', () => {
+        const liveParameters = { custom_include_body: 'top_k: 40', custom_exclude_body: '- seed', custom_include_headers: 'Authorization: Bearer LIVE-A' };
+        const noParameters = Object.keys(liveParameters);
+        const savedProfiles = () => [
+            { name: 'None', url: '', key: '', model: '', secretId: '' },
+            { name: 'Provider A', url: 'https://a.example/v1', model: 'model-a', secretId: 'a-id' },
+            { name: 'Provider B', url: 'https://b.example/v1', model: 'model-b', secretId: 'b-id' },
+        ];
 
-        await harness.context.loadCustomEndpointPresets({
-            custom_endpoint_presets: [
-                { name: 'None', url: '', key: '', model: '', secretId: '' },
-                { name: 'Legacy', url: 'https://legacy.example/v1', model: 'legacy-model', secretId: 'legacy-id' },
-                { name: 'Saved endpoint', url: 'https://endpoint.example/v1', model: 'test-model', secretId: 'saved-id', ...storedParameters },
-            ],
-            selected_custom_endpoint_preset: { name: 'Saved endpoint' },
+        test('gives the selected profile the live ones once and saves them, and gives no other profile a copy', async () => {
+            const harness = createHarness();
+            Object.assign(harness.context.oai_settings, liveParameters);
+
+            await harness.context.loadCustomEndpointPresets({ custom_endpoint_presets: savedProfiles(), selected_custom_endpoint_preset: { name: 'Provider A' } });
+
+            const [none, providerA, providerB] = harness.context.custom_endpoint_presets;
+            expect(harness.context.selected_custom_endpoint_preset).toBe(providerA);
+            expect(providerA).toMatchObject(liveParameters);
+            for (const parameterKey of noParameters) {
+                expect(providerB).not.toHaveProperty(parameterKey);
+            }
+            expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+            expect(harness.context.oai_settings).toMatchObject(liveParameters);
+            expect(harness.context.saveSettingsDebounced).toHaveBeenCalledTimes(1);
+
+            await harness.context.saveSettings(0, { returnResult: true });
+            const savedB = harness.persisted().custom_endpoint_presets.find(preset => preset.name === 'Provider B');
+            expect(Object.keys(savedB).sort()).toEqual(['key', 'model', 'name', 'secretId', 'url']);
+            expect(harness.persisted().selected_custom_endpoint_preset).toMatchObject(liveParameters);
+            expect(JSON.stringify(savedB)).not.toContain('LIVE-A');
         });
 
-        const [none, legacy, saved] = harness.context.custom_endpoint_presets;
-        expect(legacy).toMatchObject(liveParameters);
-        expect(saved).toMatchObject(storedParameters);
-        expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
-        expect(harness.context.oai_settings).toMatchObject(liveParameters);
-        expect(harness.context.saveSettingsDebounced).toHaveBeenCalledTimes(1);
+        test('keeps the live header when a profile that stores none is selected afterwards', async () => {
+            const harness = createHarness();
+            Object.assign(harness.context.oai_settings, liveParameters);
+            await harness.context.loadCustomEndpointPresets({ custom_endpoint_presets: savedProfiles(), selected_custom_endpoint_preset: { name: 'Provider A' } });
+            const providerB = harness.context.custom_endpoint_presets.find(preset => preset.name === 'Provider B');
 
-        harness.values.set('#custom_endpoint_preset', 'Legacy');
-        Object.assign(harness.context.oai_settings, storedParameters);
-        await harness.context.onCustomEndpointPresetChange();
-        expect(harness.context.oai_settings).toMatchObject(liveParameters);
+            harness.values.set('#custom_endpoint_preset', 'Provider B');
+            await harness.context.onCustomEndpointPresetChange();
+
+            expect(harness.context.selected_custom_endpoint_preset).toBe(providerB);
+            expect(harness.context.oai_settings.custom_url).toBe('https://b.example/v1');
+            expect(harness.context.oai_settings).toMatchObject(liveParameters);
+            for (const parameterKey of noParameters) {
+                expect(providerB).not.toHaveProperty(parameterKey);
+            }
+        });
+
+        test('changes nothing when None is selected', async () => {
+            const harness = createHarness();
+            Object.assign(harness.context.oai_settings, liveParameters);
+
+            await harness.context.loadCustomEndpointPresets({ custom_endpoint_presets: savedProfiles(), selected_custom_endpoint_preset: { name: 'None' } });
+
+            for (const profile of harness.context.custom_endpoint_presets.filter(preset => preset.name !== 'None')) {
+                for (const parameterKey of noParameters) {
+                    expect(profile).not.toHaveProperty(parameterKey);
+                }
+            }
+            expect(harness.context.oai_settings).toMatchObject(liveParameters);
+            expect(harness.context.saveSettingsDebounced).not.toHaveBeenCalled();
+        });
     });
 });
 

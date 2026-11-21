@@ -316,28 +316,26 @@ export function pickCustomEndpointParameters(source) {
 }
 
 /**
- * Gives each endpoint profile the live value of every Additional Parameter that it does not store.
- * A profile without them uses the live values, so this keeps its requests the same while each profile
- * keeps its own values from then on. None is left out because it stores empty values.
+ * Gives one endpoint profile the live value of every Additional Parameter that it does not store.
+ * The live values belong to the profile that is selected, so only that profile may take them. A copy
+ * into any other profile would send the headers of one provider, which can hold a token, to another.
+ * None is left out because it stores empty values.
  *
- * @param {Record<string, any>[]} presets Custom endpoint profiles, changed in place
+ * @param {Record<string, any>|null|undefined} preset The selected Custom endpoint profile, changed in place
  * @param {Record<string, any>} settings Live OpenAI settings
- * @returns {boolean} True when a profile changed
+ * @returns {boolean} True when the profile changed
  */
-export function fillMissingCustomEndpointParameters(presets, settings) {
-    const liveParameters = pickCustomEndpointParameters(settings);
+export function fillMissingCustomEndpointParameters(preset, settings) {
+    if (!preset || preset.name === 'None') {
+        return false;
+    }
+
     let changed = false;
 
-    for (const preset of presets ?? []) {
-        if (!preset || preset.name === 'None') {
-            continue;
-        }
-
-        for (const [parameterKey, value] of Object.entries(liveParameters)) {
-            if (!Object.hasOwn(preset, parameterKey)) {
-                preset[parameterKey] = value;
-                changed = true;
-            }
+    for (const [parameterKey, value] of Object.entries(pickCustomEndpointParameters(settings))) {
+        if (!Object.hasOwn(preset, parameterKey)) {
+            preset[parameterKey] = value;
+            changed = true;
         }
     }
 

@@ -10339,9 +10339,10 @@ export async function loadCustomEndpointPresets(settings) {
         custom_endpoint_presets.push(selected_custom_endpoint_preset);
     }
 
-    // SillyBunny: an endpoint profile without Additional Parameters takes the live ones, so its requests do not
-    // change and it keeps its own values from then on. The settings save stores the filled values, so this runs once.
-    if (fillMissingCustomEndpointParameters(custom_endpoint_presets, oai_settings)) {
+    // SillyBunny: the live Additional Parameters belong to the selected endpoint profile. A selected profile that
+    // stores none takes them, so it keeps them from then on. No other profile takes them, because that would send
+    // the headers of one provider to another. The settings save stores the filled values, so this runs once.
+    if (fillMissingCustomEndpointParameters(selected_custom_endpoint_preset, oai_settings)) {
         saveSettingsDebounced();
     }
 

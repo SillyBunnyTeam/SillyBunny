@@ -319,21 +319,33 @@ describe('Chat Completion preset utilities', () => {
         });
     });
 
-    test('fills the Additional Parameters that a profile lacks with the live ones, and leaves None and stored values alone', () => {
+    test('fills the Additional Parameters that one profile lacks with the live ones, and leaves None and stored values alone', () => {
         const settings = { custom_include_body: '  top_k: 20\n', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' };
         const none = normalizeCustomEndpointPreset({ name: 'None' });
         const legacy = normalizeCustomEndpointPreset({ name: 'Legacy', url: 'https://legacy.example/v1' });
         const partial = normalizeCustomEndpointPreset({ name: 'Partial', custom_include_body: 'min_p: 0.1' });
         const stored = normalizeCustomEndpointPreset({ name: 'Stored', custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
 
-        expect(fillMissingCustomEndpointParameters([none, legacy, partial, stored], settings)).toBe(true);
+        expect(fillMissingCustomEndpointParameters(legacy, settings)).toBe(true);
+        expect(fillMissingCustomEndpointParameters(partial, settings)).toBe(true);
+        expect(fillMissingCustomEndpointParameters(stored, settings)).toBe(false);
+        expect(fillMissingCustomEndpointParameters(none, settings)).toBe(false);
 
         expect(legacy).toMatchObject(settings);
         expect(partial).toMatchObject({ custom_include_body: 'min_p: 0.1', custom_exclude_body: '- seed', custom_include_headers: 'X-Title: Story' });
         expect(stored).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
         expect(none).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
-        expect(fillMissingCustomEndpointParameters([none, legacy, partial, stored], { ...settings, custom_include_body: 'changed: 1' })).toBe(false);
+        expect(fillMissingCustomEndpointParameters(legacy, { ...settings, custom_include_body: 'changed: 1' })).toBe(false);
         expect(legacy.custom_include_body).toBe('  top_k: 20\n');
+    });
+
+    test('fills nothing when there is no profile or the live settings hold none of the parameters', () => {
+        const legacy = normalizeCustomEndpointPreset({ name: 'Legacy' });
+
+        expect(fillMissingCustomEndpointParameters(null, { custom_include_body: 'top_k: 20' })).toBe(false);
+        expect(fillMissingCustomEndpointParameters(undefined, { custom_include_body: 'top_k: 20' })).toBe(false);
+        expect(fillMissingCustomEndpointParameters(legacy, {})).toBe(false);
+        expect(legacy).toEqual({ name: 'Legacy', url: '', key: '', model: '', secretId: '' });
     });
 
     test('picks only the Additional Parameters from live settings or a profile', () => {
