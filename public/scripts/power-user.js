@@ -41,6 +41,8 @@ import {
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
+// SillyBunny: the user picks the Markdown engine; markdown-it is the default and Showdown the alternative.
+import { MARKDOWN_ENGINES, normalizeMarkdownEngine } from './markdown-engine.js';
 import {
     groups,
     resetSelectedGroup,
@@ -369,6 +371,8 @@ export const power_user = {
         target_length: 400,
     },
     markdown_escape_strings: '',
+    // SillyBunny: chat Markdown engine; only 'showdown' selects Showdown, and a missing or unknown value means markdown-it.
+    markdown_engine: MARKDOWN_ENGINES.MARKDOWN_IT,
     chat_truncation: 100,
     ooc_context_depth: -1,
     html_context_depth: -1,
@@ -2559,6 +2563,8 @@ export async function loadPowerUserSettings(settings, data) {
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
     $('#disable_group_trimming').prop('checked', power_user.disable_group_trimming);
     $('#markdown_escape_strings').val(power_user.markdown_escape_strings);
+    // SillyBunny: show markdown-it for a missing or unknown engine without changing the stored value. Setting a value fires no event, so the native input event tells the Markdown Engine toggle row to show the loaded value.
+    $('#markdown_engine').val(normalizeMarkdownEngine(power_user.markdown_engine)).each((_, select) => select.dispatchEvent(new Event('input', { bubbles: true })));
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     $('#waifuMode').prop('checked', power_user.waifuMode);
     $('#movingUImode').prop('checked', power_user.movingUI);
@@ -4430,6 +4436,14 @@ jQuery(async () => {
         power_user.markdown_escape_strings = String($(this).val());
         saveSettingsDebounced();
         reloadMarkdownProcessor();
+    });
+
+    // SillyBunny: a new Markdown engine applies to the open chat at once. The choice is saved first, so a chat reload that fails cannot lose it.
+    $('#markdown_engine').on('change', async function () {
+        power_user.markdown_engine = normalizeMarkdownEngine($(this).val());
+        saveSettingsDebounced();
+        reloadMarkdownProcessor();
+        await reloadCurrentChat();
     });
 
     $('.start-reply-with-input').on('input', function () {

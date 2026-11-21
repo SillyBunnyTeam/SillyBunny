@@ -6141,6 +6141,17 @@
                                     <small data-i18n="Auto-fix Markdown">Auto-fix Markdown</small>
                                     <small class="ds-row-subtitle" data-i18n="Fix common Markdown formatting issues, such as misplaced spaces and unmatched asterisks">Fix common Markdown formatting issues, such as misplaced spaces and unmatched asterisks</small>
                                 </label>
+                                <!-- SillyBunny: picks the chat Markdown engine; markdown-it is the default and Showdown the legacy fallback. The shell replaces the label and select with a toggle row that keeps this select as its stored value. -->
+                                <div>
+                                    <label for="markdown_engine">
+                                        <small data-i18n="Markdown Engine">Markdown Engine</small>
+                                        <small class="ds-row-subtitle" data-sb-copy-placeholder="true">TODO(copy)</small>
+                                    </label>
+                                    <select id="markdown_engine">
+                                        <option value="markdown-it">markdown-it</option>
+                                        <option value="showdown">Showdown</option>
+                                    </select>
+                                </div>
                                 <label class="checkbox_label" for="forbid_external_media" title="Disallow embedded media from other domains in chat messages." data-i18n="[title]Disallow embedded media from other domains in chat messages">
                                     <input id="forbid_external_media" type="checkbox" />
                                     <small data-i18n="Forbid External Media">Forbid External Media</small>
