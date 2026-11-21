@@ -38,6 +38,8 @@ import {
     name2,
     neutralCharacterName,
     newAssistantChat,
+    // SillyBunny: /go and /char leave a temporary chat through the same seam as every other way into a chat.
+    flushPendingChatSavesForNavigation,
     online_status,
     reloadCurrentChat,
     refreshSwipeButtons,
@@ -73,7 +75,8 @@ import { getMessageTimeStamp, isMobile } from './RossAscends-mods.js';
 import { hideChatMessageRange } from './chats.js';
 import { getContext, saveMetadataDebounced } from './extensions.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
-import { findGroupMemberId, groups, is_group_generating, openGroupById, regenerateGroup, resetSelectedGroup, saveGroupChat, selected_group, getGroupMembers } from './group-chats.js';
+// SillyBunny: member commands use pagination-independent action transport
+import { findGroupMemberId, groups, is_group_generating, openGroupById, regenerateGroup, resetSelectedGroup, saveGroupChat, selected_group, getGroupMembers, runGroupMemberActionByChid } from './group-chats.js';
 import { chat_completion_sources, MINIMAX_ENDPOINT, oai_settings, POLLINATIONS_ENDPOINT, promptManager, SILICONFLOW_ENDPOINT, ZAI_ENDPOINT } from './openai.js';
 import { user_avatar } from './personas.js';
 import { addEphemeralStoppingString, chat_styles, context_presets, flushEphemeralStoppingStrings, playMessageSound, power_user } from './power-user.js';
@@ -82,7 +85,8 @@ import { decodeTextTokens, getAvailableTokenizers, getFriendlyTokenizerName, get
 import { debounce, delay, equalsIgnoreCaseAndAccents, findChar, getCharIndex, isFalseBoolean, isTrueBoolean, onlyUnique, regexFromString, showFontAwesomePicker, stringToRange, trimToEndSentence, trimToStartSentence, waitUntilCondition } from './utils.js';
 import { registerVariableCommands, resolveVariable } from './variables.js';
 import { registerActionLoaderSlashCommands } from './action-loader-slashcommands.js';
-import { background_settings } from './backgrounds.js';
+// SillyBunny: commands pick from every background, built or not
+import { background_settings, getBackgroundTargets } from './backgrounds.js';
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { SlashCommandClosureResult } from './slash-commands/SlashCommandClosureResult.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -92,6 +96,9 @@ import { SlashCommandAbortController } from './slash-commands/SlashCommandAbortC
 import { SlashCommandNamedArgumentAssignment } from './slash-commands/SlashCommandNamedArgumentAssignment.js';
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+// SillyBunny: slash-command button lists use the shared trailing-action rows.
+import { createButtonRow } from './sillybunny-editor/rows.js';
 import { commonEnumProviders, enumIcons, commonEnumMatchProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { SlashCommandBreakController } from './slash-commands/SlashCommandBreakController.js';
 import { SlashCommandExecutionError } from './slash-commands/SlashCommandExecutionError.js';
@@ -4117,36 +4124,28 @@ async function buttonsCallback(args, text) {
             scrollableContainer.classList.add('scrollable-buttons-container');
 
             for (const [result, button] of resultToButtonMap) {
-                const buttonElement = document.createElement('div');
-                buttonElement.classList.add('menu_button', 'wide100p');
-
-                if (multiple) {
-                    buttonElement.classList.add('toggleable');
-                    buttonElement.dataset.toggleValue = String(result);
-                    buttonElement.addEventListener('click', async () => {
-                        buttonElement.classList.toggle('toggled');
-                        if (buttonElement.classList.contains('toggled')) {
+                const buttonRow = createButtonRow({
+                    label: button.text,
+                    icon: button.icon?.replace(/^fa-/, ''),
+                    field: `slash-button-${result}`,
+                    onActivate: multiple ? () => {
+                        buttonRow.row.classList.toggle('toggled');
+                        if (buttonRow.row.classList.contains('toggled')) {
                             multipleToggledState.add(result);
                         } else {
                             multipleToggledState.delete(result);
                         }
-                    });
+                    } : undefined,
+                });
+                const buttonElement = buttonRow.row;
+                buttonElement.classList.add('wide100p');
+
+                if (multiple) {
+                    buttonElement.classList.add('toggleable');
+                    buttonElement.dataset.toggleValue = String(result);
                 } else {
                     buttonElement.classList.add('result-control');
                     buttonElement.dataset.result = String(result);
-                }
-
-                // Add icon if provided
-                if (button.icon) {
-                    const icon = document.createElement('i');
-                    icon.className = `fa-solid ${button.icon}`;
-                    icon.style.marginRight = '0.5em';
-                    buttonElement.appendChild(icon);
-                    const textSpan = document.createElement('span');
-                    textSpan.textContent = button.text;
-                    buttonElement.appendChild(textSpan);
-                } else {
-                    buttonElement.innerText = button.text;
                 }
 
                 // Add tooltip if provided
@@ -4178,7 +4177,12 @@ async function buttonsCallback(args, text) {
                 return typeof result === 'number' ? resultToButtonMap.get(result)?.text ?? '' : '';
             };
 
-            popup = new Popup(popupContainer, POPUP_TYPE.TEXT, '', { okButton: multiple ? t`Ok` : t`Cancel`, allowVerticalScrolling: true });
+            popup = new Popup(popupContainer, POPUP_TYPE.TEXT, '', {
+                okButton: multiple ? t`Ok` : t`Cancel`,
+                allowVerticalScrolling: true,
+                // SillyBunny: /buttons content is an action Dialog, not an Alert full of loose controls.
+                tier: 'dialog',
+            });
             popup.show()
                 .then((result => resolve(getResult(result))))
                 .catch(() => resolve(''));
@@ -4859,32 +4863,11 @@ async function unhideMessageCallback(args, value) {
  * Copium for running group actions when the member is offscreen.
  * @param {number} chid - character ID
  * @param {string} action - one of 'enable', 'disable', 'up', 'down', 'view', 'remove'
- * @returns {void}
+ * @returns {Promise<void>}
  */
 function performGroupMemberAction(chid, action) {
-    const memberSelector = `.group_member[data-chid="${chid}"]`;
-    // Do not optimize. Paginator gets recreated on every action
-    const paginationSelector = '#rm_group_members_pagination';
-    const pageSizeSelector = '#rm_group_members_pagination select';
-    let wasOffscreen = false;
-    let paginationValue = null;
-    let pageValue = null;
-
-    if ($(memberSelector).length === 0) {
-        wasOffscreen = true;
-        paginationValue = Number($(pageSizeSelector).val());
-        pageValue = $(paginationSelector).pagination('getCurrentPageNum');
-        $(pageSizeSelector).val($(pageSizeSelector).find('option').last().val()).trigger('change');
-    }
-
-    $(memberSelector).find(`[data-action="${action}"]`).trigger('click');
-
-    if (wasOffscreen) {
-        $(pageSizeSelector).val(paginationValue).trigger('change');
-        if ($(paginationSelector).length) {
-            $(paginationSelector).pagination('go', pageValue);
-        }
-    }
+    // SillyBunny: off-page actions never reconfigure the visible list
+    return runGroupMemberActionByChid(chid, action);
 }
 
 async function disableGroupMemberCallback(_, arg) {
@@ -4900,7 +4883,8 @@ async function disableGroupMemberCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'disable');
+    // SillyBunny: finish the member mutation before resolving the command
+    await performGroupMemberAction(chid, 'disable');
     return '';
 }
 
@@ -4917,7 +4901,8 @@ async function enableGroupMemberCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'enable');
+    // SillyBunny: finish the member mutation before resolving the command
+    await performGroupMemberAction(chid, 'enable');
     return '';
 }
 
@@ -4934,7 +4919,8 @@ async function moveGroupMemberUpCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'up');
+    // SillyBunny: finish the member mutation before resolving the command
+    await performGroupMemberAction(chid, 'up');
     return '';
 }
 
@@ -4951,7 +4937,8 @@ async function moveGroupMemberDownCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'down');
+    // SillyBunny: finish the member mutation before resolving the command
+    await performGroupMemberAction(chid, 'down');
     return '';
 }
 
@@ -4973,7 +4960,8 @@ async function peekCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'view');
+    // SillyBunny: finish the member mutation before resolving the command
+    await performGroupMemberAction(chid, 'view');
     return '';
 }
 
@@ -4999,7 +4987,8 @@ async function removeGroupMemberCallback(_, arg) {
         return '';
     }
 
-    performGroupMemberAction(chid, 'remove');
+    // SillyBunny: finish the member mutation before resolving the command
+    await performGroupMemberAction(chid, 'remove');
     return '';
 }
 
@@ -5150,7 +5139,10 @@ async function goToCharacterCallback(_, name) {
     const character = findChar({ name: name });
     if (character) {
         const chid = getCharIndex(character);
-        await openChat(String(chid));
+        // SillyBunny: the user may decline to leave a temporary chat, and then nothing changes.
+        if (!await openChat(String(chid))) {
+            return '';
+        }
         setActiveCharacter(character.avatar);
         setActiveGroup(null);
         return character.name;
@@ -5167,10 +5159,15 @@ async function goToCharacterCallback(_, name) {
 }
 
 async function openChat(chid) {
+    // SillyBunny: leaving a temporary chat asks first; pending saves of a normal chat land before the switch.
+    if (!await flushPendingChatSavesForNavigation()) {
+        return false;
+    }
     resetSelectedGroup();
     setCharacterId(chid);
     await delay(1);
     await reloadCurrentChat();
+    return true;
 }
 
 /**
@@ -5635,7 +5632,8 @@ async function deleteCharacterCallback(args) {
             ? t`Are you sure you want to delete "${character.name}" and all associated chats? This action cannot be undone.`
             : t`Are you sure you want to delete "${character.name}"? This action cannot be undone.`;
 
-        const result = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const result = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             return 'false';
         }
@@ -6256,7 +6254,8 @@ function helpCommandCallback(_, type) {
         case 'hotkeys':
         case 'hotkey':
         case '3':
-            sendSystemMessage(system_message_types.HOTKEYS);
+            // SillyBunny: the Keyboard Shortcuts window is the one shortcut overview, so no chat message is shown.
+            import('./sillybunny-shortcuts.js').then(({ openShortcutsWindow }) => openShortcutsWindow());
             break;
         case 'macros':
         case 'macro':
@@ -6286,7 +6285,8 @@ function setBackgroundCallback(_, bg) {
 
     console.log('Set background to ' + bg);
 
-    const bgElements = Array.from(document.querySelectorAll('.bg_example')).map((x) => ({ element: x, bgfile: x.getAttribute('bgfile') }));
+    // SillyBunny: a collapsed folder in the gallery builds no thumbnails, so the targets are not read from the DOM alone.
+    const bgElements = getBackgroundTargets();
 
     const fuse = new Fuse(bgElements, { keys: ['bgfile'] });
     const result = fuse.search(bg);
@@ -6296,11 +6296,7 @@ function setBackgroundCallback(_, bg) {
         return '';
     }
 
-    const bgElement = result[0].item.element;
-
-    if (bgElement instanceof HTMLElement) {
-        bgElement.click();
-    }
+    result[0].item.select();
 
     return '';
 }

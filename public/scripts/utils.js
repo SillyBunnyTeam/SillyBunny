@@ -12,12 +12,15 @@ import { isMobile } from './RossAscends-mods.js';
 import { collapseNewlines, power_user } from './power-user.js';
 import { debounce_timeout } from './constants.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { getTagsList } from './tags.js';
 import { groups, selected_group } from './group-chats.js';
 import { getCurrentLocale, t } from './i18n.js';
 import { importWorldInfo } from './world-info.js';
 import { mapSillyBunnyVersionToStEquivalent } from './sillybunny-version-map.js';
+// SillyBunny: frame icon selection with an adopted search entry and keyboard-operable icons.
+import { iconPickerOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 
 export const shiftUpByOne = (e, i, a) => a[i] = e + 1;
 export const shiftDownByOne = (e, i, a) => a[i] = e - 1;
@@ -2499,7 +2502,8 @@ export async function checkOverwriteExistingData(type, existingNames, name, { in
         return true;
     }
 
-    const overwrite = interactive && await Popup.show.confirm(`${type} ${actionName}`, `<p>A ${type.toLowerCase()} with the same name already exists:<br />${existing}</p>Do you want to overwrite it?`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const overwrite = interactive && await Popup.show.confirm(`${type} ${actionName}`, `<p>A ${type.toLowerCase()} with the same name already exists:<br />${existing}</p>Do you want to overwrite it?`, confirmVerb(t`Overwrite`, { destructive: true }));
     if (!overwrite) {
         toastr.warning(`${type} ${actionName.toLowerCase()} cancelled. A ${type.toLowerCase()} with the same name already exists:<br />${existing}`, `${type} ${actionName}`, { escapeHtml: false });
         return false;
@@ -2665,7 +2669,8 @@ export async function showFontAwesomePicker(customList = null) {
         }
     }
     let value = '';
-    const picker = new Popup(dom, POPUP_TYPE.TEXT, null, { allowVerticalScrolling: true, okButton: 'No Icon', cancelButton: 'Cancel' });
+    // SillyBunny: Popup has no frame-search option; adopt its existing body search entry.
+    const picker = new Popup(dom, POPUP_TYPE.TEXT, null, { ...iconPickerOptions(dom), allowVerticalScrolling: true, okButton: 'No Icon', cancelButton: 'Cancel' });
     await picker.show();
     if (picker.result == POPUP_RESULT.AFFIRMATIVE) {
         return value;

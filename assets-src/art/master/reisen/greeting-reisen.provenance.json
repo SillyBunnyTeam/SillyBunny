@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "greeting-reisen.png",
+    "sha256": "3d33145be01ffc6e51ad44163e6aef8c621fb71d6eacc165e6d6ca21958ec6cb",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:108b231f3276516cfa1d86333105d2e6c28994caaa5e29294c77bf9fd13b802f"
+}

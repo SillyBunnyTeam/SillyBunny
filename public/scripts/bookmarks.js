@@ -28,6 +28,7 @@ import {
 import { loader } from './action-loader.js';
 import { getLastMessageId } from './macros.js';
 import { Popup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -36,6 +37,8 @@ import { createTagMapFromList } from './tags.js';
 import { renderTemplateAsync } from './templates.js';
 import { compressRequest } from './request-compression.js';
 import { t } from './i18n.js';
+// SillyBunny: a temporary chat has no file to branch or checkpoint from.
+import { assertChatFileWritable } from './sillybunny-temporary-chat-state.js';
 
 import {
     getUniqueName,
@@ -350,7 +353,8 @@ export async function convertSoloToGroupChat() {
         return;
     }
 
-    const confirm = await Popup.show.confirm(t`Convert to group chat`, t`Are you sure you want to convert this chat to a group chat?` + '<br />' + t`This cannot be reverted.`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await Popup.show.confirm(t`Convert to Group Chat`, t`Are you sure you want to convert this chat to a group chat?` + '<br />' + t`This cannot be reverted.`, confirmVerb(t`Convert to Group`));
     if (!confirm) {
         return;
     }
@@ -505,6 +509,8 @@ function registerBookmarksSlashCommands() {
         name: 'branch-create',
         returns: 'Name of the new branch',
         callback: async (args, text) => {
+            // SillyBunny: say why instead of returning an empty name.
+            assertChatFileWritable();
             const mesId = Number(args.mesId ?? text ?? getLastMessageId());
             if (!validateMessageId(mesId, 'Create Branch')) return '';
 
@@ -534,6 +540,8 @@ function registerBookmarksSlashCommands() {
         name: 'checkpoint-create',
         returns: 'Name of the new checkpoint',
         callback: async (args, text) => {
+            // SillyBunny: say why instead of returning an empty name.
+            assertChatFileWritable();
             const mesId = Number(args.mesId ?? getLastMessageId());
             if (!validateMessageId(mesId, 'Create Checkpoint')) return '';
 

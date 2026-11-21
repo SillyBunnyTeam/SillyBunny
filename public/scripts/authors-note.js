@@ -9,9 +9,11 @@ import {
     saveSettingsDebounced,
     this_chid,
 } from '../script.js';
+// SillyBunny: the side-panel adapter owns presentation while source controls keep their existing handlers.
+import { closeAuthorsNotePanel, refreshAuthorsNotePanel, registerAuthorsNotePanel, toggleAuthorsNotePanel } from './sillybunny-editor/adapters/side-panels.js';
 import { getGroupMembers, getSelectedGroupSpeakerAvatar, selected_group } from './group-chats.js';
 import { extension_settings, getContext, saveMetadataDebounced } from './extensions.js';
-import { getCharaFilename, debounce, delay } from './utils.js';
+import { getCharaFilename, debounce } from './utils.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import { debounce_timeout } from './constants.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
@@ -594,41 +596,8 @@ function onANMenuItemClick() {
         return;
     }
 
-    //show AN if it's hidden
-    const $ANcontainer = $('#floatingPrompt');
-    if ($ANcontainer.css('display') !== 'flex') {
-        $ANcontainer.addClass('resizing');
-        $ANcontainer.css('display', 'flex');
-        $ANcontainer.css('opacity', 0.0);
-        $ANcontainer.transition({
-            opacity: 1.0,
-            duration: animation_duration,
-        }, async function () {
-            await delay(50);
-            $ANcontainer.removeClass('resizing');
-        });
-
-        //auto-open the main AN inline drawer
-        if ($('#ANBlockToggle')
-            .siblings('.inline-drawer-content')
-            .css('display') !== 'block') {
-            $ANcontainer.addClass('resizing');
-            $('#ANBlockToggle').trigger('click');
-        }
-    } else {
-        //hide AN if it's already displayed
-        $ANcontainer.addClass('resizing');
-        $ANcontainer.transition({
-            opacity: 0.0,
-            duration: animation_duration,
-        }, async function () {
-            await delay(50);
-            $ANcontainer.removeClass('resizing');
-        });
-        setTimeout(function () {
-            $ANcontainer.hide();
-        }, animation_duration);
-    }
+    // SillyBunny: the registered controller owns panel visibility, focus return, and chat-gap layout.
+    toggleAuthorsNotePanel(this);
 
     //duplicate options menu close handler from script.js
     //because this listener takes priority
@@ -637,6 +606,8 @@ function onANMenuItemClick() {
 
 async function onChatChanged() {
     loadSettings();
+    // SillyBunny: chat loads set radio.checked without a change event, so conditional rows must refresh here.
+    refreshAuthorsNotePanel();
     setFloatingPrompt();
     const context = getContext();
 
@@ -674,6 +645,8 @@ function onAllowWIScanCheckboxChanged() {
  */
 // Inserts the extension first since it's statically imported
 export function initAuthorsNote() {
+    // SillyBunny: register the live source controls before their existing persistence handlers are bound.
+    registerAuthorsNotePanel();
     $('#extension_floating_prompt').on('input', onExtensionFloatingPromptInput);
     $('#extension_floating_interval').on('input', onExtensionFloatingIntervalInput);
     $('#extension_floating_depth').on('input', onExtensionFloatingDepthInput);
@@ -688,14 +661,8 @@ export function initAuthorsNote() {
     $('input[name="extension_floating_position"]').on('change', onExtensionFloatingPositionInput);
     $('input[name="extension_default_position"]').on('change', onDefaultPositionInput);
     $('input[name="extension_floating_char_position"]').on('change', onExtensionFloatingCharPositionInput);
-    $('#ANClose').on('click', function () {
-        $('#floatingPrompt').transition({
-            opacity: 0,
-            duration: animation_duration,
-            easing: 'ease-in-out',
-        });
-        setTimeout(function () { $('#floatingPrompt').hide(); }, animation_duration);
-    });
+    // SillyBunny: the engine header replaces the legacy close glyph but preserves its Escape trigger.
+    $('#ANClose').on('click', () => closeAuthorsNotePanel());
     $('#option_toggle_AN').on('click', onANMenuItemClick);
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({

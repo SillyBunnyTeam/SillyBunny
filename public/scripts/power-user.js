@@ -36,6 +36,8 @@ import {
     updateMessageMetaBadges,
     updateMessageTokenAccounting,
     refreshMessageModelIcons,
+    // SillyBunny: /random leaves a temporary chat through the same seam as every other way into a chat.
+    flushPendingChatSavesForNavigation,
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
@@ -56,8 +58,11 @@ import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, toggleDrawer } from './utils.js';
+import { debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
+// SillyBunny: the shared sort control delegates Groups persistence to the
+// view-scoped state module
+import { getCharacterListView, setListSort } from './sillybunny-character-list-state.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { PARSER_FLAG } from './slash-commands/SlashCommandParser.js';
@@ -65,6 +70,7 @@ import { AUTOCOMPLETE_SELECT_KEY, AUTOCOMPLETE_STATE, AUTOCOMPLETE_WIDTH } from 
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup, fixToastrForDialogs } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { loadSystemPrompts } from './sysprompt.js';
 import { fuzzySearchCategories } from './filters.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -77,11 +83,21 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
-import { appendCustomCss, buildImportedTheme, getGeneratedCustomCss, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
+import { THEME_RESET_DEFAULTS, appendCustomCss, buildImportedTheme, getGeneratedCustomCss, getRenamedBundledThemeName, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
+// SillyBunny: registered side panels persist a side preference without applying draggable geometry.
+import { applyMovingUIState, configureMovingUIState, resetSidePanelSides } from './sillybunny-editor/side-panel.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
 import { autoFixMarkdown } from './auto-fix-markdown.js';
+// SillyBunny: persisted one-level Characters and Groups folders.
+import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
+// SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
+import { customCssAiOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+import { setIconBusy } from './sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
+import { createBanner } from './sillybunny-editor/banner.js'; // SillyBunny: the shared banner
+// SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
+import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -170,7 +186,11 @@ const SILLYBUNNY_PALETTE_BINDINGS = Object.freeze([
     ['border_color', '#border-color-picker', 'border'],
 ]);
 const SB_ACCENT_PROFILE_SEED_VERSION = 2;
-const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
+// SillyBunny: settings files below this revision may hold the text colors of a bundled theme from before they were
+// raised to the contrast floor; sillybunny-theme-revisions.js has the revisions and the matching rule.
+const SB_THEME_TEXT_REVISION = 1;
+// Preserve the legacy account-storage key; removing the drawer must not clear existing state.
+export const SB_ACCENT_PROFILES_DRAWER_KEY = 'SBAccentProfilesDrawerExpanded';
 const MAX_SB_ACCENT_PROFILE_NAME_LENGTH = 40;
 const SILLYBUNNY_ACCENT_PROFILE_SEEDS = Object.freeze([
     { name: 'Warm Signal', quote_text_color: 'rgba(201, 198, 168, 1)', underline_text_color: 'rgba(166, 164, 147, 1)' },
@@ -217,6 +237,48 @@ const THEME_COLOR_PROPERTIES = Object.freeze([
     { key: 'border_color', selector: '#border-color-picker', type: 'border' },
 ]);
 
+// SillyBunny: the ten color keys of each historical default palette, in order: bundled Dark V 1.0, the stale
+// pre-release Libadwaita Dark seed, the stale pre-release Libadwaita Light seed. Startup repair replaces saved
+// colors only when every key matches one palette.
+const LEGACY_DEFAULT_THEME_PALETTES = Object.freeze([
+    {
+        main_text_color: 'rgba(207, 207, 197, 1)',
+        italics_text_color: 'rgba(145, 145, 145, 1)',
+        underline_text_color: 'rgba(145, 145, 145, 1)',
+        quote_text_color: 'rgba(198, 193, 151, 1)',
+        blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        chat_tint_color: 'rgba(29, 33, 40, 0.9)',
+        user_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        bot_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        shadow_color: 'rgba(0, 0, 0, 0.9)',
+        border_color: 'rgba(0, 0, 0, 1)',
+    },
+    {
+        main_text_color: 'rgba(207, 207, 197, 1)',
+        italics_text_color: 'rgba(161, 162, 156, 1)',
+        underline_text_color: 'rgba(161, 162, 156, 1)',
+        quote_text_color: 'rgba(198, 193, 151, 1)',
+        blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        chat_tint_color: 'rgba(29, 33, 40, 0.9)',
+        user_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        bot_mes_blur_tint_color: 'rgba(29, 33, 40, 0.9)',
+        shadow_color: 'rgba(5, 6, 7, 0.9)',
+        border_color: 'rgba(5, 6, 7, 1)',
+    },
+    {
+        main_text_color: 'rgba(46, 45, 41, 1)',
+        italics_text_color: 'rgba(94, 92, 86, 1)',
+        underline_text_color: 'rgba(94, 92, 86, 1)',
+        quote_text_color: 'rgba(144, 137, 89, 1)',
+        blur_tint_color: 'rgba(250, 249, 245, 0.9)',
+        chat_tint_color: 'rgba(250, 249, 245, 0.9)',
+        user_mes_blur_tint_color: 'rgba(250, 249, 245, 0.9)',
+        bot_mes_blur_tint_color: 'rgba(250, 249, 245, 0.9)',
+        shadow_color: 'rgba(0, 0, 6, 0.1)',
+        border_color: 'rgba(0, 0, 6, 0.15)',
+    },
+]);
+
 const THEME_EFFECT_PROPERTIES = Object.freeze([
     { key: 'customCSS-bg-blur', selector: '#background_blur', counterSelector: '#background_blur_counter', cssVar: '--customCSS-bg-blur', defaultValue: 0, min: 0, max: 10, activeClass: 'sb-bg-blur' },
     { key: 'customCSS-bg-opacity', selector: '#background_opacity', counterSelector: '#background_opacity_counter', cssVar: '--customCSS-bg-opacity', defaultValue: 1, min: 0, max: 1 },
@@ -256,7 +318,7 @@ const CHAT_STYLE_BODY_CLASSES = Object.freeze({
 
 const LEGACY_CHAT_STYLE_BODY_CLASSES = Object.freeze([]);
 const NATIVE_CHAT_STYLE_STYLESHEET_ID = 'sillybunny-native-chat-styles';
-const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20260606a';
+const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20261120a';
 
 function ensureNativeChatStyleStylesheet() {
     if (document.getElementById(NATIVE_CHAT_STYLE_STYLESHEET_ID)) {
@@ -358,6 +420,16 @@ export const power_user = {
     quote_text_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeQuoteColor').trim()}`,
     sb_accent_profiles: SILLYBUNNY_ACCENT_PROFILE_SEEDS.map(profile => ({ ...profile })),
     sb_accent_profiles_seed_version: SB_ACCENT_PROFILE_SEED_VERSION,
+    // SillyBunny: folders are separate from the upstream tag-folder settings.
+    sb_folders: {
+        version: 1,
+        migratedFromTags: false,
+        characters: { folders: [], members: {} },
+        groups: { folders: [], members: {} },
+    },
+    sb_preset_autosave: false,
+    characterEditorQuickEdit: false,
+    spoiler_free_mode: false,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
     chat_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeChatTintColor').trim()}`,
     user_mes_blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUserMesBlurTintColor').trim()}`,
@@ -367,13 +439,15 @@ export const power_user = {
 
     custom_css: '',
     google_font: '',
+    // SillyBunny: imported font files; the choice itself stays in `google_font`.
+    sb_fonts: [],
 
     waifuMode: false,
     movingUI: false,
     movingUIState: {},
     movingUIPreset: '',
     noShadows: false,
-    theme: 'Dark V 1.0',
+    theme: 'Libadwaita Dark',
 
     gestures: true,
     auto_swipe: false,
@@ -545,6 +619,14 @@ export const power_user = {
     media_display: MEDIA_DISPLAY.LIST,
     image_overswipe: IMAGE_OVERSWIPE.GENERATE,
 };
+
+configureMovingUIState({
+    getState: () => power_user.movingUIState,
+    setState: state => {
+        power_user.movingUIState = state;
+        saveSettingsDebounced();
+    },
+});
 
 setSlashCommandParserSettingsGetter(() => ({
     experimentalMacroEngine: power_user.experimental_macro_engine,
@@ -1200,7 +1282,8 @@ function switchUiMode() {
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     if (power_user.fast_ui_mode) {
         $('#blur-strength-block').css('opacity', '0.2');
-        $('#blur_strength').prop('disabled', true).attr('title', 'Disabled — Fast UI Mode is on');
+        // SillyBunny: capitalisation by DESIGN.md
+        $('#blur_strength').prop('disabled', true).attr('title', 'Disabled — Fast UI Mode Is On');
     } else {
         $('#blur-strength-block').css('opacity', '1');
         $('#blur_strength').prop('disabled', false).attr('title', '');
@@ -1218,67 +1301,32 @@ function switchWaifuMode() {
     scrollChatToBottom();
 }
 
-const characterSpoilerFreePanelSelector = '#form_create [data-sb-character-editor-panel]:not([data-sb-character-editor-panel="char-info"]):not([data-sb-character-editor-panel="metadata"])';
-
-function showCharacterEditorMetadataPanel() {
-    const metadataTab = document.querySelector('#sb_character_editor_subtabs [data-sb-character-editor-tab="metadata"]');
-
-    if (metadataTab instanceof HTMLElement) {
-        metadataTab.click();
-    }
+// SillyBunny: Quick edit and Spoiler Free Mode are separate settings that both only add a class to the character
+// sheet. Quick edit (`characterEditorQuickEdit`) is the beginner's view. Spoiler Free Mode (the upstream
+// `spoiler_free_mode` key) hides the character definitions until the user reveals them for the open character.
+// The sets they hide combine, so neither handler reads or writes the other's setting.
+function applyCharacterEditorQuickEdit() {
+    const enabled = !!power_user.characterEditorQuickEdit;
+    document.getElementById('form_create')?.classList.toggle('sb-editor-sheet--quick-edit', enabled);
+    $('#sb_character_editor_quick_edit').attr('aria-pressed', String(enabled));
 }
 
-function syncActiveCharacterEditorPanel() {
-    const activeTab = document.querySelector('#sb_character_editor_subtabs [data-sb-character-editor-tab][aria-selected="true"]');
-
-    if (activeTab instanceof HTMLElement) {
-        activeTab.click();
-    }
+export function setCharacterEditorQuickEdit(enabled) {
+    power_user.characterEditorQuickEdit = !!enabled;
+    applyCharacterEditorQuickEdit();
+    saveSettingsDebounced();
 }
 
-// Exported so the editor sub-tabs (sillybunny-tabs.js) can reveal the hidden fields when a dimmed tab is tapped.
-export function setCharacterSpoilerFreeFieldsHidden(hidden) {
-    const form = document.getElementById('form_create');
-    const activePanel = form?.querySelector('[data-sb-character-editor-panel]:not([hidden])');
-    const activePanelCanRemainVisible = activePanel instanceof HTMLElement
-        && ['char-info', 'metadata'].includes(activePanel.dataset.sbCharacterEditorPanel ?? '');
-
-    if (form instanceof HTMLElement) {
-        form.dataset.sbSpoilerFreeFieldsHidden = String(hidden);
-    }
-
-    if (hidden) {
-        document.querySelectorAll(characterSpoilerFreePanelSelector).forEach(panel => {
-            if (!(panel instanceof HTMLElement)) {
-                return;
-            }
-
-            panel.hidden = true;
-            panel.setAttribute('aria-hidden', 'true');
-        });
-    }
-
-    $('#spoiler_free_desc').toggleClass('flex1', hidden);
-    $('#creators_note_desc_hidden').toggle(hidden);
-    // The eye mirrors the actual state, so it stays correct when the fields are revealed from a sub-tab or at load.
-    $('#spoiler_free_desc_button').toggleClass('fa-eye', !hidden).toggleClass('fa-eye-slash', hidden);
-
-    // Always re-click a tab so the sub-tab buttons pick up their spoiler-hidden state.
-    if (hidden && !activePanelCanRemainVisible) {
-        showCharacterEditorMetadataPanel();
-    } else {
-        syncActiveCharacterEditorPanel();
-    }
+function applyCharacterEditorSpoilerFree() {
+    const enabled = !!power_user.spoiler_free_mode;
+    document.getElementById('form_create')?.classList.toggle('sb-editor-sheet--spoiler-free', enabled);
+    $('#spoiler_free_mode').prop('checked', enabled);
 }
 
-function switchSpoilerMode() {
-    setCharacterSpoilerFreeFieldsHidden(power_user.spoiler_free_mode);
-}
-
-function peekSpoilerMode() {
-    const form = document.getElementById('form_create');
-    const isHidden = form instanceof HTMLElement && form.dataset.sbSpoilerFreeFieldsHidden === 'true';
-    setCharacterSpoilerFreeFieldsHidden(!isHidden);
+export function setCharacterEditorSpoilerFree(enabled) {
+    power_user.spoiler_free_mode = !!enabled;
+    applyCharacterEditorSpoilerFree();
+    saveSettingsDebounced();
 }
 
 function switchMovingUI() {
@@ -1305,7 +1353,8 @@ function applyNoShadows() {
     $('#noShadowsmode').prop('checked', power_user.noShadows);
     if (power_user.noShadows) {
         $('#shadow-width-block').css('opacity', '0.2');
-        $('#shadow_width').prop('disabled', true).attr('title', 'Disabled — No Shadows mode is on');
+        // SillyBunny: capitalisation by DESIGN.md
+        $('#shadow_width').prop('disabled', true).attr('title', 'Disabled — No Shadows Mode Is On');
     } else {
         $('#shadow-width-block').css('opacity', '1');
         $('#shadow_width').prop('disabled', false).attr('title', '');
@@ -1494,6 +1543,7 @@ function applyThemeColor(type) {
     if (type === 'quote') {
         document.documentElement.style.setProperty('--SmartThemeQuoteColor', power_user.quote_text_color);
     }
+    if (type === 'quote' || type === undefined) syncAccentPresetState(); // SillyBunny: keep the pressed accent preset in step
     /*     if (type === 'fastUIBG') {
             document.documentElement.style.setProperty('--SmartThemeFastUIBGColor', power_user.fastui_bg_color);
         } */
@@ -1530,7 +1580,6 @@ function syncThemeColorPickersFromState() {
     }
 
     syncCustomAccentPickersFromState();
-    renderAccentProfiles();
 }
 
 function syncCustomAccentPickersFromState() {
@@ -1597,97 +1646,25 @@ function normalizeAccentProfiles() {
     return changed;
 }
 
-function getAccentProfile(index) {
-    normalizeAccentProfiles();
-    return power_user.sb_accent_profiles[index] || null;
-}
+// SillyBunny: the accent presets as data, so the preset that matches the current accent can be marked `aria-pressed`.
+const ACCENT_PRESET_COLORS = Object.freeze({
+    blue: ['rgba(53, 132, 228, 1)', 'rgba(129, 208, 255, 1)'],
+    cyan: ['rgba(6, 182, 212, 1)', 'rgba(34, 211, 238, 1)'],
+    green: ['rgba(16, 185, 129, 1)', 'rgba(52, 211, 153, 1)'],
+    yellow: ['rgba(245, 158, 11, 1)', 'rgba(251, 191, 36, 1)'],
+    orange: ['rgba(255, 191, 0, 1)', 'rgba(255, 191, 0, 1)'],
+    red: ['rgba(239, 68, 68, 1)', 'rgba(248, 113, 113, 1)'],
+    pink: ['rgba(236, 72, 153, 1)', 'rgba(244, 114, 182, 1)'],
+    purple: ['rgba(168, 85, 247, 1)', 'rgba(192, 132, 252, 1)'],
+    gray: ['rgba(107, 114, 128, 1)', 'rgba(156, 163, 175, 1)'],
+});
 
-function renderAccentProfiles() {
-    const list = $('#sb-accent-profiles-list');
-    const emptyState = $('#sb-accent-profiles-empty');
-
-    if (!list.length) {
-        return;
-    }
-
-    normalizeAccentProfiles();
-    list.empty();
-    emptyState.toggle(power_user.sb_accent_profiles.length === 0);
-
-    power_user.sb_accent_profiles.forEach((profile, index) => {
-        const isSelected = profile.quote_text_color === power_user.quote_text_color && profile.underline_text_color === power_user.underline_text_color;
-        const item = $('<div></div>', { class: 'sb-accent-profile-item', role: 'listitem' });
-        const applyButton = $('<button></button>', {
-            type: 'button',
-            class: 'menu_button sb-accent-profile-apply',
-            title: `Apply ${profile.name}`,
-            'aria-label': `Apply ${profile.name} accent profile`,
-            'aria-pressed': String(isSelected),
-        })
-            .attr('data-accent-profile-index', String(index))
-            .toggleClass('is-selected', isSelected)
-            .css('--sb-accent-profile-primary', profile.quote_text_color)
-            .css('--sb-accent-profile-secondary', profile.underline_text_color);
-        const swatches = $('<span></span>', { class: 'sb-accent-profile-swatches', 'aria-hidden': 'true' })
-            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-primary' }))
-            .append($('<span></span>', { class: 'sb-accent-profile-swatch sb-accent-profile-swatch-secondary' }));
-        const name = $('<span></span>', { class: 'sb-accent-profile-name' }).text(profile.name);
-        const deleteButton = $('<button></button>', {
-            type: 'button',
-            class: 'menu_button menu_button_icon sb-accent-profile-delete',
-            title: `Delete ${profile.name}`,
-            'aria-label': `Delete ${profile.name} accent profile`,
-        })
-            .attr('data-accent-profile-index', String(index))
-            .append($('<i></i>', { class: 'fa-solid fa-trash-can' }));
-
-        applyButton.append(swatches, name);
-        item.append(applyButton, deleteButton);
-        list.append(item);
-    });
-}
-
-function getStoredSbAccentProfilesDrawerExpanded() {
-    const storedValue = accountStorage.getItem(SB_ACCENT_PROFILES_DRAWER_KEY);
-    if (storedValue === null) {
-        return null;
-    }
-
-    return storedValue === 'true';
-}
-
-function setStoredSbAccentProfilesDrawerExpanded(expanded) {
-    accountStorage.setItem(SB_ACCENT_PROFILES_DRAWER_KEY, String(Boolean(expanded)));
-}
-
-function syncSbAccentProfilesDrawerExpandedState(drawer, expanded) {
-    const toggle = drawer.querySelector(':scope > .inline-drawer-header .sb-accent-profiles-toggle');
-    if (toggle instanceof HTMLElement) {
-        toggle.setAttribute('aria-expanded', String(Boolean(expanded)));
-    }
-}
-
-function bindSbAccentProfilesDrawerPersistence() {
-    const drawer = document.getElementById('sb-accent-profiles-panel');
-    if (!(drawer instanceof HTMLElement) || drawer.dataset.sbAccentProfilesDrawerBound === 'true') {
-        return;
-    }
-
-    drawer.dataset.sbAccentProfilesDrawerBound = 'true';
-
-    const storedExpanded = getStoredSbAccentProfilesDrawerExpanded();
-    toggleDrawer(drawer, storedExpanded ?? false);
-    syncSbAccentProfilesDrawerExpandedState(drawer, storedExpanded ?? false);
-
-    drawer.addEventListener('inline-drawer-toggle', () => {
-        const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
-        if (!(icon instanceof HTMLElement)) {
-            return;
-        }
-
-        const expanded = icon.classList.contains('up');
-        syncSbAccentProfilesDrawerExpandedState(drawer, expanded);
-        setStoredSbAccentProfilesDrawerExpanded(expanded);
+// SillyBunny: the preset whose primary colour is the current accent is the pressed one.
+function syncAccentPresetState() {
+    const current = String(power_user.quote_text_color ?? '').replace(/\s+/g, '');
+    document.querySelectorAll('.sb-accent-preset').forEach(button => {
+        const [quote] = ACCENT_PRESET_COLORS[button.dataset.accent] ?? [];
+        button.setAttribute('aria-pressed', String(Boolean(quote) && quote.replace(/\s+/g, '') === current));
     });
 }
 
@@ -1697,85 +1674,7 @@ function applyAccentColors(quoteColor, underlineColor) {
     applyThemeColor('quote');
     applyThemeColor('underline');
     syncCustomAccentPickersFromState();
-    renderAccentProfiles();
     saveSettingsDebounced();
-}
-
-function applyAccentProfile(index) {
-    const profile = getAccentProfile(index);
-
-    if (!profile) {
-        return;
-    }
-
-    applyAccentColors(profile.quote_text_color, profile.underline_text_color);
-    toastr.info(`${profile.name} applied.`, 'Accent profile');
-}
-
-async function saveAccentProfile() {
-    const newName = await callGenericPopup('Save current accent colors as:', POPUP_TYPE.INPUT, 'My Accent', {
-        okButton: 'Save',
-        cancelButton: 'Cancel',
-    });
-
-    if (!newName) {
-        return;
-    }
-
-    const newProfile = normalizeAccentProfile({
-        name: String(newName),
-        quote_text_color: power_user.quote_text_color,
-        underline_text_color: power_user.underline_text_color,
-    });
-
-    if (!newProfile) {
-        toastr.warning('Accent profile name is required.', 'Accent profile');
-        return;
-    }
-
-    normalizeAccentProfiles();
-    const existingIndex = power_user.sb_accent_profiles.findIndex(profile => profile.name.toLocaleLowerCase() === newProfile.name.toLocaleLowerCase());
-
-    if (existingIndex !== -1) {
-        const confirm = await callGenericPopup(`Replace the "${newProfile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
-            okButton: 'Replace',
-            cancelButton: 'Cancel',
-        });
-
-        if (!confirm) {
-            return;
-        }
-
-        power_user.sb_accent_profiles[existingIndex] = newProfile;
-    } else {
-        power_user.sb_accent_profiles.push(newProfile);
-    }
-
-    renderAccentProfiles();
-    saveSettingsDebounced();
-    toastr.success(`${newProfile.name} saved.`, 'Accent profile');
-}
-
-async function deleteAccentProfile(index) {
-    const profile = getAccentProfile(index);
-
-    if (!profile) {
-        return;
-    }
-
-    const confirm = await callGenericPopup(`Delete the "${profile.name}" accent profile?`, POPUP_TYPE.CONFIRM, '', {
-        okButton: 'Delete',
-        cancelButton: 'Cancel',
-    });
-
-    if (!confirm) {
-        return;
-    }
-
-    power_user.sb_accent_profiles.splice(index, 1);
-    renderAccentProfiles();
-    saveSettingsDebounced();
-    toastr.success(`${profile.name} deleted.`, 'Accent profile');
 }
 
 function applySillyBunnyPalettePreset(presetId) {
@@ -1795,13 +1694,13 @@ function applySillyBunnyPalettePreset(presetId) {
     applyBlurStrength();
     applyShadowWidth();
     saveSettingsDebounced();
-    toastr.success(`${preset.label} applied.`, 'SillyBunny palette');
+    toastr.success(`${preset.label} applied`, 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
 
     if (power_user.fast_ui_mode && preset.values.blur_strength !== undefined) {
-        toastr.warning('Blur effects are disabled while Fast UI Mode is on.', 'SillyBunny palette', { timeOut: 4000 });
+        toastr.warning('Blur effects are disabled while Fast UI Mode is on', 'SillyBunny palette', { timeOut: 4000 }); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
     if (power_user.noShadows && preset.values.shadow_width !== undefined) {
-        toastr.warning('Text shadows are disabled while No Shadows mode is on.', 'SillyBunny palette', { timeOut: 4000 });
+        toastr.warning('Text shadows are disabled while No Shadows mode is on', 'SillyBunny palette', { timeOut: 4000 }); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
 }
 
@@ -1850,12 +1749,13 @@ async function saveCurrentThemeCss() {
 }
 
 function buildCustomCssAiPopup(currentCss) {
+    // SillyBunny: the two field labels are in header capitalisation by DESIGN.md
     const content = $(`
         <div class="flex-container flexFlowColumn flexGap5">
             <h3>Generate Custom CSS</h3>
-            <label for="custom_css_ai_instruction"><small>Describe what you want the CSS to change</small></label>
+            <label for="custom_css_ai_instruction"><small>Describe What You Want the CSS to Change</small></label>
             <textarea id="custom_css_ai_instruction" class="text_pole textarea_compact monospace" rows="6" placeholder="Example: Make message cards softer, with rounded corners and subtle accent borders."></textarea>
-            <label for="custom_css_ai_profile"><small>Connection profile</small></label>
+            <label for="custom_css_ai_profile"><small>Connection Profile</small></label>
             <select id="custom_css_ai_profile" class="text_pole margin0 wide100p"></select>
             <div class="flex-container flexFlowColumn flexGap5">
                 <label class="checkbox_label"><input type="radio" name="custom_css_ai_apply_mode" value="replace" checked><span>Replace current CSS</span></label>
@@ -1882,8 +1782,8 @@ function setCustomCssAiWandBusy(isBusy) {
     button.toggleClass('is-busy disabled', isBusy)
         .attr('aria-busy', String(isBusy))
         .attr('aria-disabled', String(isBusy));
-    icon.toggleClass('fa-wand-magic-sparkles', !isBusy)
-        .toggleClass('fa-spinner fa-spin', isBusy);
+    // SillyBunny: the shared spinner in place of a spinning glyph
+    setIconBusy(icon[0], isBusy);
 }
 
 /**
@@ -1924,7 +1824,10 @@ async function handleCustomCssAiWandClick() {
 
     const currentCss = String($('#customCSS').val() ?? '');
     const content = buildCustomCssAiPopup(currentCss);
+    // SillyBunny: adopt the textarea, profile select, and apply-mode radios.
+    const dialogOptions = customCssAiOptions(content[0]);
     const result = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', {
+        ...dialogOptions,
         okButton: 'Generate CSS',
         cancelButton: 'Cancel',
         wide: true,
@@ -1937,7 +1840,7 @@ async function handleCustomCssAiWandClick() {
             }
 
             if (!String(content.find('#custom_css_ai_instruction').val() ?? '').trim()) {
-                globalThis.toastr?.warning?.('Describe the CSS change first.');
+                globalThis.toastr?.warning?.('Describe the CSS change first'); // SillyBunny: no trailing period, by DESIGN.md
                 return false;
             }
 
@@ -1955,14 +1858,14 @@ async function handleCustomCssAiWandClick() {
     const applyMode = String(content.find('input[name="custom_css_ai_apply_mode"]:checked').val() ?? 'replace');
 
     if (!effectiveProfileId && online_status === 'no_connection') {
-        globalThis.toastr?.warning?.('Connect to an API or select a usable connection profile first.');
+        globalThis.toastr?.warning?.('Connect to an API or select a usable connection profile first'); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
     // SillyBunny: Custom CSS stays editable during generation, so the result is checked against the CSS the AI saw.
     const startCss = String(power_user.custom_css ?? '');
     setCustomCssAiWandBusy(true);
-    globalThis.toastr?.info?.('Generating custom CSS...', '', { timeOut: 0, extendedTimeOut: 0 });
+    globalThis.toastr?.info?.('Generating custom CSS…', '', { timeOut: 0, extendedTimeOut: 0 });
     deactivateSendButtons({ markBodyGenerating: false });
 
     try {
@@ -1974,7 +1877,7 @@ async function handleCustomCssAiWandClick() {
         globalThis.toastr?.clear?.();
 
         if (!generatedCss.trim()) {
-            globalThis.toastr?.error?.('AI returned an empty CSS response.');
+            globalThis.toastr?.error?.('AI returned an empty CSS response'); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
 
@@ -1988,7 +1891,7 @@ async function handleCustomCssAiWandClick() {
         power_user.custom_css = nextCss;
         applyCustomCSS();
         saveSettingsDebounced();
-        globalThis.toastr?.success?.('Generated custom CSS.');
+        globalThis.toastr?.success?.('Generated custom CSS'); // SillyBunny: no trailing period, by DESIGN.md
     } catch (error) {
         globalThis.toastr?.clear?.();
         if (!String(error?.message ?? error ?? '').match(/abort|cancel/i)) {
@@ -2004,52 +1907,76 @@ function getGoogleFontStylesheetId() {
     return 'google-font-style';
 }
 
-function buildGoogleFontHref(fontName) {
-    const family = String(fontName ?? '').trim();
+// SillyBunny: imported fonts, the bundled presets and the legacy Google path live in sillybunny-fonts.js. It loads only when
+// a font is saved, applied or imported, so default settings add no module and no request at startup.
+let fontsModule = null;
+let fontsModulePromise = null;
+const fontHost = {
+    getFonts: () => power_user.sb_fonts,
+    setFonts: fonts => { power_user.sb_fonts = fonts; },
+    getChoice: () => power_user.google_font,
+    setChoice: name => { power_user.google_font = name; },
+    save: () => saveSettingsDebounced(),
+    apply: () => applyGoogleFont(),
+    getRequestHeaders: () => getRequestHeaders(),
+    uuid: () => uuidv4(),
+};
 
-    if (!family) {
-        return '';
+/**
+ * Loads the fonts module once.
+ * @returns {Promise<{ fonts: typeof import('./sillybunny-fonts.js'), host: typeof fontHost }>}
+ */
+export function loadFontsModule() {
+    fontsModulePromise ??= import('./sillybunny-fonts.js').then(module => {
+        fontsModule = module;
+        return module;
+    }, error => {
+        fontsModulePromise = null;
+        throw error;
+    });
+    return fontsModulePromise.then(fonts => ({ fonts, host: fontHost }));
+}
+
+/** Normalises the saved font list and rewrites a choice that differs from a known family only by case or spacing. */
+async function normalizeFontSettings() {
+    if (!Array.isArray(power_user.sb_fonts)) {
+        power_user.sb_fonts = [];
     }
-
-    const encodedFamily = family.split(/\s+/).filter(Boolean).join(' ');
-    return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(encodedFamily)}:wght@400;500;600;700&display=swap`;
+    if (!power_user.sb_fonts.length && !power_user.google_font) {
+        return;
+    }
+    const { fonts } = await loadFontsModule();
+    const normalized = fonts.normalizeFonts(power_user.sb_fonts);
+    const choice = fonts.canonicalFontName(power_user.google_font, normalized);
+    const changed = JSON.stringify(normalized) !== JSON.stringify(power_user.sb_fonts) || choice !== power_user.google_font;
+    power_user.sb_fonts = normalized;
+    power_user.google_font = choice;
+    if (changed) {
+        saveSettingsDebounced();
+    }
 }
 
 function applyGoogleFont(fontName = power_user.google_font) {
     const normalizedFontName = String(fontName ?? '').trim();
-    const styleId = getGoogleFontStylesheetId();
-    let link = document.getElementById(styleId);
-    const presetSelect = $('#google_font_preset');
-    const hasPresetMatch = normalizedFontName && presetSelect.find(`option[value="${CSS.escape(normalizedFontName)}"]`).length > 0;
 
-    if (!normalizedFontName) {
-        if (link) {
-            link.remove();
-        }
-
+    if (!fontsModule && !normalizedFontName && !power_user.sb_fonts?.length) {
+        document.getElementById(getGoogleFontStylesheetId())?.remove();
         if (customThemeStyleEntries?.mainFont) {
             document.documentElement.style.setProperty('--mainFontFamily', customThemeStyleEntries.mainFont);
         } else {
             document.documentElement.style.removeProperty('--mainFontFamily');
         }
-
-        presetSelect.val('');
-        $('#google_font_custom').val('');
+        $('#google_font_preset').val('');
         return;
     }
 
-    if (!link) {
-        link = document.createElement('link');
-        link.id = styleId;
-        link.rel = 'stylesheet';
-        document.head.appendChild(link);
-    }
-
-    link.href = buildGoogleFontHref(normalizedFontName);
-    document.documentElement.style.setProperty('--mainFontFamily', `'${normalizedFontName}', sans-serif`);
-
-    presetSelect.val(hasPresetMatch ? normalizedFontName : '');
-    $('#google_font_custom').val(normalizedFontName);
+    loadFontsModule().then(({ fonts }) => {
+        const resolved = fonts.applyFontChoice(normalizedFontName, {
+            fonts: power_user.sb_fonts,
+            themeFont: customThemeStyleEntries?.mainFont ?? '',
+        });
+        fonts.syncFontSelect(document.getElementById('google_font_preset'), { fonts: power_user.sb_fonts, choice: resolved.name });
+    }).catch(error => console.warn('Could not apply the font.', error));
 }
 
 function applyCustomThemeStyleEntries() {
@@ -2202,6 +2129,21 @@ function isMediaDisplayReloadNeeded() {
     return hasUnprocessedMediaMessages;
 }
 
+// SillyBunny: the color loop is split out of upstream applyTheme and shared with the startup palette repair,
+// which must not touch effects or custom CSS.
+function applyThemeColors(theme) {
+    for (const { key, selector, type } of THEME_COLOR_PROPERTIES) {
+        if (theme[key] !== undefined) {
+            const newValue = theme[key];
+            power_user[key] = newValue;
+            if (selector) $(selector).attr('color', newValue);
+            if (type) applyThemeColor(type);
+        } else {
+            console.debug(`Empty theme key: ${key}`);
+        }
+    }
+}
+
 /**
  * Applies a UI theme.
  * @param {string} name Theme name
@@ -2215,16 +2157,7 @@ function applyTheme(name, { applyCss = true } = {}) {
         return;
     }
 
-    for (const { key, selector, type } of THEME_COLOR_PROPERTIES) {
-        if (theme[key] !== undefined) {
-            const newValue = theme[key];
-            power_user[key] = newValue;
-            if (selector) $(selector).attr('color', newValue);
-            if (type) applyThemeColor(type);
-        } else {
-            console.debug(`Empty theme key: ${key}`);
-        }
-    }
+    applyThemeColors(theme);
 
     for (const { key } of THEME_EFFECT_PROPERTIES) {
         if (theme[key] !== undefined) {
@@ -2241,6 +2174,25 @@ function applyTheme(name, { applyCss = true } = {}) {
     // SillyBunny: the Custom CSS save state compares against the theme just applied.
     updateThemeCssSaveState();
     console.log('theme applied: ' + name);
+}
+
+// SillyBunny: the reset action is fork-only; the values it writes are in sillybunny-theme-css.js.
+/**
+ * Writes the shipped Libadwaita Dark theme and the look settings beside it into the settings: the keys a saved theme stores
+ * (colors, effects, Custom CSS, the selected theme), Blur Strength, Shadow Width and the font choice. Layout, Chat Display,
+ * the visual switches and backgrounds are not theme settings and stay as they are. Imported fonts stay installed.
+ * The values are `THEME_RESET_DEFAULTS`, not the saved Libadwaita Dark theme, which the user may have edited.
+ */
+function resetThemeToDefault() {
+    Object.assign(power_user, THEME_RESET_DEFAULTS);
+    $('#themes').val(THEME_RESET_DEFAULTS.theme).trigger('change.select2');
+    applyThemeColors(power_user);
+    applyThemeEffects();
+    applyBlurStrength();
+    applyShadowWidth();
+    applyCustomCSS();
+    applyGoogleFont();
+    saveSettingsDebounced();
 }
 
 async function applyMovingUIPreset(name) {
@@ -2271,8 +2223,11 @@ export function registerDebugFunction(functionId, name, description, func) {
 }
 
 async function showDebugMenu() {
-    const template = await renderTemplateAsync('debug', { functions: debug_functions });
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
+    // SillyBunny: adopt the source actions while retaining the delegated #debug_table contract.
+    const template = $('<div>').append(await renderTemplateAsync('debug', { functions: debug_functions }));
+    adaptDebugMenu(template.get(0));
+    // SillyBunny: present diagnostic actions in the shared Window frame.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true, tier: 'window' });
 }
 
 export function applyPowerUserSettings() {
@@ -2379,6 +2334,49 @@ export async function loadPowerUserSettings(settings, data) {
         Object.assign(power_user, settings.power_user);
     }
 
+    // SillyBunny: normalise saved folder data at the settings boundary.
+    const sourceFolders = power_user.sb_folders;
+    const normalizedFolders = normalizeFoldersData(sourceFolders, uuidv4);
+    if (JSON.stringify(sourceFolders) !== JSON.stringify(normalizedFolders)) {
+        power_user.sb_folders = normalizedFolders;
+        saveSettingsDebounced();
+    } else {
+        power_user.sb_folders = normalizedFolders;
+    }
+    configureFolderStore({
+        powerUser: power_user,
+        saveSettingsDebounced,
+        idFactory: uuidv4,
+        eventSource,
+        eventTypes: event_types,
+    });
+
+    // SillyBunny: normalise the imported font list and the saved font name at the settings boundary.
+    await normalizeFontSettings();
+
+    // SillyBunny: preset autosave is on for new installs and off for upgrades until the user opts in.
+    if (!Object.hasOwn(savedPowerUserSettings, 'sb_preset_autosave')) {
+        power_user.sb_preset_autosave = !!settings.firstRun;
+    }
+
+    // SillyBunny: Dark V 1.0 was the previous bundled default. Migrate only
+    // that exact legacy selection; explicitly chosen themes remain untouched.
+    if (power_user.theme === 'Dark V 1.0') {
+        power_user.theme = 'Libadwaita Dark';
+        // Dark V 1.0 shipped with reduced motion on; the libadwaita shell
+        // expects motion. OS prefers-reduced-motion still wins at apply time.
+        power_user.reduced_motion = false;
+        // Migrate the old bundled default accent as well, but preserve a
+        // user-selected accent that differs from Dark V's shipped values.
+        if (power_user.quote_text_color === 'rgba(198, 193, 151, 1)'
+            && power_user.underline_text_color === 'rgba(145, 145, 145, 1)') {
+            // SillyBunny: the quote matches the bundled Libadwaita Dark theme.
+            power_user.quote_text_color = 'rgba(129, 208, 255, 1)';
+            power_user.underline_text_color = 'rgba(129, 208, 255, 1)';
+        }
+        saveSettingsDebounced();
+    }
+
     if (!hasAccentProfileSeedVersion) {
         power_user.sb_accent_profiles_seed_version = 0;
     }
@@ -2428,6 +2426,48 @@ export async function loadPowerUserSettings(settings, data) {
 
     if (data.themes !== undefined) {
         themes = data.themes;
+    }
+
+    // SillyBunny: the bundled theme "Libadwaita" is now "Libadwaita Dark". This runs before the palette and text repairs below, which find the theme by name.
+    const renamedTheme = getRenamedBundledThemeName(power_user.theme, themes);
+    if (renamedTheme) {
+        power_user.theme = renamedTheme;
+        saveSettingsDebounced();
+    }
+
+    // SillyBunny: the Dark V 1.0 migration above renames the theme and retunes only two accent colors on power_user,
+    // so the raw saved palette can still equal a legacy default. The match reads savedPowerUserSettings for that
+    // reason; a complete match is repaired from the bundled theme while authored colors, custom CSS, and effects
+    // stay as saved.
+    const migratedTheme = themes.find(theme => theme.name === power_user.theme);
+    if (/^Libadwaita (Dark|Light)$/.test(power_user.theme)
+        && LEGACY_DEFAULT_THEME_PALETTES.some(palette => Object.entries(palette)
+            .every(([key, value]) => savedPowerUserSettings[key] === value))
+        && migratedTheme && migratedTheme.blur_tint_color !== power_user.blur_tint_color) {
+        applyThemeColors(migratedTheme);
+        saveSettingsDebounced();
+    }
+
+    // SillyBunny: once per settings file, a theme the user selected before its text colors and message tints were raised takes
+    // the new colors (and the new Custom CSS, when the saved CSS is the old bundled CSS). The rule is in sillybunny-theme-revisions.js.
+    if (!(Number.isInteger(savedPowerUserSettings.sb_theme_text_revision) && savedPowerUserSettings.sb_theme_text_revision >= SB_THEME_TEXT_REVISION)) {
+        // A failed load leaves the marker unset, so the repair is tried again on the next start.
+        try {
+            const { planThemeTextRepair } = await import('./sillybunny-theme-revisions.js');
+            const repair = planThemeTextRepair({ themeName: power_user.theme, palette: power_user, customCss: power_user.custom_css, themes });
+            if (repair) {
+                // The saved palette fills the keys the repair leaves alone, so applyThemeColors writes them back unchanged.
+                applyThemeColors({ ...power_user, ...repair.text });
+                if (repair.css !== null) {
+                    power_user.custom_css = repair.css;
+                    applyCustomCSS();
+                }
+            }
+            power_user.sb_theme_text_revision = SB_THEME_TEXT_REVISION;
+            saveSettingsDebounced();
+        } catch (error) {
+            console.warn('Could not repair the saved theme text colors', error);
+        }
     }
 
     if (data.movingUIPresets !== undefined) {
@@ -2514,7 +2554,6 @@ export async function loadPowerUserSettings(settings, data) {
     $(`#tokenizer option[value="${power_user.tokenizer}"]`).prop('selected', true);
     $(`#send_on_enter option[value=${power_user.send_on_enter}]`).prop('selected', true);
     $('#confirm_message_delete').prop('checked', power_user.confirm_message_delete !== undefined ? !!power_user.confirm_message_delete : true);
-    $('#spoiler_free_mode').prop('checked', power_user.spoiler_free_mode);
     $('#collapse-newlines-checkbox').prop('checked', power_user.collapse_newlines);
     $('#always-force-name2-checkbox').prop('checked', power_user.always_force_name2);
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
@@ -2525,7 +2564,6 @@ export async function loadPowerUserSettings(settings, data) {
     $('#movingUImode').prop('checked', power_user.movingUI);
     $('#noShadowsmode').prop('checked', power_user.noShadows);
     $('#google_font_preset').val(power_user.google_font);
-    $('#google_font_custom').val(power_user.google_font);
     $('.start-reply-with-input').val(power_user.user_prompt_bias);
     $('#chat-show-reply-prefix-checkbox').prop('checked', power_user.show_user_prompt_bias);
     $('#auto_continue_enabled').prop('checked', power_user.auto_continue.enabled);
@@ -2666,7 +2704,8 @@ export async function loadPowerUserSettings(settings, data) {
     await loadReasoningTemplates(data);
     loadMaxContextUnlocked();
     switchWaifuMode();
-    switchSpoilerMode();
+    applyCharacterEditorQuickEdit();
+    applyCharacterEditorSpoilerFree();
     applyGoogleFont();
     loadMovingUIState();
     loadCharListState();
@@ -2811,6 +2850,11 @@ export function loadMovingUIState() {
                 for (const targetName of targetNames) {
                     var elmnt = $('#' + $.escapeSelector(targetName));
                     if (elmnt.length) {
+                        // SillyBunny: side-panel state stores a dock side, not draggable pixel geometry.
+                        if (applyMovingUIState(targetName, elmntState)) {
+                            applied = true;
+                            continue;
+                        }
                         console.debug(`loading state for ${targetName} from ${elmntName}`);
                         applyMovingUIStateStyles(elmnt[0], elmntState);
                         // Persisted geometry must never enlarge the document or
@@ -3166,11 +3210,13 @@ export function fuzzySearchPersonas(data, searchValue, fuzzySearchCaches = null)
     const mappedData = data.map(x => ({
         key: x,
         name: power_user.personas[x] ?? '',
+        title: power_user.persona_descriptions[x]?.title ?? '', // SillyBunny: the persona list search also matches the title shown on the card.
         description: power_user.persona_descriptions[x]?.description ?? '',
     }));
 
     const keys = [
         { name: 'name', weight: 20 },
+        { name: 'title', weight: 10 }, // SillyBunny: see the title field above.
         { name: 'description', weight: 3 },
     ];
 
@@ -3303,16 +3349,18 @@ function validateStoryString(storyString, params) {
 }
 
 
-const sortFunc = (a, b) => power_user.sort_order == 'asc' ? compareFunc(a, b) : compareFunc(b, a);
-const compareFunc = (first, second) => {
-    const a = first[power_user.sort_field];
-    const b = second[power_user.sort_field];
+// SillyBunny: accept an isolated view sort without changing power_user's
+// character settings or the upstream callers that omit it
+const sortFunc = (a, b, sortSettings = power_user) => sortSettings.sort_order == 'asc' ? compareFunc(a, b, sortSettings) : compareFunc(b, a, sortSettings);
+const compareFunc = (first, second, sortSettings = power_user) => {
+    const a = first[sortSettings.sort_field];
+    const b = second[sortSettings.sort_field];
 
-    if (power_user.sort_field === 'create_date') {
+    if (sortSettings.sort_field === 'create_date') {
         return sortMoments(timestampToMoment(b), timestampToMoment(a));
     }
 
-    switch (power_user.sort_rule) {
+    switch (sortSettings.sort_rule) {
         case 'boolean':
             if (a === true || a === 'true') return 1;  // Prioritize 'true' or true
             if (b === true || b === 'true') return -1; // Prioritize 'true' or true
@@ -3332,16 +3380,23 @@ const compareFunc = (first, second) => {
  * @param {any[]} entities An array of objects with an `item` property
  * @param {boolean} forceSearch Whether to force search sorting
  * @param {import('./filters.js').FilterHelper} [filterHelper=null] Filter helper to use
+ * @param {{ sort_field?: string, sort_order?: string, sort_rule?: string|null, field?: string, order?: string, rule?: string|null }} [sortSettings=null] Optional isolated sort settings
  */
-export function sortEntitiesList(entities, forceSearch, filterHelper = null) {
+export function sortEntitiesList(entities, forceSearch, filterHelper = null, sortSettings = null) {
     filterHelper = filterHelper ?? entitiesFilter;
-    if (power_user.sort_field == undefined || entities.length === 0) {
+    sortSettings = sortSettings ?? power_user;
+    sortSettings = {
+        sort_field: sortSettings.sort_field ?? sortSettings.field,
+        sort_order: sortSettings.sort_order ?? sortSettings.order,
+        sort_rule: sortSettings.sort_rule ?? sortSettings.rule,
+    };
+    if (sortSettings.sort_field == undefined || entities.length === 0) {
         return;
     }
 
     const isSearch = forceSearch || $('#character_sort_order option[data-field="search"]').is(':selected');
 
-    if (!isSearch && power_user.sort_order === 'random') {
+    if (!isSearch && sortSettings.sort_order === 'random') {
         shuffle(entities);
         return;
     }
@@ -3360,7 +3415,7 @@ export function sortEntitiesList(entities, forceSearch, filterHelper = null) {
             return (aScore - bScore);
         }
 
-        return sortFunc(a.item, b.item);
+        return sortFunc(a.item, b.item, sortSettings);
     });
 }
 
@@ -3409,12 +3464,13 @@ async function confirmThemeCssReplace(themeName) {
     return result === POPUP_RESULT.CUSTOM1;
 }
 
+// SillyBunny: exported so Bundled Extras applies an installed theme through the same switch as the theme select.
 /**
  * Switches the UI theme, asking first when its Custom CSS would replace Custom CSS that no theme stores.
  * @param {string} name Theme name
  * @returns {Promise<boolean>} Whether the theme was switched
  */
-async function switchUiTheme(name) {
+export async function switchUiTheme(name) {
     const theme = themes.find(x => x.name == name);
 
     if (!theme || isThemeSwitchPending) {
@@ -3439,6 +3495,25 @@ async function switchUiTheme(name) {
     }
 }
 
+// SillyBunny: Bundled Extras installs a theme file on the server; this adds it to the list the UI shows.
+/**
+ * Adds a theme that another route saved on the server to the theme list and the theme select.
+ * @param {{ name: string }} theme The saved theme.
+ * @returns {boolean} False when the list has a theme of that name already.
+ */
+export function registerUiTheme(theme) {
+    if (themes.some(x => x.name == theme.name)) {
+        return false;
+    }
+
+    themes.push(theme);
+    const option = document.createElement('option');
+    option.value = theme.name;
+    option.innerText = theme.name;
+    $('#themes').append(option);
+    return true;
+}
+
 async function deleteTheme() {
     const themeName = power_user.theme;
 
@@ -3448,7 +3523,8 @@ async function deleteTheme() {
     }
 
     const template = $(await renderTemplateAsync('themeDelete', { themeName }));
-    const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
 
     if (!confirm) {
         return;
@@ -3523,7 +3599,8 @@ async function importTheme(file) {
 
     if (typeof parsed.custom_css === 'string' && parsed.custom_css.includes('@import')) {
         const template = $(await renderTemplateAsync('themeImportWarning'));
-        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Import`));
         if (!confirm) {
             throw new Error('Theme contains @import lines');
         }
@@ -3758,6 +3835,8 @@ async function resetMovablePanels(type) {
     await delay(50);
 
     power_user.movingUIState = {};
+    // SillyBunny: clearing MovingUI preferences restores registered side panels to their declared defaults.
+    resetSidePanelSides();
     syncMovingUIOffscreenWarning(false);
 
     //if user manually resets panels, deselect the current preset
@@ -3837,12 +3916,16 @@ async function doRandomChat(_, tagName) {
         return randomIndex.toString();
     }
 
-    resetSelectedGroup();
     const characterId = getRandomCharacterId();
     if (!characterId) {
         toastr.error('No characters found');
         return;
     }
+    // SillyBunny: the user may decline to leave a temporary chat, and then nothing changes. Nothing asks without a target.
+    if (!await flushPendingChatSavesForNavigation()) {
+        return '';
+    }
+    resetSelectedGroup();
     setCharacterId(characterId);
     setActiveCharacter(characters[characterId]?.avatar);
     setActiveGroup(null);
@@ -4231,6 +4314,10 @@ jQuery(async () => {
                     const targetElements = [];
                     let sharedStateChanged = false;
                     let applied = false;
+                    // SillyBunny: viewport scaling must not turn a saved panel side into pixel geometry.
+                    if (applyMovingUIState(elmntName, elmntState)) {
+                        continue;
+                    }
                     Object.assign(elmntState, scaleMovingUIViewportState(elmntState, { scaleX, scaleY }));
 
                     for (const targetName of targetNames) {
@@ -4434,18 +4521,11 @@ jQuery(async () => {
         $('#custom_css_ai_wand').trigger('click');
     });
 
+    // SillyBunny: the select is the only way to choose a font; the Custom row and its apply button are gone.
     $('#google_font_preset').on('change', function () {
         const selectedFont = String($(this).val() ?? '').trim();
-        $('#google_font_custom').val(selectedFont);
         power_user.google_font = selectedFont;
         applyGoogleFont(selectedFont);
-        saveSettingsDebounced();
-    });
-
-    $('#apply_google_font').on('click', function () {
-        const customFont = String($('#google_font_custom').val() ?? '').trim();
-        power_user.google_font = customFont;
-        applyGoogleFont(customFont);
         saveSettingsDebounced();
     });
 
@@ -4461,7 +4541,17 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
-    $('#movingUIreset, #movingUIOffscreenReset').on('click', () => resetMovablePanels());
+    $('#movingUIreset').on('click', () => resetMovablePanels());
+    // SillyBunny: the off-screen warning is a banner with its one action, not an info block with a button inside.
+    const offscreenBanner = createBanner({
+        title: t`A saved MovingUI panel position appears to be off-screen`,
+        actionLabel: t`Reset Panels`,
+        onActivate: () => resetMovablePanels(),
+    });
+    const offscreenReset = offscreenBanner.element.querySelector('.sb-banner__action');
+    offscreenReset?.setAttribute('id', 'movingUIOffscreenReset');
+    offscreenReset?.setAttribute('title', t`Reset MovingUI panel sizes/locations.`);
+    $('#movingUIOffscreenWarning').append(offscreenBanner.element);
 
     $('#avatar_style').on('change', function () {
         const value = $(this).find(':selected').val();
@@ -4750,13 +4840,24 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
+    // SillyBunny: route the shared sort control to per-view storage for Groups
+    // while preserving power_user sort keys for Characters
     $('#character_sort_order').on('change', function () {
         const field = String($(this).find(':selected').data('field'));
         // Save sort order, but do not save search sorting, as this is a temporary sorting option
         if (field !== 'search') {
-            power_user.sort_field = field;
-            power_user.sort_order = $(this).find(':selected').data('order');
-            power_user.sort_rule = $(this).find(':selected').data('rule');
+            const sort = {
+                field,
+                order: $(this).find(':selected').data('order'),
+                rule: $(this).find(':selected').data('rule'),
+            };
+            if (getCharacterListView() === 'groups') {
+                void setListSort('groups', sort);
+                return;
+            }
+            power_user.sort_field = sort.field;
+            power_user.sort_order = sort.order;
+            power_user.sort_rule = sort.rule;
         }
         printCharactersDebounced();
         saveSettingsDebounced();
@@ -5031,14 +5132,7 @@ jQuery(async () => {
     });
 
     $('#spoiler_free_mode').on('input', function () {
-        power_user.spoiler_free_mode = !!$(this).prop('checked');
-        switchSpoilerMode();
-        saveSettingsDebounced();
-    });
-
-    $('#spoiler_free_desc_button').on('click', function (e) {
-        e.stopPropagation();
-        peekSpoilerMode();
+        setCharacterEditorSpoilerFree($(this).prop('checked'));
     });
 
     $('#custom_stopping_strings').on('input', function () {
@@ -5295,75 +5389,33 @@ jQuery(async () => {
         applySillyBunnyPalettePreset(String($(this).data('sb-palette')));
     });
 
-    $(document).on('click', '.sb-theme-preset-reset', function () {
-        // SillyBunny: Reset restores colors only and leaves Custom CSS alone.
-        applyTheme('Dark V 1.0', { applyCss: false });
-        saveSettingsDebounced();
-        toastr.info('Theme colors reset to Dark V 1.0.', 'SillyBunny palette');
+    $(document).on('click', '.sb-theme-preset-reset', async function () {
+        // SillyBunny: Reset wipes the theme settings and Custom CSS, so it asks first. Cancel and a dismissal change nothing.
+        const { openAlert } = await import('./sillybunny-editor/dialog.js');
+        const choice = await openAlert({
+            heading: t`Reset Theme?`,
+            body: t`Theme settings and custom CSS will be wiped. This is irreversible!`,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'reset', label: t`Reset`, appearance: 'destructive' },
+            ],
+            closeResponse: 'cancel',
+        });
+        if (choice !== 'reset') {
+            return;
+        }
+        resetThemeToDefault();
+        toastr.info(t`Theme reset to default Libadwaita Dark`, 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     });
 
     // Accent color presets
     $(document).on('click', '.sb-accent-preset', function () {
-        const accent = $(this).data('accent');
-        let quoteColor, underlineColor;
-
-        switch (accent) {
-            case 'blue':
-                quoteColor = 'rgba(59, 130, 246, 1)';
-                underlineColor = 'rgba(96, 165, 250, 1)';
-                break;
-            case 'cyan':
-                quoteColor = 'rgba(6, 182, 212, 1)';
-                underlineColor = 'rgba(34, 211, 238, 1)';
-                break;
-            case 'green':
-                quoteColor = 'rgba(16, 185, 129, 1)';
-                underlineColor = 'rgba(52, 211, 153, 1)';
-                break;
-            case 'yellow':
-                quoteColor = 'rgba(245, 158, 11, 1)';
-                underlineColor = 'rgba(251, 191, 36, 1)';
-                break;
-            case 'orange':
-                quoteColor = 'rgba(255, 191, 0, 1)';
-                underlineColor = 'rgba(255, 191, 0, 1)';
-                break;
-            case 'red':
-                quoteColor = 'rgba(239, 68, 68, 1)';
-                underlineColor = 'rgba(248, 113, 113, 1)';
-                break;
-            case 'pink':
-                quoteColor = 'rgba(236, 72, 153, 1)';
-                underlineColor = 'rgba(244, 114, 182, 1)';
-                break;
-            case 'purple':
-                quoteColor = 'rgba(168, 85, 247, 1)';
-                underlineColor = 'rgba(192, 132, 252, 1)';
-                break;
-            case 'gray':
-                quoteColor = 'rgba(107, 114, 128, 1)';
-                underlineColor = 'rgba(156, 163, 175, 1)';
-                break;
-        }
+        const [quoteColor, underlineColor] = ACCENT_PRESET_COLORS[$(this).data('accent')] ?? [];
 
         if (quoteColor && underlineColor) {
             applyAccentColors(quoteColor, underlineColor);
-            toastr.info('Accent colors applied.', 'SillyBunny palette');
+            toastr.info('Accent colors applied', 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         }
-    });
-
-    bindSbAccentProfilesDrawerPersistence();
-
-    $(document).on('click', '#sb-accent-profile-save', async function () {
-        await saveAccentProfile();
-    });
-
-    $(document).on('click', '.sb-accent-profile-apply', function () {
-        applyAccentProfile(Number($(this).attr('data-accent-profile-index')));
-    });
-
-    $(document).on('click', '.sb-accent-profile-delete', async function () {
-        await deleteAccentProfile(Number($(this).attr('data-accent-profile-index')));
     });
 
     // Custom RGB accent toggle
@@ -5380,14 +5432,12 @@ jQuery(async () => {
     $('#sb-accent-primary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.quote_text_color = evt.detail.rgba;
         applyThemeColor('quote');
-        renderAccentProfiles();
         saveSettingsDebounced();
     });
 
     $('#sb-accent-secondary-picker').on('change', (/** @type {ColorPickerEvent} */ evt) => {
         power_user.underline_text_color = evt.detail.rgba;
         applyThemeColor('underline');
-        renderAccentProfiles();
         saveSettingsDebounced();
     });
 

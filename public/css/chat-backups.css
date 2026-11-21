@@ -1,3 +1,4 @@
+/* SillyBunny: Chat History owns backup and chat-list visibility inside the shared Window page, so the upstream popup selector does not apply. */
 .chatBackupsList {
     display: flex;
     flex-direction: column;
@@ -15,25 +16,6 @@
 .chatBackupsList:not(.open),
 .chatBackupsList:empty {
     display: none;
-}
-
-/* SillyBunny: Backups replace the chat list so cleanup controls cannot consume a short nested tray. */
-#select_chat_popup.chatBackupsOpen {
-    height: 100%;
-}
-
-#select_chat_popup.chatBackupsOpen :is(#select_chat_search, #chat_management_tools, #chat_cleanup_status, #select_chat_div) {
-    display: none;
-}
-
-#select_chat_popup.chatBackupsOpen .chatBackupsList {
-    flex: 1 1 0;
-    min-height: 0;
-    max-height: none;
-}
-
-body.safari #select_chat_popup.chatBackupsOpen {
-    height: 100%;
 }
 
 .chatBackupsListItem {
@@ -73,14 +55,13 @@ body.safari #select_chat_popup.chatBackupsOpen {
 .chatBackupsCleanupField input,
 .chatBackupsCleanupTools select {
     width: 100%;
-    height: 34px;
-    min-height: 34px;
+    /* SillyBunny: the row takes the pointer's control floor (44px on a coarse pointer) from the shared tokens, not a fixed 34px. */
+    min-height: var(--sb-control-min-height);
     box-sizing: border-box;
     text-align: center;
 }
 
 .chatBackupsCleanupTools .menu_button {
-    min-height: 34px;
     margin: 0;
     padding-inline: 10px;
 }

@@ -1,28 +1,30 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
+    clampMobileShellText,
     createMobileShellLifecycle,
     createMobileShellNavDragState,
     MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS,
     MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX,
-    MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
     MOBILE_SHELL_NAV_SCROLL_BEHAVIOR,
-    MOBILE_SHELL_NAV_TOGGLE_ACTION,
+    normalizeMobileShellText,
     resolveMobileModalA11yState,
-    resolveMobileNavOpenState,
     resolveMobileShellNavPageScroll,
     resolveMobileShellNavScrollIndicators,
-    resolveMobileNavToggleIntent,
     resolveMobileShellNavDragEnd,
     resolveMobileShellNavDragMove,
     shouldBlockMobileDocumentPan,
-    shouldAutoCloseMobileNav,
     shouldSuppressMobileShellNavClick,
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
 
 describe('mobile shell lifecycle helper', () => {
+    test('shares text normalization with shell consumers', () => {
+        expect(normalizeMobileShellText('  World   Info ')).toBe('world info');
+        expect(clampMobileShellText('  long   label  ', 8)).toBe('long la…');
+        expect(clampMobileShellText('label', Number.NaN)).toBe('label');
+    });
+
     test('keeps current mobile shell timing constants explicit', () => {
-        expect(MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS).toBe(450);
         expect(MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX).toBe(6);
         expect(MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS).toBe(350);
     });
@@ -164,125 +166,6 @@ describe('mobile shell lifecycle helper', () => {
         });
     });
 
-    test('resolves hamburger replacement route before overlay toggling', () => {
-        expect(resolveMobileNavToggleIntent({
-            isMobileViewport: true,
-            isReplacementEnabled: true,
-            isOpen: false,
-        })).toEqual({
-            action: MOBILE_SHELL_NAV_TOGGLE_ACTION.ACTIVATE_PAGE_TARGET,
-            shouldCloseCompetingPanels: false,
-        });
-    });
-
-    test('opens mobile nav by closing competing panels and closes without extra cleanup', () => {
-        expect(resolveMobileNavToggleIntent({
-            isMobileViewport: true,
-            isReplacementEnabled: false,
-            isOpen: false,
-        })).toEqual({
-            action: MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV,
-            shouldCloseCompetingPanels: true,
-        });
-
-        expect(resolveMobileNavToggleIntent({
-            isMobileViewport: true,
-            isReplacementEnabled: false,
-            isOpen: true,
-        })).toEqual({
-            action: MOBILE_SHELL_NAV_TOGGLE_ACTION.CLOSE_NAV,
-            shouldCloseCompetingPanels: false,
-        });
-    });
-
-    test('keeps nav closed when open is requested outside mobile viewport', () => {
-        expect(resolveMobileNavOpenState({
-            requestedOpen: true,
-            isMobileViewport: false,
-            wasOpen: false,
-            focusedInside: false,
-        })).toEqual(expect.objectContaining({
-            shouldOpen: false,
-            overlayHidden: true,
-            overlayAriaHidden: 'true',
-            overlayInert: true,
-            buttonExpanded: 'false',
-            buttonIcon: 'menu',
-            shouldRecordOpenedAt: false,
-            shouldRefreshQuickActions: false,
-            shouldFocusTitle: false,
-            shouldRestoreButtonFocus: false,
-        }));
-    });
-
-    test('announces and focuses mobile nav when opened', () => {
-        expect(resolveMobileNavOpenState({
-            requestedOpen: true,
-            isMobileViewport: true,
-            wasOpen: false,
-            focusedInside: false,
-        })).toEqual(expect.objectContaining({
-            shouldOpen: true,
-            overlayHidden: false,
-            overlayAriaHidden: 'false',
-            overlayInert: false,
-            buttonExpanded: 'true',
-            buttonIcon: 'close',
-            shouldRecordOpenedAt: true,
-            shouldRefreshQuickActions: true,
-            shouldFocusTitle: true,
-            shouldRestoreButtonFocus: false,
-        }));
-    });
-
-    test('restores hamburger focus when closing nav from inside overlay', () => {
-        expect(resolveMobileNavOpenState({
-            requestedOpen: false,
-            isMobileViewport: true,
-            wasOpen: true,
-            focusedInside: true,
-        })).toEqual(expect.objectContaining({
-            shouldOpen: false,
-            shouldRestoreButtonFocus: true,
-        }));
-    });
-
-    test('auto-closes mobile nav only for trusted content clicks after grace window', () => {
-        expect(shouldAutoCloseMobileNav({
-            isNavOpen: true,
-            isTrusted: true,
-            elapsedSinceOpenedMs: 450,
-            isAutoCloseArea: true,
-        })).toBe(true);
-
-        expect(shouldAutoCloseMobileNav({
-            isNavOpen: true,
-            isTrusted: true,
-            elapsedSinceOpenedMs: 449,
-            isAutoCloseArea: true,
-        })).toBe(false);
-        expect(shouldAutoCloseMobileNav({
-            isNavOpen: true,
-            isTrusted: false,
-            elapsedSinceOpenedMs: 600,
-            isAutoCloseArea: true,
-        })).toBe(false);
-        expect(shouldAutoCloseMobileNav({
-            isNavOpen: true,
-            isTrusted: true,
-            elapsedSinceOpenedMs: 600,
-            isHamburgerTarget: true,
-            isAutoCloseArea: true,
-        })).toBe(false);
-        expect(shouldAutoCloseMobileNav({
-            isNavOpen: true,
-            isTrusted: true,
-            elapsedSinceOpenedMs: 600,
-            isInsideNav: true,
-            isAutoCloseArea: true,
-        })).toBe(false);
-    });
-
     test('inerts the shell for any active mobile modal and never the top bar', () => {
         expect(resolveMobileModalA11yState({
             activeRootIds: [],
@@ -292,14 +175,14 @@ describe('mobile shell lifecycle helper', () => {
         });
 
         expect(resolveMobileModalA11yState({
-            activeRootIds: ['sb-mobile-nav'],
+            activeRootIds: ['left-nav-panel'],
         })).toEqual({
             hasActiveMobileModal: true,
             shouldInertShell: true,
         });
 
         expect(resolveMobileModalA11yState({
-            activeRootIds: ['sb-mobile-nav', 'right-nav-panel'],
+            activeRootIds: ['left-nav-panel', 'right-nav-panel'],
         })).toEqual({
             hasActiveMobileModal: true,
             shouldInertShell: true,
@@ -328,7 +211,6 @@ describe('mobile shell lifecycle helper', () => {
     test('creates a stable lifecycle seam for future runtime wiring', () => {
         const lifecycle = createMobileShellLifecycle();
 
-        expect(lifecycle.nav.action).toBe(MOBILE_SHELL_NAV_TOGGLE_ACTION);
         expect(lifecycle.nav.scrollBehavior).toBe(MOBILE_SHELL_NAV_SCROLL_BEHAVIOR);
         expect(lifecycle.nav.createDragState).toBe(createMobileShellNavDragState);
         expect(lifecycle.nav.resolveDragMove).toBe(resolveMobileShellNavDragMove);
@@ -336,11 +218,7 @@ describe('mobile shell lifecycle helper', () => {
         expect(lifecycle.nav.shouldSuppressClick).toBe(shouldSuppressMobileShellNavClick);
         expect(lifecycle.nav.resolvePageScroll).toBe(resolveMobileShellNavPageScroll);
         expect(lifecycle.nav.resolveScrollIndicators).toBe(resolveMobileShellNavScrollIndicators);
-        expect(lifecycle.nav.resolveToggleIntent).toBe(resolveMobileNavToggleIntent);
-        expect(lifecycle.nav.resolveOpenState).toBe(resolveMobileNavOpenState);
-        expect(lifecycle.nav.shouldAutoClose).toBe(shouldAutoCloseMobileNav);
         expect(lifecycle.modal.resolveA11yState).toBe(resolveMobileModalA11yState);
-        expect(lifecycle.timings.navOpenGraceMs).toBe(MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS);
         expect(lifecycle.timings.navDragThresholdPx).toBe(MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX);
         expect(lifecycle.timings.navClickSuppressionMs).toBe(MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS);
     });

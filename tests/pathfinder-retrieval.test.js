@@ -184,7 +184,7 @@ describe('Pathfinder retrieval with real pipeline and model transport stubs', ()
         await started.promise;
         await jest.advanceTimersByTimeAsync(1000);
 
-        expect(globalThis.toastr.warning).toHaveBeenCalledWith('Pathfinder is processing lore for this reply...', 'Please wait');
+        expect(globalThis.toastr.warning).toHaveBeenCalledWith('Pathfinder is processing lore for this reply…', 'Please wait');
         expect(controller.signal.aborted).toBe(false);
         response.resolve('{"candidates":["Town"]}');
         const result = await pending;

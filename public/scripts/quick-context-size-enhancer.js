@@ -127,7 +127,7 @@ function buildExtraQuickContextButton(slider, unlockToggle, extraConfig) {
     button.classList.add('menu_button', 'quick_context_size', 'quick_context_size_extra');
     button.dataset.sbExtra = 'true';
     button.dataset.size = String(extraConfig.size);
-    button.title = `Set context to ${extraConfig.label.toUpperCase()} (${extraConfig.size.toLocaleString()} tokens)`;
+    button.title = `Set Context to ${extraConfig.label.toUpperCase()} (${extraConfig.size.toLocaleString()} Tokens)`;
     button.setAttribute('aria-label', button.title);
 
     const splitLabel = splitContextLabel(extraConfig.label);

@@ -12,6 +12,8 @@ import {
 } from '../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { POPUP_TYPE, callGenericPopup } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from '../../i18n.js'; // SillyBunny: translates the response verb.
 import { updateReasoningUI } from '../../reasoning.js';
 import { secret_state } from '../../secrets.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
@@ -603,7 +605,8 @@ async function onTranslateChatClick() {
 
 async function onTranslationsClearClick() {
     const popupHtml = await renderExtensionTemplateAsync('translate', 'deleteConfirmation');
-    const confirm = await callGenericPopup(popupHtml, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await callGenericPopup(popupHtml, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Remove`, { destructive: true }));
 
     if (!confirm) {
         return;

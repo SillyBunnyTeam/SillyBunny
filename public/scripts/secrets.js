@@ -3,6 +3,7 @@ import { event_types, eventSource, getRequestHeaders, saveSettings } from '../sc
 import { t } from './i18n.js';
 import { chat_completion_sources } from './openai.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -15,6 +16,10 @@ import { textgen_types } from './textgen-settings.js';
 import { getCurrentUserHandle } from './user.js';
 import { copyText, isTrueBoolean, uuidv4 } from './utils.js';
 import { accountStorage } from './util/AccountStorage.js';
+// SillyBunny: keep Add Secret's upstream input identity inside shared entry rows.
+import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
+// SillyBunny: the shared status page draws the empty key list.
+import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 export const SECRET_KEYS = {
     HORDE: 'api_key_horde',
@@ -333,7 +338,9 @@ async function viewSecrets() {
         $(table).append(`<tr><td>${DOMPurify.sanitize(key)}</td><td>${DOMPurify.sanitize(value)}</td></tr>`);
     }
 
-    await callGenericPopup(table.outerHTML, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
+    // SillyBunny: exposed values stay inside the shared Window body and are never written elsewhere.
+    const title = document.querySelector('#viewSecrets span')?.textContent.trim();
+    await callGenericPopup(table.outerHTML, POPUP_TYPE.TEXT, '', { tier: 'window', title, wide: true, large: true, allowVerticalScrolling: true });
 }
 
 /**
@@ -527,7 +534,8 @@ const generateChallenge = (codeVerifier) => {
  */
 async function authorizeOpenRouter() {
     if (secret_state[SECRET_KEYS.OPENROUTER]) {
-        const confirmed = await Popup.show.confirm(t`OpenRouter API key already exists`, t`Do you really wish to create a new OpenRouter key? Your existing key will not be deleted.`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmed = await Popup.show.confirm(t`OpenRouter API Key Already Exists`, t`Do you really wish to create a new OpenRouter key? Your existing key will not be deleted.`, confirmVerb(t`Authorize`));
         if (!confirmed) {
             return;
         }
@@ -665,13 +673,19 @@ async function openKeyManagerDialog(key) {
     template.find('button[data-action="add-secret"]').on('click', async function () {
         let label = '';
         let result = POPUP_RESULT.CANCELLED;
+        // SillyBunny: preserve the source textarea and collection without mirroring its value.
+        const dialogOptions = utilityFormOptions({ mainLabel: t`Secret value (can be empty):`, clearContent: true });
+        // SillyBunny: Add Secret holds two fields, so it is a Dialog (a page of the key-manager Window), not an Alert.
         const value = await Popup.show.input(t`Add Secret`, t`Secret value (can be empty):`, '', {
+            ...dialogOptions,
             customInputs: [{
                 id: 'newSecretLabel',
                 type: 'text',
                 label: t`Label (optional):`,
             }],
             onClose: popup => {
+                // SillyBunny: clean up adopted rows without changing the secret result path.
+                dialogOptions.onClose(popup);
                 if (popup.result) {
                     label = popup.inputResults.get('newSecretLabel').toString().trim();
                     result = popup.result;
@@ -682,7 +696,8 @@ async function openKeyManagerDialog(key) {
             if (result !== POPUP_RESULT.AFFIRMATIVE) {
                 return;
             }
-            const allowEmpty = await Popup.show.confirm(t`No value entered`, t`No value was entered for the secret. Do you want to add an empty secret?`);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const allowEmpty = await Popup.show.confirm(t`No Value Entered`, t`No value was entered for the secret. Do you want to add an empty secret?`, confirmVerb(t`Add`));
             if (!allowEmpty) {
                 return;
             }
@@ -692,7 +707,8 @@ async function openKeyManagerDialog(key) {
     });
 
     await renderSecretsList();
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, onOpen: scrollToActive });
+    // SillyBunny: the key manager is a Window with Alerts for Add and Rename.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { tier: 'window', title: name, wide: true, large: true, onOpen: scrollToActive });
 
     async function renderSecretsList() {
         const secrets = secret_state[key] ?? [];
@@ -700,6 +716,10 @@ async function openKeyManagerDialog(key) {
         const previousScrollTop = list.scrollTop();
 
         const emptyMessage = template.find('.secretKeyManagerListEmpty');
+        // SillyBunny: the empty list is the shared status page in place of a line of text.
+        if (!emptyMessage.children('.sb-status-page').length) {
+            emptyMessage.empty().append(createStatusPage({ state: 'empty', title: t`No Secrets Saved`, compact: true }).element);
+        }
         emptyMessage.toggle(secrets.length === 0);
 
         const itemBlocks = [];
@@ -723,7 +743,8 @@ async function openKeyManagerDialog(key) {
                 toastr.info(t`Secret value copied to clipboard.`);
             });
             itemTemplate.find('button[data-action="rename-secret"]').on('click', async function () {
-                const label = await Popup.show.input(t`Rename Secret`, t`Enter new label for the secret:`, secret?.label || getLabel());
+                // SillyBunny: Rename Secret is an Alert above the key-manager Window, not another page.
+                const label = await Popup.show.input(t`Rename Secret`, t`Enter new label for the secret:`, secret?.label || getLabel(), { tier: 'alert' });
                 if (!label) {
                     return;
                 }
@@ -731,7 +752,8 @@ async function openKeyManagerDialog(key) {
                 await renderSecretsList();
             });
             itemTemplate.find('button[data-action="delete-secret"]').on('click', async function () {
-                const confirm = await Popup.show.confirm(t`Delete Secret: ${secret?.label}`, t`Are you sure you want to delete this secret? This action cannot be undone.`);
+                // SillyBunny: secret deletion is destructive and names the delete action.
+                const confirm = await Popup.show.confirm(t`Delete Secret: ${secret?.label}`, t`Are you sure you want to delete this secret? This action cannot be undone.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
                 if (!confirm) {
                     return;
                 }

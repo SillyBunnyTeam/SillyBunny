@@ -1,0 +1,33 @@
+{
+    "format": 1,
+    "file": "hero-duo-night.png",
+    "sha256": "f9b52a57efc605cdbd9c76dcecf313987ce661078b2812a0fd4e30bfb67827ad",
+    "characters": [
+        "reisen",
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-04"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "retouch",
+        "compose-scene"
+    ],
+    "handEdits": true,
+    "record": "sha256:1c0db6ec06f9db1363623144a65b7017c4d2e4c75512864dd347931deec6af1b"
+}

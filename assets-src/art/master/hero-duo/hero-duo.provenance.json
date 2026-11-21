@@ -1,0 +1,32 @@
+{
+    "format": 1,
+    "file": "hero-duo.png",
+    "sha256": "818d5d45dd1a258fd51c76bc728c4bc428b515a41a1fcac3aa5450e54b4fd8f5",
+    "characters": [
+        "reisen",
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-04"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "compose-scene"
+    ],
+    "handEdits": false,
+    "record": "sha256:7aad9fd0ba2b975992d23040fc90c9892479d2e9a75c74df4742aaa723ff02ff"
+}
