@@ -16,6 +16,7 @@ const changeSource = source.match(/async function onCustomEndpointPresetChange\(
 const loadSource = source.match(/export async function loadCustomEndpointPresets\(settings\) \{[\s\S]*?\n\}/)[0].replace('export ', '');
 const deleteSource = source.match(/\$\('#delete_custom_endpoint'\)\.on\('click', async function \(\) \{[\s\S]*?\n\}\);/)[0];
 const slashCommandSource = source.match(/async function runCustomEndpointPresetCallback\([\s\S]*?\n\}/)[0];
+const syncSource = source.match(/export function syncCustomEndpointPresetSelectionBySecretId\([\s\S]*?\n\}/)[0].replace('export ', '');
 const popupSource = ['writeCustomEndpointParameter', 'onCustomizeParametersClick']
     .map(name => source.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`))[0]).join('\n');
 const scriptSource = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -160,7 +161,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         isTemporaryChat: () => false,
         getStatusOpen: jest.fn(async () => context.selected_custom_endpoint_preset?.secretId),
     };
-    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${loadSource}\n${slashCommandSource}\n${saveSource}\n${deleteSource}\n${popupSource}`, context);
+    runInNewContext(`${pollinationsEndpointSource}\n${saverSource}\n${keyInputSource}\n${connectSource}\n${activateSource}\n${setPresetSource}\n${changeSource}\n${loadSource}\n${slashCommandSource}\n${saveSource}\n${deleteSource}\n${syncSource}\n${popupSource}`, context);
     return {
         context,
         profile,
@@ -545,6 +546,86 @@ describe('Custom endpoint profile Additional Parameters', () => {
             expect(harness.profile).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
             await harness.context.saveSettings(0, { returnResult: true });
             expect(harness.persisted().custom_endpoint_presets[0]).toMatchObject({ name: 'None', custom_include_headers: '' });
+        });
+    });
+
+    describe('applying a connection profile that selects an endpoint profile by its secret', () => {
+        const parametersA = { custom_include_body: 'a: 1', custom_exclude_body: '', custom_include_headers: 'Authorization: Bearer KEY-A' };
+        const parametersB = { custom_include_body: 'b: 1', custom_exclude_body: '- seed', custom_include_headers: 'Authorization: Bearer KEY-B' };
+
+        // The secret, the endpoint profile by name, then the parameters the connection profile records itself, which is the order of its commands.
+        const applyConnectionProfile = async (harness, { secretId, endpointProfile, parameters = {} }) => {
+            harness.context.syncCustomEndpointPresetSelectionBySecretId(secretId);
+            if (endpointProfile) await harness.context.runCustomEndpointPresetCallback(null, endpointProfile);
+            Object.assign(harness.context.oai_settings, parameters);
+        };
+
+        const createProviders = ({ providerB = parametersB } = {}) => {
+            const harness = createHarness({ profile: normalizeCustomEndpointPreset({ name: 'Provider A', url: 'http://a.example/v1', model: 'model-a', secretId: 'secret-a', ...parametersA }) });
+            const none = normalizeCustomEndpointPreset({ name: 'None' });
+            const b = normalizeCustomEndpointPreset({ name: 'Provider B', url: 'http://b.example/v1', model: 'model-b', secretId: 'secret-b', ...providerB });
+            harness.context.custom_endpoint_presets.unshift(none);
+            harness.context.custom_endpoint_presets.push(b);
+            Object.assign(harness.context.oai_settings, parametersA);
+            return { harness, none, b };
+        };
+
+        test.each([
+            ['has no endpoint profile name', undefined],
+            ['names an endpoint profile that was deleted', 'Deleted Profile'],
+        ])('a connection profile that %s brings the parameters of the profile that its secret selects', async (_, endpointProfile) => {
+            const { harness, b } = createProviders();
+
+            await applyConnectionProfile(harness, { secretId: 'secret-b', endpointProfile });
+
+            expect(harness.context.selected_custom_endpoint_preset).toBe(b);
+            expect(harness.context.oai_settings).toMatchObject(parametersB);
+            expect(harness.context.oai_settings.custom_include_headers).not.toContain('KEY-A');
+        });
+
+        test('the parameters that the connection profile records itself win over the ones the secret selects', async () => {
+            const { harness } = createProviders();
+
+            await applyConnectionProfile(harness, { secretId: 'secret-b', parameters: { custom_include_body: 'own: 1' } });
+
+            expect(harness.context.oai_settings).toMatchObject({ ...parametersB, custom_include_body: 'own: 1' });
+        });
+
+        test('a selected profile that stores none leaves the current parameters', async () => {
+            const { harness, b } = createProviders({ providerB: {} });
+
+            await applyConnectionProfile(harness, { secretId: 'secret-b' });
+
+            expect(harness.context.selected_custom_endpoint_preset).toBe(b);
+            expect(harness.context.oai_settings).toMatchObject(parametersA);
+        });
+
+        test('a secret that no endpoint profile holds selects None, which clears the parameters', async () => {
+            const { harness, none } = createProviders();
+
+            await applyConnectionProfile(harness, { secretId: 'secret-unknown' });
+
+            expect(harness.context.selected_custom_endpoint_preset).toBe(none);
+            expect(harness.context.oai_settings).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+        });
+
+        test('a secret of the profile that is already selected keeps the parameters in effect', async () => {
+            const { harness } = createProviders();
+            harness.context.oai_settings.custom_include_body = 'set-by-an-earlier-connection-profile: 1';
+
+            await applyConnectionProfile(harness, { secretId: 'secret-a' });
+
+            expect(harness.context.selected_custom_endpoint_preset).toBe(harness.profile);
+            expect(harness.context.oai_settings.custom_include_body).toBe('set-by-an-earlier-connection-profile: 1');
+        });
+
+        test('no secret changes nothing', async () => {
+            const { harness } = createProviders();
+
+            await applyConnectionProfile(harness, { secretId: '' });
+
+            expect(harness.context.selected_custom_endpoint_preset).toBe(harness.profile);
+            expect(harness.context.oai_settings).toMatchObject(parametersA);
         });
     });
 

@@ -10436,6 +10436,10 @@ function updateCustomEndpointKeyInput(preset, key) {
 }
 
 // SillyBunny: connection profiles can rotate CUSTOM secrets without using the endpoint preset dropdown.
+// This runs only while a connection profile is applied, and that sets the profile's own Additional Parameters
+// afterwards. A new selection therefore takes the Additional Parameters that its endpoint profile stores, so the
+// live ones do not stay with the profile that was selected before. A caller outside that application would change
+// the live parameters with no profile values to follow.
 export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
     const normalizedSecretId = String(secretId ?? '').trim();
     if (!normalizedSecretId) {
@@ -10444,9 +10448,13 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
 
     const matchedPreset = custom_endpoint_presets.find(preset => preset.name !== 'None' && String(preset.secretId ?? '').trim() === normalizedSecretId);
     if (matchedPreset) {
+        const selectionChanged = matchedPreset !== selected_custom_endpoint_preset;
         selected_custom_endpoint_preset = matchedPreset;
         $('#custom_endpoint_preset').val(matchedPreset.name);
         updateCustomEndpointKeyInput(matchedPreset, matchedPreset.key);
+        if (selectionChanged) {
+            Object.assign(oai_settings, pickCustomEndpointParameters(matchedPreset));
+        }
         return true;
     }
 
@@ -10455,6 +10463,7 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
         selected_custom_endpoint_preset = custom_endpoint_presets.find(preset => preset.name === 'None') ?? normalizeCustomEndpointPreset({ name: 'None' });
         $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
         updateCustomEndpointKeyInput(selected_custom_endpoint_preset, '');
+        Object.assign(oai_settings, pickCustomEndpointParameters(selected_custom_endpoint_preset));
         return true;
     }
 
