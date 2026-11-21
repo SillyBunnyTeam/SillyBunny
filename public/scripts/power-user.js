@@ -58,7 +58,7 @@ import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
+import { debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 // SillyBunny: the shared sort control delegates Groups persistence to the
 // view-scoped state module
@@ -89,6 +89,7 @@ import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './movi
 // SillyBunny: registered side panels persist a side preference without applying draggable geometry.
 import { applyMovingUIState, configureMovingUIState, resetSidePanelSides } from './sillybunny-editor/side-panel.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
+import { autoFixMarkdown } from './auto-fix-markdown.js';
 // SillyBunny: persisted one-level Characters and Groups folders.
 import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
 // SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
@@ -720,44 +721,8 @@ export function collapseNewlines(x) {
  * "^example * text* * harder problem *\n" // "^example *text* *harder problem*\n"
  */
 export function fixMarkdown(text, forDisplay) {
-    // Find pairs of formatting characters and capture the text in between them
-    const format = /([*_]{1,2})([\s\S]*?)\1/gm;
-    let matches = [];
-    let match;
-    while ((match = format.exec(text)) !== null) {
-        matches.push(match);
-    }
-
-    // Iterate through the matches and replace adjacent spaces immediately beside formatting characters
-    let newText = text;
-    for (let i = matches.length - 1; i >= 0; i--) {
-        let matchText = matches[i][0];
-        let replacementText = matchText.replace(/(\*|_)([\t \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]+)|([\t \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]+)(\*|_)/g, '$1$4');
-        newText = newText.slice(0, matches[i].index) + replacementText + newText.slice(matches[i].index + matchText.length);
-    }
-
-    // Don't auto-fix asterisks if this is a message clean-up procedure.
-    // It botches the continue function. Apply this to display only.
-    if (!forDisplay) {
-        return newText;
-    }
-
-    const splitText = newText.split('\n');
-
-    // Fix asterisks, and quotes that are not paired
-    for (let index = 0; index < splitText.length; index++) {
-        const line = splitText[index];
-        const charsToCheck = ['*', '"'];
-        for (const char of charsToCheck) {
-            if (line.includes(char) && isOdd(countOccurrences(line, char))) {
-                splitText[index] = line.trimEnd() + char;
-            }
-        }
-    }
-
-    newText = splitText.join('\n');
-
-    return newText;
+    // SillyBunny: pair whole emphasis runs on each line and skip code, so that nested emphasis, list markers, thematic breaks and code stay intact.
+    return autoFixMarkdown(text, forDisplay);
 }
 
 function switchHotswap() {
