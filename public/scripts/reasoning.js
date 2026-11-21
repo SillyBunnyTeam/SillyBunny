@@ -6,7 +6,7 @@ import { getRegexedString, regex_placement } from './extensions/regex/engine.js'
 import { getCurrentLocale, t, translate } from './i18n.js';
 import { macros, MacroCategory } from './macros/macro-system.js';
 import { chat_completion_sources, getChatCompletionModel, oai_settings } from './openai.js';
-import { Popup } from './popup.js';
+import { Popup, POPUP_RESULT } from './popup.js';
 import { performFuzzySearch, power_user } from './power-user.js';
 import { getPresetManager } from './preset-manager.js';
 import { getStreamingReasoningRenderInterval, shouldReduceStreamingDomWork, shouldRenderLiveReasoningContent } from './mobile-streaming.js';
@@ -247,6 +247,7 @@ export function extractReasoningFromData(data, {
                 case chat_completion_sources.ZAI:
                 case chat_completion_sources.WORKERS_AI:
                 case chat_completion_sources.FIREWORKS:
+                case chat_completion_sources.KOBOLDCPP: // SillyBunny: KoboldCpp returns thinking as reasoning_content.
                 case chat_completion_sources.CUSTOM: {
                     return data?.choices?.[0]?.message?.reasoning_content
                         ?? data?.choices?.[0]?.message?.reasoning
@@ -1571,7 +1572,8 @@ function setReasoningEventHandlers() {
         e.stopPropagation();
         e.preventDefault();
 
-        const confirm = await Popup.show.confirm(t`Remove Reasoning`, t`Are you sure you want to clear the reasoning?<br />Visible message contents will stay intact.`);
+        // SillyBunny: reasoning removal is destructive and names the remove action.
+        const confirm = await Popup.show.confirm(t`Remove Reasoning`, t`Are you sure you want to clear the reasoning?<br />Visible message contents will stay intact.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
 
         if (!confirm) {
             return;

@@ -1,4 +1,3 @@
-import { DOMPurify } from '../lib.js';
 import { amount_gen, eventSource, event_types, getRequestHeaders, max_context, online_status, setGenerationParamsFromPreset } from '../script.js';
 import { textgenerationwebui_settings as textgen_settings, textgen_types } from './textgen-settings.js';
 import { tokenizers } from './tokenizers.js';
@@ -6,9 +5,16 @@ import { renderTemplateAsync } from './templates.js';
 import { POPUP_TYPE, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
-import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
+import { escapeHtml, localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
 import { updateServiceTierOptions } from './service-tiers.js';
+// SillyBunny: the KoboldCpp model switcher lives in its own module to keep this file close to upstream.
+import { initKoboldCppModels } from './sillybunny-koboldcpp-models.js';
+// SillyBunny: model details for the shared picker rows of the Connections select rows.
+import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+// SillyBunny: the TabbyAPI downloader's inputs become shared entry rows in the Dialog tier.
+import { tabbyDownloaderOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
+import { describeMancerModel, describeOpenRouterModel, describeTogetherModel } from './sillybunny-model-details.js';
 
 let mancerModels = [];
 let togetherModels = [];
@@ -892,6 +898,15 @@ function onAphroditeModelSelect() {
     $('#api_button_textgenerationwebui').trigger('click');
 }
 
+// SillyBunny: the Connections select rows show each model's details (what the select2 templates show)
+// as a picker subtitle at every width. The templates for Infermatic, DreamGen, vLLM and Aphrodite show only
+// the id, which is the row's label, so they have nothing to register.
+registerOptionDetails({
+    mancer_model: option => describeMancerModel(mancerModels.find(x => x.id === option.value)),
+    model_togetherai_select: option => describeTogetherModel(togetherModels.find(x => x.id === option.value), option.textContent),
+    openrouter_model: option => describeOpenRouterModel(openRouterModels.find(x => x.id === option.value)),
+});
+
 function getMancerModelTemplate(option) {
     const model = mancerModels.find(x => x.id === option?.element?.value);
 
@@ -903,9 +918,10 @@ function getMancerModelTemplate(option) {
     const creditsPerCompletion = model.limits?.completion * model.pricing?.completion;
     const creditsTotal = Math.round(creditsPerPrompt + creditsPerCompletion).toFixed(0);
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.name)}</strong> | <span>${model.limits?.context} ctx</span> / <span>${model.limits?.completion} res</span> | <small>Credits per request (max): ${creditsTotal}</small></div>
+            <div><strong>${escapeHtml(model.name)}</strong> | <span>${escapeHtml(model.limits?.context)} ctx</span> / <span>${escapeHtml(model.limits?.completion)} res</span> | <small>Credits per request (max): ${escapeHtml(creditsTotal)}</small></div>
         </div>
     `));
 }
@@ -917,10 +933,11 @@ function getTogetherModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong> | <span>${model.context_length || '???'} tokens</span></div>
-            <div><small>${DOMPurify.sanitize(model.description)}</small></div>
+            <div><strong>${escapeHtml(model.id)}</strong> | <span>${escapeHtml(model.context_length || '???')} tokens</span></div>
+            <div><small>${escapeHtml(model.description)}</small></div>
         </div>
     `));
 }
@@ -932,9 +949,10 @@ function getInfermaticAIModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -946,9 +964,10 @@ function getDreamGenModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -965,9 +984,10 @@ function getOpenRouterModelTemplate(option) {
 
     const price = 0 === Number(model.pricing?.prompt) ? 'Free' : `${tokens_rounded}k t/$ `;
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
-            <div><strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.context_length} ctx | <small>${price}</small></div>
+        <div class="flex-container flexFlowColumn" title="${escapeHtml(model.id)}">
+            <div><strong>${escapeHtml(model.name)}</strong> | ${escapeHtml(model.context_length)} ctx | <small>${escapeHtml(price)}</small></div>
         </div>
     `));
 }
@@ -979,9 +999,10 @@ function getVllmModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -993,9 +1014,10 @@ function getAphroditeModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -1051,7 +1073,12 @@ async function downloadTabbyModel() {
         }
 
         const downloadHtml = $(await renderTemplateAsync('tabbyDownloader'));
-        const popupResult = await callGenericPopup(downloadHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Download', cancelButton: 'Cancel' });
+        const popupResult = await callGenericPopup(downloadHtml, POPUP_TYPE.CONFIRM, '', {
+            okButton: 'Download',
+            cancelButton: 'Cancel',
+            // SillyBunny: presentation only; the inputs keep their names and values, which this function reads.
+            ...tabbyDownloaderOptions(downloadHtml),
+        });
 
         // User cancelled the download
         if (!popupResult) {
@@ -1190,6 +1217,8 @@ export function initTextGenModels() {
     $('#llamacpp_model').on('change', onLlamaCppModelSelect);
     $('#generic_model_select').on('change', onGenericModelSelect);
     $('#featherless_model').on('change', () => onFeatherlessModelSelect(String($('#featherless_model').val())));
+    // SillyBunny: the KoboldCpp model switcher lives in its own module to keep this file close to upstream, and starts here with the other model selects.
+    initKoboldCppModels();
 
     const providersSelect = $('.openrouter_providers');
     for (const selector of Object.keys(OPENROUTER_PROVIDER_WARNING_SELECTORS)) {
@@ -1204,7 +1233,9 @@ export function initTextGenModels() {
     }
 
     // Keep API Select2 dropdowns inside the scrolling API drawer so they move with the control.
-    const apiDropdownParent = $('#rm_api_block');
+    // SillyBunny: that drawer is the Connections panel, which holds
+    // the provider forms instead of the empty `#rm_api_block`.
+    const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
     const select2Defaults = {
         dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
         minimumResultsForSearch: 0,
@@ -1247,6 +1278,13 @@ export function initTextGenModels() {
         searchInputCssClass: 'text_pole',
         width: '100%',
         allowClear: true,
+    });
+    // SillyBunny: the KoboldCpp model switcher gets the search box of the other model selects, because KoboldCpp can list many files.
+    $('#koboldcpp_model').select2({
+        ...select2Defaults,
+        searchInputPlaceholder: t`Search models...`,
+        searchInputCssClass: 'text_pole',
+        width: '100%',
     });
     $('#generic_model_select').select2({
         ...select2Defaults,
@@ -1321,6 +1359,29 @@ export function initTextGenModels() {
             select2.trigger('query', { term: select2.selection.$search.val() || '' });
         }
     });
+    // SillyBunny: Select2 multiple fields toggle on every click and ignore clicks once the inline
+    // search has text, so a click could close the menu or only focus the search box. Clicks on
+    // the field always open it; outside clicks, Escape, and Tab still close it.
+    document.addEventListener('click', event => {
+        const target = event.target instanceof Element ? event.target : null;
+        const selection = target?.closest('.select2-selection--multiple');
+        const select = selection?.closest('.select2-container')?.previousElementSibling;
+        if (!select?.matches('.openrouter_providers, .openrouter_quantizations')
+            || target.closest('.select2-selection__choice__remove')) {
+            return;
+        }
+
+        const select2 = $(select).data('select2');
+        if (!select2 || select2.isDisabled()) {
+            return;
+        }
+
+        event.stopPropagation();
+        if (!select2.isOpen()) {
+            select2.open();
+        }
+        select2.selection.$search.trigger('focus');
+    }, true);
     providersSelect.on('select2:select', function (/** @type {any} */ evt) {
         const element = evt.params.data.element;
         const $element = $(element);

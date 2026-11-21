@@ -2,6 +2,7 @@ import { animation_duration } from '../../../../../script.js';
 import { dragElement } from '../../../../RossAscends-mods.js';
 import { loadMovingUIState } from '../../../../power-user.js';
 import { getUniqueQuickReplySetLinksBySetName } from '../quick-reply-set-list.js';
+import { t } from '../../../../i18n.js'; // SillyBunny: names the popout's Close button.
 
 export class ButtonUi {
     /** @type {QuickReplySettings} */ settings;
@@ -171,6 +172,11 @@ export class ButtonUi {
                             close.classList.add('fa-solid');
                             close.classList.add('fa-circle-xmark');
                             close.classList.add('hoverglow');
+                            // SillyBunny: Close is a named button that the keyboard reaches.
+                            close.setAttribute('role', 'button');
+                            close.tabIndex = 0;
+                            close.title = t`Close`;
+                            close.setAttribute('aria-label', t`Close`);
                             close.addEventListener('click', () => {
                                 this.settings.isPopout = false;
                                 this.refresh();

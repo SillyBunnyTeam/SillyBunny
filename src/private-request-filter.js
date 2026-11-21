@@ -8,6 +8,8 @@ import ipRegex from 'ip-regex';
 import { Agent } from 'agent-base';
 import { color } from './util.js';
 import { filterValidIpPatterns } from './express-common.js';
+// SillyBunny: an IPv4-mapped IPv6 address reaches the IPv4 host, so the range checks read it as that host.
+import { unmapIpv4Address } from './private-address-forms.js';
 
 const LOG_HEADER = '[Private Request Filter]';
 
@@ -29,6 +31,9 @@ const privateIpRanges = [
     ipMatch.getMatch('fc00::/7'),
     // Link-local address (IPv6)
     ipMatch.getMatch('fe80::/10'),
+    // SillyBunny: a connection to an unspecified address reaches a service on this host, as loopback does.
+    ipMatch.getMatch('0.0.0.0/8'),
+    ipMatch.getMatch('::/128'),
 ];
 
 /**
@@ -88,7 +93,8 @@ class PrivateRequestAgent extends Agent {
      * @returns {boolean} Whether the given address is a private IP address.
      */
     #isPrivateIp(address) {
-        return privateIpRanges.some(range => range.matches(address));
+        const host = unmapIpv4Address(address); // SillyBunny: `::ffff:127.0.0.1` is 127.0.0.1
+        return privateIpRanges.some(range => range.matches(host));
     }
 
     /**
@@ -98,7 +104,8 @@ class PrivateRequestAgent extends Agent {
      */
     #isAllowedPrivateAddress(address) {
         // Permit the request if the private IP address is in the whitelist
-        return this.privateAddressWhitelist.some(match => match.matches(address));
+        const host = unmapIpv4Address(address); // SillyBunny: a whitelisted IPv4 host stays allowed in its IPv4-mapped form
+        return this.privateAddressWhitelist.some(match => match.matches(address) || match.matches(host));
     }
 
     /**

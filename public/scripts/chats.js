@@ -50,6 +50,7 @@ import {
 } from './utils.js';
 import { extension_settings, renderExtensionTemplateAsync, saveMetadataDebounced } from './extensions.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { ScraperManager } from './scrapers.js';
 import { DragAndDropHandler } from './dragdrop.js';
 import { renderTemplateAsync } from './templates.js';
@@ -57,6 +58,12 @@ import { t } from './i18n.js';
 import { humanizedDateTime } from './RossAscends-mods.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE, SCROLL_BEHAVIOR, SWIPE_DIRECTION } from './constants.js';
+// SillyBunny: adopt preference radios into shared dialog rows without changing persistence.
+import { creatorStylesPreferenceOptions, externalMediaOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: Data Bank presentation stays in a dedicated adapter so upstream attachment handlers remain source-compatible.
+import { decorateDataBankRow, frameDataBankManager } from './sillybunny-editor/adapters/data-bank-dialog.js';
+// SillyBunny: the Data Bank Add menu is presented as a bottom sheet on phones, on its upstream node.
+import { presentMenuAsSheet } from './sillybunny-editor/sheet-gestures.js';
 
 /**
  * @typedef {Object} FileAttachment
@@ -401,7 +408,8 @@ async function deleteMessageFile(messageBlock, messageId, fileIndex) {
         return;
     }
 
-    const confirm = await callGenericPopup('Are you sure you want to delete this file?', POPUP_TYPE.CONFIRM);
+    // SillyBunny: message file confirmations use an explicit destructive action.
+    const confirm = await callGenericPopup('Are you sure you want to delete this file?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
 
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
         console.debug('Delete file cancelled');
@@ -716,6 +724,8 @@ async function openGlobalStylesPreferenceDialog() {
     const currentValue = preference.get();
 
     const template = $(await renderTemplateAsync('globalStylesPreference'));
+    // SillyBunny: preserve the template controls and immediate-apply result contract.
+    const dialogOptions = creatorStylesPreferenceOptions(template);
 
     const allowedRadio = template.find('#global_styles_allowed');
     const forbiddenRadio = template.find('#global_styles_forbidden');
@@ -735,7 +745,7 @@ async function openGlobalStylesPreferenceDialog() {
     const currentPreferenceRadio = currentValue ? allowedRadio : forbiddenRadio;
     template.find(currentPreferenceRadio).prop('checked', true);
 
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false });
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false, ...dialogOptions });
 
     // Re-render the notes if the preference changed
     const newValue = preference.get();
@@ -830,6 +840,8 @@ async function openExternalMediaOverridesDialog() {
     }
 
     const template = $(await renderTemplateAsync('forbidMedia'));
+    // SillyBunny: keep delegated input handlers attached to the original radios.
+    const dialogOptions = externalMediaOptions(template);
     template.find('.forbid_media_global_state_forbidden').toggle(power_user.forbid_external_media);
     template.find('.forbid_media_global_state_allowed').toggle(!power_user.forbid_external_media);
 
@@ -841,7 +853,7 @@ async function openExternalMediaOverridesDialog() {
         template.find('#forbid_media_override_global').prop('checked', true);
     }
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false });
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: false, large: false, ...dialogOptions });
 }
 
 export function getCurrentEntityId() {
@@ -992,13 +1004,15 @@ async function deleteMessageMedia(messageId, mediaIndex, messageBlock) {
     let deleteFromServer = true;
 
     const value = await Popup.show.confirm(t`Delete media from message?`, t`This action can't be undone.`, {
-        okButton: t`Delete one`,
+        // SillyBunny: both delete responses are destructive and Return cancels (confirmVerb, is-destructive).
+        ...confirmVerb(t`Delete One`, { destructive: true }),
         cancelButton: false,
         customButtons: [
             {
                 text: t`Delete all`,
                 appendAtEnd: true,
                 result: POPUP_RESULT.CUSTOM1,
+                classes: ['is-destructive'],
             },
             {
                 text: t`Cancel`,
@@ -1168,7 +1182,8 @@ async function openFilePopup(attachment) {
     modalTemplate.addClass('file_modal').addClass('textarea_compact').addClass('fontsize90p');
     addCopyToCodeBlocks(modalTemplate);
 
-    callGenericPopup(modalTemplate, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    // SillyBunny: keep attachment viewing in the Data Bank Window tier so it is presented as a page.
+    callGenericPopup(modalTemplate, POPUP_TYPE.TEXT, '', { tier: 'window', title: attachment.name, wide: true, large: true });
 }
 
 /**
@@ -1191,7 +1206,8 @@ async function editAttachment(attachment, source, callback) {
         editedFileName = String($(this).val());
     });
 
-    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: 'Save', cancelButton: 'Cancel' });
+    // SillyBunny: present the notepad as a Window page above the Data Bank manager.
+    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', { tier: 'window', title: attachment.name, wide: true, large: true, okButton: 'Save', cancelButton: 'Cancel' });
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return;
@@ -1292,7 +1308,8 @@ async function moveAttachment(attachment, source, callback) {
  */
 export async function deleteAttachment(attachment, source, callback, confirm = true) {
     if (confirm) {
-        const result = await callGenericPopup('Are you sure you want to delete this attachment?', POPUP_TYPE.CONFIRM);
+        // SillyBunny: deleting an attachment is destructive and names the delete action.
+        const result = await callGenericPopup('Are you sure you want to delete this attachment?', POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
 
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             return;
@@ -1405,11 +1422,28 @@ async function openAttachmentManager() {
             attachmentTemplate.find('.moveAttachmentButton').on('click', () => moveAttachment(attachment, source, renderAttachments));
             attachmentTemplate.find('.enableAttachmentButton').toggle(isDisabled).on('click', () => enableAttachment(attachment, renderAttachments));
             attachmentTemplate.find('.disableAttachmentButton').toggle(!isDisabled).on('click', () => disableAttachment(attachment, renderAttachments));
+            // SillyBunny: keep upstream action nodes intact so the shared menu forwards to their existing handlers.
+            decorateDataBankRow(attachmentTemplate.get(0), {
+                view: attachmentTemplate.find('.viewAttachmentButton').get(0),
+                actions: [
+                    ...(isDisabled
+                        ? [{ label: t`Enable`, icon: 'fa-solid fa-comment', button: attachmentTemplate.find('.enableAttachmentButton').get(0) }]
+                        : [{ label: t`Disable`, icon: 'fa-solid fa-comment-slash', button: attachmentTemplate.find('.disableAttachmentButton').get(0) }]),
+                    { label: t`Move`, icon: 'fa-solid fa-arrows-alt', button: attachmentTemplate.find('.moveAttachmentButton').get(0) },
+                    { label: t`Edit`, icon: 'fa-solid fa-pencil', button: attachmentTemplate.find('.editAttachmentButton').get(0) },
+                    { label: t`Download`, icon: 'fa-solid fa-download', button: attachmentTemplate.find('.downloadAttachmentButton').get(0) },
+                    { label: t`Delete`, icon: 'fa-solid fa-trash', button: attachmentTemplate.find('.deleteAttachmentButton').get(0) },
+                ],
+            });
             template.find(sources[source]).append(attachmentTemplate);
 
             if (selected.includes(attachment.url)) {
                 attachmentTemplate.find('.attachmentListItemCheckbox').prop('checked', true);
             }
+        }
+        // SillyBunny: preserve an explicit empty row because shared list surfaces do not use pseudo-content placeholders.
+        if (sortedAttachmentList.length === 0 && !filterString) {
+            template.find(sources[source]).append($('<div class="attachmentEmptyRow ds-row"></div>').text(t`No data`));
         }
     }
 
@@ -1425,6 +1459,9 @@ async function openAttachmentManager() {
 
         const modal = template.find('.actionButtonsModal').hide();
         const scrapers = ScraperManager.getDataBankScrapers();
+        // SillyBunny: the Add menu is a bottom sheet on phones, on this same node. Its three triggers share it, so the last one pressed is the trigger.
+        let addMenuTrigger = null;
+        const addMenuSheet = presentMenuAsSheet({ node: modal.get(0), getTrigger: () => addMenuTrigger, close: () => modal.hide() });
 
         for (const scraper of scrapers) {
             const isAvailable = await ScraperManager.isScraperAvailable(scraper.id);
@@ -1471,6 +1508,7 @@ async function openAttachmentManager() {
 
             const popper = Popper.createPopper(button, modal.get(0), { placement: 'bottom-end' });
             button.addEventListener('click', () => {
+                addMenuTrigger = button;
                 modal.attr('data-attachment-manager-target', source);
                 modal.toggle();
                 popper.update();
@@ -1480,6 +1518,7 @@ async function openAttachmentManager() {
         }).filter(Boolean);
 
         return () => {
+            addMenuSheet.dispose();
             modalButtonData.forEach(p => {
                 const { popper, bodyListener } = p;
                 popper.destroy();
@@ -1511,6 +1550,12 @@ async function openAttachmentManager() {
 
         const chatName = getCurrentChatId() || 'Unnamed chat';
         template.find('.chatAttachmentsName').text(chatName);
+
+        // SillyBunny: report filtered counts through the shared status page without changing attachment state.
+        const visibleCount = template.find('.attachmentsList > .attachmentListItem').length;
+        const totalCount = globalAttachments.length + characterAttachments.length + chatAttachments.length;
+        dataBankFrame?.report(visibleCount, totalCount);
+        template.toggleClass('dataBank-search-empty', Boolean(filterString) && visibleCount === 0);
     }
 
     const dragDropHandler = new DragAndDropHandler('.popup', async (files, event) => {
@@ -1537,6 +1582,8 @@ async function openAttachmentManager() {
     let filterString = '';
 
     const template = $(await renderExtensionTemplateAsync('attachments', 'manager', {}));
+    // SillyBunny: keep the shared frame handle beside the legacy template for lifecycle cleanup.
+    let dataBankFrame = null;
 
     template.find('.attachmentSearch').on('input', function () {
         filterString = String($(this).val());
@@ -1563,7 +1610,8 @@ async function openAttachmentManager() {
             }
 
             if (action.confirmMessage) {
-                const confirm = await callGenericPopup(action.confirmMessage, POPUP_TYPE.CONFIRM);
+                // SillyBunny: forward the destructive confirmation policy so bulk Delete keeps a negative default.
+                const confirm = await callGenericPopup(action.confirmMessage, POPUP_TYPE.CONFIRM, '', action.confirmOptions);
                 if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
                     return;
                 }
@@ -1605,6 +1653,8 @@ async function openAttachmentManager() {
 
     template.find('.bulkActionDelete').on('click', handleBulkAction({
         confirmMessage: 'Are you sure you want to delete the selected attachments?',
+        // SillyBunny: Enter must cancel bulk deletion because it cannot be undone.
+        confirmOptions: { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
         perform: async (attachment, source) => await deleteAttachment(attachment, source, () => { }, false),
     }));
 
@@ -1626,7 +1676,19 @@ async function openAttachmentManager() {
     const cleanupFn = await renderButtons();
     await verifyAttachments();
     await renderAttachments();
-    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true });
+    // SillyBunny: make the manager an explicit Window while retaining its .popup drop target.
+    // SillyBunny: move the existing Data Bank controls into shared Window chrome without changing their handlers.
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', {
+        tier: 'window', title: t`Data Bank`, wide: true, large: true, okButton: 'Close', allowVerticalScrolling: true,
+        onOpening: popup => {
+            dataBankFrame = frameDataBankManager(popup, {
+                onSearch() {
+                    dataBankFrame.report(template.find('.attachmentsList > .attachmentListItem').length, getDataBankAttachments(true).length);
+                },
+            });
+        },
+        onClose: () => dataBankFrame?.destroy(),
+    });
 
     cleanupFn();
     dragDropHandler.destroy();
@@ -2239,6 +2301,10 @@ export function initChatUtilities() {
         }
 
         const wrapper = document.createElement('div');
+        // SillyBunny: this marker lets the Window body hand its only scroll area to the textarea.
+        wrapper.classList.add('sb-maximized-editor');
+        // SillyBunny: an editor is a document, so its Window body uses the View surface.
+        wrapper.classList.add('sb-document');
         wrapper.classList.add('height100p', 'wide100p', 'flex-container');
         wrapper.classList.add('flexFlowColumn', 'justifyCenter', 'alignitemscenter');
         const textarea = document.createElement('textarea');
@@ -2293,7 +2359,12 @@ export function initChatUtilities() {
             });
         }
 
-        await callGenericPopup(wrapper, POPUP_TYPE.TEXT, '', { wide: true, large: true });
+        // SillyBunny: the maximized editor is an explicit Window with its source field's title, which also names its text area. A field that sits in a group takes the group's heading.
+        const title = document.querySelector(`label[for="${CSS.escape(broId)}"]`)?.textContent.trim()
+            || document.querySelector(`.editor_maximize[data-for="${CSS.escape(broId)}"]`)?.closest('h4, .ds-field-header')?.textContent.trim()
+            || document.querySelector(`.editor_maximize[data-for="${CSS.escape(broId)}"]`)?.closest('.ds-pref-group-header')?.querySelector('.ds-pref-group-heading')?.textContent.trim();
+        if (title) textarea.setAttribute('aria-label', title);
+        await callGenericPopup(wrapper, POPUP_TYPE.TEXT, '', { tier: 'window', ...(title ? { title } : {}), wide: true, large: true });
     });
 
     $(document).on('click', 'body .mes .mes_text, body .mes .mes_reasoning', function (event) {

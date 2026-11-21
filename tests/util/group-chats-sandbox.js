@@ -23,6 +23,9 @@ const stateNames = [
     'openGroupId',
     'groupTurnRouting',
     'groupTurnRoutingApi',
+    // SillyBunny: the group editor's unsaved draft (Step 4)
+    'EDITABLE_KEYS',
+    'editorDraft',
 ];
 
 /**
@@ -36,6 +39,7 @@ function createPage(handlers, composer) {
         data: key => key === 'avatar' ? item.avatar : undefined,
         attr(name, value) {
             if (name === 'data-avatar') item.avatar = value;
+            if (name === 'aria-pressed') item.pressed = value;
             return this;
         },
         toggleClass(name, enabled) {
@@ -69,10 +73,14 @@ function createPage(handlers, composer) {
             return textarea;
         }
         if (target === '#group_speaker_controls .group_speaker_avatar') {
-            return { removeClass: () => items.forEach(item => { item.selected = false; }) };
+            const chips = {
+                removeClass: () => { items.forEach(item => { item.selected = false; }); return chips; },
+                attr: (name, value) => { items.forEach(item => wrap(item).attr(name, value)); return chips; },
+            };
+            return chips;
         }
         if (target === '<button type="button" class="group_speaker_avatar"></button>') {
-            const item = { avatar: '', selected: false };
+            const item = { avatar: '', selected: false, pressed: undefined };
             return { ...wrap(item), item };
         }
         if (typeof target === 'string' && target.startsWith('<')) {
@@ -83,7 +91,11 @@ function createPage(handlers, composer) {
         }
         return { length: 0, on() { return this; }, val: () => '' };
     };
-    return { $, highlighted: () => items.filter(item => item.selected).map(item => item.avatar) };
+    return {
+        $,
+        highlighted: () => items.filter(item => item.selected).map(item => item.avatar),
+        pressed: () => items.filter(item => item.pressed === 'true').map(item => item.avatar),
+    };
 }
 
 /**
@@ -162,6 +174,16 @@ export function createGroupChatsRuntime({ exclude = [] } = {}) {
         activateSendButtons: noop,
         deactivateSendButtons: noop,
         unshallowCharacter: async () => {},
+        // SillyBunny: group editor stubs — the sandbox has no editor session (Step 4)
+        isGroupEditorOwner: () => false,
+        notifyGroupEditorChanged: () => {},
+        beginGroupEditorLoad: () => {},
+        openGroupEditorSession: () => {},
+        openGroupEditorCreateSession: () => {},
+        captureGroupEditorSave: () => null,
+        readGroupEditorBaseline: () => null,
+        rebaseGroupEditor: () => {},
+        initGroupEditor: () => {},
     });
     const declarations = groupChatsAst.body.map(node => node.declaration ?? node);
     const state = declarations.filter(node => node.type === 'VariableDeclaration'

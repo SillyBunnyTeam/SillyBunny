@@ -7,6 +7,8 @@ import { chat_completion_sources, getStreamingReply, tryParseStreamingError, cre
 import EventSourceStream from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
 import { migrateNanoGptProviderSettings } from './openai-preset-utils.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { createFailedResponseError } from './sillybunny-request-errors.js';
 
 const BOOLEAN_CHAT_COMPLETION_FIELDS = [
     'include_reasoning',
@@ -206,7 +208,8 @@ export class TextCompletionService {
             const text = await response.text();
             tryParseStreamingError(response, text, { quiet: true });
 
-            throw new Error(`Got response status ${response.status}`);
+            // SillyBunny: the thrown error carries the provider's message, not only the HTTP status.
+            throw createFailedResponseError({ status: response.status, body: text });
         }
 
         const eventStream = new EventSourceStream();
@@ -568,7 +571,8 @@ export class ChatCompletionService {
             const text = await response.text();
             tryParseStreamingError(response, text, { quiet: true });
 
-            throw new Error(`Got response status ${response.status}`);
+            // SillyBunny: the thrown error carries the provider's message, not only the HTTP status.
+            throw createFailedResponseError({ status: response.status, body: text });
         }
 
         const eventStream = new EventSourceStream();
@@ -680,6 +684,8 @@ export class ChatCompletionService {
             [chat_completion_sources.MINIMAX]: 'minimax_endpoint',
             [chat_completion_sources.LINKAPI]: 'linkapi_endpoint',
             [chat_completion_sources.POLLINATIONS]: 'pollinations_endpoint',
+            // SillyBunny: KoboldCpp's own Chat Completions API.
+            [chat_completion_sources.KOBOLDCPP]: 'koboldcpp_url',
         };
 
         if (overridePayload.chat_completion_source) {
@@ -748,6 +754,17 @@ export class ChatCompletionService {
         }
         if (overridePayload.custom_include_headers !== undefined) {
             settings.custom_include_headers = overridePayload.custom_include_headers;
+        }
+        // SillyBunny: KoboldCpp profiles keep the KoboldCpp Additional Parameters in the Custom endpoint fields.
+        if (overridePayload.koboldcpp_url !== undefined) {
+            settings.koboldcpp_url = overridePayload.koboldcpp_url;
+        }
+        if (settings.chat_completion_source === chat_completion_sources.KOBOLDCPP) {
+            for (const field of ['include_body', 'exclude_body', 'include_headers']) {
+                if (overridePayload[`custom_${field}`] !== undefined) {
+                    settings[`koboldcpp_${field}`] = overridePayload[`custom_${field}`];
+                }
+            }
         }
         const connectionProfileRequestFields = Array.isArray(overridePayload.__connectionProfileRequestFields)
             ? overridePayload.__connectionProfileRequestFields

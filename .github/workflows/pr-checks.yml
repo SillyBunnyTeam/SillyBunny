@@ -105,6 +105,34 @@ jobs:
           git fetch --no-tags --depth=2 "https://github.com/$BASE_REPOSITORY.git" "+refs/pull/$PR_NUMBER/merge:refs/remotes/pr/merge"
           node scripts/bump-agent-template-versions.js --check --base 'refs/remotes/pr/merge^1' --head refs/remotes/pr/merge
 
+  run-art-tests:
+    name: ✅ Check Art Derive
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+            ref: ${{ github.event.pull_request.head.sha }}
+            repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install root dependencies
+        # The card tests load the app's card parser, whose packages come from the root node_modules.
+        run: npm ci --ignore-scripts
+
+      - name: Install art derive dependencies
+        run: npm ci --ignore-scripts --prefix scripts/art
+
+      - name: Run art derive tests
+        # The tests derive the shipped art again and compare it byte for byte, so a shipped picture edited by hand fails here.
+        run: npm test --prefix scripts/art
+
   frontend-budgets:
     name: ✅ Check Frontend Assets
     runs-on: ubuntu-latest
@@ -153,6 +181,9 @@ jobs:
 
       - name: Run Bun startup smoke
         run: bun src/server-init.js
+
+      - name: Run character index tests
+        run: bun test ./tests/character-index.test.js
 
   run-node-checks:
     name: ✅ Check Node Runtime

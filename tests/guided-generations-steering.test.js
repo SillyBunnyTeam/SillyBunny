@@ -131,7 +131,7 @@ describe('Guided Generations steering commands', () => {
             getElementById: jest.fn(id => id === 'send_textarea' ? textarea : null),
             querySelector: jest.fn(() => null),
         };
-        globalThis.alert = jest.fn();
+        globalThis.toastr = { error: jest.fn() };
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             eventSource,
@@ -181,6 +181,28 @@ describe('Guided Generations steering commands', () => {
         expect(textarea.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input' }));
     });
 
+    test.each([
+        ['missing chat context', () => { context.chat = undefined; }, 'Guided Swipe error: Could not get required context properties: chat'],
+        ['empty chat', () => { context.chat = []; }, 'Guided Swipe error: Cannot access chat context'],
+        ['missing swipe API', () => { context.swipe.right = undefined; }, 'Guided Swipe error: SillyTavern swipe generation API is not available'],
+    ])('reports %s through a toast', async (_caseName, prepare, message) => {
+        prepare();
+        const { generateNewSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+
+        await generateNewSwipe();
+
+        expect(globalThis.toastr.error).toHaveBeenCalledWith(message);
+    });
+
+    test('reports a missing swipe textarea through a toast', async () => {
+        globalThis.document.getElementById.mockReturnValueOnce(null);
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+
+        await guidedSwipe();
+
+        expect(globalThis.toastr.error).toHaveBeenCalledWith('Guided Swipe error: Textarea not found');
+    });
+
     test('guided response cancels before injecting or generating when the group picker is dismissed', async () => {
         context.groupId = 'group';
         context.groups = [{ id: 'group', members: ['avatar.png'] }];
@@ -208,7 +230,7 @@ describe('Guided Generations steering commands', () => {
         await guidedResponse();
 
         const content = context.callGenericPopup.mock.calls[0][0];
-        expect(content.textContent).toBe('Select member to respond as');
+        expect(content.textContent).toBe('Select Member to Respond As');
         expect(content.children[0].children.map(button => ({ text: button.textContent, result: button.dataset.result }))).toEqual([
             { text: '2B | "Alias"', result: '3' },
             { text: '2B | "Alias"', result: '4' },
@@ -279,7 +301,7 @@ describe('Guided Generations steering commands', () => {
 
         expect(context.chatMetadata.script_injects['gg-guided-swipe']).toBeUndefined();
         expect(textarea.value).toBe('aim for a colder, suspicious reply');
-        expect(globalThis.alert).toHaveBeenCalledWith('Guided Swipe Error: Swipe failed');
+        expect(globalThis.toastr.error).toHaveBeenCalledWith('Guided Swipe error: Swipe failed');
         context.swipe.right.mockResolvedValue(undefined);
         await guidedSwipe();
         expect(context.swipe.right).toHaveBeenCalledTimes(2);
@@ -339,6 +361,11 @@ describe('Guided Generations steering commands', () => {
         const first = guidedSwipe().catch(() => {});
         await jest.advanceTimersByTimeAsync(800);
         await first;
+        const expectedToasts = {
+            injection: ['Guided Swipe error: Injection failed'],
+            verification: ['Guided Swipe error: Could not verify instruction injection. Aborting swipe generation.'],
+        }[failure] ?? [];
+        expect(globalThis.toastr.error.mock.calls.map(([message]) => message)).toEqual(expect.arrayContaining(expectedToasts));
         context.swipe.right.mockClear();
         await guidedSwipe();
         expect(context.swipe.right).toHaveBeenCalledTimes(1);

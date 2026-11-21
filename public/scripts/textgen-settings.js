@@ -46,9 +46,13 @@ import {
 } from './sampling-parameter-policy.js';
 import { oai_settings } from './openai.js';
 import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, loadAphroditeModels, loadDreamGenModels, loadFeatherlessModels, loadGenericModels, loadInfermaticAIModels, loadLlamaCppModels, loadMancerModels, loadOllamaModels, loadOpenRouterModels, loadTabbyModels, loadTogetherAIModels, loadVllmModels, setOpenRouterProviders, updateOpenRouterProvidersWarning } from './textgen-models.js';
+// SillyBunny: the KoboldCpp model switcher lives in its own module to keep this file close to upstream.
+import { refreshKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
 import { AbortReason } from './util/AbortReason.js';
 import { getSortableDelay, onlyUnique, arraysEqual, isObject } from './utils.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { createFailedResponseError, extractProviderMessage, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
 
 export const textgen_types = {
     OOBA: 'ooba',
@@ -81,8 +85,9 @@ function initSamplerOrderLock(sortableSelector) {
         button.classList.toggle('fa-lock', locked);
         button.classList.toggle('fa-lock-open', !locked);
         button.setAttribute('aria-pressed', String(locked));
-        button.setAttribute('aria-label', locked ? t`Sampler reordering locked` : t`Sampler reordering unlocked`);
-        button.title = locked ? t`Unlock sampler reordering` : t`Lock sampler reordering`;
+        // SillyBunny: capitalisation by DESIGN.md
+        button.setAttribute('aria-label', locked ? t`Sampler Reordering Locked` : t`Sampler Reordering Unlocked`);
+        button.title = locked ? t`Unlock Sampler Reordering` : t`Lock Sampler Reordering`;
         $sortable.sortable(locked ? 'disable' : 'enable');
         $sortable.toggleClass('is-sampler-order-locked', locked);
     };
@@ -842,6 +847,11 @@ export async function getStatusTextgen() {
             setOnlineStatus('no_connection');
         }
 
+        // SillyBunny: refresh the KoboldCpp model switcher on every KoboldCpp status check, including reconnects to the same model.
+        if (textgenerationwebui_settings.type === textgen_types.KOBOLDCPP) {
+            void refreshKoboldCppModels();
+        }
+
         power_user.chat_template_hash = '';
 
         // Determine instruct mode preset
@@ -1270,6 +1280,13 @@ function showSamplerControls(apiType = null) {
 
 function showTypeSpecificControls(apiType) {
     $('[data-tg-type]').each(function () {
+        // SillyBunny: the shared Sampling tab shows every sampler for every backend type
+        // (sillybunny-tabs.js SB_SAMPLER_REGISTRY). Manual sampler selection still applies afterwards.
+        if (this.hasAttribute('data-sb-sampler-ungated')) {
+            $(this).show();
+            return;
+        }
+
         const mode = String($(this).attr('data-tg-type-mode') ?? '').toLowerCase().trim();
         const tgTypes = $(this).attr('data-tg-type').split(',').map(x => x.trim());
 
@@ -1411,8 +1428,11 @@ export async function generateTextGenWithStreaming(generate_data, signal) {
     });
 
     if (!response.ok) {
-        tryParseStreamingError(response, await response.text());
-        throw new Error(`Got response status ${response.status}`);
+        const errorBody = await response.text();
+        tryParseStreamingError(response, errorBody);
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) fail without any message upstream.
+        showRequestError({ title: 'Text Completion API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        throw createFailedResponseError({ status: getFailureStatus(response), body: errorBody });
     }
 
     const eventStream = getEventSourceStream();
@@ -1548,10 +1568,11 @@ function tryParseStreamingError(response, decoded) {
         // No JSON. Do nothing.
     }
 
-    const message = data?.error?.message || data?.error || data?.message || data?.detail;
+    // SillyBunny: the server wraps upstream failures as { error: true, response }, so the message can sit there.
+    const message = extractProviderMessage(data);
 
     if (message) {
-        toastr.error(message, 'Text Completion API');
+        showRequestError({ title: 'Text Completion API', status: getFailureStatus(response), body: data, message });
         throw new Error(message);
     }
 }

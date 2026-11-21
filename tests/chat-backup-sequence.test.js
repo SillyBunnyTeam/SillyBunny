@@ -58,6 +58,7 @@ function createClient(group) {
     }
     const runtime = vm.createContext({
         console, structuredClone, getChatBackupSaveOptions, uuidv4: randomUUID, getQueuedChatSaveAbortReason,
+        isTemporaryChat: () => false,
         chatSaveQueue: Promise.resolve(), groupChatSaveQueue: Promise.resolve(),
         chat: records('original', 'first pass').slice(1), chat_metadata: { integrity: 'original' },
         chatGeneration: 1, getChatGeneration: () => 1,

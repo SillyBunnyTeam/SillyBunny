@@ -12,23 +12,27 @@
   padding: 0 8px 0;
 }
 .stih--buttons .stih--button {
-  flex: 0 0 var(--bottomFormBlockSize);
+  /* SillyBunny: never under the pointer's target floor. */
+  --stih-action-size: max(var(--bottomFormBlockSize), var(--sb-density-floor, 0px));
+  flex: 0 0 var(--stih-action-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: var(--bottomFormBlockSize);
-  min-width: var(--bottomFormBlockSize);
-  height: var(--bottomFormBlockSize);
+  width: var(--stih-action-size);
+  min-width: var(--stih-action-size);
+  height: var(--stih-action-size);
   margin: 0;
   padding: 0;
   background-color: transparent;
   opacity: 0.5;
-  transition: 200ms;
+  transition: var(--sb-transition-fast);
 }
-.stih--buttons .stih--button:hover {
-  opacity: 1;
-  background-color: var(--white30a);
+@media (hover: hover) {
+  .stih--buttons .stih--button:hover {
+    opacity: 1;
+    background-color: var(--white30a);
+  }
 }
 .stih--buttons .stih--arrows {
   display: flex;
@@ -39,17 +43,18 @@
   padding: 0;
 }
 .stih--history {
-  filter: drop-shadow(1px 1px 2px var(--black50a));
+  box-shadow: var(--sb-shadow-popover);
   z-index: 30000;
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-radius: 10px;
+  border-radius: var(--sb-radius-overlay);
   aspect-ratio: unset;
-  padding: 5px;
+  padding: 6px;
+  gap: 2px;
   display: flex;
   flex-direction: column;
-  background-color: var(--secondaryBg, var(--SmartThemeBlurTintColor));
+  background-color: var(--sb-layer-popover, var(--secondaryBg, var(--SmartThemeBlurTintColor)));
   container-type: inline-size;
   position: absolute;
   top: auto;
@@ -58,7 +63,7 @@
   min-height: 2em;
   max-height: calc(50dvh);
   width: min(420px, calc(100vw - 16px));
-  transition: 200ms;
+  transition: var(--sb-transition-fast);
   transform-origin: 0 100%;
   scale: 1 0;
   font-size: calc(var(--bottomFormIconSize, 20px) * 0.5);
@@ -73,32 +78,39 @@
   scale: 1;
 }
 .stih--history .stih--item {
-  padding: 0.25em 1em 0.25em 0.25em;
-  opacity: 0.5;
-  background-color: rgba(255, 255, 255, 0);
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 0.25em 12px;
+  border-radius: var(--sb-radius-control);
+  background-color: transparent;
   cursor: pointer;
-  transition: 200ms;
+  transition: var(--sb-transition-fast);
   display: flex;
   gap: 0.5em;
-  align-items: baseline;
+  align-items: center;
   transform: translateX(0);
 }
-.stih--history .stih--item:hover,
-.stih--history .stih--item.stih--chat:not(.stih--current):hover,
 .stih--history .stih--item:has([contenteditable]) {
-  opacity: 1;
-  background-color: rgba(255, 255, 255, 0.0625);
+  background-color: var(--sb-flat-hover-bg);
 }
-.stih--history .stih--item.stih--current {
-  font-weight: bold;
+@media (hover: hover) {
+  .stih--history .stih--item:hover {
+    background-color: var(--sb-flat-hover-bg);
+  }
 }
-.stih--history .stih--item.stih--remove {
-  transform: translateX(150%);
+.stih--history .stih--item:active {
+  background-color: var(--sb-flat-active-bg);
+}
+@media (pointer: coarse) {
+  .stih--history .stih--item {
+    min-height: 44px;
+  }
 }
 .stih--history .stih--item .stih--icon {
   flex: 0 0 auto;
   width: 1.25em;
   text-align: center;
+  opacity: 0.7;
 }
 .stih--history .stih--item .stih--label {
   flex: 1 1 auto;
@@ -122,10 +134,10 @@ html > body .stih--history .stih--hidden {
   display: none;
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 620px) {
   .stih--buttons,
   .stih--buttons.stih--standalone {
-    --stih-mobile-action-size: clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px);
+    --stih-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));
     --stih-mobile-action-icon-size: clamp(13px, calc(var(--bottomFormIconSize, 20px) * 0.75), 16px);
     gap: 4px;
   }
@@ -146,7 +158,7 @@ html > body .stih--history .stih--hidden {
     height: var(--stih-mobile-action-size) !important;
     min-height: var(--stih-mobile-action-size) !important;
     max-height: var(--stih-mobile-action-size) !important;
-    border-radius: 8px !important;
+    border-radius: var(--sb-radius-pill) !important;
     font-size: var(--stih-mobile-action-icon-size) !important;
     padding: 0 !important;
   }

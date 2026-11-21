@@ -107,6 +107,13 @@ export const DEFAULT_GROUNDED_DIALOGUE_RULES = `### Grounded Dialogue Rules
 - possessive romantic shorthand
 - forehead-touching after kisses`;
 
+/**
+ * Conversation mode sends no `MESSAGE_SENT` and opens no chat of the app, so it announces itself on `window`.
+ * Home listens for these names (Getting Started steps 3 and 4); both sides import them from here.
+ */
+export const CONVERSATION_MESSAGE_SENT_EVENT = 'sb:conversation-user-message-sent';
+export const CONVERSATION_THREAD_OPENED_EVENT = 'sb:conversation-thread-opened';
+
 export const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 export const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 export const CONVERSATION_NOTIFICATION_PRIORITIES = Object.freeze(['normal', 'silent', 'priority']);
@@ -212,6 +219,7 @@ export const CHROME_IDS = Object.freeze({
     railFooter: 'sb_conversation_rail_footer',
     personaPicker: 'sb_conversation_persona_picker',
     userStatusPicker: 'sb_conversation_user_status_picker',
+    pickerBackdrop: 'sb_conversation_picker_backdrop',
 });
 export const AVAILABILITY_COPY = Object.freeze({
     online: { label: 'Online', detail: 'Available for live DM replies.' },

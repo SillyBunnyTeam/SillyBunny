@@ -418,9 +418,9 @@ async function showReportPopup() {
         });
 
         const content = el('div', 'sbdbg-report');
-        content.appendChild(el('h3', undefined, 'Diagnostic report'));
+        content.appendChild(el('h3', undefined, 'Diagnostic Report'));
         const actions = el('div', 'sbdbg-actions');
-        const copyButton = button('menu_button', 'Copy to clipboard', async () => {
+        const copyButton = button('menu_button', 'Copy to Clipboard', async () => {
             flashButtonText(copyButton, await copyToClipboard(report) ? 'Copied!' : 'Copy failed — select the text below');
         });
         actions.appendChild(copyButton);
@@ -428,7 +428,7 @@ async function showReportPopup() {
         content.appendChild(actions);
         const textarea = el('textarea', 'sbdbg-report-text');
         textarea.readOnly = true;
-        textarea.setAttribute('aria-label', 'Diagnostic report');
+        textarea.setAttribute('aria-label', 'Diagnostic Report');
         textarea.value = report;
         content.appendChild(textarea);
         textPopup(content);
@@ -447,7 +447,7 @@ async function copyLayoutSnapshot() {
     const content = el('div', 'sbdbg-report');
     const textarea = el('textarea', 'sbdbg-report-text');
     textarea.readOnly = true;
-    textarea.setAttribute('aria-label', 'Layout snapshot');
+    textarea.setAttribute('aria-label', 'Layout Snapshot');
     textarea.value = text;
     content.appendChild(textarea);
     textPopup(content);
@@ -475,15 +475,16 @@ function ensureDrawer() {
     const content = el('div', 'inline-drawer-content');
     content.id = DRAWER_CONTENT_ID;
 
-    const actions = el('div', 'sbdbg-actions');
-    actions.appendChild(button('menu_button', 'Open debugger', () => openDebugger()));
-    actions.appendChild(button('menu_button', 'Diagnostic report', () => void showReportPopup()));
-    actions.appendChild(button('menu_button', 'Copy layout snapshot', () => void copyLayoutSnapshot()));
+    const actions = el('div', 'sbdbg-actions ds-pref-group');
+    actions.appendChild(button('ds-row ds-button-row', 'Open Debugger', () => openDebugger()));
+    actions.appendChild(button('ds-row ds-button-row', 'Diagnostic Report', () => void showReportPopup()));
+    actions.appendChild(button('ds-row ds-button-row', 'Copy Layout Snapshot', () => void copyLayoutSnapshot()));
     content.appendChild(actions);
 
-    const checkboxLabel = el('label', 'checkbox_label');
+    const checkboxLabel = el('label', 'checkbox_label ds-row ds-row-switch');
     const checkbox = el('input');
     checkbox.type = 'checkbox';
+    checkbox.setAttribute('role', 'switch');
     checkbox.checked = autoStartEnabled();
     let savedAutoStart = checkbox.checked;
     checkbox.addEventListener('change', () => {
@@ -501,7 +502,7 @@ function ensureDrawer() {
     checkboxLabel.appendChild(el('span', undefined, 'Show debugger button on this device at startup'));
     content.appendChild(checkboxLabel);
 
-    content.appendChild(el('div', 'sbdbg-hint',
+    content.appendChild(el('div', 'sbdbg-hint ds-pref-group-subtitle',
         'Reports include event types, error classes, sanitized stack locations, and failed-request origins. '
         + 'Console values and request bodies are omitted; read a report before sharing it.'));
 
@@ -518,7 +519,7 @@ function ensureMenuItem() {
     // Same markup as the other wand entries; a <button> shrinks when the menu overflows the screen.
     const item = el('div', 'list-group-item flex-container flexGap5 interactable');
     item.id = MENU_ITEM_ID;
-    item.title = 'Open the in-app debugger console';
+    item.title = 'Open the In-App Debugger Console';
     item.append(el('div', 'fa-solid fa-bug extensionsMenuExtensionButton'), el('span', undefined, 'Debugger'));
     item.addEventListener('click', () => openDebugger());
     host.appendChild(item);

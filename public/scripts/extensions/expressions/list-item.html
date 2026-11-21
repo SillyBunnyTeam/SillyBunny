@@ -1,31 +1,40 @@
 {{#each images}}
-<div class="expression_list_item interactable" data-expression="{{../expression}}" data-expression-type="{{this.type}}" data-filename="{{this.fileName}}">
-    <div class="expression_list_buttons">
-        <div class="menu_button expression_list_upload" title="Upload image">
-            <i class="fa-solid fa-upload"></i>
-        </div>
-        {{#if this.canRegenerate}}
-        <div class="menu_button expression_list_regenerate" title="Regenerate with Quick Image Gen" role="button" tabindex="0" aria-label="Regenerate with Quick Image Gen">
-            <i class="fa-solid fa-arrows-rotate"></i>
-        </div>
-        {{/if}}
-        {{#if this.canGenerate}}
-        <div class="menu_button expression_list_generate" title="Generate with Quick Image Gen" role="button" tabindex="0" aria-label="Generate with Quick Image Gen">
-            <i class="fa-solid fa-wand-magic-sparkles"></i>
-        </div>
-        {{/if}}
-        <div class="menu_button expression_list_delete" title="Delete image">
-            <i class="fa-solid fa-trash"></i>
-        </div>
-    </div>
+<!-- SillyBunny: the tile is not a control, so the buttons in it are not nested in one. Its image is the button that sets the sprite; the four actions are buttons whose tooltip is also their name (native buttons answer Enter and Space themselves). -->
+<div class="expression_list_item" role="listitem" data-expression="{{../expression}}" data-expression-type="{{this.type}}" data-filename="{{this.fileName}}">
     <div class="expression_list_title">
         <span>{{../expression}}</span>
+        {{#if this.showFileName}}
+            <small class="expression_list_filename" title="{{this.fileName}}">{{this.fileName}}</small>
+        {{/if}}
         {{#if ../isCustom}}
             <small class="expression_list_custom">(custom)</small>
         {{/if}}
     </div>
-    <div class="expression_list_image_container" title="{{this.title}}">
+    <!-- SillyBunny: the picture comes first in the markup, as it does on screen, so that Tab enters the tile at its picture and then its actions. The actions are positioned over the picture by the sheet. A tile with no sprite draws a symbolic icon, named for assistive technology by the button. -->
+    <button type="button" class="expression_list_image_container" title="{{this.title}}"{{#if this.isPlaceholder}} aria-label="{{this.title}}"{{/if}}>
+        {{#if this.isPlaceholder}}
+        <i class="fa-solid fa-image expression_list_placeholder_icon" aria-hidden="true"></i>
+        {{else}}
         <img class="expression_list_image" src="{{this.imageSrc}}" alt="{{this.title}}" data-epression="{{../expression}}" />
+        {{/if}}
+    </button>
+    <div class="expression_list_buttons">
+        <button type="button" class="menu_button expression_list_upload" title="Upload Image" aria-label="Upload Image">
+            <i class="fa-solid fa-upload" aria-hidden="true"></i>
+        </button>
+        {{#if this.canRegenerate}}
+        <button type="button" class="menu_button expression_list_regenerate" title="Regenerate With Quick Image Gen" aria-label="Regenerate With Quick Image Gen">
+            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+        </button>
+        {{/if}}
+        {{#if this.canGenerate}}
+        <button type="button" class="menu_button expression_list_generate" title="Generate With Quick Image Gen" aria-label="Generate With Quick Image Gen">
+            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+        </button>
+        {{/if}}
+        <button type="button" class="menu_button expression_list_delete" title="Delete Image" aria-label="Delete Image">
+            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+        </button>
     </div>
 </div>
 {{/each}}

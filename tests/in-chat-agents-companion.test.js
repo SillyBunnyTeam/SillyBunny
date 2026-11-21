@@ -79,6 +79,10 @@ describe('companion card ui', () => {
             event_types: eventTypes,
         }));
 
+        await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+            t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+        }));
+
         await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
             Popup: class {},
             POPUP_TYPE: { CONFIRM: 1 },
@@ -602,7 +606,7 @@ describe('companion card ui', () => {
             settings: expect.objectContaining({ plotCompassObjective: 'Reach the tower' }),
         }));
         expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('plot-compass', 0);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved.');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved');
     });
 
     test('registers re-render listeners for lazy loads, edits, and deletions', async () => {

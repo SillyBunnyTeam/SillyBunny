@@ -38,6 +38,7 @@ const generationSource = readConversationSource('generation.js');
 const attachmentsSource = readConversationSource('attachments.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
+const actionMenuSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-action-menu.js'), 'utf8'));
 const constantsSource = readConversationSource('constants.js');
 const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
@@ -89,6 +90,9 @@ describe('conversation mode scoped connection profile', () => {
         expect(helperSource).not.toContain('applyConnectionProfileByName');
         // Falls back to generateRaw (the active profile) when scoped path is unavailable.
         expect(helperSource).toContain('generateRaw(options)');
+        // The scoped request keeps its own length. Only the request to the active API is limited.
+        expect(helperSource).toContain('CMRS.sendRequest(profile.id, messages, options.responseLength, {');
+        expect(helperSource.indexOf('CMRS.sendRequest')).toBeLessThan(helperSource.indexOf('getActiveApiResponseLength(options.responseLength)'));
     });
 
     test('replaces every generation call site with the scoped helper', () => {
@@ -140,8 +144,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules\', key: \'grounded_dialogue_rules\', prop: \'value\' }');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled');
         expect(constantsSource).toContain('grounded_dialogue_rules');
-        expect(timelineSource).toContain('data-sb-conversation-action="edit-grounded-dialogue-rules"');
-        expect(timelineSource).toContain('<textarea id="sb_conv_grounded_dialogue_rules" hidden></textarea>');
+        expect(timelineSource).toContain('action: \'edit-grounded-dialogue-rules\'');
+        expect(timelineSource).toContain('createSettingsControl(\'textarea\', \'sb_conv_grounded_dialogue_rules\', { hidden: true })');
         expect(chromeSource).toContain('openGroundedDialogueRulesEditor');
         expect(chromeSource).toContain('case \'edit-grounded-dialogue-rules\':');
         expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
@@ -152,6 +156,55 @@ describe('conversation mode scoped connection profile', () => {
         expect(serverEndpointSource).toContain('from \'./conversation-generation.js\'');
         // normalizeConversationSettings is now in conversation-generation.js
         expect(conversationGenerationSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
+    });
+
+    test('settings booleans are switch rows and picker menus pass their trigger', () => {
+        const switchIds = [
+            'sb_conv_idle_followup',
+            'sb_conv_idle_spontaneous',
+            'sb_conv_notifications_muted',
+            'sb_conv_proactive_messaging',
+            'sb_conv_selfie_command_enabled',
+            'sb_conv_schedule_command_enabled',
+            'sb_conv_include_related_memory',
+            'sb_conv_auto_message',
+            'sb_conv_grounded_dialogue_rules_enabled',
+            'sb_conv_multi_char',
+            'sb_conv_auto_character_chat',
+            'sb_conv_roleplay_reactions',
+            'sb_conv_image_gen_enabled',
+            'sb_conv_spontaneous_selfies',
+            'sb_conv_editable_messages',
+            'sb_conv_prose_polisher',
+        ];
+        for (const id of switchIds) {
+            expect(timelineSource).toContain(`id: '${id}'`);
+        }
+        // The pane's rows are the shared switch rows, not a Conversation-only checkbox class.
+        expect(timelineSource).toContain('createSwitchRow(');
+        expect(timelineSource).not.toContain('sb-conversation-switch');
+        expect(timelineSource).not.toContain('sb-conversation-pref-');
+        expect(timelineSource).toContain('createSettingsHiddenInput(\'sb_conv_copy_memory_to_new_branch\', \'checkbox\')');
+        expect(chromeSource).toContain('toggleAddDmPicker(target)');
+        expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
+        expect(chromeSource).toContain('togglePersonaPicker(target)');
+        expect(pickersSource).toContain('preferBelow: true');
+        expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
+        expect(palsRailSource).toContain('Messaging-app order: newest message first');
+        expect(palsRailSource).not.toContain('first.key === activeKey');
+        // The menu keeps the settings entry whenever the pages layout hides the header gear, whatever the viewport width.
+        expect(chromeSource).toContain('...(isConversationPagesLayout()');
+        expect(chromeSource).not.toContain('LAYOUT_MOBILE_QUERY');
+        expect(timelineSource).toContain('sb-conversation-composer-attach');
+        expect(timelineSource).toContain('sb-conversation-composer-actions');
+        expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');
+        expect(timelineSource).toContain('data-sb-conversation-action="quick-selfie"');
+        expect(timelineSource).toContain('content.append(bubble, actionBar)');
+        expect(timelineSource).toContain('item.append(avatarWrap, body, mobileTrigger)');
+        expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
+        expect(pickersSource).toContain('maxLeft < minLeft');
+        expect(actionMenuSource).toContain('maxLeft < minLeft');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261118zzj');
     });
 
     test('keeps saved Conversation-owned group DMs visible without messages', () => {

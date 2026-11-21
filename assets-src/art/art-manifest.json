@@ -1,0 +1,1757 @@
+{
+    "format": 1,
+    "encoder": {
+        "sharp": "0.35.5",
+        "vips": "8.18.7",
+        "webp": "1.6.0",
+        "png": "1.6.58",
+        "zlib-ng": "2.3.3"
+    },
+    "keys": {
+        "home": {
+            "value": "20261105a",
+            "stamp": "38a904f56fcdeae20090e3397d3ed49c3eef49fc5fb528e5f4d74182b5f747ee"
+        },
+        "splash": {
+            "value": "20261106e",
+            "script": "20261110a",
+            "stamp": "c1a42cd225af01d66662fcc080a51736888445bacf818f069ee48203063d27cf"
+        }
+    },
+    "assets": {
+        "welcome-both": {
+            "type": "scene",
+            "key": "home",
+            "master": "welcome-both/welcome-both.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                312,
+                365
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/welcome-both@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "c39ab1f7fb5683bac43bfd93c127a402521850651a18d587c1f5aa7d209e59c3"
+                }
+            ],
+            "layers": {
+                "reisen": {
+                    "box": [
+                        2,
+                        2,
+                        221,
+                        361
+                    ],
+                    "pictures": {
+                        "breath-c": {
+                            "master": "welcome-both/welcome-both--reisen--breath-c.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--reisen--breath-c@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "48f604b64a16efe29afc1bde82139b74053664b325feef02ff34e8670c30f284"
+                                }
+                            ]
+                        },
+                        "breath-c-half": {
+                            "master": "welcome-both/welcome-both--reisen--breath-c-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--reisen--breath-c-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "2c922dc36dc6b07cbc26be115128c122dedd35c2eedfdfc4f2e0cd96c5f414ea"
+                                }
+                            ]
+                        },
+                        "breath-c-closed": {
+                            "master": "welcome-both/welcome-both--reisen--breath-c-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--reisen--breath-c-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "67d3f6ec786c3109fe4faa0f735a4e38246f4681de85fc2bf63d91ff6d2d0af0"
+                                }
+                            ]
+                        },
+                        "breath-b": {
+                            "master": "welcome-both/welcome-both--reisen--breath-b.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--reisen--breath-b@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "bd041748bf2f822d411b9e2242db05827ae1fba94be1449ae1fde822594628ea"
+                                }
+                            ]
+                        },
+                        "breath-b-half": {
+                            "master": "welcome-both/welcome-both--reisen--breath-b-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--reisen--breath-b-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "72aab9756e1d194a80cce14b4a7628318950c6a362f55a5c6f764f21e1bad630"
+                                }
+                            ]
+                        },
+                        "breath-b-closed": {
+                            "master": "welcome-both/welcome-both--reisen--breath-b-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--reisen--breath-b-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "21e67d887e5336efd5c8d416591fe24fcdb9083182c84c9bc1d8843247335acc"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "tewi": {
+                    "box": [
+                        166,
+                        63,
+                        144,
+                        300
+                    ],
+                    "pictures": {
+                        "breath-c": {
+                            "master": "welcome-both/welcome-both--tewi--breath-c.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--tewi--breath-c@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "fd8ba4a674d6e9b69befe2bb9979614557dd1fe916998abd6cf4a0c88f0ee8d8"
+                                }
+                            ]
+                        },
+                        "breath-c-half": {
+                            "master": "welcome-both/welcome-both--tewi--breath-c-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--tewi--breath-c-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "5af3fb347cd49acbaeeb24fb4e9f41c7c9552a1d28eb142898635e451ba51428"
+                                }
+                            ]
+                        },
+                        "breath-c-closed": {
+                            "master": "welcome-both/welcome-both--tewi--breath-c-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--tewi--breath-c-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "e2cd3239149c7e2a569f4e7462cfaebd95e76f7451f32b5250270c441725d55b"
+                                }
+                            ]
+                        },
+                        "breath-b": {
+                            "master": "welcome-both/welcome-both--tewi--breath-b.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--tewi--breath-b@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "97149becf7af1f375bdf281e146fc5e6cc81498fcea7256877e8cd24e86755e5"
+                                }
+                            ]
+                        },
+                        "breath-b-half": {
+                            "master": "welcome-both/welcome-both--tewi--breath-b-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--tewi--breath-b-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "5aae7fba9464b67896e86d98fc666661b4d680a278f26cc9022a4bcc6b17f379"
+                                }
+                            ]
+                        },
+                        "breath-b-closed": {
+                            "master": "welcome-both/welcome-both--tewi--breath-b-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/welcome-both--tewi--breath-b-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "18f0449ccfad584bf4d38d3309c427457012029327026b5ed73ab1fe6ae5314e"
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "compose": {
+                "pose": "breath-c"
+            },
+            "motion": {
+                "master": "welcome-both/welcome-both--breath.json",
+                "output": "public/img/sillybunny/welcome-both--breath.json",
+                "sha256": "46a39286a26a8eacf3522d6016246688c66f8d31003bcd3bf12e19607e8fd293"
+            }
+        },
+        "welcome-persona-tewi": {
+            "type": "still",
+            "key": "home",
+            "master": "tewi/welcome-persona-tewi.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                153,
+                329
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/welcome-persona-tewi@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "82d8d0a1891b834062fb5d65a9281aba518c35135375ce1d86a6c7b40f8b7940"
+                }
+            ],
+            "frames": {
+                "breath-b": {
+                    "master": "tewi/welcome-persona-tewi--breath-b.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/welcome-persona-tewi--breath-b@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "be90e69c9cff876e4a2bb2eb7542a8690f94e6b54af3e12f8a314f3c30dc4615"
+                        }
+                    ]
+                }
+            },
+            "motion": {
+                "master": "tewi/welcome-persona-tewi--breath.json",
+                "output": "public/img/sillybunny/welcome-persona-tewi--breath.json",
+                "sha256": "167e2d0f0f284343b419a9f04db94092ef92d4116ca6be378164ebb13b53fa0c"
+            }
+        },
+        "welcome-next-reisen": {
+            "type": "still",
+            "key": "home",
+            "master": "reisen/welcome-next-reisen.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                276,
+                395
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/welcome-next-reisen@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "709cecff4b639edd74f1544d3ad0e4c8d1c7153111c23c8308e5e0a6afbe9b94"
+                }
+            ],
+            "frames": {
+                "breath-b": {
+                    "master": "reisen/welcome-next-reisen--breath-b.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/welcome-next-reisen--breath-b@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "c22eee1f6d52b86a698df8bef7646ad87f18b478c9c910821c9c9192f8530573"
+                        }
+                    ]
+                }
+            },
+            "motion": {
+                "master": "reisen/welcome-next-reisen--breath.json",
+                "output": "public/img/sillybunny/welcome-next-reisen--breath.json",
+                "sha256": "09ca7cbf7acc8fc05a525c54773148caea2b43aea8f10c509641820ae18e9148"
+            }
+        },
+        "gs-reisen": {
+            "type": "still",
+            "key": "home",
+            "master": "reisen/gs-reisen.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                189,
+                372
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/gs-reisen@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "690de07694dea20481d1507b10375c62beeb8b8609247b2a4acbda1066c60f72"
+                }
+            ]
+        },
+        "gs-reisen-done": {
+            "type": "still",
+            "key": "home",
+            "master": "reisen/gs-reisen-done.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                213,
+                425
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/gs-reisen-done@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "f46353b279b13158d438b619a9b7378ff7e7ec10cae2bd0b960c4c203bcb40b2"
+                }
+            ]
+        },
+        "help-reisen": {
+            "type": "still",
+            "key": "home",
+            "master": "reisen/help-reisen.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                196,
+                402
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/help-reisen@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "c251248ee756cf815453cbff41286f47c41300e7aca7f55e97c5e25ac636210a"
+                }
+            ]
+        },
+        "extras-tewi": {
+            "type": "still",
+            "key": "home",
+            "master": "tewi/extras-tewi.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                172,
+                317
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/extras-tewi@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "60d8b62794d9c3adee4bea84c30970e2dca9d1c500e8a5aabc1a8bce5fee9408"
+                }
+            ]
+        },
+        "shortcuts-tewi": {
+            "type": "still",
+            "key": "home",
+            "master": "tewi/shortcuts-tewi.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                143,
+                315
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/shortcuts-tewi@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "51f408745251754b7a09bd13ec6ea74fcc32b83dfc4fa2500763961d03bb3ffd"
+                }
+            ]
+        },
+        "about-reisen": {
+            "type": "still",
+            "key": "home",
+            "master": "reisen/about-reisen.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                183,
+                368
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/about-reisen@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "d0d7016144017a06318577594e10ad1ad4821e3181f2651698c3d30b1c645c4b"
+                }
+            ]
+        },
+        "about-tewi": {
+            "type": "still",
+            "key": "home",
+            "master": "tewi/about-tewi.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                145,
+                305
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/about-tewi@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "5a10b6f818f528261a453408ef33c6263d0bced629c547bc6fc911cd0992780f"
+                }
+            ]
+        },
+        "troubleshooting-reisen": {
+            "type": "still",
+            "key": "home",
+            "master": "reisen/troubleshooting-reisen.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                197,
+                366
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/troubleshooting-reisen@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "1e63d9e5739ee7252157867b4c67b6e6a1817e6847c02b91369df4de7bb93bd8"
+                }
+            ]
+        },
+        "empty-tewi": {
+            "type": "still",
+            "key": "home",
+            "master": "tewi/empty-tewi.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                159,
+                318
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/empty-tewi@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "e9127247dde8dfd326daba483a3a683d81f2af2a1d1baabc32e79b839e399c3c"
+                }
+            ]
+        },
+        "hero-duo": {
+            "type": "scene",
+            "key": "home",
+            "master": "hero-duo/hero-duo.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                384,
+                368
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/hero-duo@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "92353568aad952d181da7de6197dd17ae071ef252a35432b59c5a97231d3e99f"
+                }
+            ],
+            "backdrop": {
+                "master": "hero-duo/hero-duo--backdrop.png",
+                "outputs": [
+                    {
+                        "path": "public/img/sillybunny/hero-duo--backdrop@native.webp",
+                        "encoding": "webp-lossless",
+                        "sha256": "8c6f7df5bbfde9588f126e799334daa03580e67cf6497a830cd1eaf1e386544b"
+                    }
+                ]
+            },
+            "layers": {
+                "reisen": {
+                    "box": [
+                        2,
+                        4,
+                        201,
+                        362
+                    ],
+                    "pictures": {
+                        "breath-c": {
+                            "master": "hero-duo/hero-duo--reisen--breath-c.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--reisen--breath-c@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "0752d79e948ea976f4fc0097f4f6b869789cb46edabbfb3daf2ae52247b545c8"
+                                }
+                            ]
+                        },
+                        "breath-c-half": {
+                            "master": "hero-duo/hero-duo--reisen--breath-c-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--reisen--breath-c-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "6b12e40d5345ff9e0e8dfda9270a3df9de929e61ac56b730cc0a2e2ff61fd878"
+                                }
+                            ]
+                        },
+                        "breath-c-closed": {
+                            "master": "hero-duo/hero-duo--reisen--breath-c-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--reisen--breath-c-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "459720834450934a4dbf02dc6a77f201d39a7dd086a762282f3abb62d1a9bcf5"
+                                }
+                            ]
+                        },
+                        "breath-b": {
+                            "master": "hero-duo/hero-duo--reisen--breath-b.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--reisen--breath-b@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "45e2705c6f32a5b3c5ff50fbcc9e343c7b6475001e6dc36006fb7e974160ba6b"
+                                }
+                            ]
+                        },
+                        "breath-b-half": {
+                            "master": "hero-duo/hero-duo--reisen--breath-b-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--reisen--breath-b-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "56a1171704de232c6d26766a3a4a8a6d48feee3981296ec81d793f23cbbcfc2e"
+                                }
+                            ]
+                        },
+                        "breath-b-closed": {
+                            "master": "hero-duo/hero-duo--reisen--breath-b-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--reisen--breath-b-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "0c00f43c5d6942db08549b54817996d21b7da06f87ce4d989b335defd8e34f35"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "tewi": {
+                    "box": [
+                        192,
+                        69,
+                        138,
+                        297
+                    ],
+                    "pictures": {
+                        "breath-c": {
+                            "master": "hero-duo/hero-duo--tewi--breath-c.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--tewi--breath-c@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "89d6893fd5016321b00835d8be6bd5215a9cbdc4a2c08134909f552dbc5df81e"
+                                }
+                            ]
+                        },
+                        "breath-c-half": {
+                            "master": "hero-duo/hero-duo--tewi--breath-c-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--tewi--breath-c-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "4d00f1a0e1e3a8e2a9425de8a170137f11826196b9d9a970b44972c499a82954"
+                                }
+                            ]
+                        },
+                        "breath-c-closed": {
+                            "master": "hero-duo/hero-duo--tewi--breath-c-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--tewi--breath-c-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "bd8c361b50fd40a9784effad6a1dd181299e4c19782220ad11a1342fd34cd84e"
+                                }
+                            ]
+                        },
+                        "breath-b": {
+                            "master": "hero-duo/hero-duo--tewi--breath-b.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--tewi--breath-b@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "f83f0f8f41ea048b8570ab6b21aecd954f1f6ee162853e827c6f55a79c313a07"
+                                }
+                            ]
+                        },
+                        "breath-b-half": {
+                            "master": "hero-duo/hero-duo--tewi--breath-b-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--tewi--breath-b-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "42b1ac02531b376165e94045d617c2235a79002b07939bc713c70504d1bd6db7"
+                                }
+                            ]
+                        },
+                        "breath-b-closed": {
+                            "master": "hero-duo/hero-duo--tewi--breath-b-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo--tewi--breath-b-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "6c654b6d3c5c8e4d9dd60fc8b13a07f182f2ccd8d3ac89d8fd9ba859ff971c81"
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "compose": {
+                "pose": "breath-c"
+            },
+            "motion": {
+                "master": "hero-duo/hero-duo--breath.json",
+                "output": "public/img/sillybunny/hero-duo--breath.json",
+                "sha256": "272044b388b12cfad22ed31f74a81e340a069e1d8fab9107f8165a6425ab821b"
+            }
+        },
+        "hero-duo-night": {
+            "type": "scene",
+            "key": "home",
+            "master": "hero-duo-night/hero-duo-night.png",
+            "ratio": "1",
+            "frame": {
+                "mode": "subject",
+                "margin": 2
+            },
+            "grid": [
+                361,
+                362
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/hero-duo-night@native.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "3624050561dddbccf7cdbcbd26ba56e3c0feb5f62b010e2e8e0fa73b538e9b4f"
+                }
+            ],
+            "backdrop": {
+                "master": "hero-duo-night/hero-duo-night--backdrop.png",
+                "outputs": [
+                    {
+                        "path": "public/img/sillybunny/hero-duo-night--backdrop@native.webp",
+                        "encoding": "webp-lossless",
+                        "sha256": "f35423d4008a9822539bbad73bcd6cd37753c36be403fd36422d9762a471fade"
+                    }
+                ]
+            },
+            "layers": {
+                "reisen": {
+                    "box": [
+                        2,
+                        2,
+                        203,
+                        358
+                    ],
+                    "pictures": {
+                        "breath-c": {
+                            "master": "hero-duo-night/hero-duo-night--reisen--breath-c.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--reisen--breath-c@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "86a6da2d0c8a129760734cae58419f72d7b76ee484babb74d51d09f8df0d1549"
+                                }
+                            ]
+                        },
+                        "breath-c-half": {
+                            "master": "hero-duo-night/hero-duo-night--reisen--breath-c-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--reisen--breath-c-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "27a34c9208d9b3580a843e6a30b157f9841d7376445ca0ec8cf0a2810b69b543"
+                                }
+                            ]
+                        },
+                        "breath-c-closed": {
+                            "master": "hero-duo-night/hero-duo-night--reisen--breath-c-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--reisen--breath-c-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "01cd76fbf23dd6ecd20b2c32246363c60a0fdffd8d3e7ed322d09d7b7db43e49"
+                                }
+                            ]
+                        },
+                        "breath-b": {
+                            "master": "hero-duo-night/hero-duo-night--reisen--breath-b.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--reisen--breath-b@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "0ee45cf061d8ee954cc3a7927dd3112b74c7abcd063a1a6625bc9b73468cdb1e"
+                                }
+                            ]
+                        },
+                        "breath-b-half": {
+                            "master": "hero-duo-night/hero-duo-night--reisen--breath-b-half.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--reisen--breath-b-half@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "5109728a9b97a522ec7d71c70a28fee8f2ee3612978e9fbacef31cfd0d2eb42c"
+                                }
+                            ]
+                        },
+                        "breath-b-closed": {
+                            "master": "hero-duo-night/hero-duo-night--reisen--breath-b-closed.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--reisen--breath-b-closed@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "2e9f2660d7db972d21a84cfedb4ec96e73db9a4519c0bcff736d7f8cee2d1b3b"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "tewi": {
+                    "box": [
+                        183,
+                        61,
+                        136,
+                        299
+                    ],
+                    "pictures": {
+                        "breath-c": {
+                            "master": "hero-duo-night/hero-duo-night--tewi--breath-c.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--tewi--breath-c@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "d910d418d4528bf6211fd7c21ed924173cdd9306339ec5a4150582e71be11883"
+                                }
+                            ]
+                        },
+                        "breath-b": {
+                            "master": "hero-duo-night/hero-duo-night--tewi--breath-b.png",
+                            "outputs": [
+                                {
+                                    "path": "public/img/sillybunny/hero-duo-night--tewi--breath-b@native.webp",
+                                    "encoding": "webp-lossless",
+                                    "sha256": "3d69536ecdd93c487852d612d6255be4bcbc7335650c1b93b8ef9cb4f8bd3d46"
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "compose": {
+                "pose": "breath-c"
+            },
+            "motion": {
+                "master": "hero-duo-night/hero-duo-night--breath.json",
+                "output": "public/img/sillybunny/hero-duo-night--breath.json",
+                "sha256": "eb5ee2b5a0a4bac32c06bed399849203ad7eea07833f595416bff01e8e811a8f"
+            }
+        },
+        "splash-reisen": {
+            "type": "still",
+            "key": "splash",
+            "ratio": "1",
+            "frame": {
+                "mode": "canvas"
+            },
+            "grid": [
+                281,
+                371
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "frames": {
+                "raised": {
+                    "master": "reisen/splash-reisen--raised.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--raised@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "b71b16f64cd5a4e237e10e5034182f8b56a56431cc05b7dbb354c573645f6a21"
+                        }
+                    ]
+                },
+                "idle": {
+                    "master": "reisen/splash-reisen--idle.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--idle@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "5f5a415b1ecd85b023d66c50e507424fecc7660719cad08bbe09f2f87e4a35b8"
+                        }
+                    ]
+                },
+                "rise": {
+                    "master": "reisen/splash-reisen--rise.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--rise@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "b06e4f3c4370ea05b4c795f0314b1270b865320dec007b4e09929455fb1532cd"
+                        }
+                    ]
+                },
+                "inhale": {
+                    "master": "reisen/splash-reisen--inhale.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--inhale@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "5fbd50a36f07ccba2e42f62960ed8c3b17dff32298659fddd5dadfcf5e14abec"
+                        }
+                    ]
+                },
+                "call": {
+                    "master": "reisen/splash-reisen--call.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--call@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "cff5f0a31d26cc252471c3da6cdfa2c1c9d0f383dffe61d8a8b768d16ec05043"
+                        }
+                    ]
+                },
+                "hold": {
+                    "master": "reisen/splash-reisen--hold.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--hold@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "8d7f267a883439baefb47967793bb1daa1f73aaff0a195358c8953dfbfdd0d0f"
+                        }
+                    ]
+                },
+                "lower": {
+                    "master": "reisen/splash-reisen--lower.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-reisen--lower@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "1fce0c4718e1ac401530b44f70089c8cad0392f9d2ad9aea907d4a52247b7105"
+                        }
+                    ]
+                }
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/splash-reisen@native.webp",
+                    "encoding": "webp-lossless",
+                    "from": "idle",
+                    "sha256": "5f5a415b1ecd85b023d66c50e507424fecc7660719cad08bbe09f2f87e4a35b8"
+                }
+            ],
+            "motion": {
+                "master": "reisen/splash-reisen--anim.json",
+                "output": "public/img/sillybunny/splash-reisen--anim.json",
+                "sha256": "e793d8a4159321a669fad5ea493b51aae17776d9e80298704222082ec022bb6b"
+            }
+        },
+        "splash-tewi": {
+            "type": "still",
+            "key": "splash",
+            "ratio": "1",
+            "frame": {
+                "mode": "canvas"
+            },
+            "grid": [
+                237,
+                317
+            ],
+            "rings": {
+                "rim": 2,
+                "band": 2
+            },
+            "frames": {
+                "raised": {
+                    "master": "tewi/splash-tewi--raised.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--raised@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "6e27e04763a0a6f36470e689f284f725165327c0adf469ef56a5cbc003f93d9e"
+                        }
+                    ]
+                },
+                "windup": {
+                    "master": "tewi/splash-tewi--windup.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--windup@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "b73193ee577ccc940927e10fc0a127939b6833f4cf3ea3d0bf801aee0871af17"
+                        }
+                    ]
+                },
+                "swing": {
+                    "master": "tewi/splash-tewi--swing.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--swing@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "36cfce83360974c50c897f75eb8a5609df9f04b07c902184d430aef1ffd89590"
+                        }
+                    ]
+                },
+                "mid": {
+                    "master": "tewi/splash-tewi--mid.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--mid@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "5842bad9cf58ae579a562dec68679c82dbd679f74f8350300b8fb23127c4515a"
+                        }
+                    ]
+                },
+                "strike": {
+                    "master": "tewi/splash-tewi--strike.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--strike@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "fd3fb2f39ed404af4620f7ee78389397f8e383f77eaf8751dbc61ea91afda3ee"
+                        }
+                    ]
+                },
+                "rebound": {
+                    "master": "tewi/splash-tewi--rebound.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--rebound@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "8ea48a1efdb0eefabdbe6a49a748ffcd57d574ebfb3ccfb554a74555725ab8e1"
+                        }
+                    ]
+                },
+                "hoist": {
+                    "master": "tewi/splash-tewi--hoist.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-tewi--hoist@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "0d50c33130da5f0225bc9c87b2665bf30de8b40889e553ea4f3e5dc237c7b99b"
+                        }
+                    ]
+                }
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/splash-tewi@native.webp",
+                    "encoding": "webp-lossless",
+                    "from": "raised",
+                    "sha256": "6e27e04763a0a6f36470e689f284f725165327c0adf469ef56a5cbc003f93d9e"
+                }
+            ],
+            "motion": {
+                "master": "tewi/splash-tewi--anim.json",
+                "output": "public/img/sillybunny/splash-tewi--anim.json",
+                "sha256": "8123ffefd3441054349c67e8f4268a2c2a28e2cbd981585dae65e44c69cd7672"
+            }
+        },
+        "splash-both": {
+            "type": "still",
+            "key": "splash",
+            "ratio": "1",
+            "frame": {
+                "mode": "canvas"
+            },
+            "grid": [
+                295,
+                362
+            ],
+            "rings": null,
+            "frames": {
+                "write-a": {
+                    "master": "splash-both/splash-both--write-a.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--write-a@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "06f53f2829580294b6901995e7c00470acf10e399d4f1c2ce2a1a3b3695fdf8d"
+                        }
+                    ]
+                },
+                "write-b": {
+                    "master": "splash-both/splash-both--write-b.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--write-b@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "53d412223154c26899d2f056b95166722989151974c867bfb3dfea08fd6ef1a8"
+                        }
+                    ]
+                },
+                "write-c": {
+                    "master": "splash-both/splash-both--write-c.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--write-c@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "a9ab00ee32627db483ebdccbccec20c72d281b588cffa28702180423d85fdc60"
+                        }
+                    ]
+                },
+                "lean-a": {
+                    "master": "splash-both/splash-both--lean-a.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--lean-a@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "4b0760698a5fc4dc60fefcae33ba077af5d80e56505ea0ae6697fbb1d0f18d49"
+                        }
+                    ]
+                },
+                "lean-b": {
+                    "master": "splash-both/splash-both--lean-b.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--lean-b@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "26d0197f8e04a31fc0f3c00c636b51ae7476db060af3ee36c9ea6338807b1721"
+                        }
+                    ]
+                },
+                "sigh": {
+                    "master": "splash-both/splash-both--sigh.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--sigh@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "a2f0cddd0bec7d8ba9eeddb52d2e54a9a4f9933a4d80c99858af04df007fb5bd"
+                        }
+                    ]
+                },
+                "resume": {
+                    "master": "splash-both/splash-both--resume.png",
+                    "outputs": [
+                        {
+                            "path": "public/img/sillybunny/splash-both--resume@native.webp",
+                            "encoding": "webp-lossless",
+                            "sha256": "1ee30aa408a14fb90419f84517d00a14d93b98f42745309cafb3e87ca7a8417c"
+                        }
+                    ]
+                }
+            },
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/splash-both@native.webp",
+                    "encoding": "webp-lossless",
+                    "from": "write-a",
+                    "sha256": "06f53f2829580294b6901995e7c00470acf10e399d4f1c2ce2a1a3b3695fdf8d"
+                }
+            ],
+            "motion": {
+                "master": "splash-both/splash-both--anim.json",
+                "output": "public/img/sillybunny/splash-both--anim.json",
+                "sha256": "e8eab33b48b5efcc58493cbb6a768465d32f4cfeb891cc79746aa50e5a3f021f"
+            }
+        },
+        "greeting-reisen": {
+            "type": "pair",
+            "key": null,
+            "master": "reisen/greeting-reisen.png",
+            "ratio": "1",
+            "grid": [
+                768,
+                512
+            ],
+            "opaque": true,
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/greeting-reisen.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "7d724ba8014a5090ec52f014826b271b056eaec15851a2d90e104fba127f5250"
+                },
+                {
+                    "path": "public/img/sillybunny/greeting-reisen@2x.webp",
+                    "encoding": "webp-lossless",
+                    "scale": 2,
+                    "sha256": "f4ca2907656fcb2adabdad80adeef18a814d171cf2e61a11c7aa1a632ce0cfae"
+                }
+            ]
+        },
+        "greeting-tewi": {
+            "type": "pair",
+            "key": null,
+            "master": "tewi/greeting-tewi.png",
+            "ratio": "1",
+            "grid": [
+                768,
+                512
+            ],
+            "opaque": true,
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/greeting-tewi.webp",
+                    "encoding": "webp-lossless",
+                    "sha256": "ddd5ed54eea2ae57303b493326f65e5bb5e7b00e9625a318e3094d34e06b1979"
+                },
+                {
+                    "path": "public/img/sillybunny/greeting-tewi@2x.webp",
+                    "encoding": "webp-lossless",
+                    "scale": 2,
+                    "sha256": "086d6e0c05148ddd4e5e691514e7a52a43b8221dff4b73605cf80a3107a1d360"
+                }
+            ]
+        },
+        "card-reisen": {
+            "type": "pinned",
+            "key": null,
+            "reason": "Built by build-card.mjs, which scales smooth card art with Lanczos onto a gradient, so it cannot be derived again. A card entry takes over once there is a native master of the card's waist-up sprite, cut at the waist by its bottom edge with no ring along the cut. The entry's crop of that master, a grid that a whole scale takes to 768x1152 (such as 192x288 at 4 or 256x384 at 3), is laid over the gradient, and the card keeps the text of this file.",
+            "outputs": [
+                {
+                    "path": "default/content/default_AssistantReisen.png",
+                    "sha256": "382400cadde2bb992607e716b096b9e019398d41be82c43bcfa4e44fc935d42d"
+                }
+            ]
+        },
+        "card-tewi": {
+            "type": "pinned",
+            "key": null,
+            "reason": "Built by build-card.mjs, which scales smooth card art with Lanczos onto a gradient, so it cannot be derived again. A card entry takes over once there is a native master of the card's waist-up sprite, cut at the waist by its bottom edge with no ring along the cut. The entry's crop of that master, a grid that a whole scale takes to 768x1152 (such as 192x288 at 4 or 256x384 at 3), is laid over the gradient, and the card keeps the text of this file.",
+            "outputs": [
+                {
+                    "path": "default/content/default_AssistantTewi.png",
+                    "sha256": "837a3ee886c11bfd730df6ae80b324b5f7ec10ee177f6ae5d9d2ad3020a37091"
+                }
+            ]
+        },
+        "expressions-reisen": {
+            "type": "pinned",
+            "key": null,
+            "reason": "Built by expression-build.mjs from pose and head-patch pictures that are not in this repository, and stored as lossy WebP, which cannot be derived again.",
+            "outputs": [
+                {
+                    "path": "default/content/Assistant Reisen/admiration.webp",
+                    "sha256": "e426d87e10bff1c457ca5cf8c946114a3d8c08455dba17ef94ec1272b4cd76d5"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/amusement.webp",
+                    "sha256": "0317c1e4ffb742927e45842505ce1a721e5f2665e49e3057bed8f143d595d7e7"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/anger.webp",
+                    "sha256": "634ecec01c2049820ff2c44c47393b7ceaa2834c289d15643470093f937cfe04"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/annoyance.webp",
+                    "sha256": "4fa34f287ca332adc079d7a028e909b06041d775de36b37e06595de8d87b43bb"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/approval.webp",
+                    "sha256": "346f76d4e927a1a4c83919459b287c86868f5c2130c0bdb9847e1f63d21f0a2b"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/caring.webp",
+                    "sha256": "cd6e4716c60e4c2bacaade4958a685869e9b1c30bd8619bd20175aab5b566064"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/confusion.webp",
+                    "sha256": "28d0a5da53ecfad595668d5a0a34abb133e4843e9e5d77ca6ab41bd6ec326948"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/curiosity.webp",
+                    "sha256": "b099566b68d25b08a5ab8a7ea0d8acfec75ff7c541436357441d8cdb9bc2b527"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/desire.webp",
+                    "sha256": "342e3d8cc5d356bb98da7858d1112fa41ff1de9da73946f808d40d666e4178b7"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/disappointment.webp",
+                    "sha256": "196de02608e9679f13954d0fda93ec74ce82368ba569e3da407e4f8c5afd95bd"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/disapproval.webp",
+                    "sha256": "df7afe203afde73a8925a03b45e0dcbb29ca79fbf028a3bcd15d21b78c027886"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/disgust.webp",
+                    "sha256": "042e71743e91ef0ada76642d2024d8a6beb9fd31756ef3abaf2e9ce64fa24671"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/embarrassment.webp",
+                    "sha256": "84c699d3d5798f18ea22b1f1b2e45b091468db0757b1d7d77cb533b94f8d8466"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/excitement.webp",
+                    "sha256": "aaaa40b7ec5f87510e64dc63813dbee76eb9e977ebd8b63de83a244db08ccb81"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/fear.webp",
+                    "sha256": "529a26137d8f0fc9afe8f45909c25fe32bebb2f214bcf135984dac6a2e3e18a9"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/gratitude.webp",
+                    "sha256": "74fcadd6b5e710c53dd4e02d1c3c20bf0bb959abbcf712fe3d700d49115498bc"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/grief.webp",
+                    "sha256": "a65f362d0bd1bc0114b6fb797c486e1f634e3dc972422b7fdec5a10be8e3c5e5"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/joy.webp",
+                    "sha256": "f49904cc02ad2bdfaee8345bcc1955d0bdeeb6c1bbfb57fba94a09f84e39d767"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/love.webp",
+                    "sha256": "db002bf16fb20b8b9c3da81a4728c8c9068b9f13bbde0247db35b0e39bb763df"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/nervousness.webp",
+                    "sha256": "5ade20d72222fff292e4dfe8044c03c8a00f78e77d855aa364eec659ded35bc3"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/neutral.webp",
+                    "sha256": "60489835452841168f21ff201d5c48ff871f39392e93f31a9887023175b7fee5"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/optimism.webp",
+                    "sha256": "49238c02f723ad5f8dfcfee152c5c2a2c7553c47feed572aff9a2009b27ef0c7"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/pride.webp",
+                    "sha256": "7977e975397aa0553cf1e460156254b742e99c837d63d382c9ba9c04d51ee598"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/realization.webp",
+                    "sha256": "9f0998c7b1cf5aad165842ee73aefb24d7568a39d394d2c7f6d2ec6e69e245eb"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/relief.webp",
+                    "sha256": "9994c0d94a965b9802f7e6d701759b669340feca923c60123021546f90283486"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/remorse.webp",
+                    "sha256": "802c12803dcc09a847b96cebc0fbd4190b62e8d3b0405237c51951bf7924cab6"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/sadness.webp",
+                    "sha256": "6d1892d75de093eb327e7f40f5d3db5874d9812d63cbb7fa90aa470f5f355e44"
+                },
+                {
+                    "path": "default/content/Assistant Reisen/surprise.webp",
+                    "sha256": "6e659b9f7d06dbcb7ca9286a42a4f3046c7e3fd672ffd7d971747e6ed3414622"
+                }
+            ]
+        },
+        "expressions-tewi": {
+            "type": "pinned",
+            "key": null,
+            "reason": "Built by expression-build.mjs from pose and head-patch pictures that are not in this repository, and stored as lossy WebP, which cannot be derived again.",
+            "outputs": [
+                {
+                    "path": "default/content/Assistant Tewi/admiration.webp",
+                    "sha256": "36365ba200d2cf64fbb1666c73aa23b7c0b10faf962b085ebf1754ebe1a63c2f"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/amusement.webp",
+                    "sha256": "aa7c41e1423c7216d918143a071d5df90326dc9c1b32f5a296547116a46245c3"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/anger.webp",
+                    "sha256": "ab50e0be64031f986bf95176c49d4d5aa08aa09822940f4783566d194d1378a4"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/annoyance.webp",
+                    "sha256": "989229356def36e088042668c0e8ba418327c0072ffea029008b404ab5aa0e27"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/approval.webp",
+                    "sha256": "cd30ec1cf7b9aa25f39721be5dd68b6e9bbdbd2fa2e2f33a76b5e2e67a964b68"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/caring.webp",
+                    "sha256": "88db48d99b457644e0043b2c4fe2b4136f23dcbb5dd8513e1fe4e3a80bb5d921"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/confusion.webp",
+                    "sha256": "9fc3752ef8266f4c1d4f7dda5fc7467e63176dfa6051ad63415c1e52bad0a370"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/curiosity.webp",
+                    "sha256": "5dadff5ab824eb6f7a8be3dd15cb815f24948d8068265bd8364c0f1a6677a88b"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/desire.webp",
+                    "sha256": "e712cbb5b39c1c8ab8b27a4fe4a4df2d20bbfe39ca4b494bea1ed3cc1380ffc3"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/disappointment.webp",
+                    "sha256": "d2f0d28284092499e3f6a892e5a54b8ca9b46273dcf2a640fcf6882514d6cddf"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/disapproval.webp",
+                    "sha256": "b32c4ab3ab0ad29279b7f7dd3e8ad9c04f5816c96b95b4f7b1c92dba28ccea12"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/disgust.webp",
+                    "sha256": "5e10a19a8e484b0463e650f37a09b6e433f4bd97033b132488b59acd1fe89722"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/embarrassment.webp",
+                    "sha256": "c81836d6bdb4ce7709574a80f2adfbc76c4c372a1538f5ff3e26e4a3d08cc2fb"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/excitement.webp",
+                    "sha256": "66541d38e1d47bcfd41dbbaecf008429f2fcc334cac79958a071680e3a25e7b0"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/fear.webp",
+                    "sha256": "5c5858cc9597db58577e6885b1528847d9114cbc0f04f68255f425acf31ad5e0"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/gratitude.webp",
+                    "sha256": "74e8eedc30b93d9e2fe2327f50a1ebd1f864739c653c10cc3ae05a990b2e34bc"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/grief.webp",
+                    "sha256": "d25fe12afc5a8fb7f4009b064e7162238fb60463be18593d18753d8e23bfae5f"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/joy.webp",
+                    "sha256": "fbe5f65bcaa2133a6d116253df3ab0b0a0070dcd51654ecb3b9b0aa5582e9a31"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/love.webp",
+                    "sha256": "27637fe1aa97f612028907db7b0fc1f1587ca0d6d9cb0ccec7a199ca6cf2d93f"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/nervousness.webp",
+                    "sha256": "5c0b71e6fa0a96f8eab372a55cfc00a42ce8fa9a7b175fe859d96d0463c5c005"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/neutral.webp",
+                    "sha256": "fbf06fe9465a0bad6b132df488615603bbd64c8a675d9c0101071959b9e5790a"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/optimism.webp",
+                    "sha256": "a422cd55dc70be9ff8742b0632ae14caad4222e32e377ac3b0d67b4c7e6c8cf0"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/pride.webp",
+                    "sha256": "f10e8cfe7a1868035e26fbc409d168638381f1330050a2682f92c60f54b8551f"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/realization.webp",
+                    "sha256": "bad32ce81173a6d136c318e4316d3a3de413fc70001142660fa73cec53031773"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/relief.webp",
+                    "sha256": "313a97e1281488cda48b3124b27a4599c5905680067e4f37dbc301442b807e9b"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/remorse.webp",
+                    "sha256": "18151b02204fd4c6315c6c05f2998c3f6a33f7c7c2db005061fe2264f8968dae"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/sadness.webp",
+                    "sha256": "91c0d5cc6cefd03bc39579633ff2479a0d41d0a9e9b8f97ae50d3cea2eb57d53"
+                },
+                {
+                    "path": "default/content/Assistant Tewi/surprise.webp",
+                    "sha256": "e8d204806227bfb0fcde3945c2de65a26db2c5fd8744d3d3b84e27afabef1894"
+                }
+            ]
+        },
+        "icon-16": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-16.png",
+            "grid": [
+                16,
+                16
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo-16.png",
+                    "encoding": "png",
+                    "sha256": "d11927103d05e0479ec3a4499a948947943376f3c66fb3c76f677e1e2ad1892a"
+                },
+                {
+                    "path": "public/img/icon-16x16.png",
+                    "encoding": "png",
+                    "sha256": "d11927103d05e0479ec3a4499a948947943376f3c66fb3c76f677e1e2ad1892a"
+                }
+            ]
+        },
+        "icon-24": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-24.png",
+            "grid": [
+                24,
+                24
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/icon-24x24.png",
+                    "encoding": "png",
+                    "sha256": "8563606de4e5d19054a373c0f874c69b4bed60056750331f58a2dfb0b8a603f6"
+                }
+            ]
+        },
+        "icon-32": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-32.png",
+            "grid": [
+                32,
+                32
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo-32.png",
+                    "encoding": "png",
+                    "sha256": "cc7119ceef817c95ab716099284b813891a6a0a2b4447c99b8dfa0a9389ff035"
+                },
+                {
+                    "path": "public/img/icon-32x32.png",
+                    "encoding": "png",
+                    "sha256": "cc7119ceef817c95ab716099284b813891a6a0a2b4447c99b8dfa0a9389ff035"
+                }
+            ]
+        },
+        "icon-48": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-48.png",
+            "grid": [
+                48,
+                48
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo-48.png",
+                    "encoding": "png",
+                    "sha256": "67687abcaac35198699dbe418207b5bf75d4ed195275d45f33db750eca188522"
+                },
+                {
+                    "path": "public/img/icon-48x48.png",
+                    "encoding": "png",
+                    "sha256": "67687abcaac35198699dbe418207b5bf75d4ed195275d45f33db750eca188522"
+                }
+            ]
+        },
+        "icon-64": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-64.png",
+            "grid": [
+                64,
+                64
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo-64.png",
+                    "encoding": "png",
+                    "sha256": "fbe09e7a422a9579451702103f4f1cedf6472c1b437e3c6e919edc24b1869bc6"
+                },
+                {
+                    "path": "public/img/icon-64x64.png",
+                    "encoding": "png",
+                    "sha256": "fbe09e7a422a9579451702103f4f1cedf6472c1b437e3c6e919edc24b1869bc6"
+                }
+            ]
+        },
+        "icon-96": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-96.png",
+            "grid": [
+                96,
+                96
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/icon-96x96.png",
+                    "encoding": "png",
+                    "sha256": "19390f1c7ee723afb66c84500c2a02d7382670ea0dcaabd006669164f4afd92d"
+                }
+            ]
+        },
+        "icon-128": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-128.png",
+            "grid": [
+                128,
+                128
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/icon-128x128.png",
+                    "encoding": "png",
+                    "sha256": "ebfe1068db426dc50b3b7c9a3ee96a9a51315fba22103cb424d65dc4280714b1"
+                }
+            ]
+        },
+        "icon-256": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-256.png",
+            "grid": [
+                256,
+                256
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/logo.png",
+                    "encoding": "png",
+                    "sha256": "3830d24eb0196bb319a17f7211be37284b83d9f205a5ecbe0626741e198176a1"
+                },
+                {
+                    "path": "public/img/icon-256x256.png",
+                    "encoding": "png",
+                    "sha256": "3830d24eb0196bb319a17f7211be37284b83d9f205a5ecbe0626741e198176a1"
+                }
+            ]
+        },
+        "icon-512": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-512.png",
+            "grid": [
+                512,
+                512
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/icon-512x512.png",
+                    "encoding": "png",
+                    "sha256": "18a73a8c557f6bf0361df5d1c5b7718bd233a641d3e12a1c4f40ed11f3fc9289"
+                }
+            ]
+        },
+        "platform-57": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-57.png",
+            "grid": [
+                57,
+                57
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-57x57.png",
+                    "encoding": "png",
+                    "sha256": "56df616263684a4e9e522d207623c34eef775dada9d5beed4d6417f1d9ec9d57"
+                }
+            ]
+        },
+        "platform-72": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-72.png",
+            "grid": [
+                72,
+                72
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-72x72.png",
+                    "encoding": "png",
+                    "sha256": "d7288faaeb4c0ba53af82614c05b6a5e4baaed6af0011a447367a6553de7c5cc"
+                }
+            ]
+        },
+        "platform-114": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-114.png",
+            "grid": [
+                114,
+                114
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-114x114.png",
+                    "encoding": "png",
+                    "sha256": "29194a25c9daa35eda09f5fddbcc0d15d9d739ecb5a09b4d783fea7699f80d19"
+                }
+            ]
+        },
+        "platform-144": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-144.png",
+            "grid": [
+                144,
+                144
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-144x144.png",
+                    "encoding": "png",
+                    "sha256": "c34d6e1be2eed4e004d8e13aa844208b7d2dd0006fa0c53727ebde844c18b379"
+                }
+            ]
+        },
+        "platform-180": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-180.png",
+            "grid": [
+                180,
+                180
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-180x180.png",
+                    "encoding": "png",
+                    "sha256": "467a4d4d6d4b2eff51170abef32fc6769ccbccd4f82249a7cf7c10796a1910f6"
+                }
+            ]
+        },
+        "platform-192": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-192.png",
+            "grid": [
+                192,
+                192
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-192x192.png",
+                    "encoding": "png",
+                    "sha256": "2b5ffa2f23b74c206ce4e5fabed80dc2d3b6675ebead08d0a4e52a3a6b3060bd"
+                }
+            ]
+        },
+        "platform-512": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-512.png",
+            "grid": [
+                512,
+                512
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/apple-icon-512x512.png",
+                    "encoding": "png",
+                    "sha256": "42c3ba88d73184b271f15122967cf05787b9dfc13c49f86b0caa98e582ddffc9"
+                },
+                {
+                    "path": "public/img/sillybunny/maskable-512.png",
+                    "encoding": "png",
+                    "sha256": "42c3ba88d73184b271f15122967cf05787b9dfc13c49f86b0caa98e582ddffc9"
+                }
+            ]
+        },
+        "favicon": {
+            "type": "ico",
+            "key": null,
+            "entries": [
+                "icon-16",
+                "icon-24",
+                "icon-32",
+                "icon-48",
+                "icon-64",
+                "icon-128",
+                "icon-256"
+            ],
+            "outputs": [
+                {
+                    "path": "public/favicon.ico",
+                    "sha256": "339c3738b3d8532a56271989cd3bd1619491ac82a38d26411c3bc51194a2c5c2"
+                },
+                {
+                    "path": "public/st.ico",
+                    "sha256": "339c3738b3d8532a56271989cd3bd1619491ac82a38d26411c3bc51194a2c5c2"
+                },
+                {
+                    "path": "public/st-launcher.ico",
+                    "sha256": "339c3738b3d8532a56271989cd3bd1619491ac82a38d26411c3bc51194a2c5c2"
+                }
+            ]
+        },
+        "logo-svg": {
+            "type": "copy",
+            "key": null,
+            "master": "logo/logo.svg",
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo.svg",
+                    "sha256": "f05d898d244f54b179a49a37e18741ad25392762dacfc30082e42ecc3d5c669c"
+                }
+            ]
+        }
+    }
+}

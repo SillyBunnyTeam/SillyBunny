@@ -60,7 +60,7 @@ async function reorganizeAction(args, options = {}) {
 }
 
 async function reorganizeFormatter(args) {
-    return '🔀 Pathfinder: Reorganizing lorebook...';
+    return '🔀 Pathfinder: Reorganizing lorebook…';
 }
 
 export function getDefinition() {

@@ -70,6 +70,9 @@
         "js-sha256": "^0.11.1",
         "localforage": "^1.10.0",
         "lodash": "^4.18.1",
+        "markdown-it": "^15.0.3",
+        "markdown-it-cjk-friendly": "^3.0.0",
+        "markdown-it-emoji": "^3.1.0",
         "mime-types": "^3.0.2",
         "moment": "^2.30.1",
         "morphdom": "^2.7.7",
@@ -102,7 +105,7 @@
     },
     "engines": {
         "bun": ">= 1.3.14",
-        "node": ">= 20"
+        "node": ">= 22.13"
     },
     "overrides": {
         "basic-ftp": "^6.2.3",
@@ -133,10 +136,15 @@
         "start:no-csrf:node": "node --no-warnings server.js --disableCsrf",
         "build:frontend": "node scripts/build-frontend-assets.js",
         "perf:frontend": "node scripts/measure-frontend-performance.js",
+        "audit:frontend": "node scripts/audit-frontend-contracts.js",
+        "check:frontend-contracts": "node scripts/audit-frontend-contracts.js --strict --baseline scripts/frontend-contract-baseline.json",
+        "check:design-rules": "node scripts/audit-design-rules.js --check --strict",
+        "check:frontend-foundation": "node scripts/check-frontend-foundation.js",
         "init": "node src/server-init.js || bun src/server-init.js",
         "lint": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js",
         "lint:fix": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js --fix",
         "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
+        "check:copy-placeholders": "node scripts/check-copy-placeholders.js",
         "agents:bump-template-versions": "node scripts/bump-agent-template-versions.js",
         "changelog:merged-prs": "node scripts/update-changelog-merged-prs.js",
         "version:bump": "node scripts/bump-version.js",

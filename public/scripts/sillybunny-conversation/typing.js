@@ -175,7 +175,8 @@ export function setLastConversationPreview(avatar, messageText, { branchId = '',
     }
 
     const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
-    if (branch) {
+    // Opening a thread re-derives its preview; an unchanged preview must not bump updatedAt.
+    if (branch && branch.preview !== preview) {
         branch.preview = preview;
         branch.updatedAt = Date.now();
         persistConversationStore();

@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "welcome-next-reisen.png",
+    "sha256": "585e41e5e94148ed3d52a2f8b4e3ab512c5f09f458bac141baf1f67efe93268d",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:d4f8064fdf5b83063526c12577608aa9d4ad78793aef6655b31d60b82ed4176b"
+}

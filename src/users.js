@@ -23,6 +23,7 @@ import { getContentOfType } from './endpoints/content-manager.js';
 import { serverDirectory } from './server-directory.js';
 import { filterValidIpPatterns, getIpFromRequest } from './express-common.js';
 import { extensionsEnabledFeatureGuard } from './endpoints/extensions.js';
+import { setStoredMediaHeaders } from './stored-media-headers.js'; // SillyBunny: gives the stored images route its own content type and nosniff.
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -1262,6 +1263,7 @@ router.use('/backgrounds/*', createRouteHandler(req => req.user.directories.back
 router.use('/characters/*', createRouteHandler(req => req.user.directories.characters, { recoverInterruptedWrites: true }));
 router.use('/User%20Avatars/*', createRouteHandler(req => req.user.directories.avatars));
 router.use('/assets/*', createRouteHandler(req => req.user.directories.assets));
-router.use('/user/images/*', createRouteHandler(req => req.user.directories.userImages));
+// SillyBunny: stored images name their own content type and forbid sniffing, so no global middleware decides it.
+router.use('/user/images/*', setStoredMediaHeaders, createRouteHandler(req => req.user.directories.userImages));
 router.use('/user/files/*', createRouteHandler(req => req.user.directories.files));
 router.use('/scripts/extensions/third-party/*', extensionsEnabledFeatureGuard, createExtensionsRouteHandler(req => req.user.directories.extensions));

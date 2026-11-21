@@ -5,6 +5,8 @@ import express from 'express';
 import sanitize from 'sanitize-filename';
 import _ from 'lodash';
 import { tryParse, tryWriteFileSync } from '../util.js';
+import { localizeWorldInfoExternalMedia } from '../external-media-import.js';
+import { restoreExternalMediaUrls } from '../external-media-manifest.js';
 
 const WORLD_INFO_EXTENSION = '.json';
 // SillyBunny divergence: canonical World Info filenames are UTF-8 bounded and written through the fork's safe persistence path.
@@ -211,7 +213,8 @@ router.post('/delete', (request, response) => {
     return response.sendStatus(200);
 });
 
-router.post('/import', (request, response) => {
+// SillyBunny: async, because the import waits for the optional external media download.
+router.post('/import', async (request, response) => {
     if (!request.file) return response.sendStatus(400);
 
     const pathToUpload = path.join(request.file.destination, request.file.filename);
@@ -231,15 +234,31 @@ router.post('/import', (request, response) => {
             return response.status(400).send('Is not a valid world info file');
         }
 
+        const worldName = path.parse(filename).name;
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        const localized = await localizeWorldInfoExternalMedia(worldContent, { request, worldName });
+        const persistedContents = localized.changed ? JSON.stringify(worldContent, null, 4) : fileContents;
+
         const pathToNewFile = path.join(request.user.directories.worlds, filename);
-        writeWorldInfoFile(pathToNewFile, fileContents);
-        return response.send({ name: path.parse(pathToNewFile).name });
+        writeWorldInfoFile(pathToNewFile, persistedContents);
+        return response.send(localized.changed ? { name: worldName, data: worldContent } : { name: worldName });
     } catch (err) {
         console.error('World Info import failed:', err);
         return response.sendStatus(500);
     } finally {
         fs.rmSync(pathToUpload, { force: true });
     }
+});
+
+// SillyBunny: the editor builds a lorebook export in the browser, so it asks here for the copy with the author's URLs back for the media that an import stored.
+router.post('/export', (request, response) => {
+    const data = request.body?.data;
+    if (!isValidWorldInfoData(data)) {
+        return response.status(400).send('Is not a valid world info file');
+    }
+
+    restoreExternalMediaUrls(data, request.user.directories);
+    return response.type('json').send(JSON.stringify(data));
 });
 
 router.post('/edit', (request, response) => {

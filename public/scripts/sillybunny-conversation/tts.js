@@ -44,7 +44,7 @@ export async function narrateConversationMessage(message, { isStillVisible = nul
 
     if (!ttsMessage.mes && !ttsMessage.extra?.display_text) {
         if (manual || force) {
-            globalThis.toastr?.info?.('No text to narrate.');
+            globalThis.toastr?.info?.('No text to narrate');
         }
         return false;
     }

@@ -92,6 +92,10 @@ import {
 import { getVertexAIAuth, getProjectIdFromServiceAccount, getGoogleApiBaseUrl } from '../google.js';
 import { getCookieSecret } from '../../users.js';
 import { fetchGoogleModels, GoogleModelsHttpError } from './google-models.js';
+// SillyBunny: the KoboldCpp Chat Completion request code lives in its own module to keep this file close to upstream.
+import { finalizeKoboldCppChatBody, getKoboldCppChatConnection, getKoboldCppChatRequest } from './koboldcpp-chat.js';
+// SillyBunny: the browser shows the provider's own message instead of only the HTTP reason.
+import { extractProviderMessage } from '../../../public/scripts/sillybunny-provider-message.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -2366,12 +2370,21 @@ router.post('/status', async function (request, statusResponse) {
             apiUrl = `${getLinkApiBaseUrl(request.body.linkapi_endpoint)}/v1`;
             apiKey = readSecret(request.user.directories, SECRET_KEYS.LINKAPI, request.body.secret_id);
             headers = {};
+        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.KOBOLDCPP) {
+            // SillyBunny: KoboldCpp's own Chat Completions API. Its key, when one is saved, is in the headers.
+            const connection = getKoboldCppChatConnection(request);
+            if (!connection) {
+                console.warn('KoboldCpp API URL is not valid.');
+                return statusResponse.status(400).send({ error: true });
+            }
+            ({ apiUrl, headers } = connection);
         } else {
             console.warn('This chat completion source is not supported yet.');
             return statusResponse.status(400).send({ error: true });
         }
 
-        if (!apiKey && !request.body.reverse_proxy && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.CUSTOM) {
+        // SillyBunny: KoboldCpp needs a key only when it was started with a password.
+        if (!apiKey && !request.body.reverse_proxy && ![CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.KOBOLDCPP].includes(request.body.chat_completion_source)) {
             console.warn('Chat Completion API key is missing.');
             return statusResponse.status(400).send({ error: true });
         }
@@ -3578,6 +3591,9 @@ export async function handleChatCompletionsGenerate(request, response) {
         let apiKey;
         let headers;
         let bodyParams;
+        // SillyBunny: set for KoboldCpp's own Chat Completions API.
+        /** @type {import('./koboldcpp-chat.js').KoboldCppChatRequest|null} */
+        let koboldCppRequest = null;
         const isTextCompletion = Boolean(request.body.model && TEXT_COMPLETION_MODELS.includes(request.body.model)) || typeof request.body.messages === 'string';
 
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENAI) {
@@ -3938,6 +3954,15 @@ export async function handleChatCompletionsGenerate(request, response) {
             if (request.body.reasoning_effort && request.body.reasoning_effort !== 'none') {
                 bodyParams['reasoning_effort'] = toWireReasoningEffort(request.body.reasoning_effort);
             }
+        } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.KOBOLDCPP) {
+            // SillyBunny: KoboldCpp's own Chat Completions API. Its key, when one is saved, is in the headers.
+            koboldCppRequest = getKoboldCppChatRequest(request);
+            if (!koboldCppRequest) {
+                console.warn('KoboldCpp API URL is not valid.');
+                return response.status(400).send({ error: { message: 'KoboldCpp API URL is not valid.' } });
+            }
+            ({ apiUrl, headers, bodyParams } = koboldCppRequest);
+            apiKey = '';
         } else {
             console.warn('This chat completion source is not supported yet.');
             return response.status(400).send({ error: true });
@@ -3970,7 +3995,8 @@ export async function handleChatCompletionsGenerate(request, response) {
 
         applyLocalPromptCacheScope(bodyParams, request.body);
 
-        if (!apiKey && !request.body.reverse_proxy && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.CUSTOM) {
+        // SillyBunny: KoboldCpp needs a key only when it was started with a password.
+        if (!apiKey && !request.body.reverse_proxy && ![CHAT_COMPLETION_SOURCES.CUSTOM, CHAT_COMPLETION_SOURCES.KOBOLDCPP].includes(request.body.chat_completion_source)) {
             console.warn('OpenAI API key is missing.');
             return response.status(400).send({ error: true });
         }
@@ -3986,7 +4012,8 @@ export async function handleChatCompletionsGenerate(request, response) {
             `${apiUrl}/chat/completions`;
 
         const controller = new AbortController();
-        abortOnRequestClose(request, controller, response);
+        // SillyBunny: KoboldCpp also gets an abort by key, because a proxy can keep KoboldCpp's side of a dropped connection open.
+        abortOnRequestClose(request, controller, response, { onAbort: koboldCppRequest?.abort });
 
         if (!isTextCompletion && Array.isArray(request.body.tools) && request.body.tools.length > 0) {
             bodyParams['tools'] = request.body.tools;
@@ -4075,6 +4102,11 @@ export async function handleChatCompletionsGenerate(request, response) {
             requestBody = applyGenerationRequestControls(requestBody, { ...request.body.request_controls, reasoning });
         }
 
+        // SillyBunny: like Custom, KoboldCpp applies its exclude list and the response limits to the final body.
+        if (koboldCppRequest) {
+            requestBody = finalizeKoboldCppChatBody(requestBody, request.body);
+        }
+
         if (isKimiK3Request) {
             const responseFormatType = requestBody.response_format?.type;
             const usesStructuredOutput = Boolean(request.body.json_schema)
@@ -4097,6 +4129,8 @@ export async function handleChatCompletionsGenerate(request, response) {
             },
             body: JSON.stringify(requestBody),
             signal: controller.signal,
+            // SillyBunny: KoboldCpp sends no bytes while it processes a long prompt or writes a non-streamed reply. That can outlast Bun's default fetch idle timeout, and 0 turns that timeout off.
+            ...(koboldCppRequest ? { timeout: 0 } : {}),
         };
 
         logVerboseGenerationRequest('Chat Completion', request, requestBody);
@@ -4105,7 +4139,11 @@ export async function handleChatCompletionsGenerate(request, response) {
 
         if (request.body.stream) {
             console.info('Streaming request in progress');
-            return forwardFetchResponse(fetchResponse, response, request, () => controller.abort());
+            // SillyBunny: the stream can see the client leave before the request closes, so it also sends KoboldCpp the abort by key.
+            const onDisconnect = koboldCppRequest
+                ? () => koboldCppRequest.abort().finally(() => controller.abort())
+                : () => controller.abort();
+            return forwardFetchResponse(fetchResponse, response, request, onDisconnect);
         }
 
         if (fetchResponse.ok) {
@@ -4122,7 +4160,9 @@ export async function handleChatCompletionsGenerate(request, response) {
             console.error('Chat completion request error: ', message, responseText);
 
             if (!response.headersSent) {
-                response.status(getSafeCompletionErrorStatus(fetchResponse.status)).send({ error: { message }, quota_error: quota_error });
+                // SillyBunny: the client has no other way to learn what the provider said, because it only sees this body.
+                const providerMessage = extractProviderMessage(responseText);
+                response.status(getSafeCompletionErrorStatus(fetchResponse.status)).send({ error: { message: providerMessage || message }, quota_error: quota_error });
             } else if (!response.writableEnded) {
                 response.write(responseText);
             } else {

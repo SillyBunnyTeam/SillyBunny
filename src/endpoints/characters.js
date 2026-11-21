@@ -10,7 +10,6 @@ import _ from 'lodash';
 import mime from 'mime-types';
 import { Jimp, JimpMime } from '../jimp.js';
 import { safeCrop, safeCover } from '../jimp-safe.js';
-import storage from 'node-persist';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
@@ -20,13 +19,15 @@ import { parse, read, write } from '../character-card-parser.js';
 import { readWorldInfoFile } from './worldinfo.js';
 import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
-import { getUserDirectoriesList } from '../users.js';
 import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+import { CharacterIndex } from '../character-index.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
+import { localizeCharacterExternalMedia } from '../external-media-import.js';
+import { restoreExternalMediaUrls } from '../external-media-manifest.js';
 import { isImageFile } from '../image-file-type.js';
 import {
     clearChatRecoveryState,
@@ -101,143 +102,18 @@ const isSameFile = (firstPath, secondPath) => {
     }
 };
 
-class DiskCache {
-    /**
-     * @type {string}
-     * @readonly
-     */
-    static DIRECTORY = 'characters';
-
-    /**
-     * @type {number}
-     * @readonly
-     */
-    static SYNC_INTERVAL = 5 * 60 * 1000;
-
-    /** @type {import('node-persist').LocalStorage} */
-    #instance;
-
-    /** @type {NodeJS.Timeout} */
-    #syncInterval;
-
-    /**
-     * Queue of user handles to sync.
-     * @type {Set<string>}
-     * @readonly
-     */
-    syncQueue = new Set();
-
-    /**
-     * Path to the cache directory.
-     * @returns {string}
-     */
-    get cachePath() {
-        return path.join(globalThis.DATA_ROOT, '_cache', DiskCache.DIRECTORY);
-    }
-
-    /**
-     * Returns the list of hashed keys in the cache.
-     * @returns {string[]}
-     */
-    get hashedKeys() {
-        return fs.readdirSync(this.cachePath);
-    }
-
-    /**
-     * Processes the synchronization queue.
-     * @returns {Promise<void>}
-     */
-    async #syncCacheEntries() {
-        try {
-            if (!useDiskCache || this.syncQueue.size === 0) {
-                return;
-            }
-
-            // SillyBunny: verify() deletes each entry whose card is not in these directories, so this list must include all users.
-            const directories = await getUserDirectoriesList();
-            this.syncQueue.clear();
-
-            await this.verify(directories);
-        } catch (error) {
-            console.error('Error while synchronizing cache entries:', error);
-        }
-    }
-
-    /**
-     * Gets the disk cache instance.
-     * @returns {Promise<import('node-persist').LocalStorage>}
-     */
-    async instance() {
-        if (this.#instance) {
-            return this.#instance;
-        }
-
-        this.#instance = storage.create({
-            dir: this.cachePath,
-            ttl: false,
-            forgiveParseErrors: true,
-            expiredInterval: 0,
-            // @ts-ignore
-            maxFileDescriptors: 100,
-        });
-        await this.#instance.init();
-        this.#syncInterval = setInterval(this.#syncCacheEntries.bind(this), DiskCache.SYNC_INTERVAL);
-        return this.#instance;
-    }
-
-    /**
-     * Verifies disk cache size and prunes it if necessary.
-     * @param {import('../users.js').UserDirectoryList[]} directoriesList List of user directories
-     * @returns {Promise<void>}
-     */
-    async verify(directoriesList) {
-        try {
-            if (!useDiskCache) {
-                return;
-            }
-
-            const cache = await this.instance();
-            const validKeys = new Set();
-            for (const dir of directoriesList) {
-                const files = fs.readdirSync(dir.characters, { withFileTypes: true });
-                for (const file of files.filter(f => f.isFile() && path.extname(f.name) === '.png')) {
-                    const filePath = path.join(dir.characters, file.name);
-                    const cacheKey = getCacheKey(filePath);
-                    validKeys.add(path.parse(cache.getDatumPath(cacheKey)).base);
-                }
-            }
-            for (const key of this.hashedKeys) {
-                if (!validKeys.has(key)) {
-                    // SillyBunny: hashedKeys holds sha256 file names, and removeItem() hashes its key again, so delete the file directly.
-                    await fsPromises.rm(path.join(this.cachePath, key), { force: true });
-                }
-            }
-        } catch (error) {
-            console.error('Error while verifying disk cache:', error);
-        }
-    }
-
-    dispose() {
-        if (this.#syncInterval) {
-            clearInterval(this.#syncInterval);
-        }
-    }
-}
-
-export const diskCache = new DiskCache();
+// SillyBunny: a SQLite index that can be deleted and rebuilt at any time replaces upstream's node-persist DiskCache.
+export const characterIndex = new CharacterIndex({ enabled: useDiskCache });
 
 /**
  * Gets the cache key for the specified image file.
  * @param {string} inputFile - Path to the image file
+ * @param {fs.Stats|undefined} fileStat - Image file metadata, or undefined if the file does not exist
  * @returns {string} - Cache key
  */
-function getCacheKey(inputFile) {
-    if (fs.existsSync(inputFile)) {
-        const stat = fs.statSync(inputFile);
-        return `${inputFile}-${stat.mtimeMs}`;
-    }
-
-    return inputFile;
+function getCacheKey(inputFile, fileStat) {
+    // SillyBunny: the caller passes the metadata that it already read, so the key and the index lookup use one stat call.
+    return fileStat ? `${inputFile}-${fileStat.mtimeMs}` : inputFile;
 }
 
 /**
@@ -248,32 +124,20 @@ function getCacheKey(inputFile) {
  */
 async function readCharacterData(inputFile, inputFormat = 'png') {
     recoverFileWriteSync(inputFile);
-    const cacheKey = getCacheKey(inputFile);
+    // SillyBunny: read the metadata before the card is parsed, because the index keeps the card under this metadata and a later read can belong to a newer version of the file.
+    const fileStat = fs.statSync(inputFile, { throwIfNoEntry: false });
+    const cacheKey = getCacheKey(inputFile, fileStat);
     if (memoryCache.has(cacheKey)) {
         return memoryCache.get(cacheKey);
     }
-    if (useDiskCache) {
-        try {
-            const cache = await diskCache.instance();
-            const cachedData = await cache.getItem(cacheKey);
-            if (cachedData) {
-                return cachedData;
-            }
-        } catch (error) {
-            console.warn('Error while reading from disk cache:', error);
-        }
+    const indexedData = fileStat && characterIndex.get(inputFile, fileStat);
+    if (indexedData) {
+        return indexedData;
     }
 
     const result = await parse(inputFile, inputFormat);
     !isAndroid && memoryCache.set(cacheKey, result);
-    if (useDiskCache) {
-        try {
-            const cache = await diskCache.instance();
-            await cache.setItem(cacheKey, result);
-        } catch (error) {
-            console.warn('Error while writing to disk cache:', error);
-        }
-    }
+    fileStat && characterIndex.set(inputFile, fileStat, result);
     return result;
 }
 
@@ -366,9 +230,8 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
                 break;
             }
         }
-        if (useDiskCache && !Buffer.isBuffer(inputFile)) {
-            diskCache.syncQueue.add(request.user.profile.handle);
-        }
+        // SillyBunny: a file system with coarse timestamps can give the edited card the same size and mtime, so the index cannot detect the change.
+        characterIndex.delete(outputImagePath);
 
         if (fileExists) {
             ensureEntityDateAdded(getEntityDateAddedRoot(request.user.directories), 'characters', outputImageName, migrationFallback, operationTime);
@@ -782,6 +645,17 @@ function charaFormatData(data, directories) {
         return [];
     };
 
+    // SillyBunny: multipart forms cannot express an empty repeated field, so the editor sends group-only
+    // greetings as a JSON array string. Returns null when the request carries no usable value.
+    const getGroupOnlyGreetings = data => {
+        let value = data.group_only_greetings;
+        if (typeof value === 'string') {
+            value = tryParse(value);
+        }
+        if (!Array.isArray(value)) return null;
+        return value.filter(greeting => typeof greeting === 'string');
+    };
+
     // Spec V1 fields
     _.set(char, 'name', data.ch_name);
     _.set(char, 'description', data.description || '');
@@ -816,6 +690,21 @@ function charaFormatData(data, directories) {
     _.set(char, 'data.creator', data.creator || '');
     _.set(char, 'data.character_version', data.character_version || '');
     _.set(char, 'data.alternate_greetings', getAlternateGreetings(data));
+
+    // SillyBunny: V3 fields edited by the character sheet. A request that omits them (older clients,
+    // extensions posting partial forms) keeps whatever json_data already carries instead of wiping it.
+    if (typeof data.nickname === 'string') {
+        _.set(char, 'data.nickname', data.nickname);
+    } else if (typeof char.data?.nickname !== 'string') {
+        _.set(char, 'data.nickname', '');
+    }
+
+    const groupOnlyGreetings = getGroupOnlyGreetings(data);
+    if (groupOnlyGreetings) {
+        _.set(char, 'data.group_only_greetings', groupOnlyGreetings);
+    } else if (!Array.isArray(char.data?.group_only_greetings)) {
+        _.set(char, 'data.group_only_greetings', []);
+    }
 
     // ST extension fields to V2 object
     _.set(char, 'data.extensions.talkativeness', data.talkativeness || 0.5);
@@ -997,6 +886,8 @@ async function importFromYaml(uploadPath, context, preservedFileName) {
         'creator': '',
         'tags': '',
     }, context.request.user.directories);
+    // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+    await localizeCharacterExternalMedia(char, { request: context.request, fileName });
     const result = await writeCharacterData(DEFAULT_AVATAR_PATH, JSON.stringify(char), fileName, context.request);
     return result ? fileName : '';
 }
@@ -1060,6 +951,8 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
         console.warn('CharX: Skipped the auxiliary assets, because neither the card name nor its file name can name an asset folder');
     }
 
+    // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+    await localizeCharacterExternalMedia(processedCard, { request, fileName });
     const result = await writeCharacterData(avatar, JSON.stringify(processedCard), fileName, request);
     return result ? fileName : '';
 }
@@ -1072,6 +965,12 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
     const byafData = await new ByafParser(data).parse();
     const card = readFromV2(byafData.card);
     const fileName = preservedFileName || getPngName(sanitize(byafData.character.displayName || card.name, { replacement: sanitizeSafeCharacterReplacements }), request.user.directories);
+    // SillyBunny: optionally download external media on import before scenario chats and card data are persisted.
+    await localizeCharacterExternalMedia(card, {
+        request,
+        fileName,
+        scenarios: preservedFileName ? undefined : byafData.scenarios,
+    });
 
     // Don't import chats and images if the character is being replaced or updated, instead of newly imported.
     if (!preservedFileName) {
@@ -1165,6 +1064,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         jsonData = readFromV2(jsonData);
         jsonData.create_date = new Date().toISOString();
         const pngName = preservedFileName || getPngName(jsonData.name, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(jsonData, { request, fileName: pngName });
         const char = JSON.stringify(jsonData);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, char, pngName, request);
         return result ? pngName : '';
@@ -1191,6 +1092,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
             'tags': jsonData.tags ?? '',
         };
         char = convertToV2(char, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         let charJSON = JSON.stringify(char);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, charJSON, pngName, request);
         return result ? pngName : '';
@@ -1218,6 +1121,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
             'tags': jsonData.tags ?? '',
         };
         char = convertToV2(char, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         const charJSON = JSON.stringify(char);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, charJSON, pngName, request);
         return result ? pngName : '';
@@ -1235,6 +1140,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
  */
 async function importFromPng(uploadPath, { request }, preservedFileName) {
     const imgData = await readCharacterData(uploadPath);
+    // SillyBunny: the import deletes the upload, so drop the index entry that reading it stored, because only the startup prune would remove it.
+    characterIndex.delete(uploadPath);
     if (imgData === undefined) throw new Error('Failed to read character data');
 
     let jsonData = JSON.parse(imgData);
@@ -1248,6 +1155,8 @@ async function importFromPng(uploadPath, { request }, preservedFileName) {
         unsetPrivateFields(jsonData);
         jsonData = readFromV2(jsonData);
         jsonData.create_date = new Date().toISOString();
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(jsonData, { request, fileName: pngName });
         const char = JSON.stringify(jsonData);
         const result = await writeCharacterData(uploadPath, char, pngName, request);
         fs.unlinkSync(uploadPath);
@@ -1275,6 +1184,8 @@ async function importFromPng(uploadPath, { request }, preservedFileName) {
             'tags': jsonData.tags ?? '',
         };
         char = convertToV2(char, request.user.directories);
+        // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
+        await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         const charJSON = JSON.stringify(char);
         const result = await writeCharacterData(uploadPath, charJSON, pngName, request);
         fs.unlinkSync(uploadPath);
@@ -1867,6 +1778,8 @@ router.post('/all', async function (request, response) {
         recoverFileWritesInDirectorySync(request.user.directories.characters);
         const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
+        // SillyBunny: this listing is where the index finds cards that were deleted or renamed, also outside the app.
+        characterIndex.pruneDirectory(request.user.directories.characters, pngFiles);
         const fileStats = new Map();
         const dateAddedEntries = pngFiles.map(file => {
             try {
@@ -2165,7 +2078,11 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
                 recoverFileWriteSync(filename);
                 const rawBuffer = await fsPromises.readFile(filename);
                 const rawData = read(rawBuffer);
-                const mutatedData = mutateJsonString(rawData, unsetPrivateFields);
+                // SillyBunny: an exported copy gives the author's URLs back for the media that an import stored.
+                const mutatedData = mutateJsonString(rawData, char => {
+                    unsetPrivateFields(char);
+                    restoreExternalMediaUrls(char, request.user.directories);
+                });
                 const mutatedBuffer = write(rawBuffer, mutatedData);
                 const contentType = mime.lookup(filename) || 'image/png';
                 response.setHeader('Content-Type', contentType);
@@ -2178,6 +2095,8 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
                     if (json === undefined) return response.sendStatus(400);
                     const jsonObject = getCharaCardV2(JSON.parse(json), request.user.directories);
                     unsetPrivateFields(jsonObject);
+                    // SillyBunny: an exported copy gives the author's URLs back for the media that an import stored.
+                    restoreExternalMediaUrls(jsonObject, request.user.directories);
                     return response.type('json').send(JSON.stringify(jsonObject, null, 4));
                 } catch {
                     return response.sendStatus(400);
