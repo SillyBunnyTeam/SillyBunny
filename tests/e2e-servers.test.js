@@ -113,6 +113,8 @@ describe('e2e servers', () => {
                 'parallel.e2e.js': 'test.describe.configure({ mode: \'parallel\' });',
                 'plain.e2e.js': 'test(\'a\', () => {});',
                 'nested/serial.e2e.js': 'test.describe.configure({ mode: \'serial\' });',
+                'audit/serial.e2e.js': 'test.describe.configure({ mode: \'serial\' });',
+                'foundation/serial.e2e.js': 'test.describe.configure({ mode: \'serial\' });',
                 'serial.test.js': 'test.describe.configure({ mode: \'serial\' });',
                 'node_modules/dependency/serial.e2e.js': 'test.describe.configure({ mode: \'serial\' });',
                 'test-results/copy/serial.e2e.js': 'test.describe.configure({ mode: \'serial\' });',
@@ -140,7 +142,11 @@ describe('e2e servers', () => {
         expect(matches('C:\\repo\\tests\\frontend\\chain.e2e.js')).toBe(true);
         expect(matches('/repo/tests/not-nanogpt-controls.e2e.js')).toBe(false);
         expect(matches('/repo/tests/nanogpt-controlsXe2e.js')).toBe(false);
-        expect(parallel.testIgnore).toBe(sequential.testMatch);
+        expect(parallel.testIgnore[0]).toBe(sequential.testMatch);
+        // A project's testIgnore replaces the config's, so both keep the folders the suite does not run.
+        for (const project of [sequential, parallel]) {
+            expect(project.testIgnore).toEqual(expect.arrayContaining(['**/foundation/**', '**/audit/**']));
+        }
     });
 
     test('gives a worker the sequential spec files that the main process found, without a search of its own', async () => {

@@ -22,11 +22,6 @@ body.sb-bg-blur #bg_custom {
     filter: blur(calc(var(--customCSS-bg-blur, 0) * 1px));
 }
 
-/* Fitting options */
-#background_fitting {
-    max-width: 8em;
-}
-
 /* Fill/Cover - scales to fill width while maintaining aspect ratio */
 #bg1.cover {
     background-size: cover;
@@ -68,20 +63,37 @@ body.sb-bg-blur #bg_custom {
 
 #bg-header-fixed {
     flex-shrink: 0;
-    padding: 14px;
-    background: var(--sb-card-bg, var(--SmartThemeBlurTintColor));
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 84%, transparent);
-    border-radius: 18px;
+    padding: 0;
+    margin: 0;
     width: 100%;
 }
 
 .bg-header-row-1,
 .bg-header-row-2 {
-    display: flex;
+    width: 100%;
+}
+
+.bg-header-row-1 > .ds-row-suffix {
+    flex: 1 1 480px;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.bg-header-row-1 > .ds-row-text {
+    flex: 1 1 180px;
+}
+
+.bg-header-row-2 > .ds-row-text {
+    flex: 1 1 260px;
+}
+
+.bg-header-row-2 > .ds-row-suffix {
+    flex: 0 1 150px;
+}
+
+.bg-header-row-2 #bg-filter {
+    flex: 0 0 auto;
     width: 100%;
-    align-items: center;
 }
 
 /* Control buttons in header */
@@ -127,11 +139,11 @@ body.sb-bg-blur #bg_custom {
     display: grid;
     gap: 5px;
     width: 100%;
-    grid-template-columns: repeat(var(--bg-thumb-columns, 5), 1fr);
+    grid-template-columns: repeat(var(--bg-thumb-columns, 5), minmax(0, 1fr));
 }
 
 #bg-filter {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: the size comes from the --sb-type-* scale. */
     flex: 1 1 260px;
     min-width: 0;
 }
@@ -163,7 +175,6 @@ body.sb-bg-blur #bg_custom {
 }
 
 #auto_background,
-#bg_add_folder_button,
 #add_background_button_top {
     flex: 0 1 auto;
     min-height: 42px;
@@ -186,8 +197,7 @@ body.sb-bg-blur #bg_custom {
     opacity: 1;
 }
 
-.bg_example .mobile-only-menu-toggle,
-.bg_folder_tile .mobile-only-menu-toggle {
+.bg_example .mobile-only-menu-toggle {
     display: none;
 }
 
@@ -216,8 +226,7 @@ body.sb-bg-blur #bg_custom {
 }
 
 .bg_example.locked-background::after,
-.bg_example.selected-background::before,
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected::before {
+.bg_example.selected-background::before {
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     position: absolute;
@@ -226,8 +235,7 @@ body.sb-bg-blur #bg_custom {
     pointer-events: none;
 }
 
-.bg_example.selected-background::before,
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected::before {
+.bg_example.selected-background::before {
     content: '\f00c';
     top: 5px;
     color: var(--white100);
@@ -257,27 +265,7 @@ body.sb-bg-blur #bg_custom {
     left: 5px;
 }
 
-#bg_selection_mode_button.active {
-    color: var(--golden);
-}
-
-#bg_group_select_count {
-    font-weight: 700;
-}
-
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example .jg-menu {
-    display: none;
-}
-
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected {
-    outline: 2px solid var(--interactable-outline-color);
-    outline-offset: 0;
-}
-
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected::before {
-    right: 5px;
-}
-
+/* SillyBunny: selection mode and folders are in sillybunny-background-gallery.css. */
 .bg_example .jg-menu {
     display: flex;
     position: absolute;
@@ -326,29 +314,22 @@ body.sb-bg-blur #bg_custom {
 
 /* Scroll-to-Top Button */
 #bg-scroll-top {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
+    position: static;
     width: 42px;
     height: 42px;
     background: var(--SmartThemeBlurTintColor);
     color: var(--SmartThemeBodyColor);
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 50%;
     cursor: pointer;
-    z-index: var(--sb-z-raised);
     font-size: 18px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
-    transition: opacity var(--sb-transition);
-    pointer-events: none;
+    visibility: hidden;
 }
 
 #bg-scroll-top.visible {
-    opacity: 1;
-    pointer-events: auto;
+    visibility: visible;
 }
 
 #bg-scroll-top:hover {
@@ -385,9 +366,9 @@ body.sb-bg-blur #bg_custom {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
-    color: var(--SmartThemeBodyColor);
-    font-size: 0.9em;
+    background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.9));
+    color: #fff;
+    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
     font-weight: 600;
     padding: 4px 8px 6px;
     text-align: center;
@@ -421,13 +402,15 @@ body.sb-bg-blur #bg_custom {
 #bg_tabs .bg_tabs_list {
     display: flex;
     flex-direction: row;
-    gap: 5px;
-    background: none;
+    gap: 4px;
+    background: var(--sb-composer-input-bg);
     border: none;
-    margin: 5px 0;
-    padding: 0;
-    padding-right: 4em;
-    position: relative;
+    margin: 0;
+    padding: 4px;
+    border-radius: 999px;
+    flex-wrap: nowrap;
+    align-self: flex-start;
+    max-width: 100%;
 }
 
 #bg_tabs .bg_tabs_list .bg_tab_button {
@@ -435,27 +418,30 @@ body.sb-bg-blur #bg_custom {
     align-items: center;
     justify-content: center;
     text-align: center;
-    min-width: 8em;
+    min-width: 0;
+    flex: 1 1 120px;
     list-style: none;
-    color: var(--SmartThemeBodyColor);
-    background-color: var(--SmartThemeBlurTintColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 5px;
+    color: var(--sb-shell-text);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
     padding: 0;
     cursor: pointer;
     font-weight: 600;
     margin: 0 !important;
     filter: none;
-    opacity: 0.8;
-    transition: opacity var(--animation-duration-2x);
+    /* SillyBunny: upstream dims every jQuery list item, including selected background tabs. */
+    opacity: 1;
+    transition: background-color var(--sb-transition-fast);
 }
 
 #bg_tabs .bg_tabs_list .bg_tab_button:hover {
-    opacity: 1;
+    background: var(--sb-flat-hover-bg);
 }
 
 #bg_tabs .bg_tabs_list .bg_tab_button.ui-tabs-active {
-    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
+    background: var(--sb-layer-view);
+    box-shadow: var(--sb-shadow-sm);
 }
 
 #bg_tabs.ui-widget-content {
@@ -470,9 +456,10 @@ body.sb-bg-blur #bg_custom {
 #bg_tabs .bg_tabs_list .bg_tab_button a {
     width: 100%;
     height: 100%;
-    padding: 3px 5px;
+    padding: 10px 20px;
+    min-height: 44px;
     cursor: pointer;
-    color: var(--SmartThemeBodyColor);
+    color: var(--sb-shell-text);
 }
 
 #bg_tabs .bg_tab_panel {
@@ -482,178 +469,29 @@ body.sb-bg-blur #bg_custom {
     padding: 10px;
 }
 
+#sb-settings-page #bg_tabs .bg_tab_panel {
+    max-height: min(65dvh, 720px);
+    min-height: 0;
+}
+
 #bg_custom_content:not(:empty)~#bg_chat_hint {
     display: none;
 }
 
-.bg_folder_grid.bg_list {
-    display: grid;
-    gap: 5px;
-    width: 100%;
-    grid-template-columns: repeat(calc(var(--bg-thumb-columns, 5) + 2), 1fr);
-    margin-bottom: 10px;
-}
+/* SillyBunny: the folder tiles, the breadcrumb and the folder buttons on thumbnails are gone; folders are sections drawn by sillybunny-background-gallery.css. */
 
-.bg_folder_grid:empty {
-    display: none;
-}
+@media screen and (max-width: 620px) {
+    /* SillyBunny: the Background Fitting row wraps by content (`.ds-row` in sillybunny-tabs.css), so no width rule stacks it. */
+    .bg-header-row-2 {
+        flex-wrap: wrap;
+    }
 
-.bg_folder_tile {
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    border-radius: 8px;
-    height: auto;
-    aspect-ratio: 1 / 1;
-    outline: 2px solid var(--SmartThemeBorderColor);
-    outline-offset: -1px;
-    box-shadow: 0 0 7px var(--black50a);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--SmartThemeBlurTintColor);
-    transition: filter var(--sb-transition);
-}
+    #bg_menu_content,
+    #bg_custom_content {
+        grid-template-columns: repeat(min(var(--bg-thumb-columns, 5), 3), minmax(0, 1fr));
+    }
 
-.bg_folder_tile:hover {
-    filter: brightness(1.1);
-}
-
-.bg_folder_tile_cover {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-size: cover;
-    background-position: center;
-    border-radius: inherit;
-}
-
-.bg_folder_tile_overlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
-    color: var(--SmartThemeBodyColor);
-    padding: 6px 8px 4px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.85em;
-    font-weight: 600;
-    pointer-events: none;
-    border-radius: 0 0 8px 8px;
-}
-
-.bg_folder_tile_overlay i {
-    font-size: 0.9em;
-    opacity: 0.8;
-}
-
-.bg_folder_tile_name {
-    white-space: normal;
-    overflow: hidden;
-    text-overflow: clip;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-}
-
-/* Folder tile action menu */
-.bg_folder_tile .bg_folder_tile_menu {
-    display: flex;
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    background-color: rgba(0, 0, 0, 0.5);
-    border-radius: 5px;
-    padding: 3px;
-    z-index: 3;
-    -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
-    border: 1px solid var(--SmartThemeBorderColor);
-    align-items: center;
-
-    opacity: 0;
-    visibility: hidden;
-    transform: scale(0.9);
-    transform-origin: center;
-    transition: opacity var(--sb-transition), visibility var(--sb-transition), transform var(--sb-transition);
-}
-
-.bg_folder_tile:hover .bg_folder_tile_menu,
-.bg_folder_tile:focus-within .bg_folder_tile_menu {
-    opacity: 1;
-    visibility: visible;
-    transform: scale(1);
-}
-
-.bg_folder_tile .jg-button {
-    display: flex;
-    width: 24px;
-    height: 24px;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    padding: 5px;
-    font-size: 1.1em;
-    border-radius: 5px;
-    transition: background-color var(--sb-transition);
-}
-
-.bg_folder_tile .jg-button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-/* New Folder placeholder tile */
-.bg_new_folder_tile {
-    border: 2px dashed var(--SmartThemeBorderColor);
-    outline: none;
-    color: var(--SmartThemeBodyColor);
-    opacity: 0.6;
-    gap: 6px;
-    font-size: 0.85em;
-    font-weight: 600;
-}
-
-.bg_new_folder_tile:hover {
-    opacity: 1;
-    transform: scale(1.03);
-}
-
-/* Breadcrumb bar */
-.bg_folder_breadcrumb {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 5px 0;
-    margin-bottom: 5px;
-}
-
-.bg_current_folder_name {
-    font-weight: 600;
-    font-size: 1em;
-    color: var(--SmartThemeBodyColor);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
-
-#Backgrounds:not(.in-folder-view) .jg-set-cover {
-    display: none !important;
-}
-
-#Backgrounds.in-folder-view .jg-set-cover {
-    display: flex !important;
-}
-
-/* Hide folder actions on custom (chat-specific) backgrounds */
-.bg_example[custom="true"] .jg-folder,
-.bg_example[custom="true"] .jg-set-cover {
-    display: none !important;
+    #bg_tabs .bg_tabs_list {
+        align-self: stretch;
+    }
 }

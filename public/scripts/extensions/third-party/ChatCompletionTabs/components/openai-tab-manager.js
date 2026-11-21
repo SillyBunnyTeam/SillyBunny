@@ -37,6 +37,10 @@ export class OpenAITabManager {
                 },
             },
             checkCondition: () => {
+                // SillyBunny's unified Prompting page owns these groups and keeps them in one scroll flow.
+                if (document.querySelector('.sb-prompting-panel #ai_response_configuration')) {
+                    return false;
+                }
                 return typeof main_api !== 'undefined' &&
                        main_api === 'openai' &&
                        typeof oai_settings !== 'undefined' &&

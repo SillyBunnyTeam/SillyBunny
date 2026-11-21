@@ -1,0 +1,275 @@
+{
+ "banner-main": [
+  {
+   "kind": "raised",
+   "x0": 204,
+   "x1": 220,
+   "y": 357,
+   "strength": 0.3
+  },
+  {
+   "kind": "raised",
+   "x0": 224,
+   "x1": 245,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 15,
+   "x1": 31,
+   "y": 335
+  },
+  {
+   "kind": "contact",
+   "x0": 80,
+   "x1": 102,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 112,
+   "x1": 134,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 313,
+   "x1": 330,
+   "y": 335
+  },
+  {
+   "kind": "footprint",
+   "x0": 15,
+   "x1": 330,
+   "y": 335
+  }
+ ],
+ "banner-features": [
+  {
+   "kind": "raised",
+   "x0": 8,
+   "x1": 40,
+   "y": 331
+  },
+  {
+   "kind": "contact",
+   "x0": 84,
+   "x1": 110,
+   "y": 331
+  },
+  {
+   "kind": "contact",
+   "x0": 117,
+   "x1": 184,
+   "y": 350
+  },
+  {
+   "kind": "contact",
+   "x0": 186,
+   "x1": 252,
+   "y": 356
+  },
+  {
+   "kind": "footprint",
+   "x0": 115,
+   "x1": 262,
+   "y": 354
+  },
+  {
+   "kind": "contact",
+   "x0": 274,
+   "x1": 291,
+   "y": 334
+  },
+  {
+   "kind": "contact",
+   "x0": 289,
+   "x1": 320,
+   "y": 338
+  }
+ ],
+ "banner-install": [
+  {
+   "kind": "contact",
+   "x0": 12,
+   "x1": 28,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 36,
+   "x1": 47,
+   "y": 337
+  },
+  {
+   "kind": "contact",
+   "x0": 209,
+   "x1": 222,
+   "y": 337
+  },
+  {
+   "kind": "contact",
+   "x0": 226,
+   "x1": 242,
+   "y": 357
+  },
+  {
+   "kind": "footprint",
+   "x0": 12,
+   "x1": 242,
+   "y": 347
+  },
+  {
+   "kind": "raised",
+   "x0": 74,
+   "x1": 92,
+   "y": 355
+  },
+  {
+   "kind": "contact",
+   "x0": 100,
+   "x1": 130,
+   "y": 355
+  },
+  {
+   "kind": "contact",
+   "x0": 135,
+   "x1": 165,
+   "y": 355
+  },
+  {
+   "kind": "raised",
+   "x0": 172,
+   "x1": 190,
+   "y": 355
+  },
+  {
+   "kind": "contact",
+   "x0": 273,
+   "x1": 291,
+   "y": 355
+  },
+  {
+   "kind": "contact",
+   "x0": 299,
+   "x1": 324,
+   "y": 356
+  }
+ ],
+ "banner-contributing": [
+  {
+   "kind": "raised",
+   "x0": 12,
+   "x1": 34,
+   "y": 339
+  },
+  {
+   "kind": "contact",
+   "x0": 72,
+   "x1": 98,
+   "y": 339
+  },
+  {
+   "kind": "contact",
+   "x0": 110,
+   "x1": 204,
+   "y": 353
+  },
+  {
+   "kind": "footprint",
+   "x0": 107,
+   "x1": 207,
+   "y": 350
+  },
+  {
+   "kind": "contact",
+   "x0": 213,
+   "x1": 238,
+   "y": 345
+  },
+  {
+   "kind": "contact",
+   "x0": 270,
+   "x1": 289,
+   "y": 350
+  }
+ ],
+ "banner-credits": [
+  {
+   "kind": "contact",
+   "x0": 70,
+   "x1": 91,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 93,
+   "x1": 114,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 217,
+   "x1": 234,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 235,
+   "x1": 250,
+   "y": 357
+  }
+ ],
+ "banner-community": [
+  {
+   "kind": "contact",
+   "x0": 58,
+   "x1": 81,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 123,
+   "x1": 149,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 209,
+   "x1": 226,
+   "y": 357
+  },
+  {
+   "kind": "contact",
+   "x0": 227,
+   "x1": 241,
+   "y": 357
+  }
+ ],
+ "social-welcome": [
+  {
+   "kind": "contact",
+   "x0": 75,
+   "x1": 94,
+   "y": 295
+  },
+  {
+   "kind": "contact",
+   "x0": 111,
+   "x1": 131,
+   "y": 295
+  },
+  {
+   "kind": "contact",
+   "x0": 162,
+   "x1": 177,
+   "y": 294
+  },
+  {
+   "kind": "raised",
+   "x0": 180,
+   "x1": 198,
+   "y": 294
+  }
+ ]
+}

@@ -36,7 +36,7 @@ describe('frontend asset fallback headers', () => {
     });
 
     test('keeps static non-code fallback assets short-lived', () => {
-        expect(getCacheControlFor('/img/logo.png')).toBe('public, max-age=3600');
+        expect(getCacheControlFor('/img/sillybunny/logo-64.png')).toBe('public, max-age=3600');
     });
 
 });

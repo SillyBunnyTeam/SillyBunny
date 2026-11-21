@@ -264,7 +264,8 @@ export async function promptItemize(itemizedPrompts, requestedMesId) {
         ? await renderTemplateAsync('itemizationChat', params)
         : await renderTemplateAsync('itemizationText', params);
 
-    const popup = new Popup(template, POPUP_TYPE.TEXT);
+    // SillyBunny: prompt itemization is a Window so the full breakdown remains reachable.
+    const popup = new Popup(template, POPUP_TYPE.TEXT, '', { tier: 'window' });
 
     /** @type {HTMLElement} */
     const diffPrevPrompt = popup.dlg.querySelector('#diffPrevPrompt');
@@ -318,8 +319,10 @@ export async function promptItemize(itemizedPrompts, requestedMesId) {
             const content = document.createElement('div');
             content.classList.add('tokenItemizingMaintext');
             content.innerText = rawPrompt;
-            const popup = new Popup(content, POPUP_TYPE.TEXT, null, { allowVerticalScrolling: true, leftAlign: true });
-            await popup.show();
+            // SillyBunny: the mobile raw prompt is a pushed Window page titled from its source action.
+            const title = popup.dlg.querySelector('#showRawPrompt')?.getAttribute('title');
+            const rawPopup = new Popup(content, POPUP_TYPE.TEXT, null, { tier: 'window', title, allowVerticalScrolling: true, leftAlign: true });
+            await rawPopup.show();
             return;
         }
 

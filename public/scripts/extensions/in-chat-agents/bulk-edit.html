@@ -1,0 +1,56 @@
+<div id="ica--bulkEditPopup" class="ica--bulk-edit-popup" style="display:none">
+    <div class="ica--bulk-edit-popup-content">
+        <strong>Bulk Edit Selected Agents</strong>
+        <p class="ica--regex-note">Choose which properties to change. Set a value to apply it; leave a field at its default to skip it.</p>
+        <div class="ica--editor-row flex-container flexGap5">
+            <label class="flex1">Injection Role
+                <select id="ica--bulkEdit-role" class="text_pole">
+                    <option value="" selected>Don't change</option>
+                    <option value="0">System</option>
+                    <option value="1">User</option>
+                    <option value="2">Assistant</option>
+                </select>
+            </label>
+            <label class="flex1">Phase
+                <select id="ica--bulkEdit-phase" class="text_pole">
+                    <option value="" selected>Don't change</option>
+                    <option value="pre">Pre-generation</option>
+                    <option value="post">Post-generation</option>
+                    <option value="both">Both</option>
+                </select>
+            </label>
+        </div>
+        <div class="ica--editor-row flex-container flexGap5">
+            <label class="flex1">Prompt Pass Mode
+                <select id="ica--bulkEdit-promptMode" class="text_pole">
+                    <option value="" selected>Don't change</option>
+                    <option value="rewrite">Rewrite</option>
+                    <option value="append">Append</option>
+                </select>
+            </label>
+            <label class="flex1">Prompt Pass Enabled
+                <select id="ica--bulkEdit-promptEnabled" class="text_pole">
+                    <option value="" selected>Don't change</option>
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                </select>
+            </label>
+        </div>
+        <div class="ica--editor-row flex-container flexGap5">
+            <label class="flex1">Utility Post-Process Enabled
+                <select id="ica--bulkEdit-ppEnabled" class="text_pole">
+                    <option value="" selected>Don't change</option>
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                </select>
+            </label>
+            <label class="flex1">Scan World Info
+                <select id="ica--bulkEdit-scan" class="text_pole">
+                    <option value="" selected>Don't change</option>
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                </select>
+            </label>
+        </div>
+    </div>
+</div>

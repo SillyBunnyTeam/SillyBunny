@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "splash-reisen--hold.png",
+    "sha256": "84e0dd6080c800f46fa104d95cc79fbbef05ea65e128888f4646c3fc3b612ba5",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:6ab0c7ea626bcf2fe3e15a02fd0c25555d6eb4ce22ed43efa207bf29402162e4",
+    "incomplete": "1 source is not in the generation log."
+}

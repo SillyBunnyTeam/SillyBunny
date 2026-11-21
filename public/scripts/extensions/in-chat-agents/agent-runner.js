@@ -21,6 +21,7 @@ import {
 } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { eventSource, event_types } from '../../events.js';
+import { t } from '../../i18n.js';
 import { is_group_generating } from '../../group-chats.js';
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../popup.js';
 import { ToolManager } from '../../tool-calling.js';
@@ -356,11 +357,11 @@ export function cancelAgentGeneration() {
     notifyAgentGenerationStateChanged();
 
     if (stopped || wasActive || queuedCount > 0) {
-        toastr.info(queuedCount > 0 ? `Stopping agent generation and clearing ${queuedCount} queued run${queuedCount === 1 ? '' : 's'}...` : 'Stopping agent generation...');
+        toastr.info(queuedCount > 0 ? `Stopping agent generation and clearing ${queuedCount} queued run${queuedCount === 1 ? '' : 's'}…` : 'Stopping agent generation…');
         return true;
     }
 
-    toastr.info('No agent generation is currently running.');
+    toastr.info('No agent generation is currently running');
     return false;
 }
 
@@ -407,7 +408,7 @@ function showPathfinderRetrievalToast() {
         return;
     }
 
-    activePathfinderRetrievalToast = toastr.info('Pathfinder is processing lore for this reply...', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
+    activePathfinderRetrievalToast = toastr.info('Pathfinder is processing lore for this reply…', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
 }
 
 function clearPathfinderRetrievalToast() {
@@ -523,7 +524,7 @@ function enqueueManualAgentRun(agentId, target) {
 
     if (executionMode === 'parallel') {
         if (wasAlreadyActive) {
-            toastr.info('Running agent in parallel.');
+            toastr.info('Running agent in parallel');
         }
 
         parallelManualRunCount++;
@@ -549,7 +550,7 @@ function enqueueManualAgentRun(agentId, target) {
         });
 
         if (wasAlreadyActive) {
-            toastr.info('Queued agent run.');
+            toastr.info('Queued agent run');
         }
 
         notifyAgentGenerationStateChanged();
@@ -2446,16 +2447,15 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
     const runningLabel = skipChanges
         ? 'Generating main output for pre-generation intercept'
         : kind === 'preIntercept'
-            ? `Running pre-generation ${applyMode} intercept...`
+            ? `Running pre-generation ${applyMode} intercept…`
             : kind === 'postMainIntercept'
-                ? `Running post-main ${applyMode} intercept...`
-                : `Running ${modeLabel} via ${targetLabel}...`;
-    const cancelLabel = skipChanges ? 'Skip changes' : 'Cancel Agent';
+                ? `Running post-main ${applyMode} intercept…`
+                : `Running ${modeLabel} via ${targetLabel}…`;
+    const cancelLabel = skipChanges ? 'Skip Changes' : 'Cancel Agent';
     const messageHtml = `
         <div>${escapeToastHtml(runningLabel)}</div>
         <div>${escapeToastHtml(`Order ${metadata.order} | Model: ${metadata.modelLabel}`)}</div>
         <button type="button" class="menu_button menu_button_icon caution ${cancelButtonClass}">
-            <i class="fa-solid fa-stop"></i>
             <span>${escapeToastHtml(cancelLabel)}</span>
         </button>
     `;
@@ -2586,7 +2586,7 @@ function showPromptTransformResultToast(agent, result) {
         case 'empty-response': {
             const targetLabel = describePromptTransformTarget(result?.profileId, result?.runner);
             const modeLabel = describePromptTransformMode(result?.mode);
-            toastr.warning(`${modeLabel} ran via ${targetLabel} but returned an empty response.`, agentName, {
+            toastr.warning(`${modeLabel} ran via ${targetLabel} but returned an empty response`, agentName, {
                 timeOut: 7000,
                 extendedTimeOut: 10000,
             });
@@ -2598,7 +2598,7 @@ function showPromptTransformResultToast(agent, result) {
             toastr.error(
                 result?.error
                     ? `${modeLabel} failed via ${targetLabel}: ${result.error}`
-                    : `${modeLabel} failed via ${targetLabel}.`,
+                    : `${modeLabel} failed via ${targetLabel}`,
                 agentName,
                 {
                     timeOut: 10000,
@@ -4942,6 +4942,8 @@ function buildPostMainInterceptReviewPopupContent(text) {
 async function showPostMainInterceptReviewPopup(text) {
     const popupContent = buildPostMainInterceptReviewPopupContent(text);
     const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
+        tier: 'window',
+        title: t`Review the main output before it is shown in chat`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -4949,12 +4951,12 @@ async function showPostMainInterceptReviewPopup(text) {
         cancelButton: false,
         customButtons: [
             {
-                text: 'Skip intercept',
+                text: 'Skip Intercept',
                 result: POPUP_RESULT.CUSTOM1,
                 classes: ['menu_button_primary'],
             },
             {
-                text: 'Continue intercept',
+                text: 'Continue Intercept',
                 result: POPUP_RESULT.CUSTOM2,
                 classes: ['menu_button_primary'],
             },
@@ -5127,7 +5129,7 @@ async function onImpersonateReady(text = '') {
     }
 
     if (normalizeContentText(textarea.value) !== textareaTextAtStart) {
-        toastr.warning('Skipped applying the impersonation post passes because the input changed while they were running.', 'In-Chat Agents');
+        toastr.warning('Skipped applying the impersonation post passes because the input changed while they were running', 'In-Chat Agents');
         return;
     }
 
@@ -5474,19 +5476,19 @@ export async function runSingleAgentPostPassesOnText(agent, text, generationType
 
 async function executeManualComposerAgentRun(agent, cancelRevision) {
     if (isCompanionAgent(agent)) {
-        toastr.warning('Companion agents attach notes to messages and cannot rewrite the composer text.');
+        toastr.warning('Companion agents attach notes to messages and cannot rewrite the composer text');
         return null;
     }
 
     const textarea = document.querySelector('#send_textarea');
     if (!textarea) {
-        toastr.error('Composer text box not found.');
+        toastr.error('Composer text box not found');
         return null;
     }
 
     const initialText = normalizeContentText(textarea.value);
     if (!initialText.trim()) {
-        toastr.warning('The composer text box is empty.');
+        toastr.warning('The composer text box is empty');
         return null;
     }
 
@@ -5499,12 +5501,12 @@ async function executeManualComposerAgentRun(agent, cancelRevision) {
     }
 
     if (!result.changed) {
-        toastr.info(`"${agent.name}" made no changes to the composer text.`, 'In-Chat Agents');
+        toastr.info(`"${agent.name}" made no changes to the composer text`, 'In-Chat Agents');
         return result;
     }
 
     if (normalizeContentText(textarea.value) !== initialText) {
-        toastr.warning('Skipped applying the agent because the composer text changed while it was running.', 'In-Chat Agents');
+        toastr.warning('Skipped applying the agent because the composer text changed while it was running', 'In-Chat Agents');
         return null;
     }
 
@@ -5517,7 +5519,7 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
     const runTarget = normalizeManualRunTarget(target);
     const agent = getAgentById(agentId);
     if (!agent) {
-        toastr.error('Agent not found.');
+        toastr.error('Agent not found');
         return null;
     }
     if (!isAgentRuntimeAllowed(agent)) {
@@ -5530,12 +5532,12 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
 
     if (runTarget.kind === 'companion') {
         if (isCompanionAgent(agent)) {
-            toastr.warning('Companion agents cannot post-process other companion notes.');
+            toastr.warning('Companion agents cannot post-process other companion notes');
             return null;
         }
 
         if (!companionRuntime?.applyAgentPostPassesToCompanionResult) {
-            toastr.error('Companion runtime is unavailable.');
+            toastr.error('Companion runtime is unavailable');
             return null;
         }
 
@@ -5555,7 +5557,7 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
 
     if (isCompanionAgent(agent)) {
         if (!companionRuntime?.runCompanionAgentOnMessage) {
-            toastr.error('Companion runtime is unavailable.');
+            toastr.error('Companion runtime is unavailable');
             return null;
         }
 
@@ -5619,7 +5621,7 @@ export async function runAgentOnMessage(agentId, messageIndex) {
  */
 export async function runAgentOnTarget(agentId, target) {
     if (!areAgentsGloballyEnabled()) {
-        toastr.warning('In-Chat Agents are disabled.');
+        toastr.warning('In-Chat Agents are disabled');
         return null;
     }
 
@@ -5629,7 +5631,7 @@ export async function runAgentOnTarget(agentId, target) {
 export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = agentGenerationCancelRevision } = {}) {
     resetChatBackupSequence();
     if (!areAgentsGloballyEnabled()) {
-        toastr.warning('In-Chat Agents are disabled.');
+        toastr.warning('In-Chat Agents are disabled');
         return;
     }
 
@@ -5649,7 +5651,7 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     const trackerAgents = enabledAgents.filter(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
 
     if (trackerAgents.length === 0) {
-        toastr.info('No enabled tracker agents found.');
+        toastr.info('No enabled tracker agents found');
         return;
     }
 
@@ -5931,6 +5933,6 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     if (parts.length > 0) {
         toastr.success(parts.join(', '), 'Trackers fixed');
     } else {
-        toastr.info('No changes made.', 'Trackers fixed');
+        toastr.info('No changes made', 'Trackers fixed');
     }
 }

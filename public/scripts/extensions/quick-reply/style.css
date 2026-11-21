@@ -62,7 +62,8 @@
   position: relative;
 }
 #qr--popout > .qr--header > .qr--controls > .qr--close {
-  height: 15px;
+  /* SillyBunny: the Close keeps the target floor of the other moving windows. */
+  height: var(--sb-density-floor, 15px);
   aspect-ratio: 1 / 1;
   font-size: 20px;
   opacity: 0.5;
@@ -233,6 +234,22 @@
   align-items: baseline;
   gap: 0.5em;
 }
+
+/* SillyBunny: retain the compact row label scale inside the Quick Reply editor. */
+.popup:has(#qr--modalEditor) .ds-pref-group .ds-row .ds-row-text > .ds-row-label {
+  font-size: var(--sb-type-control, var(--mainFontSize));
+  font-weight: 400;
+}
+
+.popup:has(#qr--modalEditor) .ds-pref-group-heading {
+  font-size: var(--sb-type-title, var(--mainFontSize));
+}
+
+.popup:has(#qr--modalEditor) .qr--modal-messageContainer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 #qr--settings .qr--setList > .qr--item {
   display: flex;
   flex-direction: row;
@@ -251,83 +268,79 @@
 #qr--settings #qr--set-settings #qr--injectInputContainer {
   flex-wrap: nowrap;
 }
+/* SillyBunny: each option's label is the control of its checkbox, so it is as tall as the pointer's floor. */
+#qr--settings #qr--set-settings label {
+  align-items: center;
+  min-block-size: var(--sb-density-floor, 0px);
+}
+/* SillyBunny: the rows carry the row inset themselves, so the list adds none. The settings page insets each block by the row padding, and a quick reply row spans the card. */
 #qr--settings #qr--set-qrList .qr--set-qrListContents {
-  padding: 0 0.5em;
+  padding: 0;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder {
-  display: flex;
-  align-items: center;
-  opacity: 0;
-  transition: var(--animation-duration);
-  margin: -2px 0 -11px 0;
-  position: relative;
+#sb-settings-page .sb-settings-mounted-shell #qr--settings #qr--set-qrList .qr--set-qrListContents {
+  margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder .qr--actions {
-  display: flex;
-  gap: 0.25em;
-  flex: 0 0 auto;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder .qr--actions .qr--action {
-  margin: 0;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:before,
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:after {
-  content: "";
-  display: block;
-  flex: 1 1 auto;
-  border: 1px solid;
-  margin: 0 1em;
-  height: 0;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:hover,
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:focus-within {
-  opacity: 1;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content {
-  display: flex;
-  flex-direction: row;
-  gap: 0.5em;
-  align-items: baseline;
-  padding: 0.25em 0;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(2) {
-  flex: 0 0 auto;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(2) {
-  flex: 1 1 25%;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(3) {
-  flex: 0 0 auto;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(4) {
-  flex: 1 1 75%;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(5) {
-  flex: 0 1 auto;
-  display: flex;
-  gap: 0.25em;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > .drag-handle {
-  padding: 0.75em;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabelContainer {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabelContainer .qr--set-itemIcon:not(.fa-solid) {
+/* SillyBunny: a set link is an entity row, and the editor's set picker is a select row with one menu. The buttons they replaced stay in place, hidden, for the menus to run. The settings page insets each block by the row padding, and these rows span the card. */
+#qr--settings .qr--setList > .qr--item > [hidden],
+#qr--settings #qr--editor > .qr--head > [hidden] {
   display: none;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabelContainer .qr--set-itemLabel {
-  min-width: 24px;
+#qr--settings #qr--editor > .qr--head {
+  display: block;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabel,
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--action {
+#qr--settings #qr--editor > .qr--head > .ds-select-row {
+  padding: 6px var(--sb-density-row-padding-inline, 12px);
+}
+#sb-settings-page .sb-settings-mounted-shell #qr--settings .qr--setList {
+  margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
+}
+/* SillyBunny: the set list reaches the box edges, so a line of text in it takes the inset of a row. */
+#qr--settings .qr--setListEmpty {
+  padding: 6px var(--sb-density-row-padding-inline, 12px);
+}
+#qr--settings .qr--setList > .qr--item > .ds-entity-row__text > .qr--set {
+  width: 100%;
+}
+@media (max-width: 620px) {
+  #qr--settings .qr--setList .qr--visibleText {
+    display: none;
+  }
+}
+
+/* SillyBunny: a quick reply is a shared entity row. The text column holds the icon button and the label field above the
+   message field. The upstream buttons stay in the row, hidden, for the row's menu to run. */
+#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item > [hidden] {
+  display: none;
+}
+#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item > .drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: var(--sb-density-floor, 0px);
+  min-block-size: var(--sb-density-floor, 0px);
+}
+#qr--settings .qr--set-itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#qr--settings .qr--set-itemText .qr--set-itemLabelContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+#qr--settings .qr--set-itemText .qr--set-itemLabelContainer .qr--set-itemIcon:not(.fa-solid) {
+  display: none;
+}
+#qr--settings .qr--set-itemText .qr--set-itemLabel {
+  flex: 1 1 auto;
+  min-width: 24px;
   margin: 0;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemMessage {
+#qr--settings .qr--set-itemText .qr--set-itemMessage {
+  width: 100%;
+  min-height: 3.2em;
+  margin: 0;
   font-size: smaller;
 }
 #qr--settings .qr--set-qrListActions {
@@ -338,7 +351,79 @@
   padding-bottom: 0.5em;
 }
 
+/* SillyBunny: make Quick Reply set links use shared row and action patterns on every width. */
+#qr--settings .qr--setList > .qr--item {
+  align-items: center;
+  min-width: 0;
+  min-height: 52px;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--sb-shell-border);
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item {
+  margin-block: 0;
+}
+
+#qr--settings .qr--setList > .qr--item:last-child {
+  border-bottom: 0;
+}
+
+#qr--settings .qr--setList > .qr--item > .drag-handle {
+  flex: 0 0 32px;
+  padding: 0;
+  color: var(--sb-muted-fg);
+  text-align: center;
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--set {
+  flex: 1 1 190px;
+  min-width: 0;
+  min-height: 40px;
+  margin: 0;
+  padding-inline: 10px;
+  border: 1px solid var(--sb-shell-border);
+  border-radius: var(--sb-radius-control, 9px);
+  background: var(--sb-layer-window);
+  color: var(--sb-shell-text);
+}
+
+/* SillyBunny: a grip is as large as the pointer's floor; its glyph stays small and centred in it. */
+#qr--settings .qr--setList > .qr--item > .drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: var(--sb-density-floor, 0px);
+  min-block-size: var(--sb-density-floor, 0px);
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--visible {
+  flex: 0 0 auto;
+  min-height: 40px;
+  margin: 0;
+  gap: 8px;
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--action {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+@media (pointer: coarse) {
+  #qr--settings .qr--setList > .qr--item > .qr--action,
+  #qr--settings .qr--setList > .qr--item > .qr--visible {
+    min-height: 44px;
+  }
+}
+
+/* SillyBunny: the 38px action size of a narrow window is raised to the pointer's floor. */
 @media screen and (max-width: 600px) {
+  #qr--settings {
+    --qr--target: max(38px, var(--sb-density-floor, 38px));
+  }
+
   #qr--settings #qr--editor > .qr--head {
     flex-direction: column;
     align-items: stretch;
@@ -359,13 +444,13 @@
   }
 
   #qr--settings #qr--editor > .qr--head > .qr--actions > .menu_button {
-    flex: 0 0 38px;
-    width: 38px;
-    min-width: 38px;
-    max-width: 38px;
-    height: 38px;
-    min-height: 38px;
-    max-height: 38px;
+    flex: 0 0 var(--qr--target);
+    width: var(--qr--target);
+    min-width: var(--qr--target);
+    max-width: var(--qr--target);
+    height: var(--qr--target);
+    min-height: var(--qr--target);
+    max-height: var(--qr--target);
     padding: 0;
   }
 
@@ -391,58 +476,14 @@
     padding: 0;
   }
 
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) 38px;
-    gap: 0.4em;
-    align-items: center;
-    padding: 0.4em 0;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > .drag-handle {
-    grid-column: 1;
-    grid-row: 1;
-    padding: 0;
-    text-align: center;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(2) {
-    grid-column: 2;
-    grid-row: 1;
-    min-width: 0;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(3) {
-    grid-column: 3;
-    grid-row: 1;
-    justify-self: end;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(4) {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-width: 0;
-    width: 100%;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(5) {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 0.35em;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--action,
   #qr--settings .qr--set-qrListActions > .menu_button {
-    flex: 0 0 38px;
-    width: 38px;
-    min-width: 38px;
-    max-width: 38px;
-    height: 38px;
-    min-height: 38px;
-    max-height: 38px;
+    flex: 0 0 var(--qr--target);
+    width: var(--qr--target);
+    min-width: var(--qr--target);
+    max-width: var(--qr--target);
+    height: var(--qr--target);
+    min-height: var(--qr--target);
+    max-height: var(--qr--target);
     padding: 0;
   }
 
@@ -676,13 +717,19 @@
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label input {
   flex: 0 0 auto;
 }
+/* SillyBunny: the rule above sizes the inputs of the upstream label stack to their content. The input of an entry row is the row's editable area, so it fills it; without this the field collapses to no width. */
+.popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels .ds-row-entry__field > input {
+  flex: 1 1 auto;
+}
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList {
-  background-color: var(--stcdx--bgColor);
-  border: 1px solid var(--SmartThemeBorderColor);
-  -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-  backdrop-filter: var(--SmartThemeBackdropFilter);
-  border-radius: 10px;
+  /* SillyBunny: the popover surface of the other lists (opaque layer, overlay radius, a ring in the shadow). `--stcdx--bgColor` is defined nowhere, so the list had no background. */
+  background-color: var(--sb-layer-popover);
+  border: 0;
+  box-shadow: var(--sb-typeahead-shadow);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: var(--sb-radius-overlay, 15px);
   font-size: smaller;
   position: absolute;
   top: 100%;
@@ -690,7 +737,7 @@
   right: 0;
   overflow: auto;
   margin: 0;
-  padding: 0.5em;
+  padding: 6px;
   max-height: 50vh;
   list-style: none;
   z-index: 40000;
@@ -698,20 +745,25 @@
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem {
+  /* SillyBunny: a row of the popover list (32px, 44px on a coarse pointer, flat fills). */
   display: flex;
   gap: 1em;
+  align-items: center;
+  min-height: var(--sb-density-floor, 32px);
+  padding: 0 12px;
+  border-radius: var(--sb-radius-control, 9px);
   text-align: left;
-  opacity: 0.75;
-  transition: var(--animation-duration-2x);
   cursor: pointer;
 }
-.popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem:hover,
-.popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem:hover {
-  opacity: 1;
+@media (hover: hover) {
+  .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem:hover,
+  .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem:hover {
+    background-color: var(--sb-flat-hover-bg);
+  }
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem.qr--current,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem.qr--current {
-  opacity: 1;
+  background-color: var(--sb-flat-selected-bg);
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem.qr--current .qr--label,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem.qr--current .qr--label,
@@ -729,6 +781,13 @@
   height: min-content;
   width: min-content;
   margin: 0 0.5em 0 0;
+  /* SillyBunny: the icon is a glyph in a row, not a button, so it takes none of the button's size, fill or border. */
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--id,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--id {
@@ -1215,4 +1274,208 @@
 .popup:has(.qr--transferModal):has(.qr--transferSelect:focus).qr--isCopy .qr--copy {
   font-weight: bold;
   box-shadow: 0 0 10px;
+}
+
+/* SillyBunny: this manifest stylesheet loads asynchronously with Quick Reply. Keep the
+   source editor's direct-child/debugger selectors intact; only the frame body scrolls. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) > .popup-body {
+  container: sb-qr / inline-size;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: visible;
+  align-items: flex-start;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: visible;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels {
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+/* SillyBunny: the boxed list clips its content to its corners, which would cut off the switcher list that opens below the last row. The corners square off only while the list is open. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels:has(.qr--modal-switcherList) {
+  overflow: visible;
+}
+/* SillyBunny: an entry row stacks its line and its caption, so only the other rows lay out in a row. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .ds-row {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .ds-row:not(.ds-row-entry--floating) {
+  flex-direction: row;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .ds-row-label {
+  font-size: inherit;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .qr--labelHint {
+  font-size: inherit;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--modal-icon {
+  height: auto;
+  min-height: 34px;
+  min-width: 34px;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--modal-messageContainer {
+  flex: 0 0 auto;
+  overflow: visible;
+  gap: 12px;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--modal-messageContainer > .qr--modal-editorSettings {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  color: inherit;
+  font-size: inherit;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .qr--modal-editorSettings > small {
+  padding: 6px 16px;
+  color: var(--sb-input-placeholder);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--modal-messageContainer > #qr--modal-messageHolder {
+  flex: 0 0 auto;
+  height: clamp(320px, 45dvh, 560px);
+  min-height: 320px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--qrOptions {
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 12px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--qrOptions > #qr--autoExec .checkbox_label {
+  text-wrap: wrap;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--autoExec {
+  gap: 0;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--ctxEditor .qr--ctxItem {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-block-end: 12px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--ctxEditor .ds-select-row {
+  flex: 1 1 220px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--ctxEditor .qr--isChainedLabel {
+  order: 1;
+  flex: 1 0 100%;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor :is(#qr--modal-debugState, #qr--modal-executeErrors, #qr--modal-executeResult) {
+  overflow: visible;
+  width: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugState .qr--scope {
+  grid-template-columns: fit-content(35%) minmax(0, 1fr) minmax(0, 1fr);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugState .qr--stack {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugState .qr--stack .qr--item .qr--source {
+  white-space: normal;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting {
+  align-items: stretch;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting > #qr--qrOptions {
+  flex: 0 1 auto;
+  width: var(--width, 40%);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting) .sb-dialog__close {
+  visibility: hidden;
+}
+/* SillyBunny: min-content on the body collapses the debugger inside the Window grid. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) {
+  width: min(420px, calc(100% - 32px)) !important;
+  height: auto !important;
+  max-height: min(50dvh, calc(100dvh - 32px));
+  max-width: calc(100% - 32px);
+  position: fixed;
+  inset: 16px 16px auto auto;
+  transform: none;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) > .popup-body {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) .popup-content {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) .popup-content > #qr--modalEditor {
+  width: 100%;
+  max-height: none;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) .popup-content > #qr--modalEditor > #qr--qrOptions {
+  width: 100%;
+  flex: 1 1 auto;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugButtons {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@container sb-qr (max-width: 1000px) {
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) > #qr--main,
+  dialog.popup.sb-dialog--window #qr--modalEditor:not(.qr--isExecuting) #qr--qrOptions {
+    flex: 0 0 auto;
+    width: auto;
+  }
+}
+@container sb-qr (max-width: 750px) {
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main,
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--qrOptions {
+    flex: 0 0 auto;
+    width: auto;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--resizeHandle {
+    display: none;
+  }
+  /* Keep the running debugger wide enough to read when the Window cannot support two panes. */
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting > #qr--main,
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting > #qr--qrOptions {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* SillyBunny: shared transfer responses retain one suggested action and a neutral Copy footer. */
+.popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy) {
+  flex-direction: row;
+  white-space: normal;
+  transition: none;
+}
+
+.popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy)::after {
+  content: none;
+}
+
+/* SillyBunny: a set with no Quick Replies shows its empty text, like the regex lists. */
+#qr--settings #qr--set-qrList:has(> .qr--set-qrListContents:empty)::after {
+  content: attr(data-no-qrs-text);
+  display: block;
+  padding: 0.5em;
+  font-size: 0.95em;
+  opacity: 0.7;
+  text-align: center;
 }

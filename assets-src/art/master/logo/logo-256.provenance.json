@@ -1,0 +1,27 @@
+{
+    "format": 1,
+    "file": "logo-256.png",
+    "sha256": "3830d24eb0196bb319a17f7211be37284b83d9f205a5ecbe0626741e198176a1",
+    "characters": [],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "vectorize",
+        "icons"
+    ],
+    "handEdits": false,
+    "record": "sha256:4c886a46a2b0ab9f1d511dde14016f42a6af8b68691b8ed37ae9607ea5364a77"
+}

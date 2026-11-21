@@ -308,6 +308,10 @@ export class DataMaidService {
                 if (file.name === '_sbca_organization.json') {
                     continue;
                 }
+                // SillyBunny: imported fonts are listed in settings.json, not referenced by chats, so they would look loose.
+                if (file.name.startsWith('sb-font-')) {
+                    continue;
+                }
                 const filePath = path.join(this.directories.files, file.name);
                 if (file.isFile() && !knownFileFullPaths.has(filePath)) {
                     result.push(filePath);

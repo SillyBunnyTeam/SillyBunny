@@ -14,87 +14,86 @@ function getFunctionSource(name) {
     return match[0];
 }
 
-describe('topbar label tap cycle', () => {
-    test('keeps preview cycle state transient', () => {
-        expect(tabsSource).toContain('const SB_TOPBAR_LABEL_CYCLE_RESET_MS = 5000;');
-        expect(tabsSource).toContain('cyclePart: \'\'');
-        expect(tabsSource).toContain('cycleResetTimer: 0');
-        expect(tabsSource).toContain('function resetTopBarLabelCycle');
-        expect(tabsSource).toContain('window.clearTimeout(sbState.topbarLabel.cycleResetTimer);');
+describe('Backend shortcut routes', () => {
+    const migrate = new Function(`${getFunctionSource('migrateLegacyWorldInfoRoute')}\n${getFunctionSource('migrateTabId')}\n${getFunctionSource('migrateShortcutTarget')}\nreturn migrateShortcutTarget;`)();
+
+    test.each([
+        ['left:presets', 'left:prompting'],
+        ['left:api', 'left:connections'],
+        ['left:advanced-formatting', 'left:context'],
+        ['left:world-info', 'characters:world-info'],
+        ['left:editor', 'left:editor'],
+        ['characters:editor', 'characters:editor'],
+        ['right:extensions', 'right:extensions'],
+        [null, null],
+    ])('migrates %s to %s without crossing shell boundaries', (stored, expected) => {
+        expect(migrate(stored)).toBe(expected);
     });
 
-    test('cycles configured, context size, character name, and custom text when applicable', () => {
-        const cyclePartsSource = getFunctionSource('getTopbarLabelCycleParts');
-        expect(cyclePartsSource).toContain('const cycleParts = [\'\', \'ctx\', \'char\'];');
-        expect(cyclePartsSource).toContain('if (sbState.topbarLabel.customText)');
-        expect(cyclePartsSource).toContain('cycleParts.push(\'custom\');');
-
-        const cycleSource = getFunctionSource('cycleTopBarLabel');
-        expect(cycleSource).toContain('const nextPart = cycleParts[nextIndex % cycleParts.length];');
-        expect(cycleSource).toContain('if (nextPart === \'ctx\')');
-        expect(cycleSource).toContain('scheduleTopbarContextRefresh(0);');
+    test('migrates before validating saved shortcuts against the canonical registry', () => {
+        const registry = tabsSource.match(/const SB_SHORTCUT_TARGETS = Object\.freeze\(\[[\s\S]*?\n\]\);/)[0];
+        const values = [...registry.matchAll(/value: '([^']+)'/g)].map(match => match[1]);
+        expect(values.filter(value => value.startsWith('left:'))).toEqual([
+            'left:connections', 'left:sampling', 'left:prompting', 'left:editor', 'left:context', 'left:agents',
+        ]);
+        expect(getFunctionSource('getShortcutTarget')).toContain('const stored = migrateShortcutTarget(');
     });
+});
 
-    test('renders preview labels without changing configured label settings', () => {
-        const labelSource = getFunctionSource('getTopBarLabel');
-        expect(labelSource).toContain('const previewPart = normalizeTopbarLabelPart(sbState.topbarLabel.cyclePart, \'\');');
-        expect(labelSource).toContain('return getTopBarLabelPreviewText(previewPart, context);');
-
-        const previewSource = getFunctionSource('getTopBarLabelPreviewText');
-        expect(previewSource).toContain('if (normalizedPart === \'ctx\')');
-        expect(previewSource).toContain('return \'...\';');
-        expect(previewSource).toContain('return getTopbarLabelPartOption(normalizedPart)?.label ?? \'\';');
-    });
-
+describe('topbar label title', () => {
     test('flushes configured label settings immediately after storage writes', () => {
         expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));\n    flushSbStorageWrites();');
-        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelMobilePart, nextPart);\n    flushSbStorageWrites();');
         expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);\n    flushSbStorageWrites();');
     });
 
+    test('has no phone-only label path: one list, one group, one custom text field', () => {
+        expect(normalizedTabsSource).not.toContain('setMobileTopbarLabelPart');
+        expect(normalizedTabsSource).not.toContain('topbarLabel.mobilePart');
+        expect(normalizedTabsSource).not.toContain('sb-topbar-label-mobile-group');
+        expect(normalizedTabsSource).not.toContain('sb-topbar-custom-text-input-mobile');
+        expect(getFunctionSource('getConfiguredTopbarLabelParts')).not.toContain('isMobileViewport');
+        expect(getFunctionSource('isTopbarContextLabelEnabled')).not.toContain('mobile');
+        const groupsSource = getFunctionSource('createTopbarLabelSettingsGroups');
+        expect(groupsSource).not.toContain('sb-desktop-setting');
+        expect(groupsSource).not.toContain('sb-mobile-setting');
+        expect(groupsSource).toContain('description: \'Choose what the center label shows\',');
+        expect(groupsSource).toContain('description: \'This only appears in the top bar when the Custom Text switch is enabled above\',');
+        expect(getFunctionSource('createTopbarLabelPartRow')).toContain('createSwitchRow({');
+        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(readTopbarLabelParts()));');
+    });
+
+    test('offers Quick Access on the desktop page alone, as its buttons are desktop-only', () => {
+        const source = getFunctionSource('createShortcutSettingsGroup');
+        expect(source).toContain('group.section.classList.add(\'sb-desktop-setting\');');
+        expect(source).not.toContain('SB_SHORTCUT_DESKTOP_SLOTS');
+    });
+
     test('binds accessible pointer and keyboard activation on the title', () => {
-        const bindSource = getFunctionSource('bindTopBarTitleCycle');
+        const bindSource = getFunctionSource('bindTopBarTitle');
         expect(bindSource).toContain('title.addEventListener(\'click\'');
         expect(bindSource).toContain('title.addEventListener(\'keydown\'');
         expect(bindSource).toContain('event.key !== \'Enter\' && event.key !== \' \'');
         expect(bindSource).toContain('event.preventDefault();');
-        expect(bindSource).toContain('handleTopBarTitleActivation();');
+        expect(bindSource).toContain('returnToChatSurface();');
 
         expect(tabsSource).toContain('role="button"');
         expect(tabsSource).toContain('tabindex="0"');
         expect(tabsSource).toContain('title.setAttribute(\'aria-label\'');
     });
 
-    test('title activation respects the click-to-cycle toggle', () => {
-        const activationSource = getFunctionSource('handleTopBarTitleActivation');
-        expect(activationSource).toContain('if (isTopbarLabelClickCycleEnabled())');
-        expect(activationSource).toContain('cycleTopBarLabel();');
-        expect(activationSource).toContain('returnToChatSurface();');
-
+    test('title activation returns to the chat without closing it', () => {
         const returnSource = getFunctionSource('returnToChatSurface');
         expect(returnSource).toContain('closeShell(\'left\');');
         expect(returnSource).toContain('closeShell(\'right\');');
         expect(returnSource).toContain('closeCharacterPanel();');
         expect(returnSource).not.toContain('closeCurrentChat');
-
-        const setterSource = getFunctionSource('setTopbarLabelClickCycle');
-        expect(setterSource).toContain('const mode = isMobileViewport() ? \'mobile\' : \'desktop\';');
-        expect(setterSource).toContain('safeSetItem(storageKey, String(nextValue));');
-        expect(setterSource).toContain('resetTopBarLabelCycle({ refresh: false });');
-        expect(tabsSource).toContain('topbarLabelClickCycle: \'sb-topbar-label-click-cycle\'');
-        expect(tabsSource).toContain('normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.topbarLabelClickCycle), true)');
     });
 
-    test('resets preview on chat and context-changing events', () => {
-        const resetEventsMatch = tabsSource.match(/const resetCycleEvents = new Set\(\[[\s\S]*?\]\.filter\(Boolean\)\);/);
-        expect(resetEventsMatch).not.toBeNull();
-
-        const resetEventsSource = resetEventsMatch[0];
-        expect(resetEventsSource).toContain('eventTypes.CHAT_CHANGED');
-        expect(resetEventsSource).toContain('eventTypes.CHAT_CREATED');
-        expect(resetEventsSource).toContain('eventTypes.GROUP_CHAT_CREATED');
-        expect(resetEventsSource).toContain('eventTypes.MAIN_API_CHANGED');
-        expect(tabsSource).toContain('resetTopBarLabelCycle({ refresh: false });');
+    test('has no click-to-preview label cycle or setting', () => {
+        expect(tabsSource).not.toContain('cycleTopBarLabel');
+        expect(tabsSource).not.toContain('sb-topbar-label-click-cycle');
+        expect(tabsSource).not.toContain('Click To Preview Label Options');
+        expect(cssSource).not.toContain('.sb-brand-title.is-previewing');
     });
 
     test('marks the title as a visible tappable affordance', () => {
@@ -107,7 +106,6 @@ describe('topbar label tap cycle', () => {
         expect(titleRule).toContain('-webkit-user-select: none;');
         expect(titleRule).toContain('user-select: none;');
         expect(cssSource).toContain('.sb-brand-title:focus-visible');
-        expect(cssSource).toContain('.sb-brand-title.is-previewing');
     });
 
     test('does not subtract focus padding from the visible label width', () => {
@@ -115,423 +113,506 @@ describe('topbar label tap cycle', () => {
         expect(titleRuleMatch).not.toBeNull();
 
         const titleRule = titleRuleMatch[0];
-        expect(titleRule).toContain('margin: -2px 0;');
-        expect(titleRule).toContain('padding: 2px 6px;');
-        expect(titleRule).not.toContain('margin: -2px -6px;');
+        expect(titleRule).toContain('padding: 0 6px;');
+        expect(titleRule).not.toMatch(/margin:\s*-/);
     });
 });
 
 describe('icons only top bar', () => {
     const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
 
-    function getClustersSource() {
-        const match = normalizedTabsSource.match(/const SB_TOPBAR_CLUSTERS = Object\.freeze\(\[[\s\S]*?\n\]\);/);
+    function getConstSource(name) {
+        const match = normalizedTabsSource.match(new RegExp(`const ${name} = [\\s\\S]*?\\n\\}\\);|const ${name} = [^\\n]*;`));
         expect(match).not.toBeNull();
         return match[0];
     }
 
-    test('expands each layer 2 anchor into its own cluster', () => {
-        // The bar is not a flat strip: every anchor keeps its prescribed slot and grows a cluster
-        // of that section's own pages beside it, in the PRODUCT.md left-to-right order.
-        const clustersSource = getClustersSource();
-        const leadIds = [...clustersSource.matchAll(/leadId: '([^']+)'/g)].map(match => match[1]);
+    function getGroupOrder() {
+        return new Function('TOPBAR_EXTENSION_SLOT_ID', `${getConstSource('SB_TOPBAR_GROUP_ORDER')}\nreturn SB_TOPBAR_GROUP_ORDER;`)('sb-topbar-extension-slot');
+    }
 
-        expect(leadIds).toEqual(['sb-left-shell-toggle', 'sb-right-shell-toggle', 'sb-character-toggle']);
-        expect([...clustersSource.matchAll(/key: '([^']+)'/g)].map(match => match[1]))
-            .toEqual(['workspace', 'customize', 'characters']);
+    test('names the three sections and the button that opens each', () => {
+        const sections = getConstSource('SB_TOPBAR_SECTIONS');
+
+        expect([...sections.matchAll(/leadId: '([^']+)'/g)].map(match => match[1]))
+            .toEqual(['sb-left-shell-toggle', 'sb-right-shell-toggle', 'sb-character-toggle']);
+        expect([...sections.matchAll(/shellKey: '([^']+)'/g)].map(match => match[1])).toEqual(['left', 'right', 'characters']);
     });
 
-    test('keeps every requested page in its canonical cluster order', () => {
-        const pageLists = [...getClustersSource().matchAll(/pages: Object\.freeze\(\[([\s\S]*?)\]\),/g)]
-            .map(match => [...match[1].matchAll(/value: '([^']+)'/g)].map(pageMatch => pageMatch[1]));
-
-        expect(pageLists).toEqual([
-            ['left:presets', 'left:api', 'left:sampling', 'left:advanced-formatting', 'left:agents'],
-            ['right:settings', 'right:extensions', 'right:background', 'right:server', 'right:console-logs'],
-            ['characters:groups', 'characters:editor', 'characters:world-info', 'characters:persona', 'characters:import'],
-        ]);
+    test('has no page icon rails, cluster dividers or anything that kept them', () => {
+        for (const removed of [
+            'SB_TOPBAR_CLUSTERS', 'SB_TOPBAR_PAGE_TARGETS', 'SB_TOPBAR_ANCHOR_IDS', 'buildTopbarPageRail', 'createTopbarPageButton',
+            'getTopbarPageConfig', 'syncTopbarIconsOnlyDedupe', 'syncTopbarIconsOnlyLayout', 'syncTopbarGroupOrder', 'getTopbarGroupOrder',
+            'syncTopbarBrandFit', 'sb-topbar-pages', 'sb-topbar-cluster-lead', 'sb-topbar-shortcut-duplicate', 'sb-topbar-page-button',
+            'data-sb-topbar-page', 'sbTopbarPage', 'sbTopbarBrandCramped', 'sbTopbarScroll', 'sb-topbar-divider-customize',
+            'sb-topbar-divider-home', 'sb-topbar-divider-characters',
+        ]) {
+            expect(normalizedTabsSource).not.toContain(removed);
+            expect(cssSource).not.toContain(removed);
+            expect(mobileCss).not.toContain(removed);
+        }
+        expect(cssSource).not.toContain('sb-topbar-cluster-workspace');
+        expect(cssSource).not.toContain('data-sb-topbar-brand-cramped');
+        expect(cssSource).not.toContain('data-sb-topbar-scroll');
+        expect(normalizedTabsSource).not.toContain('SB_TOPBAR_PARKED_IDS');
+        expect(normalizedTabsSource).not.toContain('sb-topbar-parked');
     });
 
-    test('derives page labels and icons from the shell registries', () => {
-        const clustersSource = getClustersSource();
-        expect(clustersSource).not.toContain('label:');
-        expect(clustersSource).not.toContain('icon:');
-        expect(normalizedTabsSource).toContain('const SB_TOPBAR_PAGE_TARGETS = Object.freeze(SB_TOPBAR_CLUSTERS.flatMap(cluster => cluster.pages));');
-
-        const configSource = getFunctionSource('getTopbarPageConfig');
-        expect(configSource).toContain('getCharacterPanelTabConfig(page.tabId)');
-        expect(configSource).toContain('getShellConfig(page.shellKey)');
-
-        const buttonSource = getFunctionSource('createTopbarPageButton');
-        expect(buttonSource).toContain('icon: config?.icon ?? \'fa-circle-dot\'');
+    test('keeps the shell registries that the settings sidebar reads their page icons from', () => {
         for (const entry of [
-            'id: \'advanced-formatting\',',
+            'id: \'context\',',
             'id: \'agents\',',
-            'id: \'server\',',
-            'id: \'console-logs\',',
-            '{ id: \'editor\', label: \'Editor\', icon: \'fa-pen-to-square\' }',
-            '{ id: \'import\', label: \'Import\', icon: \'fa-file-import\' }',
+            'id: \'data-security\',',
+            'id: \'logs\',',
         ]) {
             expect(normalizedTabsSource).toContain(entry);
         }
+        expect(normalizedTabsSource).toMatch(/id: 'editor',\s+label: 'Editor',\s+icon: 'fa-pen-to-square'/);
+        expect(normalizedTabsSource).toMatch(/id: 'import',\s+label: 'Import',\s+icon: 'fa-file-import'/);
     });
 
-    test('hides only redundant section anchors in icons-only mode and parks nothing', () => {
-        const anchorMatch = normalizedTabsSource.match(/const SB_TOPBAR_ANCHOR_IDS = Object\.freeze\(\[[\s\S]*?\]\);/);
-        expect(anchorMatch).not.toBeNull();
+    test('has one child order, the labelled bar\'s, whatever the mode or the width', () => {
+        const order = getGroupOrder();
 
-        for (const anchorId of ['sb-home-toggle', 'sb-character-toggle']) {
-            expect(anchorMatch[0]).toContain(`'${anchorId}'`);
+        // Backend, Customize, Search, Quick Access | title | Quick Access, Mode, Home, Characters.
+        expect(order.left).toEqual([
+            'sb-left-shell-toggle',
+            'sb-right-shell-toggle',
+            'sb-topbar-divider-search-mobile',
+            'sb-topbar-search-toggle',
+            'sb-topbar-divider-quick-left',
+            'sb-shortcut-left',
+            'sb-shortcut-slot3',
+            'sb-shortcut-slot4',
+        ]);
+        expect(order.right).toEqual([
+            'sb-topbar-extension-slot',
+            'sb-shortcut-slot6',
+            'sb-shortcut-slot5',
+            'sb-shortcut-right',
+            'sb-topbar-overflow-toggle',
+            'sb-topbar-divider-quick-right',
+            'sb-mode-toggle',
+            'sb-topbar-divider-mode-mobile',
+            'sb-home-toggle',
+            'sb-character-toggle',
+        ]);
+        expect(new Set([...order.left, ...order.right]).size).toBe(order.left.length + order.right.length);
+        for (const id of [...order.left, ...order.right]) {
+            expect(id).not.toMatch(/cluster|rail|pages/);
         }
-        for (const anchorId of ['sb-left-shell-toggle', 'sb-right-shell-toggle']) {
-            expect(anchorMatch[0]).not.toContain(`'${anchorId}'`);
-        }
 
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-left-shell-toggle,\n:root\[data-sb-topbar-icons-only='true'\] #sb-right-shell-toggle \{\n\s*display: none;\n\}/);
-        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\'])[data-sb-mobile-nav-layout=\'horizontal\'][data-sb-mobile-nav-customize=\'shown\'] #sb-left-shell-toggle');
-        expect(mobileCss).toContain(':root:not([data-sb-topbar-icons-only=\'true\'])[data-sb-mobile-nav-replacement=\'shown\'] #sb-left-shell-toggle');
-
-        // The parking machinery and its bay are gone entirely.
-        expect(normalizedTabsSource).not.toContain('SB_TOPBAR_PARKED_IDS');
-        expect(normalizedTabsSource).not.toContain('rememberTopbarGroupOrder');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-parked');
-        expect(cssSource).not.toContain('#sb-topbar-parked');
+        // Nothing replays or branches on the mode: buildTopBar appends each group once from the list.
+        const buildSource = getFunctionSource('buildTopBar');
+        expect(buildSource).toContain('leftGroup.append(...SB_TOPBAR_GROUP_ORDER.left.map(id => controls.get(id)));');
+        expect(buildSource).toContain('rightGroup.append(...SB_TOPBAR_GROUP_ORDER.right.map(id => controls.get(id)));');
+        expect(getConstSource('SB_TOPBAR_GROUP_ORDER')).not.toMatch(/iconsOnly|isMobile/);
     });
 
-    test('uses the Characters anchor as a page only in icons-only mode', () => {
+    test('puts every control the order names into the bar', () => {
+        const buildSource = getFunctionSource('buildTopBar');
+        const controlsSource = buildSource.match(/const controls = new Map\(\[([\s\S]*?)\]\.map/)[1];
+        const built = controlsSource.split(',').map(name => name.trim()).filter(Boolean);
+
+        // Every name in the list is a control of buildTopBar, so the Map holds exactly the ids of the order.
+        expect(built).toHaveLength(getGroupOrder().left.length + getGroupOrder().right.length);
+        expect(new Set(built).size).toBe(built.length);
+    });
+
+    test('opens the Characters anchor as a settings page in every mode', () => {
         const activationSource = getFunctionSource('activateCharacterTopbarButton');
-        expect(activationSource).toContain('if (isTopbarIconsOnlyActive())');
-        expect(activationSource).toContain('openCharacterPanelTab(SB_CHARACTER_PANEL_DEFAULT_TAB);');
-        expect(activationSource).toContain('toggleCharacterPanel();');
+        expect(activationSource).toContain('toggleSettingsPage(\'characters\');');
+        expect(activationSource).not.toContain('if (isTopbarIconsOnlyActive())');
 
         const buildSource = getFunctionSource('buildTopBar');
         expect(buildSource).toContain('activateCharacterTopbarButton,');
 
+        // The button reads the same in both modes: no branch on the setting.
         const proxyStateSource = getFunctionSource('syncProxyButtonState');
         expect(proxyStateSource).toContain('const isCharacterButton = proxyButton.id === \'sb-character-toggle\';');
-        expect(proxyStateSource).toContain('if (isCharacterButton && isTopbarIconsOnlyActive())');
-        expect(proxyStateSource).toContain('isCharacterPanelTabOpen(SB_CHARACTER_PANEL_DEFAULT_TAB)');
-        expect(proxyStateSource).toContain('proxyButton.classList.remove(\'is-open\', \'is-pinned\');');
-        expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-current\', isCurrent);');
+        expect(proxyStateSource).not.toContain('isTopbarIconsOnlyActive');
         expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-open\', isOpen);');
         expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-pinned\', isPinned);');
 
-        const pageStateSource = getFunctionSource('syncTopbarPageButtonStates');
-        expect(pageStateSource).toContain('syncCharacterTopbarButtonState();');
+        expect(getFunctionSource('syncTopbarSectionButtonStates')).toContain('syncCharacterTopbarButtonState();');
+        expect(getFunctionSource('observeProxyButton')).not.toContain('isTopbarIconsOnlyActive');
     });
 
-    test('clears shell page highlights after native drawer dismissal only in icons-only mode', () => {
-        const activeStateSource = getFunctionSource('isTopbarPageActive');
-        expect(activeStateSource).toContain('isShellTabOpen(page.shellKey, page.tabId)');
-
-        const shellTabSource = getFunctionSource('isShellTabOpen');
-        expect(shellTabSource).toContain('isShellOpen(shellKey) && shellState.activeTabId === tabId');
-
-        const observerSource = getFunctionSource('observeProxyButton');
-        expect(observerSource).toContain('syncProxyButtonState(proxyButton, sourceIcon);');
-        expect(observerSource).toContain('if (isTopbarIconsOnlyActive()) {\n            queueTopbarPageStateSync();\n        }');
+    test('lights the open section\'s button from the settings page state', () => {
+        const activeSource = getFunctionSource('syncSettingsPageActiveButton');
+        expect(activeSource).toContain('for (const section of SB_TOPBAR_SECTIONS) {');
+        expect(activeSource).toContain('sbSettingsState.activeShell === section.shellKey');
+        expect(getFunctionSource('closeSettingsPage')).toContain('SB_TOPBAR_SECTIONS.find(section => section.shellKey === closingShell)?.leadId');
     });
 
-    test('keeps one canonical button order per mode instead of moving buttons around', () => {
-        // appendChild on a node the group already holds is a move, so replaying a whole order is
-        // idempotent -- unlike remembering a nextSibling that a neighbouring move can detach.
-        const orderSource = getFunctionSource('getTopbarGroupOrder');
-        const replaySource = getFunctionSource('syncTopbarGroupOrder');
-
-        expect(orderSource).toContain('const [workspace, customize, characters] = SB_TOPBAR_CLUSTERS;');
-        expect(replaySource).toContain('group.appendChild(element);');
-        expect(normalizedTabsSource).not.toContain('syncTopbarRightClusterOrder');
-        expect(normalizedTabsSource).not.toContain('syncTopbarRailSplit');
-
-        // Right half follows PRODUCT.md Layer 2: quick access, then Home, then Characters.
-        const homeIndex = orderSource.indexOf('\'sb-home-toggle\'');
-        expect(orderSource.indexOf('quickAccessIds')).toBeLessThan(homeIndex);
-        expect(homeIndex).toBeLessThan(orderSource.indexOf('characters.leadId'));
+    test('keeps one destination active: Home gives way to an open settings page and returns when it closes', () => {
+        expect(getFunctionSource('syncHomeButtonState')).toContain('const isHomeVisible = isHomeActive() && !sbSettingsState.open;');
+        // Both opening and closing a page go through this sync, so Home follows without its own listener.
+        expect(getFunctionSource('syncSettingsPageActiveButton')).toContain('syncHomeButtonState();');
+        expect(getFunctionSource('openSettingsPage')).toContain('syncSettingsPageActiveButton();');
+        expect(getFunctionSource('closeSettingsPage')).toContain('syncSettingsPageActiveButton();');
     });
 
-    test('leaves the button sequence unchanged when the option is off', () => {
-        // The clusters are display:none while the mode is off, so the "off" order has to reproduce
-        // the bar exactly as it has always been -- toggling must not reshuffle anything else.
-        const orderSource = getFunctionSource('getTopbarGroupOrder');
-        expect(orderSource).toContain('left.push(\'sb-shortcut-left\', \'sb-shortcut-slot3\', \'sb-shortcut-slot4\');');
-        expect(orderSource).toContain('right.push(\'sb-shortcut-slot6\', \'sb-shortcut-slot5\', \'sb-shortcut-right\');');
-        expect(cssSource).toMatch(/\.sb-topbar-pages \{\n(?:[^}]*\n)?\s*display: none;/);
-    });
-
-    test('folds the characters cluster left on phones only', () => {
-        // The right group is pinned at its natural width in the overflow state, so on a phone a
-        // four-icon right cluster would starve the scrolling left strip.
-        const orderSource = getFunctionSource('getTopbarGroupOrder');
-        expect(orderSource).toContain('if (iconsOnly && mobile) {');
-        expect(orderSource).toContain('left.push(\'sb-topbar-divider-characters\', characters.railId);');
-        expect(orderSource).toContain('right.push(\'sb-topbar-divider-characters\', characters.leadId, characters.railId);');
-        expect(getFunctionSource('syncTopbarGroupOrder')).toContain('mobile: isMobileViewport(),');
-        expect(normalizedTabsSource).toContain('window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener(\'change\'');
-    });
-
-    test('marks the cluster boundaries at every size while the mode is on', () => {
-        // A 1px theme-derived rule marks where one cluster ends and the next begins --
-        // Workspace|Customize on the left half, Home|Characters on the right -- with or without
-        // the brand label between them.
+    test('marks the boundaries of Quick Access and of the phone utility buttons, in both modes', () => {
         expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
-        const orderSource = getFunctionSource('getTopbarGroupOrder');
-        expect(orderSource).toContain('\'sb-topbar-divider-customize\',');
-        expect(orderSource).toContain('right.push(\'sb-home-toggle\', \'sb-topbar-divider-home\');');
 
         const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
         expect(baseRule).not.toBeNull();
         expect(baseRule[0]).toContain('display: none;');
-        expect(baseRule[0]).toContain('width: 1px;');
-        expect(baseRule[0]).toContain('background: var(--sb-shell-border);');
+        expect(baseRule[0]).toContain('width: 0;');
+        expect(baseRule[0]).toContain('border-inline-start: 1px solid var(--sb-shell-border);');
 
-        // Gated on the mode itself, not on the label being squeezed out.
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-cluster-divider \{\n\s*display: inline-block;\n\}/);
-        expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\] [^{]*\.sb-topbar-cluster-divider/);
-
-        // The home divider owns Home|Characters everywhere; the characters divider is the phone
-        // strip's marker, so desktop hides it or the boundary would carry a double rule.
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-divider-characters \{\n\s*display: none;\n\}/);
-        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-divider-characters \{\n\s*display: inline-block;\n\s*\}/);
-
-        // The divider takes over the seam so it sits centred in it; phones shorten the rule to
-        // their smaller squares and keep the Home|Characters boundary marked in every mode.
-        expect(cssSource).toContain('.sb-topbar-cluster-divider + .sb-topbar-cluster-lead');
+        // The rule shows because a side has a Quick Access button, never because of the setting.
+        expect(cssSource).toMatch(/> #sb-topbar-divider-quick-left,\n\.sb-topbar-group-right:has\([^\n]*> #sb-topbar-divider-quick-right \{\n\s*display: inline-block;\n\}/);
+        expect(cssSource).not.toMatch(/data-sb-topbar-icons-only='true'\][^{]*\.sb-topbar-cluster-divider/);
         expect(mobileCss).toMatch(/\.sb-topbar-cluster-divider \{\n\s*height: calc\(var\(--sb-mobile-toggle-size\) \* 0\.5\);\n\s*\}/);
-        expect(mobileCss).toMatch(/#sb-topbar-divider-home \{\n\s*display: inline-block;\n\s*\}/);
     });
 
-    test('separates the clusters with a wider seam than the icons inside one', () => {
-        // "The different buttons should be placed in more appropriate locations, with some
-        // appropriate gaps." Derived from the group gap so it tracks the user's top bar scale.
-        expect(cssSource).toContain('--sb-topbar-cluster-gap: calc(var(--sb-topbar-group-gap) * 2.5);');
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-cluster-workspace \{\n\s*margin-inline-start: calc\(var\(--sb-topbar-cluster-gap\) - var\(--sb-topbar-group-gap\)\);\n\}/);
+    test('holds three tracks in CSS, with the groups never narrower than their controls', () => {
+        const innerRule = cssSource.match(/#sb-topbar-inner \{[^}]*\}/)[0];
+        expect(innerRule).toContain('grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr);');
+        expect(innerRule).toContain('min-width: 0;');
+        expect(cssSource).toMatch(/#sb-topbar-primary \{[^}]*min-width: 0;/);
+        expect(cssSource).toMatch(/#sb-topbar-stack \{[^}]*grid-template-columns: minmax\(0, 1fr\);/);
 
-        const railRule = cssSource.match(/\.sb-topbar-pages \{[^}]*\}/);
-        expect(railRule[0]).toContain('gap: var(--sb-topbar-group-gap);');
-        expect(normalizedTabsSource).toContain('document.getElementById(cluster.leadId)?.classList.add(\'sb-topbar-cluster-lead\');');
+        // One grid for every width: the phone sheet does not define a second one.
+        expect(mobileCss).not.toMatch(/#sb-topbar-inner \{[^}]*grid-template-columns/);
+        expect(cssSource).not.toMatch(/\.sb-topbar-group-right \{[^}]*flex-wrap: wrap/);
+        expect(cssSource).toMatch(/\.sb-topbar-group \{[^}]*flex-wrap: nowrap;/);
+        for (const rule of cssSource.match(/\.sb-topbar-group(-left|-right)? \{[^}]*\}/g)) {
+            expect(rule).not.toMatch(/overflow/);
+        }
     });
 
-    test('keeps the clusters pinned to their own edge of the bar', () => {
-        // Workspace stays hard left and Characters hard right at every width. The old rules pulled
-        // both groups toward the brand label, which is the opposite of the requested layout.
-        expect(cssSource).not.toContain('.sb-topbar-group-left {\n        justify-content: flex-end;');
-        expect(cssSource).not.toContain('#sb-home-toggle {\n        margin-left: auto;');
+    test('truncates the title with an ellipsis before anything else gives way', () => {
+        const brandRule = cssSource.match(/^\.sb-topbar-brand \{[^}]*\}/m)[0];
+        expect(brandRule).toContain('min-width: 0;');
+        expect(brandRule).toContain('max-width: 100%;');
+        expect(brandRule).toContain('overflow: hidden;');
 
-        // display:none takes the hidden label out of the grid, and with only two items left the
-        // right group would auto-place into the centre `auto` column and drift toward the middle,
-        // under the left group's overflow. Cramped mode collapses the grid to two columns.
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] #sb-topbar-inner \{\n\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, auto\);\n\}/);
-        expect(cssSource).not.toMatch(/data-sb-topbar-brand-cramped='true'\][^{]*\{\n[^}]*justify-content: center/);
+        const titleRule = cssSource.match(/\.sb-brand-title \{[^}]*\}/)[0];
+        expect(titleRule).toContain('display: block;');
+        expect(titleRule).toContain('overflow: hidden;');
+        expect(titleRule).toContain('text-overflow: ellipsis;');
+        expect(titleRule).toContain('white-space: nowrap;');
     });
 
-    test('sizes the icons to match the labelled buttons beside them', () => {
-        // They were 30px wide in a 36px-tall bar on desktop, and 26px next to 40px anchors on
-        // phones, which is what made them small targets.
-        expect(cssSource).toMatch(/\.sb-topbar-page-button,\n:root\[data-sb-topbar-icons-only='true'\] \.sb-proxy-button-icon-only \{\n\s*width: var\(--sb-proxy-button-height\);\n\s*min-width: var\(--sb-proxy-button-height\);\n\}/);
-        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] #sb-home-toggle {\n    min-width: var(--sb-proxy-button-height);\n}');
-
-        // Phones key off the hamburger/Home/Characters size instead.
-        const mobileRule = mobileCss.match(/:root\[data-sb-topbar-icons-only='true'\] \.sb-proxy-button-icon-only,\n\s*:root\[data-sb-topbar-icons-only='true'\] #sb-home-toggle \{[^}]*\}/);
-        expect(mobileRule).not.toBeNull();
-        expect(mobileRule[0]).toContain('min-width: var(--sb-mobile-toggle-size);');
-        expect(mobileRule[0]).toContain('height: var(--sb-mobile-toggle-size);');
-        expect(mobileCss).toContain('.sb-topbar-page-button i,');
+    test('draws the title as the Title role on every viewport', () => {
+        const titleRule = cssSource.match(/\.sb-brand-title \{[^}]*\}/)[0];
+        expect(titleRule).toContain('font-size: var(--sb-type-title);');
+        expect(titleRule).toContain('font-weight: var(--sb-weight-title);');
+        expect(titleRule).toContain('border-radius: var(--sb-radius-control);');
+        expect(cssSource).not.toContain('.sb-brand-title.is-chat');
+        expect(mobileCss).not.toContain('.sb-brand-title');
+        expect(cssSource.match(/\.sb-brand-title[^{]*\{[^}]*font-size/g)).toHaveLength(1);
     });
 
-    test('reaches search through a quick access slot, exactly as with the option off', () => {
-        // A dedicated Search button silently suppressed the user's own slot, which is the
-        // inconsistent-patterns-across-contexts anti-pattern.
+    test('hides the title through one attribute and a two-track grid', () => {
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-title='hidden'\] #sb-topbar-inner \{\n\s*grid-template-columns: minmax\(min-content, 1fr\) minmax\(min-content, 1fr\);\n\}/);
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-title='hidden'\] \.sb-topbar-brand \{\n\s*display: none;\n\}/);
+        // It is not hidden on phones by CSS: phones decide by width like every other viewport.
+        expect(mobileCss).not.toMatch(/\.sb-topbar-brand/);
+    });
+
+    test('gives the controls the Control radius, flat at rest and neutral when on', () => {
+        const buttonRule = cssSource.match(/\.sb-proxy-button \{[^}]*\}/)[0];
+        expect(buttonRule).toContain('border-radius: var(--sb-shell-control-radius);');
+        expect(buttonRule).toContain('background: transparent;');
+        expect(mobileCss).not.toMatch(/#sb-topbar-primary \.sb-proxy-button \{[^}]*sb-radius-pill/);
+        expect(mobileCss).toMatch(/#sb-topbar-primary \.sb-proxy-button \{[^}]*border-radius: var\(--sb-radius-control\) !important;/);
+
+        // On: a neutral fill, with Accent on the icon only.
+        expect(cssSource).toMatch(/\.sb-proxy-button\.is-open,\n\.sb-proxy-button\.is-active,\n\.sb-proxy-button\.is-current,\n\.sb-proxy-button\.sb-settings-active \{\n\s*background: var\(--sb-flat-selected-bg\);/);
+        expect(cssSource).toMatch(/\.sb-proxy-button\.sb-settings-active i \{\n\s*color: var\(--color-primary, var\(--sb-accent\)\);/);
+        expect(cssSource).not.toMatch(/\.sb-proxy-button\.sb-settings-active \{\n\s*color:/);
+    });
+
+    test('draws the icons-only bar by the same button sizes as the labelled one', () => {
+        expect(cssSource).toMatch(/#sb-topbar-inner \.sb-proxy-button-icon-only \{\n\s*width: var\(--sb-proxy-button-height\);\n\s*min-width: var\(--sb-proxy-button-height\);\n\}/);
+        expect(cssSource).toMatch(/:root:is\(\[data-sb-topbar-icons-only='true'\], \[data-sb-topbar-labels='off'\]\) #sb-topbar-inner \.sb-proxy-button span \{\n\s*display: none;\n\}/);
+        // Phones size every bar button themselves.
+        expect(mobileCss).toMatch(/#sb-topbar-primary \.sb-proxy-button span \{\n\s*display: none !important;/);
+        // Backend stays on a phone in both modes.
+        expect(mobileCss).not.toContain('#sb-left-shell-toggle {\n        display: none;');
+    });
+
+    test('keeps search as a permanent top bar button in every mode', () => {
+        // Search left the Quick Access slots for a fixed top bar button, so the default right
+        // slot is free for Extensions while users can still assign Search to any slot.
         expect(normalizedTabsSource).not.toContain('SB_TOPBAR_SEARCH_TARGET');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-search-toggle');
-        expect(cssSource).not.toContain('#sb-topbar-search-toggle');
-        expect(getClustersSource()).not.toContain('action:search');
-        expect(normalizedTabsSource).toContain('right: \'action:search\',');
-        expect(getFunctionSource('syncTopbarPageButtonStates')).toContain('for (const page of SB_TOPBAR_PAGE_TARGETS) {');
+        expect(getGroupOrder().left).toContain('sb-topbar-search-toggle');
+        expect(cssSource).toContain('#sb-topbar-search-toggle');
+        expect(normalizedTabsSource).toContain('right: \'right:extensions\',');
+        expect(normalizedTabsSource).toContain('{ value: \'action:search\', label: \'Search\', icon: \'fa-magnifying-glass\' },');
     });
 
-    test('keeps canonical cluster icons and yields duplicate quick access slots', () => {
+    test('keeps Quick Access fully live in both modes and refits when a slot is reassigned', () => {
         expect(normalizedTabsSource).not.toContain('.sb-shortcut-rows\')?.classList.toggle(\'is-disabled\'');
         expect(cssSource).not.toContain('.sb-shortcut-rows.is-disabled');
 
-        const dedupeSource = getFunctionSource('syncTopbarIconsOnlyDedupe');
-        expect(dedupeSource).not.toContain('style.setProperty(\'display\'');
-        expect(dedupeSource).toContain('const claimedByClusters = new Set(Array.from(clusterButtons, button => button.dataset.sbTopbarPage));');
-        expect(dedupeSource).toContain('\'sb-topbar-shortcut-duplicate\'');
-        expect(dedupeSource).toContain('iconsOnly && claimedByClusters.has(getShortcutTarget(side))');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-page-duplicate');
-        expect(cssSource).toContain(':root[data-sb-topbar-icons-only=\'true\'] .sb-topbar-shortcut-duplicate');
-    });
-
-    test('re-runs dedupe and refit when a quick action is reassigned', () => {
-        // The slot dropdown calls updateShortcutButton, so the top bar must settle from there
-        // rather than waiting for the next toggle or resize.
         const updateSource = getFunctionSource('updateShortcutButton');
-        expect(updateSource).toContain('syncTopbarIconsOnlyDedupe();');
-        expect(updateSource).toContain('queueTopbarBrandFit();');
+        expect(updateSource).not.toContain('syncTopbarIconsOnlyDedupe');
+        expect(updateSource).toContain('queueTopbarFit();');
     });
 
-    test('mounts the toggle in the desktop and mobile navigation groups', () => {
+    test('mounts the toggle in the Desktop group only', () => {
         // Geechan review: nesting it inside the Quick Access Shortcuts drawer is a nested menu,
-        // and Navigation is where a top bar layout option is intuitively expected.
-        const navSource = getFunctionSource('createNavigationSettingsGroup');
-        expect(navSource).toContain('id: `sb-${modePrefix}-topbar-icons-only-input`');
-        expect(navSource).toContain('label: \'Icons only top bar\',');
-        expect(navSource).toContain('onChange: input => setTopbarIconsOnly(modePrefix, input.checked),');
-        expect(navSource).toContain('topbarIconsOnlyChoice,');
+        // and the desktop navigation options are where a top bar layout option is intuitively expected. The phone bar
+        // never has labels, so a phone switch would change nothing.
+        const rowSource = getFunctionSource('createTopbarIconsOnlyRow');
+        expect(rowSource).toContain('id: \'sb-desktop-topbar-icons-only-input\',');
+        expect(rowSource).toContain('label: \'Icons Only Top Bar\',');
+        expect(rowSource).toContain('subtitle: \'Show only icons in the desktop top bar\',');
+        expect(rowSource).toContain('onChange: checked => setTopbarIconsOnly(\'desktop\', checked),');
+        expect(rowSource).not.toContain('\'mobile\'');
+        expect(normalizedTabsSource).toContain('const desktopBody = createInterfaceGroupBody(\'sb-desktop-settings-outlet\', [\n        createTopbarIconsOnlyRow(),');
 
         expect(normalizedTabsSource).not.toContain('createTopbarIconsOnlySettingsGroup');
-        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('content: [description, rows],');
-        // One shared factory builds both groups, so the label exists once in source.
-        expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
+        expect(normalizedTabsSource).not.toContain('createMobileNavLayoutSettingsGroup');
+        expect(normalizedTabsSource).not.toContain('createDesktopNavLayoutSettingsGroup');
+        expect(normalizedTabsSource).not.toContain('createNavigationSettingsGroup');
+        expect(normalizedTabsSource).not.toContain('sb-mobile-topbar-icons-only-input');
+        expect(normalizedTabsSource).not.toContain('Show page icons in the');
+        expect(normalizedTabsSource.match(/createTopbarIconsOnlyRow\(/g)).toHaveLength(2);
+        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('group.append(...rows);');
+        expect(normalizedTabsSource.match(/'Icons Only Top Bar'/g)).toHaveLength(1);
     });
 
-    test('stores the toggle per device and applies only the active viewport\'s setting', () => {
-        // The Desktop Navigation copy governs desktop viewports and the Mobile Navigation copy
-        // governs phones, so turning the dense bar on for a phone does not restyle the desktop.
+    test('stores the toggle for the desktop and puts no value in force on the phone', () => {
+        // A phone value stored by an earlier build stays in storage, and nothing reads it.
         expect(normalizedTabsSource).toContain('desktopTopbarIconsOnly: \'sb-desktop-topbar-icons-only\',');
-        expect(normalizedTabsSource).toContain('mobileTopbarIconsOnly: \'sb-mobile-topbar-icons-only\',');
+        expect(normalizedTabsSource).not.toContain('mobileTopbarIconsOnly');
+        expect(normalizedTabsSource).not.toContain('topbarIconsOnly.mobile');
         expect(normalizedTabsSource).toContain('function setTopbarIconsOnly(mode, enabled');
 
         const activeSource = getFunctionSource('isTopbarIconsOnlyActive');
-        expect(activeSource).toContain('isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop');
+        expect(activeSource).toContain('!isMobileViewport() && sbState.topbarIconsOnly.desktop');
 
         // Crossing the breakpoint can change which device's setting is in force.
         const listenerMatch = normalizedTabsSource.match(/window\.matchMedia\(SB_MOBILE_MEDIA_QUERY\)\.addEventListener\('change', \(\) => \{[\s\S]*?\}\);/);
         expect(listenerMatch).not.toBeNull();
         expect(listenerMatch[0]).toContain('applyTopbarIconsOnlyPreference();');
 
-        // Each checkbox reflects its own device's stored value, not the viewport-active state.
-        expect(normalizedTabsSource).toContain('topbarIconsOnlyChoice.querySelector(\'input\')?.setAttribute(\'data-sb-topbar-icons-only-input\', modePrefix);');
-        expect(normalizedTabsSource).toContain('input.getAttribute(\'data-sb-topbar-icons-only-input\') === \'desktop\'');
-        expect(normalizedTabsSource).not.toContain('getElementById(\'sb-topbar-icons-only-input\')');
+        // The one checkbox reflects the desktop value, not the viewport-active state.
+        expect(normalizedTabsSource).not.toContain('data-sb-topbar-icons-only-input');
+        expect(normalizedTabsSource).toContain('topbarIconsOnlyInput.checked = sbState.topbarIconsOnly.desktop;');
     });
 
-    test('seeds both devices from the legacy single toggle key', () => {
+    test('seeds the desktop value from the legacy single toggle key', () => {
         // The pre-split key stays as a read-only fallback so an existing choice carries over.
         const readSource = getFunctionSource('readTopbarIconsOnlySetting');
         expect(readSource).toContain('safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly)');
         expect(normalizedTabsSource).toContain('desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),');
-        expect(normalizedTabsSource).toContain('mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),');
         // But nothing writes it back; the per-device keys are the live state.
         expect(normalizedTabsSource).not.toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly,');
     });
 
-    test('stays distinct from the shell tab icon-only setting', () => {
+    test('no longer ships the removed shell tab icon-only setting', () => {
         expect(normalizedTabsSource).toContain('topbarIconsOnly: \'sb-topbar-icons-only\',');
-        expect(normalizedTabsSource).toContain('desktopNavIconOnly: \'sb-desktop-nav-icon-only\',');
-        expect(normalizedTabsSource).toContain('mobileNavIconOnly: \'sb-mobile-nav-icon-only\',');
-        expect(normalizedTabsSource).toContain('label: \'Icons only in shell tabs\',');
+        expect(normalizedTabsSource).not.toContain('desktopNavIconOnly');
+        expect(normalizedTabsSource).not.toContain('mobileNavIconOnly');
+        expect(normalizedTabsSource).not.toContain('Icons only in shell tabs');
+        expect(normalizedTabsSource).not.toContain('setMobileNavIconOnly');
+        expect(normalizedTabsSource).not.toContain('setDesktopNavIconOnly');
     });
 
-    test('toggles state without rebuilding the top bar', () => {
+    test('clears stale retired navigation presentation state before building the top bar', () => {
+        const attributesMatch = normalizedTabsSource.match(/const SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES = Object\.freeze\(\[[\s\S]*?\n\]\);/);
+        expect(attributesMatch).not.toBeNull();
+
+        for (const attribute of [
+            'data-sb-mobile-nav-layout',
+            'data-sb-mobile-nav-mode',
+            'data-sb-mobile-nav-customize',
+            'data-sb-mobile-nav-quick-actions',
+            'data-sb-mobile-nav-replacement',
+            'data-sb-desktop-nav-layout',
+            'data-sb-desktop-nav-mode',
+            'data-sb-desktop-nav-customize',
+            'data-sb-desktop-nav-quick-actions',
+            'data-sb-desktop-nav-replacement',
+        ]) {
+            expect(attributesMatch[0]).toContain(`'${attribute}'`);
+        }
+
+        expect(attributesMatch[0]).not.toContain('data-sb-topbar-icons-only');
+        expect(normalizedTabsSource).toContain('function migrateLegacyNavigationState()');
+        expect(normalizedTabsSource).toContain('root.removeAttribute(attribute);');
+        expect(normalizedTabsSource).toContain('restorePersistedTopbarState();\n    migrateLegacyNavigationState();\n    seedTopbarScaleDefaults();');
+    });
+
+    test('toggles state without rebuilding the top bar, and writes no value for the setting\'s other keys', () => {
         const setterSource = getFunctionSource('setTopbarIconsOnly');
         expect(setterSource).not.toContain('buildTopBar(');
-        expect(setterSource).toContain('isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly');
+        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly, String(nextEnabled));');
+        expect(setterSource).toContain('if (mode !== \'desktop\') return;');
         expect(setterSource).toContain('updateThemePickerUi();');
         expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);');
-        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);');
-    });
 
-    test('keeps shell focus on a visible control', () => {
-        // Workspace and Customize are hidden in icons-only mode, so shell-close focus falls back
-        // to the active page icon instead of silently dropping to <body>.
-        const proxySource = getFunctionSource('getShellProxyButton');
-        expect(proxySource).toContain('isActuallyVisible(proxyButton)');
-        expect(proxySource).toContain('data-sb-topbar-page');
+        // The fit never writes a stored setting: it only sets attributes of the root.
+        const fitSource = [getFunctionSource('fitTopbar'), getFunctionSource('setTopbarFitState'), getFunctionSource('resolveTopbarFit')].join('\n');
+        expect(fitSource).not.toMatch(/safeSetItem|localStorage|setTopbarIconsOnly/);
     });
 
     test('keeps the character toggle measurable for anchored extension dropdowns', () => {
-        const layoutSource = getFunctionSource('syncTopbarIconsOnlyLayout');
-        expect(layoutSource).toContain('classList.toggle(\'sb-proxy-button-icon-only\', iconsOnly)');
-        expect(layoutSource).not.toContain('style.display');
-
         const applySource = getFunctionSource('applyTopbarIconsOnlyPreference');
         expect(applySource).toContain('scheduleCharacterToggleGhostSync();');
-    });
-
-    test('hides the brand label once the icons outgrow the bar', () => {
-        const fitSource = getFunctionSource('syncTopbarBrandFit');
-        // The verdict must not depend on the label's current state, or showing it would make it
-        // overflow, which would hide it again, which would make it fit -- an oscillation.
-        expect(fitSource).toContain('const reservation = sbState.topbarPages.brandWidth || SB_TOPBAR_BRAND_MIN_WIDTH;');
-        expect(fitSource).toContain('child.classList.contains(\'sb-topbar-pages\') ? child.scrollWidth : child.offsetWidth');
-        // Cluster seams and divider centring live in margins, which offsetWidth omits; leaving
-        // them uncounted opens a dead band where the bar overflows but scroll never trips.
-        expect(fitSource).toContain('childStyle.marginInlineStart');
-        expect(fitSource).toContain('childStyle.marginInlineEnd');
-        expect(fitSource).toContain('dataset.sbTopbarBrandCramped');
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-brand-cramped='true'\] \.sb-topbar-brand \{\n\s*display: none;\n\}/);
-    });
-
-    test('drops the centre brand label on phones only', () => {
-        // Desktop has room for the label, so the hide lives in the phone-gated sheet alone.
-        // (0,3,0) outranks the plain .sb-topbar-brand rules in both fork sheets, no !important.
-        expect(mobileCss).toMatch(/:root\[data-sb-topbar-icons-only='true'\] \.sb-topbar-brand \{\n\s*display: none;\n\s*\}/);
-        expect(cssSource).not.toMatch(/data-sb-topbar-icons-only='true'\]\s+\.sb-topbar-brand/);
-    });
-
-    test('scrolls the whole bar rather than each cluster', () => {
-        // A nested scroll region ended mid-button and left an unreadable sliver of an icon at
-        // its boundary, so the clusters no longer scroll on their own.
-        const railRuleMatch = cssSource.match(/\.sb-topbar-pages\s*\{[^}]*\}/);
-        expect(railRuleMatch).not.toBeNull();
-        expect(railRuleMatch[0]).not.toContain('overflow-x: auto;');
-        expect(railRuleMatch[0]).toContain('flex-wrap: nowrap;');
-
-        // The leading group is the scroll region; the inner row itself only lays it out.
-        const scrollerRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-left \{[^}]*\}/);
-        expect(scrollerRule).not.toBeNull();
-        expect(scrollerRule[0]).toContain('overflow-x: auto;');
-        // The min-content floor propagates through every flex/grid ancestor, and the shrink
-        // permission must be gated on icons-only rather than on the scroll state: the overflow
-        // verdict is read from the inner's client width, so gating it on the verdict lets the
-        // bar inflate to fit its own content and a small overflow is never detected.
-        expect(cssSource).toMatch(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-stack,\n:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-primary,\n:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-inner \{\n\s*min-width: 0;\n\}/);
-        expect(cssSource).not.toMatch(/:root\[data-sb-topbar-scroll='true'\] #sb-topbar-stack/);
-        // Snapping pulled the bar past the hamburger on load, because the first snap point is
-        // the leading page icon rather than the start of the bar.
-        expect(scrollerRule[0]).not.toContain('scroll-snap-type');
-        expect(cssSource).not.toContain('scroll-snap-align: start;');
-    });
-
-    test('keeps the trailing controls beside the scrolling icons, never under them', () => {
-        // Scrolling icons *under* the trailing group needs that group to paint over them, and
-        // its only theme-correct backing is the bar's own translucent background: repainting
-        // double-darkens, and backdrop-filter silently no-ops in WebKit when nested inside
-        // another backdrop-filtered element, leaving icons showing through it on iOS.
-        const rightRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-right \{[^}]*\}/);
-        expect(rightRule).not.toBeNull();
-        expect(rightRule[0]).toContain('flex: 0 0 auto;');
-        expect(rightRule[0]).not.toContain('position: sticky;');
-        expect(rightRule[0]).not.toContain('backdrop-filter');
-
-        const leftRule = cssSource.match(/:root\[data-sb-topbar-scroll='true'\] \.sb-topbar-group-left \{[^}]*\}/);
-        expect(leftRule).not.toBeNull();
-        expect(leftRule[0]).toContain('overflow-x: auto;');
-        // WebKit needs the pan axis declared or the buttons swallow the gesture.
-        expect(leftRule[0]).toContain('touch-action: pan-x;');
-        expect(leftRule[0]).toContain('-webkit-overflow-scrolling: touch;');
-
-        // Only engages when the icons actually outrun the bar.
-        const fitSource = getFunctionSource('syncTopbarBrandFit');
-        expect(fitSource).toContain('if (needed > available) {');
-        expect(fitSource).toContain('dataset.sbTopbarScroll');
+        expect(applySource).not.toContain('style.display');
     });
 
     test('keeps button touch handlers off WebKit slow path', () => {
         // A non-passive touchstart on every button pulls WebKit off compositor scrolling, which
-        // stalls the strip on iOS. The handler only stops propagation, so passive is correct.
+        // stalls scrolling on iOS. The handler only stops propagation, so passive is correct.
         const propagationSource = getFunctionSource('stopProxyPointerPropagation');
         expect(propagationSource).toContain('element.addEventListener(\'touchstart\', stop, { passive: true });');
         expect(propagationSource).toContain('stopPropagation');
     });
+});
 
-    test('keeps one spacing rhythm across the mobile bar', () => {
-        // Cluster gap, group gap and the grid seam were three different widths between identical
-        // square buttons, which is what read as awkward spacing. All key off the group gap.
-        const innerRule = mobileCss.match(/:root\[data-sb-topbar-icons-only='true'\] #sb-topbar-inner \{[^}]*\}/);
-        expect(innerRule).not.toBeNull();
-        expect(innerRule[0]).toContain('gap: var(--sb-topbar-group-gap);');
-        expect(mobileCss).toContain('.sb-topbar-group-left');
+describe('top bar fit', () => {
+    const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+    const resolve = new Function('SB_TOPBAR_BRAND_MIN_WIDTH', `${getFunctionSource('resolveTopbarFit')}\nreturn resolveTopbarFit;`)(60);
+
+    // Natural widths of the groups in each form: labelled, icons only, icons only with the overflow button.
+    const FORMS = {
+        labelled: { start: 340, end: 340, title: 400 },
+        icons: { start: 190, end: 190, title: 400 },
+        overflow: { start: 90, end: 140, title: 400 },
+    };
+    const run = (available, { forced = false, canOverflow = true, forms = FORMS, gap = 10 } = {}) => {
+        const asked = [];
+        const verdict = resolve({
+            available,
+            gap,
+            labelsForcedOff: forced,
+            canOverflow,
+            measure: step => {
+                asked.push(step);
+                return forms[step.overflow ? 'overflow' : step.labelsOff ? 'icons' : 'labelled'];
+            },
+        });
+        return { verdict, asked };
+    };
+
+    test('keeps the labelled bar with its title while everything fits', () => {
+        expect(run(1000).verdict).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
+        // 340 + 340 + 2 gaps + the 60px a title needs
+        expect(run(760).verdict).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
+    });
+
+    test('drops the labels as soon as the labelled bar leaves too little for the title, and keeps the title', () => {
+        expect(run(759).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
+        // 190 + 190 + 2 gaps + 60
+        expect(run(460).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
+    });
+
+    test('hides the title only after the labels, when less than a few characters of it would show', () => {
+        expect(run(459).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
+        // Two tracks and one gap: the icons alone still fit.
+        expect(run(390).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
+    });
+
+    test('moves Quick Access into the overflow menu last, with the title still hidden', () => {
+        expect(run(389).verdict).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
+        expect(run(240).verdict).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
+    });
+
+    test('never shows a labelled bar without its title', () => {
+        const offenders = [];
+        for (let available = 150; available <= 1200; available++) {
+            for (const forced of [false, true]) {
+                const verdict = run(available, { forced }).verdict;
+                if (verdict.labelsOff === false && verdict.titleHidden) {
+                    offenders.push(`${available}px, forced ${forced}`);
+                }
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
+
+    test('goes only further as the bar narrows, one width after the other', () => {
+        // 0 overflow, 1 icons without the title, 2 icons with it, 3 labels with it.
+        const stepOf = ({ labelsOff, overflow, titleHidden }) => {
+            if (overflow) {
+                return titleHidden ? 0 : -1;
+            }
+            if (labelsOff) {
+                return titleHidden ? 1 : 2;
+            }
+            return titleHidden ? -1 : 3;
+        };
+        for (const options of [{}, { forced: true }, { canOverflow: false }, { forms: { ...FORMS, labelled: { start: 340, end: 340, title: 40 } } }]) {
+            const steps = [];
+            for (let available = 150; available <= 1200; available++) {
+                steps.push(stepOf(run(available, options).verdict));
+            }
+            expect({ options, outside: steps.filter(step => step < 0) }).toEqual({ options, outside: [] });
+            expect({ options, back: steps.filter((step, index) => index > 0 && step < steps[index - 1]) }).toEqual({ options, back: [] });
+        }
+    });
+
+    test('reads each form once and stops at the first one that fits', () => {
+        expect(run(1000).asked).toEqual([{ labelsOff: false, overflow: false }]);
+        expect(run(500).asked).toEqual([{ labelsOff: false, overflow: false }, { labelsOff: true, overflow: false }]);
+        // The icons-only reading answers both whether the title fits and whether the bar fits without it.
+        expect(run(420).asked).toEqual([{ labelsOff: false, overflow: false }, { labelsOff: true, overflow: false }]);
+        expect(run(200).asked).toEqual([{ labelsOff: false, overflow: false }, { labelsOff: true, overflow: false }]);
+    });
+
+    test('starts at the icons-only form when the setting turns the labels off', () => {
+        expect(run(1000, { forced: true }).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
+        expect(run(1000, { forced: true }).asked).toEqual([{ labelsOff: true, overflow: false }]);
+        expect(run(389, { forced: true }).verdict).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
+    });
+
+    test('offers no overflow menu where there is nothing to put in it', () => {
+        const { verdict, asked } = run(200, { canOverflow: false });
+        expect(verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
+        expect(asked.some(step => step.overflow)).toBe(false);
+    });
+
+    test('shows a title shorter than the minimum as soon as all of it fits', () => {
+        const forms = { ...FORMS, labelled: { start: 340, end: 340, title: 40 } };
+        expect(run(740, { forms }).verdict).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
+        expect(run(739, { forms }).verdict.labelsOff).toBe(true);
+    });
+
+    test('takes the verdict from natural widths, never from the state on screen', () => {
+        const fitSource = getFunctionSource('fitTopbar');
+        // The forms are applied for the reading and then replaced by the verdict, in one task.
+        expect(fitSource).toContain('setTopbarFitState({ ...step, titleHidden: false });');
+        expect(fitSource).toContain('setTopbarFitState(verdict);');
+        expect(fitSource).toContain('const labelsForcedOff = isTopbarIconsOnlyActive();');
+        expect(fitSource).toContain('canOverflow: !isMobileViewport() && getTopbarQuickAccessTargets().length > 0,');
+    });
+
+    test('is driven by one observer and no resize listener', () => {
+        expect(normalizedTabsSource.match(/new ResizeObserver\(queueTopbarFit\)/g)).toHaveLength(1);
+        expect(normalizedTabsSource).not.toContain('addEventListener(\'resize\', queueTopbarFit');
+        expect(getFunctionSource('buildTopBar')).toContain('observeTopbarFit();');
+    });
+
+    test('hides the Quick Access buttons and shows the overflow button through one attribute', () => {
+        expect(cssSource).toMatch(/#sb-topbar-overflow-toggle \{\n\s*display: none;\n\}/);
+        expect(cssSource).toMatch(/:root\[data-sb-topbar-overflow='true'\] #sb-topbar-overflow-toggle \{\n\s*display: inline-flex;\n\}/);
+        const hide = cssSource.match(/:root\[data-sb-topbar-overflow='true'\] :is\(([^)]*)\) \{\n\s*display: none;/)[1];
+        for (const id of ['sb-shortcut-left', 'sb-shortcut-slot3', 'sb-shortcut-slot4', 'sb-shortcut-slot5', 'sb-shortcut-slot6', 'sb-shortcut-right']) {
+            expect(hide).toContain(`#${id}`);
+        }
+        expect(mobileCss).not.toContain('sb-topbar-overflow');
+    });
+
+    test('names the overflow button after what it holds and lists the Quick Access targets', () => {
+        const buildSource = getFunctionSource('buildTopBar');
+        expect(buildSource).toContain('id: \'sb-topbar-overflow-toggle\',');
+        expect(buildSource).toContain('icon: \'fa-ellipsis-vertical\',');
+        expect(buildSource).toContain('title: getTopbarOverflowLabel(),');
+        expect(buildSource).toContain('overflowToggle.setAttribute(\'aria-haspopup\', \'menu\');');
+        expect(getFunctionSource('getTopbarOverflowLabel')).toContain('return t`Quick Access`;');
+        expect(normalizedTabsSource).not.toContain('Actions for ${\'Quick Access\'}');
+
+        const menuSource = getFunctionSource('openTopbarOverflowMenu');
+        expect(menuSource).toContain('openActionMenu({ trigger, title: getTopbarOverflowLabel(), sections: [{ items }] });');
+        expect(menuSource).toContain('onSelect: () => activateShortcutTarget(target),');
     });
 });

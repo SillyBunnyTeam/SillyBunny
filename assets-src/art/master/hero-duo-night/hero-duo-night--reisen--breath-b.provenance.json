@@ -1,0 +1,32 @@
+{
+    "format": 1,
+    "file": "hero-duo-night--reisen--breath-b.png",
+    "sha256": "d99279e716a44a5e96ce9ce14b4b75f91154460ce68239a71d6e24c38f4005b1",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "retouch",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": true,
+    "record": "sha256:e68f8aaf6be05d06a4066a75ff31e6f12ecf7cfba0dc77c5705c54906f123b09"
+}

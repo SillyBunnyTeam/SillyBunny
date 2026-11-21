@@ -330,6 +330,10 @@ describe('in-chat agent post-processing runner', () => {
             power_user: { sysprompt: { enabled: true, content: 'Global system prompt text.' } },
         }));
 
+        await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+            t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+        }));
+
         await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
             POPUP_RESULT: {
                 AFFIRMATIVE: 1,
@@ -4098,7 +4102,7 @@ describe('in-chat agent post-processing runner', () => {
         const generationPromise = eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
         await Promise.resolve();
 
-        expect(globalThis.toastr.info).toHaveBeenCalledWith('Pathfinder is processing lore for this reply...', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
+        expect(globalThis.toastr.info).toHaveBeenCalledWith('Pathfinder is processing lore for this reply…', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
         expect(globalThis.toastr.clear).not.toHaveBeenCalled();
 
         resolveRetrieval();
@@ -4875,12 +4879,12 @@ describe('in-chat agent post-processing runner', () => {
         const outputReadyPromise = eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
 
         await waitFor(() => callGenericPopup.mock.calls.length === 1);
-        expect(callGenericPopup.mock.calls[0][0]).toContain('Review the main output before it is shown in chat.');
+        expect(callGenericPopup.mock.calls[0][0]).toContain('Review the main output before it is shown in chat');
         expect(callGenericPopup.mock.calls[0][0]).toContain('raw assistant reply');
         expect(callGenericPopup.mock.calls[0][3]).toEqual(expect.objectContaining({
             customButtons: expect.arrayContaining([
-                expect.objectContaining({ text: 'Skip intercept' }),
-                expect.objectContaining({ text: 'Continue intercept' }),
+                expect.objectContaining({ text: 'Skip Intercept' }),
+                expect.objectContaining({ text: 'Continue Intercept' }),
             ]),
         }));
         expect(generateQuietPrompt).not.toHaveBeenCalled();
@@ -5125,7 +5129,7 @@ describe('in-chat agent post-processing runner', () => {
         await waitFor(() => quietResolvers.length === 1);
 
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.info).toHaveBeenCalledWith('Queued agent run.');
+        expect(globalThis.toastr.info).toHaveBeenCalledWith('Queued agent run');
 
         quietResolvers.shift()('First rewrite');
         const firstResult = await firstRun;
@@ -5168,8 +5172,8 @@ describe('in-chat agent post-processing runner', () => {
         await waitFor(() => generateQuietPrompt.mock.calls.length === 2);
 
         expect(quietResolvers).toHaveLength(2);
-        expect(globalThis.toastr.info).toHaveBeenCalledWith('Running agent in parallel.');
-        expect(globalThis.toastr.info).not.toHaveBeenCalledWith('Queued agent run.');
+        expect(globalThis.toastr.info).toHaveBeenCalledWith('Running agent in parallel');
+        expect(globalThis.toastr.info).not.toHaveBeenCalledWith('Queued agent run');
         expect(isAgentGenerationActive()).toBe(true);
 
         quietResolvers.shift()('First rewrite');

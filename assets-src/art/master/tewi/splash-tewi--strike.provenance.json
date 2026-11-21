@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "splash-tewi--strike.png",
+    "sha256": "cdfef1841a651e0319d103692fc4daee7f6f769a5aed769754dfb1924e649b11",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:3543ff112ceabfbd39aa513830af2385c30e3bf1e613daf6d575a9e1586c0cd9"
+}

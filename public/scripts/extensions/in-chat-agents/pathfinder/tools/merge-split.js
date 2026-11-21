@@ -65,7 +65,7 @@ async function mergeSplitAction(args, options = {}) {
 }
 
 async function mergeSplitFormatter(args) {
-    return `✂️ Pathfinder: ${args.action === 'merge' ? 'Merging' : 'Splitting'} entries...`;
+    return `✂️ Pathfinder: ${args.action === 'merge' ? 'Merging' : 'Splitting'} entries…`;
 }
 
 export function getDefinition() {

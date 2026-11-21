@@ -1,0 +1,61 @@
+{
+    "scenes": {
+        "social-welcome": {
+            "master": "raw/s8/social-welcome/20261103T210134Z-gpt-image-2.5-sunburst-h-pixel-scene-2.png",
+            "figureHeight": 300,
+            "reisen": "left",
+            "pose": "standing"
+        },
+        "banner-main": {
+            "master": "raw/s8/banner-main/20261103T194050Z-gpt-image-2.5-sunburst-h-pixel-scene-1.png",
+            "figureHeight": 362,
+            "reisen": "left",
+            "pose": "seated"
+        },
+        "banner-features": {
+            "master": "raw/s8/banner-features/20261103T194234Z-gpt-image-2.5-sunburst-h-pixel-scene-2.png",
+            "figureHeight": 362,
+            "reisen": "left",
+            "pose": "mixed"
+        },
+        "banner-install": {
+            "master": "raw/s8/banner-install/20261103T195912Z-gpt-image-2.5-sunburst-h-pixel-scene-1.png",
+            "figureHeight": 362,
+            "reisen": "left",
+            "pose": "mixed",
+            "repairs": [
+                {
+                    "erase": {
+                        "x": 272,
+                        "y": 149,
+                        "width": 20,
+                        "height": 13
+                    },
+                    "note": "The lower pair of prongs of the plug in Tewi's hand, and the rings round them: the plug is left with prongs at one end only. Snapped px; about x 828-886, y 452-489 on the master.",
+                    "cell": 3.037
+                }
+            ]
+        },
+        "banner-contributing": {
+            "master": "raw/s8/banner-contributing/20261103T200053Z-gpt-image-2.5-sunburst-h-pixel-scene-1.png",
+            "figureHeight": 362,
+            "reisen": "left",
+            "pose": "mixed",
+            "note": "Reisen kneels and Tewi stands, so the line-up's head size does not apply; the scene is sized to fill the frame like the others."
+        },
+        "banner-credits": {
+            "master": "raw/s8/banner-credits/20261103T193140Z-gpt-image-2.5-sunburst-h-pixel-scene-1.png",
+            "figureHeight": 362,
+            "reisen": "left",
+            "pose": "standing"
+        },
+        "banner-community": {
+            "master": "raw/s8/patch-community-face/20261103T201617Z-gpt-image-2.5-sunburst-h-patch-2.png",
+            "patch": "raw/s8/patch-community-face/20261103T201617Z-gpt-image-2.5-sunburst-h-patch-p1-2.png",
+            "figureHeight": 362,
+            "reisen": "left",
+            "pose": "standing",
+            "note": "The 201134Z scene-2 master with Tewi's face patched (patch.mjs, face rect only, --keep-alpha)."
+        }
+    }
+}

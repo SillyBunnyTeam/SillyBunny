@@ -17,7 +17,7 @@
         <div class="pf--master-toggle">
             <label class="checkbox_label">
                 <input type="checkbox" id="pf--master-enable" />
-                <span>Enable Pathfinder for this chat</span>
+                <span>Enable Pathfinder for This Chat</span>
             </label>
             <div class="pf--setting-help">Saving settings will not change this switch. Turn it off only when you want Pathfinder inactive.</div>
         </div>
@@ -30,7 +30,7 @@
                 <i class="fa-solid fa-route"></i>
                 <strong>What is Pathfinder?</strong>
             </div>
-            <button type="button" id="pf--quickstart-dismiss" class="pf--quickstart-close" aria-label="Hide Pathfinder explanation" title="Hide Pathfinder explanation">
+            <button type="button" id="pf--quickstart-dismiss" class="pf--quickstart-close" aria-label="Hide Pathfinder Explanation" title="Hide Pathfinder Explanation">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
@@ -54,7 +54,7 @@
         </button>
         <div class="pf--section-body" id="pf--lorebook-body">
             <div class="pf--section-desc">
-                Choose which lorebooks Pathfinder can access.
+                Choose which lorebooks Pathfinder can access
             </div>
             <div id="pf--lorebook-list" class="pf--lorebook-list">
                 <div class="pf--empty-state">
@@ -64,23 +64,22 @@
             </div>
             <div class="pf--lorebook-actions">
                 <button type="button" id="pf--refresh-lorebooks" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-rotate"></i>
                     <span>Refresh List</span>
                 </button>
             </div>
             <div class="pf--setting-group pf--lorebook-toggle">
                 <label class="checkbox_label">
                     <input type="checkbox" id="pf--auto-use-attached" data-pf-setting="autoUseAttachedLorebook" />
-                    <span>Automatically use attached character/chat lorebooks</span>
+                    <span>Automatically Use Attached Character/Chat Lorebooks</span>
                 </label>
-                <div class="pf--setting-help">When enabled, Pathfinder auto-selects lorebooks attached to the active character card or chat.</div>
+                <div class="pf--setting-help">When enabled, Pathfinder auto-selects lorebooks attached to the active character card or chat</div>
             </div>
             <div class="pf--setting-group pf--lorebook-toggle">
                 <label class="checkbox_label">
                     <input type="checkbox" id="pf--auto-sync-lorebooks" data-pf-setting="autoSyncLorebooksOnChatChange" />
                     <span>Reset selections to the current chat/character lorebooks on chat change</span>
                 </label>
-                <div class="pf--setting-help">Prevents a previous chat's lorebook from staying selected when the new chat has no attached lorebook.</div>
+                <div class="pf--setting-help">Prevents a previous chat's lorebook from staying selected when the new chat has no attached lorebook</div>
             </div>
             <div class="pf--setting-group pf--lorebook-toggle">
                 <label class="checkbox_label">
@@ -103,7 +102,7 @@
             <!-- Warning banner when both modes enabled -->
             <div id="pf--dual-mode-warning" class="pf--dual-mode-warning" role="status" aria-live="polite" style="display: none;">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>Both modes enabled — this uses more tokens but gives the AI both automatic context and active lorebook control.</span>
+                <span>Both modes enabled — this uses more tokens but gives the AI both automatic context and active lorebook control</span>
             </div>
 
             <div class="pf--mode-cards">
@@ -125,7 +124,7 @@
                         </ul>
                         <div class="pf--mode-requirement">
                             <i class="fa-solid fa-triangle-exclamation"></i>
-                            Requires an API that supports tool/function calling (OpenAI, Claude, etc.)
+                            Requires an API that supports tool/function calling (OpenAI, Claude, and so on)
                         </div>
                     </div>
                 </div>
@@ -166,8 +165,8 @@
             <div class="pf--setting-group">
                 <label class="pf--setting-label" for="pf--pipeline-type">Pipeline Type</label>
                 <select id="pf--pipeline-type" class="text_pole" data-pf-setting="pipelineId">
-                    <option value="default">Two-Stage (Recommended) - Select candidates, then filter</option>
-                    <option value="single-pass">Single-Pass (Faster) - Select only, no filtering</option>
+                    <option value="default">Two-stage (recommended) - Select candidates, then filter</option>
+                    <option value="single-pass">Single-pass (faster) - Select only, no filtering</option>
                 </select>
                 <div class="pf--setting-help">Two-stage is more accurate but uses an extra AI call</div>
             </div>
@@ -200,7 +199,7 @@
                 <select id="pf--pipeline-profile" class="text_pole" data-pf-setting="connectionProfile">
                     <option value="">Use main model</option>
                 </select>
-                <div class="pf--setting-help">Use a faster/cheaper model for the pipeline (e.g., Haiku, GPT-4o-mini)</div>
+                <div class="pf--setting-help">Use a faster/cheaper model for the pipeline (for example, Haiku, GPT-4o-mini)</div>
             </div>
 
             <div class="pf--setting-group">
@@ -208,7 +207,7 @@
                     <input type="checkbox" id="pf--dedupe-natural-activation" data-pf-setting="dedupeNaturalActivation" />
                     <span>Skip entries already activated by World Info</span>
                 </label>
-                <div class="pf--setting-help">Keeps keyword/constant lore active naturally, then removes those entries from Pathfinder's injected context.</div>
+                <div class="pf--setting-help">Keeps keyword/constant lore active naturally, then removes those entries from Pathfinder's injected context</div>
             </div>
         </div>
     </div>
@@ -224,35 +223,35 @@
             <div class="pf--setting-group">
                 <label class="pf--setting-label" for="pf--prompt-selector">Select Prompt to Edit</label>
                 <select id="pf--prompt-selector" class="text_pole">
-                    <option value="">Choose a prompt...</option>
-                    <option value="candidate-selector">Stage 1: Candidate Selector</option>
-                    <option value="relevance-filter">Stage 2: Relevance Filter</option>
+                    <option value="">Choose a prompt…</option>
+                    <option value="candidate-selector">Stage 1: candidate selector</option>
+                    <option value="relevance-filter">Stage 2: relevance filter</option>
                 </select>
             </div>
 
             <div id="pf--prompt-fields" style="display: none;">
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--prompt-system">System Prompt</label>
-                    <textarea id="pf--prompt-system" class="text_pole" rows="6" placeholder="Instructions for the AI..."></textarea>
+                    <textarea id="pf--prompt-system" class="text_pole" rows="6" placeholder="Instructions for the AI…"></textarea>
                 </div>
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--prompt-max-tokens">Max Tokens</label>
                     <input type="number" id="pf--prompt-max-tokens" class="text_pole" min="100" max="200000" value="64000" />
-                    <div class="pf--setting-help">Maximum tokens Pathfinder can receive from this pipeline stage.</div>
+                    <div class="pf--setting-help">Maximum tokens Pathfinder can receive from this pipeline stage</div>
                 </div>
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--prompt-user">User Prompt Template</label>
-                    <textarea id="pf--prompt-user" class="text_pole" rows="4" placeholder="Template with {{variables}}..."></textarea>
+                    <textarea id="pf--prompt-user" class="text_pole" rows="4" placeholder="Template with {{variables}}…"></textarea>
                     <div class="pf--setting-help">
                         Variables: <code>{{chat_history}}</code>, <code>{{entry_list}}</code>, <code>{{candidate_entries}}</code>
                     </div>
                 </div>
                 <div class="pf--prompt-actions">
                     <button type="button" id="pf--prompt-save" class="menu_button">
-                        <i class="fa-solid fa-save"></i> <span>Save Prompt</span>
+                        <span>Save Prompt</span>
                     </button>
                     <button type="button" id="pf--prompt-reset" class="menu_button">
-                        <i class="fa-solid fa-rotate-left"></i> <span>Reset to Default</span>
+                        <span>Reset to Default</span>
                     </button>
                     <span id="pf--prompt-status" class="pf--prompt-status" role="status" aria-live="polite"></span>
                 </div>
@@ -271,42 +270,39 @@
             <div class="pf--setting-group">
                 <label class="checkbox_label">
                     <input type="checkbox" id="pf--enable-summarize-tool" data-tool="Pathfinder_Summarize" />
-                    <span>Allow summary memory tool</span>
+                    <span>Allow Summary Memory Tool</span>
                 </label>
-                <div class="pf--setting-help">Lets Pathfinder write scene/event summaries into enabled lorebooks with the Summarize tool.</div>
+                <div class="pf--setting-help">Lets Pathfinder write scene/event summaries into enabled lorebooks with the Summarize tool</div>
             </div>
             <div class="pf--setting-row">
                 <div class="pf--setting-group">
                     <label class="checkbox_label">
                         <input type="checkbox" id="pf--auto-summary" data-pf-setting="autoSummary" />
-                        <span>Auto-track summary interval</span>
+                        <span>Auto-Track Summary Interval</span>
                     </label>
-                    <div class="pf--setting-help">Counts sent/received messages toward automatic summary prompts.</div>
+                    <div class="pf--setting-help">Counts sent/received messages toward automatic summary prompts</div>
                 </div>
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--auto-summary-interval">Summary Interval</label>
                     <input type="number" id="pf--auto-summary-interval" class="text_pole" min="2" max="200" value="20" data-pf-setting="autoSummaryInterval" />
-                    <div class="pf--setting-help">Messages before Pathfinder should consider writing a memory summary.</div>
+                    <div class="pf--setting-help">Messages before Pathfinder should consider writing a memory summary</div>
                 </div>
             </div>
             <div class="pf--setting-group pf--summary-editor">
                 <div class="pf--summary-editor-header">
-                    <label class="pf--setting-label" for="pf--summary-content">Latest memory summary</label>
+                    <label class="pf--setting-label" for="pf--summary-content">Latest Memory Summary</label>
                     <span id="pf--summary-injection-indicator" class="pf--summary-indicator pf--summary-indicator-missing" role="status" aria-live="polite">No summary</span>
                 </div>
                 <textarea id="pf--summary-content" class="text_pole" rows="7" placeholder="When Pathfinder creates a memory summary, it will appear here for review and editing."></textarea>
                 <div class="pf--summary-meta" id="pf--summary-meta" aria-live="polite">No Pathfinder summary has been created yet.</div>
                 <div class="pf--summary-actions">
                     <button type="button" id="pf--summary-create" class="menu_button menu_button_icon">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
                         <span>Create Summary</span>
                     </button>
                     <button type="button" id="pf--summary-save" class="menu_button menu_button_icon">
-                        <i class="fa-solid fa-save"></i>
                         <span>Save Summary</span>
                     </button>
                     <button type="button" id="pf--summary-save-entry" class="menu_button menu_button_icon">
-                        <i class="fa-solid fa-book-medical"></i>
                         <span>Save as Entry</span>
                     </button>
                     <span id="pf--summary-save-status" class="pf--prompt-status" role="status" aria-live="polite"></span>
@@ -326,7 +322,7 @@
             <div class="pf--setting-group pf--tool-mode-only">
                 <div class="pf--setting-label" id="pf--enabled-tools-label">Enabled Tools</div>
                 <div class="pf--tool-list" role="group" aria-labelledby="pf--enabled-tools-label">
-                    <div class="pf--empty-state pf--tool-loading"><i class="fa-solid fa-wrench"></i><span>Loading tool toggles...</span></div>
+                    <div class="pf--empty-state pf--tool-loading"><i class="fa-solid fa-wrench"></i><span>Loading tool toggles…</span></div>
                 </div>
             </div>
 
@@ -362,11 +358,9 @@
             <div id="pf--diagnostics-output" class="pf--diagnostics-output" role="status" aria-live="polite" tabindex="0">Click "Run Diagnostics" to check your Pathfinder configuration.</div>
             <div class="pf--diagnostics-actions">
                 <button type="button" id="pf--run-diagnostics" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-stethoscope"></i>
                     <span>Run Diagnostics</span>
                 </button>
                 <button type="button" id="pf--copy-diagnostics" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-copy"></i>
                     <span>Copy Diagnostics</span>
                 </button>
             </div>
@@ -380,10 +374,10 @@
             <span class="pf--badge">Detailed</span>
         </button>
         <div class="pf--section-body" id="pf--retrieval-log-body" style="display: none;">
-            <div class="pf--section-desc">Shows what Pathfinder actually selected or injected, including selected lore entries, stage results, and the prompt payload Pathfinder added before generation.</div>
+            <div class="pf--section-desc">Shows what Pathfinder actually selected or injected, including selected lore entries, stage results, and the prompt payload Pathfinder added before generation</div>
             <div class="pf--log-mode-row">
                 <label class="pf--log-mode-control" for="pf--log-mode">
-                    <span>Log detail</span>
+                    <span>Log Detail</span>
                     <select id="pf--log-mode" class="text_pole">
                         <option value="summary">Summarized</option>
                         <option value="detailed">Detailed</option>
@@ -392,11 +386,9 @@
             </div>
             <div class="pf--log-actions">
                 <button type="button" id="pf--refresh-log" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-rotate"></i>
                     <span>Refresh Log</span>
                 </button>
                 <button type="button" id="pf--clear-log" class="menu_button menu_button_icon">
-                    <i class="fa-solid fa-trash"></i>
                     <span>Clear Log</span>
                 </button>
             </div>
@@ -573,7 +565,7 @@
 
 /* Master enable */
 .pf--master-section {
-    padding: 12px 14px;
+    padding: 0;
 }
 
 .pf--master-toggle .checkbox_label {
@@ -600,6 +592,15 @@
 .pf--settings .checkbox_label span {
     min-width: 0;
     overflow-wrap: anywhere;
+}
+
+/* The section or card around a switch row already draws the box, so the row's own divider would be a second line. */
+.pf--settings .ds-row-switch {
+    border-bottom: 0;
+}
+
+.pf--mode-card-header:has(> .ds-row-switch) {
+    padding: 0;
 }
 
 .pf--master-toggle input[type="checkbox"] {
@@ -833,16 +834,9 @@
 }
 
 .pf--lorebook-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
     background: var(--pf-control-bg);
     border: 1px solid color-mix(in srgb, var(--pf-border) 74%, transparent);
     border-radius: var(--pf-radius-md);
-    cursor: pointer;
-    min-height: var(--pf-control-size);
-    min-width: 0;
     flex-shrink: 0;
     transition: background 0.18s var(--pf-ease), border-color 0.18s var(--pf-ease), transform 0.18s var(--pf-ease);
 }
@@ -856,11 +850,6 @@
     background: color-mix(in srgb, var(--pf-accent) 18%, var(--pf-surface-strong));
     border-color: color-mix(in srgb, var(--pf-accent) 62%, var(--pf-border));
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pf-accent) 18%, transparent);
-}
-
-.pf--lorebook-item input[type="checkbox"] {
-    margin: 0;
-    flex: 0 0 auto;
 }
 
 .pf--lorebook-info {
@@ -896,8 +885,19 @@
     color: var(--pf-text-muted);
 }
 
-.pf--empty-state i {
+.pf--empty-state > i {
     font-size: calc(var(--mainFontSize) * 1.6);
+}
+
+/* The shared status page brings its own padding, icon and ink. */
+.pf--empty-state:has(> .sb-status-page) {
+    padding: 0;
+}
+
+/* `.pf--settings *` sets start alignment on every element, which would override the centred text that the status page inherits. */
+.pf--settings .sb-status-page,
+.pf--settings .sb-status-page * {
+    text-align: center;
 }
 
 /* Mode Cards */
@@ -1123,15 +1123,12 @@
     gap: 6px;
 }
 
-.pf--tool-list .checkbox_label {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    align-items: center;
-    padding: 7px 10px;
+.pf--tool-list .ds-row-check,
+.pf--lorebook-list > .ds-row-check {
+    flex-shrink: 0;
     background: var(--pf-control-bg);
     border: 1px solid color-mix(in srgb, var(--pf-border) 76%, transparent);
     border-radius: var(--pf-radius-sm);
-    column-gap: 10px;
 }
 
 .pf--permission-matrix {
@@ -1170,10 +1167,9 @@
     color: var(--pf-text-muted);
 }
 
-.pf--permission-row .checkbox_label {
-    margin: 0;
-    padding: 6px;
-    min-height: var(--pf-control-size);
+.pf--permission-row .ds-row-check {
+    border-bottom: 0;
+    padding-inline: 6px;
 }
 
 /* Prompt Editor */

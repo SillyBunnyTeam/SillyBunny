@@ -1,0 +1,132 @@
+/* Import is a settings page in the Characters window and scrolls itself as one: its panel carries the settings scroller class
+   (sillybunny-character-import.js), which gives it the page's padding, and it fills the window's own box. The scroll box inside
+   the window takes its padding, its scrollbar gutter and `overflow: hidden !important` from the list, Persona and World Info
+   rules (`:has()` rules that keep matching after their panels have been shown, because the list's block keeps its active class
+   and the editors stay mounted), so the page is placed against the window and leaves that box out. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer[data-menu-type='import'] {
+    position: relative;
+}
+
+#sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #sb_character_import_panel:not([hidden])) {
+    position: static;
+}
+
+#sb-settings-page #sb_character_import_panel {
+    position: absolute;
+    inset: 0;
+    min-width: 0;
+    font-family: var(--mainFontFamily);
+}
+
+/* The settings scroller hides a direct child that is `aria-busy` until its module has presented it
+   (`.sb-shell-panel-scroller > [aria-busy='true']` in sillybunny-tabs.css). Here `aria-busy` marks a running import, and the
+   Loading page inside this child is what the user is waiting on, so it stays painted. */
+#sb_character_import_panel > #sb_character_import_content {
+    visibility: visible;
+}
+
+#sb_character_import_content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#sb_character_import_panel [hidden] {
+    display: none !important;
+}
+
+/* A drop area: a 2px ring at 40% Accent inside the row over a 10% Accent fill. The ring is an outline, so the
+   focus ring (a box-shadow) can still show while a file is dragged over a focused row. */
+#sb-settings-page #sb_character_import_panel .sb-import-drop.is-dragover {
+    background: color-mix(in srgb, var(--sb-accent) 10%, var(--sb-layer-view));
+    outline: 2px solid color-mix(in srgb, var(--sb-accent) 40%, transparent);
+    outline-offset: -2px;
+}
+
+#sb_character_import_panel .sb-import-sources {
+    overflow-wrap: anywhere;
+}
+
+#sb_character_import_panel .sb-import-summary {
+    font-variant-numeric: tabular-nums;
+}
+
+#sb_character_import_panel .sb-import-summary:empty {
+    display: none;
+}
+
+#sb_character_import_panel .ds-entity-row__subtitle {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#sb_character_import_panel [data-import-status='error'] .ds-entity-row__subtitle {
+    color: var(--sb-color-danger);
+}
+
+.sb-import-result-status {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--sb-shell-space-sm);
+}
+
+#sb_character_import_panel .ds-entity-row__subtitle > .sb-import-result-status {
+    white-space: normal;
+}
+
+[data-import-status='success'] .sb-import-result-status > i {
+    color: var(--sb-color-success);
+}
+
+#sb-settings-page #sb_character_import_panel .sb-import-result-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: none;
+    width: auto;
+    min-height: 40px;
+    margin: 0;
+    padding: 6px 12px;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.sb-import-result-action > i {
+    display: none;
+}
+
+.sb-import-result-action:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    #sb-settings-page #sb_character_import_panel .sb-import-result-action:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+@media (pointer: coarse) {
+    #sb-settings-page #sb_character_import_panel .sb-import-result-action {
+        min-width: var(--sb-mobile-touch-target, 44px);
+        min-height: var(--sb-mobile-touch-target, 44px);
+    }
+}
+
+@media (max-width: 768px) {
+    #sb-settings-page #sb_character_import_panel .sb-import-result-action {
+        width: var(--sb-control-min-height);
+        height: var(--sb-control-min-height);
+        padding: 0;
+        border-radius: var(--sb-radius-pill);
+    }
+    .sb-import-result-action > i {
+        display: inline-block;
+    }
+    .sb-import-result-action-label {
+        display: none;
+    }
+}
