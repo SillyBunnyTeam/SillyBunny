@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readArtManifest } from '../helpers/art-manifest.js';
 import { readImageSize } from '../helpers/image-size.js';
 
 const publicRoot = fileURLToPath(new URL('../../public/', import.meta.url));
@@ -88,9 +89,7 @@ describe('splash variant', () => {
     });
 });
 
-const SPEC = fileURLToPath(new URL('../../assets-src/branding/export-specs/shell.json', import.meta.url));
-
-/** The size of each picture in art pixels, as the export writes it. The table of the script has to say the same. */
+/** The size of each picture in art pixels, as the art is derived. The table of the script has to say the same. */
 const SIZE_TABLE = { reisen: [281, 371], tewi: [237, 317], both: [295, 362] };
 const TALLEST = Math.max(...Object.values(SIZE_TABLE).map(([, height]) => height));
 
@@ -320,17 +319,21 @@ describe('splash picture', () => {
 });
 
 describe('splash art files', () => {
-    const spec = JSON.parse(readFileSync(SPEC, 'utf8'));
+    const { assets } = readArtManifest();
 
-    test.each(['reisen', 'tewi', 'both'])('the %s picture is the file of the table, at the size of the table, from the snapped master of its loop\'s opening frame', (variant) => {
+    test.each(['reisen', 'tewi', 'both'])('the %s picture is the file of the table, at the size of the table, and the art manifest derives it from its loop\'s opening frame', (variant) => {
         runSplash({ stored: variant });
         const { file, width, height } = window.SillyBunnySplash.ART[variant];
         const bytes = readFileSync(`${publicRoot}img/sillybunny/${file}`);
-        const loop = JSON.parse(readFileSync(`${publicRoot}img/sillybunny/${window.SillyBunnySplash.LOOP_FILES[variant]}`, 'utf8'));
+        const loopFile = window.SillyBunnySplash.LOOP_FILES[variant];
+        const loop = JSON.parse(readFileSync(`${publicRoot}img/sillybunny/${loopFile}`, 'utf8'));
         const opening = Object.values(loop.timelines)[0].keys.find(({ at }) => at === 0).frame;
+        const asset = assets[`splash-${variant}`];
 
         expect(readImageSize(bytes)).toEqual({ width, height });
-        expect(spec.assets[`splash-${variant}`]).toMatchObject({ pixel: true, master: `approved/pixel/splash3-${variant}--${opening}.png` });
+        expect(asset).toMatchObject({ key: 'splash', grid: [width, height] });
+        expect(asset.outputs[0]).toMatchObject({ path: `public/img/sillybunny/${file}`, from: opening });
+        expect(asset.motion.output).toBe(`public/img/sillybunny/${loopFile}`);
         expect(window.SillyBunnySplash.ART_VERSION).toMatch(/^\d{8}[a-z]$/);
     });
 });

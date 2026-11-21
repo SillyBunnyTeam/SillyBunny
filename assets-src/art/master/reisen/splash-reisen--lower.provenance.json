@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "splash-reisen--lower.png",
+    "sha256": "3e60db51fc4f5ba813a85c8879bcf323f93aa8f24dfd1fbcc44a7aaed036e2b3",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:bdbcbd4f4cbec3ed195d2172dbaeffb73d8a1dde422d691ab21c3dc71e0f35f7",
+    "incomplete": "1 source is not in the generation log."
+}

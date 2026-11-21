@@ -4,9 +4,10 @@ export const ART_VERSION = '20261105a';
 const ART_BASE = '/img/sillybunny/';
 
 /**
- * The pixel placements that `assets-src/branding/export-specs/shell.json` ships, with the size of the file in art
+ * The pixel placements that `assets-src/art/art-manifest.json` derives for Home, with the size of the file in art
  * pixels. A pixel placement is stored at its own size, so the size is what the layout needs before the picture has
- * loaded. `tests/unit/sillybunny-home-art-sources.test.js` reads every file and fails when a size or a name is stale.
+ * loaded. `tests/unit/sillybunny-home-art-sources.test.js` reads every file and the manifest, and fails when a size or a
+ * name is stale.
  * @type {Readonly<Record<string, { file: string, width: number, height: number }>>}
  */
 const PIXEL_ART = Object.freeze({

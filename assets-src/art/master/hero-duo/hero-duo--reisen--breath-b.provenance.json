@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "hero-duo--reisen--breath-b.png",
+    "sha256": "27c95f3eb6b632531e55bd65b651a1ec49c5051cfdfe71c313963eface44a966",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:522cb302e369d39ebae3324a9416fac5b09c2e21d58f91ba363f3da4a452a71d"
+}

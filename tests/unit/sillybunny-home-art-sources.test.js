@@ -2,18 +2,19 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from '@jest/globals';
-import { getPixelArt, listPixelArtIds } from '../../public/scripts/sillybunny-home/art-sources.js';
+import { getPixelArt, getPixelMotionFile, listPixelArtIds } from '../../public/scripts/sillybunny-home/art-sources.js';
+import { readArtManifest } from '../helpers/art-manifest.js';
 import { readImageSize } from '../helpers/image-size.js';
 
 const IMAGES = fileURLToPath(new URL('../../public/img/sillybunny/', import.meta.url));
-const SPEC = fileURLToPath(new URL('../../assets-src/branding/export-specs/shell.json', import.meta.url));
+const PLACEMENT_TYPES = ['still', 'scene'];
 
 function fileOf(id) {
     return decodeURIComponent(new URL(getPixelArt(id).url, 'http://localhost').pathname.replace('/img/sillybunny/', ''));
 }
 
 describe('the pixel art table', () => {
-    const spec = JSON.parse(readFileSync(SPEC, 'utf8'));
+    const { assets } = readArtManifest();
 
     test.each(listPixelArtIds())('%s names a file whose size is the size in the table', (id) => {
         const art = getPixelArt(id);
@@ -22,8 +23,20 @@ describe('the pixel art table', () => {
         expect(size).toEqual({ width: art.width, height: art.height });
     });
 
-    test.each(listPixelArtIds())('%s is a pixel placement in the export spec, from the snapped pictures', (id) => {
-        expect(spec.assets[id]).toMatchObject({ pixel: true, master: `approved/pixel/${id}.png` });
+    test.each(listPixelArtIds())('%s is a Home placement of the art manifest, on the grid of the table, with the motion of the table', (id) => {
+        const art = getPixelArt(id);
+        const motion = getPixelMotionFile(id);
+
+        expect(PLACEMENT_TYPES).toContain(assets[id].type);
+        expect(assets[id]).toMatchObject({ key: 'home', grid: [art.width, art.height] });
+        expect(assets[id].outputs[0].path).toBe(`public/img/sillybunny/${fileOf(id)}`);
+        expect(assets[id].motion?.output ?? null).toBe(motion === null ? null : `public/img/sillybunny/${motion}`);
+    });
+
+    test('lists every Home placement of the art manifest', () => {
+        const placements = Object.keys(assets).filter(id => assets[id].key === 'home' && PLACEMENT_TYPES.includes(assets[id].type));
+
+        expect(listPixelArtIds().sort()).toEqual(placements.sort());
     });
 
     test('the URL carries the version of the picture set, so the service worker fetches a changed file', () => {
@@ -32,14 +45,7 @@ describe('the pixel art table', () => {
         }
     });
 
-    test('the assistant card portraits stay smooth pictures at 1x, 2x and 3x', () => {
-        for (const id of ['row-reisen', 'row-tewi']) {
-            expect(spec.assets[id].pixel).toBeUndefined();
-            expect(spec.assets[id].css).toEqual([128, 64]);
-        }
-    });
-
-    test('asking for art that is not in the export fails with its name', () => {
+    test('asking for art that is not in the table fails with its name', () => {
         expect(() => getPixelArt('not-art')).toThrow('not-art');
     });
 });

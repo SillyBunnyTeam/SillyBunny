@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "hero-duo-night--backdrop.png",
+    "sha256": "6e93ead16e66405e734d0466c54e4647686f095a973f6e13eecf0670a9e2d25f",
+    "characters": [],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-04"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "compose-scene",
+        "breath-frames",
+        "retouch"
+    ],
+    "handEdits": true,
+    "record": "sha256:7c8f23f6cf57588fb606aed0919b81ae5a71168ee62439b46e24a5eeaaba8ba3"
+}
