@@ -1,0 +1,196 @@
+/* eslint-disable playwright/no-standalone-expect -- Jest contracts for a state machine. */
+import { describe, expect, jest, test } from '@jest/globals';
+import { BUNDLED_EXTRAS } from '../../public/scripts/sillybunny-bundled-extras.js';
+import { createBundledExtrasActions } from '../../public/scripts/sillybunny-home/bundled-extras-actions.js';
+
+const extension = { id: 'deep-swipe', name: 'Deep Swipe', group: 'first-party-extensions', kind: 'extension', url: 'https://github.com/SillyBunnyTeam/SillyBunny-Deep-Swipe' };
+const themeExtension = { id: 'terminal-ui', name: 'Terminal UI', group: 'themes', kind: 'theme-extension', url: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI' };
+const preset = { id: 'tld', name: 'TLD', group: 'presets', kind: 'preset', url: 'https://example.com', presetName: 'TLD Card Conversion Preset (Standalone)' };
+const cssTheme = { id: 'midnight', name: 'Midnight', group: 'themes', kind: 'theme-css', url: 'https://example.com', themeName: 'Midnight' };
+
+/** Adapters over a small fake world: the extension names that are installed, which of them are enabled, and so on. */
+function createWorld({ installed = {}, presets = [], themes = [], canRemove = true } = {}) {
+    const world = { installed: { ...installed }, presets: new Set(presets), themes: new Set(themes) };
+    const adapters = {
+        extensions: {
+            find: jest.fn(folder => (folder in world.installed ? { name: `third-party/${folder}`, enabled: world.installed[folder] } : null)),
+            install: jest.fn(async (url) => { world.installed[new URL(url).pathname.split('/').at(-1)] = false; return true; }),
+            enable: jest.fn(async (name) => { world.installed[name.replace('third-party/', '')] = true; }),
+            disable: jest.fn(async (name) => { world.installed[name.replace('third-party/', '')] = false; }),
+            remove: jest.fn(async (name) => { delete world.installed[name.replace('third-party/', '')]; }),
+            canRemove: jest.fn(() => canRemove),
+        },
+        presets: {
+            has: jest.fn(name => world.presets.has(name)),
+            restore: jest.fn(async (name) => { world.presets.add(name); }),
+        },
+        themes: {
+            has: jest.fn(name => world.themes.has(name)),
+            install: jest.fn(async () => { world.themes.add('Midnight Blue'); return { name: 'Midnight Blue' }; }),
+            apply: jest.fn(async () => {}),
+        },
+    };
+    return { world, adapters, actions: createBundledExtrasActions(adapters) };
+}
+
+describe('the state of an extension row', () => {
+    test('is not installed, and offers to install, when the extension list does not know the folder', () => {
+        const { actions, adapters } = createWorld();
+
+        expect(actions.getState(extension)).toEqual({ status: 'not-installed', actions: ['install'] });
+        expect(adapters.extensions.find).toHaveBeenCalledWith('SillyBunny-Deep-Swipe');
+    });
+
+    test('is installed, and offers to enable or remove, when the extension is switched off', () => {
+        const { actions } = createWorld({ installed: { 'SillyBunny-Deep-Swipe': false } });
+
+        expect(actions.getState(extension)).toEqual({ status: 'installed', actions: ['enable', 'remove'] });
+    });
+
+    test('is enabled, and offers to disable or remove, when the extension is on', () => {
+        const { actions } = createWorld({ installed: { 'SillyBunny-Deep-Swipe': true } });
+
+        expect(actions.getState(extension)).toEqual({ status: 'enabled', actions: ['disable', 'remove'] });
+    });
+
+    test('offers no removal of an extension that the user may not remove', () => {
+        const { actions, adapters } = createWorld({ installed: { 'SillyBunny-Deep-Swipe': true }, canRemove: false });
+
+        expect(actions.getState(extension)).toEqual({ status: 'enabled', actions: ['disable'] });
+        expect(adapters.extensions.canRemove).toHaveBeenCalledWith('third-party/SillyBunny-Deep-Swipe');
+    });
+
+    test('is the same for a theme that is an extension', () => {
+        const { actions } = createWorld({ installed: { 'SillyBunny-Terminal-UI': true } });
+
+        expect(actions.getState(themeExtension)).toEqual({ status: 'enabled', actions: ['disable', 'remove'] });
+    });
+
+    describe('of Group Chat Overhaul', () => {
+        const overhaul = BUNDLED_EXTRAS.find(candidate => candidate.id === 'group-chat-overhaul');
+
+        test('follows the folder that the new repository installs into', () => {
+            const { actions, adapters } = createWorld({ installed: { SillyBunnyGCO: true } });
+
+            expect(actions.getState(overhaul)).toEqual({ status: 'enabled', actions: ['disable', 'remove'] });
+            expect(adapters.extensions.find).toHaveBeenCalledWith('SillyBunnyGCO');
+        });
+
+        test('does not count an installed copy of the deprecated Group Utilities, which stays as it is', () => {
+            const { actions, adapters } = createWorld({ installed: { 'SB-GroupUtilities': true } });
+
+            expect(actions.getState(overhaul)).toEqual({ status: 'not-installed', actions: ['install'] });
+            expect(adapters.extensions.remove).not.toHaveBeenCalled();
+            expect(adapters.extensions.disable).not.toHaveBeenCalled();
+        });
+    });
+});
+
+describe('running an action on an extension row', () => {
+    test('installs from the address of the item, and then reports the extension as installed', async () => {
+        const { actions, adapters } = createWorld();
+
+        const state = await actions.run(extension, 'install');
+
+        expect(adapters.extensions.install).toHaveBeenCalledTimes(1);
+        expect(adapters.extensions.install).toHaveBeenCalledWith('https://github.com/SillyBunnyTeam/SillyBunny-Deep-Swipe');
+        expect(state).toEqual({ status: 'installed', actions: ['enable', 'remove'] });
+    });
+
+    test('enables, disables and removes the extension by the name the list gave', async () => {
+        const { actions, adapters } = createWorld({ installed: { 'SillyBunny-Deep-Swipe': false } });
+
+        await actions.run(extension, 'enable');
+        expect(adapters.extensions.enable).toHaveBeenCalledWith('third-party/SillyBunny-Deep-Swipe');
+        expect(actions.getState(extension).status).toBe('enabled');
+
+        await actions.run(extension, 'disable');
+        expect(adapters.extensions.disable).toHaveBeenCalledWith('third-party/SillyBunny-Deep-Swipe');
+        expect(actions.getState(extension).status).toBe('installed');
+
+        await actions.run(extension, 'remove');
+        expect(adapters.extensions.remove).toHaveBeenCalledWith('third-party/SillyBunny-Deep-Swipe');
+        expect(actions.getState(extension).status).toBe('not-installed');
+    });
+
+    test('refuses an action that the state does not offer, and does nothing', async () => {
+        const { actions, adapters } = createWorld();
+
+        await expect(actions.run(extension, 'enable')).rejects.toThrow(/not offered/i);
+        await expect(actions.run(extension, 'remove')).rejects.toThrow(/not offered/i);
+
+        expect(adapters.extensions.enable).not.toHaveBeenCalled();
+        expect(adapters.extensions.remove).not.toHaveBeenCalled();
+    });
+
+    test('refuses a removal that the user may not make, even when asked for', async () => {
+        const { actions, adapters } = createWorld({ installed: { 'SillyBunny-Deep-Swipe': true }, canRemove: false });
+
+        await expect(actions.run(extension, 'remove')).rejects.toThrow(/not offered/i);
+        expect(adapters.extensions.remove).not.toHaveBeenCalled();
+    });
+});
+
+describe('the state of a preset row', () => {
+    test('is installed, with nothing to do, when the preset is in the preset list', () => {
+        const { actions, adapters } = createWorld({ presets: [preset.presetName] });
+
+        expect(actions.getState(preset)).toEqual({ status: 'installed', actions: [] });
+        expect(adapters.presets.has).toHaveBeenCalledWith('TLD Card Conversion Preset (Standalone)');
+    });
+
+    test('is not installed, and offers to restore it, when the preset is not in the list', async () => {
+        const { actions, adapters } = createWorld();
+        expect(actions.getState(preset)).toEqual({ status: 'not-installed', actions: ['restore'] });
+
+        const state = await actions.run(preset, 'restore');
+
+        expect(adapters.presets.restore).toHaveBeenCalledWith('TLD Card Conversion Preset (Standalone)');
+        expect(state).toEqual({ status: 'installed', actions: [] });
+    });
+});
+
+describe('the state of a third-party CSS theme row', () => {
+    test('is not installed, and offers to install, when the UI theme list lacks its name', () => {
+        const { actions } = createWorld();
+
+        expect(actions.getState(cssTheme)).toEqual({ status: 'not-installed', actions: ['install'] });
+    });
+
+    test('is installed, and offers to apply, when the UI theme list has its name', () => {
+        const { actions } = createWorld({ themes: ['Midnight'] });
+
+        expect(actions.getState(cssTheme)).toEqual({ status: 'installed', actions: ['apply'] });
+    });
+
+    test('installs by id, and then goes by the name the server returned', async () => {
+        const { actions, adapters } = createWorld();
+
+        const state = await actions.run(cssTheme, 'install');
+
+        expect(adapters.themes.install).toHaveBeenCalledWith('midnight');
+        expect(state).toEqual({ status: 'installed', actions: ['apply'] });
+        await actions.run(cssTheme, 'apply');
+        expect(adapters.themes.apply).toHaveBeenCalledWith('Midnight Blue');
+    });
+
+    test('stays not installed when the install fails, and passes the failure on', async () => {
+        const { actions, adapters } = createWorld();
+        adapters.themes.install.mockRejectedValueOnce(new Error('upstream_failed'));
+
+        await expect(actions.run(cssTheme, 'install')).rejects.toThrow('upstream_failed');
+
+        expect(actions.getState(cssTheme).status).toBe('not-installed');
+    });
+});
+
+describe('an item of a kind that has no row', () => {
+    test('has no state and runs no action, because Bundled Extras no longer offers assistants', async () => {
+        const { actions, adapters } = createWorld();
+        const assistant = { id: 'someone', name: 'Someone', group: 'first-party-extensions', kind: 'assistant', url: null };
+
+        expect(() => actions.getState(assistant)).toThrow(/no state here/);
+        await expect(actions.run(assistant, 'install')).rejects.toThrow(/no state here/);
+        expect(adapters).not.toHaveProperty('assistants');
+    });
+});

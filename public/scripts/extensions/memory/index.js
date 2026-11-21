@@ -23,6 +23,7 @@ import { loadMovingUIState, power_user } from '../../power-user.js';
 import { dragElement } from '../../RossAscends-mods.js';
 import { getTextTokens, getTokenCountAsync, tokenizers } from '../../tokenizers.js';
 import { debounce_timeout } from '../../constants.js';
+import { t } from '../../i18n.js'; // SillyBunny: names the popout's Close button.
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
@@ -31,6 +32,7 @@ import { countWebLlmTokens, generateWebLlmChatPrompt, getWebLlmContextSize, isWe
 import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import { MacrosParser } from '/scripts/macros.js';
+import { adoptSummarizeSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the summary box, the prompt builder and the injection position are shared rows.
 export { MODULE_NAME };
 
 const MODULE_NAME = '1_memory';
@@ -1029,9 +1031,10 @@ function doPopout(e) {
         const originalHTMLClone = $(target).parent().parent().parent().find('.inline-drawer-content').html();
         const originalElement = $(target).parent().parent().parent().find('.inline-drawer-content');
         const template = $('#zoomed_avatar_template').html();
+        // SillyBunny: Close is a named button that the keyboard reaches.
         const controlBarHtml = `<div class="panelControlBar flex-container">
         <div id="summaryExtensionPopoutheader" class="fa-solid fa-grip drag-grabber hoverglow"></div>
-        <div id="summaryExtensionPopoutClose" class="fa-solid fa-circle-xmark hoverglow dragClose"></div>
+        <div id="summaryExtensionPopoutClose" class="fa-solid fa-circle-xmark hoverglow dragClose" role="button" tabindex="0" title="${t`Close`}" aria-label="${t`Close`}"></div>
     </div>`;
         const newElement = $(template);
         newElement.attr('id', 'summaryExtensionPopout')
@@ -1111,6 +1114,7 @@ export async function init() {
         const settingsHtml = await renderExtensionTemplateAsync('memory', 'settings', { defaultSettings });
         $('#summarize_container').append(settingsHtml);
         setupListeners();
+        adoptSummarizeSettings($('#memory_settings')[0]); // SillyBunny: the summary box, the prompt builder and the injection position are shared rows.
         $('#summaryExtensionPopoutButton').off('click').on('click', function (e) {
             doPopout(e);
             e.stopPropagation();

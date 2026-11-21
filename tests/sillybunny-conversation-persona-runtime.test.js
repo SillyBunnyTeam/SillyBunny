@@ -9,6 +9,7 @@ const personaChangeOrder = [];
 const handleChatChanged = jest.fn(() => personaChangeOrder.push('handle'));
 const loadCurrentPanelSettings = jest.fn(() => personaChangeOrder.push('load'));
 const selectConversationThread = jest.fn();
+const scheduleInterfaceRefresh = jest.fn();
 const windowHandlers = new Map();
 let hasUsage = false;
 const conversationState = {
@@ -41,6 +42,7 @@ await jest.unstable_mockModule('../public/scripts/events.js', () => ({
         GENERATION_ENDED: 'generation-ended',
         GENERATION_STARTED: 'generation-started',
         GENERATION_STOPPED: 'generation-stopped',
+        ONLINE_STATUS_CHANGED: 'online-status-changed',
         PERSONA_CHANGED: 'persona-changed',
         USER_MESSAGE_RENDERED: 'user-message-rendered',
     },
@@ -80,7 +82,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-r
     getCharacterForGroupChatMessage: () => null,
     getCurrentGroupConversationMembers: () => [],
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleInterfaceRefresh: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleInterfaceRefresh }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-panel.js', () => ({
     closeConversationSettings: () => personaChangeOrder.push('close'),
 }));
@@ -170,5 +172,18 @@ describe('conversation persona runtime', () => {
         expect(selectConversationThread).toHaveBeenCalledWith('new-character.png', {
             showToast: false,
         });
+    });
+
+    test('refreshes open Conversation controls on connection changes without opening the workspace', () => {
+        init();
+        scheduleInterfaceRefresh.mockClear();
+        conversationState.conversationWorkspaceOpen = false;
+
+        handlers.get('online-status-changed')('no_connection');
+        expect(scheduleInterfaceRefresh).not.toHaveBeenCalled();
+
+        conversationState.conversationWorkspaceOpen = true;
+        handlers.get('online-status-changed')('Connected');
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledWith({ syncControls: false });
     });
 });

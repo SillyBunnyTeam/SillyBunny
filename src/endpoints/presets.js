@@ -174,3 +174,23 @@ router.post('/restore-defaults', function (request, response) {
         return response.sendStatus(500);
     }
 });
+
+// SillyBunny: read-only list of bundled preset names for one preset kind. Bundled presets are
+// read-only by name, including deleted ones, so a user file that reuses the name stays protected.
+router.post('/defaults', function (request, response) {
+    try {
+        const settings = getPresetSettingsByAPI(String(request.body.apiId ?? ''), request.user.directories);
+        if (!settings.folder) {
+            return response.sendStatus(400);
+        }
+
+        const names = getDefaultPresets(request.user.directories)
+            .filter(preset => preset.folder === settings.folder)
+            .map(preset => preset.name);
+
+        return response.send({ names });
+    } catch (error) {
+        console.error(error);
+        return response.sendStatus(500);
+    }
+});

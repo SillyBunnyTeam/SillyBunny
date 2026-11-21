@@ -11,13 +11,53 @@
     align-items: center;
 }
 
+/* SillyBunny: a button shows a label or an icon, not both, and buttons side by side share one width. The toolbars therefore show the label and lay the buttons out in a grid. */
+.regex_settings .inline-drawer-content > .flex-container:has(> #open_regex_editor) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 6px;
+    width: 100%;
+}
+
+.regex_settings :is(.inline-drawer-content > .flex-container:has(> #open_regex_editor), .regex_bulk_operations) > .menu_button {
+    justify-content: center;
+    width: auto;
+    min-block-size: var(--sb-density-floor, 32px);
+    margin: 0;
+}
+
+.regex_settings :is(.inline-drawer-content > .flex-container:has(> #open_regex_editor), .regex_bulk_operations) > .menu_button:has(> small) > i {
+    display: none;
+}
+
+/* SillyBunny: Test Mode is a label-only toggle button; it looks pushed in while it is on. */
+#regex_test_mode_toggle[aria-pressed='true'] {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+}
+
+@media (hover: hover) {
+    #regex_test_mode_toggle[aria-pressed='true']:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 35%, transparent);
+    }
+}
+
+#regex_test_mode_toggle[aria-pressed='true']:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 40%, transparent);
+}
+
 .regex-script-container {
     margin-top: 10px;
     margin-bottom: 10px;
 }
 
+/* SillyBunny: the settings page insets each block by the row padding, and a script row spans the card. */
+#sb-settings-page .sb-settings-mounted-shell .regex-script-container.ds-entity-list__rows {
+    margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
+}
+
+/* SillyBunny: the template is sanitised, which drops non-data attributes, so the empty-list text lives in data-no-scripts-text. */
 .regex-script-container:empty::after {
-    content: attr(no-scripts-text);
+    content: attr(data-no-scripts-text);
     font-size: 0.95em;
     opacity: 0.7;
     display: block;
@@ -51,13 +91,10 @@
     display: none;
 }
 
-.regex-script-label {
-    align-items: baseline;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
-    padding: 0 5px;
-    margin-top: 1px;
-    margin-bottom: 1px;
+/* SillyBunny: a script's name is the user's own text and the only thing that tells rows apart, so it wraps instead of being cut at a narrow width. */
+.regex-script-label .regex_script_name {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .regex-script-label:has(.disable_regex:checked) .regex_script_name {
@@ -86,16 +123,6 @@ input.enable_scoped {
     cursor: pointer;
 }
 
-.disable_regex:checked~.regex-toggle-on,
-.disable_regex:not(:checked)~.regex-toggle-off {
-    display: none;
-}
-
-.disable_regex:not(:checked)~.regex-toggle-on,
-.disable_regex:checked~.regex-toggle-off {
-    display: block;
-}
-
 #regex_info_block_wrapper {
     position: relative;
 }
@@ -104,6 +131,17 @@ input.enable_scoped {
     margin: 10px 0;
     padding: 5px 20px;
     font-size: 0.9em;
+}
+
+/* SillyBunny: the groups of the editor are borderless boxed lists. The dialog's rule for groups draws a 1px edge around each. */
+.sb-dialog .regex_editor .ds-pref-group {
+    border-width: 0;
+}
+
+/* SillyBunny: the baseline bar that holds only the Regex Presets heading is sized for the buttons that the other bars carry; without them it left an empty band under the heading. */
+#regex_presets_block > .flex-container.alignItemsBaseline {
+    min-height: 0;
+    padding-bottom: 0;
 }
 
 #regex_info_block_wrapper:has(#regex_info_block:empty) {
@@ -122,8 +160,7 @@ input.enable_scoped {
 }
 
 .regex_settings .regex-script-container .regex-script-label .regex_bulk_checkbox {
-    margin-left: 5px;
-    margin-right: 5px;
+    margin-inline: 5px;
 }
 
 .regex_settings .regex_bulk_operations,
@@ -133,7 +170,10 @@ input.enable_scoped {
 }
 
 .regex_settings:has(#regex_bulk_edit:checked) .regex_bulk_operations {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 6px;
+    width: 100%;
 }
 
 .regex_settings:has(#regex_bulk_edit:checked) .regex_bulk_operations_hr {
@@ -144,18 +184,17 @@ input.enable_scoped {
     display: inline-grid;
 }
 
-@supports not selector(:has(*)) {
-    .regex-script-label label.regex_script_expand {
-        display: none;
-    }
-
-    .regex-script-label .regex_script_buttons {
-        display: flex;
-    }
+/* SillyBunny: the row shows the shared switch and menu. The template's own controls stay in the row for the code that finds them, and the class display of `.flex-container` would otherwise show them. */
+.regex-script-label > [hidden] {
+    display: none;
 }
 
-.regex-script-label label.regex_script_expand input[name="regex_expand"],
-.regex-script-label:has(input[name="regex_expand"]:checked) label.regex_script_expand,
-.regex-script-label:not(:has(input[name="regex_expand"]:checked)) .regex_script_buttons {
-    display: none;
+.regex-script-switch-target {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-block-size: var(--sb-density-floor, 32px);
+    margin: 0;
+    cursor: pointer;
 }

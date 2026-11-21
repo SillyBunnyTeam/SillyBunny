@@ -1,4 +1,5 @@
 import { QuickReplySet } from './QuickReplySet.js';
+import { adoptQuickReplySetLink } from '../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: a set link is a shared entity row.
 import { getQuickReplySetLinkNameKey, getQuickReplySetNameKey, getUniqueQuickReplySetsByName } from './quick-reply-set-list.js';
 
 export class QuickReplySetLink {
@@ -26,7 +27,8 @@ export class QuickReplySetLink {
         this.index = idx;
         const item = document.createElement('div'); {
             this.settingsDom = item;
-            item.classList.add('qr--item');
+            // SillyBunny: keep set links as shared rows while preserving sortable and update handlers.
+            item.classList.add('qr--item', 'ds-row', 'ds-row--activatable');
             item.setAttribute('data-order', String(this.index));
             const drag = document.createElement('div'); {
                 drag.classList.add('drag-handle');
@@ -53,7 +55,8 @@ export class QuickReplySetLink {
                 item.append(set);
             }
             const visible = document.createElement('label'); {
-                visible.classList.add('qr--visible');
+                // SillyBunny: keep the visibility control at the row end with the shared row layout.
+                visible.classList.add('qr--visible', 'ds-row-suffix');
                 visible.title = 'Show buttons';
                 const cb = document.createElement('input'); {
                     cb.type = 'checkbox';
@@ -68,8 +71,9 @@ export class QuickReplySetLink {
                 item.append(visible);
             }
             const edit = document.createElement('div'); {
+                // SillyBunny: use shared flat controls without changing the existing click handlers.
                 edit.classList.add('menu_button');
-                edit.classList.add('menu_button_icon');
+                edit.classList.add('menu_button_icon', 'sb-header-icon-button');
                 edit.classList.add('fa-solid');
                 edit.classList.add('fa-pencil');
                 edit.title = 'Edit quick reply set';
@@ -79,13 +83,14 @@ export class QuickReplySetLink {
             const del = document.createElement('div'); {
                 del.classList.add('qr--del');
                 del.classList.add('menu_button');
-                del.classList.add('menu_button_icon');
+                del.classList.add('menu_button_icon', 'sb-header-icon-button');
                 del.classList.add('fa-solid');
                 del.classList.add('fa-trash-can');
                 del.title = 'Remove quick reply set';
                 del.addEventListener('click', () => this.delete());
                 item.append(del);
             }
+            adoptQuickReplySetLink(item); // SillyBunny: the pencil and the trash can move into the row's menu.
         }
         return this.settingsDom;
     }

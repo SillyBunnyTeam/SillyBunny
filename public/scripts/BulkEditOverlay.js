@@ -23,8 +23,11 @@ import { loader } from './action-loader.js';
 import { groups, resetSelectedGroup, selected_group } from './group-chats.js';
 import { convertCharacterToPersona } from './personas.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { createTagInput, getTagKeyForEntity, getTagsList, printTagList, tag_map, compareTagsForSort, removeTagFromMap, importTags, tag_import_setting } from './tags.js';
 import { t } from './i18n.js';
+// SillyBunny: retain the upstream tag controls and listeners inside the shared Dialog frame.
+import { openDialog } from './sillybunny-editor/dialog.js';
 
 function getBulkEntity(id) {
     if (typeof id === 'number') {
@@ -184,6 +187,8 @@ class CharacterContextMenu {
  * Represents a tag control not bound to a single character
  */
 class BulkTagPopupHandler {
+    #dialog = null;
+
     /**
      * The entity keys for this popup
      * @type {Array<number|string>}
@@ -219,27 +224,30 @@ class BulkTagPopupHandler {
                         <div id="bulk_tag_popup_import_existing_tags" class="menu_button" title="Import existing tags from selected characters" data-i18n="[title]Import existing tags from selected characters">
                             Import Existing
                         </div>`;
+        // SillyBunny: The shared entry class keeps this adopted field aligned with framed dialog searches.
         return `<div id="bulk_tag_shadow_popup">
             <div id="bulk_tag_popup" class="wider_dialogue_popup">
                 <div id="bulk_tag_popup_holder">
-                    <h3 class="marginBot5">Modify tags of ${this.characterIds.length} ${noun}</h3>
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <h3 class="marginBot5">Modify Tags of ${this.characterIds.length} ${noun}</h3>
                     <small class="bulk_tags_desc m-b-1">Add or remove the mutual tags of all selected ${noun}.${isGroups ? '' : ' Import all or existing tags for all selected characters.'}</small>
                     <div id="bulk_tags_avatars_block" class="avatars_inline avatars_inline_small tags tags_inline"></div>
                     <br>
                     <div id="bulk_tags_div" class="marginBot5" data-characters='${characterData}'>
                         <div class="tag_controls">
-                            <input id="bulkTagInput" class="text_pole tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" maxlength="25" />
+                            <!-- SillyBunny: use the shared entry metrics without changing the upstream input. -->
+                            <input id="bulkTagInput" class="text_pole sb-dialog__entry tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" maxlength="25" />
                             <div class="tags_view menu_button fa-solid fa-tags" title="View all tags" data-i18n="[title]View all tags"></div>
                         </div>
                         <div id="bulkTagList" class="m-t-1 tags"></div>
                     </div>
                     <div id="dialogue_popup_controls" class="m-t-1">
-                        <div id="bulk_tag_popup_reset" class="menu_button" title="Remove all tags from the selected ${noun}" data-i18n="[title]Remove all tags from the selected characters">
-                            <i class="fa-solid fa-trash-can margin-right-10px"></i>
+                        <!-- SillyBunny: All and Mutual are label-only buttons (an icon or a label, not both). -->
+                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                        <div id="bulk_tag_popup_reset" class="menu_button" title="Remove All Tags From the Selected ${noun}" data-i18n="[title]Remove all tags from the selected characters">
                             All
                         </div>
                         <div id="bulk_tag_popup_remove_mutual" class="menu_button" title="Remove all mutual tags from the selected ${noun}" data-i18n="[title]Remove all mutual tags from the selected characters">
-                            <i class="fa-solid fa-trash-can margin-right-10px"></i>
                             Mutual
                         </div>
                         ${importButtons}
@@ -264,7 +272,20 @@ class BulkTagPopupHandler {
             return;
         }
 
-        document.body.insertAdjacentHTML('beforeend', this.#getHtml());
+        const template = document.createElement('template');
+        template.innerHTML = this.#getHtml();
+        const popupElement = template.content.querySelector('#bulk_tag_shadow_popup');
+        const heading = popupElement?.querySelector('#bulk_tag_popup h3');
+        const closeButton = popupElement?.querySelector('#bulk_tag_popup_cancel');
+        if (!(popupElement instanceof HTMLElement) || !(heading instanceof HTMLElement)) {
+            throw new Error('Bulk tag editor markup is incomplete.');
+        }
+
+        const title = heading.textContent.trim();
+        heading.hidden = true;
+        if (closeButton instanceof HTMLElement) closeButton.hidden = true;
+        // SillyBunny: the shared frame supplies the title and Close action while the legacy IDs stay queryable.
+        this.#dialog = openDialog({ tier: 'dialog', title, content: popupElement, className: 'sb-bulk-tag-dialog' });
 
         const entities = this.characterIds.map(getBulkEntity).filter(Boolean);
         buildAvatarList($('#bulk_tags_avatars_block'), entities);
@@ -333,10 +354,15 @@ class BulkTagPopupHandler {
      * Hide and remove the tag control
      */
     hide() {
-        let popupElement = document.querySelector('#bulk_tag_shadow_popup');
-        if (popupElement) {
-            document.body.removeChild(popupElement);
+        // SillyBunny: the frame owns removal after its close transition; the fallback covers an unframed compatibility node.
+        if (this.#dialog) {
+            const dialog = this.#dialog;
+            this.#dialog = null;
+            void dialog.close('close', 'close');
+            return;
         }
+
+        document.querySelector('#bulk_tag_shadow_popup')?.remove();
 
         // No need to redraw here, all tags actions were redrawn when they happened
     }
@@ -413,6 +439,11 @@ class BulkEditOverlay {
     #stateChangeCallbacks = [];
     #selectedCharacters = [];
     #bulkTagPopupHandler = new BulkTagPopupHandler();
+    // SillyBunny: the shared list owns selection, not the legacy overlay.
+    #legacyRowSelectionEnabled = true;
+    #bulkActionRunning = false;
+    #stateChange = Promise.resolve();
+    #notifyingSharedState = false;
 
     /**
      * @typedef {object} LastSelected - An object noting the last selected character and its state.
@@ -458,11 +489,30 @@ class BulkEditOverlay {
     set state(newState) {
         if (this.#state === newState) return;
 
-        eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_BEFORE, newState)
-            .then(() => {
+        // SillyBunny: serialize legacy and shared notifications so rapid enter/exit preserves event order.
+        this.#notifyStateChange(newState);
+    }
+
+    #notifyStateChange(newState, shared = false) {
+        this.#stateChange = this.#stateChange.then(async () => {
+            if (this.#state === newState) return;
+            this.#notifyingSharedState = shared;
+            try {
+                await eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_BEFORE, newState);
                 this.#state = newState;
-                eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, this.state);
-            });
+                await eventSource.emit(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, this.state);
+            } finally {
+                this.#notifyingSharedState = false;
+            }
+        });
+        return this.#stateChange;
+    }
+
+    // SillyBunny: shared selection preserves extension notifications without enabling legacy controls.
+    /** Notifies the upstream state lifecycle for shared selection. @param {'select'|'browse'} state @returns {Promise<void>} */
+    notifySharedSelectionState(state) {
+        if (state !== 'select' && state !== 'browse') throw new TypeError(`Unknown shared selection state: ${state}`);
+        return this.#notifyStateChange(BulkEditOverlayState[state], true);
     }
 
     get isLongPress() {
@@ -483,6 +533,69 @@ class BulkEditOverlay {
      */
     get selectedCharacters() {
         return this.#selectedCharacters;
+    }
+
+    // SillyBunny: leave the upstream action handlers usable without their selection UI.
+    /** Whether legacy rows and bulk-button transports may drive selection. @returns {boolean} */
+    get legacyRowSelectionEnabled() {
+        return this.#legacyRowSelectionEnabled && !this.#notifyingSharedState;
+    }
+
+    /** Enables the upstream row-selection UI only when the shared list does not own it. @param {boolean} enabled */
+    setLegacyRowSelectionEnabled(enabled) {
+        if (this.#legacyRowSelectionEnabled === enabled) return;
+        this.onPageUnload();
+        this.#legacyRowSelectionEnabled = enabled;
+        clearTimeout(this.#holdTimer);
+        this.#holdTimer = null;
+        this.isLongPress = false;
+        // SillyBunny: clean original rows before the shared list detaches them, and restored container attributes on teardown.
+        this.#resetLegacySelectionUI();
+        if (enabled) this.onPageLoad();
+        else this.notifySharedSelectionState('browse');
+    }
+
+    #resetLegacySelectionUI() {
+        this.#contextMenuOpen = false;
+        this.#cancelNextToggle = false;
+        this.#enableClickEventsForCharacters();
+        this.#enableClickEventsForDisabledElements();
+        this.clearSelectedCharacters();
+        this.disableContextMenu();
+        this.#disableBulkEditButtonHighlight();
+        CharacterContextMenu.hide();
+        this.container.querySelectorAll('.bulk_select_checkbox').forEach(checkbox => checkbox.remove());
+        this.#getDisabledElements().forEach(element => element.classList.remove('disabled'));
+        this.container.classList.remove(BulkEditOverlay.selectModeClass, 'bulk_select');
+    }
+
+    /**
+     * Runs an existing bulk handler on explicit ids, clearing selection even on cancellation or rejection.
+     * @param {'favorite'|'tag'|'duplicate'|'persona'|'delete'} action
+     * @param {Array<number|string>} entityIds Character indices as numbers; group ids as strings.
+     * @returns {Promise<void>}
+     */
+    async runBulkAction(action, entityIds) {
+        const handlers = {
+            favorite: this.handleContextMenuFavorite,
+            tag: this.handleContextMenuTag,
+            duplicate: this.handleContextMenuDuplicate,
+            persona: this.handleContextMenuPersona,
+            delete: this.handleContextMenuDelete,
+        };
+        if (!Object.hasOwn(handlers, action)) throw new TypeError(`Unknown bulk action: ${action}`);
+        if (!Array.isArray(entityIds) || entityIds.some(id => !(Number.isInteger(id) && id >= 0) && !(typeof id === 'string' && id.length))) {
+            throw new TypeError('Bulk entity ids must be character indices or group ids.');
+        }
+        if (this.#bulkActionRunning) throw new Error('A bulk action is already running.');
+        this.#bulkActionRunning = true;
+        this.#selectedCharacters = [...entityIds];
+        try {
+            await handlers[action]();
+        } finally {
+            this.clearSelectedCharacters();
+            this.#bulkActionRunning = false;
+        }
     }
 
     /**
@@ -535,6 +648,8 @@ class BulkEditOverlay {
      */
     onPageLoad = () => {
         this.onPageUnload();
+        // SillyBunny: page refreshes must not reset the shared list's selection or bind legacy gestures.
+        if (!this.legacyRowSelectionEnabled) return;
         this.browseState();
 
         const elements = this.#getEnabledElements();
@@ -558,16 +673,14 @@ class BulkEditOverlay {
      *
      */
     handleStateChange = () => {
+        // SillyBunny: shared transitions notify consumers but never bind the legacy selection UI.
+        if (!this.legacyRowSelectionEnabled) {
+            this.stateChangeCallbacks.forEach(callback => callback(this.state));
+            return;
+        }
         switch (this.state) {
             case BulkEditOverlayState.browse:
-                this.container.classList.remove(BulkEditOverlay.selectModeClass);
-                this.#contextMenuOpen = false;
-                this.#enableClickEventsForCharacters();
-                this.#enableClickEventsForDisabledElements();
-                this.clearSelectedCharacters();
-                this.disableContextMenu();
-                this.#disableBulkEditButtonHighlight();
-                CharacterContextMenu.hide();
+                this.#resetLegacySelectionUI();
                 break;
             case BulkEditOverlayState.select:
                 this.container.classList.add(BulkEditOverlay.selectModeClass);
@@ -776,7 +889,7 @@ class BulkEditOverlay {
      */
     updateSelectedCount = (countOverride = undefined) => {
         const count = countOverride ?? this.selectedCharacters.length;
-        $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} selected`);
+        $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} Selected`); // SillyBunny: capitalisation by DESIGN.md
     };
 
     /**
@@ -939,7 +1052,8 @@ class BulkEditOverlay {
         const isGroups = entityIds.some(id => typeof id === 'string');
         const popupContent = $(BulkEditOverlay.#getDeletePopupContentHtml(entityIds, isGroups));
         const checkbox = popupContent.find('#del_char_checkbox');
-        const promise = callGenericPopup(popupContent, POPUP_TYPE.CONFIRM)
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const promise = callGenericPopup(popupContent, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }))
             .then((accept) => {
                 if (!accept) return;
 

@@ -55,7 +55,7 @@ describe('sillybunny conversation thread store utils', () => {
         expect(getConversationMediaIndex(message, [{}, {}])).toBe(1);
         expect(getConversationPromptMediaAttachments(message)).toEqual([
             { url: 'image.png', type: 'image', title: 'Desk' },
-            { url: 'generated.png', type: 'image', title: 'Generated image' },
+            { url: 'generated.png', type: 'image', title: 'Generated Image' },
         ]);
         expect(getConversationAttachmentSummary(message)).toBe('[Attachments: generated image; image: Desk; video; file: Notes]');
     });

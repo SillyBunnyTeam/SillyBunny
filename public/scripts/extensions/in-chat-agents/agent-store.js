@@ -434,6 +434,34 @@ export function reconcileScopedEnabledAgentIdsFromLegacyFlags(scope = getActiveA
     return true;
 }
 
+/**
+ * Remembers the scoped enable state as it is now, so that a switch that seeds it can be switched back.
+ * @returns {{ enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean }}
+ */
+export function captureScopedEnableState() {
+    return {
+        enabledAgentIdsByChatType: structuredClone(ensureScopedEnabledAgentIds()),
+        scopedEnabledAgentIdsInitialized: globalSettings.scopedEnabledAgentIdsInitialized,
+    };
+}
+
+/**
+ * Puts back the scoped enable state that `before` captured, unless the scoped lists have been edited since `seeded` was
+ * captured: edits made while the lists were in use are the user's and stay.
+ * @param {ReturnType<typeof captureScopedEnableState>} before
+ * @param {ReturnType<typeof captureScopedEnableState>} seeded
+ * @returns {boolean} Whether the state was put back.
+ */
+export function restoreScopedEnableState(before, seeded) {
+    if (JSON.stringify(ensureScopedEnabledAgentIds()) !== JSON.stringify(seeded.enabledAgentIdsByChatType)) {
+        return false;
+    }
+
+    globalSettings.enabledAgentIdsByChatType = structuredClone(before.enabledAgentIdsByChatType);
+    globalSettings.scopedEnabledAgentIdsInitialized = before.scopedEnabledAgentIdsInitialized;
+    return true;
+}
+
 export function persistAgentGlobalSettings() {
     extension_settings.inChatAgents = {
         ...(extension_settings.inChatAgents ?? {}),

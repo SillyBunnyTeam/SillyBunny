@@ -139,6 +139,9 @@ beforeEach(async () => {
             return match ? new RegExp(match[1], match[2]) : new RegExp(value);
         },
     }));
+    jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+        t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+    }));
     jest.unstable_mockModule('../public/scripts/popup.js', () => ({
         POPUP_RESULT: { CUSTOM2: 2 },
         POPUP_TYPE: { TEXT: 1 },

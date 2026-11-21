@@ -1,4 +1,5 @@
-import { setConversationInterfaceActive } from './chrome.js';
+import { online_status } from '../../script.js';
+import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
     getConversationBranches,
@@ -34,6 +35,7 @@ import { renderConversationTimeline, updateConversationNotificationSettingsVisib
 import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
+import { createSpinner, createStatusPage } from '../sillybunny-editor/status-page.js';
 
 function buildBranchListFingerprint(characterStore, activeBranchId) {
     return Object.entries(characterStore?.branches || {})
@@ -137,10 +139,7 @@ export function renderPalsRail() {
     list.textContent = '';
 
     if (!pals.length) {
-        const empty = document.createElement('div');
-        empty.className = 'sb-conversation-empty';
-        empty.textContent = 'Use + to start a DM with a character.';
-        list.appendChild(empty);
+        list.appendChild(createStatusPage({ state: 'empty', icon: 'comments', title: 'Use + to start a DM with a character.', compact: true }).element);
         updateConversationNotificationIndicators();
         return;
     }
@@ -168,18 +167,6 @@ export function renderPalsRail() {
             <span class="sb-conversation-pal-unread" aria-hidden="true"></span>
         `;
 
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.className = 'sb-conversation-pal-delete fa-solid fa-trash-can';
-        deleteButton.dataset.sbConversationAction = 'delete-dm';
-        deleteButton.dataset.avatar = character.avatar;
-        deleteButton.dataset.groupId = groupId || '';
-        const deleteTitle = groupId
-            ? `Delete group Conversation history with ${character.name || 'Character'}`
-            : `Delete solo DM history with ${character.name || 'Character'}`;
-        deleteButton.title = deleteTitle;
-        deleteButton.setAttribute('aria-label', deleteTitle);
-
         const avatarStack = button.querySelector('.sb-conversation-pal-avatar');
         const name = button.querySelector('.sb-conversation-pal-name');
         const kind = button.querySelector('.sb-conversation-pal-kind');
@@ -196,7 +183,9 @@ export function renderPalsRail() {
                 : character.name || 'Character';
         }
         if (kind instanceof HTMLElement) {
-            kind.textContent = groupId ? (group?.name || 'Group DM') : 'Solo';
+            kind.textContent = groupId ? 'Group' : '';
+            kind.hidden = !groupId;
+            kind.title = groupId ? (group?.name || 'Group DM') : '';
         }
         if (preview instanceof HTMLElement) {
             preview.textContent = getLastConversationPreview(character.avatar, { groupId, personaId });
@@ -205,77 +194,11 @@ export function renderPalsRail() {
             unreadBadge.textContent = getBadgeLabel(unreadCount);
             unreadBadge.hidden = unreadCount <= 0;
         }
-
-        const characterStore = getConversationThreadStore(character.avatar, { create: false, groupId, personaId });
-        const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
-        const branchList = document.createElement('div');
-        branchList.className = 'sb-conversation-branch-list';
-        for (const branch of getConversationBranches(character.avatar, { groupId })) {
-            const branchRow = document.createElement('div');
-            branchRow.className = 'sb-conversation-branch-row';
-            branchRow.dataset.active = String(branch.id === activeBranchId);
-            branchRow.dataset.unread = String(branch.unread > 0);
-
-            const branchButton = document.createElement('button');
-            branchButton.type = 'button';
-            branchButton.className = 'sb-conversation-branch-button';
-            branchButton.dataset.sbConversationAction = 'select-branch';
-            branchButton.dataset.avatar = character.avatar;
-            branchButton.dataset.groupId = groupId || '';
-            branchButton.dataset.branchId = branch.id;
-            branchButton.dataset.unread = String(branch.unread > 0);
-            branchButton.innerHTML = '<span class="sb-conversation-branch-name"></span><span class="sb-conversation-branch-preview"></span><span class="sb-conversation-branch-unread" aria-hidden="true"></span>';
-            const branchName = branchButton.querySelector('.sb-conversation-branch-name');
-            const branchPreview = branchButton.querySelector('.sb-conversation-branch-preview');
-            const branchUnread = branchButton.querySelector('.sb-conversation-branch-unread');
-            if (branchName instanceof HTMLElement) {
-                branchName.textContent = branch.name || 'Conversation';
-            }
-            if (branchPreview instanceof HTMLElement) {
-                branchPreview.textContent = branch.preview || 'Conversation ready';
-            }
-            if (branchUnread instanceof HTMLElement) {
-                branchUnread.textContent = getBadgeLabel(branch.unread);
-                branchUnread.hidden = branch.unread <= 0;
-            }
-            if (branch.unread > 0) {
-                branchButton.setAttribute('aria-label', `${branch.name || 'Conversation'}, ${branch.unread} unread`);
-            }
-
-            const renameBranch = document.createElement('button');
-            renameBranch.type = 'button';
-            renameBranch.className = 'sb-conversation-branch-action fa-solid fa-pen';
-            renameBranch.dataset.sbConversationAction = 'rename-branch';
-            renameBranch.dataset.avatar = character.avatar;
-            renameBranch.dataset.groupId = groupId || '';
-            renameBranch.dataset.branchId = branch.id;
-            renameBranch.title = `Rename ${branch.name || 'conversation'}`;
-            renameBranch.setAttribute('aria-label', renameBranch.title);
-
-            const deleteBranch = document.createElement('button');
-            deleteBranch.type = 'button';
-            deleteBranch.className = 'sb-conversation-branch-action fa-solid fa-trash-can';
-            deleteBranch.dataset.sbConversationAction = 'delete-branch';
-            deleteBranch.dataset.avatar = character.avatar;
-            deleteBranch.dataset.groupId = groupId || '';
-            deleteBranch.dataset.branchId = branch.id;
-            deleteBranch.title = `Delete ${branch.name || 'conversation'}`;
-            deleteBranch.setAttribute('aria-label', deleteBranch.title);
-
-            branchRow.append(branchButton, renameBranch, deleteBranch);
-            branchList.appendChild(branchRow);
+        if (unreadCount > 0) {
+            button.setAttribute('aria-label', `${name?.textContent || 'Conversation'}, ${unreadCount} Unread`);
         }
 
-        const newBranch = document.createElement('button');
-        newBranch.type = 'button';
-        newBranch.className = 'sb-conversation-new-branch';
-        newBranch.dataset.sbConversationAction = 'new-branch';
-        newBranch.dataset.avatar = character.avatar;
-        newBranch.dataset.groupId = groupId || '';
-        newBranch.innerHTML = '<i class="fa-solid fa-plus" aria-hidden="true"></i><span>New branch</span>';
-        branchList.appendChild(newBranch);
-
-        row.append(button, deleteButton, branchList);
+        row.append(button);
         list.appendChild(row);
     }
     updateConversationNotificationIndicators();
@@ -290,7 +213,6 @@ export function updateConversationHeader(settings = getSettings()) {
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
     const participantsContainer = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-participants]`);
-    const addMemberButton = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="open-add-member"]`);
     const statusCopy = getAvailabilityCopy(settings.availability);
     const schedule = avatar ? getStoredSchedule(avatar, { personaId }) : null;
     const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar, new Date(), { personaId }) : null;
@@ -302,9 +224,6 @@ export function updateConversationHeader(settings = getSettings()) {
             : null;
         if (stage instanceof HTMLElement) {
             stage.dataset.ambientStatus = 'offline';
-        }
-        if (addMemberButton instanceof HTMLButtonElement) {
-            addMemberButton.hidden = true;
         }
         renderHeaderParticipantStack(participantsContainer, [], { status: 'offline' });
         if (name instanceof HTMLElement) {
@@ -324,12 +243,6 @@ export function updateConversationHeader(settings = getSettings()) {
 
     const participants = getConversationParticipants(avatar, settings, { groupId });
     const partnerCount = Math.max(0, participants.length - 1);
-    if (addMemberButton instanceof HTMLButtonElement) {
-        addMemberButton.hidden = !conversationState.conversationWorkspaceOpen;
-        const label = conversationState.conversationSelectedGroupId ? 'Add member to group Conversation' : 'Add member to this DM';
-        addMemberButton.title = label;
-        addMemberButton.setAttribute('aria-label', label);
-    }
     renderHeaderParticipantStack(participantsContainer, participants, {
         status: effectiveStatus,
         groupId,
@@ -339,45 +252,32 @@ export function updateConversationHeader(settings = getSettings()) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
+        const activeBranchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || DEFAULT_BRANCH_ID;
+        const branchName = getConversationBranches(avatar, { groupId }).find(branch => branch.id === activeBranchId)?.name || 'Main';
         const typingParticipants = getActiveTypingParticipants(avatar, { groupId, personaId });
+        let statusText;
         if (typingParticipants.length) {
             const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
             if (typingNames.length > 2) {
-                status.textContent = 'Several people are typing...';
+                statusText = 'Several People Are Typing…';
             } else if (typingNames.length > 1) {
-                status.textContent = `${typingNames.join(', ')} are writing...`;
+                statusText = `${typingNames.join(', ')} Are Writing…`;
             } else {
-                status.textContent = `${typingNames[0] || 'Character'} is writing...`;
+                statusText = `${typingNames[0] || 'Character'} Is Writing…`;
             }
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
             const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
             const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
-            status.textContent = `${currentCopy.label} · ${current.activity}${delayedNotice}${partnerNotice}`;
+            statusText = `${currentCopy.label} · ${current.activity}${delayedNotice}${partnerNotice}`;
         } else {
-            const partnerNotice = partnerCount ? ` ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in.` : '';
-            status.textContent = `${statusCopy.label}: ${statusCopy.detail}${partnerNotice}`;
+            const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
+            statusText = `${statusCopy.label}${partnerNotice}`;
+            status.title = statusCopy.detail;
         }
-    }
-}
-
-export function syncConversationToolsVisibility() {
-    const tools = document.getElementById(CHROME_IDS.tools);
-    const toggleBtn = document.getElementById('sb_conversation_toggle_tools');
-    if (tools instanceof HTMLElement) {
-        const visible = localStorage.getItem('sb_conv_tools_visible') === 'true';
-        if (visible) {
-            tools.classList.add('visible');
-            tools.style.setProperty('display', 'grid', 'important');
-            if (toggleBtn) {
-                toggleBtn.classList.add('active');
-            }
-        } else {
-            tools.classList.remove('visible');
-            tools.style.setProperty('display', 'none', 'important');
-            if (toggleBtn) {
-                toggleBtn.classList.remove('active');
-            }
+        status.textContent = `${branchName} · ${statusText}`;
+        if (current || typingParticipants.length) {
+            status.title = statusText;
         }
     }
 }
@@ -392,7 +292,8 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId, personaId });
-    const active = Boolean(conversationState.conversationWorkspaceOpen);
+    // First open lazy-loads the Conversation sheet; keep Roleplay painted until it applies.
+    const active = Boolean(conversationState.conversationWorkspaceOpen) && !isConversationStylesheetLoading();
 
     setConversationInterfaceActive(active);
 
@@ -409,24 +310,31 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
         renderConversationTimeline();
         updateConversationChrome(settings);
         updateUserFooter();
-        syncConversationToolsVisibility();
 
         const input = document.getElementById(CHROME_IDS.input);
         const send = document.getElementById(CHROME_IDS.send);
         const unavailableGroup = conversationState.conversationUnavailableGroupId
             ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
             : null;
+        const isConnected = online_status !== 'no_connection';
         if (input instanceof HTMLTextAreaElement) {
             input.disabled = !avatar;
-            input.placeholder = avatar
-                ? 'Type your message...'
-                : unavailableGroup
-                    ? 'This group has no eligible Conversation members yet...'
-                    : 'Pick or start a DM from the Pals rail...';
+            input.placeholder = !isConnected
+                ? 'Not connected to API!'
+                : avatar
+                    ? 'Type your message…'
+                    : unavailableGroup
+                        ? 'This group has no eligible Conversation members yet…'
+                        : 'Pick or start a DM from the Pals rail…';
         }
         if (send instanceof HTMLButtonElement) {
-            send.disabled = !avatar;
+            send.disabled = !avatar || !isConnected || conversationState.conversationUploadActive;
         }
+        document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-quick`).forEach((button) => {
+            if (button instanceof HTMLButtonElement) {
+                button.disabled = !avatar;
+            }
+        });
     }
 
     updateProsePolisherButtonVisibility();
@@ -554,8 +462,9 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
     const sourceRevision = getConversationMessageRevision(msg);
 
     if (buttonElement instanceof HTMLElement) {
+        // The button draws its icon with a Font Awesome class, so the spinner is a child while the class is off.
         buttonElement.classList.remove('fa-wand-magic-sparkles');
-        buttonElement.classList.add('fa-spinner', 'fa-spin');
+        buttonElement.append(createSpinner({ label: buttonElement.getAttribute('aria-label') || undefined }));
     }
 
     try {
@@ -588,10 +497,10 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         }
     } catch (error) {
         console.error('Character prose polishing error:', error);
-        globalThis.toastr?.error?.('Error polishing character reply.');
+        globalThis.toastr?.error?.('Error polishing character reply');
     } finally {
         if (buttonElement instanceof HTMLElement) {
-            buttonElement.classList.remove('fa-spinner', 'fa-spin');
+            buttonElement.querySelector(':scope > .sb-spinner')?.remove();
             buttonElement.classList.add('fa-wand-magic-sparkles');
         }
     }

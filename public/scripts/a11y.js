@@ -8,7 +8,11 @@ const buttonSelectors = [
     '.right_menu_button',
     '.mes_button',
     '.drawer-icon',
-    '.inline-drawer-icon',
+    // SillyBunny: a chevron inside its drawer header is decoration of the header, so the header takes the button role instead.
+    // SillyBunny: the legacy Prompt Manager's drawer header sits in a group the prompt editor replaces and hides, so it takes no role and no Tab stop.
+    // SillyBunny: a header marked `sb-drawer-child-toggle` holds its own toggle button beside other buttons, so it takes no role: a button inside a button is nested-interactive.
+    '.inline-drawer-toggle:not(.ds-row, [aria-expanded], .sb-drawer-child-toggle, #sb-openai-prompt-manager .inline-drawer-toggle)',
+    '.inline-drawer-icon:not(:is(.inline-drawer-toggle, .inline-drawer-header) *)',
     '.swipe_left',
     '.swipe_right',
     '.character_select',
@@ -20,6 +24,27 @@ const buttonSelectors = [
     '#show_newer_messages',
 ].join(', ');
 
+// SillyBunny: the composer's icon controls are bare divs. Without a role their tooltip names nothing for assistive technology, and a
+// glyph drawn by `::before` is read as their content, which keeps the tooltip from becoming the name, so the tooltip is also the label.
+const composerControlSelectors = [
+    '#extensionsMenuButton',
+    '#send_but',
+    '#mes_impersonate',
+    '#mes_continue',
+    '#mes_stop',
+    '#sb_prose_polisher_but',
+    '#leftSendForm > .interactable',
+    '#rightSendForm > :is(.interactable, .stscript_btn)',
+].join(', ');
+
+// SillyBunny: the top bar's icon controls are bare divs as well: upstream's drawer icons, and the extension controls that the bar
+// adopts into its slot. They take the same role and the same tooltip label as the composer's.
+const topBarControlSelectors = [
+    '#top-settings-holder .drawer-icon',
+    '#sb-topbar-extension-slot :is(.drawer-icon, .menu_button, .right_menu_button, .interactable):not(:is(button, a, input, select, textarea))',
+].join(', ');
+
+// SillyBunny: the login page's #userList and its cards are not listed here, because each card is a button (login.js).
 const listSelectors = [
     '.options-content',
     '.list-group',
@@ -30,7 +55,6 @@ const listSelectors = [
     '.secretKeyManagerList',
     '.recentChatList',
     '.dataMaidCategoryContent',
-    '#userList',
     '.bg_list',
 ].join(', ');
 
@@ -44,7 +68,6 @@ const listItemSelectors = [
     '.secretKeyManagerList .secretKeyManagerItem',
     '.recentChatList .recentChat',
     '.dataMaidCategoryContent .dataMaidItem',
-    '#userList .userSelect',
     '.bg_list .bg_example',
 ].join(', ');
 
@@ -63,7 +86,17 @@ const tabItemSelectors = [
 /** @type {Record<string, (element: Element) => void>} */
 const a11yRules = {
     [buttonSelectors]: (element) => {
+        // SillyBunny: entity metadata is not a separate action. It gets no role: "generic" is not an assignable ARIA role, so axe reports it as invalid.
+        if (element.matches('.ds-entity-row__tags .tag:not(.actionable, .clickable-action)') && !element.querySelector('button, .tag_remove:not([style*="display: none"])')) {
+            element.removeAttribute('role');
+            return;
+        }
         element.setAttribute('role', 'button');
+    },
+    [`${composerControlSelectors}, ${topBarControlSelectors}`]: (element) => {
+        element.setAttribute('role', 'button');
+        const tooltip = element.getAttribute('title')?.trim();
+        if (tooltip && !element.hasAttribute('aria-label')) element.setAttribute('aria-label', tooltip);
     },
     [listSelectors]: (element) => {
         element.setAttribute('role', 'list');

@@ -68,11 +68,19 @@ test('a TTS provider setting is saved by the one tts/index.js module', async ({ 
     await isolateSettings(page);
 
     await testSetup.awaitST({ page });
+    // The Extensions page shows each extension as a row that opens its settings page, and the provider select is a
+    // select row that picks through the shared picker, so the provider is chosen there and not on the native select.
     await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
-
-    const drawer = page.locator('#tts_settings');
-    await drawer.locator('.inline-drawer-toggle').first().click();
-    await page.locator('#tts_provider').selectOption(PROVIDER);
+    await page.locator('button[data-sb-settings-tab="extensions"]').evaluate(element => element.click());
+    const panel = page.locator('[data-sb-panel="extensions"]');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    const row = panel.locator('.sb-subpage-row', { hasText: 'TTS' }).first();
+    await expect(row).toBeAttached({ timeout: 30000 });
+    await row.evaluate(element => element.click());
+    const tts = panel.locator('.sb-subpage-detail-content');
+    await expect(tts).toHaveCount(1);
+    await tts.locator('.ds-select-row:has(#tts_provider) .ds-select-row__trigger').click();
+    await page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last().getByRole('option', { name: PROVIDER, exact: true }).click();
 
     const model = page.locator('#openai_compatible_model');
     await expect(model).toBeVisible();

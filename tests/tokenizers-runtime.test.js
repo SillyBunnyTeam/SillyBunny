@@ -46,5 +46,6 @@ describe('web tokenizer runtime bootstrap', () => {
 
         expect(tokenizer).toBeTruthy();
         expect(tokenizer.encode('hello world').length).toBeGreaterThan(0);
-    });
+    // Loading a real tokenizer takes longer than Jest's 5 s default while the full suite runs in parallel.
+    }, 30_000);
 });

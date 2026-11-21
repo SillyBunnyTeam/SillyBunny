@@ -1,0 +1,125 @@
+{
+    "canvas": {
+        "width": 2048,
+        "height": 1024
+    },
+    "grid": {
+        "width": 744,
+        "height": 372
+    },
+    "layers": [
+        {
+            "id": "star-15",
+            "image": "raw/s5/masters/night-star.png",
+            "pixel": "raw/s5/pixel-body/night-star-15.png",
+            "z": 0,
+            "at": "centre",
+            "anchor": {
+                "x": 1311,
+                "y": 62
+            },
+            "height": 40
+        },
+        {
+            "id": "star-9",
+            "image": "raw/s5/masters/night-star.png",
+            "pixel": "raw/s5/pixel-body/night-star-9.png",
+            "z": 0,
+            "at": "centre",
+            "anchor": {
+                "x": 1261,
+                "y": 150
+            },
+            "height": 24
+        },
+        {
+            "id": "star-12",
+            "image": "raw/s5/masters/night-star.png",
+            "pixel": "raw/s5/pixel-body/night-star-12.png",
+            "z": 0,
+            "at": "centre",
+            "anchor": {
+                "x": 1416,
+                "y": 100
+            },
+            "height": 32
+        },
+        {
+            "id": "star-18",
+            "image": "raw/s5/masters/night-star.png",
+            "pixel": "raw/s5/pixel-body/night-star-18.png",
+            "z": 0,
+            "at": "centre",
+            "anchor": {
+                "x": 1501,
+                "y": 235
+            },
+            "height": 50
+        },
+        {
+            "id": "star-8",
+            "image": "raw/s5/masters/night-star.png",
+            "pixel": "raw/s5/pixel-body/night-star-8.png",
+            "z": 0,
+            "at": "centre",
+            "anchor": {
+                "x": 1196,
+                "y": 28
+            },
+            "height": 22
+        },
+        {
+            "id": "moon",
+            "image": "raw/s5/masters/night-moon.png",
+            "pixel": "raw/s5/pixel-body/night-moon.png",
+            "z": 1,
+            "at": "centre",
+            "anchor": {
+                "x": 1081,
+                "y": 250
+            },
+            "height": 420
+        },
+        {
+            "id": "reisen",
+            "image": "raw/s5/fix/ear-night-reisen/20261101T144553Z-gpt-image-2.5-sunburst-h-patch-1.png",
+            "pixel": "raw/s5/pixel-body/hero-duo-night-reisen.png",
+            "z": 3,
+            "at": "bottom-centre",
+            "measure": "figure",
+            "anchor": {
+                "x": 821,
+                "y": 1001
+            },
+            "height": 937,
+            "grade": {
+                "toward": "#7d8fd6",
+                "amount": 0.14,
+                "lightness": -0.03,
+                "keepSticker": true
+            }
+        },
+        {
+            "id": "tewi",
+            "image": "raw/s5/masters/night-tewi.png",
+            "pixel": "raw/s5/pixel-body/hero-duo-night-tewi.png",
+            "z": 3,
+            "at": "bottom-centre",
+            "measure": "figure",
+            "anchor": {
+                "x": 1227,
+                "y": 1001
+            },
+            "height": {
+                "ratio": 0.8333,
+                "of": "reisen"
+            },
+            "grade": {
+                "toward": "#7d8fd6",
+                "amount": 0.14,
+                "lightness": -0.03,
+                "keepSticker": true
+            }
+        }
+    ]
+}

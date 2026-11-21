@@ -1,0 +1,39 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 387,
+                "y": 215,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 511,
+                "y": 215,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "waving hand",
+            "box": {
+                "x": 300,
+                "y": 275,
+                "width": 125,
+                "height": 120
+            }
+        },
+        {
+            "name": "hand on the hip",
+            "box": {
+                "x": 520,
+                "y": 455,
+                "width": 110,
+                "height": 100
+            }
+        }
+    ]
+}
