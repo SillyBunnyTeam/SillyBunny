@@ -504,6 +504,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                     '#allow_name1_display',
                     '#encode_tags',
                     '#auto_fix_generated_markdown',
+                    '#markdown_engine',
                     '#pin_styles',
                     '#show_group_chat_queue',
                     '#forbid_external_media',
