@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, tes
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -217,6 +218,26 @@ describe('external media import (#952)', () => {
             expect(extractExternalMediaSpans('![ and [profile](https://chub.ai/users/creator)')).toEqual([]);
             expect(extractExternalMediaSpans('<img and <a href="https://chub.ai/users/creator">profile</a>')).toEqual([]);
             expect(extractExternalMediaSpans('url( and (https://chub.ai/users/creator)')).toEqual([]);
+        });
+
+        test('an uppercase scheme is scanned like a lowercase one', () => {
+            expect(extractExternalMediaSpans('![i](HTTP://files.catbox.moe/a.png)').map(span => span.fetchUrl)).toEqual(['HTTP://files.catbox.moe/a.png']);
+            expect(extractExternalMediaSpans('<img src="HTTPS://files.catbox.moe/b.png">').map(span => span.fetchUrl)).toEqual(['HTTPS://files.catbox.moe/b.png']);
+        });
+
+        // Each class of the patterns leaves out the character that starts the next candidate, so these three shapes
+        // are not found by their own pattern. Only the pass for bare URLs finds them, and it needs an image extension.
+        test.each([
+            ['an alt text with a bracket', '![alt [x]](https://files.catbox.moe/a.png)', 'https://files.catbox.moe/a.png', '![alt [x]](https://files.catbox.moe/render?id=1)'],
+            ['a media tag with < in an attribute', '<img alt="<3" src="https://files.catbox.moe/a.png">', 'https://files.catbox.moe/a.png', '<img alt="<3" src="https://files.catbox.moe/render?id=1">'],
+        ])('%s is found only by the bare URL pass', (_label, withExtension, found, withoutExtension) => {
+            expect(extractExternalMediaSpans(withExtension).map(span => span.fetchUrl)).toEqual([found]);
+            expect(extractExternalMediaSpans(withoutExtension)).toEqual([]);
+        });
+
+        test('a URL with a parenthesis is found in a quoted url() and not in an unquoted one', () => {
+            expect(extractExternalMediaSpans('url("https://files.catbox.moe/a(b).png")').map(span => span.fetchUrl)).toEqual(['https://files.catbox.moe/a(b).png']);
+            expect(extractExternalMediaSpans('url(https://files.catbox.moe/a(b).png)')).toEqual([]);
         });
 
         // The scan runs on the server's only thread, so its time must stay linear in the length of a hostile field.
@@ -855,6 +876,145 @@ describe('external media import (#952)', () => {
                 await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Tidy', fetchImpl: jest.fn(async () => mockImageResponse(PNG_SCENE)) });
 
                 expect(fs.readdirSync(path.join(directories.userImages, 'Tidy')).sort()).toEqual(['.external-media.json', fileName()]);
+            });
+        });
+
+        describe('the requests of a download', () => {
+            const MAX_BYTES = 1000;
+            const png = padding => Buffer.concat([PNG_SCENE, Buffer.alloc(padding)]);
+            let origin;
+            let requests;
+            let lastHeaders;
+
+            beforeAll(async () => {
+                origin = http.createServer((request, response) => {
+                    requests.push(request.url);
+                    lastHeaders = request.headers;
+                    const chain = /^\/chain\/(\d+)$/.exec(request.url);
+                    if (chain) {
+                        const left = Number(chain[1]);
+                        if (left > 0) {
+                            response.writeHead(302, { Location: `/chain/${left - 1}` });
+                            return response.end();
+                        }
+                        response.writeHead(200, { 'Content-Type': 'image/png' });
+                        return response.end(PNG_SCENE);
+                    }
+                    if (request.url === '/exact.png') {
+                        response.writeHead(200, { 'Content-Length': MAX_BYTES });
+                        return response.end(png(MAX_BYTES - PNG_SCENE.length));
+                    }
+                    if (request.url === '/declared.png') {
+                        response.writeHead(200, { 'Content-Length': MAX_BYTES * 5 });
+                        return response.end(png(MAX_BYTES * 5 - PNG_SCENE.length));
+                    }
+                    if (request.url === '/streamed.png') {
+                        response.writeHead(200, { 'Transfer-Encoding': 'chunked' });
+                        response.write(PNG_SCENE);
+                        for (let index = 0; index < 5; index++) {
+                            response.write(Buffer.alloc(MAX_BYTES));
+                        }
+                        return response.end();
+                    }
+                    response.writeHead(200, { 'Content-Type': 'image/png' });
+                    return response.end(PNG_SCENE);
+                });
+                await new Promise(resolve => origin.listen(0, '127.0.0.1', resolve));
+            });
+
+            afterAll(async () => {
+                origin.closeAllConnections();
+                await new Promise(resolve => origin.close(resolve));
+            });
+
+            beforeEach(() => {
+                requests = [];
+                lastHeaders = null;
+            });
+
+            // The strict agent refuses a loopback origin, so this stand-in sends the request through the code that
+            // Bun uses, to a local origin and without that agent.
+            const viaOrigin = () => async (url, options) => {
+                const { requestWithNodeHttp } = await import('../src/external-media-import.js');
+                const target = new URL(url);
+                target.protocol = 'http:';
+                target.hostname = '127.0.0.1';
+                target.port = String(origin.address().port);
+                return requestWithNodeHttp(target.toString(), { headers: options.headers, signal: options.signal });
+            };
+
+            const importOne = (name, imagePath, limits = {}) => {
+                const card = cardWith(name, `![i](https://files.catbox.moe${imagePath})`);
+                return localizeCharacterExternalMedia(card, { request: importRequest(), fileName: name, fetchImpl: viaOrigin(), maxBytes: MAX_BYTES, ...limits })
+                    .then(result => ({ result, card }));
+            };
+
+            test('asks for no content encoding on both request paths', async () => {
+                const nodeFetch = jest.fn(async () => mockImageResponse(PNG_SCENE));
+                await localizeCharacterExternalMedia(cardWith('Encoding', '![i](https://files.catbox.moe/a.png)'), { request: importRequest(), fileName: 'Encoding', fetchImpl: nodeFetch });
+                expect(nodeFetch.mock.calls[0][1].headers['Accept-Encoding']).toBe('identity');
+                expect(nodeFetch.mock.calls[0][1].compress).toBe(false);
+
+                await importOne('Encoding2', '/a.png');
+                expect(lastHeaders['accept-encoding']).toBe('identity');
+            });
+
+            test('stores a response that has exactly the size limit', async () => {
+                const { result } = await importOne('Exact', '/exact.png');
+
+                expect(result.downloaded).toBe(1);
+            });
+
+            test('keeps the URL remote when Content-Length is over the size limit', async () => {
+                const { result, card } = await importOne('Declared', '/declared.png');
+
+                expect(result.downloaded).toBe(0);
+                expect(card.data.description).toBe('![i](https://files.catbox.moe/declared.png)');
+                expect(fs.existsSync(path.join(directories.userImages, 'Declared'))).toBe(false);
+            });
+
+            test('keeps the URL remote when a body without Content-Length passes the size limit', async () => {
+                const { result, card } = await importOne('Streamed', '/streamed.png');
+
+                expect(result.downloaded).toBe(0);
+                expect(card.data.description).toBe('![i](https://files.catbox.moe/streamed.png)');
+            });
+
+            test('follows five redirects and refuses the sixth', async () => {
+                const followed = await importOne('Five', '/chain/5');
+                expect(followed.result.downloaded).toBe(1);
+                expect(requests).toHaveLength(6);
+
+                requests = [];
+                const refused = await importOne('Six', '/chain/6');
+                expect(refused.result.downloaded).toBe(0);
+                expect(requests).toHaveLength(6);
+                expect(refused.card.data.description).toBe('![i](https://files.catbox.moe/chain/6)');
+            });
+
+            test('refuses a redirect from https to http and requests nothing on http', async () => {
+                const fetchImpl = jest.fn(async () => mockImageResponse(Buffer.alloc(0), 302, { location: 'http://files.catbox.moe/b.png' }));
+                const card = cardWith('Downgrade', '![i](https://files.catbox.moe/a.png)');
+
+                const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Downgrade', fetchImpl });
+
+                expect(result.downloaded).toBe(0);
+                expect(fetchImpl).toHaveBeenCalledTimes(1);
+                expect(card.data.description).toBe('![i](https://files.catbox.moe/a.png)');
+            });
+
+            test('follows a redirect from http to https and from http to http', async () => {
+                const fetchImpl = jest.fn(async (url) => {
+                    if (String(url) === 'http://files.catbox.moe/a.png') {
+                        return mockImageResponse(Buffer.alloc(0), 302, { location: 'https://files.catbox.moe/b.png' });
+                    }
+                    return mockImageResponse(PNG_SCENE);
+                });
+                const card = cardWith('Upgrade', '![i](http://files.catbox.moe/a.png)');
+
+                const result = await localizeCharacterExternalMedia(card, { request: importRequest(), fileName: 'Upgrade', fetchImpl });
+
+                expect(result.downloaded).toBe(1);
             });
         });
 

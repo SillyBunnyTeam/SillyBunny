@@ -213,6 +213,7 @@ router.post('/delete', (request, response) => {
     return response.sendStatus(200);
 });
 
+// SillyBunny: async, because the import waits for the optional external media download.
 router.post('/import', async (request, response) => {
     if (!request.file) return response.sendStatus(400);
 

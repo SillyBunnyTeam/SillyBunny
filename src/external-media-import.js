@@ -36,6 +36,8 @@ const HTML_MEDIA_ATTR_REGEX = /\b(?:src|poster|data|xlink:href|href)\s*=\s*(?:"(
 const HTML_SRCSET_ATTR_REGEX = /\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/dgi;
 const SRCSET_CANDIDATE_REGEX = /([^\s,]+)(?:\s+[^,]*)?(?:,|$)/dg;
 const CSS_URL_REGEX = /\burl\(\s*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^()\s"']+))\s*\)/dgi;
+// A scheme is case-insensitive, and every pattern below is too, so the quick test that skips a text without a URL must be.
+const MAY_HOLD_URL_REGEX = /https?:/i;
 const BARE_HTTP_URL_REGEX = /https?:\/\/[^\s"'<>)\]]+/dgi;
 
 /**
@@ -216,7 +218,7 @@ function mergeSortedSpans(first, second) {
  * @returns {{start: number, end: number, rawUrl: string, fetchUrl: string}[]} Ordered URL spans
  */
 export function extractExternalMediaSpans(text) {
-    if (typeof text !== 'string' || !text.includes('http')) {
+    if (typeof text !== 'string' || !MAY_HOLD_URL_REGEX.test(text)) {
         return [];
     }
 
@@ -567,8 +569,11 @@ async function fetchAndStoreExternalImage(url, { directories, folder, fetchImpl,
             headers: {
                 'User-Agent': USER_AGENT,
                 'Accept': 'image/*,*/*;q=0.8',
+                // Node.js decodes a compressed answer and Bun does not, so ask for none and decode none.
+                'Accept-Encoding': 'identity',
             },
             agent: /** @type {any} */ (getUntrustedRequestAgent()),
+            compress: false,
             redirect: 'manual',
             signal: AbortSignal.timeout(Math.min(timeoutMs, budget.remainingMs)),
             size: maxBytes,
@@ -580,7 +585,12 @@ async function fetchAndStoreExternalImage(url, { directories, folder, fetchImpl,
             if (!location || redirectCount === MAX_REDIRECTS) {
                 return null;
             }
-            currentUrl = new URL(location, currentUrl).toString();
+            const nextUrl = new URL(location, currentUrl);
+            // A step from https to http lets a party on the network path replace the image.
+            if (new URL(currentUrl).protocol === 'https:' && nextUrl.protocol === 'http:') {
+                return null;
+            }
+            currentUrl = nextUrl.toString();
             continue;
         }
 
@@ -648,7 +658,7 @@ function createExternalMediaLocalizer({
 
     return {
         collectFromText(text) {
-            if (typeof text !== 'string' || !text.includes('http')) {
+            if (typeof text !== 'string' || !MAY_HOLD_URL_REGEX.test(text)) {
                 return;
             }
             for (const span of extractExternalMediaSpans(text)) {
@@ -738,7 +748,7 @@ function createExternalMediaLocalizer({
         },
 
         rewriteText(text) {
-            if (typeof text !== 'string' || resolvedUrls.size === 0 || !text.includes('http')) {
+            if (typeof text !== 'string' || resolvedUrls.size === 0 || !MAY_HOLD_URL_REGEX.test(text)) {
                 return { text, changed: false };
             }
 
