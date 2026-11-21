@@ -262,7 +262,7 @@ function getSpinner() {
         spinner = document.createElement('div');
         spinner.id = SPINNER_ID;
         spinner.className = 'expression_agent_spinner';
-        spinner.title = 'Generating missing sprite…';
+        spinner.title = 'Generating Missing Sprite…';
         holder.appendChild(spinner);
     }
     return spinner;

@@ -1,0 +1,39 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 466,
+                "y": 282,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 562,
+                "y": 282,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "raised fist",
+            "box": {
+                "x": 335,
+                "y": 105,
+                "width": 110,
+                "height": 110
+            }
+        },
+        {
+            "name": "hand on the clipboard",
+            "box": {
+                "x": 675,
+                "y": 400,
+                "width": 90,
+                "height": 110
+            }
+        }
+    ]
+}

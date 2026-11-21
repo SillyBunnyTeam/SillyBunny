@@ -84,16 +84,19 @@
     position: unset;
     opacity: unset;
     background: none;
+    color: inherit;
     padding: 0;
 }
 
 .mes_audio_container .mes_img_swipes .right_menu_button {
     filter: brightness(75%);
+    color: inherit;
     text-shadow: none;
 }
 
 .mes_audio_container .mes_img_swipes .mes_img_swipe_counter {
     filter: none;
+    color: inherit;
     text-shadow: none;
 }
 

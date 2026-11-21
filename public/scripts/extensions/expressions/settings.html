@@ -6,17 +6,18 @@
         </div>
 
         <div class="inline-drawer-content">
+            <!-- SillyBunny: row titles, the group heading and button labels are in header capitalisation. Only the visible English text changed; every data-i18n key is the one upstream has. -->
             <label class="checkbox_label" for="expression_translate" title="Use the selected API from Chat Translation extension settings." data-i18n="[title]Use the selected API from Chat Translation extension settings.">
                 <input id="expression_translate" type="checkbox">
-                <span data-i18n="Translate text to English before classification">Translate text to English before classification</span>
+                <span data-i18n="Translate text to English before classification">Translate Text to English Before Classification</span>
             </label>
             <label class="checkbox_label" for="expressions_allow_multiple" title="A single expression can have multiple sprites. Whenever the expression is chosen, a random sprite for this expression will be selected." data-i18n="[title]A single expression can have multiple sprites. Whenever the expression is chosen, a random sprite for this expression will be selected.">
                 <input id="expressions_allow_multiple" type="checkbox">
-                <span data-i18n="Allow multiple sprites per expression">Allow multiple sprites per expression</span>
+                <span data-i18n="Allow multiple sprites per expression">Allow Multiple Sprites per Expression</span>
             </label>
             <label class="checkbox_label" for="expressions_reroll_if_same" title="If the same expression is used again, re-roll the sprite. This only applies to expressions that have multiple available sprites assigned." data-i18n="[title]If the same expression is used again, re-roll the sprite. This only applies to expressions that have multiple available sprites assigned.">
                 <input id="expressions_reroll_if_same" type="checkbox">
-                <span data-i18n="Re-roll if same expression is used again">Re-roll if same sprite is used again</span>
+                <span data-i18n="Re-roll if same expression is used again">Re-Roll if Same Sprite Is Used Again</span>
             </label>
             <div class="expression_api_block m-b-1 m-t-1">
                 <label for="expression_api" data-i18n="Classifier API">Classifier API</label>
@@ -38,20 +39,20 @@
                 </div>
                 <label class="checkbox_label" for="expressions_agent_auto_generate_sprites" title="When an emotion is detected but no sprite exists, ask Quick Image Gen to create one automatically." data-i18n="[title]When an emotion is detected but no sprite exists, ask Quick Image Gen to create one automatically.">
                     <input id="expressions_agent_auto_generate_sprites" type="checkbox">
-                    <span data-i18n="Auto-generate missing sprites during chat">Auto-generate missing sprites during chat</span>
+                    <span data-i18n="Auto-generate missing sprites during chat">Auto-Generate Missing Sprites During Chat</span>
                 </label>
                 <label class="checkbox_label" for="expressions_agent_use_qig_llm_profile" title="Make the Expressions Agent classify emotions using the same Connection Manager profile that Quick Image Gen uses for LLM tasks." data-i18n="[title]Make the Expressions Agent classify emotions using the same Connection Manager profile that Quick Image Gen uses for LLM tasks.">
                     <input id="expressions_agent_use_qig_llm_profile" type="checkbox">
-                    <span data-i18n="Share Quick Image Gen LLM override profile">Share Quick Image Gen LLM override profile</span>
+                    <span data-i18n="Share Quick Image Gen LLM override profile">Share Quick Image Gen LLM Override Profile</span>
                 </label>
                 <div class="expression_agent_generation_controls flex-container flexFlowColumn">
-                    <label for="expressions_agent_sprite_generation_mode" data-i18n="Sprite generation mode">Sprite generation mode</label>
+                    <label for="expressions_agent_sprite_generation_mode" data-i18n="Sprite generation mode">Sprite Generation Mode</label>
                     <small data-i18n="Character sheet mode is used by Generate missing sprites, then split into transparent PNGs for each expression.">Character sheet mode is used by Generate missing sprites, then split into transparent PNGs for each expression.</small>
                     <select id="expressions_agent_sprite_generation_mode" class="flex1 margin0">
                         <option value="individual" data-i18n="Separate images">Separate images</option>
                         <option value="sheet" data-i18n="Character sheet (auto-split)">Character sheet (auto-split)</option>
                     </select>
-                    <label for="expressions_agent_sprite_framing" data-i18n="Sprite framing">Sprite framing</label>
+                    <label for="expressions_agent_sprite_framing" data-i18n="Sprite framing">Sprite Framing</label>
                     <small data-i18n="Keeps generated expressions at a consistent front-facing camera angle and crop.">Keeps generated expressions at a consistent front-facing camera angle and crop.</small>
                     <select id="expressions_agent_sprite_framing" class="flex1 margin0">
                         <option value="bust" data-i18n="Bust portrait (consistent close-up)">Bust portrait (consistent close-up)</option>
@@ -59,17 +60,18 @@
                     </select>
                     <label class="checkbox_label" for="expressions_agent_sprite_remove_background" title="Only enable for sheets drawn on a plain white or solid-color background. Leave off for full-bleed art (e.g. GPT Image 2), which has no background to strip." data-i18n="[title]Only enable for sheets drawn on a plain white or solid-color background. Leave off for full-bleed art (e.g. GPT Image 2), which has no background to strip.">
                         <input id="expressions_agent_sprite_remove_background" type="checkbox">
-                        <span data-i18n="Remove background (white/solid-color sheets only)">Remove background (white/solid-color sheets only)</span>
+                        <span data-i18n="Remove background (white/solid-color sheets only)">Remove Background (White/Solid-Color Sheets Only)</span>
                     </label>
                 </div>
                 <div class="expression_agent_prompt_block flex-container flexFlowColumn">
                     <label for="expressions_agent_sprite_prompt" class="title_restorable">
                         <span data-i18n="Quick Image Gen Prompt">Quick Image Gen Prompt</span>
-                        <div id="expressions_agent_sprite_prompt_restore" title="Restore default value" class="right_menu_button">
-                            <i class="fa-solid fa-clock-rotate-left fa-sm"></i>
-                        </div>
+                        <!-- SillyBunny: the restore icon is a native flat button with a name. -->
+                        <button type="button" id="expressions_agent_sprite_prompt_restore" class="right_menu_button" title="Restore Default Value" aria-label="Restore Default Value">
+                            <i class="fa-solid fa-clock-rotate-left fa-sm" aria-hidden="true"></i>
+                        </button>
                     </label>
-                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{generationInstructions}}, {{characterName}}, {{expression}}, {{expressions}}, {{characterCard}}, {{framingInstructions}}, {{sheetInstructions}}.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: {{generationInstructions}}, {{characterName}}, {{expression}}, {{expressions}}, {{characterCard}}, {{framingInstructions}}, {{sheetInstructions}}.</small>
+                    <small data-i18n="Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: &#123;&#123;generationInstructions&#125;&#125;, &#123;&#123;characterName&#125;&#125;, &#123;&#123;expression&#125;&#125;, &#123;&#123;expressions&#125;&#125;, &#123;&#123;characterCard&#125;&#125;, &#123;&#123;framingInstructions&#125;&#125;, &#123;&#123;sheetInstructions&#125;&#125;.">Sent to Quick Image Gen before generating or regenerating expression sprites. Macros: <code>&#123;&#123;generationInstructions&#125;&#125;</code>, <code>&#123;&#123;characterName&#125;&#125;</code>, <code>&#123;&#123;expression&#125;&#125;</code>, <code>&#123;&#123;expressions&#125;&#125;</code>, <code>&#123;&#123;characterCard&#125;&#125;</code>, <code>&#123;&#123;framingInstructions&#125;&#125;</code>, <code>&#123;&#123;sheetInstructions&#125;&#125;</code>.</small>
                     <textarea id="expressions_agent_sprite_prompt" type="text" class="text_pole textarea_compact autoSetHeight" rows="8" placeholder="Use &lcub;&lcub;generationInstructions&rcub;&rcub;, &lcub;&lcub;characterCard&rcub;&rcub;, &lcub;&lcub;framingInstructions&rcub;&rcub;, and &lcub;&lcub;sheetInstructions&rcub;&rcub; macros."></textarea>
                 </div>
                 <p class="expression_agent_hint hint" data-i18n="Turning on auto-generation switches Classifier API to In-Chat Agent. Enable the bundled Expressions Agent companion in In-Chat Agents if the status says it is not ready.">
@@ -79,18 +81,20 @@
             <div class="expression_llm_prompt_block m-b-1 m-t-1">
                 <label class="checkbox_label" for="expressions_filter_available" title="When using LLM or WebLLM classifier, only show and use expressions that have sprites assigned to them." data-i18n="[title]When using LLM or WebLLM classifier, only show and use expressions that have sprites assigned to them.">
                     <input id="expressions_filter_available" type="checkbox">
-                    <span data-i18n="Filter expressions for available sprites">Filter expressions for available sprites</span>
+                    <span data-i18n="Filter expressions for available sprites">Filter Expressions for Available Sprites</span>
                 </label>
                 <label for="expression_llm_prompt" class="title_restorable m-t-1">
                     <span data-i18n="LLM Prompt">LLM Prompt</span>
-                    <div id="expression_llm_prompt_restore" title="Restore default value" class="right_menu_button">
-                        <i class="fa-solid fa-clock-rotate-left fa-sm"></i>
-                    </div>
+                    <!-- SillyBunny: the restore icon is a native flat button with a name. -->
+                    <button type="button" id="expression_llm_prompt_restore" class="right_menu_button" title="Restore Default Value" aria-label="Restore Default Value">
+                            <i class="fa-solid fa-clock-rotate-left fa-sm" aria-hidden="true"></i>
+                        </button>
                 </label>
                 <small data-i18n="Used in addition to JSON schemas and function calling.">Used in addition to JSON schemas and function calling.</small>
                 <textarea id="expression_llm_prompt" type="text" class="text_pole textarea_compact autoSetHeight" rows="2" placeholder="Use &lcub;&lcub;labels&rcub;&rcub; special macro."></textarea>
             </div>
-            <div class="expression_prompt_type_block flex-container flexFlowColumn">
+            <!-- SillyBunny: the block shares the classes of its neighbours, so the settings page keeps it in the first group when it is hidden while the page is built. -->
+            <div class="expression_prompt_type_block flex-container flexFlowColumn m-b-1 m-t-1">
                 <div data-i18n="LLM Prompt Strategy" class="title_restorable">
                     LLM Prompt Strategy
                 </div>
@@ -113,8 +117,9 @@
                 <small><span data-i18n="Can be set manually or with an _space">Can be set manually or with an </span><tt>/emote</tt><span data-i18n="space_ slash command."> slash command.</span></small>
                 <div class="flex-container">
                     <select id="expression_custom" class="flex1 margin0"></select>
-                    <i id="expression_custom_add" class="menu_button fa-solid fa-plus margin0" title="Add"></i>
-                    <i id="expression_custom_remove" class="menu_button fa-solid fa-xmark margin0" title="Remove"></i>
+                    <!-- SillyBunny: real buttons with a name (an icon element is neither focusable nor named by itself). -->
+                    <button type="button" id="expression_custom_add" class="menu_button margin0" title="Add" aria-label="Add" data-i18n="[title]Add;[aria-label]Add"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                    <button type="button" id="expression_custom_remove" class="menu_button margin0" title="Remove" aria-label="Remove" data-i18n="[title]Remove;[aria-label]Remove"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
                 </div>
             </div>
             <div id="no_chat_expressions" data-i18n="Open a chat to see the character expressions.">
@@ -128,37 +133,32 @@
                 <small><span data-i18n="Use a forward slash to specify a subfolder. Example: _space">Use a forward slash to specify a subfolder. Example: </span><tt>Bob/formal</tt></small>
                 <div class="flex-container flexnowrap">
                     <input id="expression_override" type="text" class="text_pole" placeholder="Override folder name" />
-                    <input id="expression_override_button" class="menu_button" type="submit" value="Submit" />
+                    <!-- SillyBunny: a button at a row's end shows an icon, with the label as its tooltip and name. -->
+                    <button type="button" id="expression_override_button" class="menu_button" title="Submit" aria-label="Submit"><i class="fa-solid fa-check" aria-hidden="true"></i></button>
                 </div>
                 <div class="expression_buttons flex-container spaceEvenly">
-                    <div id="expressions_generate_missing_sprites" class="menu_button" role="button" tabindex="0" title="Generate all missing sprites in this set with Quick Image Gen" data-i18n="[title]Generate all missing sprites in this set with Quick Image Gen">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
-                        <span data-i18n="Generate missing sprites">Generate missing sprites</span>
-                    </div>
-                    <div id="expressions_upload_sprite_sheet" class="menu_button" role="button" tabindex="0" title="Upload a character sheet and split it into missing sprites" data-i18n="[title]Upload a character sheet and split it into missing sprites">
-                        <i class="fa-solid fa-table-cells-large"></i>
-                        <span data-i18n="Upload character sheet">Upload character sheet</span>
-                    </div>
-                    <div id="expressions_redo_sprite_cleanup" class="menu_button" role="button" tabindex="0" title="Redo crop and transparency cleanup for this sprite set" data-i18n="[title]Redo crop and transparency cleanup for this sprite set">
-                        <i class="fa-solid fa-broom"></i>
-                        <span data-i18n="Redo crop/cleanup">Redo crop/cleanup</span>
-                    </div>
-                    <div id="expressions_stop_sprite_generation" class="menu_button" role="button" tabindex="0" title="Stop the current Quick Image Gen sprite generation" data-i18n="[title]Stop the current Quick Image Gen sprite generation">
-                        <i class="fa-solid fa-stop"></i>
-                        <span data-i18n="Stop generation">Stop generation</span>
-                    </div>
-                    <div id="expression_upload_pack_button" class="menu_button">
-                        <i class="fa-solid fa-file-zipper"></i>
-                        <span data-i18n="Upload sprite pack (ZIP)">Upload sprite pack (ZIP)</span>
-                    </div>
-                    <div id="expressions_remove_all_sprites" class="menu_button" role="button" tabindex="0" title="Remove every sprite image in this set" data-i18n="[title]Remove every sprite image in this set">
-                        <i class="fa-solid fa-trash-can"></i>
-                        <span data-i18n="Remove all sprites">Remove all sprites</span>
-                    </div>
-                    <div id="expression_override_cleanup_button" class="menu_button">
-                        <i class="fa-solid fa-trash-can"></i>
-                        <span data-i18n="Remove all image overrides">Remove all image overrides</span>
-                    </div>
+                    <!-- SillyBunny: every sprite action is a label-only button (an icon or a label, not both); the adapter shows them as button rows. -->
+                    <button type="button" id="expressions_generate_missing_sprites" class="menu_button" title="Generate all missing sprites in this set with Quick Image Gen" data-i18n="[title]Generate all missing sprites in this set with Quick Image Gen">
+                        <span data-i18n="Generate missing sprites">Generate Missing Sprites</span>
+                    </button>
+                    <button type="button" id="expressions_upload_sprite_sheet" class="menu_button" title="Upload a character sheet and split it into missing sprites" data-i18n="[title]Upload a character sheet and split it into missing sprites">
+                        <span data-i18n="Upload character sheet">Upload Character Sheet</span>
+                    </button>
+                    <button type="button" id="expressions_redo_sprite_cleanup" class="menu_button" title="Redo crop and transparency cleanup for this sprite set" data-i18n="[title]Redo crop and transparency cleanup for this sprite set">
+                        <span data-i18n="Redo crop/cleanup">Redo Crop/Cleanup</span>
+                    </button>
+                    <button type="button" id="expressions_stop_sprite_generation" class="menu_button" title="Stop the current Quick Image Gen sprite generation" data-i18n="[title]Stop the current Quick Image Gen sprite generation">
+                        <span data-i18n="Stop generation">Stop Generation</span>
+                    </button>
+                    <button type="button" id="expression_upload_pack_button" class="menu_button">
+                        <span data-i18n="Upload sprite pack (ZIP)">Upload Sprite Pack (ZIP)</span>
+                    </button>
+                    <button type="button" id="expressions_remove_all_sprites" class="menu_button" title="Remove every sprite image in this set" data-i18n="[title]Remove every sprite image in this set">
+                        <span data-i18n="Remove all sprites">Remove All Sprites</span>
+                    </button>
+                    <button type="button" id="expression_override_cleanup_button" class="menu_button">
+                        <span data-i18n="Remove all image overrides">Remove All Image Overrides</span>
+                    </button>
                 </div>
                 <p class="hint">
                     <b data-i18n="Hint:">Hint:</b>
@@ -174,10 +174,16 @@
                             Examples: </span><tt>joy.png</tt>, <tt>joy-1.png</tt>, <tt>joy.expressive.png</tt>
                     </i>
                 </p>
-                <h3 id="image_list_header">
-                    <strong data-i18n="Sprite set:">Sprite set:</strong>&nbsp;<span id="image_list_header_name"></span>
-                </h3>
-                <div id="image_list"></div>
+                <div class="sb-settings-flat-header sb-settings-category-header">
+                    <div class="flex-container flexFlowColumn sb-settings-category-heading">
+                        <h3 id="image_list_header" class="sb-settings-category-title">
+                            <strong data-i18n="Sprite set:">Sprite Set:</strong>&nbsp;<span id="image_list_header_name"></span>
+                        </h3>
+                        <small data-i18n="View and manage the expression images in this sprite set.">View and manage the expression images in this sprite set.</small>
+                    </div>
+                </div>
+                <!-- SillyBunny: the tiles are list items, so the list has the role and the name of its heading. -->
+                <div id="image_list" role="list" aria-labelledby="image_list_header"></div>
 
             </div>
         </div>

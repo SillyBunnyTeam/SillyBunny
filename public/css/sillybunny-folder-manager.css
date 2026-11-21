@@ -1,0 +1,19 @@
+/* Folder Manager content. The frame and the members page are the shared Window-tier dialog in
+   sillybunny-theme.css (sillybunny-editor/dialog.js); the box, rows and buttons are the shared
+   entity list in sillybunny-entity-list.css. */
+.sb-folder-manager[data-selection-mode='true'] :is(.drag-handle, .ds-entity-row__suffix) { display: none; }
+.sb-folder-manager__folder-row { flex-wrap: wrap; }
+.sb-folder-manager__folder-row .ds-entity-row__avatar { display: grid; place-items: center; }
+.sb-folder-manager__dot { width: 12px; height: 12px; border-radius: 50%; background: var(--sb-folder-color, var(--sb-muted-fg)); }
+.sb-folder-manager__name { width: 100%; min-width: 0; min-height: 1.6em; padding: 0; margin: 0; border: 0; border-radius: var(--sb-radius-control); background: transparent; color: var(--SmartThemeBodyColor); font: inherit; outline: 0; box-shadow: none; }
+.sb-folder-manager__name:focus { background: var(--sb-layer-view); box-shadow: var(--sb-focus-ring-inset); }
+.sb-folder-manager__error { display: block; padding: 2px 4px; color: var(--sb-color-danger); font-size: var(--sb-type-meta); white-space: normal; }
+.sb-folder-manager__colors { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; }
+
+@media (hover: hover) {
+    .sb-folder-manager__name:hover:not(:focus) { background: var(--sb-flat-hover-bg); }
+}
+
+@media (pointer: coarse) {
+    .sb-folder-manager .sb-folder-manager__name { min-height: 44px; min-width: 44px; }
+}

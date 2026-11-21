@@ -106,7 +106,7 @@ test('provides a keyboard-operable 44px entry button', async ({ page }) => {
     });
     const entry = page.locator('.eruda-entry-btn');
 
-    await expect(entry).toHaveRole('button', { name: 'Open debugger' });
+    await expect(entry).toHaveRole('button', { name: 'Open Debugger' });
     await expect(entry).toHaveCSS('width', '44px');
     await expect(entry).toHaveCSS('height', '44px');
     await expect(entry).toHaveCSS('transition-property', 'none');
@@ -275,6 +275,9 @@ test('uses the host drawer and wand markup and tears the extension down cleanly'
     await expect(page.locator('#sbdbg-settings-content')).toBeHidden();
     await toggle.click();
     await expect(page.locator('#sbdbg-settings-content')).toBeVisible();
+    const actions = page.locator('#sbdbg-settings .sbdbg-actions > button');
+    await expect(actions).toHaveCount(3);
+    expect(await actions.evaluateAll(buttons => buttons.every(button => button.classList.contains('ds-row') && button.classList.contains('ds-button-row')))).toBe(true);
     await toggle.click();
     await expect(page.locator('#sbdbg-settings-content')).toBeHidden();
 

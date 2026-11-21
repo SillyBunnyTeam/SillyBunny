@@ -1,0 +1,16 @@
+/* Public Sans 2.001 (SIL OFL 1.1, see OFL.txt and LICENSE.md), unmodified upstream variable files. Axis: wght 100-900. */
+@font-face {
+    font-family: 'Public Sans';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('PublicSans-wght.ttf?v=20261118r') format('truetype');
+}
+
+@font-face {
+    font-family: 'Public Sans';
+    font-style: italic;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('PublicSans-Italic-wght.ttf?v=20261118r') format('truetype');
+}

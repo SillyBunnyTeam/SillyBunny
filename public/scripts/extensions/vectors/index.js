@@ -3,7 +3,8 @@ import {
     event_types,
     extension_prompt_types,
     extension_prompt_roles,
-    getCurrentChatId,
+    // SillyBunny: the chat collection is keyed by the chat id, and a temporary chat has none (see getCurrentChatId below).
+    getCurrentChatId as getOpenChatId,
     getRequestHeaders,
     is_send_press,
     saveSettingsDebounced,
@@ -39,6 +40,15 @@ import { WebLlmVectorProvider } from './webllm.js';
 import { applyLegacyVectorEnabledSetting, bindVectorEnabledSettingsStore, getPersistableVectorSettings, getVectorEnabledState, normalizeVectorEnabledOptions, stripLegacyVectorEnabledSetting } from './settings-utils.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import { oai_settings } from '../../openai.js';
+// SillyBunny: a temporary chat is never written, so its messages are not vectorized either.
+import { isTemporaryChat } from '../../sillybunny-temporary-chat-state.js';
+// SillyBunny: The shared alert keeps vector-index deletion Cancel-focused and non-default.
+import { openAlert } from '../../sillybunny-editor/dialog.js';
+import { t } from '../../i18n.js';
+import { adoptPositionRadios } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the injection positions are select rows.
+
+// SillyBunny: no chat id while the chat is temporary, so its chat collection is never listed, filled, queried or purged.
+const getCurrentChatId = () => (isTemporaryChat() ? '' : getOpenChatId());
 
 /**
  * @typedef {object} HashedMessage
@@ -2204,6 +2214,9 @@ export async function init() {
         });
     });
 
+    // SillyBunny: the injection positions are select rows. The radios hold the saved values by now.
+    adoptPositionRadios($('#vectors_container')[0], 'vectors_position');
+    adoptPositionRadios($('#vectors_container')[0], 'vectors_file_position_db');
     toggleSettings();
     eventSource.on(event_types.MESSAGE_DELETED, onChatEvent);
     eventSource.on(event_types.MESSAGE_EDITED, onChatEvent);
@@ -2472,7 +2485,16 @@ export async function init() {
     }));
 
     registerDebugFunction('purge-everything', 'Purge all vector indices', 'Obliterate all stored vectors for all sources. No mercy.', async () => {
-        if (!confirm('Are you sure?')) {
+        // SillyBunny: The shared alert keeps this irreversible debug action Cancel-focused.
+        const response = await openAlert({
+            heading: 'Are you sure?',
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                // SillyBunny: a verb replaces "Yes" on this destructive response.
+                { id: 'purge', label: t`Purge Vectors`, appearance: 'destructive' },
+            ],
+        });
+        if (response !== 'purge') {
             return;
         }
         await purgeAllVectorIndexes();

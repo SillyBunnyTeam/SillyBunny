@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "about-reisen.png",
+    "sha256": "3fcde2fcdf31abda23f845c307630cea0da11f572930693c2d90aff370a14ca5",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:623eebdbe4c593c6b0c63ee5f78ef591b8a098bf0d2462583635991d6661840b"
+}

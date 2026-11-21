@@ -1,0 +1,18 @@
+/* Roboto 3.016 (SIL OFL 1.1, see OFL.txt), unmodified upstream variable files. Axes: wght 100-900, wdth 75-100. */
+@font-face {
+    font-family: 'Roboto';
+    font-style: normal;
+    font-weight: 100 900;
+    font-stretch: 75% 100%;
+    font-display: swap;
+    src: url('Roboto-wdth-wght.ttf?v=20261118r') format('truetype');
+}
+
+@font-face {
+    font-family: 'Roboto';
+    font-style: italic;
+    font-weight: 100 900;
+    font-stretch: 75% 100%;
+    font-display: swap;
+    src: url('Roboto-Italic-wdth-wght.ttf?v=20261118r') format('truetype');
+}

@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "splash-tewi--mid.png",
+    "sha256": "7023ab6ff893987ac599e9dd9fa31ac412760990b54c0e0bb4ce545c1c55776f",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:bd77a0039884c7dd7e6c76d215bcb6c1778e38cf3287eedaa7003dd1b63ff29c"
+}

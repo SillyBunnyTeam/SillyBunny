@@ -1,0 +1,984 @@
+import { expect, test } from '@playwright/test';
+import { acceptPopup } from './helpers/popup.js';
+import { gunzipSync } from 'node:zlib';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { buttonStates, expectRaisedSelectionButtons, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
+import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
+import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
+
+const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
+const TARGET_BOOK = `${BOOK}_TARGET`;
+const selectionLayout = {
+    1440: { titleX: 50, descriptionRight: 1124, truncated: false },
+    390: { titleX: 50, descriptionRight: 304, truncated: false },
+};
+
+test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
+    const entry = (uid, comment, extra = {}) => ({
+        uid, comment, key: [comment.toLowerCase()], keysecondary: [], content: `${comment} content`,
+        constant: false, vectorized: false, selective: true, order: 100, position: 0, disable: false, displayIndex: uid, ...extra,
+    });
+    const books = new Map([[BOOK, { entries: { 0: entry(0, 'Alpha'), 1: entry(1, 'Beta'), 2: entry(2, 'Gamma', { disable: true }) } }]]);
+    await page.route('**/api/settings/get', async route => {
+        const payload = await fetchJsonOrSkip(route);
+        if (!payload) return;
+        return route.fulfill({ json: { ...payload, world_names: [...books.keys()] } });
+    });
+    await page.route('**/api/worldinfo/**', route => {
+        const endpoint = new URL(route.request().url()).pathname.split('/').at(-1);
+        const buffer = route.request().postDataBuffer();
+        const payload = buffer ? JSON.parse((route.request().headers()['content-encoding'] === 'gzip' ? gunzipSync(buffer) : buffer).toString()) : {};
+        if (endpoint === 'get') return route.fulfill({ status: books.has(payload.name) ? 200 : 404, json: books.get(payload.name) ?? {} });
+        if (endpoint === 'list') return route.fulfill({ json: [...books].map(([name, data]) => ({ name, ...data })) });
+        if (endpoint === 'edit' && [BOOK, TARGET_BOOK].includes(payload.name)) {
+            books.set(payload.name, structuredClone(payload.data));
+            return route.fulfill({ json: { ok: true, name: payload.name } });
+        }
+        if (endpoint === 'delete' && [BOOK, TARGET_BOOK].includes(payload.name)) {
+            books.delete(payload.name);
+            return route.fulfill({ json: { ok: true } });
+        }
+        return route.abort();
+    });
+    // Browser QA must not change the running instance's saved preferences.
+    await page.route('**/api/settings/save', route => {
+        const request = route.request();
+        const body = request.headers()['content-encoding'] === 'gzip'
+            ? gunzipSync(request.postDataBuffer()) : request.postDataBuffer();
+        const payload = JSON.parse(body.toString());
+        return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
+    });
+    await page.goto('/');
+    await waitForAppReady(page, { timeout: 60000 });
+    await page.evaluate(async name => {
+        for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
+    }, BOOK);
+});
+
+test.afterEach(async ({ page }) => {
+    await page.evaluate(async names => {
+        for (const name of names) {
+            for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
+        }
+    }, [BOOK, TARGET_BOOK]);
+});
+
+const readEntries = (page, name = BOOK) => page.evaluate(async name => {
+    const { getRequestHeaders } = await import('./script.js');
+    const response = await fetch('/api/worldinfo/get', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ name }) });
+    return (await response.json()).entries;
+}, name);
+
+async function openBook(page, expectedCount = 3) {
+    await page.evaluate(async name => {
+        const { openWorldInfoEditor } = await import('./scripts/world-info.js');
+        openWorldInfoEditor(name);
+    }, BOOK);
+    const editor = page.locator('#WorldInfo .sb-wi-editor');
+    await expect(editor.locator('.sb-wi-row')).toHaveCount(expectedCount);
+    return editor;
+}
+
+const row = (editor, title) => editor.locator('.sb-wi-row', { hasText: title });
+
+async function enterSelection(page, editor) {
+    await editor.locator('.sb-wi-book-actions').click();
+    await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+    await expect(editor).toHaveAttribute('data-selection-mode', 'true');
+    await expect(editor.locator('.sb-selection-cancel')).toBeFocused();
+}
+
+async function selectSettings(page, editor) {
+    await editor.locator('.sb-wi-book-actions').click();
+    await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
+}
+
+/** The sort button sits beside the search field, so the search bar opens first. */
+async function openSortMenu(editor) {
+    const toggle = editor.locator('.sb-wi-list-header button[aria-label="Search"]');
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+    await editor.locator('.sb-wi-sort-button').click();
+}
+
+async function selectSortOrFilter(page, editor, label) {
+    await openSortMenu(editor);
+    await page.locator('.sb-action-menu').last().getByRole('menuitemradio', { name: label, exact: true }).click();
+}
+
+for (const width of [1440, 390]) {
+    test(`q56 ${width}px World Info selection raises both header text buttons, Select All like Cancel`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        const reference = await promptButtonReference(page);
+        const editor = await openBook(page);
+        await enterSelection(page, editor);
+        const selection = {
+            cancel: await buttonStates(editor.locator('.sb-selection-cancel')),
+            save: await buttonStates(editor.locator('.sb-selection-select-all')),
+        };
+        await q56Screenshot(page, `selection-world-info-${width}`);
+        await testInfo.attach('q56 selection button states', { body: JSON.stringify({ reference, selection }), contentType: 'application/json' });
+        await expectRaisedSelectionButtons(page, selection, reference);
+    });
+}
+
+for (const width of [1440, 390]) {
+    test(`${width}px the page size stays reachable when every entry fits on one page`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.evaluate(async name => {
+            const { loadWorldInfo, saveWorldInfo } = await import('./scripts/world-info.js');
+            const { accountStorage } = await import('./scripts/util/AccountStorage.js');
+            accountStorage.setItem('WI_PerPage', '10');
+            const data = await loadWorldInfo(name);
+            for (let uid = 3; uid < 12; uid++) data.entries[uid] = { ...data.entries[0], uid, comment: `Extra ${uid}`, displayIndex: uid };
+            await saveWorldInfo(name, data, true);
+        }, BOOK);
+        const editor = await openBook(page, 10);
+        const size = editor.getByLabel('Items per page');
+        await expect(size).toBeVisible();
+
+        await size.selectOption('25');
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(12);
+        await expect(size).toBeVisible();
+        await expect(editor.locator('.sb-list-pagination__next')).toBeHidden();
+        await page.screenshot({ path: testInfo.outputPath(`page-size-${width}.png`) });
+
+        await size.selectOption('10');
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(10);
+        await expect(editor.locator('.sb-list-pagination__status')).toHaveText('Page 1 of 2');
+    });
+}
+
+test('the page size control stays hidden while the book has no more entries than the smallest page size', async ({ page }) => {
+    const editor = await openBook(page, 3);
+    await expect(editor.locator('.sb-list-pagination')).toBeHidden();
+});
+
+test.describe('World Info editor', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('edits an entry with explicit save and persists it', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        const entry = editor.locator('.sb-wi-entry');
+        const content = entry.locator('.sb-wi-entry-textarea');
+        await expect(content).toHaveValue('Alpha content');
+
+        await content.fill('Edited content');
+        await expect(entry.locator('.sb-wi-entry-dirty')).toBeVisible();
+        expect((await readEntries(page))[0].content).toBe('Alpha content');
+
+        await page.keyboard.press('Control+s');
+        await expect(entry.locator('.sb-wi-entry-dirty')).toBeHidden();
+        await expect.poll(async () => (await readEntries(page))[0].content).toBe('Edited content');
+
+        await page.reload();
+        await waitForAppReady(page, { timeout: 60000 });
+        const reopened = await openBook(page);
+        await row(reopened, 'Alpha').click();
+        await expect(reopened.locator('.sb-wi-entry-textarea')).toHaveValue('Edited content');
+    });
+
+    test('guards switching entries and discards on request', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await editor.locator('.sb-wi-entry-textarea').fill('Unsaved');
+        await row(editor, 'Beta').click();
+
+        const dialog = page.locator('dialog.popup[open]');
+        await expect(dialog).toBeVisible();
+        await dialog.getByText('Discard', { exact: true }).click();
+        await expect(editor.locator('.sb-wi-entry-textarea')).toHaveValue('Beta content');
+        expect((await readEntries(page))[0].content).toBe('Alpha content');
+    });
+
+    test('properties bar owns insertion fields, preserves draft isolation, and persists after reopen', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        const entry = editor.locator('.sb-wi-entry');
+        const bar = entry.locator(':scope > .sb-wi-properties');
+        await expect(bar).toBeVisible();
+        await expect(entry.locator('.sb-wi-property-summary')).toBeHidden();
+        await expect(entry.locator('.sb-wi-entry-body [data-sb-editor-field="section-entry"], .sb-wi-entry-body [data-sb-editor-field="section-insertion"]')).toHaveCount(0);
+        await expect(entry.locator('.sb-wi-entry-body [data-sb-editor-field="enabled"], .sb-wi-entry-body [data-sb-editor-field="position"]')).toHaveCount(0);
+        await bar.getByRole('button', { name: /^Strategy:/ }).click();
+        await page.getByRole('option', { name: 'Constant', exact: true }).click();
+        await entry.locator('.sb-wi-entry-save').focus();
+        await page.keyboard.press('Tab');
+        await expect(bar.getByRole('button', { name: /^Strategy:/ })).toBeFocused();
+        await bar.getByRole('button', { name: /^Position:/ }).click();
+        await page.getByRole('option', { name: '@D 👤', exact: true }).click();
+        await expect(bar.getByRole('spinbutton', { name: 'Depth', exact: true })).toBeVisible();
+        await expect(bar.getByRole('textbox', { name: 'Outlet Name', exact: true })).toBeHidden();
+        await bar.getByRole('spinbutton', { name: 'Depth', exact: true }).fill('8');
+        await bar.getByRole('spinbutton', { name: 'Order', exact: true }).fill('250');
+        await bar.getByRole('spinbutton', { name: 'Trigger %', exact: true }).fill('45');
+        await page.keyboard.press('Tab');
+        expect(await entry.locator('.sb-wi-entry-body').evaluate(node => node.contains(document.activeElement))).toBe(true);
+        expect((await readEntries(page))[0]).toMatchObject({ constant: false, position: 0, order: 100 });
+        await entry.locator('.sb-wi-entry-save').click();
+        await expect(entry.locator('.sb-wi-entry-dirty')).toBeHidden();
+        expect((await readEntries(page))[0]).toMatchObject({ constant: true, vectorized: false, position: 4, role: 1, depth: 8, order: 250, probability: 45 });
+        await page.reload();
+        await waitForAppReady(page, { timeout: 60000 });
+        const reopened = await openBook(page);
+        await row(reopened, 'Alpha').click();
+        await expect(reopened.getByRole('spinbutton', { name: 'Depth', exact: true })).toHaveValue('8');
+        await expect(reopened.getByRole('spinbutton', { name: 'Trigger %', exact: true })).toHaveValue('45');
+    });
+
+    test('expanded content writes through the draft, saves explicitly, and reopens', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        const entry = editor.locator('.sb-wi-entry');
+        const textarea = entry.locator('.sb-wi-entry-textarea');
+        const expand = entry.locator('.sb-editor-label-row > .editor_maximize');
+        await expect(expand).toHaveAttribute('data-for', await textarea.getAttribute('id'));
+        await expect(entry.locator('.sb-wi-entry-footer')).toHaveCount(0);
+        await expect(expand.locator('.fa-solid.fa-maximize')).toHaveCount(1);
+        const minHeight = await textarea.evaluate(node => parseFloat(getComputedStyle(node).minHeight));
+        expect(minHeight).toBeGreaterThanOrEqual(320);
+        await expect(textarea).toHaveCSS('resize', 'vertical');
+        await expand.click();
+        const popup = page.locator('dialog.popup[open]');
+        await expect(popup.locator('.maximized_textarea')).toHaveValue('Alpha content');
+        await popup.locator('.maximized_textarea').fill('Expanded WI content');
+        await acceptPopup(popup);
+        await expect(textarea).toHaveValue('Expanded WI content');
+        await expect(expand).toBeFocused();
+        await expect(entry.locator('.sb-wi-entry-dirty')).toBeVisible();
+        expect((await readEntries(page))[0].content).toBe('Alpha content');
+        await entry.locator('.sb-wi-entry-modes label').filter({ hasText: 'Preview' }).click();
+        await expect(expand).toBeHidden();
+        await entry.locator('.sb-wi-entry-modes label').filter({ hasText: 'Edit' }).click();
+        await entry.locator('.sb-wi-entry-save').click();
+        await expect(entry.locator('.sb-wi-entry-dirty')).toBeHidden();
+        await entry.locator('.sb-wi-detail-back').click();
+        await row(editor, 'Alpha').click();
+        await expect(textarea).toHaveValue('Expanded WI content');
+        expect((await readEntries(page))[0].content).toBe('Expanded WI content');
+    });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`the Edit / Preview toggle is a tray with a raised selected toggle in the ${tone} tone`, async ({ page }) => {
+            const editor = await openBook(page);
+            await row(editor, 'Alpha').click();
+            await selectTheme(page, theme);
+            await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', tone);
+            await expectToggleGroupForm(page, editor.locator('.sb-wi-entry .sb-wi-entry-modes'), { tone, floor: 32 });
+        });
+    }
+
+    test('row switch enables an entry immediately', async ({ page }) => {
+        const editor = await openBook(page);
+        const gamma = row(editor, 'Gamma').locator('input.sb-switch');
+        await expect(gamma).not.toBeChecked();
+        await gamma.check();
+        await expect.poll(async () => (await readEntries(page))[2].disable).toBe(false);
+    });
+
+    test('row toggles keep Priority positions and Active matches until a deliberate sort change', async ({ page }) => {
+        const editor = await openBook(page);
+        await selectSortOrFilter(page, editor, 'All');
+        await selectSortOrFilter(page, editor, 'Priority');
+        const orderedTitles = () => editor.locator('.sb-wi-row').evaluateAll(rows => rows.map(row => row.getAttribute('aria-label')));
+        const before = await orderedTitles();
+        const alphaIndex = before.indexOf('Alpha');
+        await row(editor, 'Alpha').locator('input.sb-switch').uncheck();
+        await expect.poll(async () => (await readEntries(page))[0].disable).toBe(true);
+        await expect(row(editor, 'Alpha')).toHaveClass(/is-disabled/);
+        expect((await orderedTitles()).indexOf('Alpha')).toBe(alphaIndex);
+        await selectSortOrFilter(page, editor, 'Title A-Z');
+        await selectSortOrFilter(page, editor, 'Priority');
+        await expect.poll(async () => (await orderedTitles()).indexOf('Alpha')).not.toBe(alphaIndex);
+        await row(editor, 'Alpha').locator('input.sb-switch').check();
+        await expect.poll(async () => (await readEntries(page))[0].disable).toBe(false);
+        await selectSortOrFilter(page, editor, 'Active');
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(2);
+        const activeBefore = await orderedTitles();
+        await row(editor, 'Alpha').locator('input.sb-switch').uncheck();
+        await expect.poll(async () => (await readEntries(page))[0].disable).toBe(true);
+        await expect(row(editor, 'Alpha')).toHaveClass(/is-disabled/);
+        expect(await orderedTitles()).toEqual(activeBefore);
+        await selectSortOrFilter(page, editor, 'Title A-Z');
+        await expect(row(editor, 'Alpha')).toHaveCount(0);
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(1);
+    });
+
+    test('offers to reload when another writer changes a dirty entry', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await editor.locator('.sb-wi-entry-textarea').fill('Mine');
+        await page.evaluate(async name => {
+            const { loadWorldInfo, saveWorldInfo, reloadEditor } = await import('./scripts/world-info.js');
+            const data = await loadWorldInfo(name);
+            data.entries[0].comment = 'Alpha (external)';
+            await saveWorldInfo(name, data, true);
+            /** @type {HTMLElement} */ (document.activeElement)?.blur();
+            reloadEditor(name);
+        }, BOOK);
+        await expect(editor.locator('.sb-wi-entry-banner')).toBeVisible();
+        await expect(editor.locator('.sb-wi-entry-textarea')).toHaveValue('Mine');
+    });
+
+    test('settings apply immediately with no book open', async ({ page }) => {
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
+        const editor = page.locator('#WorldInfo .sb-wi-editor');
+        await expect(editor.locator('.sb-wi-settings-button')).toHaveCount(0);
+        await editor.locator('.sb-wi-book-actions').click();
+        await expect(page.locator('.sb-action-menu [aria-disabled="true"]')).toHaveCount(10);
+        await page.getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
+        const recursive = editor.locator('#world_info_recursive');
+        await expect(recursive).toBeVisible();
+        const before = await recursive.isChecked();
+        await recursive.click();
+        await expect.poll(() => page.evaluate(async () => (await import('./scripts/world-info.js')).world_info_recursive)).toBe(!before);
+        await recursive.click();
+    });
+
+    test('desktop list fills the shell, splits on selection, and Back returns to the full list', async ({ page }) => {
+        const editor = await openBook(page);
+        const list = editor.locator('.sb-wi-list');
+        const width = async locator => (await locator.boundingBox()).width;
+        await expect.poll(async () => Math.abs(await width(list) - await width(editor))).toBeLessThanOrEqual(2);
+        await expect(editor.locator('.sb-wi-empty-detail')).toHaveCount(0);
+        await row(editor, 'Alpha').click();
+        await expect(editor).toHaveAttribute('data-open', 'true');
+        await expect.poll(async () => await width(list) / await width(editor)).toBeLessThan(0.5);
+        await editor.locator('.sb-wi-entry .sb-wi-detail-back').click();
+        await expect.poll(async () => Math.abs(await width(list) - await width(editor))).toBeLessThanOrEqual(2);
+        await expect(row(editor, 'Alpha')).toBeFocused();
+    });
+
+    test('each header and row trigger toggles closed and picker keeps its title button pressed', async ({ page }) => {
+        const editor = await openBook(page);
+        const picker = editor.locator('.sb-wi-book-switcher');
+        await picker.click();
+        const popover = page.locator('.sb-picker');
+        await expect(popover).toBeVisible();
+        await expect(picker).toHaveCSS('transform', 'none');
+        await expect(picker).toHaveAttribute('aria-expanded', 'true');
+        // Wait for the scale animation to finish before checking pixel geometry.
+        await popover.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
+        const anchor = await picker.boundingBox();
+        const bounds = await popover.boundingBox();
+        expect(Math.abs(bounds.x - anchor.x)).toBeLessThanOrEqual(2);
+        expect(bounds.width).toBeGreaterThanOrEqual(Math.min(anchor.width, 560) - 1);
+        await picker.click();
+        await expect(popover).toBeHidden();
+        await expect(picker).toHaveAttribute('aria-expanded', 'false');
+        const sortButton = editor.locator('.sb-wi-sort-button');
+        await editor.locator('.sb-wi-list-header button[aria-label="Search"]').click();
+        await expect(sortButton).toBeVisible();
+        for (const trigger of [sortButton, editor.locator('.sb-wi-list-header button:has(.fa-ellipsis-vertical)'), row(editor, 'Alpha').locator('.sb-wi-row-menu')]) {
+            await trigger.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+            await trigger.click();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+            await expect(page.locator('.sb-action-popover:visible')).toHaveCount(0);
+        }
+        await selectSettings(page, editor);
+        await expect(editor.locator('.sb-wi-settings')).toBeVisible();
+        await selectSettings(page, editor);
+        await expect(editor.locator('.sb-wi-settings')).toHaveCount(0);
+        await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
+        await selectSettings(page, editor);
+        await editor.locator('.sb-wi-settings .sb-wi-detail-back').click();
+        await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
+    });
+});
+
+for (const width of [1440, 390]) {
+    test.describe(`World Info search bar and book switcher at ${width}px`, () => {
+        test.use({ viewport: { width, height: 900 } });
+
+        test('the sort button sits beside the search entry, and the search toggle shows pressed while a sort or filter is on', async ({ page }) => {
+            const editor = await openBook(page);
+            const toggle = editor.locator('.sb-wi-list-header').getByRole('button', { name: 'Search', exact: true });
+            const sort = editor.locator('.sb-wi-sort-button');
+            await expect(sort).toBeHidden();
+            await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+            await toggle.click();
+            await expect(sort).toBeVisible();
+            await expect(sort).toHaveAttribute('aria-haspopup', 'menu');
+            await expect(editor.locator('.sb-wi-search-field')).toHaveAttribute('data-state', 'open');
+            const entry = await editor.locator('.sb-wi-search-field .sb-search-entry').boundingBox();
+            const button = await sort.boundingBox();
+            expect(button.x).toBeGreaterThanOrEqual(entry.x + entry.width);
+            expect(Math.abs(button.y + button.height / 2 - (entry.y + entry.height / 2))).toBeLessThanOrEqual(1);
+
+            await selectSortOrFilter(page, editor, 'Title A-Z');
+            await expect(sort).toBeFocused();
+            await expect(sort).toHaveAttribute('aria-pressed', 'true');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+            await toggle.click();
+            await expect(sort).toBeHidden();
+            await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+            await selectSortOrFilter(page, editor, 'Priority');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+            await selectSortOrFilter(page, editor, 'Disabled');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+            await selectSortOrFilter(page, editor, 'All');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        });
+
+        test('an empty search bar closes when the focus goes to the list, and stays for its own sort button', async ({ page }) => {
+            const editor = await openBook(page);
+            const toggle = editor.locator('.sb-wi-list-header').getByRole('button', { name: 'Search', exact: true });
+            const search = editor.locator('.sb-wi-search');
+            await toggle.click();
+            await expect(search).toBeFocused();
+            await editor.locator('.sb-wi-sort-button').focus();
+            await expect(search).toBeVisible();
+            await search.focus();
+            await row(editor, 'Alpha').focus();
+            await expect(search).toBeHidden();
+            await expect(row(editor, 'Alpha')).toBeFocused();
+        });
+
+        test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
+            const editor = await openBook(page);
+            const toggle = editor.locator('.sb-wi-list-header').getByRole('button', { name: 'Search', exact: true });
+            const field = editor.locator('.sb-wi-search-field');
+            const input = editor.locator('.sb-wi-search');
+            await expectSortKeepsSearchDismissable({
+                page,
+                reveal: () => toggle.click(),
+                field,
+                input,
+                sort: editor.locator('.sb-wi-sort-button'),
+                chooseSort: () => page.locator('.sb-action-menu').last().getByRole('menuitemradio').last().click(),
+                outside: editor.locator('.sb-wi-list-header'),
+                focusable: editor.locator('.sb-wi-book-actions'),
+            });
+            await expect(field).toBeHidden();
+        });
+
+        test('the book switcher is named by the book and its counts first, then by what it does', async ({ page }) => {
+            const editor = await openBook(page);
+            const switcher = editor.locator('.sb-wi-book-switcher');
+            await expect(switcher).toHaveAttribute('aria-label', `${BOOK} 3 entries · 2 active, Worlds/Lorebooks`);
+            await expect(editor.getByRole('button', { name: `${BOOK} 3 entries · 2 active, Worlds/Lorebooks`, exact: true })).toBeVisible();
+            await expect(switcher).toHaveAttribute('title', 'Worlds/Lorebooks');
+            expect(await switcher.evaluate(node => node.innerText.replace(/\s+/g, ' ').trim())).toBe(`${BOOK} 3 entries · 2 active`);
+        });
+    });
+}
+
+test.describe('World Info pressed fills', () => {
+    test('rows, the row menu and the book button show the shared pressed fill while the pointer is down', async ({ page }) => {
+        const editor = await openBook(page);
+        const paint = token => page.evaluate(token => {
+            const probe = document.createElement('i');
+            probe.style.background = `var(${token})`;
+            document.body.append(probe);
+            const color = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            return color;
+        }, token);
+        // A row that activates presses at the boxed-row fill (8%); the buttons in the list press at the flat fill (16%).
+        const targets = [
+            [row(editor, 'Beta'), await paint('--sb-row-active-bg')],
+            [row(editor, 'Beta').locator('.sb-wi-row-menu'), await paint('--sb-flat-active-bg')],
+            [editor.locator('.sb-wi-book-switcher'), await paint('--sb-flat-active-bg')],
+        ];
+        for (const [target, pressed] of targets) {
+            const box = await target.boundingBox();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.down();
+            await expect(target).toHaveCSS('background-color', pressed);
+            await page.mouse.move(2, 2);
+            await page.mouse.up();
+            await page.keyboard.press('Escape');
+        }
+    });
+});
+
+test.describe('World Info without a book picked', () => {
+    test('the empty page keeps one action; New and Import sit in the picker and Global Settings in the book menu', async ({ page }) => {
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
+        const editor = page.locator('#WorldInfo .sb-wi-editor');
+        await expect(editor.locator('.sb-wi-list-status .sb-status-page__action')).toHaveText(['Worlds/Lorebooks']);
+        await editor.locator('.sb-wi-list-status .sb-status-page__action').click();
+        const picker = page.locator('.sb-picker');
+        await expect(picker.locator('.sb-picker__footer-item')).toHaveText(['New', 'Import World Info']);
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+        await selectSettings(page, editor);
+        await expect(editor.locator('.sb-wi-settings')).toBeVisible();
+    });
+
+    test('Global Settings with no book on the server hides the books section and its search', async ({ page }) => {
+        await page.route('**/api/settings/get', async route => {
+            const payload = await fetchJsonOrSkip(route);
+            if (!payload) return;
+            return route.fulfill({ json: { ...payload, world_names: [] } });
+        });
+        await page.evaluate(async () => (await import('./scripts/world-info.js')).updateWorldInfoList());
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
+        const editor = page.locator('#WorldInfo .sb-wi-editor');
+        await expect(editor.locator('.sb-wi-list-status')).toContainText('--- Pick to Edit ---');
+        await selectSettings(page, editor);
+        const settings = editor.locator('.sb-wi-settings');
+        await expect(settings).toBeVisible();
+        await expect(settings.locator('.sb-wi-settings-books')).toBeHidden();
+        await expect(settings.locator('.sb-wi-settings-search')).toBeHidden();
+        await expect(settings.locator('.sb-status-page')).toBeHidden();
+        await expect(settings.locator('.sb-wi-settings-body .ds-pref-group:visible')).toHaveCount(1);
+    });
+});
+
+test.describe('World Info editor on mobile', () => {
+    test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+
+    test('opens an entry and returns to the list', async ({ page }) => {
+        const editor = await openBook(page);
+        await expect(editor).toBeVisible();
+        await row(editor, 'Beta').click();
+        const back = editor.locator('.sb-wi-entry .sb-wi-detail-back');
+        await expect(back).toBeVisible();
+        const box = await back.boundingBox();
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+        await back.click();
+        await expect(row(editor, 'Beta')).toBeVisible();
+    });
+
+    test('keeps Back and the item menu, which carries Edit/Preview on a phone, visible while scrolling the entry', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        const entry = editor.locator('.sb-wi-entry');
+        const menu = entry.getByRole('button', { name: 'Entry Actions', exact: true });
+        await expect(entry.locator('.sb-wi-entry-modes')).toBeHidden();
+        await expect(entry.locator('.sb-wi-entry-mode-toggle')).toBeHidden();
+        await menu.click();
+        await page.getByRole('menuitem', { name: 'Preview', exact: true }).click();
+        await expect(entry.locator('.sb-wi-entry-preview')).toHaveText('Alpha content');
+        await expect(entry.locator('.sb-wi-entry-textarea')).toBeHidden();
+        await menu.click();
+        await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+        await expect(entry.locator('.sb-wi-entry-textarea')).toBeVisible();
+        await entry.locator('.sb-wi-entry-body > *').last().scrollIntoViewIfNeeded();
+        await expect(entry.locator('.sb-wi-detail-back')).toBeInViewport();
+        await expect(menu).toBeInViewport();
+        await entry.locator('.sb-wi-detail-back').click();
+        await expect(row(editor, 'Alpha')).toBeVisible();
+    });
+
+    test('properties sheet edits survive Escape, explicit save, and persisted reopen', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        const entry = editor.locator('.sb-wi-entry');
+        const summary = entry.locator('.sb-wi-property-summary');
+        await expect(summary).toBeVisible();
+        await expect(entry.locator(':scope > .sb-wi-properties')).toBeHidden();
+        await summary.click();
+        const sheet = page.locator('.sb-dialog.sb-world-info-properties-dialog');
+        await expect(sheet).toBeVisible();
+        await sheet.getByRole('button', { name: /^Position:/ }).click();
+        await page.getByRole('option', { name: '➡️ Outlet', exact: true }).click();
+        await sheet.getByRole('textbox', { name: 'Outlet Name', exact: true }).fill('mobile-outlet');
+        await expect(sheet.getByRole('spinbutton', { name: 'Depth', exact: true })).toBeHidden();
+        await sheet.getByRole('spinbutton', { name: 'Order', exact: true }).fill('350');
+        await sheet.getByRole('spinbutton', { name: 'Trigger %', exact: true }).fill('60');
+        const target = await sheet.getByRole('button', { name: /^Position:/ }).boundingBox();
+        expect(target.height).toBeGreaterThanOrEqual(44);
+        await page.keyboard.press('Escape');
+        await expect(sheet).toBeHidden();
+        await expect(entry).toBeVisible();
+        await expect(summary).toBeFocused();
+        await expect(summary).toContainText('mobile-outlet');
+        await expect(summary).toContainText('60%');
+        expect((await readEntries(page))[0].position).toBe(0);
+        await summary.click();
+        await expect(sheet.getByRole('textbox', { name: 'Outlet Name', exact: true })).toHaveValue('mobile-outlet');
+        await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+        await entry.locator('.sb-wi-entry-save').click();
+        await expect(entry.locator('.sb-wi-entry-dirty')).toBeHidden();
+        await page.reload();
+        await waitForAppReady(page, { timeout: 60000 });
+        const reopened = await openBook(page);
+        await row(reopened, 'Alpha').click();
+        await expect(reopened.locator('.sb-wi-property-summary')).toContainText('mobile-outlet');
+        expect((await readEntries(page))[0]).toMatchObject({ position: 7, role: null, outletName: 'mobile-outlet', order: 350, probability: 60 });
+        const expand = reopened.locator('.sb-wi-entry-expand');
+        await expand.scrollIntoViewIfNeeded();
+        const expandBounds = await expand.boundingBox();
+        expect(expandBounds.width).toBeGreaterThanOrEqual(44);
+        expect(expandBounds.height).toBeGreaterThanOrEqual(44);
+    });
+});
+
+test.describe('World Info selection mode', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        test(`selection checks are round and share a fixed size at ${viewport.width}px`, async ({ page }) => {
+            await page.setViewportSize(viewport);
+            const editor = await openBook(page);
+            await enterSelection(page, editor);
+            const check = row(editor, 'Alpha').locator('.sb-selection-check');
+            await check.check();
+            const metrics = await check.evaluate(element => {
+                const bounds = element.getBoundingClientRect();
+                const radius = getComputedStyle(element).borderRadius;
+                const rowBounds = element.parentElement.getBoundingClientRect();
+                const title = element.parentElement.querySelector('.ds-entity-row__title');
+                const description = element.parentElement.querySelector('.ds-entity-row__subtitle');
+                return {
+                    width: bounds.width, height: bounds.height, radius: parseFloat(radius) * (radius.endsWith('%') ? bounds.width / 100 : 1),
+                    titleX: title.getBoundingClientRect().x - rowBounds.x,
+                    description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
+                };
+            });
+            expect(metrics.width).toBe(28);
+            expect(metrics.height).toBe(28);
+            expect(metrics.radius).toBeGreaterThanOrEqual(metrics.width / 2);
+            expect(metrics.titleX).toBeGreaterThanOrEqual(selectionLayout[viewport.width].titleX - 1);
+            expect(metrics.titleX).toBeLessThanOrEqual(selectionLayout[viewport.width].titleX + 1);
+            expect(metrics.description.right).toBeCloseTo(selectionLayout[viewport.width].descriptionRight, 0);
+            expect(metrics.description.truncated).toBe(selectionLayout[viewport.width].truncated);
+            const appearance = await selectionCheckAppearance(check);
+            expect(appearance.content).toBe('""');
+            expect(appearance.backgroundImage).toBe('none');
+            expect(appearance.display).toBe('grid');
+            expect(appearance.placeContent).toBe('center');
+            expect(appearance.glyphWidth).toBeCloseTo(15.68, 1);
+            expect(appearance.glyphHeight).toBeCloseTo(15.68, 1);
+            expect(appearance.glyphFitsInnerCircle).toBe(true);
+            expect(appearance.centeredByGrid).toBe(true);
+            if (process.env.CAPTURE_SELECTION_SHOTS) await page.screenshot({ path: test.info().outputPath(`world-info-${viewport.width}.png`) });
+        });
+    }
+
+    test('menu selection supports row clicks, Space, Ctrl/Cmd+A and Escape focus return', async ({ page }) => {
+        const editor = await openBook(page);
+        await enterSelection(page, editor);
+        await expect(editor.locator('.sb-wi-list-header')).toBeHidden();
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
+        await expect(editor.locator('.sb-selection-action:disabled')).toHaveCount(4);
+        await row(editor, 'Alpha').focus();
+        for (const key of ['x', 'Control+f', 'Meta+f']) {
+            await page.keyboard.press(key);
+            await expect(row(editor, 'Alpha')).toBeFocused();
+            await expect(editor.locator('.sb-wi-search')).toHaveValue('');
+            await expect(editor.locator('.sb-wi-search')).toBeHidden();
+        }
+        await row(editor, 'Alpha').click();
+        await expect(row(editor, 'Alpha').locator('.sb-selection-check')).toBeChecked();
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+        await row(editor, 'Beta').focus();
+        await page.keyboard.press('Space');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('2 selected');
+        await page.keyboard.press('Control+a');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
+        await editor.locator('.sb-selection-select-all').click();
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
+        await page.keyboard.press('Meta+a');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
+        await page.keyboard.press('Escape');
+        await expect(editor).toHaveAttribute('data-selection-mode', 'false');
+        await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
+        await expect(editor.locator('.sb-selection-check')).toHaveCount(0);
+    });
+
+    test('bulk enable/disable commits once and preserves dirty content and list order', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await editor.locator('.sb-wi-entry-textarea').fill('Still an unsaved draft');
+        const before = await editor.locator('.sb-wi-row').evaluateAll(rows => rows.map(row => row.dataset.uid));
+        await enterSelection(page, editor);
+        await row(editor, 'Alpha').click();
+        await row(editor, 'Beta').click();
+        const saves = [];
+        page.on('request', request => {
+            if (request.url().endsWith('/api/worldinfo/edit')) saves.push(request);
+        });
+        await editor.locator('[data-action-id="disable"]').click();
+        await expect.poll(async () => Object.values(await readEntries(page)).every(entry => entry.disable)).toBe(true);
+        expect(saves).toHaveLength(1);
+        expect(await editor.locator('.sb-wi-row').evaluateAll(rows => rows.map(row => row.dataset.uid))).toEqual(before);
+        await expect(editor.locator('.sb-wi-entry-textarea')).toHaveValue('Still an unsaved draft');
+        await expect(editor.locator('.sb-wi-entry-dirty')).toBeVisible();
+        await editor.locator('[data-action-id="enable"]').click();
+        await expect.poll(async () => {
+            const entries = await readEntries(page);
+            return [entries[0].disable, entries[1].disable];
+        }).toEqual([false, false]);
+        expect(saves).toHaveLength(2);
+        await expect(editor.locator('.sb-wi-entry-dirty')).toBeVisible();
+        await editor.locator('.sb-selection-cancel').click();
+        await editor.locator('.sb-wi-entry-cancel').click();
+        await expect(editor.locator('.sb-wi-entry-dirty')).toBeHidden();
+    });
+
+    test('bulk Delete confirms once, commits once and closes a removed open entry', async ({ page }) => {
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await enterSelection(page, editor);
+        await row(editor, 'Alpha').click();
+        await row(editor, 'Beta').click();
+        const saves = [];
+        page.on('request', request => {
+            if (request.url().endsWith('/api/worldinfo/edit')) saves.push(request);
+        });
+        await editor.locator('[data-action-id="delete"]').click();
+        const popup = page.locator('dialog.popup[open]');
+        await expect(popup).toContainText('(2)');
+        await expect(popup.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+        await expect(popup.locator('.popup-button-cancel')).toBeFocused();
+        await acceptPopup(popup);
+        await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
+        expect(saves).toHaveLength(1);
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
+    });
+
+    for (const width of [1440, 390]) {
+        test(`${width}px row actions use immediate Duplicate and two-choice Move/Copy`, async ({ page }) => {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            await page.evaluate(async name => {
+                const { saveWorldInfo, updateWorldInfoList } = await import('./scripts/world-info.js');
+                if (!await saveWorldInfo(name, { entries: {} }, true)) throw new Error('Could not save target lorebook');
+                await updateWorldInfoList();
+            }, TARGET_BOOK);
+            const editor = await openBook(page);
+            await row(editor, 'Alpha').locator('.sb-wi-row-menu').click();
+            await page.getByRole('menuitem', { name: 'Duplicate', exact: true }).click();
+            await expect(editor.locator('.sb-wi-row')).toHaveCount(4);
+
+            const copy = editor.locator('.sb-wi-row').nth(3);
+            await copy.scrollIntoViewIfNeeded();
+            await copy.dispatchEvent('click');
+            await expect(editor.locator('.sb-wi-detail')).toBeVisible();
+            await editor.locator('.sb-wi-detail .sb-wi-detail-back').click();
+            await expect(editor.locator('.sb-wi-detail')).toBeHidden();
+            await copy.locator('.sb-wi-row-menu').click();
+            await page.getByRole('menuitem', { name: 'Move/Copy', exact: true }).click();
+            await page.locator('.sb-picker__option').filter({ hasText: TARGET_BOOK }).click();
+
+            const transfer = page.locator('dialog.popup[open]');
+            await expect(transfer.locator('.popup-button-ok')).toBeHidden();
+            await expect(transfer.locator('.popup-button-custom')).toHaveCount(2);
+            await expect(transfer.getByText('Yes', { exact: true })).toBeHidden();
+            await transfer.locator('.popup-button-cancel').click();
+        });
+    }
+
+    test('bulk Copy retains sources and selection; bulk Move removes sources and clears selection', async ({ page }) => {
+        await page.evaluate(async name => {
+            const { saveWorldInfo, updateWorldInfoList } = await import('./scripts/world-info.js');
+            if (!await saveWorldInfo(name, { entries: {} }, true)) throw new Error('Could not save target lorebook');
+            await updateWorldInfoList();
+        }, TARGET_BOOK);
+        const editor = await openBook(page);
+        await row(editor, 'Alpha').click();
+        await enterSelection(page, editor);
+        await row(editor, 'Alpha').click();
+        await row(editor, 'Beta').click();
+        const transfer = async label => {
+            await editor.locator('[data-action-id="move"]').click();
+            await page.locator('.sb-picker__option').filter({ hasText: TARGET_BOOK }).click();
+            await page.locator('dialog.popup[open]').getByText(label, { exact: true }).click();
+        };
+        await transfer('Copy');
+        await expect.poll(async () => Object.values(await readEntries(page, TARGET_BOOK)).map(entry => entry.comment).sort()).toEqual(['Alpha', 'Beta']);
+        await expect(editor.locator('.sb-selection-title')).toHaveText('2 selected');
+        expect(Object.keys(await readEntries(page))).toHaveLength(3);
+        await expect(editor.locator('.sb-wi-entry')).toBeVisible();
+        await transfer('Move');
+        await expect.poll(async () => Object.keys(await readEntries(page))).toEqual(['2']);
+        await expect.poll(async () => Object.keys(await readEntries(page, TARGET_BOOK)).length).toBe(4);
+        await expect(editor.locator('.sb-selection-title')).toHaveText('0 selected');
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+    });
+
+    test('paging and filtering retain selection and a book change exits it', async ({ page }) => {
+        await page.evaluate(async name => {
+            const { loadWorldInfo, saveWorldInfo } = await import('./scripts/world-info.js');
+            const { accountStorage } = await import('./scripts/util/AccountStorage.js');
+            accountStorage.setItem('WI_PerPage', '10');
+            const data = await loadWorldInfo(name);
+            for (let uid = 3; uid < 12; uid++) data.entries[uid] = { ...data.entries[0], uid, comment: `Extra ${uid}`, displayIndex: uid };
+            await saveWorldInfo(name, data, true);
+        }, BOOK);
+        const editor = await openBook(page, 10);
+        await editor.getByRole('listitem', { name: 'Alpha', exact: true }).click({ button: 'right' });
+        await expect(editor.locator('.sb-selection-title')).toHaveText('1 selected');
+        await editor.locator('.sb-list-pagination__next').click();
+        await expect(editor.locator('.sb-wi-row')).toHaveCount(2);
+        await editor.locator('.sb-selection-select-all').click();
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
+        await editor.locator('.sb-wi-search').evaluate(node => { node.value = 'missing'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+        await expect(editor.locator('.sb-wi-list-status')).toHaveText('No Results FoundTry a different search');
+        await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
+        await page.evaluate(() => {
+            const select = document.getElementById('world_editor_select');
+            select.value = '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        await expect(editor).toHaveAttribute('data-selection-mode', 'false');
+    });
+});
+
+test.describe('World Info selection touch entry', () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+    test('long press selects without opening and action targets stay visible and at least 44px', async ({ page }) => {
+        const editor = await openBook(page);
+        await expect(editor).toBeVisible();
+        const alpha = row(editor, 'Alpha');
+        await expect(alpha).toBeInViewport();
+        await alpha.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 200 });
+        await expect(editor).toHaveAttribute('data-selection-mode', 'true');
+        await alpha.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 1 });
+        await alpha.dispatchEvent('click');
+        await expect(alpha.locator('.sb-selection-check')).toBeChecked();
+        await expect(editor.locator('.sb-wi-entry')).toHaveCount(0);
+        for (const action of await editor.locator('.sb-selection-action').all()) {
+            await expect(action).toBeInViewport();
+            const box = await action.boundingBox();
+            expect(box.width).toBeGreaterThanOrEqual(44);
+            expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+        await editor.locator('.sb-selection-cancel').click();
+        await expect(alpha).toBeFocused();
+    });
+});
+
+async function openSpinRows(page) {
+    const editor = await openBook(page);
+    await row(editor, 'Alpha').click();
+    const entry = editor.locator('.sb-wi-entry');
+    await expect(entry).toBeVisible();
+    await entry.locator('.ds-row-expander__toggle[aria-expanded="false"]').evaluateAll(toggles => toggles.forEach(toggle => toggle.click()));
+    await expect(entry.locator('.ds-row--spin').first()).toBeVisible();
+    return entry;
+}
+
+/** Reads the geometry of every visible spin row: the buttons' boxes, the drawn gap between the circles and the placeholder. */
+const measureSpinRows = page => page.evaluate(() => [...document.querySelectorAll('.sb-wi-entry .ds-row--spin')].filter(row => row.offsetParent).map((row) => {
+    const input = row.querySelector('.ds-row-suffix > input');
+    const [down, up] = [...row.querySelectorAll('.ds-spin-btn')].map(button => button.getBoundingClientRect());
+    const draw = parseFloat(getComputedStyle(row.querySelector('.ds-spin-btn'), '::before').width);
+    const style = getComputedStyle(input, '::placeholder');
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    probe.textContent = input.placeholder;
+    document.body.append(probe);
+    const placeholderWidth = probe.getBoundingClientRect().width;
+    probe.remove();
+    return {
+        title: row.querySelector('.ds-row-label').textContent,
+        down: { width: down.width, height: down.height },
+        up: { width: up.width, height: up.height },
+        boxGap: up.left - down.right,
+        drawnGap: (up.left + (up.width - draw) / 2) - (down.right - (down.width - draw) / 2),
+        draw,
+        placeholderWidth,
+        valueWidth: input.clientWidth,
+        rowHeight: row.getBoundingClientRect().height,
+        overflows: row.scrollWidth > row.clientWidth + 1,
+    };
+}));
+
+test.describe('World Info spin rows on a coarse pointer', () => {
+    test.use({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true });
+
+    test('keep 44px targets 14px apart, show the whole placeholder and do not overflow', async ({ page }) => {
+        await openSpinRows(page);
+        const rows = await measureSpinRows(page);
+        expect(rows.length).toBeGreaterThanOrEqual(4);
+        for (const spin of rows) {
+            expect(spin.down.width, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.down.height, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.up.width, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.up.height, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.boxGap, spin.title).toBeGreaterThanOrEqual(-0.5);
+            expect(spin.draw, spin.title).toBe(30);
+            expect(spin.drawnGap, spin.title).toBeCloseTo(14, 0);
+            expect(spin.valueWidth, spin.title).toBeGreaterThanOrEqual(spin.placeholderWidth);
+            expect(spin.overflows, spin.title).toBe(false);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    });
+
+    test('the plus and minus buttons edit the entry like typing', async ({ page }) => {
+        const entry = await openSpinRows(page);
+        const sticky = entry.locator('.ds-row--spin', { hasText: 'Sticky' });
+        const field = sticky.getByRole('spinbutton');
+        await expect(field).toHaveValue('');
+        await sticky.locator('.ds-spin-btn--up').tap();
+        await expect(field).toHaveValue('1');
+        await sticky.locator('.ds-spin-btn--up').tap();
+        await expect(field).toHaveValue('2');
+        await sticky.locator('.ds-spin-btn--down').tap();
+        await expect(field).toHaveValue('1');
+        await sticky.locator('.ds-spin-btn--down').tap();
+        await expect(field).toHaveValue('0');
+        await expect(sticky.locator('.ds-spin-btn--down')).toBeDisabled();
+    });
+});
+
+test.describe('World Info spin rows on a fine pointer', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('a stacked row puts its field right under its title', async ({ page }) => {
+        const entry = await openSpinRows(page);
+        const rows = entry.locator('.ds-row.ds-row--stacked:has(> .ds-row-text)');
+        expect(await rows.count()).toBeGreaterThan(0);
+        // A stacked row is a column, where the title's minimum width must not become its height.
+        const gaps = await rows.evaluateAll(nodes => nodes.filter(node => node.offsetParent).map((node) => {
+            const label = node.querySelector(':scope > .ds-row-text > .ds-row-label').getBoundingClientRect();
+            const field = node.querySelector(':scope > .ds-row-suffix').getBoundingClientRect();
+            return { label: node.querySelector('.ds-row-label').textContent.trim(), gap: field.top - label.bottom };
+        }));
+        for (const { label, gap } of gaps) expect(gap, label).toBeLessThanOrEqual(12);
+    });
+
+    test('keep 32px targets 6px apart', async ({ page }) => {
+        await openSpinRows(page);
+        const rows = await measureSpinRows(page);
+        const rowMinimum = await page.evaluate(() => {
+            const probe = document.createElement('div');
+            probe.style.height = 'var(--sb-density-row-min-height)';
+            document.body.append(probe);
+            const height = probe.getBoundingClientRect().height;
+            probe.remove();
+            return height;
+        });
+        expect(rows.length).toBeGreaterThanOrEqual(4);
+        for (const spin of rows) {
+            expect(spin.down.width, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.down.height, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.up.width, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.up.height, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.boxGap, spin.title).toBeGreaterThanOrEqual(0);
+            expect(spin.drawnGap, spin.title).toBeCloseTo(6, 0);
+            expect(spin.valueWidth, spin.title).toBeGreaterThanOrEqual(spin.placeholderWidth);
+            expect(spin.rowHeight, `${spin.title} stays one line at the row minimum`).toBeLessThanOrEqual(rowMinimum + 0.5);
+        }
+    });
+
+    test('the row draws the focus ring, not the number', async ({ page }) => {
+        const entry = await openSpinRows(page);
+        const spin = entry.locator('.ds-row--spin').first();
+        await spin.getByRole('spinbutton').focus();
+        await expect(spin).toBeVisible();
+        const rings = await spin.evaluate(row => {
+            const field = row.querySelector('input');
+            const style = getComputedStyle(field);
+            return { row: getComputedStyle(row).boxShadow, fieldShadow: style.boxShadow, fieldOutline: style.outlineStyle, fieldBackground: style.backgroundColor };
+        });
+        expect(rings.row).toMatch(/inset/);
+        expect(rings.fieldShadow).toBe('none');
+        expect(rings.fieldOutline).toBe('none');
+        expect(rings.fieldBackground).toBe('rgba(0, 0, 0, 0)');
+    });
+});

@@ -1,0 +1,11 @@
+{
+    "bodyHeights": {
+        "tewi": 283,
+        "reisen": 340
+    },
+    "lineupRatio": 0.8333,
+    "rings": {
+        "rim": 2,
+        "band": 2
+    }
+}

@@ -39,7 +39,9 @@ async function doTokenCounter() {
     }, debounce_timeout.relaxed);
     dialog.find('#token_counter_textarea').on('input', () => countDebounced());
 
-    callGenericPopup(dialog, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
+    // SillyBunny: group the live tokenizer fields in the shared Window without replacing controls.
+    const { tokenCounterOptions } = await import('../../sillybunny-editor/adapters/window-tools-dialogs.js');
+    callGenericPopup(dialog, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true, ...tokenCounterOptions(dialog) });
 }
 
 /**
@@ -104,7 +106,7 @@ async function doCount() {
 export function init() {
     const buttonHtml = `
         <div id="token_counter" class="list-group-item flex-container flexGap5">
-            <div class="fa-solid fa-1 extensionsMenuExtensionButton" /></div>` +
+            <div class="fa-solid fa-hashtag extensionsMenuExtensionButton" /></div>` + // SillyBunny: the hash sign names a count; a bare digit reads as a placeholder icon.
             t`Token Counter` +
         '</div>';
     $('#token_counter_wand_container').append(buttonHtml);

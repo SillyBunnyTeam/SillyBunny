@@ -31,7 +31,7 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
 
     if (conversationState.imageGenerationActive) {
         if (notify) {
-            globalThis.toastr?.warning?.('Image generation is already running.');
+            globalThis.toastr?.warning?.('Image generation is already running');
         }
         return null;
     }
@@ -65,7 +65,7 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
         });
 
         if (!entry?.url && notify) {
-            globalThis.toastr?.warning?.(`${generatorName} did not return an image.`);
+            globalThis.toastr?.warning?.(`${generatorName} did not return an image`);
         }
         return entry?.url ?? null;
     } catch (error) {
@@ -203,7 +203,7 @@ export function renderConversationParticipantStack(container, participants, {
             avatarItem.classList.add('is-interactive');
             avatarItem.tabIndex = 0;
             avatarItem.role = 'button';
-            avatarItem.setAttribute('aria-label', `Open solo DM with ${participant.name || 'Character'}`);
+            avatarItem.setAttribute('aria-label', `Open Solo DM With ${participant.name || 'Character'}`);
             avatarItem.addEventListener('click', (event) => {
                 event.stopPropagation();
                 onAvatarClick(participant);
@@ -221,7 +221,7 @@ export function renderConversationParticipantStack(container, participants, {
             avatarItem.dataset.avatarType = 'avatar';
             avatarItem.tabIndex = 0;
             avatarItem.role = 'button';
-            avatarItem.setAttribute('aria-label', `Show full picture for ${participant.name || 'Character'}`);
+            avatarItem.setAttribute('aria-label', `Show Full Picture for ${participant.name || 'Character'}`);
         }
 
         const image = document.createElement('img');

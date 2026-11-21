@@ -1,0 +1,42 @@
+/** @jest-environment jsdom */
+import { expect, test } from '@jest/globals';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
+const templates = [
+    'public/scripts/templates/dataMaidCategory.html',
+    'public/scripts/templates/dataMaidDialog.html',
+    'public/scripts/extensions/regex/debugger.html',
+];
+
+// Classes that a template drops on purpose. Scan is a label-only button (DESIGN.md, Buttons, Content), so its cog icon and
+// the classes of that icon are gone; no upstream code reads the icon. The scan wait draws the shared spinner, which
+// data-maid-dialog.js builds, so the spinning glyph and its classes are gone too.
+const REMOVED_ON_PURPOSE = {
+    'public/scripts/templates/dataMaidDialog.html': { classes: ['fa', 'fa-cog', 'fa-solid', 'fa-spinner', 'fa-spin', 'fa-3x'] },
+};
+
+function templateAttributes(html) {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const elements = [...template.content.querySelectorAll('*')];
+    return {
+        classes: new Set(elements.flatMap(element => [...element.classList])),
+        ids: new Set(elements.map(element => element.id).filter(Boolean)),
+        i18n: new Set(elements.flatMap(element => (element.getAttribute('data-i18n') ?? '').split(';').filter(Boolean))),
+    };
+}
+
+test.each(templates)('%s retains every upstream class, id and i18n key', path => {
+    const upstream = execFileSync('git', ['show', `HEAD:${path}`], { cwd: repositoryRoot, encoding: 'utf8' });
+    const working = readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+    const original = templateAttributes(upstream);
+    const current = templateAttributes(working);
+
+    for (const attribute of ['classes', 'ids', 'i18n']) {
+        const removed = REMOVED_ON_PURPOSE[path]?.[attribute] ?? [];
+        expect([...current[attribute]]).toEqual(expect.arrayContaining([...original[attribute]].filter(value => !removed.includes(value))));
+    }
+});

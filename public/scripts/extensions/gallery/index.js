@@ -18,6 +18,7 @@ import { DragAndDropHandler } from '../../dragdrop.js';
 import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { t, translate } from '../../i18n.js';
 import { Popup } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { deleteMediaFromServer } from '../../chats.js';
 import { MEDIA_REQUEST_TYPE, VIDEO_EXTENSIONS } from '../../constants.js';
 
@@ -377,7 +378,8 @@ async function makeMovable(url) {
     const id = 'gallery';
     const template = $('#generic_draggable_template').html();
     const newElement = $(template);
-    newElement.css({ 'background-color': 'var(--SmartThemeBlurTintColor)', 'opacity': 0 });
+    // SillyBunny: no inline background, so the opaque Window layer of `.draggable` (style.css) paints the window.
+    newElement.css({ 'opacity': 0 });
     newElement.attr('forChar', id);
     newElement.attr('id', id);
     newElement.find('.drag-grabber').attr('id', `${id}header`);
@@ -734,7 +736,8 @@ function viewWithDragbox(items) {
     if (items && items.length > 0) {
         const url = items[0].responsiveURL(); // Get the URL of the clicked image/video
         if (deleteModeActive) {
-            Popup.show.confirm(t`Are you sure you want to delete this image?`, url)
+            // SillyBunny: names the response with a verb (confirmVerb).
+            Popup.show.confirm(t`Are you sure you want to delete this image?`, url, confirmVerb(t`Delete`, { destructive: true }))
                 .then(async (confirmed) => {
                     if (!confirmed) {
                         return;

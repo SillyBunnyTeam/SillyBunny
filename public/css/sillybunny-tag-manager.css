@@ -1,0 +1,93 @@
+/* Tag Management content. The frame (host, header bar, search row, body, sheet) is the shared
+   Window-tier dialog in sillybunny-theme.css (sillybunny-editor/dialog.js); the box, rows and
+   buttons are the shared entity list in sillybunny-entity-list.css. */
+#tag_view_list .text_pole::placeholder {
+    color: var(--sb-input-placeholder) !important;
+    opacity: 1;
+}
+
+.sb-tag-manager .tag_view_item {
+    margin: 0;
+    flex-wrap: wrap;
+}
+
+/* Selection takes the grips and the manage buttons out of the rows; the check opens each row. */
+.sb-tag-manager[data-selection-mode='true'] :is(.drag-handle, .ds-entity-row__suffix) {
+    display: none;
+}
+
+.sb-tag-manager .ds-entity-row__avatar {
+    display: grid;
+    place-items: center;
+}
+
+.sb-tag-manager__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--sb-tag-color, var(--sb-muted-fg));
+}
+
+.sb-tag-manager .sb-tag-manager__name {
+    width: 100%;
+    min-width: 0;
+    height: 1.6em;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    outline: 0;
+    box-shadow: none;
+}
+
+.sb-tag-manager .sb-tag-manager__name:focus {
+    background: var(--sb-layer-view);
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-tag-manager [aria-invalid="true"] {
+    border-color: var(--sb-color-danger);
+}
+
+.sb-tag-manager .sb-tag-manager__name[aria-invalid="true"] {
+    box-shadow: inset 0 0 0 1px var(--sb-color-danger);
+}
+
+.sb-tag-manager__error {
+    display: block;
+    padding: 2px 4px;
+    color: var(--sb-color-danger);
+    font-size: var(--sb-type-meta);
+    white-space: normal;
+}
+
+.sb-tag-manager__colors {
+    flex: 1 0 100%;
+}
+
+.sb-tag-manager__members {
+    margin-top: 12px;
+}
+
+.sb-tag-manager__colors .tag_view_color_picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (hover: hover) {
+    .sb-tag-manager .sb-tag-manager__name:hover:not(:focus) {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-tag-manager .sb-tag-manager__name {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}

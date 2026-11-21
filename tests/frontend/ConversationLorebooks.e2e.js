@@ -62,8 +62,12 @@ test.describe('Conversation lorebooks', () => {
                 }
             }, avatar);
 
+            // The throwaway data root has no API connection, and a disconnected composer disables Send.
+            await page.evaluate(async () => (await import('./script.js')).setOnlineStatus('Connected'));
+
             const input = page.locator('#sb_conversation_input');
             const send = page.locator('#sb_conversation_send');
+            await expect(send).toBeEnabled();
             await input.fill('Tell me about the lexicon.');
             await send.click();
             await expect.poll(() => replyRequests().length, { timeout: 30_000 }).toBe(1);

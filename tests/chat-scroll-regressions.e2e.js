@@ -15,6 +15,7 @@ import {
     markManualMobileScroll,
     openReadyChat,
     scrollMessageNearTop,
+    scrollMessageNearTopBeforeQueuedChatLoadPin,
     waitForAnimationFrames,
 } from './chat-scroll-regression-helpers.js';
 
@@ -54,7 +55,8 @@ test.describe('issue 167 chat scroll regressions', () => {
         expect(snapshot.lastMessageClassCount).toBe(1);
         expect(snapshot.fadeClassCount).toBe(0);
         expect(snapshot.stylePinsCount).toBe(0);
-        expect(snapshot.firstEditUpDisabled).toBe(true);
+        // The edges are those of the chat, not of the rendered window: message 23 exists above the first rendered one.
+        expect(snapshot.firstEditUpDisabled).toBe(false);
         expect(snapshot.firstEditDownDisabled).toBe(false);
     });
 
@@ -214,6 +216,31 @@ test.describe('issue 167 chat scroll regressions', () => {
         expect(after.bottomDelta).toBeGreaterThan(200);
     });
 
+    test('a queued chat-load bottom pin does not run after the view moves up', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
+        const renderedIds = await getRenderedMessageIds(page);
+
+        const bottomDeltaAfterScroll = await scrollMessageNearTopBeforeQueuedChatLoadPin(page, renderedIds.at(6), { offsetTop: 32 });
+        await waitForAnimationFrames(page, 6);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(bottomDeltaAfterScroll).toBeGreaterThan(200);
+        expect(after.bottomDelta).toBeGreaterThan(200);
+    });
+
+    test('a bottom pin that a chat-load settle timer queued does not run after the view moves up', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
+        const renderedIds = await getRenderedMessageIds(page);
+
+        // 80 must equal the first entry of CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS in public/script.js, which no test can read. Any other value lets the test pass without the race.
+        const bottomDeltaAfterScroll = await scrollMessageNearTopBeforeQueuedChatLoadPin(page, renderedIds.at(6), { offsetTop: 32, afterSettleTimerMs: 80 });
+        await waitForAnimationFrames(page, 6);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(bottomDeltaAfterScroll).toBeGreaterThan(200);
+        expect(after.bottomDelta).toBeGreaterThan(200);
+    });
+
     test('message growth right after a tap keeps the bottom-pinned view still', async ({ page }) => {
         await installSyntheticLongChat(page, { messageCount: 48 });
         // eslint-disable-next-line playwright/no-wait-for-timeout -- Outlasts the chat load bottom lock (the last CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS entry plus CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS in public/script.js), which no test can read.
@@ -252,7 +279,7 @@ test.describe('issue 167 chat scroll regressions', () => {
             const context = window.SillyTavern.getContext();
             const messageId = context.chat.length;
             context.chat.push({
-                name: 'Bunny Guide',
+                name: 'Seraphina',
                 is_user: false,
                 is_system: false,
                 send_date: new Date().toISOString(),
