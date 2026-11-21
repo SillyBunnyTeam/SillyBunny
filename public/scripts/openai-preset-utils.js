@@ -386,6 +386,57 @@ export function buildCustomEndpointPresetForSave(preset) {
 }
 
 /**
+ * Chat Completion request fields for the Additional Parameters, keyed by the connection profile field that records them.
+ * @type {Readonly<Record<string, keyof CustomEndpointParameters>>}
+ */
+const CUSTOM_ENDPOINT_PARAMETER_REQUEST_FIELDS = Object.freeze({
+    'custom-include-body': 'custom_include_body',
+    'custom-exclude-body': 'custom_exclude_body',
+    'custom-include-headers': 'custom_include_headers',
+});
+
+/**
+ * Gets the Additional Parameters that a connection profile takes from the Custom endpoint profile it names.
+ * A request through a connection profile runs none of the profile's commands, so it would not otherwise send
+ * the values that applying the profile sets. A value that the connection profile records, and a value that
+ * the caller passes, still win.
+ *
+ * @param {object} options Lookup data
+ * @param {Record<string, any>|null|undefined} options.profile Connection profile
+ * @param {Record<string, any>[]|null|undefined} options.endpointProfiles Custom endpoint profiles
+ * @param {Record<string, any>} [options.overridePayload] Request fields that the caller passes
+ * @param {boolean} options.isCustomSource Whether the connection profile uses the Custom source
+ * @returns {CustomEndpointParameters} Request fields to add, keyed by request field name
+ */
+export function getCustomEndpointProfileRequestOverrides({ profile, endpointProfiles, overridePayload = {}, isCustomSource }) {
+    // Only a Custom profile selects an endpoint profile, so a name on a profile of another source is stale.
+    if (!isCustomSource) {
+        return {};
+    }
+
+    const endpointProfileName = profile?.['custom-endpoint-profile'];
+    const endpointProfile = endpointProfileName ? endpointProfiles?.find(preset => preset.name === endpointProfileName) : null;
+    if (!endpointProfile) {
+        return {};
+    }
+
+    // Normalise so that None gives its empty values, which are the values that applying the profile sets.
+    const storedParameters = pickCustomEndpointParameters(normalizeCustomEndpointPreset(endpointProfile));
+    /** @type {CustomEndpointParameters} */
+    const overrides = {};
+
+    for (const [profileKey, requestKey] of Object.entries(CUSTOM_ENDPOINT_PARAMETER_REQUEST_FIELDS)) {
+        if (Object.hasOwn(profile, profileKey) || Object.hasOwn(overridePayload, requestKey) || !Object.hasOwn(storedParameters, requestKey)) {
+            continue;
+        }
+
+        overrides[requestKey] = storedParameters[requestKey];
+    }
+
+    return overrides;
+}
+
+/**
  * Builds the storage key for model favorites, scoping Custom endpoint favorites by URL.
  *
  * @param {string} source Chat Completion source
