@@ -104,6 +104,7 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    CUSTOM_ENDPOINT_PARAMETER_KEYS,
     fillMissingCustomEndpointParameters,
     getChatCompletionSamplingProfileLookupKeys,
     getCustomEndpointFavoritesKey,
@@ -9766,23 +9767,39 @@ function writeCustomEndpointParameter(parameterKey, value) {
     }
 }
 
+// SillyBunny: fills the Additional Parameters fields from the live settings and stores each edit with the selected
+// endpoint profile. The fields show the values of the profile that was selected when they were filled. When the
+// selection changes while the dialog is open, the text in the fields belongs to the previous profile, and an edit
+// would write it into the new one. The fields then show the live values again and that edit is dropped.
+function bindCustomEndpointParameterFields(template) {
+    let shownForProfile;
+
+    const showLiveValues = () => {
+        for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+            template.find(`#${parameterKey}`).val(oai_settings[parameterKey]);
+        }
+        shownForProfile = selected_custom_endpoint_preset?.name;
+    };
+
+    showLiveValues();
+
+    for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+        template.find(`#${parameterKey}`).on('input', function () {
+            if (shownForProfile !== selected_custom_endpoint_preset?.name) {
+                showLiveValues();
+                return;
+            }
+
+            writeCustomEndpointParameter(parameterKey, String($(this).val()));
+            saveSettingsDebounced();
+        });
+    }
+}
+
 async function onCustomizeParametersClick() {
     const template = $(await renderTemplateAsync('customEndpointAdditionalParameters'));
 
-    template.find('#custom_include_body').val(oai_settings.custom_include_body).on('input', function () {
-        writeCustomEndpointParameter('custom_include_body', String($(this).val())); // SillyBunny: also stored with the selected endpoint profile.
-        saveSettingsDebounced();
-    });
-
-    template.find('#custom_exclude_body').val(oai_settings.custom_exclude_body).on('input', function () {
-        writeCustomEndpointParameter('custom_exclude_body', String($(this).val())); // SillyBunny: also stored with the selected endpoint profile.
-        saveSettingsDebounced();
-    });
-
-    template.find('#custom_include_headers').val(oai_settings.custom_include_headers).on('input', function () {
-        writeCustomEndpointParameter('custom_include_headers', String($(this).val())); // SillyBunny: also stored with the selected endpoint profile.
-        saveSettingsDebounced();
-    });
+    bindCustomEndpointParameterFields(template); // SillyBunny: the three fields also store their edits with the selected endpoint profile.
 
     const syncCustomReasoningPopup = () => {
         template.find('#custom_reasoning_preset').val(oai_settings.custom_reasoning_preset);
@@ -10471,8 +10488,8 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
 }
 
 // SillyBunny: endpoint profiles also store the Additional Parameters. Without `parameters` the stored and the live
-// values stay as they are, so the load-time apply cannot replace values that a connection profile set after the
-// endpoint profile.
+// values stay as they are, because the live values can differ from the stored ones on purpose, for example when a
+// connection profile sets its own.
 async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true, parameters = null } = {}) {
     const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId, ...pickCustomEndpointParameters(parameters) });
     const parametersToApply = parameters ? pickCustomEndpointParameters(normalizedPreset) : {};
@@ -10498,10 +10515,7 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
     $('#custom_model_id').val(oai_settings.custom_model);
     $('#model_custom_select').val(oai_settings.custom_model);
     refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
-    for (const [parameterKey, value] of Object.entries(parametersToApply)) {
-        oai_settings[parameterKey] = value;
-        $(`#${parameterKey}`).val(value);
-    }
+    Object.assign(oai_settings, parametersToApply);
 
     if (writeKey) {
         await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
@@ -10541,7 +10555,8 @@ $('#save_custom_endpoint').on('click', async function () {
         key: keyInputValue,
         model: $('#custom_model_id').val(),
         secretId: keyInputValue ? '' : existingPreset?.secretId,
-        // SillyBunny: the Additional Parameters dialog writes to the live settings, so Save reads them from there.
+        // SillyBunny: Save stores the Additional Parameters in effect, which are the live ones. The selected profile
+        // can hold other values when a connection profile set its own.
         ...pickCustomEndpointParameters(oai_settings),
     });
 

@@ -2,7 +2,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { buildCustomEndpointPresetForSave, fillMissingCustomEndpointParameters, normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../public/scripts/openai-preset-utils.js';
+import { buildCustomEndpointPresetForSave, CUSTOM_ENDPOINT_PARAMETER_KEYS, fillMissingCustomEndpointParameters, normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../public/scripts/openai-preset-utils.js';
 import { createSettingsSync } from '../public/scripts/sillybunny-settings-sync.js';
 
 const source = readFileSync(new URL('../public/scripts/openai.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -17,7 +17,7 @@ const loadSource = source.match(/export async function loadCustomEndpointPresets
 const deleteSource = source.match(/\$\('#delete_custom_endpoint'\)\.on\('click', async function \(\) \{[\s\S]*?\n\}\);/)[0];
 const slashCommandSource = source.match(/async function runCustomEndpointPresetCallback\([\s\S]*?\n\}/)[0];
 const syncSource = source.match(/export function syncCustomEndpointPresetSelectionBySecretId\([\s\S]*?\n\}/)[0].replace('export ', '');
-const popupSource = ['writeCustomEndpointParameter', 'onCustomizeParametersClick']
+const popupSource = ['writeCustomEndpointParameter', 'bindCustomEndpointParameterFields', 'onCustomizeParametersClick']
     .map(name => source.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`))[0]).join('\n');
 const scriptSource = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const saverSource = ['saveSettings', 'saveSettingsInner', 'normalizeSettingsVersion']
@@ -73,6 +73,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         },
     };
     let closePopup;
+    let popupOpen = false;
     const context = {
         ...Object.fromEntries([
             'firstRun', 'currentVersion', 'name1', 'active_character', 'active_group', 'user_avatar',
@@ -107,6 +108,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         normalizeCustomEndpointPreset,
         buildCustomEndpointPresetForSave,
         pickCustomEndpointParameters,
+        CUSTOM_ENDPOINT_PARAMETER_KEYS,
         fillMissingCustomEndpointParameters,
         secret_state: secretState,
         console: { warn: jest.fn(), error: jest.fn(), log: jest.fn() },
@@ -125,7 +127,8 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         custom_reasoning_param_formats: { OPENAI: 'openai', STRING: 'string', THINKING_OBJECT: 'thinking_object' },
         custom_reasoning_preset_types: { CUSTOM: 'custom' },
         setCustomReasoningPreset: jest.fn(),
-        $: selector => typeof selector === 'object' ? selector : ({
+        // A selector reaches a dialog field while the dialog is in the page, as `document` lookups do.
+        $: selector => typeof selector === 'object' ? selector : popupOpen && popupFields.has(selector) ? popupFields.get(selector) : ({
             find() {
                 return this;
             },
@@ -169,9 +172,10 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         attributes,
         // Opens the dialog and returns its fields. Typing runs the field's `input` handler on the text that the field holds.
         openPopup: async () => {
+            popupOpen = true;
             const opened = context.onCustomizeParametersClick();
             await new Promise(resolve => setImmediate(resolve));
-            return {
+            const popup = {
                 text: parameterKey => popupValues.get(`#${parameterKey}`),
                 type: (parameterKey, text) => {
                     popupValues.set(`#${parameterKey}`, text);
@@ -180,8 +184,11 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
                 close: async () => {
                     closePopup();
                     await opened;
+                    popupOpen = false;
                 },
             };
+            popup.append = (parameterKey, text) => popup.type(parameterKey, `${popup.text(parameterKey)}${text}`);
+            return popup;
         },
         connect: () => context.onConnectButtonClick({ stopPropagation() {} }),
         save: () => clickHandlers.get('#save_custom_endpoint')(),
@@ -444,7 +451,6 @@ describe('Custom endpoint profile Additional Parameters', () => {
         harness.values.set('#custom_endpoint_preset', 'Stored');
         await harness.context.onCustomEndpointPresetChange();
         expect(harness.context.oai_settings).toMatchObject(storedParameters);
-        expect(harness.values.get('#custom_include_body')).toBe(storedParameters.custom_include_body);
 
         harness.values.set('#custom_endpoint_preset', 'Legacy');
         await harness.context.onCustomEndpointPresetChange();
@@ -455,7 +461,6 @@ describe('Custom endpoint profile Additional Parameters', () => {
         harness.values.set('#custom_endpoint_preset', 'None');
         await harness.context.onCustomEndpointPresetChange();
         expect(harness.context.oai_settings).toMatchObject({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
-        expect(harness.values.get('#custom_include_headers')).toBe('');
     });
 
     test('loading the settings keeps the Additional Parameters that were in effect', async () => {
@@ -534,6 +539,50 @@ describe('Custom endpoint profile Additional Parameters', () => {
             expect(harness.profile.custom_include_body).toBe('edited_in_popup: 1');
             expect(harness.profile).not.toHaveProperty('custom_exclude_body');
             expect(harness.profile).not.toHaveProperty('custom_include_headers');
+        });
+
+        test.each([
+            ['the dropdown', harness => {
+                harness.values.set('#custom_endpoint_preset', 'Other');
+                return harness.context.onCustomEndpointPresetChange();
+            }],
+            ['/custom-endpoint-profile', harness => harness.context.runCustomEndpointPresetCallback(null, 'Other')],
+            ['a connection profile that names its secret', harness => harness.context.syncCustomEndpointPresetSelectionBySecretId('b-id')],
+        ])('a selection by %s while the dialog is open does not let the text of the previous profile reach the new one', async (_, select) => {
+            const harness = createHarness();
+            const otherProfile = other();
+            harness.context.custom_endpoint_presets.push(otherProfile);
+            Object.assign(harness.profile, { custom_include_body: 'a: 1', custom_exclude_body: '', custom_include_headers: 'Authorization: Bearer KEY-A' });
+            Object.assign(harness.context.oai_settings, pickCustomEndpointParameters(harness.profile));
+            const popup = await harness.openPopup();
+
+            await select(harness);
+            popup.append('custom_include_headers', '\n');
+
+            const live = harness.context.oai_settings;
+            expect(harness.context.selected_custom_endpoint_preset).toBe(otherProfile);
+            expect(JSON.stringify([live, otherProfile])).not.toContain('KEY-A');
+            expect(harness.profile.custom_include_headers).toBe('Authorization: Bearer KEY-A');
+            for (const parameterKey of ['custom_include_body', 'custom_exclude_body', 'custom_include_headers']) {
+                expect(popup.text(parameterKey)).toBe(live[parameterKey]);
+                expect(otherProfile[parameterKey]).toBe(live[parameterKey]);
+            }
+        });
+
+        test('an edit after the dialog caught up with a new selection is stored with that profile', async () => {
+            const harness = createHarness();
+            const otherProfile = other();
+            harness.context.custom_endpoint_presets.push(otherProfile);
+            Object.assign(harness.context.oai_settings, pickCustomEndpointParameters(harness.profile));
+            const popup = await harness.openPopup();
+            harness.context.syncCustomEndpointPresetSelectionBySecretId('b-id');
+            popup.append('custom_include_body', ' ');
+            expect(otherProfile.custom_include_body).toBe('other: 1');
+
+            popup.append('custom_include_body', '# kept');
+
+            expect(otherProfile.custom_include_body).toBe('other: 1# kept');
+            expect(harness.context.oai_settings.custom_include_body).toBe('other: 1# kept');
         });
 
         test('with None selected the live settings are the only store', async () => {
