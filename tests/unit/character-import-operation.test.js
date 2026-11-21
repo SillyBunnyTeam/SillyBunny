@@ -33,6 +33,7 @@ function harness({ actualFileImport = false, generating = false } = {}) {
         importWorldInfo, fetch, toastr, t, isValidUrl: value => value.startsWith('https://'),
         getRequestHeaders: () => ({}), File, FormData, is_group_generating: generating, is_send_press: false,
         name1: 'User', $: () => ({ val: () => ({ trigger() {} }) }), console: { error() {}, debug() {}, log() {} },
+        power_user: { import_external_media: false },
     };
     if (actualFileImport) delete deps.importCharacter;
     const code = [actualFileImport ? declaration('importCharacter') : '', declaration('runCharacterImport'), declaration('processDroppedFiles')].join('\n');
