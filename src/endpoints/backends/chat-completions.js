@@ -92,6 +92,7 @@ import {
 import { getVertexAIAuth, getProjectIdFromServiceAccount, getGoogleApiBaseUrl } from '../google.js';
 import { getCookieSecret } from '../../users.js';
 import { fetchGoogleModels, GoogleModelsHttpError } from './google-models.js';
+// SillyBunny: the KoboldCpp Chat Completion request code lives in its own module to keep this file close to upstream.
 import { finalizeKoboldCppChatBody, getKoboldCppChatConnection, getKoboldCppChatRequest } from './koboldcpp-chat.js';
 // SillyBunny: the browser shows the provider's own message instead of only the HTTP reason.
 import { extractProviderMessage } from '../../../public/scripts/sillybunny-provider-message.js';

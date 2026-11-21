@@ -2,6 +2,7 @@ import { localforage } from '../lib.js';
 import { characters, event_types, eventSource, main_api, nai_settings, online_status, this_chid } from '../script.js';
 import { power_user, registerDebugFunction } from './power-user.js';
 import { chat_completion_sources, getChatCompletionModel, model_list, oai_settings } from './openai.js';
+// SillyBunny: KoboldCpp counts Chat Completion tokens with its own tokenizer, which lives in the KoboldCpp module.
 import { countKoboldCppChatTokens, isKoboldCppChatCompletion } from './sillybunny-koboldcpp-models.js';
 import { groups, selected_group } from './group-chats.js';
 import { getStringHash } from './utils.js';

@@ -126,6 +126,7 @@ import {
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
+// SillyBunny: the KoboldCpp Chat Completion state and model list live in the KoboldCpp module to keep this file close to upstream.
 import { getKoboldCppChatState, refreshKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 // SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
 import { createFailedResponseError, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
