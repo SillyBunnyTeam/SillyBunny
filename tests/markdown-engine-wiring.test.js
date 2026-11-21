@@ -72,10 +72,12 @@ describe('markdown engine wiring', () => {
         }
     });
 
-    test('the setting defaults to markdown-it, loads into the select and re-renders the chat on change', () => {
+    test('the setting defaults to markdown-it and loads into the select, which then announces the value with an input event', () => {
         expect(powerUserSource).toContain('    markdown_engine: MARKDOWN_ENGINES.MARKDOWN_IT,');
-        expect(powerUserSource).toContain('    $(\'#markdown_engine\').val(normalizeMarkdownEngine(power_user.markdown_engine));');
+        expect(powerUserSource).toContain('    $(\'#markdown_engine\').val(normalizeMarkdownEngine(power_user.markdown_engine)).each((_, select) => select.dispatchEvent(new Event(\'input\', { bubbles: true })));');
+    });
 
+    test('a change of the select stores the engine, reloads the processor and re-renders the chat', () => {
         const handler = [
             '    $(\'#markdown_engine\').on(\'change\', async function () {',
             '        power_user.markdown_engine = normalizeMarkdownEngine($(this).val());',
@@ -87,11 +89,26 @@ describe('markdown engine wiring', () => {
         expect(powerUserSource).toContain(handler);
     });
 
-    test('User Settings has a labelled engine select after Auto-fix Markdown, with markdown-it first', () => {
+    test('the shell presents the select as a toggle row before it splits the settings', () => {
+        const tabsSource = read('public', 'scripts', 'sillybunny-tabs.js');
+        expect(tabsSource).toContain('import { presentMarkdownEngineRow } from \'./sillybunny-markdown-engine-row.js\';');
+        expect(tabsSource.indexOf('presentMarkdownEngineRow(originalContent);')).toBeGreaterThan(0);
+        expect(tabsSource.indexOf('presentMarkdownEngineRow(originalContent);')).toBeLessThan(tabsSource.indexOf('splitUserSettingsContent(originalContent);'));
+    });
+
+    test('Customize > Messages lists the engine in Message Display right after Auto-fix Markdown', () => {
+        const rows = /id: 'message-display',[\s\S]*?rows: \[([\s\S]*?)\]/.exec(read('public', 'scripts', 'sillybunny-settings-content.js'))?.[1] ?? '';
+        const selectors = [...rows.matchAll(/'([^']+)'/g)].map(match => match[1]);
+        expect(selectors.indexOf('#markdown_engine')).toBe(selectors.indexOf('#auto_fix_generated_markdown') + 1);
+        expect(selectors.indexOf('#auto_fix_generated_markdown')).toBeGreaterThanOrEqual(0);
+    });
+
+    test('the settings markup has a labelled engine select after Auto-fix Markdown, with markdown-it first and a marked subtitle placeholder', () => {
         const row = [
             '                                <div>',
             '                                    <label for="markdown_engine">',
             '                                        <small data-i18n="Markdown Engine">Markdown Engine</small>',
+            '                                        <small class="ds-row-subtitle" data-sb-copy-placeholder="true">TODO(copy)</small>',
             '                                    </label>',
             '                                    <select id="markdown_engine">',
             '                                        <option value="markdown-it">markdown-it</option>',

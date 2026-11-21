@@ -2598,8 +2598,8 @@ export async function loadPowerUserSettings(settings, data) {
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
     $('#disable_group_trimming').prop('checked', power_user.disable_group_trimming);
     $('#markdown_escape_strings').val(power_user.markdown_escape_strings);
-    // SillyBunny: show markdown-it for a missing or unknown engine without changing the stored value.
-    $('#markdown_engine').val(normalizeMarkdownEngine(power_user.markdown_engine));
+    // SillyBunny: show markdown-it for a missing or unknown engine without changing the stored value. Setting a value fires no event, so the native input event tells the Markdown Engine toggle row to show the loaded value.
+    $('#markdown_engine').val(normalizeMarkdownEngine(power_user.markdown_engine)).each((_, select) => select.dispatchEvent(new Event('input', { bubbles: true })));
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     $('#waifuMode').prop('checked', power_user.waifuMode);
     $('#movingUImode').prop('checked', power_user.movingUI);
