@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "hero-duo-night--tewi--breath-b.png",
+    "sha256": "cb0a28ac5a0cabcbacaa836c77747dc1438e64052f4bcbf05880b5b1309859f7",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:c12dd861cf1596fd118d5d36862cd727dd22f4e8ed3ebeb942d28becda45368a"
+}

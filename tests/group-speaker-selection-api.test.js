@@ -10,6 +10,7 @@ describe('group speaker bar selection API', () => {
         expect(runtime.setSelectedGroupSpeakerAvatar('bob.png')).toBe(true);
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('bob.png');
         expect(bar.highlighted()).toEqual(['bob.png']);
+        expect(bar.pressed()).toEqual(['bob.png']);
         expect(changes).toEqual(['bob.png']);
     });
 
@@ -41,6 +42,7 @@ describe('group speaker bar selection API', () => {
         expect(runtime.setSelectedGroupSpeakerAvatar('')).toBe(true);
         expect(runtime.getSelectedGroupSpeakerAvatar()).toBe('');
         expect(bar.highlighted()).toEqual([]);
+        expect(bar.pressed()).toEqual([]);
         expect(changes).toEqual(['alice.png', '']);
     });
 

@@ -1,0 +1,101 @@
+.sb-dialog__header > .extensions-header-menus {
+    grid-column: 3;
+    grid-row: 1;
+    width: max-content;
+}
+
+/* SillyBunny: keep the short manager title readable beside its three compact header actions. */
+@media (max-width: 450px) {
+    .sb-dialog__header:has(.extensions-header-menus) .sb-dialog__title {
+        width: max-content;
+        max-width: none;
+        overflow: visible;
+        text-overflow: clip;
+    }
+}
+
+.extensions_info .sb-extensions-section .extension_block {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+/* The lists are boxed lists as in every other list: a shadow ring in place of the dialog group's border. Their rows are switch
+   rows, at the row height and gap of a switch row; the 52px minimum is for rows in list sidebars. */
+.extensions_info .sb-extensions-section .ds-pref-group {
+    border: 0;
+    box-shadow: var(--sb-shadow-card);
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group > .extension_block {
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group > .extension_block:last-child {
+    border-bottom: 0;
+}
+
+@media (hover: hover) {
+    .extensions_info .sb-extensions-section .extension_block:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+/* The title is Body at regular weight and the modules line is a dimmed Caption subtitle, as in every boxed-list row. The
+   title wraps at word boundaries: the row grows instead of hiding the version or cutting the modules list. */
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > :is(.extension_enabled, .extension_disabled, .extension_missing, a),
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > a > :is(.extension_enabled, .extension_disabled, .extension_missing) {
+    overflow: visible;
+    font-weight: 400;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+
+/* st-tailwind.css colours the module names lightgray, which is under 1.5:1 on the light tone. They take the line's dimmed ink. */
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_modules > .optional {
+    color: inherit;
+}
+
+/* The homepage link wraps the name, the version and the modules line. Only the name carries the link underline. */
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > a {
+    text-decoration: none;
+}
+
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > a .extension_name {
+    text-decoration: underline;
+}
+
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_name {
+    font-size: var(--sb-type-body);
+}
+
+.extensions_info .sb-extensions-section .extension_block.ds-row :is(.extension_version, .extension_author, .extension_modules) {
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-caption);
+    opacity: 1;
+}
+
+.extensions_info .sb-extensions-section {
+    margin: 0 0 16px;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group-header {
+    min-width: 0;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group-header > .flex-container {
+    width: 100%;
+    min-width: 0;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group-header .ds-row-suffix {
+    flex: 0 0 auto;
+}
+
+.extensions_info .extensions_loading {
+    justify-content: flex-start;
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 16px;
+}

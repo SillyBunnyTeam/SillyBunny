@@ -2,7 +2,13 @@ import { chat } from '../../../../script.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../../chat-render-lifecycle/anchor.js';
 import { eventSource, event_types } from '../../../events.js';
+import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { confirmVerb } from '../../../sillybunny-delete-confirm.js';
+import { openActionMenu } from '../../../sillybunny-action-menu.js';
+import { attachSortableKeys, reorderMenuItems } from '../../../sillybunny-editor/reorder-menu.js';
+import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
+import { createStatusPage, spinnerMarkup } from '../../../sillybunny-editor/status-page.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
 import { escapeHtml } from '../../../utils.js';
 import {
@@ -49,6 +55,8 @@ import {
 } from './companion-shared.js';
 
 const PANEL_HISTORY_LIMIT = 5;
+const SIDE_PANEL_ID = 'ica-companion-panel';
+const SIDE_PANEL_SELECTOR = `.sb-side-panel[data-sb-side-panel-id="${SIDE_PANEL_ID}"]`;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
@@ -64,8 +72,35 @@ const PANEL_ANCHOR_OPTIONS = {
 
 let panelInitialized = false;
 let panelOpen = false;
+let panelOrigin = null;
+
+export const captureCompanionPanelOrigin = () => panelOrigin;
+
+// SillyBunny: restore the originating companion and scroll position after detail closes.
+export function restoreCompanionPanelOrigin(restore, isCurrent) {
+    if (!isCurrent() || isConversationModeActive()) return false;
+    const shown = openCompanionPanel();
+    // The panel stays hidden until its layout is ready, and a hidden element drops a scroll position.
+    void Promise.resolve(shown).then(() => {
+        if (!isCurrent()) return;
+        const body = document.querySelector('#ica--tracker-panel .ica--tpanel-body');
+        if (!body) return;
+        const scroller = getPanelScroller();
+        if (scroller) scroller.scrollTop = restore?.scrollTop ?? 0;
+        const row = [...body.querySelectorAll('[data-agent-id]')].find(node => node.dataset.agentId === restore?.agentId);
+        row?.querySelector('[data-action="panel-edit"]')?.focus({ preventScroll: true });
+    });
+    return true;
+}
+
+/** The side panel's body scrolls; the source element inside it does not. */
+function getPanelScroller() {
+    const panel = document.querySelector('#ica--tracker-panel');
+    return panel?.closest('.sb-side-panel__body') ?? panel;
+}
 let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
+let panelController = null;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
 let conversationModeObserver = null;
@@ -82,6 +117,7 @@ function syncConversationModePanelVisibility() {
         closeCompanionPanel();
     }
     updateCompanionPanelHandleVisibility();
+    panelHooks?.refreshAgentList?.();
 }
 
 function observeConversationModeState() {
@@ -523,8 +559,8 @@ function buildCompanionTokenUsagePillsHtml(result = {}) {
     const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
 
     const pills = [
-        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
-        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated Input Tokens" aria-label="Input Tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated Output Tokens" aria-label="Output Tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
     ].filter(Boolean).join('');
 
     return pills ? `<span class="ica--tpanel-agent-token-pills">${pills}</span>` : '';
@@ -533,7 +569,7 @@ function buildCompanionTokenUsagePillsHtml(result = {}) {
 function buildPanelEntryBody(agentId, entry) {
     const status = String(entry.result.status ?? 'done');
     if (status === 'pending') {
-        return '<div class="ica--companion-pending"><i class="fa-solid fa-spinner fa-spin"></i><span>Updating…</span></div>';
+        return `<div class="ica--companion-pending">${spinnerMarkup('Updating')}<span>Updating…</span></div>`;
     }
 
     if (status === 'error') {
@@ -551,10 +587,10 @@ function buildChatOnlyComposer(state) {
     return `
         <div class="ica--chatonly-composer ica--tpanel-chatonly-composer">
             <label>
-                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></span>
-                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..." aria-label="Private side chat">
+                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private Side Chat</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside…" aria-label="Private Side Chat">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send This Aside to Chat Only" aria-label="Send Aside">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
@@ -573,7 +609,7 @@ function buildPlotCompassObjectiveComposer(state) {
                 <span>Plot Objective</span>
                 <input type="text" class="text_pole ica--plot-objective-input" data-role="plot-compass-objective" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?" value="${escapeHtml(objective)}" aria-label="Plot Objective">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
+            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save" data-action="panel-plot-compass-save" title="Save Objective and Rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
             </button>
         </div>
@@ -588,10 +624,10 @@ function buildChatroomReplyComposer(state) {
     return `
         <div class="ica--chatonly-composer ica--tpanel-chatroom-reply">
             <label>
-                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the chatroom</span></span>
-                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom..." aria-label="Respond to the chatroom">
+                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the Chatroom</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom…" aria-label="Respond to the Chatroom">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatroom-reply-send" data-action="panel-chatroom-reply-send" title="Send your reply to the chatroom" aria-label="Send reply">
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatroom-reply-send" data-action="panel-chatroom-reply-send" title="Send Your Reply to the Chatroom" aria-label="Send Reply">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
@@ -622,18 +658,18 @@ function buildPanelAgentSection(state) {
     const canSendToLorebook = isLorebookAgent(state.agent);
 
     const settingsButton = state.agent
-        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open this companion\'s agent settings" aria-label="Agent settings"><i class="fa-solid fa-gear"></i></button>'
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-edit" title="Open This Companion\'s Agent Settings" aria-label="Agent Settings"><i class="fa-solid fa-gear"></i></button>'
         : '';
     const runLatestButton = state.agent
-        ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run this companion on the latest assistant reply" aria-label="Run companion"><i class="fa-solid fa-play"></i></button>'
+        ? '<button type="button" class="ica--cdash-action" data-action="panel-run-latest" title="Run This Companion on the Latest Assistant Reply" aria-label="Run Companion"><i class="fa-solid fa-play"></i></button>'
         : '';
-    const hiddenTitle = isHidden ? 'Unhide this companion' : 'Hide this companion (skipped on auto-trigger)';
-    const hiddenLabel = isHidden ? 'Unhide companion' : 'Hide companion';
+    const hiddenTitle = isHidden ? 'Unhide This Companion' : 'Hide This Companion (Skipped on Auto-Trigger)';
+    const hiddenLabel = isHidden ? 'Unhide Companion' : 'Hide Companion';
     const hiddenIcon = isHidden ? 'fa-eye-slash' : 'fa-eye';
     const hiddenButton = `<button type="button" class="ica--cdash-action" data-action="panel-hide" title="${hiddenTitle}" aria-label="${hiddenLabel}"><i class="fa-solid ${hiddenIcon}"></i></button>`;
     // Orphaned results have no agent to persist an order onto, so they get no drag handle.
     const dragHandleButton = state.agent
-        ? '<button type="button" class="ica--cdash-action ica--tpanel-drag-handle" title="Drag to reorder (arrow keys nudge)" aria-label="Reorder companion"><i class="fa-solid fa-grip-vertical"></i></button>'
+        ? '<button type="button" class="ica--cdash-action ica--tpanel-drag-handle" title="Drag to Reorder (Arrow Keys Nudge)" aria-label="Reorder Companion"><i class="fa-solid fa-grip-vertical"></i></button>'
         : '';
 
     if (!latest) {
@@ -643,7 +679,7 @@ function buildPanelAgentSection(state) {
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
                     <span class="ica--tpanel-agent-actions">${dragHandleButton}${hiddenButton}${runLatestButton}${settingsButton}</span>
                 </div>
-                <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
+                <div class="ica--cdash-empty sb-inline-hint">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
                 ${buildPanelEntryControls(state)}
             </section>
         `;
@@ -659,8 +695,8 @@ function buildPanelAgentSection(state) {
                             <span>Message #${entry.messageIndex}</span>
                             ${buildAbsorbedPillHtml(entry)}
                             ${buildCompanionTokenUsagePillsHtml(entry.result)}
-                            ${canSendToLorebook && String(entry.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send history entry to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
-                            <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text" aria-label="Edit history entry"><i class="fa-solid fa-pen-to-square"></i></button>
+                            ${canSendToLorebook && String(entry.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send This State to the Attached Lorebook" aria-label="Send History Entry to Lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
+                            <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit This State's Text" aria-label="Edit History Entry"><i class="fa-solid fa-pen-to-square"></i></button>
                         </div>
                         <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, entry)}</div>
                     </div>
@@ -674,8 +710,8 @@ function buildPanelAgentSection(state) {
     const rerunButtons = latest.hostHidden
         ? ''
         : `
-                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate this state" aria-label="Regenerate state"><i class="fa-solid fa-rotate-right"></i></button>
-                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: re-run with strict output enforcement (use when the model wrote roleplay instead)" aria-label="Fix state"><i class="fa-solid fa-wrench"></i></button>`;
+                    <button type="button" class="ica--cdash-action" data-action="panel-regenerate" title="Regenerate This State" aria-label="Regenerate State"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-fix" title="Fix: Re-Run with Strict Output Enforcement (Use When the Model Wrote Roleplay Instead)" aria-label="Fix State"><i class="fa-solid fa-wrench"></i></button>`;
 
     return `
         <section class="ica--tpanel-agent" data-agent-id="${escapeHtml(agentId)}" data-message-index="${latest.messageIndex}" data-hidden="${isHidden}" data-host-hidden="${Boolean(latest.hostHidden)}">
@@ -688,10 +724,10 @@ function buildPanelAgentSection(state) {
                     ${dragHandleButton}
                     ${hiddenButton}
                     ${runLatestButton}${rerunButtons}
-                    ${canSendToLorebook && String(latest.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send this state to the attached lorebook" aria-label="Send state to lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
-                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit this state's text by hand (e.g. type your Plot Compass objective)" aria-label="Edit state text"><i class="fa-solid fa-pen-to-square"></i></button>
+                    ${canSendToLorebook && String(latest.result?.status ?? 'done') === 'done' ? '<button type="button" class="ica--cdash-action" data-action="panel-send-to-lorebook" title="Send This State to the Attached Lorebook" aria-label="Send State to Lorebook"><i class="fa-solid fa-book-medical"></i></button>' : ''}
+                    <button type="button" class="ica--cdash-action" data-action="panel-edit-note" title="Edit This State's Text by Hand" aria-label="Edit State Text"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${settingsButton}
-                    <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the source message" aria-label="Scroll to source message"><i class="fa-solid fa-comment-dots"></i></button>
+                    <button type="button" class="ica--cdash-action" data-action="panel-jump" title="Scroll to the Source Message" aria-label="Scroll to Source Message"><i class="fa-solid fa-comment-dots"></i></button>
                 </span>
             </div>
             <div class="ica--tpanel-agent-body">${buildPanelEntryBody(agentId, latest)}</div>
@@ -723,8 +759,7 @@ function buildCompactionButton(state) {
 
     return `
         <button type="button" class="menu_button menu_button_icon ica--tpanel-compact" data-action="panel-hide-before" title="Exclude every message above this shard from prompts — the shard carries the history from here on">
-            <i class="fa-solid fa-broom"></i>
-            <span>Hide story above this shard</span>
+            <span>Hide Story Above This Shard</span>
         </button>
     `;
 }
@@ -735,29 +770,39 @@ export function buildPanelHtml() {
         ? states.map(buildPanelAgentSection).join('')
         : '<div class="ica--cdash-empty">No companion agents are enabled and no tracked state is stored in this chat yet. Convert a tracker to companion execution or enable a companion to see its state here.</div>';
 
+    // The side panel's header carries the title, the menu and Close; the panel's own actions sit in this row.
     return `
         <div class="ica--tpanel-header">
-            <span class="ica--tpanel-title"><i class="fa-solid fa-user-astronaut"></i> Companions</span>
             <span class="ica--tpanel-agent-actions">
-                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock panel auto-close' : 'Keep panel open until unlocked'}" aria-label="${panelLocked ? 'Unlock panel' : 'Lock panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
-                <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate every companion on the last reply" aria-label="Regenerate all companions"><i class="fa-solid fa-rotate-right"></i></button>
-                <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close panel" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock Panel Auto-Close' : 'Keep Panel Open Until Unlocked'}" aria-label="${panelLocked ? 'Unlock Panel' : 'Lock Panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
+                <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate Every Companion on the Last Reply" aria-label="Regenerate All Companions"><i class="fa-solid fa-rotate-right"></i></button>
             </span>
         </div>
         <div class="ica--tpanel-body">${body}</div>
     `;
 }
 
+/** The panel's own empty state is the shared status page, with the description that `buildPanelHtml` wrote. */
+function mountPanelStatusPage(panel) {
+    const placeholder = panel?.querySelector?.('.ica--tpanel-body > .ica--cdash-empty');
+    if (!placeholder) return;
+    const { element } = createStatusPage({ state: 'empty', icon: 'user-group', title: t`No Companion State`, description: placeholder.textContent, compact: true });
+    placeholder.replaceWith(element);
+}
+
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
     const panel = panelElement[0];
-    const anchor = captureVisibleMessageAnchor(panel, PANEL_ANCHOR_OPTIONS);
+    // The scroller is the side panel's body when the panel is docked in one, and the panel itself otherwise.
+    const scroller = panel?.closest?.('.sb-side-panel__body') ?? panel;
+    const anchor = captureVisibleMessageAnchor(scroller, PANEL_ANCHOR_OPTIONS);
     const previousHeights = new Map(Array.from(panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? [], section => [
         section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute),
         section.getBoundingClientRect().height,
     ]));
 
     panelElement.html(buildPanelHtml());
+    mountPanelStatusPage(panel);
 
     for (const section of panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? []) {
         const previousHeight = previousHeights.get(section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute));
@@ -766,7 +811,7 @@ function renderPanel() {
         }
     }
 
-    restoreVisibleMessageAnchor(panel, anchor, PANEL_ANCHOR_OPTIONS);
+    restoreVisibleMessageAnchor(scroller, anchor, PANEL_ANCHOR_OPTIONS);
     setupPanelSortable();
 }
 
@@ -811,6 +856,11 @@ function setupPanelSortable() {
             await applyPanelReorder(orderedIds);
         },
     });
+    // A section is found again by its agent, because the panel builds its sections anew after each move.
+    attachSortableKeys(body[0], {
+        name: row => row.querySelector('.ica--tpanel-agent-name')?.textContent,
+        key: row => row.dataset.agentId,
+    });
 }
 
 /** Re-renders the open panel; lets other surfaces (the agents page) push order changes in. */
@@ -823,7 +873,8 @@ export function refreshCompanionPanel() {
 export function updateCompanionPanelHandleVisibility() {
     const conversationModeActive = isConversationModeActive();
     const shouldShow = shouldShowCompanionPanelHandle();
-    $('#ica--tracker-panel-handle').toggle(shouldShow);
+    // The handle sits on a viewport edge, where an open panel docks, so it hides while the panel shows.
+    $('#ica--tracker-panel-handle').toggle?.(shouldShow && !panelOpen);
     // Conversation Mode hides both companion wand entries (panel + dashboard).
     $('#ica_tracker_panel_wand_item').toggle?.(!conversationModeActive);
     $('#ica_companions_wand_item').toggle?.(!conversationModeActive);
@@ -843,13 +894,34 @@ export function openCompanionPanel() {
     panelOpen = true;
     panelOpenedAt = Date.now();
     renderPanel();
-    const { edge } = getStoredHandlePosition() ?? { edge: 'right' };
-    $('#ica--tracker-panel').attr('data-edge', edge).addClass('is-open').attr('aria-hidden', 'false');
+    $('#ica--tracker-panel').addClass('is-open').attr('aria-hidden', 'false');
+    updateCompanionPanelHandleVisibility();
+    if (!panelController) return undefined;
+
+    // The side panel shows once its stylesheet and layout are ready; a close that comes first wins.
+    return panelController.open({ opener: document.activeElement }).then(() => {
+        if (!panelOpen) panelController.close({ restoreFocus: false, notify: false });
+    }, error => {
+        console.error('Could not open the companion panel', error);
+        markPanelClosed();
+    });
 }
 
-export function closeCompanionPanel() {
+function markPanelClosed() {
+    if (panelOpen) panelOrigin = {
+        scrollTop: getPanelScroller()?.scrollTop ?? 0,
+        agentId: document.activeElement?.closest('[data-agent-id]')?.dataset.agentId,
+        settingsOpen: document.documentElement?.dataset.sbSettingsOpen === 'true',
+    };
     panelOpen = false;
     $('#ica--tracker-panel').removeClass('is-open').attr('aria-hidden', 'true');
+    updateCompanionPanelHandleVisibility();
+}
+
+/** Focus goes back to the opener only when the user closes the panel itself (Close, Escape): a click elsewhere has moved it on. */
+export function closeCompanionPanel({ restoreFocus = false } = {}) {
+    markPanelClosed();
+    if (panelController?.isOpen) panelController.close({ restoreFocus, notify: false });
 }
 
 export function isCompanionPanelLocked() {
@@ -880,11 +952,6 @@ async function handlePanelAction(event) {
     const button = $(event.currentTarget);
     const action = button.attr('data-action');
 
-    if (action === 'panel-close') {
-        closeCompanionPanel();
-        return;
-    }
-
     if (action === 'panel-lock') {
         setCompanionPanelLocked(!panelLocked);
         return;
@@ -893,7 +960,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-regenerate-all') {
         const lastValidIndex = getLatestValidCompanionIndex();
         if (lastValidIndex < 0) {
-            toastr.warning('No message yet to run companions on.');
+            toastr.warning('No message yet to run companions on');
             return;
         }
         button.prop('disabled', true);
@@ -913,7 +980,7 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-hide') {
         if (!agentId) {
-            toastr.warning('No companion selected.');
+            toastr.warning('No companion selected');
             return;
         }
 
@@ -935,12 +1002,12 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-run-latest') {
         if (!agentId) {
-            toastr.warning('No companion selected.');
+            toastr.warning('No companion selected');
             return;
         }
         const lastValidIndex = getLatestValidCompanionIndex();
         if (lastValidIndex < 0) {
-            toastr.warning('No message yet to run this companion on.');
+            toastr.warning('No message yet to run this companion on');
             return;
         }
         button.prop('disabled', true);
@@ -958,20 +1025,20 @@ async function handlePanelAction(event) {
     if (action === 'panel-chat-only-send') {
         const agent = getPanelAgents().find(candidate => candidate.id === agentId);
         if (!agent || !isChatOnlyAgent(agent)) {
-            toastr.warning('Chat Only is not available.');
+            toastr.warning('Chat Only is not available');
             return;
         }
 
         const inputField = section.find('[data-role="chat-only-input"]');
         const userInput = normalizeChatOnlyInput(inputField.val());
         if (!userInput) {
-            toastr.warning('Type an aside first.');
+            toastr.warning('Type an aside first');
             return;
         }
 
         const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to chat beside.');
+            toastr.warning('No assistant reply yet to chat beside');
             return;
         }
 
@@ -1000,20 +1067,20 @@ async function handlePanelAction(event) {
     if (action === 'panel-chatroom-reply-send') {
         const agent = getPanelAgents().find(candidate => candidate.id === agentId);
         if (!agent || !isChatroomAgent(agent)) {
-            toastr.warning('Chatroom reply is not available.');
+            toastr.warning('Chatroom reply is not available');
             return;
         }
 
         const inputField = section.find('[data-role="chatroom-reply-input"]');
         const userInput = normalizeChatroomReply(inputField.val());
         if (!userInput) {
-            toastr.warning('Type a reply first.');
+            toastr.warning('Type a reply first');
             return;
         }
 
         const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to respond to.');
+            toastr.warning('No assistant reply yet to respond to');
             return;
         }
 
@@ -1039,7 +1106,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-plot-compass-save') {
         const agent = getPanelAgents().find(candidate => candidate.id === agentId);
         if (!agent || !isPlotCompassAgent(agent)) {
-            toastr.warning('Plot Compass is not available.');
+            toastr.warning('Plot Compass is not available');
             return;
         }
 
@@ -1050,7 +1117,7 @@ async function handlePanelAction(event) {
         const canRunOnSection = Number.isInteger(messageIndex) && !chat[messageIndex]?.is_system;
         const runIndex = canRunOnSection ? messageIndex : getLatestAssistantIndex();
         if (runIndex < 0) {
-            toastr.warning('No assistant reply yet to plan from.');
+            toastr.warning('No assistant reply yet to plan from');
             return;
         }
 
@@ -1059,7 +1126,7 @@ async function handlePanelAction(event) {
         try {
             await savePlotCompassObjective(agent, objective);
             await runCompanionAgentOnMessage(agentId, runIndex);
-            toastr.success(objective ? 'Plot Objective saved.' : 'Plot Objective cleared.');
+            toastr.success(objective ? 'Plot Objective saved' : 'Plot Objective cleared');
         } finally {
             button.prop('disabled', false);
             inputField.prop('disabled', false);
@@ -1073,20 +1140,25 @@ async function handlePanelAction(event) {
     if (action === 'panel-hide-before' && Number.isInteger(messageIndex) && messageIndex > 0) {
         const hideCount = countVisibleStoryAbove(messageIndex);
         if (hideCount === 0) {
-            toastr.info('Everything above this shard is already hidden from prompts.');
+            toastr.info('Everything above this shard is already hidden from prompts');
             return;
         }
 
+        // SillyBunny: hiding prompt history is destructive and names the exclusion action.
         const result = await new Popup(
             `Exclude messages #0–#${messageIndex - 1} from prompts? The shard carries that history from here on; messages stay visible in the chat and can be unhidden later.`,
             POPUP_TYPE.CONFIRM,
+            '',
+            {
+                ...confirmVerb('Exclude', { destructive: true }),
+            },
         ).show();
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             return;
         }
 
         await hideChatMessageRange(0, messageIndex - 1, false);
-        toastr.success(`Hid ${hideCount} message(s) from prompts.`);
+        toastr.success(`Hid ${hideCount} message(s) from prompts`);
         if (panelOpen) {
             renderPanel();
         }
@@ -1097,7 +1169,7 @@ async function handlePanelAction(event) {
         const message = chat[messageIndex];
         const result = getCompanionResults(message)[agentId];
         if (!result) {
-            toastr.warning('No stored state to edit.');
+            toastr.warning('No stored state to edit');
             return;
         }
         await editCompanionResult(messageIndex, agentId, message, result);
@@ -1110,7 +1182,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-send-to-lorebook' && agentId && Number.isInteger(messageIndex)) {
         const result = getCompanionResults(chat[messageIndex])[agentId];
         if (!result) {
-            toastr.warning('No stored state to send.');
+            toastr.warning('No stored state to send');
             return;
         }
 
@@ -1125,7 +1197,7 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-edit') {
         if (!agentId || typeof panelHooks?.openEditor !== 'function') {
-            toastr.warning('The agent editor is not available.');
+            toastr.warning('The agent editor is not available');
             return;
         }
         // The editor is its own popup; close the panel so they do not overlap on sheet edges.
@@ -1166,10 +1238,22 @@ export function initCompanionPanel() {
     panelInitialized = true;
     $(document.body).append('<div id="ica--tracker-panel" class="ica--tpanel" data-edge="right" aria-hidden="true"></div>');
     $(document.body).append(`
-        <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the companion panel" aria-label="Open the companion panel" style="display:none">
+        <button type="button" id="ica--tracker-panel-handle" class="ica--tpanel-handle" data-edge="right" title="Open the Companion Panel" aria-label="Open the Companion Panel" style="display:none">
             <i class="fa-solid fa-user-astronaut"></i>
         </button>
     `);
+
+    const panelNode = $('#ica--tracker-panel')[0];
+    if (typeof globalThis.HTMLElement === 'function' && panelNode instanceof globalThis.HTMLElement) {
+        // A panel the user moved to a side keeps it; before that, the side follows the edge the handle was left on.
+        panelController = registerSidePanel({
+            id: SIDE_PANEL_ID,
+            element: panelNode,
+            title: 'Companions',
+            defaultSide: getStoredHandlePosition()?.edge === 'left' ? 'left' : 'right',
+            onClose: markPanelClosed,
+        });
+    }
 
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
     $('#ica--tracker-panel').on('keydown', '.ica--tpanel-drag-handle', async function (event) {
@@ -1205,6 +1289,35 @@ export function initCompanionPanel() {
             .find('.ica--tpanel-drag-handle')
             .trigger('focus');
     });
+    // The grip opens the move menu, so a section can be moved without a drag or Alt+Arrow keys. The jQuery UI mouse widget
+    // swallows the click that ends a drag, so a drag never opens it.
+    $('#ica--tracker-panel').on('click', '.ica--tpanel-drag-handle', function (event) {
+        event.preventDefault();
+        const section = this.closest('.ica--tpanel-agent');
+        const agentId = section?.dataset.agentId;
+        const orderedIds = $('#ica--tracker-panel .ica--tpanel-body')
+            .children('.ica--tpanel-agent')
+            .map((_, el) => el.dataset.agentId)
+            .get()
+            .filter(Boolean);
+        const name = section?.querySelector('.ica--tpanel-agent-name')?.textContent ?? '';
+        const items = reorderMenuItems({
+            index: orderedIds.indexOf(agentId),
+            count: orderedIds.length,
+            name,
+            move: async (to) => {
+                const ids = orderedIds.filter(id => id !== agentId);
+                ids.splice(to, 0, agentId);
+                await applyPanelReorder(ids);
+            },
+            focus: () => [...document.querySelectorAll('#ica--tracker-panel .ica--tpanel-agent')]
+                .find(el => el.dataset.agentId === agentId)?.querySelector('.ica--tpanel-drag-handle') ?? null,
+        });
+        if (items.length === 0) {
+            return;
+        }
+        openActionMenu({ trigger: this, title: name, sections: [{ items }] });
+    });
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();
         event.stopPropagation();
@@ -1223,7 +1336,7 @@ export function initCompanionPanel() {
 
     if (!$('#ica_tracker_panel_wand_item').length) {
         const menuItem = $(`
-            <div id="ica_tracker_panel_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the companion panel" tabindex="0">
+            <div id="ica_tracker_panel_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the Companion Panel" tabindex="0">
                 <div class="fa-solid fa-user-astronaut extensionsMenuExtensionButton"></div>
                 <span>Companion Panel</span>
             </div>
@@ -1238,7 +1351,8 @@ export function initCompanionPanel() {
         if (!panelOpen || panelLocked || Date.now() - panelOpenedAt < 250) {
             return;
         }
-        if (event.target?.closest?.('#ica--tracker-panel, #ica--tracker-panel-handle')) {
+        // The panel's own header, and the menu it opens above the panel, belong to the panel.
+        if (event.target?.closest?.(`#ica--tracker-panel, #ica--tracker-panel-handle, ${SIDE_PANEL_SELECTOR}, .sb-action-popover, .sb-action-sheet, .sb-action-sheet-backdrop`)) {
             return;
         }
         closeCompanionPanel();

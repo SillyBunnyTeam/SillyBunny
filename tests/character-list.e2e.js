@@ -1,0 +1,1442 @@
+import { expect, test } from '@playwright/test';
+import { gunzipSync } from 'node:zlib';
+import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { q56Screenshot } from './helpers/q56-review.js';
+import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION_TONES } from './helpers/selection-forms.js';
+
+const list = page => page.locator('.sb-character-list[data-mounted="true"]');
+const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
+const showMore = page => list(page).locator('.sb-list-show-more__button');
+const selectionLayout = {
+    1440: { titleX: 100, descriptionRight: 1116, truncated: false },
+    390: { titleX: 100, descriptionRight: 304, truncated: false },
+};
+
+test.beforeEach(async ({ page }) => {
+    await protectMaintainerServer(page);
+    const characters = Array.from({ length: 28 }, (_, index) => {
+        const name = `QA character ${String(index).padStart(2, '0')}`;
+        const data = {
+            name, description: '', personality: '', scenario: '', first_mes: 'QA greeting', mes_example: '',
+            creator_notes: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [],
+            tags: [], creator: '', character_version: '', extensions: { fav: false, talkativeness: 0.5 },
+        };
+        return {
+            ...data, avatar: `qa-list-character-${index}.png`, chat: `qa-list-character-chat-${index}`,
+            create_date: `2026-10-${String(index + 1).padStart(2, '0')}`, date_added: index + 1,
+            spec: 'chara_card_v2', spec_version: '2.0', data,
+        };
+    });
+    await page.route('**/api/characters/all', route => route.fulfill({ json: characters }));
+    await page.route('**/api/characters/get', route => {
+        const body = route.request().postDataBuffer();
+        const payload = JSON.parse((route.request().headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString());
+        return route.fulfill({ json: characters.find(character => character.avatar === payload.avatar_url) });
+    });
+    await page.route('**/api/characters/chats', route => route.fulfill({ json: {} }));
+    await page.route('**/api/chats/get', route => route.fulfill({ json: [] }));
+    await page.route('**/api/settings/save', route => {
+        const request = route.request();
+        const body = request.headers()['content-encoding'] === 'gzip'
+            ? gunzipSync(request.postDataBuffer()) : request.postDataBuffer();
+        const payload = JSON.parse(body.toString());
+        return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
+    });
+    for (const endpoint of [
+        'groups/edit', 'chats/group/save', 'chats/save',
+        'characters/edit', 'characters/edit-attribute', 'characters/merge-attributes',
+    ]) {
+        await page.route(`**/api/${endpoint}`, route => route.fulfill({ json: {} }));
+    }
+    await page.route('**/api/chats/group/info', route => route.fulfill({ json: {} }));
+    await page.route('**/api/chats/group/get', route => route.fulfill({ json: [
+        { chat_metadata: { tainted: true } },
+        { name: 'qa-list-group', is_user: false, is_system: false, send_date: '2026-10-18', mes: 'qa-list-chat' },
+    ] }));
+    // No test creates or deletes a card, group, or chat on the live server.
+    await page.route(/\/api\/(?:characters|groups|chats)\/(?:create|delete|duplicate|rename)$/, route => route.abort());
+});
+
+test('Start new chat reflects current-chat deletion in its destructive response and Return default', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await waitForAppReady(page);
+    await page.waitForFunction(() => !document.getElementById('preloader'));
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        const id = app.characters.findIndex(character => character.avatar === 'qa-list-character-0.png');
+        await app.selectCharacterById(id, { switchMenu: false });
+        document.getElementById('option_start_new_chat').click();
+    });
+    const popup = page.locator('dialog.popup[open]').last();
+    await expect(popup.locator('.popup-button-ok')).not.toHaveClass(/is-destructive/);
+    await popup.locator('#del_chat_checkbox').check();
+    await expect(popup.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
+    await page.keyboard.press('Enter');
+    await expect(popup).toBeVisible();
+    await popup.locator('#del_chat_checkbox').uncheck();
+    await expect(popup.locator('.popup-button-ok')).not.toHaveClass(/is-destructive/);
+    await popup.locator('.popup-button-cancel').click();
+});
+
+test.afterEach(async ({ page }) => {
+    await page.evaluate(async () => {
+        if (!window.__sbCharacterListOriginalGroups) return;
+        document.getElementById('sb_group_editor_cancel')?.click();
+        const groups = await import('/scripts/group-chats.js');
+        const tags = await import('/scripts/tags.js');
+        const { objectNavigation } = await import('/scripts/sillybunny-editor/object-navigation.js');
+        const { getCurrentUserHandle } = await import('/scripts/user.js');
+        objectNavigation.clear();
+        groups.resetSelectedGroup();
+        for (const group of groups.groups.filter(group => group.id.startsWith('qa-list-'))) {
+            localStorage.removeItem(`sb-group-editor-draft-${getCurrentUserHandle() || 'default'}-${group.id}`);
+        }
+        groups.groups.splice(0, groups.groups.length, ...window.__sbCharacterListOriginalGroups);
+        const tagFixtures = window.__sbCharacterListTagFixtures;
+        if (tagFixtures) {
+            for (const tagId of tagFixtures.ids) {
+                const index = tags.tags.findIndex(tag => tag.id === tagId);
+                if (index >= 0) tags.tags.splice(index, 1);
+            }
+            for (const [key, value] of tagFixtures.maps) {
+                if (value === undefined) delete tags.tag_map[key];
+                else tags.tag_map[key] = value;
+            }
+        }
+        delete window.__sbCharacterListOriginalGroups;
+        delete window.__sbCharacterListTagFixtures;
+    });
+});
+
+async function showView(page, view) {
+    await page.evaluate(async view => { await window.SillyBunnyShell.openTab('characters', view); }, view);
+    await expect(list(page)).toBeVisible();
+    await expect(list(page)).toHaveAttribute('data-view', view);
+    await expect.poll(() => page.evaluate(async () => (await import('/script.js')).menu_type)).toBe('characters');
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`Groups filter toolbar avoids extra vertical padding at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await page.goto('/');
+        await waitForAppReady(page);
+        await page.waitForFunction(() => !document.getElementById('preloader'));
+        await showView(page, 'groups');
+
+        const filterRow = page.locator('.sb-character-list__filters');
+        await expect(filterRow).toBeVisible();
+        const height = await filterRow.evaluate(node => node.getBoundingClientRect().height);
+        const stylesheetLinks = await page.evaluate(() => [...document.querySelectorAll('link[href*="sillybunny-character-list.css"]')].map(link => link.href));
+
+        expect(height).toBeLessThanOrEqual(viewport.width <= 768 ? 45 : 41);
+        expect(stylesheetLinks).toHaveLength(1);
+    });
+}
+
+for (const { label, width, reducedMotion, appReducedMotion = false } of [
+    { label: 'mobile', width: 390, reducedMotion: 'no-preference' },
+    { label: 'desktop', width: 1440, reducedMotion: 'no-preference' },
+    { label: 'mobile reduced motion', width: 390, reducedMotion: 'reduce' },
+    { label: 'mobile app reduced motion', width: 390, reducedMotion: 'no-preference', appReducedMotion: true },
+]) {
+    const motionExpected = reducedMotion !== 'reduce' && !appReducedMotion;
+    test.describe(`Characters first open on ${label}`, () => {
+        test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390, reducedMotion });
+
+        test('first visible frames have settled panes, header actions and single-line rows', async ({ page }) => {
+            await page.emulateMedia({ reducedMotion });
+            await page.goto('/');
+            await waitForAppReady(page);
+            await page.waitForFunction(() => !document.getElementById('preloader'));
+            await page.evaluate(async appReducedMotion => {
+                const app = await import('/script.js');
+                const { power_user } = await import('/scripts/power-user.js');
+                const tags = await import('/scripts/tags.js');
+                power_user.bogus_folders = false;
+                power_user.charListGrid = false;
+                document.body.classList.remove('charListGrid');
+                document.body.classList.toggle('reduced-motion', appReducedMotion);
+                for (const type of ['fav', 'folder', 'group']) app.entitiesFilter.setFilterData(type, 'UNDEFINED', true);
+                app.entitiesFilter.setFilterData('tag', { selected: [], excluded: [] }, true);
+                app.entitiesFilter.setFilterData('search', '', true);
+                document.getElementById('character_search_bar').value = '';
+                const definitions = Array.from({ length: 5 }, (_, index) => ({ id: `qa-first-open-${index}`, name: `QA long first-open tag ${index}` }));
+                tags.tags.push(...definitions);
+                // Alternate tagged and untagged rows: both must have real, stable first-paint geometry.
+                for (const [index, character] of app.characters.entries()) {
+                    tags.tag_map[character.avatar] = index % 2 ? [] : definitions.map(tag => tag.id);
+                }
+                window.__sbFirstOpenFrames = [];
+                window.__sbFirstOpenDone = new Promise(resolve => {
+                    const start = performance.now();
+                    const sample = () => {
+                        const page = document.getElementById('sb-settings-page');
+                        const panes = ['sb-settings-sidebar', 'sb-settings-content'].map(id => document.getElementById(id));
+                        const animations = page.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running');
+                        const section = document.querySelector('.sb-character-list[data-mounted="true"]');
+                        const scale = new DOMMatrixReadOnly(getComputedStyle(page).transform).a;
+                        const visible = !page.hidden && section && !section.closest('[hidden]') && getComputedStyle(section).visibility === 'visible' && Number(getComputedStyle(section).opacity) > 0;
+                        const rect = element => {
+                            const box = element.getBoundingClientRect();
+                            const origin = page.getBoundingClientRect();
+                            return { x: (box.x - origin.x) / scale, width: box.width / scale, height: box.height / scale };
+                        };
+                        window.__sbFirstOpenFrames.push({
+                            visible, scale,
+                            reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+                            pageMotion: animations.some(animation => animation.effect?.target === page),
+                            paneMotion: animations.some(animation => panes.includes(animation.effect?.target) && animation.transitionProperty === 'transform'),
+                            list: visible ? rect(section) : null,
+                            buttons: visible ? [...section.querySelectorAll('.sb-character-list__header button')].filter(button => button.getClientRects().length).length : null,
+                            rows: visible ? [...section.querySelectorAll('.ds-entity-row')].slice(0, 2).map(rect) : [],
+                            strips: visible ? [...section.querySelectorAll('.ds-entity-row__tags')].slice(0, 2).map(strip => ({ wrap: getComputedStyle(strip).flexWrap, overflow: getComputedStyle(strip).overflowX })) : [],
+                            styled: visible ? ['deferred-entity-list-css', 'deferred-editor-shell-css', 'deferred-character-list-css'].every(id => Boolean(document.getElementById(id)?.sheet)) : null,
+                        });
+                        if (performance.now() - start < 1600) requestAnimationFrame(sample);
+                        else resolve();
+                    };
+                    requestAnimationFrame(sample);
+                });
+            }, appReducedMotion);
+            await page.locator('#sb-character-toggle').click();
+            await page.evaluate(() => window.__sbFirstOpenDone);
+            const frames = await page.evaluate(() => window.__sbFirstOpenFrames);
+            await test.info().attach('first-open-frames', { body: JSON.stringify(frames), contentType: 'application/json' });
+            const visible = frames.filter(frame => frame.visible);
+            expect(visible.length).toBeGreaterThan(2);
+            expect(visible.every(frame => frame.rows.length === 2)).toBe(true);
+            expect(frames.some(frame => frame.paneMotion)).toBe(false);
+            expect(frames.every(frame => frame.reduced === (reducedMotion === 'reduce'))).toBe(true);
+            expect(frames.some(frame => frame.pageMotion)).toBe(motionExpected);
+            expect(new Set(visible.map(frame => frame.buttons)).size).toBe(1);
+            expect(visible.every(frame => frame.styled)).toBe(true);
+            expect(visible.every(frame => frame.strips.every(strip => strip.wrap === 'nowrap' && strip.overflow === 'hidden'))).toBe(true);
+            const spread = values => Math.max(...values) - Math.min(...values);
+            for (const property of ['x', 'width', 'height']) {
+                expect(spread(visible.map(frame => frame.list[property]))).toBeLessThan(1);
+            }
+            for (const index of [0, 1]) expect(spread(visible.map(frame => frame.rows[index].height))).toBeLessThan(1);
+            expect(frames.every(frame => motionExpected || frame.scale === 1)).toBe(true);
+            // eslint-disable-next-line playwright/no-conditional-in-test -- Only the mobile, animated parameter has pane push navigation.
+            if (width === 390 && motionExpected) {
+                // Pane push navigation still belongs to a deliberate in-page Back/tab change.
+                await page.locator('#sb-settings-back').click();
+                await expect(page.locator('#sb-settings-page')).not.toHaveClass(/sb-settings-page--content/); // eslint-disable-line playwright/no-conditional-expect
+                await page.getByRole('tab', { name: 'Characters', exact: true }).click();
+                await expect(page.locator('#sb-settings-page')).toHaveClass(/sb-settings-page--content/); // eslint-disable-line playwright/no-conditional-expect
+            }
+        });
+    });
+}
+
+async function prepareList(page, viewport) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await waitForAppReady(page);
+    await page.waitForFunction(() => !document.getElementById('preloader'));
+    await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
+    await showView(page, 'characters');
+    await page.evaluate(async () => {
+        const app = await import('/script.js');
+        const groupChats = await import('/scripts/group-chats.js');
+        const tagsApi = await import('/scripts/tags.js');
+        const state = await import('/scripts/sillybunny-character-list-state.js');
+        const { power_user } = await import('/scripts/power-user.js');
+        if (app.characters.length !== 28) throw new Error('Character list QA fixtures did not load.');
+        window.__sbCharacterListOriginalGroups = structuredClone(groupChats.groups);
+        const members = app.characters.slice(0, 2).map(character => character.avatar);
+        const fixtures = Array.from({ length: 28 }, (_, index) => ({
+            id: `qa-list-${String(index).padStart(2, '0')}`,
+            name: `qa-list-group-${String(index).padStart(2, '0')}`,
+            members, disabled_members: [], member_models: {}, avatar_url: '',
+            chat_id: `qa-list-chat-${index}`, chats: [`qa-list-chat-${index}`],
+            activation_strategy: 0, generation_mode: 0, allow_self_responses: false,
+            hideMutedSprites: false, fav: index === 0,
+        }));
+        groupChats.groups.splice(0, groupChats.groups.length, ...fixtures);
+        const tagDefinitions = [
+            { id: 'qa-list-tag-alpha', name: 'QA list alpha', color: 'rgb(90, 160, 220)', color2: 'white' },
+            { id: 'qa-list-tag-beta', name: 'QA list beta', color: 'rgb(220, 150, 90)', color2: 'white' },
+        ];
+        const taggedAvatars = app.characters.slice(0, 3).map(character => character.avatar);
+        const taggedGroups = fixtures.slice(0, 1).map(group => group.id);
+        const tagMapKeys = [...taggedAvatars, ...taggedGroups];
+        window.__sbCharacterListTagFixtures = {
+            ids: tagDefinitions.map(tag => tag.id),
+            maps: tagMapKeys.map(key => [key, tagsApi.tag_map[key]]),
+        };
+        tagsApi.tags.push(...tagDefinitions);
+        tagsApi.tag_map[taggedAvatars[0]] = [tagDefinitions[0].id];
+        tagsApi.tag_map[taggedAvatars[1]] = [tagDefinitions[1].id];
+        tagsApi.tag_map[taggedAvatars[2]] = [tagDefinitions[0].id];
+        tagsApi.tag_map[taggedGroups[0]] = [tagDefinitions[0].id];
+        power_user.bogus_folders = false;
+        power_user.show_tag_filters = true;
+        power_user.charListGrid = false;
+        document.body.classList.remove('charListGrid');
+        for (const view of ['characters', 'groups']) {
+            await state.switchCharacterListView(view);
+            for (const type of ['fav', 'folder', 'group']) app.entitiesFilter.setFilterData(type, 'UNDEFINED', true);
+            app.entitiesFilter.setFilterData('tag', { selected: [], excluded: [] }, true);
+            app.entitiesFilter.setFilterData('search', '', true);
+            app.entitiesFilter.clearFuzzySearchCaches();
+            document.getElementById('character_search_bar').value = '';
+            state.setListPageSize(view, 10);
+            await state.setListPage(view, 1);
+            await state.setListSort(view, { field: 'name', order: 'asc' });
+            await app.printCharacters(false);
+            tagsApi.printTagFilters(tagsApi.tag_filter_type.character);
+        }
+    });
+    await showView(page, 'characters');
+}
+
+async function openTagPicker(page) {
+    const controls = list(page).locator('.rm_tag_controls');
+    const button = controls.locator('.sb-tag-filter-menu-button');
+    await expect(button).toBeVisible();
+    await button.click();
+    const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+    await expect(picker).toBeVisible();
+    return { button, picker, search: picker.locator('.sb-picker__search') };
+}
+
+/** The search bar closes on a press outside it, so a close that is still playing settles before the bar is read. */
+async function openSearchBar(page) {
+    const field = list(page).locator('.sb-character-list__search');
+    await expect(field).toHaveAttribute('data-state', /^(open|closed)$/);
+    if (await field.getAttribute('data-state') === 'closed') await openHeaderMenu(page, 'search');
+    await expect(field).toHaveAttribute('data-state', 'open');
+}
+
+async function openHeaderMenu(page, action) {
+    if (action === 'sort') {
+        // The Sort button ends the search bar.
+        await openSearchBar(page);
+        await list(page).locator('.sb-character-list__sort').click();
+        return;
+    }
+    const button = list(page).locator(`[data-action-id="${action}"]`);
+    if (await button.isVisible()) {
+        await button.click();
+        return;
+    }
+    await list(page).locator('[data-action-id="more"]').click();
+    await page.getByRole('menuitem', { name: 'Search', exact: true }).click();
+}
+
+async function chooseSortItem(page, label) {
+    await openHeaderMenu(page, 'sort');
+    await page.getByRole('menuitemradio', { name: label, exact: true }).click();
+}
+
+async function setSearch(page, query) {
+    await openSearchBar(page);
+    await page.locator('#character_search_bar').fill(query);
+    await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().query)).toBe(query);
+    await expect.poll(() => page.evaluate(async () => (await import('/script.js')).entitiesFilter.getFilterData('search'))).toBe(query);
+}
+
+async function readSort(page, view) {
+    return page.evaluate(async view => (await import('/scripts/sillybunny-character-list-state.js')).getListSort(view), view);
+}
+
+async function showAllRows(page) {
+    for (let guard = 0; guard < 20 && await showMore(page).isVisible(); guard++) {
+        const before = await list(page).locator('[data-sb-list-key]').count();
+        await showMore(page).click();
+        await expect.poll(() => list(page).locator('[data-sb-list-key]').count()).toBeGreaterThan(before);
+    }
+}
+
+async function waitForChatActivation(page) {
+    await expect(page.locator('#sb-settings-page')).toBeHidden();
+    await expect(page.locator('#chat')).toBeVisible();
+    await expect(page.locator('.is-activating-entity')).toHaveCount(0);
+}
+
+async function expectEditorBackRestoration(page, view) {
+    await showView(page, view);
+    if (view === 'groups') await setSearch(page, 'qa-list-group-');
+    await showMore(page).click();
+    await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(2);
+    const row = listRows(page, view).last();
+    const key = await row.getAttribute('data-sb-list-key');
+    await expect.poll(() => list(page).evaluate(element => element.getAnimations({ subtree: true }).filter(animation => animation.playState === 'running').length)).toBe(0);
+    // Guarantee a scrollable origin even when ten rows fit on a tall desktop.
+    await list(page).locator('.sb-character-list__box').evaluate(box => { box.style.maxHeight = '260px'; });
+    await row.evaluate(element => element.focus({ preventScroll: true }));
+    await list(page).locator('.sb-character-list__box').evaluate(box => { box.scrollTop = 35; });
+    await row.getByRole('button', { name: 'Edit', exact: true }).evaluate(button => {
+        button.addEventListener('click', () => {
+            window.__sbCharacterListOrigin = window.SillyBunnyCharacterListController.captureState();
+        }, { capture: true, once: true });
+    });
+    if (view === 'characters') await page.evaluate(async () => {
+        const { debounce_timeout } = await import('/scripts/constants.js');
+        const schedule = window.setTimeout;
+        window.setTimeout = (callback, delay, ...args) => {
+            if (delay === debounce_timeout.short && /at getChat \(/.test(new Error().stack)) {
+                window.setTimeout = schedule;
+                window.__sbDelayedComposerFocus = () => callback(...args);
+                return schedule(() => {}, 0);
+            }
+            return schedule(callback, delay, ...args);
+        };
+    });
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    const editor = view === 'groups' ? '#sb_group_editor_header' : '#sb_character_editor_header';
+    const back = view === 'groups' ? '#sb_group_editor_back' : '#sb_character_editor_back';
+    await expect(page.locator(editor)).toBeVisible();
+    await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(1);
+    if (view === 'characters') await page.waitForFunction(() => typeof window.__sbDelayedComposerFocus === 'function');
+    const origin = await page.evaluate(() => window.__sbCharacterListOrigin);
+    expect(origin.page).toBe(2);
+    expect(origin.focusKey).toBe(key);
+    expect(origin.scrollTop).toBeGreaterThan(0);
+    await page.locator(back).click();
+    await expect(list(page)).toBeVisible();
+    await expect(list(page)).toHaveAttribute('data-view', view);
+    await expect(list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`)).toBeFocused();
+    if (view === 'characters') await page.evaluate(async () => {
+        window.__sbDelayedComposerFocus();
+        delete window.__sbDelayedComposerFocus;
+        await new Promise(requestAnimationFrame);
+    });
+    await expect(list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`)).toBeFocused();
+    await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState())).toEqual(origin);
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`empty Characters and Groups use a top status page at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await setSearch(page, 'no matching entity');
+        await expect(list(page).locator('.sb-character-list__box')).toBeHidden();
+        await expect(list(page).locator('.sb-status-page__title')).toHaveText('No Results Found');
+        await expect(list(page).locator('.sb-status-page__description')).toHaveText('Try a different search');
+
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const groups = await import('/scripts/group-chats.js');
+            app.entitiesFilter.setFilterData('search', '', true);
+            document.getElementById('character_search_bar').value = '';
+            app.characters.splice(0, app.characters.length);
+            groups.groups.splice(0, groups.groups.length);
+            await app.printCharacters(false);
+        });
+        const status = list(page).locator('.sb-character-list__status');
+        await expect(status).toBeVisible();
+        await expect(list(page).locator('.empty_block')).toHaveCount(0);
+        await expect(status.locator('.sb-status-page__description')).toHaveText('There are no items to display.');
+        await expect(status.locator('.sb-status-page__title')).not.toHaveText('');
+        const statusBox = await status.boundingBox();
+        const statusPageBox = await status.locator('.sb-status-page').boundingBox();
+        const paneBox = await list(page).boundingBox();
+        const controlBottoms = await Promise.all(['.sb-character-list__header', '.sb-character-list__search', '.sb-character-list__filters'].map(selector => list(page).locator(selector).boundingBox()));
+        expect(statusBox).not.toBeNull();
+        expect(statusPageBox).not.toBeNull();
+        expect(paneBox).not.toBeNull();
+        expect(controlBottoms.every(Boolean)).toBe(true);
+        expect(Math.abs(statusPageBox.y - Math.max(...controlBottoms.map(box => box.y + box.height)))).toBeLessThanOrEqual(1);
+        const typography = await status.locator('.sb-status-page').evaluate(element => {
+            const title = getComputedStyle(element.querySelector('.sb-status-page__title'));
+            const description = getComputedStyle(element.querySelector('.sb-status-page__description'));
+            return { titleSize: parseFloat(title.fontSize), descriptionSize: parseFloat(description.fontSize), titleWeight: Number(title.fontWeight) };
+        });
+        expect(typography.titleSize).toBeGreaterThan(typography.descriptionSize * 1.25);
+        expect(typography.titleWeight).toBeGreaterThanOrEqual(700);
+        await page.evaluate(() => {
+            window.__sbEmptyStatusCreateClicked = false;
+            document.getElementById('rm_button_create').addEventListener('click', () => {
+                window.__sbEmptyStatusCreateClicked = true;
+            }, { once: true });
+        });
+        await status.locator('.sb-status-page__action').click();
+        expect(await page.evaluate(() => window.__sbEmptyStatusCreateClicked)).toBe(true);
+
+        await showView(page, 'groups');
+        const groupStatus = list(page).locator('.sb-character-list__status');
+        await expect(groupStatus).toBeVisible();
+        await expect(list(page).locator('.sb-character-list__box')).toBeHidden();
+        await expect(list(page).locator('.empty_block')).toHaveCount(0);
+        await expect(groupStatus.locator('.sb-status-page__description')).toHaveText('There are no items to display.');
+        const groupTypography = await groupStatus.locator('.sb-status-page').evaluate(element => {
+            const title = getComputedStyle(element.querySelector('.sb-status-page__title'));
+            const description = getComputedStyle(element.querySelector('.sb-status-page__description'));
+            return { titleSize: parseFloat(title.fontSize), descriptionSize: parseFloat(description.fontSize), titleWeight: Number(title.fontWeight) };
+        });
+        expect(groupTypography.titleSize).toBeGreaterThan(groupTypography.descriptionSize * 1.25);
+        expect(groupTypography.titleWeight).toBeGreaterThanOrEqual(700);
+    });
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 375, height: 812 }]) {
+    // The touch size follows the pointer, so the two narrow widths run with a touch screen.
+    test.describe(`${viewport.width}px ${viewport.width === 1440 ? 'fine' : 'coarse'} pointer`, () => {
+        test.use({ hasTouch: viewport.width !== 1440, isMobile: viewport.width !== 1440 });
+
+        test(`editor avatar and tag removal are native keyboard controls at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true }).click();
+            await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(1);
+            const avatar = page.locator('#avatar_div_div');
+            await expect(avatar).toHaveRole('button');
+            await expect(avatar).toHaveAccessibleName('Change Persona Image');
+            await avatar.focus();
+            await expect(avatar).toBeFocused();
+            const chooserEvent = page.waitForEvent('filechooser');
+            await avatar.press('Enter');
+            const chooser = await chooserEvent;
+            await chooser.setFiles([]);
+            // The tags are one row that opens the shared picker; unticking a tag removes it.
+            const tags = page.locator('#tagList > .tag');
+            const count = await tags.count();
+            expect(count).toBeGreaterThan(0);
+            const name = (await tags.first().locator('.tag_name').textContent()).trim();
+            const trigger = page.locator('#tags_div .sb-tag-field .ds-select-row__trigger');
+            await expect(trigger).toBeVisible();
+            // The row is the target: a press on it opens the picker as the trigger does.
+            const size = await page.locator('#tags_div .sb-tag-field').boundingBox();
+            expect(size.height).toBeGreaterThanOrEqual(44);
+            await trigger.focus();
+            await page.keyboard.press('Enter');
+            const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+            const option = picker.getByRole('option', { name, exact: true });
+            await expect(option).toHaveAttribute('aria-selected', 'true');
+            await option.click();
+            await expect(tags).toHaveCount(count - 1);
+        });
+    });
+
+    test(`keyboard chat, pencil and clean Escape restore the origin at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        for (const { view, prefix } of [
+            { view: 'characters', prefix: 'sb_character_editor' },
+            { view: 'groups', prefix: 'sb_group_editor' },
+        ]) {
+            await showView(page, view);
+            const row = listRows(page, view).first();
+            const key = await row.getAttribute('data-sb-list-key');
+            await row.focus();
+            await page.keyboard.press('Enter');
+            await waitForChatActivation(page);
+            await showView(page, view);
+            const origin = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await origin.focus();
+            await page.keyboard.press('Tab');
+            await expect(origin.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
+            await page.keyboard.press('Enter');
+            await expect(page.locator(`#${prefix}_header`)).toBeVisible();
+            await expect(page.locator(`#${prefix}_save`)).toBeDisabled();
+            await page.locator(`#${prefix}_back`).focus();
+            await page.keyboard.press('Control+s');
+            await page.keyboard.press('Escape');
+            await expect(page.locator(`#${prefix}_header`)).toBeHidden();
+            await expect(origin).toBeFocused();
+            await expect(list(page)).toBeVisible();
+            await page.keyboard.press('Escape');
+            await expect(page.locator('#sb-settings-page')).toBeHidden();
+            await expect(page.locator('#sb-character-toggle')).toBeFocused();
+        }
+    });
+
+    test(`shared lists activate chats and pencil/Back preserves the origin at ${viewport.width}px`, async ({ page }) => {
+        // Boots the app, then opens two editors and comes back from each: 15 s on a narrow width, 22 s with workers sharing a
+        // server, against the default 30 s.
+        test.setTimeout(90000);
+        await prepareList(page, viewport);
+        const character = listRows(page, 'characters').first();
+        const chid = Number(await character.getAttribute('data-chid'));
+        await character.locator('.ch_name').click();
+        await expect.poll(() => page.evaluate(async () => Number((await import('/script.js')).this_chid))).toBe(chid);
+        await expect(page.locator('#sb_character_editor_header')).toBeHidden();
+        await waitForChatActivation(page);
+        await expectEditorBackRestoration(page, 'characters');
+
+        await showView(page, 'groups');
+        const group = listRows(page, 'groups').first();
+        const groupId = await group.getAttribute('data-grid');
+        await group.locator('.ch_name').click();
+        await expect.poll(() => page.evaluate(async () => (await import('/scripts/group-chats.js')).selected_group)).toBe(groupId);
+        await expect(page.locator('#sb_group_editor_header')).toBeHidden();
+        await waitForChatActivation(page);
+        await expectEditorBackRestoration(page, 'groups');
+    });
+
+    test(`favorites, search, sort, page size and grid stay per view at ${viewport.width}px`, async ({ page }) => {
+        // Sets favorites, search, sort, page size and grid in two views: 16 s on a narrow width, 22 s with workers sharing a
+        // server, against the default 30 s.
+        test.setTimeout(90000);
+        await prepareList(page, viewport);
+        const favorite = () => list(page).locator('.filterByFavorites');
+        await favorite().click();
+        await expect(favorite()).toHaveClass(/selected/);
+        await showView(page, 'groups');
+        await expect(favorite()).not.toHaveClass(/selected/);
+        await favorite().click();
+        await expect(favorite()).toHaveClass(/selected/);
+        await showView(page, 'characters');
+        await expect(favorite()).toHaveClass(/selected/);
+        for (const view of ['characters', 'groups']) {
+            await showView(page, view);
+            await list(page).locator('.clearAllFilters').evaluate(element => element.click());
+        }
+
+        await showView(page, 'characters');
+        const characterQuery = await listRows(page, 'characters').first().locator('.ch_name').textContent();
+        await setSearch(page, characterQuery);
+        await showView(page, 'groups');
+        await expect(page.locator('#character_search_bar')).toHaveValue('');
+        await setSearch(page, 'qa-list-group-0');
+        await showView(page, 'characters');
+        await expect(page.locator('#character_search_bar')).toHaveValue(characterQuery);
+        await setSearch(page, '');
+        const characterSort = await readSort(page, 'characters');
+        await showView(page, 'groups');
+        await expect(page.locator('#character_search_bar')).toHaveValue('qa-list-group-0');
+        await setSearch(page, '');
+        await chooseSortItem(page, 'Z-A');
+        await expect.poll(() => readSort(page, 'groups')).toMatchObject({ field: 'name', order: 'desc' });
+        expect(await readSort(page, 'characters')).toEqual(characterSort);
+        expect(await page.evaluate(async () => {
+            const { power_user } = await import('/scripts/power-user.js');
+            return { field: power_user.sort_field, order: power_user.sort_order };
+        })).toMatchObject({ field: characterSort.field, order: characterSort.order });
+        expect(await page.evaluate(async () => JSON.parse((await import('/scripts/util/AccountStorage.js')).accountStorage.getItem('GroupList_SortOrder')))).toMatchObject({ field: 'name', order: 'desc' });
+        // The page is the number of batches shown, and each view keeps its own; the batch size is the saved page size.
+        await showView(page, 'characters');
+        await expect(listRows(page, 'characters')).toHaveCount(10);
+        await showMore(page).click();
+        await expect(listRows(page, 'characters')).toHaveCount(20);
+        await chooseSortItem(page, 'Newest');
+        await expect.poll(() => readSort(page, 'characters')).toMatchObject({ field: 'create_date', order: 'desc' });
+        await showView(page, 'groups');
+        expect(await readSort(page, 'groups')).toMatchObject({ field: 'name', order: 'desc' });
+        expect(await page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(1);
+        await showView(page, 'characters');
+        expect(await page.evaluate(async () => {
+            const { accountStorage } = await import('/scripts/util/AccountStorage.js');
+            return [accountStorage.getItem('Characters_PerPage'), accountStorage.getItem('Groups_PerPage')];
+        })).toEqual(['10', '10']);
+
+        await chooseSortItem(page, 'Grid');
+        await expect(page.locator('body')).toHaveClass(/charListGrid/);
+        await expect(list(page).locator('#rm_print_characters_block')).toHaveCSS('display', 'grid');
+        await expect(listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+        await showView(page, 'groups');
+        await expect(list(page).locator('#rm_print_characters_block')).toHaveCSS('display', 'grid');
+        expect((await listRows(page, 'groups').first().boundingBox()).width).toBeGreaterThan(100);
+        await chooseSortItem(page, 'List');
+        await expect(page.locator('body')).not.toHaveClass(/charListGrid/);
+    });
+
+    test(`an empty search closes when the focus leaves it, and a query or a view switch keeps the field in step at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const field = list(page).locator('.sb-character-list__search');
+        const input = page.locator('#character_search_bar');
+        await openHeaderMenu(page, 'search');
+        await expect(input).toBeFocused();
+        await listRows(page, 'characters').first().focus();
+        await expect(field).toBeHidden();
+
+        const characterQuery = await listRows(page, 'characters').first().locator('.ch_name').textContent();
+        await setSearch(page, characterQuery);
+        await listRows(page, 'characters').first().focus();
+        await expect(field).toBeVisible();
+
+        // The Groups view has no query, so its field is closed and inert; the Characters query brings its field back.
+        await showView(page, 'groups');
+        await expect(field).toBeHidden();
+        await expect(field).toHaveJSProperty('inert', true);
+        await showView(page, 'characters');
+        await expect(field).toBeVisible();
+        await expect(field).toHaveJSProperty('inert', false);
+        await expect(input).toHaveValue(characterQuery);
+        await expect(input).not.toBeFocused();
+        await input.fill('');
+        await listRows(page, 'characters').first().focus();
+        await expect(field).toBeHidden();
+    });
+
+    test(`the search bar closes on a press outside it, also after the sort menu was used, at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const field = list(page).locator('.sb-character-list__search');
+        const input = page.locator('#character_search_bar');
+        await expectSortKeepsSearchDismissable({
+            page,
+            reveal: () => openHeaderMenu(page, 'search'),
+            field,
+            input,
+            sort: list(page).locator('.sb-character-list__sort'),
+            chooseSort: () => page.getByRole('menuitemradio', { name: 'Z-A', exact: true }).click(),
+            outside: list(page).locator('.sb-character-list__header'),
+            focusable: list(page).locator('[data-action-id="more"]'),
+        });
+        await expect(field).toBeHidden();
+    });
+
+    test(`row favorite menus, visible extension slot and retired hotswap at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        for (const view of ['characters', 'groups']) {
+            await showView(page, view);
+            const row = listRows(page, view).first();
+            const key = await row.getAttribute('data-sb-list-key');
+            const before = await row.evaluate(element => element.classList.contains('is_fav'));
+            await row.getByRole('button', { name: /^Actions for / }).click();
+            const favorite = page.getByRole('menuitemcheckbox', { name: 'Favorites', exact: true });
+            await expect(favorite).toHaveAttribute('aria-checked', String(before));
+            await favorite.click();
+            const retained = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await expect.poll(() => retained.evaluate(element => element.classList.contains('is_fav'))).toBe(!before);
+            await expect(page.locator('#rm_buttons_container')).toBeVisible();
+            await expect(list(page).locator('.sb-character-list__header #rm_buttons_container')).toBeVisible();
+        }
+        await list(page).locator('[data-action-id="more"]').click();
+        await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+        await expect(page.locator('#bulkEditButton')).toBeHidden();
+        await listRows(page, 'groups').first().locator('.ch_name').click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+        await expect(listRows(page, 'groups').first()).toHaveClass(/is-selection-selected/);
+        await list(page).getByRole('button', { name: 'Select All', exact: true }).click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('28 selected');
+        await expect(list(page).locator('.sb-selection-action[data-action-id="delete"]')).toBeVisible();
+        await list(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(list(page).locator('.is-selection-selected')).toHaveCount(0);
+        await expect(list(page).locator('.bulk_select_checkbox')).toHaveCount(0);
+        for (const tab of ['characters', 'groups', 'editor', 'world-info', 'persona', 'import']) {
+            await page.evaluate(async tab => { await window.SillyBunnyShell.openTab('characters', tab); }, tab);
+            await expect(page.locator('#CharListButtonAndHotSwaps')).toBeHidden();
+        }
+    });
+}
+
+async function enterSelection(page) {
+    await list(page).locator('.sb-character-list__header [data-action-id="more"]').click();
+    await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+    await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+    await expect(list(page).locator('.sb-selection-cancel')).toBeFocused();
+}
+
+for (const width of [1440, 390]) {
+    test(`q56 ${width}px Characters selection header raises both text buttons, never a solid accent`, async ({ page }) => {
+        await prepareList(page, { width, height: 1000 });
+        await enterSelection(page);
+        await expect(list(page).locator('.sb-selection-cancel')).toHaveClass(/sb-editor-action--secondary/);
+        await expect(list(page).locator('.sb-selection-select-all')).toHaveClass(/sb-editor-action--secondary/);
+        await expect(list(page).locator('.sb-selection-select-all')).not.toHaveClass(/sb-editor-action--primary/);
+        await q56Screenshot(page, `selection-characters-${width}`);
+    });
+}
+
+for (const { tone, theme } of SELECTION_TONES) {
+    test(`Select All is a raised text button like Cancel, at rest, hovered and pressed, in the ${tone} tone`, async ({ page }) => {
+        await prepareList(page, { width: 1440, height: 900 });
+        await selectTheme(page, theme);
+        await enterSelection(page);
+        const cancel = list(page).locator('.sb-selection-cancel');
+        const selectAll = list(page).locator('.sb-selection-select-all');
+        const read = button => button.evaluate((node) => {
+            const style = getComputedStyle(node);
+            return Object.fromEntries(['backgroundColor', 'color', 'borderTopColor', 'borderTopWidth', 'borderRadius', 'fontWeight', 'minHeight', 'paddingLeft']
+                .map(property => [property, style[property]]));
+        });
+        // The fills transition, so a reading waits until the button has settled on the strength.
+        const raised = async (button, strength) => {
+            const body = await readBodyColor(page);
+            await expect.poll(async () => {
+                const fill = parseComputedColor((await read(button)).backgroundColor);
+                return [Math.round(fill.r), Math.round(fill.g), Math.round(fill.b), +fill.a.toFixed(2)];
+            }).toEqual([Math.round(body.r), Math.round(body.g), Math.round(body.b), strength]);
+        };
+        await page.mouse.move(1, 1);
+        await cancel.evaluate(node => node.blur());
+        await expect.poll(() => read(selectAll)).toEqual(await read(cancel));
+        expect((await read(selectAll)).fontWeight).toBe('400');
+        await raised(selectAll, 0.1);
+        await raised(cancel, 0.1);
+        await selectAll.hover();
+        await raised(selectAll, 0.15);
+        await page.mouse.down();
+        await raised(selectAll, 0.3);
+        await page.mouse.move(1, 1);
+        await page.mouse.up();
+    });
+}
+
+for (const width of [375, 390, 430, 768]) {
+    test(`header controls and Chat Archive fit within the list and Sort ends the search bar at ${width}px`, async ({ page }) => {
+        await prepareList(page, { width, height: 844 });
+        const header = list(page).locator('.sb-character-list__header');
+        await expect(header.locator('#sbca_drawer_button')).toBeVisible();
+        await expect.poll(() => header.evaluate(element => {
+            const bounds = element.getBoundingClientRect();
+            return [...element.querySelectorAll('button, .menu_button, [role="button"]')]
+                .filter(control => control.getClientRects().length && getComputedStyle(control).visibility !== 'hidden')
+                .filter(control => {
+                    const rect = control.getBoundingClientRect();
+                    return rect.left < bounds.left - 0.5 || rect.right > bounds.right + 0.5;
+                })
+                .map(control => control.getAttribute('aria-label') || control.title);
+        })).toEqual([]);
+        await expect(header.locator('[data-action-id="sort"]')).toHaveCount(0);
+        await header.locator('[data-action-id="more"]').click();
+        await expect(page.getByRole('menuitem', { name: 'Sort', exact: true })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await openHeaderMenu(page, 'search');
+        const sort = list(page).locator('.sb-character-list__search > .sb-character-list__sort');
+        await expect(sort).toBeVisible();
+        const [bar, button] = await Promise.all([list(page).locator('.sb-character-list__search').boundingBox(), sort.boundingBox()]);
+        expect(button.x).toBeGreaterThan(bar.x);
+        expect(button.x + button.width).toBeLessThanOrEqual(bar.x + bar.width + 0.5);
+    });
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`the header ends on More, the Sort sheet has one heading and a group count sits in its subtitle at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const header = list(page).locator('.sb-character-list__header');
+        const rightmost = await header.evaluate(element => {
+            const visible = [...element.querySelectorAll('button')].filter(button => button.getClientRects().length && getComputedStyle(button).visibility !== 'hidden');
+            return visible.reduce((best, button) => (button.getBoundingClientRect().right > best.getBoundingClientRect().right ? button : best)).dataset.actionId;
+        });
+        expect(rightmost).toBe('more');
+
+        await openHeaderMenu(page, 'sort');
+        await expect(page.locator('.sb-action-menu-section-title')).toHaveText(['View']);
+        await page.keyboard.press('Escape');
+
+        await showView(page, 'groups');
+        const subtitle = listRows(page, 'groups').first().locator('.ds-entity-row__subtitle');
+        const counter = subtitle.locator('.group_select_counter');
+        await expect(counter).toHaveCount(1);
+        await expect(counter).not.toBeEmpty();
+        expect(await subtitle.evaluate(element => element.firstElementChild?.classList.contains('group_select_counter'))).toBe(true);
+        await expect(listRows(page, 'groups').first().locator('.ds-entity-row__trailing .group_select_counter, .ds-entity-row__badge .group_select_counter')).toHaveCount(0);
+    });
+
+    test(`the selection bar keeps every action named, and labels fold into icons only at 390px, at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await enterSelection(page);
+        const actions = list(page).locator('.sb-selection-action');
+        expect(await actions.count()).toBeGreaterThan(1);
+        for (const action of await actions.all()) {
+            await expect(action).toHaveAttribute('aria-label', /.+/);
+            await expect(action).toHaveAttribute('title', /.+/);
+            expect(await action.evaluate(element => element.title === element.getAttribute('aria-label'))).toBe(true);
+            await expect(action.locator('> span')).toBeVisible({ visible: viewport.width > 450 });
+        }
+        const box = await list(page).locator('.sb-selection-action-bar').boundingBox();
+        expect(box.height).toBeLessThan(viewport.width <= 450 ? 64 : 80);
+    });
+}
+
+test.describe('folder headers in list and grid view', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    async function addFolder(page) {
+        await prepareList(page, { width: 1440, height: 900 });
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const folders = await import('/scripts/sillybunny-folders.js');
+            const folder = folders.createFolder('characters', 'QA Folder', { expanded: true });
+            folders.setFolder('characters', app.characters.slice(0, 2).map(character => character.avatar), folder.id);
+            await app.printCharacters(false);
+        });
+        const header = list(page).locator('.sb-folder-row').first();
+        await expect(header).toBeVisible();
+        return header;
+    }
+
+    test('a folder header in list view fills on hover and darker on press, like a row', async ({ page }) => {
+        const header = await addFolder(page);
+        const fill = () => header.evaluate(element => {
+            const style = getComputedStyle(element);
+            return `${style.backgroundColor}|${style.backgroundImage}`;
+        });
+        await page.mouse.move(1, 1);
+        await expect.poll(fill).toBe(await fill());
+        const rest = await fill();
+        await header.hover();
+        await expect.poll(fill).not.toBe(rest);
+        const hovered = await fill();
+        await page.mouse.down();
+        await expect.poll(fill).not.toBe(hovered);
+        await page.mouse.move(1, 1);
+        await page.mouse.up();
+    });
+
+    // The header's name is its own text, a title then a count with a space between: a name with a comma that the text lacks fails WCAG 2.5.3.
+    for (const [scope, view, title, count] of [['characters', 'characters', 'QA Folder', '2 characters'], ['groups', 'groups', 'QA Group Folder', '2 groups']]) {
+        test(`a ${scope} folder header is named by its visible title and count, open and closed`, async ({ page }) => {
+            await prepareList(page, { width: 1440, height: 900 });
+            await page.evaluate(async ({ scope, title }) => {
+                const app = await import('/script.js');
+                const groupChats = await import('/scripts/group-chats.js');
+                const folders = await import('/scripts/sillybunny-folders.js');
+                const folder = folders.createFolder(scope, title, { expanded: true });
+                const members = scope === 'groups' ? groupChats.groups.slice(0, 2).map(group => group.id) : app.characters.slice(0, 2).map(character => character.avatar);
+                folders.setFolder(scope, members, folder.id);
+            }, { scope, title });
+            await showView(page, view);
+            const header = list(page).locator('.sb-folder-row').first();
+            await expect(header).toBeVisible();
+            await expect(header).toHaveAttribute('aria-expanded', 'true');
+            await expect(header).not.toHaveAttribute('aria-label', /.*/);
+            await expect(header).toHaveAccessibleName(`${title} ${count}`);
+            await expect(header).toMatchAriaSnapshot(`- button "${title} ${count}" [expanded]`);
+            await header.click();
+            await expect(header).toHaveAttribute('aria-expanded', 'false');
+            await expect(header).toHaveAccessibleName(`${title} ${count}`);
+            await expect(header).toMatchAriaSnapshot(`- button "${title} ${count}"`);
+        });
+    }
+
+    test('a folder header in grid view stays one list-view row across the grid', async ({ page }) => {
+        const header = await addFolder(page);
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const { power_user } = await import('/scripts/power-user.js');
+            power_user.charListGrid = true;
+            document.body.classList.add('charListGrid');
+            await app.printCharacters(false);
+        });
+        const folder = await header.boundingBox();
+        const card = await list(page).locator('.character_select').first().boundingBox();
+        expect(folder.height).toBeLessThan(70);
+        expect(folder.width).toBeGreaterThan(card.width * 1.5);
+    });
+});
+
+test.describe('Show More', () => {
+    test('loads one batch per press under its label and focuses the first new row at the end', async ({ page }) => {
+        await prepareList(page, { width: 1440, height: 900 });
+        const button = showMore(page);
+        await expect(button).toBeVisible();
+        await expect(button).toHaveText('Show More');
+        await expect(button).not.toHaveAttribute('data-sb-copy-placeholder');
+        await expect(listRows(page, 'characters')).toHaveCount(10);
+        await button.click();
+        await expect(listRows(page, 'characters')).toHaveCount(20);
+        await expect(button).toBeVisible();
+        await button.click();
+        await expect(listRows(page, 'characters')).toHaveCount(28);
+        await expect(button).toBeHidden();
+        await expect(listRows(page, 'characters').nth(20)).toBeFocused();
+        await expect(list(page).locator('.sb-list-pagination, .paginationjs')).toHaveCount(0);
+    });
+});
+
+async function chatState(page) {
+    return page.evaluate(async () => {
+        const app = await import('/script.js');
+        const groups = await import('/scripts/group-chats.js');
+        return { character: app.this_chid, group: groups.selected_group, chat: app.getCurrentChatId() };
+    });
+}
+
+test.describe('selection row hit areas', () => {
+    for (const [pointer, hasTouch, floor] of [['fine', false, 32], ['coarse', true, 44]]) {
+        test.describe(`${pointer} pointer`, () => {
+            test.use({ hasTouch });
+            test(`a selection row is at least ${floor}px tall and a press at its blank end toggles the 28px check`, async ({ page }) => {
+                await prepareList(page, { width: 1440, height: 900 });
+                expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(pointer === 'coarse');
+                await enterSelection(page);
+                const row = listRows(page, 'characters').nth(2);
+                const check = row.locator('.sb-selection-check');
+                const bounds = await row.boundingBox();
+                expect(bounds.height).toBeGreaterThanOrEqual(floor);
+                expect((await check.boundingBox()).height).toBe(28);
+                await row.click({ position: { x: bounds.width - 6, y: bounds.height / 2 } });
+                await expect(check).toBeChecked();
+            });
+        });
+    }
+});
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`selection checks are round and share a fixed size at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const row = listRows(page, 'characters').first();
+        await enterSelection(page);
+        const check = row.locator('.sb-selection-check');
+        await check.check();
+        const metrics = await check.evaluate(element => {
+            const bounds = element.getBoundingClientRect();
+            const radius = getComputedStyle(element).borderRadius;
+            const rowBounds = element.parentElement.getBoundingClientRect();
+            const title = element.parentElement.querySelector('.ds-entity-row__title');
+            const description = element.parentElement.querySelector('.ds-entity-row__subtitle');
+            return {
+                width: bounds.width, height: bounds.height, radius: parseFloat(radius) * (radius.endsWith('%') ? bounds.width / 100 : 1),
+                titleX: title.getBoundingClientRect().x - rowBounds.x,
+                description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
+            };
+        });
+        expect(metrics.width).toBe(28);
+        expect(metrics.height).toBe(28);
+        expect(metrics.radius).toBeGreaterThanOrEqual(metrics.width / 2);
+        expect(metrics.titleX).toBeGreaterThanOrEqual(selectionLayout[viewport.width].titleX - 1);
+        expect(metrics.titleX).toBeLessThanOrEqual(selectionLayout[viewport.width].titleX + 1);
+        expect(metrics.description.right).toBeCloseTo(selectionLayout[viewport.width].descriptionRight, 0);
+        expect(metrics.description.truncated).toBe(selectionLayout[viewport.width].truncated);
+        const appearance = await selectionCheckAppearance(check);
+        expect(appearance.content).toBe('""');
+        expect(appearance.backgroundImage).toBe('none');
+        expect(appearance.display).toBe('grid');
+        expect(appearance.placeContent).toBe('center');
+        expect(appearance.glyphWidth).toBeCloseTo(15.68, 1);
+        expect(appearance.glyphHeight).toBeCloseTo(15.68, 1);
+        expect(appearance.glyphFitsInnerCircle).toBe(true);
+        expect(appearance.centeredByGrid).toBe(true);
+        if (process.env.CAPTURE_SELECTION_SHOTS) {
+            await page.screenshot({ path: test.info().outputPath(`characters-${viewport.width}.png`) });
+            if (viewport.width === 1440) {
+                const bounds = await check.boundingBox();
+                await page.screenshot({ path: test.info().outputPath('check-crop-1440.png'), clip: { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 } });
+                await page.keyboard.press('Tab');
+                await check.evaluate(element => element.focus());
+                await expect(check).toBeFocused();
+                await expect.poll(() => check.evaluate(element => element.matches(':focus-visible'))).toBe(true);
+                await page.screenshot({ path: test.info().outputPath('check-focus-1440.png') });
+                await page.evaluate(() => window.$('#themes').val('Libadwaita Light').trigger('change'));
+                await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'light');
+                await page.screenshot({ path: test.info().outputPath('characters-1440-light.png') });
+            }
+        }
+    });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`selection check outline is the 15% trough, and the 50% border strength under more contrast, at ${viewport.width}px in the ${tone} tone`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await selectTheme(page, theme);
+            await enterSelection(page);
+            const body = await readBodyColor(page);
+            const row = listRows(page, 'characters').nth(2);
+            const check = row.locator('.sb-selection-check');
+            await expect(check).not.toBeChecked();
+            await page.mouse.move(1, 1);
+            const rest = await readSelectionCheckOutline(page, check);
+            expect(rest.size).toEqual({ width: 28, height: 28 });
+            expect([rest.border.r, rest.border.g, rest.border.b].map(Math.round)).toEqual([body.r, body.g, body.b].map(Math.round));
+            expect(rest.border.a).toBeCloseTo(0.15, 2);
+            await expect(check).toHaveCSS('border-top-width', '2px');
+            await check.hover();
+            await expect.poll(async () => +(await readSelectionCheckOutline(page, check)).border.a.toFixed(2)).toBe(0.2);
+
+            await page.emulateMedia({ contrast: 'more' });
+            await page.mouse.move(1, 1);
+            const resting = await readSelectionCheckOutline(page, check);
+            await check.hover();
+            const hovered = await readSelectionCheckOutline(page, check);
+            const rows = [resting.ratio, hovered.ratio];
+            test.info().annotations.push({ type: 'selection check outline contrast under more contrast', description: `${tone}: ${rows.map(ratio => ratio.toFixed(2)).join(', ')} at ${(resting.border.a * 100).toFixed(0)}%` });
+            expect(resting.border.a).toBeCloseTo(0.5, 2);
+            expect(hovered.border.a).toBeCloseTo(0.6, 2);
+            await check.check();
+            const accent = await check.evaluate((element) => {
+                const probe = document.createElement('span');
+                probe.style.backgroundColor = 'var(--sb-accent)';
+                element.parentElement.append(probe);
+                const color = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return color;
+            });
+            await expect(check).toHaveCSS('border-top-color', accent);
+            await expect(check).toHaveCSS('background-color', accent);
+        });
+    }
+
+    for (const view of ['characters', 'groups']) {
+        test(`${view} activation closes the shell and reopening reveals the current row at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await showView(page, view);
+            await showAllRows(page);
+            const row = listRows(page, view).last();
+            const key = await row.getAttribute('data-sb-list-key');
+            await row.evaluate(element => { window.__sbActivationRow = element; });
+            await row.locator('.ch_name').click();
+            await waitForChatActivation(page);
+            await list(page).locator('.sb-character-list__box').evaluate(box => { box.scrollTop = 0; });
+            await showView(page, view);
+            const current = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await expect(current).toHaveAttribute('aria-current', 'true');
+            await expect(current).toHaveClass(/is-selected/);
+            await expect(current.locator('.sb-character-list__active-dot')).toBeVisible();
+            await expect(current.locator('.sb-character-list__active-dot')).toHaveAttribute('aria-hidden', 'true');
+            await expect(current).toBeInViewport();
+            expect(await current.evaluate(element => element === window.__sbActivationRow)).toBe(true);
+            await expect(current).not.toBeFocused();
+            await expect.poll(() => list(page).locator('.sb-character-list__box').evaluate(box => box.scrollTop)).toBeGreaterThan(0);
+            for (const gesture of ['Enter', ' ']) {
+                await current.focus();
+                await page.keyboard.press(gesture);
+                await waitForChatActivation(page);
+                await showView(page, view);
+            }
+            await page.evaluate(async view => (await import('/scripts/sillybunny-character-list-state.js')).setListPage(view, 1), view);
+            await page.evaluate(() => window.SillyBunnyShell.closeCharacters());
+            await waitForChatActivation(page);
+            await showView(page, view);
+            await expect(list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`)).toBeInViewport();
+            await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(3);
+            await chooseSortItem(page, 'Grid');
+            await expect(list(page).locator('[aria-current="true"]')).toHaveCSS('background-color', await list(page).evaluate(element => {
+                const probe = document.createElement('span');
+                probe.style.backgroundColor = 'var(--sb-flat-selected-bg)';
+                element.append(probe);
+                const color = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return color;
+            }));
+        });
+
+        test(`${view} refusal and failed loading keep the list open, and so does the pin above 768px, at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await showView(page, view);
+            const before = await chatState(page);
+            await page.evaluate(async () => (await import('/script.js')).setSendButtonState(true));
+            const row = listRows(page, view).last();
+            await row.locator('.ch_name').click();
+            await expect(page.locator('#sb-settings-page')).toBeVisible();
+            expect(await chatState(page)).toEqual(before);
+            await expect(row).not.toHaveAttribute('aria-current', 'true');
+            await page.evaluate(async () => (await import('/script.js')).setSendButtonState(false));
+
+            const endpoint = { characters: '**/api/chats/get', groups: '**/api/chats/group/get' }[view];
+            await page.route(endpoint, route => route.fulfill({ status: 500, json: {} }));
+            await row.locator('.ch_name').click();
+            await expect.poll(() => page.evaluate(() => document.querySelector('.is-activating-entity') === null)).toBe(true);
+            await expect(page.locator('#sb-settings-page')).toBeVisible();
+            await expect(row).toBeFocused();
+            await page.unroute(endpoint);
+            // Restore the original fixture handler removed by unroute, never allow a live chat write.
+            await page.route(endpoint, route => route.fulfill({ json: view === 'groups' ? [
+                { chat_metadata: { tainted: true } },
+                { name: 'QA group', is_user: false, mes: 'QA chat', send_date: '2026-10-18' },
+            ] : [] }));
+            await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = true; });
+            const other = listRows(page, view).first();
+            await other.locator('.ch_name').click();
+            if (viewport.width > 768) {
+                await expect(other).toHaveAttribute('aria-current', 'true');
+                await expect(other).not.toHaveClass(/is-activating-entity/);
+                await expect(page.locator('#sb-settings-page')).toBeVisible();
+                await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = false; });
+                await other.locator('.ch_name').click();
+            }
+            // The pin applies above the phone layout only: at 768px and narrower the list closes after the pick either way.
+            await waitForChatActivation(page);
+            if (viewport.width <= 768) await expect(page.locator('#sb-settings-page')).toBeHidden();
+        });
+
+        for (const [shell, tab] of [['left', 'connections'], ['right', 'appearance'], ['characters', 'world-info']]) {
+            test(`${view} delayed failure preserves newer ${shell}/${tab} navigation at ${viewport.width}px`, async ({ page }) => {
+                await prepareList(page, viewport);
+                await showView(page, view);
+                let release;
+                let requested = false;
+                const gate = new Promise(resolve => { release = resolve; });
+                const endpoint = { groups: '**/api/chats/group/get', characters: '**/api/chats/get' }[view];
+                await page.route(endpoint, async route => {
+                    requested = true;
+                    await gate;
+                    await route.fulfill({ status: 500, json: {} });
+                });
+                await listRows(page, view).last().locator('.ch_name').click();
+                await expect(list(page)).toBeHidden();
+                await expect.poll(() => requested).toBe(true);
+                await page.evaluate(async ({ shell, tab }) => {
+                    await window.SillyBunnyShell.openTab(shell, tab);
+                    window.__sbFailureReopens = 0;
+                    const openTab = window.SillyBunnyShell.openTab;
+                    window.SillyBunnyShell.openTab = (...args) => {
+                        window.__sbFailureReopens++;
+                        return openTab(...args);
+                    };
+                }, { shell, tab });
+                const selected = page.locator(`#sb-settings-tab-list [data-sb-settings-tab="${tab}"]`);
+                await expect(selected).toHaveAttribute('aria-selected', 'true');
+                const destinationFocus = page.locator('#sb-settings-page :is(#sb-settings-sidebar, #sb-settings-content):not([inert]) button:visible').first();
+                await destinationFocus.focus();
+                try {
+                    release();
+                    await expect(page.locator('.is-activating-entity')).toHaveCount(0);
+                    await expect(selected).toHaveAttribute('aria-selected', 'true');
+                    await expect(destinationFocus).toBeFocused();
+                    await expect(list(page)).toBeHidden();
+                    expect(await page.evaluate(() => window.__sbFailureReopens)).toBe(0);
+                } finally {
+                    release();
+                }
+            });
+        }
+
+        test(`${view} acceptance hides the list before a delayed chat fetch and keeps larger avatars at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await showView(page, view);
+            const row = listRows(page, view).last();
+            const key = await row.getAttribute('data-sb-list-key');
+            await expect(row.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('width', '40px');
+            await expect(row.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('height', '40px');
+            let release;
+            let requested = false;
+            let completed = false;
+            const gate = new Promise(resolve => { release = resolve; });
+            const endpoint = { groups: '**/api/chats/group/get', characters: '**/api/chats/get' }[view];
+            await page.route(endpoint, async route => {
+                requested = true;
+                await gate;
+                completed = true;
+                await route.fulfill({ json: view === 'groups' ? [
+                    { chat_metadata: { tainted: true } },
+                    { name: 'QA group', is_user: false, mes: 'QA chat', send_date: '2026-10-18' },
+                ] : [] });
+            });
+            await row.evaluate(element => {
+                element.addEventListener('click', () => {
+                    const start = performance.now();
+                    const section = element.closest('.sb-character-list');
+                    const observer = new MutationObserver(() => {
+                        if (!section.hidden) return;
+                        window.__sbAcceptedHideMs = performance.now() - start;
+                        observer.disconnect();
+                    });
+                    observer.observe(section, { attributes: true, attributeFilter: ['hidden'] });
+                }, { capture: true, once: true });
+            });
+            try {
+                await row.locator('.ch_name').click();
+                await expect(list(page)).toBeHidden();
+                await expect.poll(() => requested).toBe(true);
+                expect(completed).toBe(false);
+                expect(await page.evaluate(() => window.__sbAcceptedHideMs)).toBeLessThan(100);
+            } finally {
+                release();
+            }
+            await waitForChatActivation(page);
+            await showView(page, view);
+            const current = list(page).locator(`[data-sb-list-key=${JSON.stringify(key)}]`);
+            await expect(current).toHaveAttribute('aria-current', 'true');
+            const dot = current.locator('.sb-character-list__active-dot');
+            await expect(dot).toBeVisible();
+            await expect(dot).toHaveCSS('width', '8px');
+            await expect(dot).toHaveCSS('height', '8px');
+            await chooseSortItem(page, 'Grid');
+            await expect(dot).toHaveCSS('position', 'absolute');
+            await expect(current.locator(':scope > .ds-entity-row__avatar')).toHaveCSS('width', viewport.width === 390 ? '88px' : '116px');
+            for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
+                await page.evaluate(theme => window.$('#themes').val(theme).trigger('change'), theme);
+                await expect(dot).toBeVisible();
+                const accent = await dot.evaluate(element => {
+                    const probe = document.createElement('span');
+                    probe.style.backgroundColor = 'var(--sb-accent)';
+                    element.append(probe);
+                    const color = getComputedStyle(probe).backgroundColor;
+                    probe.remove();
+                    return color;
+                });
+                await expect(dot).toHaveCSS('background-color', accent);
+            }
+            await page.emulateMedia({ forcedColors: 'active' });
+            await expect(dot).toBeVisible();
+            await expect(dot).toHaveCSS('forced-color-adjust', 'none');
+            await expect(dot).toHaveCSS('outline-width', '1px');
+        });
+    }
+
+    test(`tag filter menu cycles states and filters both list views at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        // A filter starts the list again at its first batch, so the batch is made large enough to hold every row.
+        await page.evaluate(async () => {
+            (await import('/scripts/sillybunny-character-list-state.js')).setListPageSize('characters', 50);
+            await (await import('/script.js')).printCharacters(false);
+        });
+        const characterTotal = await listRows(page, 'characters').count();
+        const { button, picker, search } = await openTagPicker(page);
+        await expect(search).toBeFocused();
+        const labels = await page.evaluate(() => [...document.querySelectorAll('.sb-character-list .rm_tag_filter .tag:not(.actionable) .tag_name')].map(tag => tag.textContent));
+        await expect(picker.locator('.sb-picker__label')).toHaveText(labels);
+        await expect(picker).toHaveClass(viewport.width === 390 ? /sb-picker-sheet/ : /sb-picker/);
+        await expect(picker.getByRole('listbox')).toHaveAttribute('aria-multiselectable', 'true');
+        await search.fill('alpha');
+        await expect(picker.getByRole('option')).toHaveCount(1);
+        const option = picker.getByRole('option', { name: /^QA list alpha/ });
+        await expect(option).toBeVisible();
+        await option.click();
+        await expect(option).toHaveAttribute('aria-selected', 'true');
+        await expect(picker.locator('.fa-check')).toBeVisible();
+        await expect(search).toBeFocused();
+        await expect(button.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+        await expect(listRows(page, 'characters')).toHaveCount(2);
+
+        await option.click();
+        await expect(option).toHaveAttribute('aria-selected', 'false');
+        await expect(option.locator('.fa-minus')).toBeVisible();
+        await expect(search).toBeFocused();
+        await expect(listRows(page, 'characters')).toHaveCount(characterTotal - 2);
+
+        await option.click();
+        await expect(option.locator('.fa-minus')).toHaveCount(0);
+        await expect(button.locator('.sb-tag-filter-menu-count')).toBeHidden();
+        await expect(listRows(page, 'characters')).toHaveCount(characterTotal);
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+        await expect(button).toBeFocused();
+
+        await showView(page, 'groups');
+        const groups = listRows(page, 'groups');
+        const groupPicker = await openTagPicker(page);
+        await groupPicker.search.fill('alpha');
+        await expect(groupPicker.picker.getByRole('option')).toHaveCount(1);
+        const groupOption = groupPicker.picker.getByRole('option', { name: /^QA list alpha/ });
+        await groupOption.click();
+        await expect(groupOption).toHaveAttribute('aria-selected', 'true');
+        await expect(groups).toHaveCount(1);
+        await expect(groupPicker.search).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(groupPicker.button).toBeFocused();
+    });
+
+    test(`selection gestures, ranges and all filtered pages preserve the chat at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const before = await chatState(page);
+        const total = await page.evaluate(async () => (await import('/script.js')).characters.length);
+        await page.evaluate(async () => {
+            const { eventSource, event_types } = await import('/scripts/events.js');
+            window.__sbSelectionEvents = [];
+            eventSource.on(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_BEFORE, state => { window.__sbSelectionEvents.push(['before', state]); });
+            eventSource.on(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, state => { window.__sbSelectionEvents.push(['after', state]); });
+        });
+        await enterSelection(page);
+        await expect(list(page).locator('.sb-character-list__header')).toBeHidden();
+        await expect(list(page).locator('.sb-character-list__filters')).toBeHidden();
+        await listRows(page, 'characters').first().locator('.ch_name').click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+        await expect(listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+        await listRows(page, 'characters').nth(3).locator('.ch_name').click({ modifiers: ['Shift'] });
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('4 selected');
+        const visibleCharacterCount = await listRows(page, 'characters').count();
+        const focusedRow = listRows(page, 'characters').first();
+        await focusedRow.focus();
+        for (const key of ['x', 'Control+f', 'Meta+f']) {
+            await page.keyboard.press(key);
+            await expect(focusedRow).toBeFocused();
+            await expect(page.locator('#character_search_bar')).toHaveValue('');
+            await expect(page.locator('#character_search_bar')).toBeHidden();
+            // Saved folder headers consume page slots without representing selectable characters.
+            await expect(listRows(page, 'characters')).toHaveCount(visibleCharacterCount);
+        }
+        expect(await chatState(page)).toEqual(before);
+        await list(page).getByRole('button', { name: 'Select All', exact: true }).click();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
+        await showMore(page).click();
+        await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(2);
+        await expect(listRows(page, 'characters').last().locator('.sb-selection-check')).toBeChecked();
+        await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
+        await page.keyboard.press('Escape');
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await expect(list(page).locator('.sb-character-list__header [data-action-id="more"]')).toBeFocused();
+        await expect.poll(() => page.evaluate(() => window.__sbSelectionEvents)).toEqual([['before', 1], ['after', 1], ['before', 0], ['after', 0]]);
+        const row = listRows(page, 'characters').first();
+        await row.locator('.ch_name').click({ button: 'right' });
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+        await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+        await page.keyboard.press('Escape');
+        await expect(row).toBeFocused();
+        await chooseSortItem(page, 'Grid');
+        await enterSelection(page);
+        const check = listRows(page, 'characters').first().locator('.sb-selection-check');
+        await expect(check).toHaveCSS('position', 'absolute');
+        await check.click();
+        await expect(check).toBeChecked();
+        expect(await chatState(page)).toEqual(before);
+        await showView(page, 'groups');
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+    });
+
+    test(`bulk Favorite uses upstream requests and Delete keeps its confirmation at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const favorites = [];
+        await page.route('**/api/characters/merge-attributes', route => {
+            favorites.push(route.request().postDataJSON());
+            return route.fulfill({ json: {} });
+        });
+        const avatars = await listRows(page, 'characters').evaluateAll(rows => rows.slice(0, 2).map(row => row.dataset.chid));
+        const expected = await page.evaluate(async ids => {
+            const { characters } = await import('/script.js');
+            return ids.map(id => characters[Number(id)].avatar);
+        }, avatars);
+        await enterSelection(page);
+        await listRows(page, 'characters').nth(0).locator('.ch_name').click();
+        await listRows(page, 'characters').nth(1).locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="favorite"]').click();
+        await expect.poll(() => favorites.length).toBe(2);
+        expect(favorites.map(payload => payload.avatar).sort()).toEqual(expected.sort());
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await enterSelection(page);
+        await listRows(page, 'characters').first().locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="delete"]').click();
+        const dialog = page.locator('dialog.popup[open]').last();
+        await expect(dialog).toContainText('Delete 1 characters?');
+        await expect(dialog.locator('#del_char_checkbox')).toBeVisible();
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+    });
+
+    test(`group Tag and Delete reuse upstream popups; tab switches exit selection at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await showView(page, 'groups');
+        await enterSelection(page);
+        await expect(list(page).locator('.sb-selection-action')).toHaveCount(3);
+        await listRows(page, 'groups').first().locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="tag"]').click();
+        await expect(page.locator('#bulk_tag_popup')).toContainText('Modify Tags of 1 groups');
+        const tagEntry = page.locator('#bulkTagInput');
+        await expect(tagEntry).toHaveClass(/sb-dialog__entry/);
+        await expect(tagEntry).toHaveCSS('border-radius', '9px');
+        await expect(tagEntry).toHaveCSS('padding-inline-start', '9px');
+        await page.locator('.sb-dialog.sb-bulk-tag-dialog .sb-dialog__close').click();
+        await expect(page.locator('#bulk_tag_popup')).toHaveCount(0);
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await enterSelection(page);
+        await listRows(page, 'groups').first().locator('.ch_name').click();
+        await list(page).locator('.sb-selection-action[data-action-id="delete"]').click();
+        const dialog = page.locator('dialog.popup[open]').last();
+        await expect(dialog).toContainText('Delete 1 groups?');
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        await enterSelection(page);
+        await showView(page, 'characters');
+        await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');
+        expect(await page.evaluate(async () => (await import('/script.js')).characterGroupOverlay.legacyRowSelectionEnabled)).toBe(false);
+    });
+}
+
+test.describe('touch selection', () => {
+    test.use({ hasTouch: true });
+    test('a 500ms touch hold enters selection and swallows the release click at 390px', async ({ page }) => {
+        await prepareList(page, { width: 390, height: 844 });
+        const before = await chatState(page);
+        const row = listRows(page, 'characters').first();
+        const bounds = await row.locator('.ch_name').boundingBox();
+        const session = await page.context().newCDPSession(page);
+        try {
+            await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: bounds.x + 8, y: bounds.y + 8 }] });
+            await expect(list(page)).toHaveAttribute('data-selection-mode', 'true');
+            await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            await expect(list(page).locator('.sb-selection-title')).toHaveText('1 selected');
+            expect(await chatState(page)).toEqual(before);
+            await page.keyboard.press('Escape');
+            await expect(row).toBeFocused();
+        } finally {
+            await session.detach();
+        }
+    });
+});

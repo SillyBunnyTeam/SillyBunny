@@ -1,0 +1,30 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 445,
+                "y": 185,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 541,
+                "y": 185,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "clasped hands",
+            "box": {
+                "x": 515,
+                "y": 505,
+                "width": 110,
+                "height": 120
+            }
+        }
+    ]
+}

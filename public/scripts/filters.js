@@ -108,9 +108,11 @@ export class FilterHelper {
 
     /**
      * Checks if the filter data has any values.
+     * @param {object} [options]
+     * @param {string[]} [options.ignore] Filter types to leave out of the check
      * @returns {boolean} Whether the filter data has any values
      */
-    hasAnyFilter() {
+    hasAnyFilter({ ignore = [] } = {}) {
         /**
          * Checks if the object has any values.
          * @param {object} obj The object to check for values
@@ -133,7 +135,8 @@ export class FilterHelper {
             return false;
         }
 
-        return checkRecursive(this.filterData);
+        // SillyBunny: a view can ignore filter types it neutralises, such as the main list's group and folder toggles.
+        return Object.entries(this.filterData).some(([type, value]) => !ignore.includes(type) && checkRecursive(value));
     }
 
     /**

@@ -192,7 +192,7 @@ export async function runSidecarRetrieval(setExtensionPrompt, extensionPromptTyp
     const timeoutMs = Math.max(1, Math.min(60, Number.isFinite(seconds) ? seconds : 8)) * 1000;
     const timeoutId = setTimeout(() => {
         if (isCurrent()) {
-            globalThis.toastr?.warning?.('Pathfinder is processing lore for this reply...', 'Please wait');
+            globalThis.toastr?.warning?.('Pathfinder is processing lore for this reply…', 'Please wait');
         }
     }, timeoutMs);
 

@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "splash-reisen--call.png",
+    "sha256": "47c3f4b0d79462dce3322c5f33097d77d5b7e90735734cb177a555f6951824eb",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:12a813e3ffa427ef9549af299ec110ff260eb12fc24c64b56d16c86aa1ebabe9",
+    "incomplete": "1 source is not in the generation log."
+}

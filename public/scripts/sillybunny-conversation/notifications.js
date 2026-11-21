@@ -142,8 +142,11 @@ export function getDocumentTitleBase() {
     return conversationState.originalDocumentTitle;
 }
 
+// The badge canvas is 32 px, so it starts from the 32 px logo and draws it 1:1, with no scaling.
+const BADGE_FAVICON_SELECTOR = 'link[rel~="icon"][sizes="32x32"]';
+
 export function getFaviconLink() {
-    let link = document.querySelector('link[rel~="icon"]');
+    let link = document.querySelector(BADGE_FAVICON_SELECTOR) ?? document.querySelector('link[rel~="icon"]');
     if (!(link instanceof HTMLLinkElement)) {
         link = document.createElement('link');
         link.rel = 'icon';
@@ -188,6 +191,8 @@ export function updateConversationFaviconBadge(totalUnread = getTotalUnreadCount
             return;
         }
 
+        // The 32 px logo is drawn by hand, so a smoothed copy would blur its pixels.
+        ctx.imageSmoothingEnabled = false;
         ctx.drawImage(image, 0, 0, 32, 32);
         ctx.fillStyle = '#fb7185';
         ctx.beginPath();

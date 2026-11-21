@@ -1,0 +1,164 @@
+import { expect, test } from '@playwright/test';
+import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+
+test.use({ serviceWorkers: 'block' });
+
+const settingsModules = [
+    'sillybunny-settings-presentation.js',
+    'sillybunny-settings-subpage.js',
+    'sillybunny-settings-subpage-descriptors.js',
+];
+
+const legacyNavigationAttributes = [
+    'data-sb-mobile-nav-layout',
+    'data-sb-mobile-nav-mode',
+    'data-sb-mobile-nav-customize',
+    'data-sb-mobile-nav-quick-actions',
+    'data-sb-mobile-nav-replacement',
+    'data-sb-desktop-nav-layout',
+    'data-sb-desktop-nav-mode',
+    'data-sb-desktop-nav-customize',
+    'data-sb-desktop-nav-quick-actions',
+    'data-sb-desktop-nav-replacement',
+];
+
+async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly }) {
+    const settingsResponses = [];
+    page.on('response', response => {
+        const pathname = new URL(response.url()).pathname;
+        if (settingsModules.some(name => pathname.endsWith(`/${name}`))) {
+            settingsResponses.push({ pathname, status: response.status() });
+        }
+    });
+
+    await page.route('**/*', route => new URL(route.request().url()).origin === new URL(baseURL).origin
+        ? route.continue()
+        : route.abort());
+    await page.route('**/api/settings/get', async route => {
+        const fetched = await fetchBodyOrSkip(route, response => response.json());
+        if (!fetched) return;
+        const { response, body: data } = fetched;
+        const serverSettings = JSON.parse(data.settings);
+        serverSettings.firstRun = false;
+        applyWelcomeSettings(serverSettings);
+        await route.fulfill({ response, json: { ...data, settings: JSON.stringify(serverSettings) } });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(({ storage, legacyAttributes }) => {
+        for (const attribute of legacyAttributes) {
+            document.documentElement.setAttribute(attribute, 'legacy');
+        }
+        for (const mode of ['desktop', 'mobile']) {
+            localStorage.setItem(`sb-${mode}-nav-layout`, 'vertical');
+            localStorage.setItem(`sb-${mode}-nav-icon-only`, 'true');
+            localStorage.setItem(`sb-${mode}-nav-show-customize`, 'false');
+            localStorage.setItem(`sb-${mode}-nav-show-quick-actions`, 'false');
+            localStorage.setItem(`sb-${mode}-nav-replace-quick-actions`, 'true');
+            localStorage.setItem(`sb-${mode}-nav-replacement-target`, 'right:settings');
+        }
+        localStorage.setItem('sb-left-tab', 'api');
+        localStorage.setItem('sb-right-tab', 'settings');
+        for (const [key, value] of Object.entries(storage)) {
+            localStorage.setItem(key, value);
+        }
+    }, { storage: settings, legacyAttributes: legacyNavigationAttributes });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function');
+    // App start can take longer than the 5 s expect default when several workers share one server.
+    await expect(page.locator('#preloader')).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.locator('#sb-topbar-inner')).toBeVisible();
+    for (const attribute of legacyNavigationAttributes) {
+        await expect(page.locator('html')).not.toHaveAttribute(attribute);
+    }
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
+    // Quick Image Gen opens its setup wizard, a div and not a <dialog>, at the end of its startup, and only for saved
+    // settings that never saw it.
+    await page.evaluate(async () => {
+        const { getExtensionCapability } = await import('/scripts/sillybunny-conversation/extension-capabilities.js');
+        await getExtensionCapability('quick-image-gen')?.ensureReady().catch(() => {});
+    });
+    const imageGenWizard = page.getByRole('dialog', { name: 'Set up Quick Image Gen' });
+    if (await imageGenWizard.isVisible()) {
+        await imageGenWizard.getByRole('button', { name: 'Close dialog' }).click();
+    }
+    await page.evaluate(() => {
+        for (const dialog of document.querySelectorAll('dialog[open]')) {
+            dialog.close();
+        }
+    });
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+
+    for (const name of settingsModules) {
+        expect(settingsResponses).toContainEqual({ pathname: `/scripts/${name}`, status: 200 });
+    }
+
+    // A value stored for phones is not read: the phone bar has no labels, so no icons-only value is in force there.
+    const iconsOnly = page.viewportSize().width <= 768 ? false : desktopIconsOnly;
+    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly));
+    // The same two buttons open the settings in both modes: the icons-only bar is the labelled bar without labels.
+    const entryPoints = [
+        { selector: '#sb-left-shell-toggle', tabId: 'connections' },
+        { selector: '#sb-right-shell-toggle', tabId: 'appearance' },
+    ];
+
+    for (const entryPoint of entryPoints) {
+        const button = page.locator(entryPoint.selector);
+        await button.scrollIntoViewIfNeeded();
+        await expect(button).toBeVisible();
+        await button.click();
+        await expect(page.locator('#sb-settings-page')).toBeVisible();
+        await expect(page.locator(`button[data-sb-settings-tab="${entryPoint.tabId}"]`)).toHaveAttribute('aria-selected', 'true');
+        await page.locator('#sb-settings-close').click();
+        await expect(page.locator('#sb-settings-page')).toBeHidden();
+    }
+
+    await expect(page.locator('#sb-home-toggle')).toBeVisible();
+    await expect(page.locator('#sb-character-toggle')).toBeVisible();
+    // Label in Name (WCAG 2.5.3): a button that shows a word is named by it, and its tooltip stays as the description.
+    for (const [selector, name] of [['#sb-home-toggle', 'Home'], ['#sb-character-toggle', 'Characters'], ['#sb-right-shell-toggle', 'Customize']]) {
+        await expect(page.locator(selector)).toHaveAccessibleName(name);
+        await expect(page.locator(selector)).toHaveAttribute('title', /\(Ctrl\+[A-Z]\)$/);
+    }
+    expect(await page.evaluate(() => localStorage.getItem('sb-mobile-nav-show-customize'))).toBe('false');
+}
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    test.describe(`top menu after an upgrade at ${viewport.width}px`, () => {
+        test.use({ viewport });
+
+        test('keeps the top menu available with retired navigation preferences', async ({ page, baseURL }) => {
+            await exerciseUpgrade({
+                page,
+                baseURL,
+                settings: {},
+                desktopIconsOnly: false,
+            });
+            await expect(page.locator('#sb-topbar-inner')).toBeVisible();
+        });
+
+        test('keeps the legacy icons-only topbar available', async ({ page, baseURL }) => {
+            await exerciseUpgrade({
+                page,
+                baseURL,
+                settings: { 'sb-topbar-icons-only': 'true' },
+                desktopIconsOnly: true,
+            });
+            await expect(page.locator('#sb-topbar-inner')).toBeVisible();
+        });
+
+        test('keeps the desktop preference and ignores a value stored for phones', async ({ page, baseURL }) => {
+            await exerciseUpgrade({
+                page,
+                baseURL,
+                settings: {
+                    'sb-topbar-icons-only': 'true',
+                    'sb-desktop-topbar-icons-only': 'false',
+                    'sb-mobile-topbar-icons-only': 'true',
+                },
+                desktopIconsOnly: false,
+            });
+            await expect(page.locator('#sb-topbar-inner')).toBeVisible();
+        });
+    });
+}

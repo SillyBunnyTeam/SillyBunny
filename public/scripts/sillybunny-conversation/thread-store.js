@@ -125,7 +125,7 @@ export function addConversationReminder(avatar, groupId, delayText, memoText, { 
     persistConversationStore();
 
     const triggerLabel = new Date(triggerAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    toastr.info(`Reminder scheduled: "${reminder.text}" at ${triggerLabel}.`, '', SAFE_TOAST_OPTIONS);
+    toastr.info(`Reminder scheduled: "${reminder.text}" at ${triggerLabel}`, '', SAFE_TOAST_OPTIONS);
     return reminder;
 }
 

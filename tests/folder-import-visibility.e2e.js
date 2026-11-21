@@ -20,16 +20,11 @@ async function logIn(page, account) {
 }
 
 /**
- * Opens the import card: Customize, then the System & Device settings, then the Import & Restore drawer.
+ * Opens the import card on the Data & Security tab, which shows Import & Restore as a flat section without a drawer.
  * @param {import('@playwright/test').Page} page Page
  */
 async function openImportCard(page) {
-    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
-    await page.locator('.sb-settings-tab-btn[data-tab="system-device"]').click();
-    // The drawer remembers its open state per account.
-    if (!(await page.locator('#SillyTavernImportSection > .inline-drawer-content').isVisible())) {
-        await page.locator('#SillyTavernImportSection .inline-drawer-toggle').click();
-    }
+    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
     await expect(page.locator('#sb-import-card')).toBeVisible();
 }
 
@@ -105,7 +100,7 @@ test.describe('folder import pane, accounts on', () => {
         await page.goto('/', { waitUntil: 'commit' });
         await userDataRequested;
         await page.waitForFunction(() => window.SillyBunnyShell?.openTab);
-        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
         await expect(page.locator('#sb-import-card')).toBeAttached();
         expect(await page.evaluate(async () => (await import('/scripts/user.js')).isAdmin())).toBe(false);
         await expect(folderPane(page)).toHaveCSS('display', 'none');
@@ -134,7 +129,7 @@ test.describe('folder import pane, accounts on', () => {
         await page.goto('/', { waitUntil: 'commit' });
         await settingsRequested;
         await page.waitForFunction(() => window.SillyBunnyShell?.openTab);
-        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
         await expect(page.locator('#sb-import-card')).toBeAttached();
         expect(await page.evaluate(async () => (await import('/scripts/user.js')).isAdmin())).toBe(true);
         await expect(folderPane(page)).not.toHaveCSS('display', 'none');

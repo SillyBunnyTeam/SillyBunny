@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "troubleshooting-reisen.png",
+    "sha256": "108fb100b365354ebfb2b4aa57e4ba5c1996988d71c440d03f78ba1faf5bc61f",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:79e1bcfadbfd6d289345c16c1ee843c3726b45535dc46c82e2bf0c08cce60335"
+}

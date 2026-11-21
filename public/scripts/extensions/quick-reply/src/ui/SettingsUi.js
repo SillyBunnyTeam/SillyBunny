@@ -1,8 +1,11 @@
 import { Popup } from '../../../../popup.js';
+import { confirmVerb } from '../../../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from '../../../../i18n.js'; // SillyBunny: translates the response verb.
 import { getSortableDelay } from '../../../../utils.js';
 import { log, warn } from '../shared.js';
 import { QuickReply } from '../QuickReply.js';
 import { QuickReplySet } from '../QuickReplySet.js';
+import { adoptQuickReplySetPicker } from '../../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the set picker is a select row with one menu.
 import { getUniqueQuickReplySetsByName, removeQuickReplySetLinksByName } from '../quick-reply-set-list.js';
 import { QuickReplySettings } from '../QuickReplySettings.js';
 
@@ -111,6 +114,8 @@ export class SettingsUi {
             const setListContainer = /** @type {HTMLElement} */ (clone.querySelector('.qr--setList'));
             setListContainer.innerHTML = '';
             const info = document.createElement('div');
+            // SillyBunny: the set list reaches the box edges, so its line of text takes a row's inset through this class.
+            info.classList.add('qr--setListEmpty');
             info.textContent = 'No character is currently loaded.';
             setListContainer.append(info);
         } else {
@@ -169,6 +174,7 @@ export class SettingsUi {
                 this.currentSet.append(opt);
             }
         });
+        adoptQuickReplySetPicker(this.dom); // SillyBunny: the set's six action buttons move into one menu beside the picker.
         this.disableSend = this.dom.querySelector('#qr--disableSend');
         this.disableSend.addEventListener('click', () => {
             const qrs = this.currentQrSet;
@@ -300,7 +306,8 @@ export class SettingsUi {
     }
 
     async deleteQrSet() {
-        const confirmed = await Popup.show.confirm('Delete Quick Reply Set', `Are you sure you want to delete the Quick Reply Set "${this.currentQrSet.name}"?<br>This cannot be undone.`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmed = await Popup.show.confirm('Delete Quick Reply Set', `Are you sure you want to delete the Quick Reply Set "${this.currentQrSet.name}"?<br>This cannot be undone.`, confirmVerb(t`Delete`, { destructive: true }));
         if (confirmed) {
             if (await this.doDeleteQrSet(this.currentQrSet)) {
                 this.rerender();
@@ -375,7 +382,8 @@ export class SettingsUi {
         if (name && name.length > 0) {
             const oldQrs = QuickReplySet.get(name);
             if (oldQrs) {
-                const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`);
+                // SillyBunny: names the response with a verb (confirmVerb).
+                const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`, confirmVerb(t`Overwrite`, { destructive: true }));
                 if (replace) {
                     const idx = QuickReplySet.list.indexOf(oldQrs);
                     await this.doDeleteQrSet(oldQrs);
@@ -438,7 +446,8 @@ export class SettingsUi {
                 qrs.init();
                 const oldQrs = QuickReplySet.get(props.name);
                 if (oldQrs) {
-                    const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${props.name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`);
+                    // SillyBunny: names the response with a verb (confirmVerb).
+                    const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${props.name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`, confirmVerb(t`Overwrite`, { destructive: true }));
                     if (replace) {
                         const idx = QuickReplySet.list.indexOf(oldQrs);
                         await this.doDeleteQrSet(oldQrs);

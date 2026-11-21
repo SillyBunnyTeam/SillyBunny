@@ -1,0 +1,56 @@
+{
+    "scene": "welcome-persona-tewi",
+    "grid": {
+        "cell": 3.1130742049469964,
+        "width": 153,
+        "height": 329
+    },
+    "rhythm": {
+        "cycleSeconds": 3.5,
+        "breathsPerCycle": 2
+    },
+    "poses": [
+        "c",
+        "b"
+    ],
+    "backdrop": null,
+    "layers": [
+        {
+            "id": "welcome-persona-tewi",
+            "z": 0,
+            "left": 0,
+            "top": 0,
+            "width": 153,
+            "height": 329,
+            "waist": 180,
+            "images": {
+                "c": {
+                    "base": "welcome-persona-tewi@native.webp"
+                },
+                "b": {
+                    "base": "welcome-persona-tewi--breath-b@native.webp"
+                }
+            }
+        }
+    ],
+    "blinks": {
+        "steps": [
+            {
+                "variant": "half",
+                "ms": 70
+            },
+            {
+                "variant": "closed",
+                "ms": 110
+            },
+            {
+                "variant": "half",
+                "ms": 70
+            }
+        ],
+        "gapMs": [
+            3600,
+            5400
+        ]
+    }
+}
