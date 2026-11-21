@@ -11,6 +11,7 @@ await jest.unstable_mockModule('../public/script.js', () => ({
         'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
         openai: { selected: 'openai', source: 'openai' },
         pollinations: { selected: 'openai', source: 'pollinations' },
+        custom: { selected: 'openai', source: 'custom' },
     },
     createModelIcon: jest.fn(),
     getRequestHeaders: jest.fn(() => ({})),
@@ -29,6 +30,7 @@ await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
+    chat_completion_sources: { CUSTOM: 'custom' },
     custom_endpoint_presets: mockEndpointProfiles,
     oai_settings: mockOpenAiSettings,
     proxies: mockProxies,
@@ -369,6 +371,13 @@ describe('Additional Parameters from the Custom endpoint profile', () => {
         for (const name of ['Deleted', 'Legacy', undefined]) {
             expect(getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': name }, {}).overrides).toEqual({});
         }
+    });
+
+    test.each(['openai', 'nanogpt', 'openrouter-text', 'not-an-api'])('a profile of the %s API that holds a stale endpoint profile name sends nothing extra', api => {
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides({ ...base, api }, {});
+
+        expect(overrides).toEqual({});
+        expect(profileFieldNames).toEqual([]);
     });
 });
 

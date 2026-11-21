@@ -2,7 +2,7 @@ import { CONNECT_API_MAP, createModelIcon, getRequestHeaders, substituteParams }
 import { extension_settings, openThirdPartyExtensionMenu } from '../extensions.js';
 import { t } from '../i18n.js';
 // SillyBunny: profile requests read the Additional Parameters that a Custom endpoint profile stores.
-import { custom_endpoint_presets, oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
+import { chat_completion_sources, custom_endpoint_presets, oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
 import { normalizeCustomEndpointPreset, pickCustomEndpointParameters } from '../openai-preset-utils.js';
 import { getPresetManager } from '../preset-manager.js';
 import { SECRET_KEYS, secret_state } from '../secrets.js';
@@ -58,6 +58,11 @@ const ENDPOINT_PROFILE_PARAMETER_FIELDS = Object.freeze({
  * @returns {Record<string, string>} Stored parameters, keyed by setting name
  */
 function getProfileEndpointParameters(profile) {
+    // Only a Custom profile selects an endpoint profile, so a name on a profile of another source is stale.
+    if (CONNECT_API_MAP[profile?.api]?.source !== chat_completion_sources.CUSTOM) {
+        return {};
+    }
+
     const endpointProfileName = profile?.['custom-endpoint-profile'];
     const endpointProfile = endpointProfileName ? custom_endpoint_presets?.find(preset => preset.name === endpointProfileName) : null;
     if (!endpointProfile) {
