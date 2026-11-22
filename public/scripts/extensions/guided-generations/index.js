@@ -368,6 +368,27 @@ function createOverflowButton() {
     return button;
 }
 
+const HORIZONTAL_EDGES = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'];
+
+function sumEdges(style) {
+    return HORIZONTAL_EDGES.reduce((sum, name) => sum + (parseFloat(style[name]) || 0), 0);
+}
+
+/**
+ * The width of a box in layout pixels, with its fraction. `offsetWidth` and `clientWidth` round to a whole pixel, and the
+ * column is a fraction of the window, so a row that is less than half a pixel too wide would be read as one that fits.
+ * @param {HTMLElement} element
+ * @returns {number}
+ */
+function layoutWidth(element) {
+    const style = getComputedStyle(element);
+    const width = parseFloat(style.width);
+    if (!Number.isFinite(width)) {
+        return element.offsetWidth;
+    }
+    return style.boxSizing === 'border-box' ? width : width + sumEdges(style);
+}
+
 /**
  * Keeps the input-history and Guided Generations buttons on one row: the buttons that do not fit go behind the overflow button,
  * last first. The phone tray folds the same way, with 44px buttons.
@@ -386,11 +407,12 @@ function fitActionButtons() {
     if (!container.hidden) {
         const containerStyle = getComputedStyle(container);
         // Every action button has the same size; a folded one has no box, so the size comes from one that shows (the overflow button when some are folded).
-        const size = [...buttons, overflow].find(button => button.offsetWidth > 0)?.offsetWidth ?? 0;
+        const shown = [...buttons, overflow].find(button => button.offsetWidth > 0);
+        const size = shown ? layoutWidth(shown) : 0;
         const gap = parseFloat(getComputedStyle(actions).columnGap) || 0;
         const history = container.querySelector(':scope > .stih--buttons');
-        const historyWidth = history?.offsetWidth ? history.offsetWidth + (parseFloat(containerStyle.columnGap) || 0) : 0;
-        const room = container.clientWidth - parseFloat(containerStyle.paddingLeft) - parseFloat(containerStyle.paddingRight) - historyWidth;
+        const historyWidth = history?.offsetWidth ? layoutWidth(history) + (parseFloat(containerStyle.columnGap) || 0) : 0;
+        const room = layoutWidth(container) - sumEdges(containerStyle) - historyWidth;
         const widthOf = count => count * size + Math.max(0, count - 1) * gap;
         if (size > 0 && widthOf(buttons.length) > room) {
             keep = buttons.length - 1;
