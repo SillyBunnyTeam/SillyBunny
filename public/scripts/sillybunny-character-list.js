@@ -21,8 +21,8 @@ import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-editor.css?v=20261122a', id: 'deferred-editor-chrome-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261122a', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-editor.css?v=20261122d', id: 'deferred-editor-chrome-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261122d', id: 'deferred-character-list-css' },
 ]);
 const DEFAULT_BATCH_SIZE = 50;
 const mountedLists = new WeakMap();

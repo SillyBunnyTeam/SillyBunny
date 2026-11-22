@@ -100,11 +100,10 @@
     --sb-settings-inset-top: calc(24px - 6px * var(--sb-density-t));
     /* libadwaita's `sp` is a pixel scaled by the text size, which is --fontScale here, so these maximums grow with the text.
        A settings page keeps its content in an AdwClamp of one of the two maximums (see the settings page in sillybunny-tabs.css).
-       --sb-page-max and --sb-page-inset are the maximum and the side padding of the page that is shown. */
+       --sb-page-max is the maximum of the page that is shown. */
     --sb-measure-preference: calc(1000px * var(--fontScale, 1));
     --sb-measure-wide: calc(1440px * var(--fontScale, 1));
     --sb-page-max: var(--sb-measure-preference);
-    --sb-page-inset: var(--sb-settings-inset);
     /* The widest a Window dialog grows, aside included. Below it a Window keeps following Page Width. */
     --sb-window-ceiling: calc(1440px * var(--fontScale, 1));
     /* AdwNavigationSplitView sizes its sidebar to 25% of the split view, between 180sp and 280sp. */

@@ -1442,17 +1442,12 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-inline: var(--sb-settings-inset);
 }
 
-/* The page class (data-sb-page-width) picks the maximum and the side padding of a page. A page with none, such as an
-   extension's, is a preference page. A wide page pads 14px at the sides below 1440px and the shell's padding from there. */
+/* The page class (data-sb-page-width) picks the maximum of a page. A page with none, such as an extension's, is a
+   preference page. Every page has the same side padding, --sb-settings-inset, at every desktop width, as the margins of an
+   AdwClamp are constant. A frame starts --sb-frame-top under the content bar. */
 #sb-settings-page [data-sb-page-width='wide'] {
     --sb-page-max: var(--sb-measure-wide);
-    --sb-page-inset: 14px;
-}
-
-@media (min-width: 1440px) {
-    #sb-settings-page [data-sb-page-width='wide'] {
-        --sb-page-inset: var(--sb-shell-panel-padding-inline);
-    }
+    --sb-frame-top: 14px;
 }
 
 /* The content of a page is libadwaita's AdwClamp: as wide as the page can be up to its tightening threshold, then less than
@@ -1460,7 +1455,7 @@ body:not(.movingUI) .drawer-content.maximized {
    chords, written by scripts/generate-clamp-curve.js; --sb-page-available is the room between the insets. Both are read where
    the padding is, because the percentage in the first resolves against the box that is padded. */
 #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail, .scrollableInner) {
-    --sb-page-available: calc(100% - 2 * var(--sb-page-inset));
+    --sb-page-available: calc(100% - 2 * var(--sb-settings-inset));
     /* clamp-curve:begin (written by scripts/generate-clamp-curve.js; do not edit by hand) */
     --sb-page-content: min(
         var(--sb-page-available),
@@ -1486,14 +1481,14 @@ body:not(.movingUI) .drawer-content.maximized {
     /* A column is centred by the padding of the element that scrolls it. That element spans the pane, so its scrollbar
        stays on the pane's end edge. */
     #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
-        padding-inline: max(var(--sb-page-inset), calc((100% - var(--sb-page-content)) / 2));
+        padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-content)) / 2));
     }
 
     /* A wide page is a visible frame that scrolls inside itself, so the frame is the column and its scrollbars stay in it.
        The `:not(#sb-specificity)` outweighs the `:has()` rules that pad the box of each list page. */
     #sb-settings-page #sb-settings-shell-host .sb-shell-panel[data-sb-page-width='wide'] > .sb-shell-panel-scroller,
     #sb-settings-page #sb-settings-shell-host > #right-nav-panel.openDrawer[data-sb-page-width='wide'] > .scrollableInner:not(#sb-specificity) {
-        padding-inline: max(var(--sb-page-inset), calc((100% - var(--sb-page-content)) / 2));
+        padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-content)) / 2));
     }
 }
 

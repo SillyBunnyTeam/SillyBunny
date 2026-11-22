@@ -907,7 +907,8 @@ test.describe('Prompt Manager characterization', () => {
         await divider.focus();
         await page.keyboard.press('ArrowRight');
         await expect(divider).toHaveAttribute('aria-valuenow', String(Math.min(420, before + 10)));
-        expect(await page.evaluate(() => Number(localStorage.getItem('sb-pm-list-width')))).toBe(Math.min(420, before + 10));
+        // The default width is 30% of the frame, so the stored width is not a whole number: the divider reads it rounded.
+        expect(await page.evaluate(() => Number(localStorage.getItem('sb-pm-list-width')))).toBeCloseTo(Math.min(420, before + 10), 0);
         await expect.poll(async () => Math.round((await list.boundingBox()).width)).toBe(Math.min(420, before + 10));
         await page.locator(`${FORM}_prompt`).focus();
         await page.keyboard.press('Escape');

@@ -35,7 +35,7 @@ import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-world-info-editor.css?v=20261118zv', id: 'deferred-world-info-editor-css' },
+    { href: 'css/sillybunny-world-info-editor.css?v=20261122d', id: 'deferred-world-info-editor-css' },
 ];
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;

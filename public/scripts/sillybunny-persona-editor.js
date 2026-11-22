@@ -28,7 +28,7 @@ import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261122a', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261122d', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261118zv', id: 'deferred-persona-detail-css' },
 ];
 const DEFAULT_BATCH_SIZE = 50;

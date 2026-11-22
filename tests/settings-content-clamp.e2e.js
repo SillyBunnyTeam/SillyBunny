@@ -20,7 +20,6 @@ const READ_ONLY_POSTS = new Set([
 const SWITCH = '#sb-desktop-content-clamp-input';
 
 const INSET = 12;
-const FRAME_INSET = 32;
 
 /** Boots the app at a window size, with the account's text size and Page Width the test names. Writes never reach the server. */
 async function boot(page, { width, height, fontScale = 1, chatWidth = 55 } = {}) {
@@ -61,9 +60,9 @@ function adwClamp(available, max, threshold) {
     return Math.floor(lower + (1 - (1 - progress) ** 3) * (max - lower));
 }
 
-/** The room of a page is its pane less both insets: 12px on a preference page, and on a wide page 14px below 1440px and 32px from there. */
+/** The room of a page is its pane less both insets, which are 12px on every page at every desktop width. */
 const preferenceContent = (viewport, scale = 1) => adwClamp(viewport - sidebarWidth(viewport, scale) - 2 * INSET, 1000 * scale, (1000 * scale * 2) / 3);
-const wideContent = (viewport, scale = 1) => adwClamp(viewport - sidebarWidth(viewport, scale) - 2 * (viewport >= 1440 ? FRAME_INSET : 14), 1440 * scale, (1440 * scale * 2) / 3);
+const wideContent = (viewport, scale = 1) => adwClamp(viewport - sidebarWidth(viewport, scale) - 2 * INSET, 1440 * scale, (1440 * scale * 2) / 3);
 
 async function openHosted(page, shell, tab) {
     await page.evaluate(({ shell, tab }) => window.SillyBunnyShell.openTab(shell, tab), { shell, tab });
@@ -277,16 +276,16 @@ test.describe('Settings content width at 3440×1440', () => {
 });
 
 // The widths of AdwClamp at text size 1, for a page of Customize > Interface (preference) and Characters > World Info (wide), by window width.
-// The room of a page is the pane (the window less the sidebar, which is clamp(180, 25%, 280)) less both insets. At 3440px the room is more than
+// The room of a page is the pane (the window less the sidebar, which is clamp(180, 25%, 280)) less both 12px insets. At 3440px the room is more than
 // the curve needs, so the page is as wide as its maximum.
 const CLAMP_TABLE = {
-    1024: { preference: 738, wide: 740 },
-    1280: { preference: 890, wide: 971 },
-    1366: { preference: 926, wide: 1051 },
-    1440: { preference: 950, wide: 1083 },
-    1600: { preference: 983, wide: 1199 },
-    1920: { preference: 999, wide: 1350 },
-    2560: { preference: 1000, wide: 1438 },
+    1024: { preference: 738, wide: 744 },
+    1280: { preference: 890, wide: 975 },
+    1366: { preference: 926, wide: 1054 },
+    1440: { preference: 950, wide: 1115 },
+    1600: { preference: 983, wide: 1223 },
+    1920: { preference: 999, wide: 1362 },
+    2560: { preference: 1000, wide: 1439 },
     3440: { preference: 1000, wide: 1440 },
 };
 
@@ -320,6 +319,35 @@ test.describe('Settings content width follows the AdwClamp curve', () => {
             expect(await sidewaysScrollers(page)).toEqual([]);
         });
     }
+});
+
+test.describe('One side inset on every settings page', () => {
+    test('a page the clamp does not narrow sits 12px from the pane at every desktop width, and no page steps at 1440px', async ({ page }) => {
+        await boot(page, { width: 1100, height: 900 });
+        const reads = {};
+        // 1260px is the widest window at which a wide page still has less room than its threshold (960sp); 1436 and 1440 are the two sides of the old step.
+        for (const width of [900, 1100, 1260, 1436, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            reads[width] = { wide: await readWidePages(page), preference: await readPreferencePage(page, PREFERENCE_PAGES[0]) };
+        }
+        const problems = [];
+        for (const width of [900, 1100, 1260]) {
+            for (const [name, read] of Object.entries(reads[width].wide)) {
+                if (Math.abs(read.before - INSET) > 0.5 || Math.abs(read.after - INSET) > 0.5) problems.push(`${width} ${name}: ${read.before} before, ${read.after} after, not ${INSET}`);
+            }
+        }
+        // A preference page has less room than its threshold (667sp) up to a window of about 920px.
+        const { before, after } = reads[900].preference;
+        if (Math.abs(before - INSET) > 0.5 || Math.abs(after - INSET) > 0.5) problems.push(`900 Interface: ${before} before, ${after} after, not ${INSET}`);
+        // Four pixels more window is at most four pixels more page, on every page.
+        for (const [name, read] of Object.entries(reads[1440].wide)) {
+            const step = read.width - reads[1436].wide[name].width;
+            if (step < 0 || step > 4.5) problems.push(`${name}: ${step}px from 1436px to 1440px`);
+        }
+        const interfaceStep = reads[1440].preference.width - reads[1436].preference.width;
+        if (interfaceStep < 0 || interfaceStep > 4.5) problems.push(`Interface: ${interfaceStep}px from 1436px to 1440px`);
+        expect(problems).toEqual([]);
+    });
 });
 
 test.describe('The text size scales the maximums, the thresholds and the sidebar', () => {
@@ -464,7 +492,7 @@ test.describe('Limit Content Width', () => {
         await openCharactersTab(page, 'world-info');
         await expect(page.locator('#right-nav-panel .sb-wi-editor')).toBeVisible();
         const frame = await readFrame(page, { frame: '#right-nav-panel .sb-wi-editor', container: '#right-nav-panel > .scrollableInner' });
-        expect(frame.width).toBeCloseTo(frame.container - 2 * FRAME_INSET, 0);
+        expect(frame.width).toBeCloseTo(frame.container - 2 * INSET, 0);
         expect(await sidewaysScrollers(page)).toEqual([]);
 
         // A Window follows Page Width again: 55 is 1892px at this size, 100 is the window less 32px.
