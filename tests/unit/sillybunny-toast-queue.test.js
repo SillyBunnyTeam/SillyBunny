@@ -1093,3 +1093,50 @@ describe('toasts and modal dialogs', () => {
         expect(notificationContainer()).toBeNull();
     });
 });
+
+describe('preventDuplicates across the two containers', () => {
+    const stays = { preventDuplicates: true, timeOut: 0, extendedTimeOut: 0 };
+    // toastr keeps the last message of a preventDuplicates toast in a variable of its own, so each test has its own text.
+    const textsOf = selector => [...document.querySelectorAll(selector)].map(node => node.textContent);
+
+    async function letOneToastCome() {
+        toastr.info('B');
+        await advance(5000);
+        await finishAnimations();
+    }
+
+    test('a toast is not made twice while it is on screen, though another toast came and went', async () => {
+        toastr.info('Toast one', '', stays);
+        await letOneToastCome();
+        expect(textsOf('.toast-message')).toEqual(['Toast one']);
+
+        expect(toastr.info('Toast one', '', stays)).toBeUndefined();
+        expect(textsOf('.toast-message')).toEqual(['Toast one']);
+    });
+
+    test('a notification is not made twice while it is on screen, though a toast came and went', async () => {
+        notice('info', 'Notice two', stays);
+        await letOneToastCome();
+
+        expect(notice('info', 'Notice two', stays)).toBeUndefined();
+        expect(textsOf('.toast-title')).toEqual(['Notice two']);
+    });
+
+    test('a notification is not made twice while it is on screen, though another notification came and went', async () => {
+        notice('info', 'Notice three', stays);
+        notice('info', 'Passing', { timeOut: 1000, extendedTimeOut: 1000 });
+        await advance(1000);
+        await finishAnimations();
+
+        expect(notice('info', 'Notice three', stays)).toBeUndefined();
+    });
+
+    test('the same message is made again once no toast is left on screen', async () => {
+        const first = toastr.info('Toast four', '', stays);
+        toastr.clear(first, { force: true });
+        await finishAnimations();
+        expect(document.querySelectorAll('.toast')).toHaveLength(0);
+
+        expect(toastr.info('Toast four', '', stays)).toBeDefined();
+    });
+});

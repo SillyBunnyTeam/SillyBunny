@@ -45,6 +45,12 @@ const WAITING = 'waiting';
 const SHOWN = 'shown';
 /** The id that toastr gives its container. In-app notifications stay in it, because readers and styles look there. */
 const NOTIFICATION_CONTAINER_ID = 'toast-container';
+/**
+ * toastr builds the selector of a container as `'#' + containerId`, so this id makes `$container` hold both containers.
+ * toastr checks that one object for being empty after each removal, and `preventDuplicates` forgets the last message
+ * then, so it has to be empty only when no toast is left in either container.
+ */
+const BOTH_CONTAINERS_ID = `${NOTIFICATION_CONTAINER_ID}, #${TOAST_OVERLAY_ID}`;
 const POSITION_CLASSES = [
     'toast-top-left',
     'toast-top-center',
@@ -217,6 +223,7 @@ function leave(element, { pinned = false, complete = null } = {}) {
             leaving.delete(element);
             // toastr's removeToast() skips elements that are still :visible.
             element.style.display = 'none';
+            pointToastrAtBothContainers();
             complete?.call(element);
         },
         onEnd: () => {
@@ -242,6 +249,7 @@ function sbToastOut({ complete } = {}) {
         // A toast that never showed has nothing to animate. toastr removes it in `complete`.
         queue.waiting = queue.waiting.filter(other => other !== entry);
         element.style.display = 'none';
+        pointToastrAtBothContainers();
         complete?.call(element);
         return this;
     }
@@ -704,6 +712,13 @@ function timingOf(form, type, optionsOverride, effective) {
 
 // The wrapper
 
+/** @see BOTH_CONTAINERS_ID */
+function pointToastrAtBothContainers() {
+    if (typeof toastrApi?.getContainer === 'function') {
+        toastrApi.getContainer({ containerId: BOTH_CONTAINERS_ID }, false);
+    }
+}
+
 /** Calls toastr's own function and returns the element with the options object that toastr's closures read. */
 function createToast(original, args) {
     capturedOptions = null;
@@ -870,8 +885,8 @@ function wrapNotifier(toastr, type) {
 }
 
 /**
- * toastr's `clear()` and `remove()` act on the one container that it looked up last. Without a toast they have to reach
- * both containers, and with a toast they act on that toast wherever it is.
+ * toastr's `clear()` and `remove()` act on the one container that it looked up last. Both containers are one for them
+ * now, so a call without a toast reaches every message, and a call with a toast acts on that toast wherever it is.
  */
 function wrapContainerCommands(toastr) {
     if (typeof toastr.getContainer !== 'function') {
@@ -883,16 +898,8 @@ function wrapContainerCommands(toastr) {
         }
         const original = toastr[command].bind(toastr);
         toastr[command] = function (toastElement, ...rest) {
-            if (toastElement) {
-                original(toastElement, ...rest);
-            } else {
-                // getContainer() points toastr at a container. The notification container goes last, so it stays the one
-                // that toastr's removeToast() checks for being empty.
-                for (const containerId of [TOAST_OVERLAY_ID, NOTIFICATION_CONTAINER_ID]) {
-                    toastr.getContainer({ containerId }, false);
-                    original(undefined, ...rest);
-                }
-            }
+            pointToastrAtBothContainers();
+            original(toastElement, ...rest);
             settleContainers();
         };
     }
