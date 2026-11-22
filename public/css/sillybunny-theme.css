@@ -325,6 +325,14 @@
     --sb-message-radius: 22px;
 }
 
+/* Limit Content Width is off. A measure of 100% leaves the padding of a column at its inset, and a ceiling of 100dvw is no
+   ceiling. The rules that read these tokens stay as they are, so the root attribute is the only write. */
+:root[data-sb-content-clamp='off'] {
+    --sb-measure-preference: 100%;
+    --sb-measure-wide: 100%;
+    --sb-window-ceiling: 100dvw;
+}
+
 /* Baseline only: theme custom_css is injected last, so themes that declare their
    own ::selection still win. This covers the themes that declare none, which
    otherwise fall back to the OS highlight colour with the text colour untouched,

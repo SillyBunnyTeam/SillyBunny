@@ -694,6 +694,8 @@ const SB_STORAGE_KEYS = Object.freeze({
     // configured before the split keeps its look.
     topbarIconsOnly: 'sb-topbar-icons-only',
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
+    // Limit Content Width: `false` lifts the content columns of the settings page and the ceiling of the Window dialogs.
+    desktopContentClamp: 'sb-desktop-content-clamp',
 
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
     paperTextureEnabled: 'sb-paper-texture-enabled',
@@ -1454,6 +1456,7 @@ const sbState = {
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
     paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
+    contentClamp: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopContentClamp), true),
     topbarIconsOnly: {
         desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),
     },
@@ -1565,6 +1568,9 @@ const sbState = {
         report: null,
     },
 };
+
+// The attribute is written when the module loads, before the shell exists, so a Window or a settings page that opens first is already laid out the user's way.
+applyContentClampPreference();
 
 function normalizeTopbarLabelPart(value, fallback = '') {
     const fallbackValue = SB_TOPBAR_LABEL_PART_IDS.has(fallback) ? fallback : '';
@@ -1751,6 +1757,7 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.contentClamp = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopContentClamp), sbState.contentClamp);
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
 }
@@ -1995,6 +2002,37 @@ function setCompactMode(enabled, { persist = true } = {}) {
 
     queueComposerControlPlacement();
     updateThemePickerUi();
+}
+
+// SillyBunny: Limit Content Width is a desktop setting. The clamp is the default and has no attribute; the unclamped view is one
+// attribute on the root, so turning it on or off restyles no more than that write does.
+function applyContentClampPreference() {
+    const root = document.documentElement;
+    if (sbState.contentClamp) {
+        root.removeAttribute('data-sb-content-clamp');
+    } else if (root.getAttribute('data-sb-content-clamp') !== 'off') {
+        root.setAttribute('data-sb-content-clamp', 'off');
+    }
+}
+
+function syncContentClampInput() {
+    const input = document.getElementById('sb-desktop-content-clamp-input');
+
+    if (input instanceof HTMLInputElement) {
+        input.checked = sbState.contentClamp;
+    }
+}
+
+// The full sync of the Interface page rewrites attributes of its sliders, so this setter syncs its own switch only.
+function setContentClamp(enabled, { persist = true } = {}) {
+    sbState.contentClamp = Boolean(enabled);
+    applyContentClampPreference();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.desktopContentClamp, String(sbState.contentClamp));
+    }
+
+    syncContentClampInput();
 }
 
 // SillyBunny: the icons-only top bar (the labelled bar without its labels) is a desktop setting. The phone bar
@@ -9765,6 +9803,17 @@ function createCharactersPinRow() {
     });
 }
 
+// SillyBunny: desktop only, as the group it sits in. The columns and the Window ceiling exist on the desktop layout only, so the phone page has no switch for them.
+function createContentClampRow() {
+    return createInterfaceSwitchRow({
+        id: 'sb-desktop-content-clamp-input',
+        label: t`Limit Content Width`,
+        subtitle: t`Clamps the contents of Settings to a specific viewport for wide monitors`,
+        field: 'content-clamp',
+        onChange: checked => setContentClamp(checked),
+    });
+}
+
 function createPaperTextureBody() {
     const toggleRow = createInterfaceSwitchRow({
         id: 'sb-paper-texture-enabled-input',
@@ -9983,6 +10032,7 @@ function injectThemePicker() {
         createTopbarIconsOnlyRow(),
         desktopButtonSliderGroup,
         createCharactersPinRow(),
+        createContentClampRow(),
     ]);
     const mobileBody = createInterfaceGroupBody('sb-mobile-settings-outlet', [mobileButtonSliderGroup]);
     const bottomBarBody = createInterfaceGroupBody('sb-bottom-bar-settings', [
@@ -10100,6 +10150,8 @@ function updateThemePickerUi() {
     if (topbarIconsOnlyInput instanceof HTMLInputElement) {
         topbarIconsOnlyInput.checked = sbState.topbarIconsOnly.desktop;
     }
+
+    syncContentClampInput();
 
     const charactersPinInput = document.getElementById('sb-desktop-pin-characters-input');
 
@@ -13009,6 +13061,7 @@ function initAll() {
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
     setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
+    setContentClamp(sbState.contentClamp, { persist: false });
     setBottomBarScale(sbState.bottomBarScale, { persist: false });
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });
