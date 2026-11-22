@@ -34,9 +34,9 @@ function expectedLayout({ width, pageWidth, sides }) {
     return { mode: 'docked', configured, panel, chat, left, centred, start, end };
 }
 
-async function boot(page, { width, pageWidth, sides, home = false }) {
+async function boot(page, { width, height = 900, pageWidth, sides, home = false }) {
     await protectMaintainerServer(page);
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width, height });
     await openQuietChatForSmoke(page, { selectCharacter: !home });
     if (home) await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
     await page.addStyleTag({ content: '#sheld { transition: none !important; }' });
@@ -54,8 +54,8 @@ async function boot(page, { width, pageWidth, sides, home = false }) {
     }, { pageWidth, sides });
 }
 
-async function setWidth(page, width) {
-    await page.setViewportSize({ width, height: 900 });
+async function setWidth(page, width, height = 900) {
+    await page.setViewportSize({ width, height });
     // The layout runs a frame after the resize, and the shell's own resize runs it once more.
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))))));
 }
@@ -233,3 +233,32 @@ test('a docked panel on Home takes its share of the Home width and is a sheet at
     }
     expect(problems).toEqual([]);
 });
+
+// A phone held sideways is wider than 768px, so it is not in the phone layout: LAYOUT_MOBILE_QUERY is (max-width: 768px) and
+// has no height in it. What a touch screen that is 450px tall or less gets is the compact bottom bar (the shell's mobile UI
+// mode), which is a different query, so a panel docks there as it does on a desktop window, and is a sheet only when the chat
+// would be under 360px. A sheet 50dvh high would leave under 200px of a 390px screen.
+for (const touch of [false, true]) {
+    test.describe(`a landscape phone, 844x390, ${touch ? 'with' : 'without'} a touch screen`, () => {
+        test.use({ viewport: { width: 844, height: 390 }, ...(touch ? { hasTouch: true, isMobile: true } : {}) });
+
+        test('is outside the phone layout, and a panel docks beside the chat at its Page Width', async ({ page }) => {
+            await boot(page, { width: 844, height: 390, pageWidth: 55, sides: ['left'] });
+            await setWidth(page, 844, 390);
+            const queries = await page.evaluate(() => ({
+                phoneLayout: matchMedia('(max-width: 768px)').matches,
+                compactBar: matchMedia('(max-width: 768px), (pointer: coarse) and (max-height: 450px)').matches,
+                mode: document.documentElement.dataset.sbMobileUiMode,
+            }));
+            const read = await readLayout(page);
+            const expected = expectedLayout({ width: 844, pageWidth: 55, sides: ['left'] });
+            expect(queries.phoneLayout).toBe(false);
+            expect(queries.compactBar).toBe(touch);
+            expect(queries.mode).toBe(touch ? 'mobile' : 'desktop');
+            expect(expected.mode).toBe('docked');
+            expect(read.mode).toBe('docked');
+            expect(read.width).toBeCloseTo(expected.chat, 0);
+            expect(read.left).toBeCloseTo(expected.left, 0);
+        });
+    });
+}
