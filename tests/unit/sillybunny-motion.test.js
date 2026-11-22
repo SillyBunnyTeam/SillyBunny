@@ -124,7 +124,7 @@ describe('play under reduced motion', () => {
     const fade = [{ opacity: 0 }, { opacity: 1 }];
     const slide = [{ transform: 'translateY(40px)' }, { transform: 'none' }];
 
-    test('does nothing and finishes at once, as it always did', () => {
+    test('does nothing and finishes at once when it has no fade for reduced motion', () => {
         window.matchMedia = () => ({ matches: true });
         const calls = [];
         expect(play(element, slide, { onFinish: () => calls.push('finish'), onEnd: () => calls.push('end') })).toBeNull();

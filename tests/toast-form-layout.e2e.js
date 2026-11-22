@@ -34,6 +34,20 @@ async function showToast(page, kind, message, options = STAY) {
 const settled = page => expect.poll(() => page.evaluate(() => [...document.querySelectorAll('#sb-toast-overlay > .toast, #toast-container > .toast')]
     .reduce((count, node) => count + node.getAnimations().filter(animation => animation.playState !== 'finished').length, 0))).toBe(0);
 
+/**
+ * The four insets of a computed `clip-path: inset(...)`, in the order top, right, bottom, left. The computed value lists
+ * only as many as it needs, and the missing ones repeat as CSS says: two values are top-bottom and right-left, three have
+ * the right repeat as the left.
+ */
+function clipInsets(clipPath) {
+    const values = clipPath.match(/^inset\((.*)\)$/)?.[1].split(/\s+/).map(Number.parseFloat);
+    if (!values || values.some(Number.isNaN)) {
+        throw new Error(`Not an inset(): ${clipPath}`);
+    }
+    const [top, right = top, bottom = top, left = right] = values;
+    return { top, right, bottom, left };
+}
+
 const boxOf = locator => locator.evaluate((node) => {
     const box = node.getBoundingClientRect();
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
@@ -743,7 +757,9 @@ test.describe('the motion of a toast', () => {
         expect(['cubic-bezier(0.25, 0.1, 0.25, 1)', 'ease']).toContain(result.easing);
         expect(result.startTop, 'it starts fully beyond the bottom edge, which clips it').toBeGreaterThanOrEqual(result.overlayBottom);
         expect(result.endBottom, 'and ends 24px above it').toBeCloseTo(result.overlayBottom - 24, 0);
-        expect(result.clip, 'the overlay clips on the bottom edge only').toMatch(/inset\(/);
+        const insets = clipInsets(result.clip);
+        expect(insets.bottom, 'the overlay clips at its bottom edge').toBe(0);
+        expect(Math.max(insets.top, insets.right, insets.left), 'and nowhere else, so the shadow survives').toBeLessThan(0);
     });
 
     test('at a top position slides down from above the edge', async ({ page }) => {
@@ -756,10 +772,14 @@ test.describe('the motion of a toast', () => {
             animation.currentTime = 0;
             const start = toast.getBoundingClientRect();
             const overlay = document.getElementById('sb-toast-overlay').getBoundingClientRect();
+            const clip = getComputedStyle(document.getElementById('sb-toast-overlay')).clipPath;
             animation.cancel();
-            return { startBottom: start.bottom, overlayTop: overlay.top };
+            return { startBottom: start.bottom, overlayTop: overlay.top, clip };
         });
         expect(result.startBottom, 'fully above the top edge').toBeLessThanOrEqual(result.overlayTop);
+        const insets = clipInsets(result.clip);
+        expect(insets.top, 'the overlay clips at its top edge').toBe(0);
+        expect(Math.max(insets.bottom, insets.right, insets.left), 'and nowhere else').toBeLessThan(0);
         await page.evaluate(async () => (await import('/scripts/sillybunny-toast-motion.js')).setToastPosition('toast-bottom-center'));
     });
 

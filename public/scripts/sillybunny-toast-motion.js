@@ -12,8 +12,8 @@
  * behind it for as long as it stays.
  *
  * A toast moves as libadwaita's AdwToastOverlay moves it: in, it slides out of the edge it sits at (that edge clips it,
- * see the overlay's clip-path), with no fade; out, it fades and scales to 0.95. An in-app notification keeps its fade
- * and slide until its own motion is drawn. Under reduced motion a toast fades.
+ * see the overlay's clip-path), with no fade; out, it fades and scales to 0.95. An in-app notification enters with a
+ * fade and a slide from the edge of its container. Under reduced motion a toast fades and a notification does not move.
  */
 
 import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } from './sillybunny-motion.js';

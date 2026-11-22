@@ -1,7 +1,8 @@
 /*
  * Shared WAAPI motion helpers for the SillyBunny shell.
  * Durations and easing mirror --sb-transition-fast/--sb-transition/--sb-transition-slow, so JS and CSS motion stay in step.
- * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable.
+ * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable. The exception is `play()` with
+ * `reducedKeyframes`, which fades.
  */
 
 export const MOTION_FAST = 200;

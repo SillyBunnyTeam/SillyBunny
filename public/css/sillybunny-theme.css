@@ -7235,7 +7235,7 @@ body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:act
     background: color-mix(in srgb, currentColor 16%, transparent);
 }
 
-/* In an in-app notification, which keeps the pill look until its own form is drawn, the close button adds no height. */
+/* The pill of an in-app notification is one line high, so its close button takes no height of its own: the margins cancel the 34px. */
 #toast-container > .toast > .toast-close-button {
     float: right;
     margin: -9px -18px -9px 6px;
@@ -7306,8 +7306,7 @@ body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:act
     color: var(--sb-toast-status);
 }
 
-/* In-app notifications keep the pill look until their own form is drawn. AdwToast puts its one button at the end of the text;
-   a message with several buttons keeps its block layout. */
+/* An in-app notification is a pill with a 36px start for its glyph and a 24px end. */
 body #toast-container[class] > div {
     width: fit-content;
     max-width: min(450px, calc(100% - 24px));
@@ -7364,7 +7363,7 @@ body #toast-container:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom
     margin-bottom: var(--sb-toast-stack-offset, 0px);
 }
 
-/* A toast comes in by sliding out of the edge it sits at (the script drives it), with no fade. */
+/* The enter keyframes of an in-app notification: it slides down from its own height and fades in. A toast has `animation: none`, and the script slides it out of its edge. */
 @keyframes sb-toast-in {
     from {
         opacity: 0;
