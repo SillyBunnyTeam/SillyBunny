@@ -184,12 +184,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `public/script.js` (`toastr.options`: `timeOut` and `extendedTimeOut` 5000, fades of 300ms; the `toastr.subscribe` handler holds a toast while it is pressed on touch and starts its timer again when focus leaves it, both through toastr's own hover handlers); `public/style.css` (the unused toast tokens and the per-type fills are deleted; the toast rule keeps only `opacity`, `filter` and `font-size`). |
 | Area | Toasts. |
 | Divergence reason | `TODO(copy)` |
-| Target seam | The toast rules in `public/css/sillybunny-theme.css` (`body #toast-container[class] > div`: the pill, the status colour on the icon and title only, the `prefers-contrast` ring). |
+| Target seam | The toast rules in `public/css/sillybunny-theme.css`, keyed on the marker of each form (`#toast-container > .sb-form-notification` for the card of an in-app notification, `#sb-toast-overlay > .sb-form-toast` for the pill of a toast): the surfaces, the status colour and glyph, Dismiss, the button row of a notification and the `prefers-contrast` ring. The behaviour of the two forms is in `public/scripts/sillybunny-toast-motion.js`, `sillybunny-toast-notification.js`, `sillybunny-toast-placement.js` and `sillybunny-toast-form.js`. |
 | Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.4b): marked option values and handler lines in `script.js`, and one marked rule in `style.css`. |
-| Protecting tests | `tests/toast-surface.e2e.js`; `tests/toast-sheet-css.test.js`; `tests/request-errors.e2e.js`. |
-| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, the dialog family audit (85 tests), the coder's related runs with each failure rerun alone, and the merge's related run (`e2e-related --since 891947cea`). |
+| Protecting tests | `tests/toast-surface.e2e.js`; `tests/toast-notification-layout.e2e.js`; `tests/toast-form-layout.e2e.js`; `tests/unit/sillybunny-toast-notification.test.js`; `tests/toast-sheet-css.test.js`; `tests/request-errors.e2e.js`. |
+| Validation | 2026-11-22, after the review of the in-app notification (Phase 3): root and tests lint (0 errors), the full unit run (715 suites, 14,957 tests passed, 4 skipped), `npm run check:frontend-budgets`, `npm run check:design-rules`, `e2e-related --run 46b070c85` (1,295 passed; 66 timeouts at a machine load of about 120, none a toast spec, and the 10 spec files that held them passed in a rerun with 2 servers and 2 workers each, 787 tests), and the toast specs in Firefox and WebKit (302 passed, 3 skipped; a timing test of `toast-queue.e2e.js` failed once in WebKit under load and passed alone twice). 2026-11-17: the sweep that made the first toast rules (the dialog family audit, 85 tests, and the merge's related run `e2e-related --since 891947cea`). |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-17, UI polish sweep (task 9.4b). |
+| Last reviewed | 2026-11-22, toast and notification forms, Phase 3 review. |
 | Owner | `TODO(copy)` |
 
 ### `public/script.js`, `public/scripts/popup.js`, `public/scripts/power-user.js`, `public/scripts/a11y.js` and `public/index.html` - toast overlay and notification position
