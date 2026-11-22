@@ -35,6 +35,27 @@ const boxOf = locator => locator.evaluate((node) => {
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
 });
 
+/**
+ * Reads pixels of the page as drawn. `clip` is a box in CSS px, and each point is an offset from its top left. The screenshot
+ * is decoded in the page, because the test runner has no image decoder.
+ * @returns {Promise<Record<string, number[]>>} The red, green and blue of each point, by name.
+ */
+async function samplePixels(page, clip, points) {
+    const png = await page.screenshot({ clip, animations: 'disabled' });
+    return page.evaluate(async ([base64, named]) => {
+        const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext('2d');
+        context.drawImage(bitmap, 0, 0);
+        return Object.fromEntries(Object.entries(named).map(([name, [x, y]]) => [name, [...context.getImageData(Math.round(x), Math.round(y), 1, 1).data.slice(0, 3)]]));
+    }, [png.toString('base64'), points]);
+}
+
+const colourDistance = (first, second) => first.reduce((sum, value, index) => sum + Math.abs(value - second[index]), 0);
+
 /** Shows a notification that stays and waits until it has come in. */
 async function show(page, kind, message, title, options = STAY) {
     await page.evaluate(([toastKind, text, heading, toastOptions]) => window.toastr[toastKind](text, heading, toastOptions), [kind, message, title, options]);
@@ -151,19 +172,31 @@ test.describe('the card', () => {
         expect(await info.evaluate(node => getComputedStyle(node).backgroundImage), 'info draws no PNG either').toBe('none');
     });
 
-    test('puts the icon at the top at the start, 12px from the card\'s edges, and keeps it there when the text is tall', async ({ page }) => {
-        const long = 'A message that is long. '.repeat(14);
-        const card = await show(page, 'error', long, 'Tall');
+    test('draws the icon at the top and at the start, 12px from the card\'s edges, and keeps it there in a tall card', async ({ page }) => {
+        const card = await show(page, 'error', 'A message that is long. '.repeat(14), 'Tall');
         const box = await boxOf(card);
-        const height = await card.evaluate(node => node.getBoundingClientRect().height);
-        expect(height, 'tall').toBeGreaterThan(150);
-        const icon = await card.evaluate((node) => {
-            const point = node.getBoundingClientRect();
-            const hit = document.elementsFromPoint(point.left + 12 + 24, point.top + 12 + 24);
-            return { onCard: hit.includes(node), below: document.elementsFromPoint(point.left + 12 + 24, point.top + 12 + 48 + 40).includes(node) };
+        expect(box.height, 'a card that is much taller than the icon').toBeGreaterThan(150);
+        const clip = { x: Math.floor(box.left), y: Math.floor(box.top), width: Math.ceil(box.width) + 1, height: Math.ceil(box.height) + 1 };
+        const dx = box.left - clip.x;
+        const dy = box.top - clip.y;
+        // The icon is a circle of 48px at (12, 12) from the card's corner, filled with the ink at 7%. The points are 3px inside and 3px
+        // outside its edges at the middle of each, and one beside the glyph.
+        const at = (x, y) => [dx + x, dy + y];
+        const pixels = await samplePixels(page, clip, {
+            background: at(3, box.height / 2),
+            insideCircle: at(22, 36),
+            insideTop: at(36, 15),
+            aboveTop: at(36, 9),
+            insideStart: at(15, 36),
+            beforeStart: at(9, 36),
+            centreOfTallCard: at(22, box.height / 2),
         });
-        expect(icon.onCard).toBe(true);
-        expect(box.top).toBeGreaterThan(0);
+        expect(colourDistance(pixels.insideCircle, pixels.background), 'the icon is filled').toBeGreaterThan(6);
+        expect(colourDistance(pixels.insideTop, pixels.background), 'its top is 12px from the top of the card').toBeGreaterThan(6);
+        expect(colourDistance(pixels.aboveTop, pixels.background), 'and nothing is above it').toBeLessThan(3);
+        expect(colourDistance(pixels.insideStart, pixels.background), 'its start edge is 12px from the start of the card').toBeGreaterThan(6);
+        expect(colourDistance(pixels.beforeStart, pixels.background), 'and nothing is before it').toBeLessThan(3);
+        expect(colourDistance(pixels.centreOfTallCard, pixels.background), 'it is not centred in the height of the card').toBeLessThan(3);
     });
 
     test('is 72px high when the text is shorter than the icon: the 48px icon with 12px above and below', async ({ page }) => {
@@ -499,9 +532,17 @@ test.describe('the button row', () => {
         const gap = await card.evaluate((node) => {
             const wrapper = node.querySelector('.sb-draft-toast__actions');
             const row = wrapper.querySelector('.sb-toast-actions');
-            return { wrapperMargin: getComputedStyle(wrapper).marginTop, wrapperPadding: getComputedStyle(wrapper).paddingTop, same: wrapper.getBoundingClientRect().height === row.getBoundingClientRect().height + 6 - 6 };
+            const style = getComputedStyle(wrapper);
+            return {
+                margin: [style.marginTop, style.marginBottom],
+                padding: [style.paddingTop, style.paddingBottom],
+                wrapperHeight: wrapper.getBoundingClientRect().height,
+                rowHeight: row.getBoundingClientRect().height,
+            };
         });
-        expect(gap.wrapperMargin).toBe('0px');
+        expect(gap.margin, 'the wrapper keeps no margin of its own').toEqual(['0px', '0px']);
+        expect(gap.padding, 'or padding').toEqual(['0px', '0px']);
+        expect(gap.wrapperHeight, 'so it is as high as the row it holds').toBeCloseTo(gap.rowHeight, 0);
         await card.locator('#sb_draft_restore_btn').click();
         await expect(card).toHaveCount(0, { timeout: 3000 });
         expect(await page.evaluate(() => window.__draftCalls)).toEqual(['restore']);
@@ -808,13 +849,14 @@ test.describe('the motion', () => {
             for (const name of ['One', 'Two', 'Three', 'Four']) window.toastr.info(`${name} text`, name, { timeOut: 60000, extendedTimeOut: 60000 });
         });
         await settled(page);
-        const visible = notificationBoxes(page).filter({ has: page.locator(':scope') });
-        const tops = await page.evaluate(() => [...document.querySelectorAll('#toast-container > .sb-form-notification')].filter(node => node.style.display !== 'none').map(node => ({ title: node.querySelector('.toast-title').textContent, top: node.getBoundingClientRect().top })));
-        expect(tops.map(entry => entry.title), 'three on screen, the newest first at a top position').toEqual(['Three', 'Two', 'One']);
-        expect(tops.map(entry => entry.top)).toEqual([...tops.map(entry => entry.top)].sort((a, b) => a - b));
+        const onScreen = () => page.evaluate(() => [...document.querySelectorAll('#toast-container > .sb-form-notification')]
+            .filter(node => node.style.display !== 'none' && !node.classList.contains('sb-toast-leaving'))
+            .map(node => ({ title: node.querySelector('.toast-title').textContent, top: node.getBoundingClientRect().top })));
+        const before = await onScreen();
+        expect(before.map(entry => entry.title), 'three on screen, the newest first at a top position').toEqual(['Three', 'Two', 'One']);
+        expect(before.map(entry => entry.top)).toEqual([...before.map(entry => entry.top)].sort((a, b) => a - b));
         await notificationBoxes(page).filter({ hasText: 'Three text' }).getByRole('button', { name: 'Dismiss', exact: true }).click();
-        await expect(page.locator('#toast-container > .sb-form-notification:visible', { hasText: 'Four text' })).toBeVisible({ timeout: 3000 });
-        await expect(visible.first()).toBeVisible();
+        await expect.poll(async () => (await onScreen()).map(entry => entry.title), { message: 'the fourth shows when one is dismissed' }).toEqual(['Four', 'Two', 'One']);
     });
 });
 
