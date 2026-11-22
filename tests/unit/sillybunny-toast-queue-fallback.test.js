@@ -61,10 +61,21 @@ describe('when toastr does not hand its options over', () => {
         expect(document.getElementById('toast-container').className).toBe('toast-top-center');
     });
 
-    test('resetToastQueue switches the queue on again', () => {
+    test('resetToastQueue switches the queue on again: the next message is made held and taken away, because nothing arrives', () => {
+        const remove = jest.spyOn(toastr, 'remove');
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        toastr.info('while the queue is off');
+        expect(remove).not.toHaveBeenCalled();
+
         toastQueue.resetToastQueue();
-        const $toast = toastr.info('message');
+        const $toast = toastr.info('after the reset');
+        expect(remove).toHaveBeenCalledTimes(1);
         expect($toast.closest('#toast-container').length).toBe(1);
+        expect($toast[0].style.display).not.toBe('none');
         expect(toastQueue.getToastQueue().current).toBeNull();
+        expect(document.querySelectorAll('.toast-message')).toHaveLength(2);
+        remove.mockRestore();
+        warn.mockRestore();
     });
 });

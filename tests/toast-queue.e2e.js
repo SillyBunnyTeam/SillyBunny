@@ -112,16 +112,18 @@ test('many errors at once are all kept, ahead of the notices that were waiting',
         window.toastr.error('Error 0', '', { timeOut: 30000, extendedTimeOut: 30000 });
         return getToastQueue().waiting.map(node => node.querySelector('.toast-message')?.textContent);
     });
-    const waitingErrors = order.filter(title => title.startsWith('Error'));
+    const waitingErrors = order.filter(message => message.startsWith('Error'));
     expect(waitingErrors, 'five different errors, the repeat of the first is not queued twice').toHaveLength(5);
     expect(order.slice(0, 5), 'the errors are the first to show after the current toast').toEqual(waitingErrors);
-    expect(order.filter(title => title.startsWith('Notice')).length, 'the oldest notices were dropped').toBeLessThanOrEqual(6);
+    expect(order.filter(message => message.startsWith('Notice')).length, 'the oldest notices were dropped').toBeLessThanOrEqual(6);
 });
 
 test.describe('with a finger', () => {
     test.use({ hasTouch: true });
 
-    test('a toast with a button stays while the finger is on it, and goes after the finger lifts', async ({ page }) => {
+    test('a toast with a button stays while the finger is on it, and goes after the finger lifts', async ({ page, browserName }) => {
+        // The touch is sent through the Chrome DevTools Protocol, which only Chromium has.
+        test.skip(browserName !== 'chromium', 'Input.dispatchTouchEvent is a Chrome DevTools Protocol command');
         await page.evaluate(() => {
             const body = document.createElement('div');
             body.textContent = 'Removed';

@@ -56,6 +56,11 @@ async function advance(ms) {
 }
 
 beforeAll(async () => {
+    // jsdom has no layout, so jQuery's :visible is always false, and toastr's removeToast() would remove a toast that
+    // is on screen. In a browser it skips such a toast. A connected element that is not display: none has a box here.
+    HTMLElement.prototype.getClientRects = function getClientRects() {
+        return this.isConnected && this.style.display !== 'none' ? [{ width: 100, height: 20 }] : [];
+    };
     window.matchMedia = () => ({ matches: reducedMotion });
     HTMLElement.prototype.animate = function (keyframes, options) {
         let resolve;
@@ -711,7 +716,7 @@ describe('the two queues', () => {
         expect(notificationContainer()).toBeNull();
     });
 
-    test('toastr.clear() and toastr.remove() with a toast act on that toast wherever it is', async () => {
+    test('toastr.clear() with a toast hides that toast wherever it is, and nothing else', async () => {
         const toast = toastr.info('A toast');
         const notification = notice('info', 'Note');
         toastr.clear(toast);
@@ -719,11 +724,31 @@ describe('the two queues', () => {
         expect(toast[0].isConnected).toBe(false);
         expect(notification[0].isConnected).toBe(true);
 
-        toastr.remove(notification);
+        toastr.clear(notification);
+        await finishAnimations();
         expect(notification[0].isConnected).toBe(false);
         await flush();
         expect(overlay()).toBeNull();
         expect(notificationContainer()).toBeNull();
+    });
+
+    test('toastr.remove() with a toast that is on screen leaves it, as toastr does, and removes it once it is hidden', () => {
+        const toast = toastr.info('A toast');
+        const notification = notice('info', 'Note');
+
+        toastr.remove(toast);
+        toastr.remove(notification);
+        expect(toast[0].isConnected && notification[0].isConnected).toBe(true);
+        expect(queueState().current).toBe(toast[0]);
+        expect(notificationState().shown).toEqual([notification[0]]);
+
+        toast[0].style.display = 'none';
+        notification[0].style.display = 'none';
+        toastr.remove(toast);
+        toastr.remove(notification);
+        expect(toast[0].isConnected || notification[0].isConnected).toBe(false);
+        expect(queueState().current).toBeNull();
+        expect(notificationState().shown).toEqual([]);
     });
 
     test('waiting toasts leave their queue when they are cleared or removed', async () => {
@@ -899,8 +924,10 @@ describe('the two queues', () => {
         expect(overlay().parentElement).toBe(document.body);
         dialog.remove();
 
-        toastr.remove(toast);
-        toastr.remove(inside);
+        toastr.clear(toast);
+        toastr.clear(inside);
+        await finishAnimations();
+        await flush();
         toastQueue.placeToastContainers();
         expect(overlay()).toBeNull();
     });

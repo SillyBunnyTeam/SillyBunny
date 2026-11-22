@@ -10,12 +10,15 @@ test.beforeEach(async ({ page }) => {
     await showToasts(page);
 });
 
-// Both forms keep the pill and the status colour in Phase 1, so the same checks run on a toast (a short message with no title)
+// Both forms are a pill with the status colour on the icon, so the same checks run on a toast (a short message with no title)
 // and on an in-app notification (a message with a title).
 const FORMS = [
     { form: 'toast', title: '', message: 'A short message.' },
     { form: 'notification', title: 'Title', message: 'A message that is long enough to wrap onto a second line in a narrow toast.' },
 ];
+
+/** What the colour of the title is: an untitled toast has none, and a title takes the colour of the icon, or the ink for info. */
+const expectedTitleColour = (hasTitle, colour) => (hasTitle ? colour : null);
 
 for (const { form, title, message } of FORMS) {
     test(`a ${form} is a pill, and only an error, warning or success one takes the status colour, on its icon and title`, async ({ page }) => {
@@ -49,12 +52,11 @@ for (const { form, title, message } of FORMS) {
         }
         for (const kind of ['error', 'warning', 'success']) {
             expect(measured[kind].iconColour, `${kind} icon colour is not the ink`).not.toBe(measured[kind].ink);
-            // A toast has no title, and the status colour is then on its icon alone.
-            expect(measured[kind].titleColour ?? measured[kind].iconColour, `${kind} title colour is the icon's`).toBe(measured[kind].iconColour);
+            expect(measured[kind].titleColour, `${kind} title colour`).toBe(expectedTitleColour(title !== '', measured[kind].iconColour));
             expect(measured[kind].iconContent, `${kind} icon glyph`).not.toBe('none');
             expect(measured[kind].background, `${kind} ${form} draws no PNG icon`).toBe('none');
         }
-        expect(measured.info.titleColour ?? measured.info.ink, 'info title keeps the toast ink').toBe(measured.info.ink);
+        expect(measured.info.titleColour, 'info title keeps the toast ink').toBe(expectedTitleColour(title !== '', measured.info.ink));
     });
 }
 
