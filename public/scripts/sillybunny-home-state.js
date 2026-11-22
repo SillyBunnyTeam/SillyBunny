@@ -1,6 +1,11 @@
+import { endTransitionMark, transitionChange } from './sillybunny-motion.js';
+
 export const HOME_STATE_CHANGED_EVENT = 'sb:home-state-changed';
 
 const HOME_ATTRIBUTE = 'data-sb-home';
+// The shell has this attribute only while it goes from the Home width to the chat width, so that this change animates and a
+// window resize never does.
+const LEAVING_ATTRIBUTE = 'data-sb-home-leaving';
 const CONVERSATION_MODE_ATTRIBUTE = 'data-sb-conversation-mode';
 
 const state = {
@@ -30,9 +35,13 @@ function writeHomeAttribute() {
     }
 
     if (state.active) {
+        endTransitionMark(state.sheld, LEAVING_ATTRIBUTE);
         state.sheld.setAttribute(HOME_ATTRIBUTE, 'on');
-    } else {
-        state.sheld.removeAttribute(HOME_ATTRIBUTE);
+        return;
+    }
+
+    if (state.sheld.hasAttribute(HOME_ATTRIBUTE)) {
+        transitionChange(state.sheld, LEAVING_ATTRIBUTE, () => state.sheld.removeAttribute(HOME_ATTRIBUTE), { properties: ['width'] });
     }
 }
 
@@ -50,6 +59,9 @@ function syncHomeState() {
 function releaseElements() {
     state.observer?.disconnect();
     state.observer = null;
+    if (state.sheld) {
+        endTransitionMark(state.sheld, LEAVING_ATTRIBUTE);
+    }
     state.sheld?.removeAttribute(HOME_ATTRIBUTE);
 }
 

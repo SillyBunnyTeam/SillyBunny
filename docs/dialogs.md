@@ -285,9 +285,15 @@ onClose })` in `side-panel.js`:
   unregister() }`. `open` is async because it waits for the lazy stylesheet and the layout.
 - The side is saved under the panel `id` in `movingUIState` through
   `configureMovingUIState({ getState, setState })`. The open state is not saved.
-- Panels are 280 to 420px wide. When the chat would drop under 360px, the latest open panel becomes a
-  sheet and the others close. A sheet closes with a swipe down from its handle or header. Escape
-  goes through `closeTopmostSidePanelOnEscape(event)`.
+- Panels are 280 to 420px wide. Above the phone layout the chat keeps its configured width beside a
+  docked panel at every window width and moves only as far as the panels need. In the phone layout
+  (768px and under, `LAYOUT_MOBILE_QUERY`) a panel is always a sheet. Above it, when the chat would
+  drop under 360px, the latest open panel becomes a sheet and the others close. A phone held sideways
+  is wider than 768px, so it is not in the phone layout. A sheet closes with a swipe down from its
+  handle or header. Escape goes through `closeTopmostSidePanelOnEscape(event)`.
+- The chat moves with a transition only when a panel docks, changes side or leaves
+  (`data-sb-dock-moving` on `#sheld`, set by `transitionChange()` in `sillybunny-motion.js`). A window
+  resize never animates it.
 - Registered today: `floatingPrompt` (left), `cfgConfig` (left) and `logprobsViewer` (right) in
   `adapters/side-panels.js`, and `sb-chat-sidebar` (right) in `sillybunny-tabs.js`.
 

@@ -318,9 +318,10 @@
         {
             "filename": "SillyBunny Lexicon.json",
             "type": "world",
-            "version": 10,
-            "fingerprint": "af98419acf076aa4ae01acc5bdceb630dba9faa317844ae1a8e0091561d07088",
+            "version": 11,
+            "fingerprint": "22c6070a67613b6a32520e3886872d0518e80d11c7aef7a54c4240b93afd54ea",
             "previousFingerprints": [
+                "af98419acf076aa4ae01acc5bdceb630dba9faa317844ae1a8e0091561d07088",
                 "0fe6674bc4bdc55003b1bc6a6fe165e6dce3e229f8f963e67ce9c60c4e353bdd",
                 "8f4e5e3ba7a816ac2ce4ec92bef0e9093ee7c4ab19f3a0584d0216d864f352e8",
                 "0295f61e1dffc4adda17406854e31c8fa943c41bffff9386f9c33a02c3cadf36",

@@ -7049,6 +7049,7 @@
         {"identity":"#sb-desktop-button-scale-input","identityKind":"id","kind":"range","name":"Desktop Button Size","group":"Desktop","where":"visible","min":"70","max":"150","step":"5","keyboard":true,"storage":["sb-desktop-button-scale"]},
         {"identity":"data:data-sb-theme-slider-counter=sb-desktop-button-scale-input","identityKind":"data","kind":"number","name":"Desktop Button Size","group":"Desktop","where":"visible","min":"70","max":"150","step":"5","storage":["sb-desktop-button-scale"]},
         {"identity":"#sb-desktop-pin-characters-input","identityKind":"id","kind":"switch","name":"Keep Characters Open","group":"Desktop","where":"visible","keys":["accountStorage.NavLockOn"],"selfSaves":true},
+        {"identity":"#sb-desktop-content-clamp-input","identityKind":"id","kind":"switch","name":"Limit Content Width","group":"Desktop","where":"visible","storage":["sb-desktop-content-clamp"]},
         {"identity":"#sb-mobile-button-scale-input","kind":"range","where":"hidden"},
         {"identity":"data:data-sb-theme-slider-counter=sb-mobile-button-scale-input","kind":"number","where":"hidden"},
         {"identity":"#sb-bottom-bar-scale-input","identityKind":"id","kind":"range","name":"Bottom Bar Size","group":"Bottom Bar","where":"visible","min":"70","max":"150","step":"5","keyboard":true,"storage":["sb-bottom-bar-scale"]},
