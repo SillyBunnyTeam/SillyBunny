@@ -14,6 +14,7 @@ import {
     dialogSurfaceOf,
     edgeOf,
     keyboardInset,
+    stackOffset,
     updateToastPlacement,
 } from '../../public/scripts/sillybunny-toast-placement.js';
 
@@ -69,6 +70,22 @@ describe('the edge a toast sits at', () => {
         expect(edgeOf('toast-bottom-left', false)).toBe('bottom');
         expect(edgeOf('toast-top-right', false)).toBe('top');
         expect(edgeOf('toast-top-center', true)).toBe('bottom');
+    });
+});
+
+describe('the offset of the notifications at the position of the toasts', () => {
+    test('at a top position it is the height that the toasts take', () => {
+        expect(stackOffset({ edge: 'top', layoutHeight: 900, overlayBox: { top: 54, height: 82 } })).toBe(82);
+    });
+
+    test('at a bottom position it is the space from the window edge to the top of the toasts, which keeps the composer clear', () => {
+        expect(stackOffset({ edge: 'bottom', layoutHeight: 900, overlayBox: { top: 645, height: 82 } })).toBe(255);
+        expect(stackOffset({ edge: 'bottom', layoutHeight: 900, overlayBox: { top: 818, height: 82 } })).toBe(82);
+    });
+
+    test('is nothing while no toast is on screen', () => {
+        expect(stackOffset({ edge: 'bottom', layoutHeight: 900, overlayBox: { top: 727, height: 0 } })).toBe(0);
+        expect(stackOffset({ edge: 'top', layoutHeight: 900, overlayBox: { top: 54, height: 0 } })).toBe(0);
     });
 });
 
@@ -181,7 +198,15 @@ describe('writing the placement', () => {
         document.body.append(notifications);
 
         updateToastPlacement();
+        // The layout viewport is 800px high here: the toasts start 160px above its bottom edge.
+        expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('160px');
+
+        overlay.className = 'toast-top-center';
+        notifications.className = 'toast-top-center';
+        updateToastPlacement();
         expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('60px');
+
+        overlay.className = 'toast-bottom-center';
 
         notifications.className = 'toast-top-center';
         updateToastPlacement();

@@ -92,6 +92,22 @@ export function dialogSurfaceOf(host) {
     return [...host.children].find(child => child.classList.contains('sb-dialog')) ?? host;
 }
 
+/**
+ * How far from its own edge the in-app notifications at the position of the toasts start. A toast keeps the edge, so the
+ * notifications start where the toasts end: at a top position the container already sits under the top bar, so that is
+ * the height of the toasts; at a bottom position the container sits at the window edge, so it is the space from the
+ * window edge to the top of the toasts, which includes the composer or the keyboard that the toasts sit above. With no
+ * toast on screen the notifications keep their own place.
+ * @param {{ edge: 'top'|'bottom', layoutHeight: number, overlayBox: { top: number, height: number } }} measures
+ * @returns {number} px, never negative.
+ */
+export function stackOffset({ edge, layoutHeight, overlayBox }) {
+    if (!(overlayBox.height > 0)) {
+        return 0;
+    }
+    return Math.max(0, Math.round(edge === 'bottom' ? layoutHeight - overlayBox.top : overlayBox.height));
+}
+
 function layoutHeight() {
     return document.documentElement.clientHeight || window.innerHeight;
 }
@@ -158,7 +174,9 @@ function placeNotifications(overlay, notifications, inDialog) {
     const samePosition = overlay !== null
         && !inDialog
         && POSITION_CLASSES.some(name => overlay.classList.contains(name) && notifications.classList.contains(name));
-    setProperty(notifications, STACK_OFFSET_PROPERTY, samePosition ? pixels(overlay.getBoundingClientRect().height) : null);
+    const edge = edgeOf(notifications.className, false);
+    const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlay.getBoundingClientRect() }) : null;
+    setProperty(notifications, STACK_OFFSET_PROPERTY, offset === null ? null : pixels(offset));
 }
 
 /** Measures the page and writes the placement of the overlay and of the notification container. */
