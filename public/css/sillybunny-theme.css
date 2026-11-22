@@ -6998,7 +6998,7 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
 
 #sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) {
     top: 0;
-    margin-top: var(--topBarBlockSize);
+    margin-top: var(--sb-topbar-layout-offset, var(--topBarBlockSize));
     clip-path: inset(0 -100vmax -100vmax);
 }
 
@@ -7318,10 +7318,15 @@ body #toast-container[class] {
     align-items: center;
 }
 
+/* A strip clips at the edge its cards come out of, as GNOME Shell's message tray clips to the work area under the panel: at a
+   top position its top edge, which is the bottom of the top bar, or beyond the toasts when both forms share the position. Only
+   that edge clips, so the shadow and the ring survive on the other sides and between the cards. A card's overshoot moves
+   away from the edge, so the clip does not cut it. */
 body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right) {
     top: 0;
     bottom: auto;
-    margin-top: calc(var(--topBarBlockSize) + var(--sb-toast-stack-offset, 0px));
+    margin-top: calc(var(--sb-topbar-layout-offset, var(--topBarBlockSize)) + var(--sb-toast-stack-offset, 0px));
+    clip-path: inset(0 -100vmax -100vmax);
 }
 
 /* A notification at the position of the toasts sits beyond them by the stack offset, which the script writes; with no toast
@@ -7331,6 +7336,7 @@ body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast
     bottom: var(--sb-toast-bottom-inset, 0px);
     margin-bottom: var(--sb-toast-stack-offset, 0px);
     flex-direction: column-reverse;
+    clip-path: inset(-100vmax -100vmax 0);
 }
 
 body #toast-container[class]:is(.toast-top-left, .toast-bottom-left) {
@@ -7349,7 +7355,7 @@ body #toast-container[class]:is(.toast-top-right, .toast-bottom-right) {
 body #toast-container[class] > .sb-form-notification {
     --sb-n-line: calc(var(--mainFontSize) * 0.95 * 1.3);
     --sb-n-start: 6px;
-    --sb-n-end: 46px;
+    --sb-n-end: 6px;
     --sb-n-space: 4px;
     position: relative;
     box-sizing: border-box;
@@ -7400,11 +7406,14 @@ body #toast-container[class] > .sb-form-notification:is(.toast-error, .toast-war
     font: 900 16px/1 "Font Awesome 6 Free";
 }
 
-/* Dismiss ends the first row: it floats at the end, as tall as one line so that it adds no height, and the text keeps clear of it. */
+/* Dismiss ends the first row: it floats at the end, centred on the first line, and the text gives way to it 6px short of it. The
+   float's box reaches below the first line by the 4px that separates a body from its title, less half a pixel, so a second
+   line of a message or of a title that Dismiss reaches into gives way too, and the first line of a body under a title does not.
+   The lines below use the whole column, because the float is in the text's own formatting context. */
 body #toast-container[class] > .sb-form-notification > .toast-close-button {
     float: inline-end;
-    margin-block: calc((var(--sb-n-line) - 34px) / 2);
-    margin-inline-end: 6px;
+    margin-block: calc((var(--sb-n-line) - 34px) / 2) calc((var(--sb-n-line) - 34px) / 2 + var(--sb-n-space) - 0.5px);
+    margin-inline: 6px;
 }
 
 body #toast-container[class] > .sb-form-notification > :is(.toast-title, .toast-message) {

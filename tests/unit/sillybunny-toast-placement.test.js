@@ -376,6 +376,23 @@ describe('writing the placement', () => {
             expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
         });
 
+        test('with jump, writes the place with its transition off and gives the transition back', () => {
+            const overlay = overlayWith('toast-top-center');
+            overlay.getBoundingClientRect = () => ({ top: 54, bottom: 124, height: 70, left: 0, right: 1000, width: 1000 });
+            const notifications = notificationsAt('toast-top-center');
+            const seen = [];
+            const original = notifications.style.setProperty.bind(notifications.style);
+            notifications.style.setProperty = (name, value, ...rest) => {
+                seen.push([name, name === 'transition' ? value : notifications.style.getPropertyValue('transition')]);
+                return original(name, value, ...rest);
+            };
+            updateToastPlacement({ jump: true });
+            expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('70px');
+            // The offset is written while the transition is off, and the transition is back after it.
+            expect(seen.find(([name]) => name === STACK_OFFSET_PROPERTY)?.[1]).toBe('none');
+            expect(notifications.style.getPropertyValue('transition')).toBe('');
+        });
+
         test('takes no inset of its own where it shares the stack of the toasts, because the stack offset holds it', () => {
             const overlay = overlayWith('toast-bottom-center');
             overlay.getBoundingClientRect = () => ({ top: 640, bottom: 700, height: 60, left: 0, right: 1000, width: 1000 });

@@ -412,6 +412,16 @@ test.describe('where a toast sits', () => {
         expect(composer.top - (await boxOf(toast)).bottom).toBeCloseTo(24, 0);
     });
 
+    test('a top toast\'s overlay starts at the bottom of the top bar on a phone, where the bar is taller than --topBarBlockSize, so the toast does not slide over the bar', async ({ page }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(async () => (await import('/scripts/sillybunny-toast-motion.js')).setToastPosition('toast-top-center'));
+        const toast = await showToast(page, 'info', 'At the top');
+        const edge = await page.evaluate(() => ({ overlay: document.getElementById('sb-toast-overlay').getBoundingClientRect().top, bar: document.getElementById('top-bar').getBoundingClientRect().bottom }));
+        expect(edge.overlay).toBeCloseTo(edge.bar, 0);
+        expect((await boxOf(toast)).top - edge.bar).toBeCloseTo(24, 0);
+        await page.evaluate(async () => (await import('/scripts/sillybunny-toast-motion.js')).setToastPosition('toast-bottom-center'));
+    });
+
     test('a top toast is 24px under the edge it sits at, as today\'s top toasts sit', async ({ page }) => {
         await page.setViewportSize({ width: 1440, height: 900 });
         await page.evaluate(async () => (await import('/scripts/sillybunny-toast-motion.js')).setToastPosition('toast-top-right'));

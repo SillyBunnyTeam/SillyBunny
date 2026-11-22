@@ -233,10 +233,29 @@ function placeNotifications(overlay, notifications, inDialog) {
     setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(windowBottomInset()));
 }
 
-/** Measures the page and writes the placement of the overlay and of the notification container. */
-export function updateToastPlacement() {
-    const overlay = document.getElementById(TOAST_OVERLAY_ID);
+/**
+ * Measures the page and writes the placement of the overlay and of the notification container.
+ * @param {{ jump?: boolean }} [options] `jump` moves the notification container to its place at once. The container eases
+ * its margin when the stack offset changes, which suits a toast that comes or goes beside notifications that are on
+ * screen, but a container that has just been made would glide from the top bar to its place under the toasts, and its
+ * clip edge with it.
+ */
+export function updateToastPlacement({ jump = false } = {}) {
     const notifications = document.getElementById(NOTIFICATION_CONTAINER_ID);
+    if (jump && notifications) {
+        notifications.style.setProperty('transition', 'none');
+        writeToastPlacement(notifications);
+        // The style is resolved without the transition before it comes back.
+        void notifications.offsetHeight;
+        notifications.style.removeProperty('transition');
+        return;
+    }
+    writeToastPlacement(notifications);
+}
+
+/** @param {HTMLElement|null} notifications */
+function writeToastPlacement(notifications) {
+    const overlay = document.getElementById(TOAST_OVERLAY_ID);
     if (overlay) {
         const host = overlay.parentElement;
         const inDialog = host instanceof HTMLDialogElement;

@@ -173,7 +173,7 @@ test.describe('the card', () => {
 });
 
 test.describe('Dismiss', () => {
-    test('is named Dismiss, ends the first row, and is as tall as one line so it adds no height', async ({ page }) => {
+    test('is named Dismiss, ends the first row, is centred on its first line, and does not make a card of two lines taller', async ({ page }) => {
         const card = await show(page, 'info', 'Message', 'Title');
         const close = card.getByRole('button', { name: 'Dismiss', exact: true });
         await expect(close).toHaveCount(1);
@@ -449,8 +449,116 @@ test.describe('on a coarse pointer', () => {
     });
 });
 
-test.describe('text that changes after the notification shows', () => {
-    test('reflows inside the card: the card grows, keeps its width, and the text stays between the icon and Dismiss', async ({ page }) => {
+/**
+ * The lines of the text of a block as one right and one left edge each, from the client rectangles of its text.
+ * Two rectangles with the same top are one line.
+ */
+const LINES_IN_PAGE = `(block) => {
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    const lines = new Map();
+    for (const rect of range.getClientRects()) {
+        if (rect.width === 0) continue;
+        const key = Math.round(rect.top);
+        const line = lines.get(key) ?? { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+        line.left = Math.min(line.left, rect.left);
+        line.right = Math.max(line.right, rect.right);
+        line.bottom = Math.max(line.bottom, rect.bottom);
+        lines.set(key, line);
+    }
+    return [...lines.values()].sort((a, b) => a.top - b.top);
+}`;
+
+/** The text lines of the title and of the body, Dismiss, and the edges of the text column, in px. */
+const flowOf = card => card.evaluate((node, source) => {
+    // eslint-disable-next-line no-new-func
+    const linesOf = new Function(`return (${source})`)();
+    const close = node.querySelector('.toast-close-button').getBoundingClientRect();
+    const message = node.querySelector('.toast-message');
+    const title = node.querySelector('.toast-title');
+    const style = getComputedStyle(message);
+    const box = message.getBoundingClientRect();
+    return {
+        title: title ? linesOf(title) : [],
+        body: linesOf(message),
+        close: { left: close.left, right: close.right, top: close.top, bottom: close.bottom },
+        column: { left: box.left + Number.parseFloat(style.paddingLeft), right: box.right - Number.parseFloat(style.paddingRight) },
+        card: node.getBoundingClientRect().toJSON(),
+    };
+}, LINES_IN_PAGE);
+
+test.describe('text that flows around Dismiss', () => {
+    const NARROW = 'a '.repeat(260);
+    // The button is 34px and the first line 20px, so the button reaches below the line by 7px. The text gives way to the part of it
+    // that a line is beside; a line may touch its lowest 4px, which is the gap between a title and its body.
+    const TOUCH = 4;
+    const isBeside = (line, close) => line.top < close.bottom - TOUCH && line.bottom > close.top;
+
+    test('is shorter only beside it: an untitled body ends before Dismiss on the first row and uses the whole column below it', async ({ page }) => {
+        const card = await show(page, 'info', NARROW, '');
+        const flow = await flowOf(card);
+        expect(flow.body.length, 'a body that wraps').toBeGreaterThan(3);
+        const beside = flow.body.filter(line => isBeside(line, flow.close));
+        const below = flow.body.filter(line => !isBeside(line, flow.close));
+        expect(beside.length, 'the lines beside Dismiss').toBeGreaterThan(0);
+        for (const line of beside) {
+            expect(line.right, 'a line beside Dismiss ends before it').toBeLessThanOrEqual(flow.close.left);
+        }
+        expect(below.length, 'lines below Dismiss').toBeGreaterThan(1);
+        expect(Math.max(...below.map(line => line.right)), 'a line below it reaches the edge of the column, under Dismiss').toBeGreaterThan(flow.column.right - 12);
+        expect(Math.max(...below.map(line => line.right))).toBeLessThanOrEqual(flow.column.right + 0.5);
+        expect(flow.column.right, 'the column ends 6px before the card\'s padding, 12px from the card\'s edge').toBeCloseTo(flow.card.right - 12, 0);
+    });
+
+    test('a title ends before Dismiss, and the body under the title uses the whole column from its first line', async ({ page }) => {
+        const card = await show(page, 'warning', NARROW, 'a '.repeat(180));
+        const flow = await flowOf(card);
+        expect(flow.title.length, 'a title that wraps').toBeGreaterThan(1);
+        expect(flow.title[0].right, 'the first line of the title ends before Dismiss').toBeLessThanOrEqual(flow.close.left);
+        const titleBelow = flow.title.filter(line => !isBeside(line, flow.close));
+        expect(titleBelow.length, 'a title of three lines').toBeGreaterThan(0);
+        expect(Math.max(...titleBelow.map(line => line.right)), 'a line of the title below the first row uses the width under Dismiss').toBeGreaterThan(flow.close.left);
+        expect(Math.max(...flow.body.map(line => line.right)), 'the body reaches under Dismiss').toBeGreaterThan(flow.close.left);
+        for (const line of [...flow.title, ...flow.body]) {
+            expect(line.right).toBeLessThanOrEqual(flow.column.right + 0.5);
+        }
+    });
+
+    test('keeps a short line on one row at 390px: the draft recovery text is no longer wrapped early', async ({ page }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(htmlOptions => window.toastr.info('<div>Unsaved changes were made 5 minutes ago</div>', 'Draft', htmlOptions), HTML);
+        await settled(page);
+        const flow = await flowOf(notificationBoxes(page).filter({ hasText: 'Draft' }));
+        expect(flow.body, 'one line').toHaveLength(1);
+        expect(flow.body[0].right, 'it reaches the part of the column that is under Dismiss').toBeGreaterThan(flow.close.left);
+    });
+
+    test('nothing overlaps Dismiss: no line of text that is beside it extends into it', async ({ page }) => {
+        const card = await show(page, 'error', NARROW, 'Title');
+        const flow = await flowOf(card);
+        for (const line of [...flow.title, ...flow.body]) {
+            if (isBeside(line, flow.close)) {
+                expect(line.right).toBeLessThanOrEqual(flow.close.left);
+            }
+        }
+    });
+
+    test('mirrors in a right-to-left message: Dismiss is at the left, the first row ends after it, and the lines below use the whole column', async ({ page }) => {
+        await page.evaluate(options => window.toastr.info('a '.repeat(260), '', { ...options, rtl: true }), STAY);
+        await settled(page);
+        const card = notificationBoxes(page).filter({ has: page.locator('.toast-message') }).first();
+        const flow = await flowOf(card);
+        expect(flow.close.left - flow.card.left, '12px from the card\'s start edge, now on the left').toBeCloseTo(12, 0);
+        const beside = flow.body.filter(line => isBeside(line, flow.close));
+        expect(beside.length).toBeGreaterThan(0);
+        for (const line of beside) {
+            expect(line.left, 'a line beside Dismiss starts after it').toBeGreaterThanOrEqual(flow.close.right);
+        }
+        const below = flow.body.filter(line => !isBeside(line, flow.close));
+        expect(Math.min(...below.map(line => line.left)), 'a line below it reaches the edge of the column, under Dismiss').toBeLessThan(flow.close.right);
+    });
+
+    test('reflows when a caller changes the text after it shows: the card grows, keeps its width, and no line passes the column', async ({ page }) => {
         const card = await show(page, 'info', 'Working', 'Progress');
         const before = await boxOf(card);
         await page.evaluate(() => {
@@ -459,16 +567,10 @@ test.describe('text that changes after the notification shows', () => {
         const after = await boxOf(card);
         expect(after.width).toBeCloseTo(before.width, 0);
         expect(after.height).toBeGreaterThan(before.height + 40);
-        const text = await card.evaluate((node) => {
-            const message = node.querySelector('.toast-message');
-            const range = document.createRange();
-            range.selectNodeContents(message);
-            const rects = [...range.getClientRects()];
-            const close = node.querySelector('.toast-close-button').getBoundingClientRect();
-            return { right: Math.max(...rects.map(rect => rect.right)), closeLeft: close.left, cardRight: node.getBoundingClientRect().right };
-        });
-        expect(text.right).toBeLessThanOrEqual(text.closeLeft);
-        expect(text.right).toBeLessThanOrEqual(text.cardRight);
+        const flow = await flowOf(card);
+        for (const line of flow.body) {
+            expect(line.right).toBeLessThanOrEqual(flow.column.right + 0.5);
+        }
     });
 });
 
@@ -606,12 +708,160 @@ test.describe('the motion', () => {
     });
 });
 
-test.describe('where it sits', () => {
-    test('at a top position, 4px under the top bar', async ({ page }) => {
-        const card = await show(page, 'info', 'At the top', 'Top');
-        const { top, bar } = await card.evaluate(node => ({ top: node.getBoundingClientRect().top, bar: Number.parseFloat(getComputedStyle(node.parentElement).marginTop) }));
-        expect(top - bar).toBeCloseTo(4, 0);
+/**
+ * The four insets of a computed `clip-path: inset(...)`, in the order top, right, bottom, left. The computed value lists
+ * only as many as it needs, and the missing ones repeat as CSS says.
+ */
+function clipInsets(clipPath) {
+    const values = clipPath.match(/^inset\((.*)\)$/)?.[1].split(/\s+/).map(Number.parseFloat);
+    if (!values || values.some(Number.isNaN)) {
+        throw new Error(`Not an inset(): ${clipPath}`);
+    }
+    const [top, right = top, bottom = top, left = right] = values;
+    return { top, right, bottom, left };
+}
+
+test.describe('the edge a notification comes out of', () => {
+    /**
+     * Shows a notification, holds its enter animation a fifth of the way in, where the card is across the edge it comes out of,
+     * and reads what is drawn there. The hit test skips what a clip-path clips, so it tells a drawn pixel from a laid-out one.
+     */
+    async function midEnter(page, edge) {
+        return page.evaluate((side) => {
+            const element = window.toastr.error('Coming in', 'Clip', { timeOut: 0, extendedTimeOut: 0 })[0];
+            for (const animation of element.getAnimations()) {
+                animation.pause();
+                animation.currentTime = 40;
+            }
+            const container = element.parentElement;
+            const containerBox = container.getBoundingClientRect();
+            const card = element.getBoundingClientRect();
+            const x = card.left + card.width / 2;
+            const edgeY = side === 'top' ? containerBox.top : containerBox.bottom;
+            const across = side === 'top' ? edgeY - 3 : edgeY + 3;
+            const inside = side === 'top' ? edgeY + 3 : edgeY - 3;
+            const drawnAt = y => document.elementsFromPoint(x, y).includes(element);
+            return {
+                clip: getComputedStyle(container).clipPath,
+                edgeY,
+                card: { top: card.top, bottom: card.bottom },
+                crosses: side === 'top' ? card.top < edgeY && card.bottom > edgeY : card.bottom > edgeY && card.top < edgeY,
+                drawnAcross: drawnAt(across),
+                drawnInside: drawnAt(inside),
+                barBottom: document.getElementById('top-bar')?.getBoundingClientRect().bottom ?? 0,
+                composerTop: document.getElementById('form_sheld')?.getBoundingClientRect().top ?? null,
+            };
+        }, edge);
+    }
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        test(`at a top position is clipped at its top edge, which is the bottom of the top bar, so the card is not drawn over the bar, at ${viewport.width}px`, async ({ page }) => {
+            await page.setViewportSize(viewport);
+            const result = await midEnter(page, 'top');
+            expect(result.crosses, 'mid-enter the card is across the edge').toBe(true);
+            expect(result.edgeY, 'the edge is the bottom of the top bar').toBeGreaterThanOrEqual(result.barBottom - 1);
+            expect(result.edgeY).toBeLessThanOrEqual(result.barBottom + 1);
+            expect(result.drawnAcross, 'nothing of the card is drawn above the bar\'s bottom').toBe(false);
+            expect(result.drawnInside, 'and the part under the edge is drawn').toBe(true);
+            const insets = clipInsets(result.clip);
+            expect(insets.top, 'the strip clips at its top edge').toBe(0);
+            expect(Math.max(insets.right, insets.bottom, insets.left), 'and nowhere else, so the shadow and the ring survive').toBeLessThan(0);
+        });
+    }
+
+    test('at a bottom position is clipped at its bottom edge, which is the top of the composer, so the card is not drawn over it', async ({ page }) => {
+        await selectSampleCharacter(page);
+        await expect(page.locator('#form_sheld')).toBeVisible();
+        await setPosition(page, 'toast-bottom-center');
+        const result = await midEnter(page, 'bottom');
+        expect(result.crosses).toBe(true);
+        expect(Math.abs(result.edgeY - result.composerTop), 'the edge is the top of the composer').toBeLessThan(1);
+        expect(result.drawnAcross, 'nothing of the card is drawn over the composer').toBe(false);
+        expect(result.drawnInside).toBe(true);
+        const insets = clipInsets(result.clip);
+        expect(insets.bottom).toBe(0);
+        expect(Math.max(insets.top, insets.right, insets.left)).toBeLessThan(0);
+        await setPosition(page, 'toast-top-center');
     });
+
+    test('at a bottom position on Home is clipped at the window edge', async ({ page }) => {
+        await setPosition(page, 'toast-bottom-center');
+        const result = await midEnter(page, 'bottom');
+        expect(result.crosses).toBe(true);
+        expect(result.edgeY).toBeCloseTo(900, 0);
+        const insets = clipInsets(result.clip);
+        expect(insets.bottom).toBe(0);
+        expect(Math.max(insets.top, insets.right, insets.left)).toBeLessThan(0);
+        await setPosition(page, 'toast-top-center');
+    });
+
+    test('keeps the ring and the shadow between two cards: the clip is on the strip, and not on a card', async ({ page }) => {
+        await show(page, 'info', 'First', 'First');
+        await show(page, 'info', 'Second', 'Second');
+        const clips = await page.evaluate(() => [...document.querySelectorAll('#toast-container > .sb-form-notification')].map(node => getComputedStyle(node).clipPath));
+        expect(clips).toEqual(['none', 'none']);
+        const shadow = await page.evaluate(() => getComputedStyle(document.querySelector('#toast-container > .sb-form-notification')).boxShadow);
+        expect(shadow, 'the Popover Shadow with its ring').not.toBe('none');
+    });
+
+    for (const edge of ['top', 'bottom']) {
+        test(`in the stack with a toast at the same ${edge} position, comes out from beyond the toast, and not over it`, async ({ page }) => {
+            await page.evaluate(async (side) => {
+                const motion = await import('/scripts/sillybunny-toast-motion.js');
+                motion.setToastPosition(`toast-${side}-center`);
+                motion.setNotificationPosition(`toast-${side}-center`);
+            }, edge);
+            await page.evaluate(() => window.toastr.success('A toast', '', { timeOut: 0, extendedTimeOut: 0 }));
+            const toast = page.locator(TOAST_FORM_SELECTOR);
+            await expect(toast).toBeVisible();
+            await expect.poll(() => toast.evaluate(node => node.getAnimations().length)).toBe(0);
+            // The notifications move beyond the toast over 300ms when the toast shows.
+            await expect.poll(() => page.evaluate(() => getComputedStyle(document.getElementById('sb-toast-overlay')).display)).toBe('block');
+            await page.waitForTimeout(500);
+            const toastBox = await boxOf(toast);
+            const result = await midEnter(page, edge);
+            expect(result.crosses).toBe(true);
+            if (edge === 'top') {
+                expect(result.edgeY, 'the strip starts under the toast').toBeGreaterThanOrEqual(toastBox.bottom - 1);
+            } else {
+                expect(result.edgeY, 'the strip ends above the toast').toBeLessThanOrEqual(toastBox.top + 1);
+            }
+            expect(result.drawnAcross, 'the card is not drawn over the toast').toBe(false);
+            expect(result.drawnInside).toBe(true);
+            await page.evaluate(async () => {
+                const motion = await import('/scripts/sillybunny-toast-motion.js');
+                motion.setToastPosition('toast-bottom-center');
+                motion.setNotificationPosition('toast-top-center');
+            });
+        });
+    }
+
+    test('while a Popup is open is clipped at the same edge, and a card does not draw over the bar', async ({ page }) => {
+        await page.evaluate(async () => {
+            const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+            window.__popup = new Popup('<h3>A Popup</h3><p>Some text in a Popup.</p>', POPUP_TYPE.TEXT, '');
+            void window.__popup.show();
+        });
+        await expect(page.locator('dialog[open]:not([opening])')).toHaveCount(1);
+        const result = await midEnter(page, 'top');
+        expect(result.crosses).toBe(true);
+        expect(Math.abs(result.edgeY - result.barBottom)).toBeLessThan(1.5);
+        expect(result.drawnAcross).toBe(false);
+        expect(result.drawnInside).toBe(true);
+        expect(clipInsets(result.clip).top).toBe(0);
+        await page.evaluate(() => window.__popup.completeCancelled());
+    });
+});
+
+test.describe('where it sits', () => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        test(`at a top position, 4px under the top bar, which is taller than --topBarBlockSize on a phone, at ${viewport.width}px`, async ({ page }) => {
+            await page.setViewportSize(viewport);
+            const card = await show(page, 'info', 'At the top', 'Top');
+            const { top, bar } = await card.evaluate(node => ({ top: node.getBoundingClientRect().top, bar: document.getElementById('top-bar').getBoundingClientRect().bottom }));
+            expect(top - bar).toBeCloseTo(4, 0);
+        });
+    }
 
     test('at the corners, 4px from the window\'s side', async ({ page }) => {
         for (const [position, side] of [['toast-top-left', 'left'], ['toast-top-right', 'right'], ['toast-bottom-left', 'left'], ['toast-bottom-right', 'right']]) {

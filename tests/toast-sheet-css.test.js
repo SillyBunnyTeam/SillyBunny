@@ -52,15 +52,22 @@ describe('the toast layer', () => {
         expect(ruleOf(themeCss, `${NOTIFICATION}:is(.toast-error, .toast-warning, .toast-success)`)).toBe('--sb-n-start: 60px;');
     });
 
-    test('the title is the ink, bold, and 4px from the body; Dismiss floats at the end and is as tall as one line', () => {
+    test('the title is the ink, bold, and 4px from the body; Dismiss floats at the end, centred on the first line', () => {
         expect(ruleOf(themeCss, `${NOTIFICATION} > .toast-title`)).toContain('color: inherit');
         expect(ruleOf(themeCss, `${NOTIFICATION} > .toast-title`)).toContain('font-weight: 700');
         expect(ruleOf(themeCss, `${NOTIFICATION} > .toast-message`)).toContain('font-weight: 400');
         expect(ruleOf(themeCss, `${NOTIFICATION} > .toast-title + .toast-message`)).toBe('margin-top: var(--sb-n-space);');
         const close = ruleOf(themeCss, `${NOTIFICATION} > .toast-close-button`);
         expect(close).toContain('float: inline-end');
-        expect(close).toContain('margin-block: calc((var(--sb-n-line) - 34px) / 2)');
-        expect(close).toContain('margin-inline-end: 6px');
+        expect(close).toContain('margin-block: calc((var(--sb-n-line) - 34px) / 2) calc((var(--sb-n-line) - 34px) / 2 + var(--sb-n-space) - 0.5px)');
+        // 6px at its end, and 6px between it and the text of the first row.
+        expect(close).toContain('margin-inline: 6px');
+    });
+
+    test('the text column ends 6px inside the card, and only the first row gives way to Dismiss, which is a float in the text\'s own formatting context', () => {
+        expect(ruleOf(themeCss, NOTIFICATION)).toContain('--sb-n-end: 6px');
+        expect(ruleOf(themeCss, `${NOTIFICATION} > :is(.toast-title, .toast-message)`)).toContain('padding-inline: var(--sb-n-start) var(--sb-n-end)');
+        expect(themeCss).not.toContain('--sb-n-end: 46px');
     });
 
     test('the button row has three buttons to a row of equal widths, 6px apart, with 4px of padding and the Control radius and bold, 6px 12px buttons', () => {
@@ -246,7 +253,8 @@ describe('the toast overlay', () => {
         expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toContain('bottom: var(--sb-toast-bottom-inset, 0px)');
         const top = ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right)');
         expect(top).toContain('top: 0');
-        expect(top).toContain('margin-top: var(--topBarBlockSize)');
+        // The bottom of the top bar, which is taller than --topBarBlockSize on a phone.
+        expect(top).toContain('margin-top: var(--sb-topbar-layout-offset, var(--topBarBlockSize))');
     });
 
     test('in a dialog it is at the bottom of the dialog\'s box, as the containing block that a dialog keeps for it', () => {
@@ -259,13 +267,18 @@ describe('the toast overlay', () => {
 
     test('an in-app notification at the position of the toasts sits beyond them by the offset that the script writes, and above the composer and keyboard by the inset otherwise', () => {
         const top = ruleOf(themeCss, 'body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right)');
-        expect(top).toContain('margin-top: calc(var(--topBarBlockSize) + var(--sb-toast-stack-offset, 0px))');
+        expect(top).toContain('margin-top: calc(var(--sb-topbar-layout-offset, var(--topBarBlockSize)) + var(--sb-toast-stack-offset, 0px))');
         expect(top).toContain('top: 0');
         const bottom = ruleOf(themeCss, 'body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)');
         expect(bottom).toContain('margin-bottom: var(--sb-toast-stack-offset, 0px)');
         expect(bottom).toContain('bottom: var(--sb-toast-bottom-inset, 0px)');
         // The newest is first in the document and drawn nearest the bottom edge.
         expect(bottom).toContain('flex-direction: column-reverse');
+    });
+
+    test('the notification strip clips at the edge it comes out of and nowhere else, so the shadow and the ring survive', () => {
+        expect(ruleOf(themeCss, 'body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right)')).toContain('clip-path: inset(0 -100vmax -100vmax)');
+        expect(ruleOf(themeCss, 'body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toContain('clip-path: inset(-100vmax -100vmax 0)');
     });
 
     test('the notification container is a strip across the window, as the overlay is, and takes no pointer events itself', () => {

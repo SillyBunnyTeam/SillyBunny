@@ -744,8 +744,11 @@ function placeToast(element, effective, options) {
         }
         removeOverlayIfEmpty();
         // The overlay that decided the form was at the position of the notifications, and is gone now, so the inset
-        // that it left them is stale. The notification is placed before it shows.
-        updateToastPlacement();
+        // that it left them is stale. The notification is placed before it shows, and where the first one makes the
+        // container it is placed at once, so that the strip does not glide to its place under the toasts.
+        const container = element.parentElement;
+        const first = [...(container?.children ?? [])].every(child => child === element || child.style.display === 'none');
+        updateToastPlacement({ jump: first });
     }
     return form;
 }
