@@ -196,6 +196,8 @@
             const dialog = document.createElement('dialog');
             dialog.id = 'fx-raw-modal';
             dialog.textContent = 'An extension dialog';
+            // A dialog of an extension holds its content, so it is larger than one line of text.
+            dialog.style.cssText = 'width: 360px; height: 220px;';
             document.body.append(dialog);
             dialog.showModal();
         },
@@ -215,22 +217,24 @@
         },
 
         /**
-         * A message whose one-line width is `delta` px under (negative) or over the limit of 34em, with the padding of a toast
-         * counted, measured in the font of a real toast.
+         * A message whose one-line width in a toast is `delta` px under (negative) or over the limit of 34em. The toast counts
+         * as a whole against 34em, so the parts around the label (padding, glyph and close button) are taken off the text,
+         * and the text is measured in the font of the label.
          */
         messageNearLimit(delta) {
             const reference = window.toastr.info('reference', '', { timeOut: 0, extendedTimeOut: 0 });
             const element = reference[0];
-            const style = getComputedStyle(element);
-            const fontSize = Number.parseFloat(style.fontSize);
-            const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
-            const target = 34 * fontSize - padding + delta;
+            const label = element.querySelector('.toast-message');
+            const fontSize = Number.parseFloat(getComputedStyle(element).fontSize);
+            const chrome = element.getBoundingClientRect().width - lineWidth('reference', label);
+            const target = 34 * fontSize - chrome + delta;
             let text = 'n';
-            while (lineWidth(text, element) < target) {
+            while (lineWidth(text, label) < target) {
                 text += text.length % 7 === 6 ? ' n' : 'n';
             }
+            const width = lineWidth(text, label);
             element.remove();
-            return { text, fontSize, padding, width: lineWidth(text, element) };
+            return { text, fontSize, padding: chrome, width };
         },
     };
 })();

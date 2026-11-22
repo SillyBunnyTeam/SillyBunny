@@ -7157,8 +7157,9 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
     background: color-mix(in srgb, currentColor 20%, transparent);
 }
 
-body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):disabled {
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):is(:disabled, [aria-disabled='true']) {
     opacity: 0.5;
+    pointer-events: none;
 }
 
 /* The close button of both forms: round and flat. On a coarse pointer the target grows to 44px without growing the toast. */

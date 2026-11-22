@@ -1275,12 +1275,47 @@ describe('the parts of a toast and the dismissal of a message', () => {
         expect($notification.hasClass('sb-toast-leaving')).toBe(true);
     });
 
-    test('the button of a toast keeps working when the toast ignores taps', () => {
+    test('the button of a toast keeps working when the toast ignores taps: it runs its action once, is disabled, and the toast goes', async () => {
         const action = jest.fn();
         const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false });
+        const button = $toast.find('#undo')[0];
         $toast.find('#undo').on('click', action);
-        $toast.find('#undo').trigger('click');
+        button.click();
         expect(action).toHaveBeenCalledTimes(1);
+        expect(button.disabled).toBe(false);
+
+        await advance(0);
+        expect(button.disabled).toBe(true);
+        expect(button.getAttribute('aria-disabled')).toBe('true');
+        expect($toast.hasClass('sb-toast-leaving')).toBe(true);
+
+        button.click();
+        expect(action).toHaveBeenCalledTimes(1);
+    });
+
+    test('a button whose handler stops the click still dismisses the toast, and a div that is a button is marked disabled', async () => {
+        const $toast = toastr.info('<div>Removed <div class="menu_button" id="undo">Undo</div></div>', '', { escapeHtml: false });
+        $toast.find('#undo')[0].addEventListener('click', event => event.stopPropagation());
+        $toast.find('#undo')[0].click();
+        await advance(0);
+        expect($toast.find('#undo')[0].getAttribute('aria-disabled')).toBe('true');
+        expect($toast.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
+    test('a toast that a caller made with tapToDismiss off keeps its button and stays when it is clicked', async () => {
+        const $toast = toastr.info('<div>Retry <button type="button" id="retry">Retry</button></div>', '', { escapeHtml: false, tapToDismiss: false });
+        const button = $toast.find('#retry')[0];
+        button.click();
+        await advance(0);
+        expect(button.disabled).toBe(false);
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+    });
+
+    test('a click on the text of a toast that has a button does not dismiss it', async () => {
+        const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false });
+        $toast.find('.toast-message').trigger('click');
+        await advance(0);
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
     });
 });
 

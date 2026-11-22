@@ -277,7 +277,8 @@ test.describe('dialogs that are not Popups', () => {
     test('an alert keeps the messages above it, and gives them back when its response closes it', async ({ page }) => {
         await expectMessagesFollowTheDialog(page, {
             open: () => fire(page, 'openAlertFrame'),
-            close: () => page.getByRole('button', { name: 'Cancel', exact: true }).click(),
+            // The toast sits at the bottom of the alert, over its responses, so the alert is closed with the keyboard.
+            close: () => page.keyboard.press('Escape'),
         });
         await expect(page.locator('dialog[open]')).toHaveCount(0);
     });

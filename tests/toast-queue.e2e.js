@@ -28,14 +28,18 @@ test('a second toast waits behind the first and shows when the first has gone', 
     await expect(toast(page, 'Second'), 'it goes after its own timeout').toHaveCount(0, { timeout: 4000 });
 });
 
-test('the app listener still hears a queued toast: it is a tap target when it shows', async ({ page }) => {
+test('the app listener still hears a queued message: a notification is a tap target, and a toast is not', async ({ page }) => {
     await page.evaluate(() => {
         window.toastr.info('First message', '', { timeOut: 700, extendedTimeOut: 700 });
         window.toastr.info('Second message', '', { timeOut: 5000, extendedTimeOut: 5000 });
+        window.toastr.info('Notification message', 'Title', { timeOut: 5000, extendedTimeOut: 5000 });
     });
     await expect(toast(page, 'Second')).toBeVisible({ timeout: 4000 });
-    await expect(toast(page, 'Second')).toHaveAttribute('title', /.+/);
-    await expect(toast(page, 'Second')).toHaveClass(/interactable/);
+    await expect(toast(page, 'Second'), 'a toast has no tap hint').not.toHaveAttribute('title', /.+/);
+    await expect(toast(page, 'Second')).not.toHaveClass(/interactable/);
+    const notification = page.locator(NOTIFICATION_FORM_SELECTOR, { hasText: 'Notification message' });
+    await expect(notification).toHaveAttribute('title', /.+/);
+    await expect(notification).toHaveClass(/interactable/);
 });
 
 test('a toast with a button shows at once and the shown toast waits at the head of the queue', async ({ page }) => {
@@ -135,7 +139,9 @@ test.describe('with a finger', () => {
         });
         const held = page.locator(TOAST_FORM_SELECTOR, { hasText: 'Removed' });
         await expect(held).toBeVisible();
-        const box = await held.locator('button').boundingBox();
+        // The toast slides in over 300ms, and a box that is read during the slide is the one of the moving toast.
+        await expect.poll(() => held.evaluate(node => node.getAnimations().length)).toBe(0);
+        const box = await held.locator('.toast-message button').boundingBox();
         const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         const session = await page.context().newCDPSession(page);
         await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
@@ -174,10 +180,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
 }
 
-test('a toast without a button keeps its block layout', async ({ page }) => {
-    await page.evaluate(() => window.toastr.info('A plain toast', '', { timeOut: 0, extendedTimeOut: 0 }));
+test('a toast is a row of its parts, and an in-app notification keeps its block layout', async ({ page }) => {
+    await page.evaluate(() => {
+        window.toastr.info('A plain toast', '', { timeOut: 0, extendedTimeOut: 0 });
+        window.toastr.info('A notification', 'Title', { timeOut: 0, extendedTimeOut: 0 });
+    });
     await expect(toast(page, 'A plain toast')).toBeVisible();
-    expect(await toast(page, 'A plain toast').evaluate(node => getComputedStyle(node).display)).toBe('block');
+    expect(await toast(page, 'A plain toast').evaluate(node => getComputedStyle(node).display)).toBe('flex');
+    expect(await page.locator(NOTIFICATION_FORM_SELECTOR, { hasText: 'A notification' }).evaluate(node => getComputedStyle(node).display)).toBe('block');
 });
 
 test('a message with two buttons is an in-app notification, and keeps its block layout so the buttons do not share a cell', async ({ page }) => {

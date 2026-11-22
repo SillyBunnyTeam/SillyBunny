@@ -19,6 +19,7 @@
 import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } from './sillybunny-motion.js';
 import { getTopmostDialog } from './sillybunny-editor/overlay-host.js';
 import {
+    BUTTON_SELECTOR,
     NOTIFICATION_FORM,
     NOTIFICATION_FORM_CLASS,
     NOTIFICATION_MAX_SHOWN,
@@ -774,9 +775,14 @@ function dismissButtonHtml() {
  * to dismiss when it creates the toast, before the form is known, and the app's listener adds the "Tap to close" hint
  * after that, so both are taken off once the toast is known to be a toast. The close button is the last part of a toast,
  * and toastr puts it first.
+ *
+ * The tap also used to dismiss the toast when it landed on the button, so a toast with an Undo went after the Undo.
+ * That stays, as libadwaita's `action_clicked_cb` does it: the button runs its action once, is disabled, and the toast
+ * goes. A toast that a caller made with `tapToDismiss: false` keeps its button and stays, as it did.
  * @param {any} $toast
+ * @param {boolean} dismissesAfterAction
  */
-function makeInertToTaps($toast) {
+function makeInertToTaps($toast, dismissesAfterAction) {
     const element = $toast[0];
     $toast.off('click');
     element.classList.remove('interactable');
@@ -784,6 +790,24 @@ function makeInertToTaps($toast) {
     const close = [...element.children].find(child => child.classList.contains('toast-close-button'));
     if (close) {
         element.append(close);
+    }
+    if (dismissesAfterAction) {
+        // The capture phase sees the click whether or not the button's own handler stops it, and the work waits for
+        // the end of the event so that the handler of the caller runs first, on a button that is still enabled.
+        element.addEventListener('click', (event) => {
+            const button = event.target instanceof Element ? event.target.closest(BUTTON_SELECTOR) : null;
+            if (!button || !element.querySelector('.toast-message')?.contains(button)) {
+                return;
+            }
+            setTimeout(() => {
+                button.setAttribute('aria-disabled', 'true');
+                if (button instanceof HTMLButtonElement || button instanceof HTMLInputElement) {
+                    button.disabled = true;
+                }
+                // Focus inside a toast keeps toastr from hiding it, unless the call forces it.
+                toastrApi.clear($toast, { force: true });
+            }, 0);
+        }, true);
     }
 }
 
@@ -863,7 +887,7 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
     const element = $toast[0];
     const form = placeToast(element, effective, options);
     if (form === TOAST_FORM) {
-        makeInertToTaps($toast);
+        makeInertToTaps($toast, effective.tapToDismiss !== false);
     }
     const { timeOut, extendedTimeOut, persistent } = timingOf(form, type, optionsOverride, effective);
     return {
