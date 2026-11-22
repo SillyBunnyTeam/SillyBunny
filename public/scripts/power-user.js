@@ -101,6 +101,7 @@ import { createBanner } from './sillybunny-editor/banner.js'; // SillyBunny: the
 // SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
 import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
 import { setNotificationPosition } from './sillybunny-toast-motion.js'; // SillyBunny: toasts and in-app notifications have a position each
+import { DEFAULT_TOAST_POSITION, applyToastPosition, bindToastPositionSelect } from './sillybunny-toast-position.js'; // SillyBunny: the position of toasts, kept apart from the notification position
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -397,6 +398,7 @@ export const power_user = {
     avatar_style: avatar_styles.ROUND,
     chat_display: chat_styles.DEFAULT,
     toastr_position: defaultToastPosition,
+    toast_position: DEFAULT_TOAST_POSITION, // SillyBunny: the position of toasts; toastr_position is the position of in-app notifications
     chat_width: 100,
     never_resize_avatars: false,
     show_card_avatar_urls: false,
@@ -2723,6 +2725,7 @@ export async function loadPowerUserSettings(settings, data) {
     loadCharListState();
     toggleMDHotkeyIconDisplay();
     applyToastrPosition();
+    applyToastPosition(power_user, toastPositionClasses); // SillyBunny: the position of toasts
 }
 
 function toggleMDHotkeyIconDisplay() {
@@ -4598,6 +4601,8 @@ jQuery(async () => {
         applyToastrPosition();
         saveSettingsDebounced();
     });
+
+    bindToastPositionSelect(power_user, toastPositionClasses, saveSettingsDebounced); // SillyBunny: the position of toasts
 
     $('#chat_width_slider').on('input', function (e, data) {
         const applyMode = data?.forced ? 'forced' : 'normal';

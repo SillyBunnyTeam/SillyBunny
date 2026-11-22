@@ -5524,10 +5524,24 @@
                                         <option value="gallery" data-i18n="Gallery">Gallery</option>
                                     </select>
                                 </div>
+                                <!-- SillyBunny: the subtitle says which messages this position moves; toasts have a position of their own below. -->
                                 <div class="flex-container alignItemsBaseline">
                                     <span data-i18n="Notifications:">Notifications:</span>
-                                    <small class="ds-row-subtitle" data-i18n="Choose where pop-up notifications appear on the screen">Choose where pop-up notifications appear on the screen</small>
+                                    <small class="ds-row-subtitle" data-i18n="Choose where application pop-up notifications appear on the screen">Choose where application pop-up notifications appear on the screen</small>
                                     <select id="toastr_position" class="widthNatural flex1 margin0 text_pole">
+                                        <option value="toast-top-left" data-i18n="Top Left">Top Left</option>
+                                        <option value="toast-top-center" data-i18n="Top Center">Top Center</option>
+                                        <option value="toast-top-right" data-i18n="Top Right">Top Right</option>
+                                        <option value="toast-bottom-left" data-i18n="Bottom Left">Bottom Left</option>
+                                        <option value="toast-bottom-center" data-i18n="Bottom Center">Bottom Center</option>
+                                        <option value="toast-bottom-right" data-i18n="Bottom Right">Bottom Right</option>
+                                    </select>
+                                </div>
+                                <!-- SillyBunny: toasts and in-app notifications are two forms of message, and each has its own position. -->
+                                <div class="flex-container alignItemsBaseline">
+                                    <span data-i18n="Toasts:">Toasts:</span>
+                                    <small class="ds-row-subtitle" data-i18n="Choose where application toast confirmations appear on the screen">Choose where application toast confirmations appear on the screen</small>
+                                    <select id="toast_position" class="widthNatural flex1 margin0 text_pole">
                                         <option value="toast-top-left" data-i18n="Top Left">Top Left</option>
                                         <option value="toast-top-center" data-i18n="Top Center">Top Center</option>
                                         <option value="toast-top-right" data-i18n="Top Right">Top Right</option>

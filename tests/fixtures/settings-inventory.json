@@ -6915,6 +6915,7 @@
         {"identity":"#chat_display","identityKind":"id","kind":"select","name":"Chat Style","group":"Chat Display","where":"visible","driver":"select-row","keys":["power_user.chat_display"],"selfSaves":true},
         {"identity":"#media_display","identityKind":"id","kind":"select","name":"Media Style","group":"Chat Display","where":"visible","driver":"select-row","keys":["power_user.media_display"],"selfSaves":true},
         {"identity":"#toastr_position","identityKind":"id","kind":"select","name":"Notifications","group":"Chat Display","where":"visible","driver":"select-row","keys":["power_user.toastr_position"],"selfSaves":true},
+        {"identity":"#toast_position","identityKind":"id","kind":"select","name":"Toasts","group":"Chat Display","where":"visible","driver":"select-row","keys":["power_user.toast_position"],"selfSaves":true},
         {"identity":"#reduced_motion","identityKind":"id","kind":"switch","name":"Reduced Motion","group":"Visual Toggles","where":"visible","keys":["power_user.reduced_motion"],"selfSaves":true,"storage":["sb-reduced-motion"]},
         {"identity":"#fast_ui_mode","identityKind":"id","kind":"switch","name":"No Blur Effect","group":"Visual Toggles","where":"visible","keys":["power_user.fast_ui_mode"],"selfSaves":true},
         {"identity":"#noShadowsmode","identityKind":"id","kind":"switch","name":"No Text Shadows","group":"Visual Toggles","where":"visible","keys":["power_user.noShadows"],"selfSaves":true},
