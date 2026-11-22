@@ -508,6 +508,27 @@ test.describe('the button row', () => {
     });
 });
 
+test.describe('under forced colours', () => {
+    test.use({ forcedColors: 'active' });
+
+    test('the card and every button of its row have an edge, as forced colours remove the shadow and the fill that draw them', async ({ page }) => {
+        // A plain button, as the Getting Started toast has: it has no menu_button class that a rule for flat controls would find.
+        await page.evaluate(htmlOptions => window.toastr.warning('<div>Choose</div><button type="button" class="sbHomeToastAction" id="plain">Show Me</button><button type="button" id="bare">Bare</button>', 'Forced', htmlOptions), HTML);
+        await settled(page);
+        const card = notificationBoxes(page).filter({ hasText: 'Forced' });
+        const outlines = await card.evaluate((node) => {
+            const outline = (element) => {
+                const style = getComputedStyle(element);
+                return { width: style.outlineWidth, style: style.outlineStyle };
+            };
+            return { card: outline(node), plain: outline(node.querySelector('#plain')), bare: outline(node.querySelector('#bare')) };
+        });
+        expect(outlines.card, 'the card').toEqual({ width: '1px', style: 'solid' });
+        expect(outlines.plain, 'a plain button').toEqual({ width: '1px', style: 'solid' });
+        expect(outlines.bare, 'a button with no class at all').toEqual({ width: '1px', style: 'solid' });
+    });
+});
+
 test.describe('on a coarse pointer', () => {
     test.use({ hasTouch: true, isMobile: true });
 

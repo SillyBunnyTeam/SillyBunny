@@ -6698,7 +6698,6 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         .list-group.ctx-menu,
         .autoComplete-wrap > .autoComplete,
         .autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details,
-        body #toast-container[class] > .sb-form-notification,
         .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
         .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList,
         .ds-pref-group
@@ -6707,8 +6706,9 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         outline-offset: -1px;
     }
 
-    /* Forced colours remove the fill that is a flat control's only edge. */
-    :is(.menu_button, .sb-dialog__icon-button, .sb-dialog__close, .sb-dialog__back, .sb-action-menu-item, .sb-action-sheet-close, .sb-boolean-radio-option > span) {
+    /* Forced colours remove the fill that is a flat control's only edge. The buttons of a notification's row are a flat fill
+       too, and a caller's button need not be a .menu_button. */
+    :is(.menu_button, .sb-dialog__icon-button, .sb-dialog__close, .sb-dialog__back, .sb-action-menu-item, .sb-action-sheet-close, .sb-boolean-radio-option > span, #toast-container .sb-toast-actions > *) {
         outline: 1px solid ButtonBorder;
         outline-offset: -1px;
     }

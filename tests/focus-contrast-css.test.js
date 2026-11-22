@@ -91,7 +91,8 @@ describe('forced colours: the edge of a surface that draws it as a shadow ring',
     });
 
     // A drag helper is a copy of a row that is on the page already. A menu sheet is the same element as its popover.
-    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]']);
+    // The card of an in-app notification draws the popover ring too, and the rule for toasts above (`:is(#toast-container, #sb-toast-overlay) > div`) gives it its edge.
+    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]', 'body #toast-container[class] > .sb-form-notification']);
 
     test('one rule in the theme sheet, inside forced-colors, draws a 1px inset outline in a system colour', () => {
         expect(edgeRule).toBeDefined();
@@ -110,6 +111,12 @@ describe('forced colours: the edge of a surface that draws it as a shadow ring',
             }
         }
         expect(missing).toEqual([]);
+    });
+
+    test('the toast rule gives the card of a notification its edge, so the card is not repeated in the popover rule', () => {
+        expect(edgeSelectors).not.toContain('body #toast-container[class] > .sb-form-notification');
+        const toastEdge = forcedColorsBlocks.join('\n').match(/:is\(#toast-container, #sb-toast-overlay\) > div \{\s*outline: 1px solid CanvasText;\s*outline-offset: -1px;\s*\}/);
+        expect(toastEdge).not.toBeNull();
     });
 
     test('the action menu sheet and popover, which edge their frames with a ring, are in the rule', () => {
