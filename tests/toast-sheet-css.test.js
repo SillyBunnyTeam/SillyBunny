@@ -113,7 +113,7 @@ describe('the toast layer', () => {
         expect(themeCss).not.toMatch(/body :is\(#toast-container, #sb-toast-overlay\) \{\n {4}--sb-focus-ring/);
     });
 
-    test('the per-surface action grid of the old pill is gone, and the CSS motion of a notification with it', () => {
+    test('a notification has no action grid and no CSS exit motion, because its layout is a button row and its motion is the script\'s', () => {
         expect(themeCss).not.toContain('.sb-toast--action');
         expect(themeCss).not.toContain('@keyframes sb-toast-exit');
         expect(themeCss).not.toContain('#toast-container > div.sb-toast-leaving');

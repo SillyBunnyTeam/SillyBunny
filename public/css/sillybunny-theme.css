@@ -7550,7 +7550,7 @@ body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(but
     }
 }
 
-/* A toast in a container that the app does not draw, such as an extension's own, keeps the fade and slide of the old toast. */
+/* A toast in a container that the app does not draw, such as an extension's own, fades in and slides down from above. */
 @keyframes sb-toast-in {
     from {
         opacity: 0;
