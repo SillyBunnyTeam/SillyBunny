@@ -8,10 +8,13 @@ import {
     FRAME_LEFT_PROPERTY,
     FRAME_WIDTH_PROPERTY,
     IN_DIALOG_ATTRIBUTE,
+    ACTION_ROW_SELECTOR,
     STACK_OFFSET_PROPERTY,
+    actionRowTop,
     bottomInset,
     composerInset,
     dialogSurfaceOf,
+    dialogToastBottom,
     edgeOf,
     keyboardInset,
     stackOffset,
@@ -86,6 +89,77 @@ describe('the offset of the notifications at the position of the toasts', () => 
     test('is nothing while no toast is on screen', () => {
         expect(stackOffset({ edge: 'bottom', layoutHeight: 900, overlayBox: { top: 727, height: 0 } })).toBe(0);
         expect(stackOffset({ edge: 'top', layoutHeight: 900, overlayBox: { top: 54, height: 0 } })).toBe(0);
+    });
+});
+
+describe('the space that a toast in a dialog keeps clear', () => {
+    test('is the space under the action row when the dialog has one, and under the surface when it has none', () => {
+        expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 700, rowTop: null })).toBe(100);
+        expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 700, rowTop: 640 })).toBe(160);
+    });
+
+    test('never goes under the surface, and never below nothing', () => {
+        expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 700, rowTop: 760 })).toBe(100);
+        expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 900, rowTop: null })).toBe(0);
+    });
+});
+
+describe('the action row of a dialog', () => {
+    function surfaceWith(...rows) {
+        const surface = document.createElement('div');
+        Object.defineProperty(surface, 'offsetHeight', { configurable: true, value: 600 });
+        surface.getBoundingClientRect = () => ({ left: 0, top: 100, width: 500, height: 600, right: 500, bottom: 700 });
+        for (const { className, top, height, visible = true, visibility = 'visible' } of rows) {
+            const row = document.createElement('div');
+            row.className = className;
+            row.style.visibility = visibility;
+            row.getBoundingClientRect = () => ({ left: 0, top, width: 500, height, right: 500, bottom: top + height });
+            row.getClientRects = () => (visible ? [row.getBoundingClientRect()] : []);
+            surface.append(row);
+        }
+        document.body.append(surface);
+        return surface;
+    }
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    test('is found by the classes of the responses of an alert, the extra responses and the controls of a Popup', () => {
+        for (const className of ['sb-dialog__responses', 'sb-dialog__bottom-bar', 'popup-controls']) {
+            expect(ACTION_ROW_SELECTOR).toContain(`.${className}`);
+            expect(actionRowTop(surfaceWith({ className, top: 600, height: 80 }))).toBe(500);
+            document.body.innerHTML = '';
+        }
+    });
+
+    test('is the highest of the rows at the bottom, and a row in the upper half is a header, not an action row', () => {
+        const surface = surfaceWith(
+            { className: 'popup-controls', top: 110, height: 50 },
+            { className: 'sb-dialog__bottom-bar', top: 640, height: 50 },
+            { className: 'sb-dialog__responses', top: 580, height: 60 },
+        );
+        expect(actionRowTop(surface)).toBe(480);
+    });
+
+    test('is not a row that has no box or is hidden, as the controls of a Popup that are laid out with display: contents', () => {
+        const surface = surfaceWith(
+            { className: 'popup-controls', top: 600, height: 80, visible: false },
+            { className: 'sb-dialog__responses', top: 620, height: 60, visibility: 'hidden' },
+            { className: 'sb-dialog__bottom-bar', top: 650, height: 0 },
+        );
+        expect(actionRowTop(surface)).toBeNull();
+    });
+
+    test('is none in a dialog that has no such row', () => {
+        expect(actionRowTop(surfaceWith())).toBeNull();
+    });
+
+    test('is read at its layout size, though the surface is drawn smaller', () => {
+        const surface = surfaceWith({ className: 'sb-dialog__responses', top: 592, height: 48 });
+        // Drawn at 0.8 from y=160, while it is laid out 600px high: the row's top is 540px below the surface's top.
+        surface.getBoundingClientRect = () => ({ left: 100, top: 160, width: 400, height: 480, right: 500, bottom: 640 });
+        expect(actionRowTop(surface)).toBe(540);
     });
 });
 
@@ -167,26 +241,87 @@ describe('writing the placement', () => {
         expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('');
     });
 
-    test('in a shared dialog host, writes the box of the frame inside the host', () => {
+    /** Gives an element the boxes that jsdom does not lay out: its drawn rectangle and its layout offsets. */
+    function lay(element, { rect, offset = {}, client = {}, visible = true }) {
+        element.getBoundingClientRect = () => ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height });
+        element.getClientRects = () => (visible ? [element.getBoundingClientRect()] : []);
+        for (const [name, value] of Object.entries({ ...offset, ...client })) {
+            Object.defineProperty(element, name, { configurable: true, value });
+        }
+    }
+
+    function frameInHost() {
         const host = document.createElement('dialog');
         host.className = 'sb-dialog-host';
         const frame = document.createElement('div');
         frame.className = 'sb-dialog';
         host.append(frame);
         document.body.append(host);
-        host.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 800 });
-        frame.getBoundingClientRect = () => ({ left: 250, top: 100, width: 500, height: 600 });
-        Object.defineProperties(frame, {
-            offsetWidth: { configurable: true, value: 500 },
-            offsetTop: { configurable: true, value: 100 },
-            offsetHeight: { configurable: true, value: 600 },
-        });
-        Object.defineProperty(host, 'clientHeight', { configurable: true, value: 800 });
+        lay(host, { rect: { left: 0, top: 0, width: 1000, height: 800 }, offset: { offsetHeight: 800 }, client: { clientHeight: 800, clientTop: 0 } });
+        return { host, frame };
+    }
+
+    test('in a shared dialog host, writes the box of the frame inside the host', () => {
+        const { host, frame } = frameInHost();
+        lay(frame, { rect: { left: 250, top: 100, width: 500, height: 600 }, offset: { offsetLeft: 250, offsetWidth: 500, offsetTop: 100, offsetHeight: 600 } });
         const overlay = overlayWith('toast-top-center', host);
         updateToastPlacement();
         expect(overlay.style.getPropertyValue(FRAME_LEFT_PROPERTY)).toBe('250px');
         expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('500px');
         expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('100px');
+    });
+
+    test('takes the left of the frame from its layout while it opens, when a scale makes the drawn box smaller and off to one side', () => {
+        const { host, frame } = frameInHost();
+        // Scaled to 0.8 about its centre: drawn from 350 to 650 wide, though it is laid out from 250 to 750.
+        lay(frame, { rect: { left: 300, top: 140, width: 400, height: 480 }, offset: { offsetLeft: 250, offsetWidth: 500, offsetTop: 100, offsetHeight: 600 } });
+        const overlay = overlayWith('toast-top-center', host);
+        updateToastPlacement();
+        expect(overlay.style.getPropertyValue(FRAME_LEFT_PROPERTY)).toBe('250px');
+        expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('500px');
+        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('100px');
+    });
+
+    test('keeps the toast above the action row of a frame, read at its layout size while the frame is scaled', () => {
+        const { host, frame } = frameInHost();
+        // The frame is laid out 600px high from y=100, and drawn at 0.8: 480px from y=160. Its responses are 60px high at its foot.
+        lay(frame, { rect: { left: 300, top: 160, width: 400, height: 480 }, offset: { offsetLeft: 250, offsetWidth: 500, offsetTop: 100, offsetHeight: 600 } });
+        const responses = document.createElement('div');
+        responses.className = 'sb-dialog__responses';
+        frame.append(responses);
+        // Laid out at y=640 to 700 inside the host, so drawn at 160 + (640 - 100) * 0.8 = 592.
+        lay(responses, { rect: { left: 300, top: 592, width: 400, height: 48 } });
+        const overlay = overlayWith('toast-top-center', host);
+        updateToastPlacement();
+        // The row starts 540px below the frame's top, so at y=640 in the host, 160px above the bottom of the host.
+        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('160px');
+    });
+
+    test('in a Popup, keeps the toast above its action row, counting from the inside of its border', () => {
+        const popup = document.createElement('dialog');
+        popup.className = 'popup sb-dialog sb-dialog--alert';
+        document.body.append(popup);
+        lay(popup, { rect: { left: 300, top: 200, width: 400, height: 300 }, offset: { offsetHeight: 300 }, client: { clientHeight: 298, clientTop: 1 } });
+        const controls = document.createElement('div');
+        controls.className = 'popup-controls';
+        popup.append(controls);
+        lay(controls, { rect: { left: 301, top: 420, width: 398, height: 79 } });
+        const overlay = overlayWith('toast-top-left', popup);
+        updateToastPlacement();
+        // The row starts 220px below the popup's top edge, 219px below the inside of its border, and the inside is 298px high.
+        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('79px');
+        expect(overlay.style.getPropertyValue(FRAME_LEFT_PROPERTY)).toBe('');
+        expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('');
+    });
+
+    test('in a Popup with no action row at the bottom, keeps the toast at the dialog edge', () => {
+        const popup = document.createElement('dialog');
+        popup.className = 'popup';
+        document.body.append(popup);
+        lay(popup, { rect: { left: 300, top: 200, width: 400, height: 300 }, offset: { offsetHeight: 300 }, client: { clientHeight: 298, clientTop: 1 } });
+        const overlay = overlayWith('toast-top-left', popup);
+        updateToastPlacement();
+        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('0px');
     });
 
     test('puts the notifications beyond the toasts when both sit at the same position, and only then', () => {

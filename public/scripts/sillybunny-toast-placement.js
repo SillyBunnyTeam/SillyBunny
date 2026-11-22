@@ -1,8 +1,9 @@
 /*
  * SillyBunny toast placement: where #sb-toast-overlay sits, as numbers that the toast CSS reads.
- * A bottom toast sits above the composer and above the software keyboard, a toast in a dialog sits at the bottom of that
- * dialog's box, and an in-app notification at the same position as the toasts sits beyond them. The CSS owns every
- * metric that does not depend on the page; this module only measures what the CSS cannot know.
+ * A bottom toast sits above the composer and above the software keyboard, a toast in a dialog sits at the bottom centre
+ * of that dialog's box and above its action row, and an in-app notification at the same position as the toasts sits
+ * beyond them. The CSS owns every metric that does not depend on the page; this module only measures what the CSS
+ * cannot know.
  */
 
 import { createMobileViewportObserver } from './chat-render-lifecycle/mobile-viewport.js';
@@ -25,6 +26,12 @@ export const FRAME_LEFT_PROPERTY = '--sb-toast-frame-left';
 export const FRAME_WIDTH_PROPERTY = '--sb-toast-frame-width';
 export const FRAME_BOTTOM_PROPERTY = '--sb-toast-frame-bottom';
 export const STACK_OFFSET_PROPERTY = '--sb-toast-stack-offset';
+/**
+ * The rows that hold the actions of a dialog at its foot: the responses of an alert (`openAlert`), the extra responses
+ * of a Dialog or Window (`openDialog` and the framed Popups), and the controls of an alert Popup and of an upstream
+ * Popup. The controls of a framed Dialog or Window Popup are `display: contents` in its header, so they have no box.
+ */
+export const ACTION_ROW_SELECTOR = '.sb-dialog__responses, .sb-dialog__bottom-bar, .popup-controls';
 /** Set on the overlay while it sits in a dialog, where it is at the bottom centre whatever the setting says. */
 export const IN_DIALOG_ATTRIBUTE = 'data-sb-toast-in-dialog';
 
@@ -108,6 +115,44 @@ export function stackOffset({ edge, layoutHeight, overlayBox }) {
     return Math.max(0, Math.round(edge === 'bottom' ? layoutHeight - overlayBox.top : overlayBox.height));
 }
 
+/**
+ * The space that a toast in a dialog keeps clear at the bottom of the dialog's padding box: what lies under the
+ * action row when there is one, and what lies under the surface when there is not.
+ * @param {{ hostHeight: number, surfaceBottom: number, rowTop: number|null }} measures All in px from the top of the host's padding box.
+ * @returns {number} px, never negative.
+ */
+export function dialogToastBottom({ hostHeight, surfaceBottom, rowTop }) {
+    const top = rowTop === null ? surfaceBottom : Math.min(surfaceBottom, rowTop);
+    return Math.max(0, Math.round(hostHeight - top));
+}
+
+/**
+ * Where the action row at the foot of a dialog starts, in layout px from the top of the surface. A row counts when it
+ * has a box, is not hidden and lies in the lower half of the surface, so the controls of a header do not. Of several
+ * rows the highest counts, so that the toast clears all of them. A surface that is scaled, as while it opens, is
+ * read at its layout size.
+ * @param {HTMLElement} surface
+ * @returns {number|null} Null when the surface has no action row.
+ */
+export function actionRowTop(surface) {
+    const surfaceBox = surface.getBoundingClientRect();
+    const scale = surface.offsetHeight > 0 ? surfaceBox.height / surface.offsetHeight : 1;
+    const middle = surfaceBox.top + surfaceBox.height / 2;
+    let top = null;
+    for (const row of surface.querySelectorAll(ACTION_ROW_SELECTOR)) {
+        if (row.getClientRects().length === 0 || getComputedStyle(row).visibility === 'hidden') {
+            continue;
+        }
+        const box = row.getBoundingClientRect();
+        if (!(box.height > 0) || box.top + box.height / 2 <= middle) {
+            continue;
+        }
+        const offset = (box.top - surfaceBox.top) / scale;
+        top = top === null ? offset : Math.min(top, offset);
+    }
+    return top;
+}
+
 function layoutHeight() {
     return document.documentElement.clientHeight || window.innerHeight;
 }
@@ -139,25 +184,27 @@ function placeInWindow(overlay) {
 }
 
 /**
- * Puts the overlay at the bottom of the dialog's surface. A Popup is the overlay's own containing block, so the CSS is
- * enough. A frame of the shared dialog is a full-window host, so its surface's box is written as three lengths.
- * Layout offsets are used, because the surface is scaled while it opens and a transformed box would be read too small.
+ * Puts the overlay at the bottom of the dialog's surface, above its action row. The host is the overlay's containing
+ * block. A Popup is its own surface, so the CSS gives the overlay its width. A frame of the shared dialog is a
+ * full-window host, so the left and width of its surface are written too.
+ * Layout offsets are used, because a surface is scaled while it opens and a drawn box would be read too small.
  * @param {HTMLElement} overlay
  * @param {HTMLElement} host
  */
 function placeInDialog(overlay, host) {
     setProperty(overlay, BOTTOM_INSET_PROPERTY, null);
     const surface = dialogSurfaceOf(host);
-    if (surface === host) {
-        for (const property of [FRAME_LEFT_PROPERTY, FRAME_WIDTH_PROPERTY, FRAME_BOTTOM_PROPERTY]) {
-            setProperty(overlay, property, null);
-        }
-        return;
-    }
-    const left = surface.getBoundingClientRect().left - host.getBoundingClientRect().left;
-    setProperty(overlay, FRAME_LEFT_PROPERTY, pixels(left));
-    setProperty(overlay, FRAME_WIDTH_PROPERTY, pixels(surface.offsetWidth));
-    setProperty(overlay, FRAME_BOTTOM_PROPERTY, pixels(host.clientHeight - surface.offsetTop - surface.offsetHeight));
+    const isFrame = surface !== host;
+    const originInHost = isFrame ? surface.offsetTop : -host.clientTop;
+    const rowTop = actionRowTop(surface);
+    const bottom = dialogToastBottom({
+        hostHeight: host.clientHeight,
+        surfaceBottom: isFrame ? surface.offsetTop + surface.offsetHeight : host.clientHeight,
+        rowTop: rowTop === null ? null : originInHost + rowTop,
+    });
+    setProperty(overlay, FRAME_BOTTOM_PROPERTY, pixels(bottom));
+    setProperty(overlay, FRAME_LEFT_PROPERTY, isFrame ? pixels(surface.offsetLeft) : null);
+    setProperty(overlay, FRAME_WIDTH_PROPERTY, isFrame ? pixels(surface.offsetWidth) : null);
 }
 
 /**
@@ -193,6 +240,8 @@ export function updateToastPlacement() {
             placeInWindow(overlay);
         }
         placeNotifications(overlay, notifications, inDialog);
+        // A dialog builds its action rows after it opens, and the rows that are watched are the ones it has now.
+        observeToastPlacement();
     } else {
         placeNotifications(null, notifications, false);
     }
@@ -215,11 +264,10 @@ let started = false;
 /** @type {ResizeObserver|null} */
 let resizeObserver = null;
 const observed = new Set();
-const hostsWithMotionListeners = new WeakSet();
 
 /**
- * Watches what moves a toast: the window, the visual viewport, the composer, the overlay's own height and the dialog
- * surface. Elements come and go (a page change hides the composer, a toast makes the overlay), so `observe` is called
+ * Watches what moves a toast: the window, the visual viewport, the composer, the overlay's own height, and the dialog
+ * surface and its action rows. Elements come and go (a page change hides the composer, a toast makes the overlay), so `observe` is called
  * again whenever one may be new.
  */
 export function observeToastPlacement() {
@@ -229,11 +277,13 @@ export function observeToastPlacement() {
     resizeObserver ??= new ResizeObserver(scheduleToastPlacement);
     const overlay = document.getElementById(TOAST_OVERLAY_ID);
     const host = overlay?.parentElement;
+    const surface = host instanceof HTMLDialogElement ? dialogSurfaceOf(host) : null;
     const targets = [
         document.getElementById(COMPOSER_ID),
         overlay,
-        host instanceof HTMLDialogElement ? dialogSurfaceOf(host) : null,
-        host instanceof HTMLDialogElement ? host : null,
+        surface,
+        surface ? host : null,
+        ...(surface?.querySelectorAll(ACTION_ROW_SELECTOR) ?? []),
     ];
     for (const target of targets) {
         if (target && !observed.has(target)) {
@@ -246,13 +296,6 @@ export function observeToastPlacement() {
             resizeObserver.unobserve(target);
             observed.delete(target);
         }
-    }
-    // A dialog that opens scales its surface, and a page slide moves it, with no resize. The surface's layout box is
-    // final once the motion ends.
-    if (host instanceof HTMLDialogElement && !hostsWithMotionListeners.has(host)) {
-        hostsWithMotionListeners.add(host);
-        host.addEventListener('transitionend', scheduleToastPlacement);
-        host.addEventListener('animationend', scheduleToastPlacement);
     }
 }
 
