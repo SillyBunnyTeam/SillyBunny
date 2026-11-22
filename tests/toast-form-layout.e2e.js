@@ -117,7 +117,8 @@ test.describe('the parts of a toast', () => {
         }
     });
 
-    test('gain a 1px ring at the border strength under more contrast', async ({ page }) => {
+    test('gain a 1px ring at the border strength under more contrast', async ({ page, browserName }) => {
+        test.skip(browserName === 'firefox', 'Playwright cannot emulate prefers-contrast in Firefox');
         await page.emulateMedia({ contrast: 'more' });
         const toast = await showToast(page, 'info', 'A toast');
         const ring = await toast.evaluate(node => ({ width: getComputedStyle(node).outlineWidth, style: getComputedStyle(node).outlineStyle }));
@@ -453,7 +454,8 @@ test.describe('the motion of a toast', () => {
         });
         expect(result.properties, 'a transform and nothing else: no fade').toEqual(['transform']);
         expect(result.duration).toBe(300);
-        expect(result.easing).toBe('cubic-bezier(0.25, 0.1, 0.25, 1)');
+        // WebKit reports this curve by its keyword, which is the same curve.
+        expect(['cubic-bezier(0.25, 0.1, 0.25, 1)', 'ease']).toContain(result.easing);
         expect(result.startTop, 'it starts fully beyond the bottom edge, which clips it').toBeGreaterThanOrEqual(result.overlayBottom);
         expect(result.endBottom, 'and ends 24px above it').toBeCloseTo(result.overlayBottom - 24, 0);
         expect(result.clip, 'the overlay clips on the bottom edge only').toMatch(/inset\(/);

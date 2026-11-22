@@ -228,9 +228,17 @@
             const fontSize = Number.parseFloat(getComputedStyle(element).fontSize);
             const chrome = element.getBoundingClientRect().width - lineWidth('reference', label);
             const target = 34 * fontSize - chrome + delta;
+            const grow = text => text + (text.length % 7 === 6 ? ' n' : 'n');
             let text = 'n';
-            while (lineWidth(text, label) < target) {
-                text += text.length % 7 === 6 ? ' n' : 'n';
+            if (delta < 0) {
+                // Stop before the limit, so that the width of the last letter cannot carry the text over it.
+                while (lineWidth(grow(text), label) <= target) {
+                    text = grow(text);
+                }
+            } else {
+                while (lineWidth(text, label) < target) {
+                    text = grow(text);
+                }
             }
             const width = lineWidth(text, label);
             element.remove();
