@@ -1341,6 +1341,9 @@ function printTagList(element, { tags = undefined, addTag = undefined, forEntity
             $element.addClass('tags-expanded');
             expanded_tags_cache.push(elementKey);
 
+            // SillyBunny: a filter list is not emptied. Remove the expander and the old chips, so the new print keeps the sort order.
+            if (!empty) $element.find('.placeholder-expander, .tag:not(.actionable)').remove();
+
             // Do not bubble further, we are just expanding
             event.stopPropagation();
             printTagList($element, { tags: tags, addTag: addTag, forEntityOrKey: forEntityOrKey, empty: empty, tagActionSelector: tagActionSelector, tagOptions: tagOptions, inactiveTags: inactiveTags });

@@ -376,6 +376,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-16, UI polish sweep (task 6.7, the shared removal and bulk Delete). |
 | Owner | UI overhaul integrator. |
 
+### Tag filter chip expansion
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/tags.js` |
+| Area | `showHiddenTags` in `printTagList()`: the expander chip of a filter list that `printTagFilters()` prints without emptying it (#945). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-editor/tag-filter-menu.js` (`TAG_SELECTOR` skips `.placeholder-expander`; `open()` clicks the expander before it reads the chips). |
+| Adapter shape | Gated by `!empty`, so only a list that is not emptied is changed. Before the repeat print, `showHiddenTags` removes `.placeholder-expander` and `.tag:not(.actionable)` from the list. The action chips stay. The tag data, the filter state, `expanded_tags_cache` and the `tags-expanded` class are unchanged, and the repeat print restores each chip state from the filter helper. |
+| Protecting tests | `tests/unit/sillybunny-tag-filter-expander.test.js` (the real `printTagList()` and the real menu); `tests/unit/sillybunny-tag-filter-menu.test.js`; `tests/unit/sillybunny-character-list-state.test.js` (the 50-chip limit); `tests/character-list.e2e.js` "tag filter picker lists every tag past the 50-chip limit in order…" (real browser, 65 seeded tags). |
+| Validation | Root lint; tests lint; focused Jest (menu, expander, character list state, Tag Manager); frontend budgets. The focused tests fail with only the `public/` change reverted, and pass with it applied (2026-11-22). The `character-list.e2e.js` case fails at 1440px and 390px with `public/` reverted (an extra "..." option), and passes at both with it applied (Chromium, Node.js runtime, 2026-11-22). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-22, #945 (tag picker with more than 50 tags). |
+| Owner | `TODO(copy)` |
+
 ### Utility dialogs - shared content rows
 | Field | Value |
 | --- | --- |

@@ -306,6 +306,37 @@ async function openTagPicker(page) {
     return { button, picker, search: picker.locator('.sb-picker__search') };
 }
 
+/**
+ * Adds 65 sorted tags to the list, more than the 50 chips that upstream prints before its expander. Tag 060 sits on
+ * its own character. The rest sit on another. The cleanup in `afterEach` removes both.
+ * @returns {Promise<string[]>} The names of every tag that has an entity, in the sorted order the picker must show.
+ */
+async function seedOverflowTags(page) {
+    return page.evaluate(async () => {
+        const app = await import('/script.js');
+        const tagsApi = await import('/scripts/tags.js');
+        const definitions = Array.from({ length: 65 }, (_, index) => ({
+            id: `qa-overflow-tag-${String(index).padStart(3, '0')}`,
+            name: `QA overflow ${String(index).padStart(3, '0')}`,
+            color: 'rgb(90, 160, 220)',
+            color2: 'white',
+        }));
+        const [crowded, single] = [app.characters[10].avatar, app.characters[11].avatar];
+        const fixtures = window.__sbCharacterListTagFixtures;
+        fixtures.ids.push(...definitions.map(tag => tag.id));
+        fixtures.maps.push([crowded, tagsApi.tag_map[crowded]], [single, tagsApi.tag_map[single]]);
+        tagsApi.tags.push(...definitions);
+        tagsApi.tag_map[crowded] = definitions.filter(tag => !tag.id.endsWith('060')).map(tag => tag.id);
+        tagsApi.tag_map[single] = ['qa-overflow-tag-060'];
+        tagsApi.printTagFilters(tagsApi.tag_filter_type.character);
+        const assigned = new Set(Object.values(tagsApi.tag_map).flat());
+        return tagsApi.tags
+            .filter(tag => assigned.has(tag.id))
+            .map(tag => tag.name)
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    });
+}
+
 /** The search bar closes on a press outside it, so a close that is still playing settles before the bar is read. */
 async function openSearchBar(page) {
     const field = list(page).locator('.sb-character-list__search');
@@ -1302,6 +1333,42 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(groupPicker.search).toBeFocused();
         await page.keyboard.press('Escape');
         await expect(groupPicker.button).toBeFocused();
+    });
+
+    test(`tag filter picker lists every tag past the 50-chip limit in order, and keeps a filter on one at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const names = await seedOverflowTags(page);
+        const chips = list(page).locator('.rm_tag_filter');
+        // The upstream print stops at 50 chips and an expander, before the picker has opened. The fixture user also has the tag "ST Default".
+        expect(names.filter(name => name.startsWith('QA overflow'))).toHaveLength(65);
+        expect(names.indexOf('QA overflow 060')).toBeGreaterThan(50);
+        await expect(chips.locator('.tag:not(.actionable):not(.placeholder-expander)')).toHaveCount(50);
+        await expect(chips.locator('.placeholder-expander')).toHaveCount(1);
+
+        const { button, picker, search } = await openTagPicker(page);
+        await expect(picker.locator('.sb-picker__label')).toHaveText(names);
+        await expect(picker.getByRole('option', { name: '...', exact: true })).toHaveCount(0);
+        await expect(chips.locator('.placeholder-expander')).toHaveCount(0);
+        await expect(chips.locator('.tag:not(.actionable)')).toHaveCount(names.length);
+
+        await search.fill('overflow 060');
+        await expect(picker.getByRole('option')).toHaveCount(1);
+        await picker.getByRole('option', { name: /^QA overflow 060/ }).click();
+        await expect(listRows(page, 'characters')).toHaveCount(1);
+        await expect(listRows(page, 'characters')).toContainText('QA character 11');
+        await expect(button.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+
+        const reopened = await openTagPicker(page);
+        await expect(reopened.picker.locator('.sb-picker__label')).toHaveText(names);
+        await expect(reopened.picker.getByRole('option', { name: '...', exact: true })).toHaveCount(0);
+        await expect(reopened.picker.getByRole('option', { name: /^QA overflow 060/ })).toHaveAttribute('aria-selected', 'true');
+        await expect(reopened.picker.getByRole('option', { selected: true })).toHaveCount(1);
+        await expect(chips.locator('.placeholder-expander')).toHaveCount(0);
+        await expect(chips.locator('.tag.selected:not(.actionable)')).toHaveCount(1);
+        await page.keyboard.press('Escape');
+        await expect(reopened.picker).toBeHidden();
     });
 
     test(`selection gestures, ranges and all filtered pages preserve the chat at ${viewport.width}px`, async ({ page }) => {
