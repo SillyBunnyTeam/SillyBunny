@@ -1001,6 +1001,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 @media screen and (max-width: 768px) {
     :root {
         --sb-topbar-primary-height-base: 28px;
+        --sb-topbar-primary-min-height: max(var(--sb-proxy-button-height), calc(var(--sb-mobile-toggle-size) + var(--spacing-sm, 9px)));
         --sb-topbar-stack-gap-base: 2px;
         --sb-topbar-bottom-padding-base: 2px;
         --sb-topbar-inline-gap-base: 4px;
@@ -1019,6 +1020,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     :root[data-sb-compact-mode='true'] {
         --sb-topbar-primary-height-base: 26px;
+        --sb-topbar-primary-min-height: max(var(--sb-proxy-button-height), calc(var(--sb-mobile-toggle-size) + var(--spacing-xs, 6px)));
         --sb-topbar-inline-gap-base: 3px;
         --sb-topbar-search-row-height-base: 28px;
         --sb-chatbar-button-size-base: 21px;
