@@ -172,6 +172,55 @@ test.describe('the card', () => {
     });
 });
 
+test.describe('a message whose toastClass is not toast', () => {
+    // `/echo cssClass=foo` sets toastClass to `foo`, so the element has no `toast` class. Both forms are told by their own marker.
+    /** The computed styles of the parts of a message that its rules draw. */
+    const LOOK_IN_PAGE = `(node) => {
+        const read = (element, pseudo) => {
+            const style = getComputedStyle(element, pseudo);
+            return {
+                backgroundImage: style.backgroundImage,
+                width: style.width,
+                height: style.height,
+                borderRadius: style.borderTopLeftRadius,
+                background: style.backgroundColor,
+                float: style.float,
+                content: style.content,
+                colour: style.color,
+                font: style.fontFamily,
+                shadow: style.boxShadow,
+                cursor: style.cursor,
+            };
+        };
+        return { card: read(node), glyph: read(node, '::before'), close: read(node.querySelector('.toast-close-button')) };
+    }`;
+
+    for (const [form, title] of [['in-app notification', 'A title'], ['toast', '']]) {
+        for (const kind of ['error', 'info']) {
+            test(`draws a ${kind} ${form} as one with the default class: no PNG icon, the glyph, and a styled Dismiss`, async ({ page }) => {
+                const looks = await page.evaluate(async ([source, toastKind, heading, formSelector]) => {
+                    // eslint-disable-next-line no-new-func
+                    const lookOf = new Function(`return (${source})`)();
+                    const result = {};
+                    for (const toastClass of ['toast', 'foo']) {
+                        window.toastr.clear();
+                        const element = window.toastr[toastKind]('A short message', heading, { timeOut: 0, extendedTimeOut: 0, toastClass, tapToDismiss: false })[0];
+                        await new Promise(resolve => setTimeout(resolve, 450));
+                        result[toastClass] = { look: lookOf(element), isForm: element.matches(formSelector), hasToastClass: element.classList.contains('toast') };
+                    }
+                    return result;
+                }, [LOOK_IN_PAGE, kind, title, form === 'toast' ? '.sb-form-toast' : '.sb-form-notification']);
+                expect(looks.foo.hasToastClass, 'the element has no toast class').toBe(false);
+                expect(looks.foo.isForm, 'and is of the form its marker says').toBe(true);
+                expect(looks.foo.look.card.backgroundImage, 'no PNG icon').toBe('none');
+                expect(looks.foo.look.close.width, 'a styled Dismiss').toBe('34px');
+                expect(looks.foo.look.card.cursor, 'a card that a click does not act on has the default cursor').toBe('default');
+                expect(looks.foo.look).toEqual(looks.toast.look);
+            });
+        }
+    }
+});
+
 test.describe('Dismiss', () => {
     test('is named Dismiss, ends the first row, is centred on its first line, and does not make a card of two lines taller', async ({ page }) => {
         const card = await show(page, 'info', 'Message', 'Title');

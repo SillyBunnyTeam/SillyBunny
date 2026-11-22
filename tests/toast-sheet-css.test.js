@@ -36,6 +36,8 @@ describe('the toast layer', () => {
         expect(rule).toContain('backdrop-filter: none !important');
         expect(rule).toContain('-webkit-backdrop-filter: none !important');
         expect(rule).toContain('animation: none');
+        // A card that a click does not act on keeps the default cursor, whatever its toastClass.
+        expect(rule).toContain('cursor: default');
         expect(themeCss).not.toContain('body #toast-container[class] > div {');
     });
 
@@ -173,7 +175,7 @@ describe('the toast layer', () => {
 
     test('the button of a toast and Dismiss draw the focus ring of the app, which the rules that clear the shadow would remove', () => {
         const ring = themeCss.slice(themeCss.indexOf(`body ${TOAST} .toast-message :is(${BUTTONS.join(', ')}):focus-visible,`));
-        expect(ring.slice(0, ring.indexOf('}'))).toContain('body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:focus-visible');
+        expect(ring.slice(0, ring.indexOf('}'))).toContain('body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:focus-visible');
         expect(ring.slice(ring.indexOf('{'), ring.indexOf('}')).replace(/\s+/g, ' ')).toContain('box-shadow: var(--sb-focus-ring-inset)');
     });
 
@@ -185,25 +187,25 @@ describe('the toast layer', () => {
     });
 
     test('the status glyph is the first part of a toast, in the lifted status colour, 16px', () => {
-        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before')).toContain('font-size: 16px');
-        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast:is(.toast-info, .toast-error, .toast-warning, .toast-success)')).toContain('background-image: none !important');
+        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before')).toContain('font: 900 16px/1 "Font Awesome 6 Free"');
+        expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast)[class]')).toContain('background-image: none !important');
     });
 
     test('the close button of both forms is round and flat, 34px, with a 44px target on a coarse pointer', () => {
-        const rule = ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button');
+        const rule = ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button');
         expect(rule).toContain('width: 34px');
         expect(rule).toContain('height: 34px');
         expect(rule).toContain('border-radius: var(--sb-radius-pill)');
         expect(rule).toContain('background: transparent');
         expect(rule).toContain('min-height: 0');
-        expect(themeCss).toMatch(/@media \(pointer: coarse\) \{\s*:is\(#toast-container, #sb-toast-overlay\) > \.toast > \.toast-close-button::after \{\s*content: '';\s*position: absolute;\s*inset: -5px;/);
+        expect(themeCss).toMatch(/@media \(pointer: coarse\) \{\s*:is\(#toast-container > \.sb-form-notification, #sb-toast-overlay > \.sb-form-toast\) > \.toast-close-button::after \{\s*content: '';\s*position: absolute;\s*inset: -5px;/);
     });
 
     test('the status colour reaches the icon glyph and the title, and nothing else', () => {
-        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast-error')).toContain('--sb-toast-src: var(--sb-color-danger)');
-        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast-warning')).toContain('--sb-toast-src: var(--sb-color-warning)');
-        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast-success')).toContain('--sb-toast-src: var(--sb-color-success)');
-        expect(ruleOf(themeCss, '#sb-toast-overlay > .toast:not(.toast-info)::before,\n#sb-toast-overlay > .toast:not(.toast-info) .toast-title')).toBe('color: var(--sb-toast-status);');
+        expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-error')).toContain('--sb-toast-src: var(--sb-color-danger)');
+        expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-warning')).toContain('--sb-toast-src: var(--sb-color-warning)');
+        expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-success')).toContain('--sb-toast-src: var(--sb-color-success)');
+        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before,\n#sb-toast-overlay > .sb-form-toast:not(.toast-info) .toast-title')).toBe('color: var(--sb-toast-status);');
     });
 
     test('toast timing is declared once, in script.js, at 5 seconds and 300ms', () => {
@@ -213,6 +215,17 @@ describe('the toast layer', () => {
         expect(options).toMatch(/extendedTimeOut: 5000,/);
         expect(options).toMatch(/showDuration: 300,/);
         expect(options).toMatch(/hideDuration: 300,/);
+    });
+});
+
+describe('the rules of the two forms', () => {
+    test('are keyed on the marker of the form, which every message has, and not on the toast class, which a caller can replace', () => {
+        const rules = [...themeCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+            .map(([, selector]) => selector.replace(/\/\*[\s\S]*?\*\//g, '').trim())
+            .filter(selector => /#toast-container|#sb-toast-overlay/.test(selector));
+        expect(rules.length).toBeGreaterThan(20);
+        const keyedOnToast = rules.filter(selector => /(^|[\s>(,])\.toast(?![-\w])/.test(selector));
+        expect(keyedOnToast).toEqual([]);
     });
 });
 

@@ -7179,7 +7179,7 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
    is set again here. Its colour is the one of the toast layer's own ring tokens (see the declaration of --sb-focus-ring). */
 body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
 body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
-body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:focus-visible {
+body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:focus-visible {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
@@ -7189,7 +7189,7 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
 }
 
 /* The close button of both forms: round and flat. On a coarse pointer the target grows to 44px without growing the toast. */
-:is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button {
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button {
     -webkit-appearance: none;
     appearance: none;
     position: relative;
@@ -7216,12 +7216,12 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
     cursor: pointer;
 }
 
-:is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button > i {
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button > i {
     pointer-events: none;
 }
 
 @media (pointer: coarse) {
-    :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button::after {
+    :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button::after {
         content: '';
         position: absolute;
         inset: -5px;
@@ -7229,14 +7229,14 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
 }
 
 @media (hover: hover) {
-    body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:hover {
+    body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:hover {
         background: color-mix(in srgb, currentColor 7%, transparent);
         color: inherit;
         opacity: 1;
     }
 }
 
-body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:active {
+body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:active {
     background: color-mix(in srgb, currentColor 16%, transparent);
 }
 
@@ -7267,41 +7267,37 @@ body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:act
 }
 
 /* Status colour on the icon glyph and title only; the toast is dark in both tones, so a light tone's colour is lifted. */
-:is(#toast-container, #sb-toast-overlay) > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
-:is(#toast-container, #sb-toast-overlay) > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
-:is(#toast-container, #sb-toast-overlay) > .toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
 
-:is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info) {
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast):not(.toast-info) {
     --sb-toast-status: var(--sb-toast-src);
 }
 
-/* toastr's PNG icon of each kind is important; the glyph of both forms is drawn instead. */
-:is(#toast-container, #sb-toast-overlay) > .toast:is(.toast-info, .toast-error, .toast-warning, .toast-success) {
+/* toastr's PNG icon of each kind is important, and the `[class]` makes the rule outweigh it. The glyph of both forms is drawn instead. */
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast)[class] {
     background-image: none !important;
 }
 
 @supports (color: oklab(from red l a b)) {
-    :is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info) {
+    :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast):not(.toast-info) {
         --sb-toast-status: oklab(from var(--sb-toast-src) max(l, 0.76) a b);
     }
 }
 
-#sb-toast-overlay > .toast:not(.toast-info)::before {
-    content: var(--sb-toast-glyph);
-    font: 900 18px/1 "Font Awesome 6 Free";
-}
-
 /* The glyph is the first part of a toast: 16px, with 6px at its sides like every part. */
 #sb-toast-overlay > .sb-form-toast:not(.toast-info)::before {
+    content: var(--sb-toast-glyph);
     flex: none;
     margin-inline: 6px;
-    font-size: 16px;
+    font: 900 16px/1 "Font Awesome 6 Free";
 }
 
 /* The status colour of a toast is lifted for the dark toast layer. The title and the glyph of an in-app notification
    take the ink and the standalone status colour (see below). */
-#sb-toast-overlay > .toast:not(.toast-info)::before,
-#sb-toast-overlay > .toast:not(.toast-info) .toast-title {
+#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before,
+#sb-toast-overlay > .sb-form-toast:not(.toast-info) .toast-title {
     color: var(--sb-toast-status);
 }
 
@@ -7371,6 +7367,7 @@ body #toast-container[class] > .sb-form-notification {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     opacity: 1;
+    cursor: default;
     font-size: calc(var(--mainFontSize) * 0.95);
     line-height: var(--sb-n-line);
     text-align: start;
