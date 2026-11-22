@@ -103,6 +103,8 @@
     --sb-measure-preference: calc(1000px * var(--fontScale, 1));
     --sb-measure-wide: calc(1440px * var(--fontScale, 1));
     --sb-page-measure: var(--sb-measure-preference);
+    /* The widest a Window dialog grows, aside included. Below it a Window keeps following Page Width. */
+    --sb-window-ceiling: calc(1440px * var(--fontScale, 1));
     /* AdwNavigationSplitView sizes its sidebar to 25% of the split view, between 180sp and 280sp. */
     --sb-split-sidebar-width: clamp(calc(180px * var(--fontScale, 1)), 25%, calc(280px * var(--fontScale, 1)));
     --sb-density-container-padding: calc(12px - 3px * var(--sb-density-t));
@@ -5340,7 +5342,7 @@ dialog.popup.sb-dialog--dialog {
 }
 
 dialog.popup.sb-dialog--window {
-    width: min(max(640px, var(--sheldWidth, 64vw)), calc(100dvw - 32px)) !important;
+    width: min(max(640px, var(--sheldWidth, 64vw)), calc(100dvw - 32px), var(--sb-window-ceiling)) !important;
     min-width: 0 !important;
     max-width: calc(100dvw - 32px) !important;
     /* `height: auto` would stretch a floating Window between its inset edges, up to max-height. */
@@ -6106,7 +6108,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 
 /* The shell's large pop-out footprint (Tag Manager). */
 .sb-dialog--window {
-    width: min(max(640px, var(--sheldWidth, 64vw)) + var(--sb-dialog-aside, 0px), 100%);
+    width: min(max(640px, var(--sheldWidth, 64vw)) + var(--sb-dialog-aside, 0px), 100%, var(--sb-window-ceiling));
     min-height: min(360px, 100%);
     height: fit-content;
     max-height: 90dvh;
