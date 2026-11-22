@@ -1370,6 +1370,43 @@ describe('the button of a toast hides it the way toastr hides a toast', () => {
     });
 });
 
+describe('a toast that shows while another one leaves', () => {
+    for (const newestOnTop of [true, false]) {
+        test(`takes the place of the one that leaves, though nothing waits, with newestOnTop ${newestOnTop}`, async () => {
+            const first = toastr.info('first', '', { timeOut: 300, extendedTimeOut: 300, newestOnTop });
+            await advance(300);
+            expect(first.hasClass('sb-toast-leaving')).toBe(true);
+            // Until another toast shows, the one that leaves stays in the flow.
+            expect(first[0].style.position).toBe('');
+
+            const second = toastr.info('second', '', { newestOnTop });
+            expect(first[0].style.position).toBe('absolute');
+            expect(first[0].style.margin).toBe('0px');
+            expect(second[0].style.position).toBe('');
+        });
+    }
+
+    test('pins every toast that is leaving, and leaves a toast that is not leaving in the flow', async () => {
+        const stays = toastr.info('stays', '', { timeOut: 0, extendedTimeOut: 0 });
+        const goes = toastr.info('goes', '', { timeOut: 300, extendedTimeOut: 300 });
+        await advance(300);
+        expect(goes.hasClass('sb-toast-leaving')).toBe(true);
+        toastr.info('new', '', { timeOut: 0, extendedTimeOut: 0 });
+        expect(goes[0].style.position).toBe('absolute');
+        expect(stays[0].style.position).toBe('');
+    });
+
+    test('lets go of the pin when the pointer saves the toast, as before', async () => {
+        const first = toastr.info('first', '', { timeOut: 300, extendedTimeOut: 300 });
+        await advance(300);
+        toastr.info('second');
+        expect(first[0].style.position).toBe('absolute');
+        first.trigger('mouseenter');
+        expect(first.hasClass('sb-toast-leaving')).toBe(false);
+        expect(first[0].style.position).toBe('');
+    });
+});
+
 describe('the motion of a toast', () => {
     const real = { getBoundingClientRect: HTMLElement.prototype.getBoundingClientRect };
     const openHosts = [];

@@ -595,6 +595,38 @@ test.describe('the motion of a toast', () => {
         expect(durations).toContain(500);
     });
 
+    for (const position of ['toast-bottom-center', 'toast-top-center']) {
+        test(`a toast that replaces one that fades takes its place and does not move when that one goes, at ${position}`, async ({ page }) => {
+            await page.setViewportSize({ width: 1440, height: 900 });
+            const result = await page.evaluate(async (positionClass) => {
+                (await import('/scripts/sillybunny-toast-motion.js')).setToastPosition(positionClass);
+                const first = window.toastr.info('First', '', { timeOut: 300, extendedTimeOut: 300 })[0];
+                await new Promise((resolve) => {
+                    const watch = () => (first.classList.contains('sb-toast-leaving') ? resolve() : requestAnimationFrame(watch));
+                    watch();
+                });
+                const second = window.toastr.info('Second', '', { timeOut: 0, extendedTimeOut: 0 })[0];
+                const overlay = document.getElementById('sb-toast-overlay');
+                // The layout position of the second toast: the overlay's own top plus the toast's offset, which no transform changes.
+                const layoutTop = () => overlay.getBoundingClientRect().top + second.offsetTop;
+                const tops = [];
+                const start = performance.now();
+                await new Promise((resolve) => {
+                    const watch = () => {
+                        tops.push(layoutTop());
+                        return performance.now() - start > 800 ? resolve() : requestAnimationFrame(watch);
+                    };
+                    watch();
+                });
+                return { tops, firstGone: !first.isConnected, firstPinned: first.style.position };
+            }, position);
+            expect(result.firstGone, 'the first toast has gone by the end').toBe(true);
+            const spread = Math.max(...result.tops) - Math.min(...result.tops);
+            expect(spread, 'the second toast stays where it showed').toBeLessThan(1);
+            await page.evaluate(async () => (await import('/scripts/sillybunny-toast-motion.js')).setToastPosition('toast-bottom-center'));
+        });
+    }
+
     test('is a fade of at most 200ms under reduced motion, in and out', async ({ page }) => {
         await page.emulateMedia({ reducedMotion: 'reduce' });
         const result = await page.evaluate(() => {

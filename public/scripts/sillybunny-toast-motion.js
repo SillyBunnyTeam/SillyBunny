@@ -323,6 +323,20 @@ function pin(element) {
     });
 }
 
+/**
+ * A toast that shows takes the place of the toast that leaves, as in libadwaita, where both are at the edge. A leaving
+ * toast that is still in the flow would hold that place and push the new one away, and the new one would jump when the
+ * leaving one is removed, so every unpinned leaving sibling is pinned before the new toast shows.
+ * @param {HTMLElement} element The toast that is about to show.
+ */
+function pinLeavingSiblings(element) {
+    for (const sibling of element.parentElement?.children ?? []) {
+        if (sibling !== element && leaving.has(sibling) && sibling.style.position !== 'absolute') {
+            pin(sibling);
+        }
+    }
+}
+
 function unpin(element) {
     for (const property of PINNED_PROPERTIES) {
         element.style.removeProperty(property);
@@ -411,6 +425,7 @@ function show(entry) {
     stopMotion(element);
     element.classList.remove(TOAST_LEAVING_CLASS);
     unpin(element);
+    pinLeavingSiblings(element);
     // A toast that was pushed back by a high-priority toast already ran onShown.
     $toast[entry.showMethod]({ complete: entry.resumed ? undefined : entry.onShown });
     startHideTimer(entry);
