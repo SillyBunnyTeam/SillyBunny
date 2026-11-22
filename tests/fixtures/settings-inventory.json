@@ -418,6 +418,7 @@
         {"identity":"#sd_horde_sanitize","kind":"switch","where":"hidden"},
         {"identity":"#sd_novel_anlas_guard","kind":"switch","where":"hidden"},
         {"identity":"#sd_novel_view_anlas","kind":"button","where":"hidden"},
+        {"identity":"#sd_novel_precise_reference_enabled","kind":"switch","where":"hidden"},
         {"identity":"#sd_aimlapi_key","kind":"button","where":"hidden"},
         {"identity":"#sd_openai_style","kind":"select","where":"hidden"},
         {"identity":"#sd_openai_quality_gpt","kind":"select","where":"hidden"},
