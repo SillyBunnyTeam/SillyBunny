@@ -206,6 +206,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-22, toast and notification forms, Phase 1. |
 | Owner | The toast and notification forms work. |
 
+### `public/scripts/power-user.js` and `public/index.html` - Toasts position setting
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js` (one import; `toast_position` in the `power_user` defaults; `applyToastPosition()` at the end of `loadPowerUserSettings()`; `bindToastPositionSelect()` after the `#toastr_position` handler); `public/index.html` (the subtitle of the Notifications row, and a new Toasts row after it with the select `#toast_position`). |
+| Area | Customize ▸ Appearance, Chat Display: where toasts and in-app notifications show. |
+| Divergence reason | Toasts and in-app notifications are two forms of message with a position each. Upstream's `toastr_position` stays the position of in-app notifications, and `toast_position` is the position of toasts. The Notifications subtitle names the form that its position moves. |
+| Target seam | `public/scripts/sillybunny-toast-position.js` (the default, the validation, the apply and the select binding); `setToastPosition()` in `public/scripts/sillybunny-toast-motion.js` moves the overlay. |
+| Adapter shape | One import, one default, one call at load and one call that binds the select, each marked `SillyBunny:`, and the markup of the row. `toast_position` is a global `power_user` key, absent means `toast-bottom-center`, and no theme carries it. |
+| Protecting tests | `tests/unit/sillybunny-toast-position.test.js`; `tests/toast-position-setting.e2e.js`; the Appearance section of the settings inventory (`tests/audit/settings-inventory.e2e.js`, `tests/fixtures/settings-inventory.json`); `tests/unit/sillybunny-lexicon-coverage.test.js` for the entry that describes both controls. |
+| Validation | 2026-11-22: root and tests lint (0 errors), the full unit run (713 suites, 14,824 tests passed, 4 skipped), `npm run check:frontend-budgets`, `npm run check:design-rules`, `e2e-related --run c95d3293a` (`tests/toast-position-setting.e2e.js`, 10 tests at 1440 and 390; also 10 of 10 in Firefox and in WebKit), the Appearance section of the settings inventory (it passes, and fails when the `#toast_position` entry is removed or when the select does not save by itself), the Lexicon tests (coverage, shipped managed content, scan target), and the Toasts and Notifications rows seen at 1440 and 390. |
+| Rollback path | In `power-user.js`, remove the import, the `toast_position` default and the two calls. In `index.html`, remove the Toasts row and put the earlier Notifications subtitle back. Leave `sillybunny-toast-position.js` in place or delete it; nothing else imports it. A saved `toast_position` is ignored once nothing reads it. |
+| Last reviewed | 2026-11-22, toast and notification forms, Phase 2. |
+| Owner | The toast and notification forms work. |
+
 ### Confirm response labels
 | Field | Value |
 | --- | --- |
