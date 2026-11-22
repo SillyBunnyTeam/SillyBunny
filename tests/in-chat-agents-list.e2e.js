@@ -17,8 +17,9 @@ const READS = new Set([
     '/api/users/me', '/api/extensions/discover', '/api/worldinfo/get', '/api/worldinfo/list', '/api/themes/all',
     '/api/presets/list', '/api/in-chat-agents/groups/list', '/api/chats/search',
 ]);
+// At 1440px the list is a wide settings page, an AdwClamp that gives its frame 1115px of the 1136px between the page's 12px insets.
 const selectionLayout = {
-    1440: { titleX: 92, descriptionRight: 1106, truncated: false },
+    1440: { titleX: 92, descriptionRight: 1063, truncated: false },
     390: { titleX: 92, descriptionRight: 314, truncated: true },
 };
 

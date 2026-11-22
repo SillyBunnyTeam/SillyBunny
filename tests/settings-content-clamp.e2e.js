@@ -101,6 +101,8 @@ function readPage(page, { panel, scroller }) {
             pane: { left: host.left, right: host.right },
             scroller: { left: box.left, right: box.right },
             width: widest.width,
+            // Where the page starts its content: its scroller's top edge and the top padding that the page gives it.
+            top: box.top + scrollerNode.clientTop + parseFloat(getComputedStyle(scrollerNode).paddingTop),
             before: widest.left - clientLeft,
             after: clientLeft + scrollerNode.clientWidth - widest.right,
         };
@@ -118,6 +120,7 @@ function readFrame(page, { frame, container }) {
         const clientLeft = outer.left + containerNode.clientLeft;
         return {
             width: box.width,
+            top: box.top,
             before: box.left - clientLeft,
             after: clientLeft + containerNode.clientWidth - box.right,
             container: containerNode.clientWidth,
@@ -348,6 +351,30 @@ test.describe('One side inset on every settings page', () => {
         if (interfaceStep < 0 || interfaceStep > 4.5) problems.push(`Interface: ${interfaceStep}px from 1436px to 1440px`);
         expect(problems).toEqual([]);
     });
+});
+
+test.describe('One top space on every settings page', () => {
+    // The old space under the bar followed the window height (clamp(16px, 2.2vh, 24px) less 4px) from 1440px and was 14px below it.
+    for (const height of [900, 700]) {
+        test(`a list or editor frame starts where a preference page starts its content, at 1436px and 1444px, ${height}px high`, async ({ page }) => {
+            await boot(page, { width: 1436, height });
+            // A page loads its own style sheet on the first visit, and a page that is read before that has no padding yet.
+            await readWidePages(page);
+            const problems = [];
+            const tops = {};
+            for (const width of [1436, 1444]) {
+                await page.setViewportSize({ width, height });
+                const preference = (await readPreferencePage(page, PREFERENCE_PAGES[0])).top;
+                const frames = await readWidePages(page);
+                tops[width] = Object.fromEntries(Object.entries(frames).map(([name, read]) => [name, read.top]));
+                problems.push(...Object.entries(tops[width]).filter(([, top]) => Math.abs(top - preference) > 0.5)
+                    .map(([name, top]) => `${width}px: ${name} starts at ${top}px, the Interface page starts at ${preference}px`));
+            }
+            problems.push(...Object.entries(tops[1436]).filter(([name, top]) => Math.abs(top - tops[1444][name]) > 0.5)
+                .map(([name, top]) => `${name}: ${top}px at 1436px, ${tops[1444][name]}px at 1444px`));
+            expect(problems).toEqual([]);
+        });
+    }
 });
 
 test.describe('The text size scales the maximums, the thresholds and the sidebar', () => {

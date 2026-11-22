@@ -32,18 +32,12 @@
 
 /* Same gutters as the Persona and World Info panels. */
 #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #rm_characters_block.sb-active-right-menu .sb-character-list) {
-    padding-block: calc(var(--sb-shell-panel-padding-block) - 4px) 9px;
+    padding-block: var(--sb-settings-inset-top) 9px;
     overflow: hidden !important;
     scrollbar-gutter: auto;
 }
 
-/* The side padding of these pages is the settings page's at every desktop width; only the phone layout sets it here. */
-@media (min-width: 769px) and (max-width: 1439px) {
-    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #rm_characters_block.sb-active-right-menu .sb-character-list) {
-        padding-block: var(--sb-frame-top) 9px;
-    }
-}
-
+/* The padding of these pages is the settings page's at every desktop width; only the phone layout sets its own. */
 @media (max-width: 768px) {
     #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #rm_characters_block.sb-active-right-menu .sb-character-list) {
         padding: 14px 14px 9px !important;

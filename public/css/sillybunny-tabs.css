@@ -1444,10 +1444,10 @@ body:not(.movingUI) .drawer-content.maximized {
 
 /* The page class (data-sb-page-width) picks the maximum of a page. A page with none, such as an extension's, is a
    preference page. Every page has the same side padding, --sb-settings-inset, at every desktop width, as the margins of an
-   AdwClamp are constant. A frame starts --sb-frame-top under the content bar. */
+   AdwClamp are constant, and so is the top padding: a list or editor frame starts --sb-settings-inset-top under the content
+   bar, as every page does. */
 #sb-settings-page [data-sb-page-width='wide'] {
     --sb-page-max: var(--sb-measure-wide);
-    --sb-frame-top: 14px;
 }
 
 /* The content of a page is libadwaita's AdwClamp: as wide as the page can be up to its tightening threshold, then less than

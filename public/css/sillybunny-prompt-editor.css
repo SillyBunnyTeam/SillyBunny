@@ -6,24 +6,15 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     display: none !important;
 }
 
-/* The Backend list-editor pages (the prompt list and the Agents list) stand in the frame of the Characters window's list pages (World Info, Persona, Characters): the same space above the list and beside it at each width. */
-#sb-settings-page :is([data-sb-panel='editor']:has(.sb-prompt-owned), [data-sb-panel='agents']) .sb-shell-panel-scroller {
-    padding-block-start: calc(var(--sb-shell-panel-padding-block) - 4px);
-}
-
+/* The Backend list-editor pages (the prompt list and the Agents list) have the space above the list and beside it of every settings page, and of the Characters window's list pages (World Info, Persona, Characters), at every desktop width. */
 #sb-settings-page [data-sb-panel='editor']:has(.sb-prompt-owned) .sb-shell-panel-scroller {
     overflow: hidden !important;
 }
 
-@media (max-width: 1439px) {
-    #sb-settings-page :is([data-sb-panel='editor']:has(.sb-prompt-owned), [data-sb-panel='agents']) .sb-shell-panel-scroller {
-        padding-block-start: 14px;
-    }
-}
-
-/* Above the phone layout the side padding is the settings page's, the same on every page. */
+/* Above the phone layout the padding is the settings page's, the same on every page. */
 @media (max-width: 768px) {
     #sb-settings-page :is([data-sb-panel='editor']:has(.sb-prompt-owned), [data-sb-panel='agents']) .sb-shell-panel-scroller {
+        padding-block-start: 14px;
         padding-inline: 14px;
     }
 }
