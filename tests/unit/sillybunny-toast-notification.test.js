@@ -91,49 +91,44 @@ afterEach(async () => {
 });
 
 describe('the button row', () => {
-    test('a holder of buttons is marked, and the buttons stay where the caller put them', () => {
-        const $toast = toastr.info('<div class="wrapper"><button id="a">A</button><button id="b">B</button></div>', 'Title', HTML);
+    const rowsOf = $toast => [...$toast[0].querySelectorAll(`.${notification.ACTIONS_CLASS}`)];
+
+    test('a run of buttons goes into one row in its place, inside the element that held it', () => {
+        const $toast = toastr.info('<div class="wrapper">Choose <button id="a">A</button> <button id="b">B</button><button id="c">C</button></div>', 'Title', HTML);
         const wrapper = $toast[0].querySelector('.wrapper');
-        expect(wrapper.classList.contains(notification.ACTIONS_CLASS)).toBe(true);
-        expect([...wrapper.children].map(child => child.id)).toEqual(['a', 'b']);
-        expect($toast[0].querySelector('#a').parentElement).toBe(wrapper);
+        const [row] = rowsOf($toast);
+        expect(rowsOf($toast)).toHaveLength(1);
+        expect(row.parentElement).toBe(wrapper);
+        expect([...row.children].map(child => child.id)).toEqual(['a', 'b', 'c']);
+        expect(wrapper.firstChild.textContent).toBe('Choose ');
+        expect(wrapper.firstChild.nextSibling).toBe(row);
     });
 
-    test('a button that sits in the message itself makes the message the holder', () => {
-        const $toast = toastr.info('<button id="a">A</button>', 'Title', HTML);
-        expect(message($toast).classList.contains(notification.ACTIONS_CLASS)).toBe(true);
+    test('a button in the message itself goes into a row in the message, and the text before it stays where it is', () => {
+        const $toast = toastr.info('Removed <button id="undo">Undo</button>', '', HTML);
+        const [row] = rowsOf($toast);
+        expect(row.parentElement).toBe(message($toast));
+        expect(message($toast).firstChild.textContent).toBe('Removed ');
+        expect(row.querySelector('#undo')).not.toBeNull();
     });
 
-    test('a run of text and inline markup beside the buttons is one item, and the buttons and their parent do not move', () => {
-        const $toast = toastr.info('<div>Removed <b>Main</b> Prompt <button id="undo" class="menu_button">Undo</button></div>', '', HTML);
-        const holder = $toast[0].querySelector('.sb-toast-actions');
-        const [text, undo] = [...holder.children];
-        expect(text.className).toBe(notification.TEXT_CLASS);
-        expect(text.textContent.trim()).toBe('Removed Main  Prompt'.replace('  ', ' '));
-        expect(text.querySelector('b').textContent).toBe('Main');
-        expect(undo.id).toBe('undo');
-        expect(undo.parentElement).toBe(holder);
+    test('buttons that text separates are two rows, and a block element beside the buttons is left as it is', () => {
+        const $toast = toastr.info('<div class="sbHomeToast"><div>Well done.</div><button id="a">A</button> or <button id="b">B</button></div>', 'Title', HTML);
+        expect(rowsOf($toast)).toHaveLength(2);
+        expect($toast[0].querySelector('.sbHomeToast').firstElementChild.textContent).toBe('Well done.');
     });
 
-    test('plain text beside a button is wrapped too, and a block element beside buttons is left as it is', () => {
-        const plain = toastr.info('<div>Removed <button>Undo</button></div>', '', HTML);
-        expect(plain[0].querySelector('.sb-toast-actions > .sb-toast-text').textContent).toBe('Removed ');
-        const blocks = toastr.info('<div class="sbHomeToast"><div>Well done.</div><div>Next.</div><button>Show Me</button></div>', 'Title', { ...HTML, preventDuplicates: false });
-        const holder = blocks[0].querySelector('.sbHomeToast');
-        expect([...holder.children].map(child => child.tagName)).toEqual(['DIV', 'DIV', 'BUTTON']);
-        expect(holder.querySelector('.sb-toast-text')).toBeNull();
-    });
-
-    test('whitespace between buttons is not a run, and a message with no button has no holder', () => {
+    test('whitespace between buttons stays in the row, and a message with no button has no row', () => {
         const spaced = toastr.info('<div>\n  <button>A</button>\n  <button>B</button>\n</div>', 'Title', HTML);
-        expect(spaced[0].querySelector('.sb-toast-text')).toBeNull();
-        const none = toastr.info('<div>Just text</div>', 'Other', HTML);
-        expect(none[0].querySelector('.sb-toast-actions')).toBeNull();
+        expect(rowsOf(spaced)).toHaveLength(1);
+        expect(rowsOf(spaced)[0].querySelectorAll('button')).toHaveLength(2);
+        expect(rowsOf(toastr.info('<div>Just text</div>', 'Other', HTML))).toHaveLength(0);
     });
 
-    test('a button inside another button counts once, and a button that a link holds is a button of the message', () => {
+    test('a button inside another button is not split from it', () => {
         const nested = toastr.info('<div><span role="button" id="outer"><button id="inner">x</button></span></div>', 'Title', HTML);
-        expect([...nested[0].querySelectorAll('.sb-toast-actions')].map(holder => holder.tagName)).toEqual(['DIV']);
+        expect(rowsOf(nested)).toHaveLength(1);
+        expect(nested[0].querySelector('#inner').parentElement.id).toBe('outer');
     });
 
     test('arranging again changes nothing', () => {
@@ -145,15 +140,20 @@ describe('the button row', () => {
 
     test('follows the content when a caller changes it after the notification shows', async () => {
         const $toast = toastr.info('<div>Removed <button>Undo</button></div>', '', HTML);
-        expect($toast[0].querySelector('.sb-toast-actions')).not.toBeNull();
+        expect(rowsOf($toast)).toHaveLength(1);
         $toast.find('.toast-message').html('<span>Now <i>this</i> <button id="late">Late</button></span>');
         await flush();
         expect($toast[0].querySelector('#late').parentElement.classList.contains(notification.ACTIONS_CLASS)).toBe(true);
-        expect($toast[0].querySelector('.sb-toast-text').textContent.trim()).toBe('Now this');
         $toast.find('.toast-message').text('No buttons any more');
         await flush();
-        expect($toast[0].querySelector('.sb-toast-actions')).toBeNull();
-        expect(message($toast).classList.contains(notification.ACTIONS_CLASS)).toBe(false);
+        expect(rowsOf($toast)).toHaveLength(0);
+    });
+
+    test('a row that a caller empties is taken away, so it adds no gap', async () => {
+        const $toast = toastr.info('<div>Text <button id="x">X</button></div>', 'Title', HTML);
+        $toast.find('#x').remove();
+        await flush();
+        expect(rowsOf($toast)).toHaveLength(0);
     });
 
     describe('handlers', () => {
@@ -171,7 +171,8 @@ describe('the button row', () => {
             undo.click();
             expect(direct).toHaveBeenCalledTimes(1);
             expect(delegated).toHaveBeenCalledTimes(1);
-            expect(undo.parentElement).toBe(body);
+            expect(body.contains(undo)).toBe(true);
+            expect(undo.parentElement.className).toBe(notification.ACTIONS_CLASS);
         });
 
         test('a handler that a caller binds on the returned element after the call still finds the buttons', () => {

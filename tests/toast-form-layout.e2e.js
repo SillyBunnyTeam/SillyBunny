@@ -870,14 +870,4 @@ test.describe('the motion of a toast', () => {
         expect(leaving.duration).toBeLessThanOrEqual(200);
         await expect(page.locator(TOAST_SELECTOR)).toHaveCount(0, { timeout: 3000 });
     });
-
-    test('keeps the notification\'s fade and slide, and its shorter reduced-motion path unchanged', async ({ page }) => {
-        const keyframes = await page.evaluate(() => {
-            const element = window.toastr.info('A notification', 'Title', { timeOut: 0, extendedTimeOut: 0 })[0];
-            const animation = element.getAnimations().find(candidate => candidate.effect.getKeyframes().some(frame => frame.opacity === '0'));
-            return animation.effect.getKeyframes().map(({ opacity, transform }) => ({ opacity, transform }));
-        });
-        expect(keyframes.map(frame => frame.opacity)).toEqual(['0', '1']);
-        expect(keyframes[0].transform).toMatch(/translateY/);
-    });
 });

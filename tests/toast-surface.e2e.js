@@ -10,18 +10,15 @@ test.beforeEach(async ({ page }) => {
     await showToasts(page);
 });
 
-// Both forms are a pill with the status colour on the icon, so the same checks run on a toast (a short message with no title)
-// and on an in-app notification (a message with a title).
+// A toast is a pill with the status colour on its icon and its title; an in-app notification is a card whose icon takes the
+// status colour and whose title takes the ink. A short message with no title is a toast, and a message with a title is a notification.
 const FORMS = [
     { form: 'toast', title: '', message: 'A short message.' },
     { form: 'notification', title: 'Title', message: 'A message that is long enough to wrap onto a second line in a narrow toast.' },
 ];
 
-/** What the colour of the title is: an untitled toast has none, and a title takes the colour of the icon, or the ink for info. */
-const expectedTitleColour = (hasTitle, colour) => (hasTitle ? colour : null);
-
 for (const { form, title, message } of FORMS) {
-    test(`a ${form} is a pill, and only an error, warning or success one takes the status colour, on its icon and title`, async ({ page }) => {
+    test(`a ${form} ${form === 'toast' ? 'is a pill' : 'is a card'}, and only an error, warning or success one has a status glyph, drawn in the status colour`, async ({ page }) => {
         const measured = await page.evaluate(({ titleText, messageText }) => {
             const read = (kind) => {
                 const toast = window.toastr[kind](messageText, titleText, { timeOut: 0, extendedTimeOut: 0 });
@@ -48,15 +45,24 @@ for (const { form, title, message } of FORMS) {
 
         for (const [kind, toast] of Object.entries(measured)) {
             expect(toast.form, `${kind} is a ${form}`).toBe(form);
-            expect(toast.radius, `${kind} ${form} radius`).toBeGreaterThanOrEqual(toast.height / 2);
+            if (form === 'toast') {
+                expect(toast.radius, `${kind} toast radius`).toBeGreaterThanOrEqual(toast.height / 2);
+            } else {
+                expect(toast.radius, `${kind} notification radius is the Overlay radius`).toBe(15);
+            }
         }
         for (const kind of ['error', 'warning', 'success']) {
             expect(measured[kind].iconColour, `${kind} icon colour is not the ink`).not.toBe(measured[kind].ink);
-            expect(measured[kind].titleColour, `${kind} title colour`).toBe(expectedTitleColour(title !== '', measured[kind].iconColour));
             expect(measured[kind].iconContent, `${kind} icon glyph`).not.toBe('none');
             expect(measured[kind].background, `${kind} ${form} draws no PNG icon`).toBe('none');
+            if (form === 'toast') {
+                expect(measured[kind].titleColour).toBeNull();
+            } else {
+                expect(measured[kind].titleColour, `${kind} notification title is the ink`).toBe(measured[kind].ink);
+            }
         }
-        expect(measured.info.titleColour, 'info title keeps the toast ink').toBe(expectedTitleColour(title !== '', measured.info.ink));
+        expect(measured.info.iconContent, 'info has no glyph').toBe('none');
+        expect(measured.info.background, 'info draws no PNG icon').toBe('none');
     });
 }
 

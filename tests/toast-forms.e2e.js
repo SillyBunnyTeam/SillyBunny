@@ -82,7 +82,8 @@ test.describe('the content and the callbacks of the message', () => {
 
     test('a notification with several buttons keeps its markup, and each button works', async ({ page }) => {
         const toast = await fire(page, 'severalButtons');
-        expect(toast.html).toBe('<div>Unsaved changes</div><div><button type="button" id="fx-restore">Restore</button><button type="button" id="fx-discard">Discard</button></div>');
+        // The two buttons go into one row inside the element that held them, and nothing else of the markup changes.
+        expect(toast.html).toBe('<div>Unsaved changes</div><div><div class="sb-toast-actions"><button type="button" id="fx-restore">Restore</button><button type="button" id="fx-discard">Discard</button></div></div>');
         await page.locator(`${NOTIFICATION_FORM_SELECTOR} #fx-restore`).click();
         await page.locator(`${NOTIFICATION_FORM_SELECTOR} #fx-discard`).click();
         expect(await calls(page)).toEqual(['restore', 'discard']);

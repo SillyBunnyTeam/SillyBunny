@@ -731,6 +731,9 @@ function placeToast(element, effective, options) {
         // The newest notification is nearest the edge: first in the document, which a bottom position draws last.
         element.parentElement?.prepend(element);
         removeOverlayIfEmpty();
+        // The overlay that decided the form was at the position of the notifications, and is gone now, so the inset
+        // that it left them is stale. The notification is placed before it shows.
+        updateToastPlacement();
     }
     return form;
 }

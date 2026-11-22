@@ -12,10 +12,8 @@ import {
     prefersReducedMotion,
 } from './sillybunny-motion.js';
 
-/** Set on every element that directly holds a button of the message: CSS lays it out as the button row. */
+/** The row that holds a run of buttons of the message: CSS lays it out as the button row. */
 export const ACTIONS_CLASS = 'sb-toast-actions';
-/** Wraps a run of text in a holder of buttons, so that the run is one item of the row layout. */
-export const TEXT_CLASS = 'sb-toast-text';
 /** A click on one of these is the control's own, and not a click on the card. */
 const CONTROL_SELECTOR = `${BUTTON_SELECTOR}, a[href], input, select, textarea, label, summary, [contenteditable]`;
 
@@ -31,65 +29,44 @@ function isWhitespaceText(node) {
     return node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '';
 }
 
-/** Text, and an inline element that holds no button, are part of a line of text. A block element is its own item. */
-function isTextRunMember(node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-        return true;
-    }
-    if (!(node instanceof Element) || node.classList.contains(TEXT_CLASS) || node.matches(BUTTON_SELECTOR) || node.querySelector(BUTTON_SELECTOR)) {
-        return false;
-    }
-    // An element that has no display value is inline, as a browser computes it.
-    const { display } = getComputedStyle(node);
-    return display === '' || display.startsWith('inline');
-}
-
-/**
- * The row is a flex container, and a run of text and inline elements among its items would be one item per element
- * with the spaces between them lost. Each run is wrapped in a span, which is one item. Only text and inline elements
- * move, and into an element of the holder, so the buttons and the holder keep their place in the caller's markup.
- * @param {Element} holder
- */
-function wrapTextRuns(holder) {
-    let run = [];
-    const flush = () => {
-        while (run.length > 0 && isWhitespaceText(run.at(-1))) {
-            run.pop();
-        }
-        if (run.length > 0 && run.some(node => !isWhitespaceText(node))) {
-            const wrapper = holder.ownerDocument.createElement('span');
-            wrapper.className = TEXT_CLASS;
-            holder.insertBefore(wrapper, run[0]);
-            wrapper.append(...run);
-        }
-        run = [];
-    };
-    for (const node of [...holder.childNodes]) {
-        if (isTextRunMember(node)) {
-            run.push(node);
+/** The buttons that follow `first` with nothing but whitespace between them, and the whitespace between them. */
+function runFrom(first) {
+    const run = [first];
+    let pending = [];
+    for (let next = first.nextSibling; next; next = next.nextSibling) {
+        if (isWhitespaceText(next)) {
+            pending.push(next);
+        } else if (next instanceof Element && next.matches(BUTTON_SELECTOR)) {
+            run.push(...pending, next);
+            pending = [];
         } else {
-            flush();
+            break;
         }
     }
-    flush();
+    return run;
 }
 
 /**
- * Marks every element that holds a button of the message as a button row. The buttons stay where the caller put them,
- * and so do their ancestors, so handlers bound on a button and handlers delegated from an ancestor keep working. It
- * can run again after the caller changes the content.
+ * Puts each run of buttons of the message in a row of its own, in the place of the run. The row is inside the element
+ * that held the buttons, so the buttons stay descendants of every ancestor that the caller gave them: handlers bound on
+ * a button and handlers that an ancestor delegates keep working. Only a selector that needs the button to be a direct
+ * child of its old parent no longer matches. It can run again after the caller changes the content.
  * @param {Element} message The `.toast-message` element.
  */
 export function arrangeButtons(message) {
-    const holders = new Set(outermostButtons(message).map(button => button.parentElement).filter(Boolean));
-    for (const stale of [message, ...message.querySelectorAll(`.${ACTIONS_CLASS}`)]) {
-        if (stale.classList.contains(ACTIONS_CLASS) && !holders.has(stale)) {
-            stale.classList.remove(ACTIONS_CLASS);
+    for (const row of message.querySelectorAll(`.${ACTIONS_CLASS}`)) {
+        if (!row.querySelector(BUTTON_SELECTOR)) {
+            row.remove();
         }
     }
-    for (const holder of holders) {
-        holder.classList.add(ACTIONS_CLASS);
-        wrapTextRuns(holder);
+    for (const button of outermostButtons(message)) {
+        if (button.parentElement?.classList.contains(ACTIONS_CLASS)) {
+            continue;
+        }
+        const row = message.ownerDocument.createElement('div');
+        row.className = ACTIONS_CLASS;
+        button.before(row);
+        row.append(...runFrom(button));
     }
 }
 
@@ -110,7 +87,7 @@ export function watchButtons(element) {
     }
     const observer = new MutationObserver(() => {
         arrange();
-        // Wrapping a run is a change too, and must not start the next round.
+        // Moving the buttons into a row is a change too, and must not start the next round.
         observer.takeRecords();
     });
     observer.observe(element, { childList: true, subtree: true });

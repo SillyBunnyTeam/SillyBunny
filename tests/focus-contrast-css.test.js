@@ -262,7 +262,7 @@ describe('the outer ring on solid fills and pictures', () => {
 });
 
 describe('the focus ring inside the toast layer', () => {
-    const fallbackStart = themeCss.indexOf('body :is(#toast-container, #sb-toast-overlay) {\n    --sb-focus-ring: currentColor;');
+    const fallbackStart = themeCss.indexOf('body #sb-toast-overlay {\n    --sb-focus-ring: currentColor;');
     const supportsStart = themeCss.indexOf('@supports (color: oklab(from red l a b))');
 
     test('the toast takes its own ink as the ring, and declares the two tokens that read it again', () => {
@@ -273,7 +273,7 @@ describe('the focus ring inside the toast layer', () => {
     test('where relative colours work, the ring is the light form of the accent, as libadwaita draws it', () => {
         expect(supportsStart).toBeGreaterThan(fallbackStart);
         const supports = blockAt(themeCss, supportsStart);
-        expect(supports.replace(/\s+/g, ' ').trim()).toBe('body :is(#toast-container, #sb-toast-overlay) { --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b); }');
+        expect(supports.replace(/\s+/g, ' ').trim()).toBe('body #sb-toast-overlay { --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b); }');
     });
 
     test('the Home toast action uses the ordinary inset ring', () => {
