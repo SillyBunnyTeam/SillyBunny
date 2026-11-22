@@ -35,6 +35,16 @@ afterEach(async () => {
 describe('the way back from Home', () => {
     const endTransition = propertyName => sheld.dispatchEvent(Object.assign(new Event('transitionend'), { propertyName }));
 
+    // jsdom has no style sheets, so the shell is given the width transition that the Home style sheet gives it.
+    beforeEach(() => {
+        document.body.classList.remove('reduced-motion');
+        jest.spyOn(window, 'getComputedStyle').mockImplementation(() => ({ transitionDuration: '0.25s', transitionDelay: '0s' }));
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
     test('marks the shell in the turn that Home ends, and never when Home starts', async () => {
         const panel = createWelcomePanel();
         chat.append(panel);
@@ -70,8 +80,20 @@ describe('the way back from Home', () => {
         panel.remove();
         await settle();
 
-        await new Promise(resolve => setTimeout(resolve, 600));
+        await new Promise(resolve => setTimeout(resolve, 450));
 
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(false);
+    });
+
+    test('never marks the shell when motion is reduced', async () => {
+        document.body.classList.add('reduced-motion');
+        const panel = createWelcomePanel();
+        chat.append(panel);
+        await settle();
+        panel.remove();
+        await settle();
+
+        expect(sheld.hasAttribute('data-sb-home')).toBe(false);
         expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(false);
     });
 
