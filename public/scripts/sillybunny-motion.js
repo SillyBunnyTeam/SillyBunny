@@ -43,11 +43,14 @@ export function prefersReducedMotion() {
         || document.body?.classList.contains('reduced-motion') === true;
 }
 
-function canAnimate(element) {
+function canAnimateElement(element) {
     return element instanceof HTMLElement
         && element.isConnected
-        && typeof element.animate === 'function'
-        && !prefersReducedMotion();
+        && typeof element.animate === 'function';
+}
+
+function canAnimate(element) {
+    return canAnimateElement(element) && !prefersReducedMotion();
 }
 
 function applyInlineStyles(element, styles) {
@@ -81,11 +84,15 @@ export function stopMotion(element) {
  * Plays keyframes on the element. `styles` are applied inline (!important) for the duration,
  * `onFinish` runs only when the animation completes, `onEnd` runs on finish and on cancel. `onEnd` also
  * runs when other code cancels the animation directly, for example through `getAnimations()`.
- * Without motion, `onFinish` and `onEnd` run synchronously.
+ * Without motion, `onFinish` and `onEnd` run synchronously. `reducedKeyframes` is for a surface that DESIGN.md says
+ * fades under reduced motion: they replace `keyframes`, over at most `MOTION_FAST`, when reduced motion is on.
  */
-export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null } = {}) {
+export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null, reducedKeyframes = null } = {}) {
     stopMotion(element);
-    if (!canAnimate(element)) {
+    if (reducedKeyframes && prefersReducedMotion() && canAnimateElement(element)) {
+        keyframes = reducedKeyframes;
+        duration = Math.min(duration, MOTION_FAST);
+    } else if (!canAnimate(element)) {
         onFinish?.();
         onEnd?.();
         return null;

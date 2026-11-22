@@ -10,6 +10,10 @@
  * own. A message that waits stays hidden, with no hide timer, until it is its turn. A toast that a caller made to
  * stay (timeOut 0: progress and persistent states) is never held back, because it would hold every later message
  * behind it for as long as it stays.
+ *
+ * A toast moves as libadwaita's AdwToastOverlay moves it: in, it slides out of the edge it sits at (that edge clips it,
+ * see the overlay's clip-path), with no fade; out, it fades and scales to 0.95. An in-app notification keeps its fade
+ * and slide until its own motion is drawn. Under reduced motion a toast fades.
  */
 
 import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } from './sillybunny-motion.js';
@@ -25,6 +29,7 @@ import {
     TOAST_OVERLAY_ID,
     classifyToast,
 } from './sillybunny-toast-form.js';
+import { IN_DIALOG_ATTRIBUTE, edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
 
 export const TOAST_SHOW_METHOD = 'sbToastIn';
 export const TOAST_HIDE_METHOD = 'sbToastOut';
@@ -51,6 +56,7 @@ const NOTIFICATION_CONTAINER_ID = 'toast-container';
  * then, so it has to be empty only when no toast is left in either container.
  */
 const BOTH_CONTAINERS_ID = `${NOTIFICATION_CONTAINER_ID}, #${TOAST_OVERLAY_ID}`;
+const DISMISS_LABEL = 'Dismiss';
 const POSITION_CLASSES = [
     'toast-top-left',
     'toast-top-center',
@@ -116,6 +122,7 @@ let userListener = null;
 let subscribeHooked = false;
 let toastrApi = null;
 let measureOverride = null;
+let translateLabel = text => text;
 let toastPosition = 'toast-bottom-center';
 let notificationPosition = 'toast-top-center';
 let uncapturedLogged = false;
@@ -140,12 +147,35 @@ function queueOf(element) {
     return element.classList.contains(TOAST_FORM_CLASS) ? queues[TOAST_FORM] : queues[NOTIFICATION_FORM];
 }
 
-function enterOffset(element) {
-    const height = element.getBoundingClientRect().height || 0;
-    // Bottom-anchored containers rise from below; the rest drop in from above.
-    const fromBelow = /\btoast-bottom-/.test(element.parentElement?.className ?? '');
-    return `${fromBelow ? height : -height}px`;
+/** @returns {'top'|'bottom'} The edge that the toast's container sits at. */
+function edgeOfToast(element) {
+    const container = element.parentElement;
+    return edgeOf(container?.className ?? '', container?.hasAttribute(IN_DIALOG_ATTRIBUTE) === true);
 }
+
+/** A notification enters from the edge its container sits at, by its own height, and fades in. */
+function notificationEnterOffset(element) {
+    const height = element.getBoundingClientRect().height || 0;
+    return `${edgeOfToast(element) === 'bottom' ? height : -height}px`;
+}
+
+/**
+ * A toast starts fully beyond the edge it sits at: libadwaita offsets it by the height of its widget, which includes
+ * the margins, and the edge clips it. The margin box is read from the computed style because the margins differ at
+ * the edge and elsewhere.
+ */
+function toastEnterOffset(element) {
+    const { marginTop, marginBottom } = getComputedStyle(element);
+    const height = (element.getBoundingClientRect().height || 0) + (parseFloat(marginTop) || 0) + (parseFloat(marginBottom) || 0);
+    return `${edgeOfToast(element) === 'bottom' ? height : -height}px`;
+}
+
+function isToastForm(element) {
+    return element.classList.contains(TOAST_FORM_CLASS);
+}
+
+const FADE_IN = [{ opacity: 0 }, { opacity: 1 }];
+const FADE_OUT = [{ opacity: 1 }, { opacity: 0 }];
 
 function showDuration(element) {
     return queueOf(element).hiding > 0 ? TOAST_REPLACE_DURATION : MOTION_SURFACE;
@@ -153,13 +183,30 @@ function showDuration(element) {
 
 function enter(element, complete) {
     element.style.removeProperty('display');
-    play(element, [
-        { opacity: 0, transform: `translateY(${enterOffset(element)})` },
-        { opacity: 1, transform: 'none' },
-    ], {
+    const toast = isToastForm(element);
+    const keyframes = toast
+        ? [{ transform: `translateY(${toastEnterOffset(element)})` }, { transform: 'none' }]
+        : [{ opacity: 0, transform: `translateY(${notificationEnterOffset(element)})` }, { opacity: 1, transform: 'none' }];
+    play(element, keyframes, {
         duration: showDuration(element),
         easing: MOTION_EASE,
+        reducedKeyframes: toast ? FADE_IN : null,
         onFinish: () => complete?.call(element),
+    });
+}
+
+/** The leave animation of both forms and of a toast that a high-priority toast pushes back: a fade and a scale to 0.95. */
+function playLeave(element, { onFinish, onEnd }) {
+    play(element, [
+        { opacity: 1, transform: 'none' },
+        { opacity: 0, transform: 'scale(0.95)' },
+    ], {
+        duration: MOTION_SURFACE,
+        easing: MOTION_EASE_OUT_CUBIC,
+        fill: 'forwards',
+        reducedKeyframes: isToastForm(element) ? FADE_OUT : null,
+        onFinish,
+        onEnd,
     });
 }
 
@@ -211,13 +258,7 @@ function leave(element, { pinned = false, complete = null } = {}) {
         pin(element);
     }
     queue.hiding += 1;
-    play(element, [
-        { opacity: 1, transform: 'none' },
-        { opacity: 0, transform: 'scale(0.95)' },
-    ], {
-        duration: MOTION_SURFACE,
-        easing: MOTION_EASE_OUT_CUBIC,
-        fill: 'forwards',
+    playLeave(element, {
         onFinish: () => {
             leaving.delete(element);
             // toastr's removeToast() skips elements that are still :visible.
@@ -424,13 +465,7 @@ function pushBack(queue, entry) {
     element.classList.add(TOAST_LEAVING_CLASS);
     pin(element);
     queue.hiding += 1;
-    play(element, [
-        { opacity: 1, transform: 'none' },
-        { opacity: 0, transform: 'scale(0.95)' },
-    ], {
-        duration: MOTION_SURFACE,
-        easing: MOTION_EASE_OUT_CUBIC,
-        fill: 'forwards',
+    playLeave(element, {
         onFinish: () => {
             leaving.delete(element);
             element.style.display = 'none';
@@ -615,6 +650,7 @@ function settleContainers() {
     }
     removeOverlayIfEmpty();
     removeEmptyNotificationContainer();
+    scheduleToastPlacement();
 }
 
 /** The overlay is made when the first toast needs it, and it is in the top open modal dialog or else in the body. */
@@ -631,6 +667,9 @@ function ensureOverlay() {
     if (overlay.parentElement !== host) {
         host.append(overlay);
     }
+    // The CSS reads whether the overlay is in a dialog from the first frame, so the placement is written now.
+    updateToastPlacement();
+    observeToastPlacement();
     return overlay;
 }
 
@@ -709,6 +748,45 @@ function timingOf(form, type, optionsOverride, effective) {
     return { timeOut: NOTIFICATION_TIMEOUT, extendedTimeOut, persistent: false };
 }
 
+// The close button
+
+/**
+ * Every message has a close button (DESIGN: Toasts, Parts). toastr builds it from `closeHtml` and binds its click, which
+ * also runs `onCloseClick`, so the button is made by toastr and only its markup is ours. The label is libadwaita's.
+ * @returns {string}
+ */
+function dismissButtonHtml() {
+    const label = translateLabel(DISMISS_LABEL);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.dataset.i18n = `[title]${DISMISS_LABEL};[aria-label]${DISMISS_LABEL}`;
+    const glyph = document.createElement('i');
+    glyph.className = 'fa-solid fa-xmark';
+    glyph.setAttribute('aria-hidden', 'true');
+    button.append(glyph);
+    return button.outerHTML;
+}
+
+/**
+ * Tapping a toast does nothing: its button and its close button are the only ways to act on it. toastr binds the tap
+ * to dismiss when it creates the toast, before the form is known, and the app's listener adds the "Tap to close" hint
+ * after that, so both are taken off once the toast is known to be a toast. The close button is the last part of a toast,
+ * and toastr puts it first.
+ * @param {any} $toast
+ */
+function makeInertToTaps($toast) {
+    const element = $toast[0];
+    $toast.off('click');
+    element.classList.remove('interactable');
+    element.removeAttribute('title');
+    const close = [...element.children].find(child => child.classList.contains('toast-close-button'));
+    if (close) {
+        element.append(close);
+    }
+}
+
 // The wrapper
 
 /** @see BOTH_CONTAINERS_ID */
@@ -784,6 +862,9 @@ function recoverUncaptured(original, created, message, title, forcedOptions) {
 function toastEntry(type, key, effective, optionsOverride, high, { $toast, options }) {
     const element = $toast[0];
     const form = placeToast(element, effective, options);
+    if (form === TOAST_FORM) {
+        makeInertToTaps($toast);
+    }
     const { timeOut, extendedTimeOut, persistent } = timingOf(form, type, optionsOverride, effective);
     return {
         $toast,
@@ -844,6 +925,8 @@ function wrapNotifier(toastr, type) {
             containerId: NOTIFICATION_CONTAINER_ID,
             target: 'body',
             positionClass: notificationPosition,
+            closeButton: true,
+            closeHtml: dismissButtonHtml(),
         };
         if (!queueEnabled) {
             return showUnqueued(original, message, title, forced);
@@ -966,6 +1049,7 @@ export function setToastPosition(positionClass) {
     if (overlay) {
         setPositionClass(overlay, positionClass);
     }
+    scheduleToastPlacement();
     return true;
 }
 
@@ -983,6 +1067,7 @@ export function setNotificationPosition(positionClass) {
     if (container) {
         setPositionClass(container, positionClass);
     }
+    scheduleToastPlacement();
     return true;
 }
 
@@ -1003,6 +1088,8 @@ export function placeToastContainers() {
         removeOverlayIfEmpty();
         removeEmptyNotificationContainer();
     }
+    updateToastPlacement();
+    observeToastPlacement();
 }
 
 /**
@@ -1067,14 +1154,17 @@ function holdWhilePressed(jQuery, document) {
  * @param {any} [dependencies.toastr]
  * @param {(element: HTMLElement) => { width: number, em: number }} [dependencies.measure] Replaces the browser's measure
  * of a toast on one line, for a test that has no layout.
+ * @param {(text: string) => string} [dependencies.translate] The app's translation of a UI string.
  */
-export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = globalThis.toastr, measure } = {}) {
+export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = globalThis.toastr, measure, translate } = {}) {
     if (initialized || !jQuery?.fn || !toastr) {
         return;
     }
     initialized = true;
     toastrApi = toastr;
     measureOverride = measure ?? null;
+    translateLabel = translate ?? translateLabel;
+    startToastPlacement();
     jQuery.fn[TOAST_SHOW_METHOD] = sbToastIn;
     jQuery.fn[TOAST_HIDE_METHOD] = sbToastOut;
     jQuery.fn[TOAST_HOLD_METHOD] = sbToastHold;

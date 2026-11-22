@@ -30,9 +30,9 @@ const inOverlay = $toast => $toast.closest('#sb-toast-overlay').length === 1;
 const inNotifications = $toast => $toast.closest('#toast-container').length === 1;
 /** A message with a title is an in-app notification, so these tests make notifications with a title. */
 const notice = (type, name, options) => toastr[type](`${name} message`, name, options);
-/** The enter animations (they start from opacity 0) and the leave animations (they end at opacity 0). */
-const enters = () => animations.filter(animation => animation.keyframes[0].opacity === 0);
-const leaves = () => animations.filter(animation => animation.keyframes[1].opacity === 0);
+/** The enter animations (they end at no transform: a toast slides, a notification slides and fades) and the leave animations (they end at opacity 0). */
+const enters = () => animations.filter(animation => animation.keyframes.at(-1).transform === 'none');
+const leaves = () => animations.filter(animation => animation.keyframes.at(-1).opacity === 0);
 
 async function finishAnimations() {
     const running = animations.filter(animation => !animation.done);
@@ -396,10 +396,10 @@ describe('the toast queue', () => {
         expect(queueState()).toEqual({ current: first[0], waiting: [third[0]] });
     });
 
-    test('tapping the shown toast hides it and shows the next one', async () => {
+    test('dismissing the shown toast with its close button hides it and shows the next one', async () => {
         const first = toastr.info('first');
         const second = toastr.info('second');
-        first.trigger('click');
+        first.find('.toast-close-button').trigger('click');
         await flush();
         expect(first.hasClass('sb-toast-leaving')).toBe(true);
         expect(shown(second)).toBe(true);
@@ -459,14 +459,18 @@ describe('the toast queue', () => {
         expect(events.filter(([state]) => state === 'visible').map(([, message]) => message)).toEqual(['first', 'queued', 'same']);
     });
 
-    test('with reduced motion a toast shows at once when the one in front of it hides', async () => {
+    test('with reduced motion a toast fades over at most 200ms, and the next one shows when the one in front of it hides', async () => {
         reducedMotion = true;
         const first = toastr.info('first');
         const second = toastr.info('second');
+        expect(animations.map(animation => [animation.keyframes, animation.duration])).toEqual([[[{ opacity: 0 }, { opacity: 1 }], 200]]);
+
         await advance(5000);
-        expect(first.closest('body').length).toBe(0);
         expect(shown(second)).toBe(true);
-        expect(animations).toHaveLength(0);
+        expect(animations.slice(1).map(animation => animation.keyframes)).toEqual([[{ opacity: 1 }, { opacity: 0 }], [{ opacity: 0 }, { opacity: 1 }]]);
+        expect(animations.slice(1).every(animation => animation.duration === 200)).toBe(true);
+        await finishAnimations();
+        expect(first.closest('body').length).toBe(0);
     });
 });
 
@@ -1194,5 +1198,159 @@ describe('preventDuplicates across the two containers', () => {
         expect(document.querySelectorAll('.toast')).toHaveLength(0);
 
         expect(toastr.info('Toast four', '', stays)).toBeDefined();
+    });
+});
+
+describe('the parts of a toast and the dismissal of a message', () => {
+    const closeButton = $toast => $toast.find('> .toast-close-button');
+
+    test('a toast and a notification have a close button named Dismiss, with a tooltip and a glyph that is hidden from assistive technology', () => {
+        for (const $toast of [toastr.info('A toast'), toastr.info('A notification', 'Title')]) {
+            const button = closeButton($toast)[0];
+            expect(button).toBeInstanceOf(HTMLButtonElement);
+            expect(button.getAttribute('aria-label')).toBe('Dismiss');
+            expect(button.title).toBe('Dismiss');
+            expect(button.dataset.i18n).toBe('[title]Dismiss;[aria-label]Dismiss');
+            expect(button.querySelector('i.fa-xmark').getAttribute('aria-hidden')).toBe('true');
+        }
+    });
+
+    test('the close button is the last part of a toast, so that Tab follows what is drawn', () => {
+        const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false });
+        const children = [...$toast[0].children];
+        expect($toast[0].classList.contains(toastForm.TOAST_FORM_CLASS)).toBe(true);
+        expect(children.at(-1).classList.contains('toast-close-button')).toBe(true);
+        expect(children.filter(child => child.classList.contains('toast-close-button'))).toHaveLength(1);
+    });
+
+    test('a call that asks for no close button, or its own markup for it, gets the same one', () => {
+        const $toast = toastr.info('A toast', '', { closeButton: false, closeHtml: '<b class="mine">x</b>' });
+        expect(closeButton($toast)).toHaveLength(1);
+        expect(closeButton($toast)[0].getAttribute('aria-label')).toBe('Dismiss');
+    });
+
+    test('the close button runs onCloseClick and hides the message', async () => {
+        const onCloseClick = jest.fn();
+        const $toast = toastr.info('A toast', '', { onCloseClick });
+        closeButton($toast).trigger('click');
+        await flush();
+        expect(onCloseClick).toHaveBeenCalledTimes(1);
+        expect($toast.hasClass('sb-toast-leaving') || !$toast[0].isConnected).toBe(true);
+    });
+
+    test('tapping a toast does nothing, and it keeps no hint or class that says it can be tapped', async () => {
+        const onHidden = jest.fn();
+        const $toast = toastr.info('A toast', '', { onHidden });
+        toastr.subscribe(() => {});
+        $toast.addClass('interactable').attr('title', 'Tap to close');
+        const second = toastr.info('Waiting');
+        $toast.trigger('click');
+        await flush();
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+        expect(shown(second)).toBe(false);
+        expect(onHidden).not.toHaveBeenCalled();
+    });
+
+    test('a toast made after the app\'s listener has run has no "Tap to close" hint and is not marked as interactable', () => {
+        toastr.subscribe(({ state }) => {
+            if (state !== 'visible') {
+                return;
+            }
+            const $made = window.jQuery('#sb-toast-overlay, #toast-container').children().last();
+            $made.addClass('interactable').attr('title', 'Tap to close');
+        });
+        const $toast = toastr.info('A toast');
+        const $notification = toastr.info('A notification', 'Title');
+        expect($toast[0].classList.contains('interactable')).toBe(false);
+        expect($toast[0].hasAttribute('title')).toBe(false);
+        expect($notification[0].classList.contains('interactable')).toBe(true);
+        expect($notification[0].getAttribute('title')).toBe('Tap to close');
+        toastr.subscribe(() => {});
+    });
+
+    test('tapping a notification still hides it', async () => {
+        const $notification = toastr.info('A notification', 'Title');
+        $notification.trigger('click');
+        await flush();
+        expect($notification.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
+    test('the button of a toast keeps working when the toast ignores taps', () => {
+        const action = jest.fn();
+        const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false });
+        $toast.find('#undo').on('click', action);
+        $toast.find('#undo').trigger('click');
+        expect(action).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the motion of a toast', () => {
+    const real = { getBoundingClientRect: HTMLElement.prototype.getBoundingClientRect };
+    const openHosts = [];
+
+    beforeAll(() => {
+        HTMLDialogElement.prototype.showModal = function showModal() {
+            this.setAttribute('open', '');
+        };
+    });
+
+    beforeEach(() => {
+        // A toast of 40px with the margins of libadwaita's toast: 12px, and 24px at the edge it sits at.
+        HTMLElement.prototype.getBoundingClientRect = () => ({ height: 40, width: 200, top: 0, left: 0, right: 200, bottom: 40 });
+        jest.spyOn(window, 'getComputedStyle').mockImplementation(() => ({ display: 'block', marginTop: '12px', marginBottom: '24px' }));
+    });
+
+    afterEach(() => {
+        HTMLElement.prototype.getBoundingClientRect = real.getBoundingClientRect;
+        jest.restoreAllMocks();
+        openHosts.splice(0).forEach(host => host.remove());
+        toastQueue.setToastPosition('toast-bottom-center');
+    });
+
+    test('a toast slides in from beyond the edge it sits at by its height and margins, with no fade', () => {
+        toastr.info('A toast');
+        expect(animations).toHaveLength(1);
+        expect(animations[0].keyframes).toEqual([{ transform: 'translateY(76px)' }, { transform: 'none' }]);
+        expect(animations[0].duration).toBe(300);
+    });
+
+    test('a toast at a top position slides down from above', () => {
+        toastQueue.setToastPosition('toast-top-right');
+        toastr.info('A toast');
+        expect(animations[0].keyframes).toEqual([{ transform: 'translateY(-76px)' }, { transform: 'none' }]);
+    });
+
+    test('a toast in a dialog slides up from the dialog\'s bottom edge, whatever the position setting says', () => {
+        toastQueue.setToastPosition('toast-top-left');
+        const host = document.createElement('dialog');
+        host.setAttribute('data-sb-modal', '');
+        document.body.append(host);
+        host.showModal();
+        openHosts.push(host);
+        toastr.info('A toast');
+        expect(document.getElementById('sb-toast-overlay').hasAttribute('data-sb-toast-in-dialog')).toBe(true);
+        expect(animations[0].keyframes).toEqual([{ transform: 'translateY(76px)' }, { transform: 'none' }]);
+    });
+
+    test('a toast leaves with a fade and a scale to 0.95 from its centre over 300ms', async () => {
+        toastr.info('A toast');
+        await advance(5000);
+        expect(leaves()).toHaveLength(1);
+        expect(leaves()[0].keyframes).toEqual([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.95)' }]);
+        expect(leaves()[0].duration).toBe(300);
+    });
+
+    test('an in-app notification keeps its fade and slide', () => {
+        toastr.info('A notification', 'Title');
+        expect(animations).toHaveLength(1);
+        expect(animations[0].keyframes).toEqual([{ opacity: 0, transform: 'translateY(-40px)' }, { opacity: 1, transform: 'none' }]);
+    });
+
+    test('with reduced motion a notification shows and hides at once, and a toast fades', () => {
+        reducedMotion = true;
+        toastr.info('A notification', 'Title');
+        expect(animations).toHaveLength(0);
+        toastr.info('A toast');
+        expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 0 }, { opacity: 1 }]]);
     });
 });

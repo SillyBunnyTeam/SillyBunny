@@ -6974,23 +6974,44 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     }
 }
 
-/* The toast overlay (AdwToastOverlay) holds the toast form. It takes the base rules that toastr.min.css, style.css and
-   popup.css give #toast-container by its id, so that a toast looks and moves the same in either container. The sizes of
-   the toast box stay with the pill rule below, and none of the rules here is important, so the measure rule wins. */
+/* The toast overlay (AdwToastOverlay) holds the toast form. It is a strip across the window (or across a dialog), flush
+   with the edge that the toasts sit at, so that its own edge is the edge that clips a toast while it slides in. The
+   toast carries the margins (libadwaita's toast margins) and is the only part that takes pointer events. toastr's
+   position classes only choose the edge and the side. A width, a minimum or maximum width, a position and white-space
+   are never important here, so the measure rule below keeps winning. */
 #sb-toast-overlay {
     position: fixed;
     z-index: 999999;
+    inset: auto 0;
+    width: auto;
     pointer-events: none;
-}
-
-#sb-toast-overlay.toast-bottom-left,
-#sb-toast-overlay.toast-bottom-center,
-#sb-toast-overlay.toast-bottom-right {
-    bottom: 24px;
+    container-type: inline-size;
 }
 
 #sb-toast-overlay * {
     box-sizing: border-box;
+}
+
+#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) {
+    top: 0;
+    margin-top: var(--topBarBlockSize);
+    clip-path: inset(0 -100vmax -100vmax);
+}
+
+#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
+    bottom: var(--sb-toast-bottom-inset, 0px);
+    clip-path: inset(-100vmax -100vmax 0);
+}
+
+/* In a dialog the toast is at the bottom centre of the dialog's box, whatever the position setting says. A Popup is
+   the overlay's containing block, which a dialog's transform or backdrop filter would otherwise move away from the
+   window. A frame of the shared dialog fills the window, so the script writes the box of the frame inside it. */
+dialog > #sb-toast-overlay[data-sb-toast-in-dialog] {
+    position: absolute;
+    inset: auto auto var(--sb-toast-frame-bottom, 0px) var(--sb-toast-frame-left, 0px);
+    width: var(--sb-toast-frame-width, 100%);
+    margin-top: 0;
+    clip-path: inset(-100vmax -100vmax 0);
 }
 
 #sb-toast-overlay > div {
@@ -7000,36 +7021,14 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     opacity: 1;
     filter: none;
     font-size: calc(var(--mainFontSize) * 0.95);
-    cursor: pointer;
 }
 
 #sb-toast-overlay > div.rtl {
     direction: rtl;
 }
 
-body #sb-toast-overlay > .toast-non-interactable {
-    cursor: default;
-}
-
 body #sb-toast-overlay .toast-message :is(a, label) {
     color: var(--toast-link-color);
-}
-
-body #sb-toast-overlay .toast-close-button {
-    color: var(--toast-text-color);
-    text-shadow: none;
-}
-
-body #sb-toast-overlay .toast-close-button:focus {
-    color: var(--toast-text-color);
-    opacity: 0.7;
-}
-
-@media (hover: hover) {
-    body #sb-toast-overlay .toast-close-button:hover {
-        color: var(--toast-text-color);
-        opacity: 0.7;
-    }
 }
 
 .popup[opening] #sb-toast-overlay {
@@ -7037,58 +7036,187 @@ body #sb-toast-overlay .toast-close-button:focus {
 }
 
 .popup #sb-toast-overlay {
-    text-align: left;
+    text-align: start;
 }
 
-.popup #sb-toast-overlay.toast-top-left,
-.popup #sb-toast-overlay.toast-top-right {
-    top: calc(var(--toast-edge) + var(--topBarBlockSize));
-}
-
-.popup #sb-toast-overlay.toast-top-center {
-    top: var(--topBarBlockSize);
-}
-
-/* Toasts: a pill on the toast layer. `[class]` beats toastr's per-position width and margin; the end padding clears the caps. */
-body :is(#toast-container, #sb-toast-overlay)[class] > div {
-    width: fit-content;
-    max-width: min(450px, calc(100% - 24px));
-    margin: 12px auto 0;
-    padding: 9px 24px 9px 36px;
-    background-color: var(--sb-layer-toast) !important;
-    color: var(--sb-layer-toast-fg) !important;
-    border: none !important;
-    border-radius: var(--sb-radius-pill) !important;
-    box-shadow: var(--sb-shadow-toast) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
-/* AdwToast puts its one button at the end of the text; a toast with several buttons keeps its block layout. */
-body :is(#toast-container, #sb-toast-overlay)[class] > .sb-toast--action {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+/* A toast: a pill on the toast layer with its parts in one row (glyph, label, one button, close), as AdwToast. */
+#sb-toast-overlay > .sb-form-toast {
+    --sb-toast-part-size: max(34px, 1lh);
+    display: flex;
     align-items: center;
-    column-gap: 6px;
+    gap: 6px;
+    width: fit-content;
+    max-width: min(34em, calc(100cqw - 24px));
+    margin: 12px auto;
+    padding-block: 6px;
+    padding-inline: 12px 6px;
+    background-color: var(--sb-layer-toast);
+    background-image: none;
+    color: var(--sb-layer-toast-fg);
+    border: none;
+    /* A one-line toast is a pill. One that wraps keeps half the height of a one-line toast, so its corners do not eat the text. */
+    border-radius: min(var(--sb-radius-pill), calc((12px + var(--sb-toast-part-size)) / 2));
+    box-shadow: var(--sb-shadow-toast);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    cursor: default;
+    line-height: 1.18;
+    animation: none;
+    text-align: start;
 }
 
-.sb-toast--action .toast-message,
-.sb-toast--action .toast-message > :has(> button) {
+/* A toast with a button is at least 450px wide (libadwaita's NATURAL_WIDTH). The condition is inside :where() so that it
+   adds no specificity, and the measure rule below still removes the floor from the measuring clone. */
+#sb-toast-overlay > .sb-form-toast:has(:where(.toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button))) {
+    min-width: min(450px, calc(100cqw - 24px));
+}
+
+/* The edge the toast sits at has 24px of margin (libadwaita's margin-bottom), and a corner position keeps 12px at its side. */
+#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) > .sb-form-toast {
+    margin-top: 24px;
+}
+
+#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast,
+dialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast {
+    margin-top: 12px;
+    margin-bottom: 24px;
+}
+
+#sb-toast-overlay:is(.toast-top-left, .toast-bottom-left) > .sb-form-toast {
+    margin-left: 12px;
+    margin-right: auto;
+}
+
+#sb-toast-overlay:is(.toast-top-right, .toast-bottom-right) > .sb-form-toast {
+    margin-left: auto;
+    margin-right: 12px;
+}
+
+dialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Every part has 6px at its sides, and 6px lies between parts (the gap). */
+#sb-toast-overlay > .sb-form-toast > :not(.toast-progress) {
+    flex: none;
+    margin-inline: 6px;
+}
+
+#sb-toast-overlay > .sb-form-toast > .toast-message {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+/* The one button sits at the end of the label: the message becomes a row, and a wrapper that holds the button adds no box. */
+#sb-toast-overlay > .sb-form-toast > .toast-message:has(:where(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button)) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    column-gap: 18px;
+}
+
+#sb-toast-overlay > .sb-form-toast > .toast-message :where(:has(> :where(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button))) {
     display: contents;
 }
 
-.sb-toast--action .toast-message button {
-    grid-column: 2;
-    grid-row: 1;
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button) {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    height: 34px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    color: inherit;
+    font: inherit;
+    font-weight: 400;
+    line-height: 1;
+    box-shadow: none;
+    text-shadow: none;
+    cursor: pointer;
 }
 
-.sb-toast--action > .toast-title ~ .toast-message button {
-    grid-row: 1 / span 2;
+@media (hover: hover) {
+    body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):hover {
+        background: color-mix(in srgb, currentColor 15%, transparent);
+    }
 }
 
-.sb-toast--action > .toast-close-button {
-    grid-column: 3;
-    grid-row: 1;
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):active {
+    background: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):disabled {
+    opacity: 0.5;
+}
+
+/* The close button of both forms: round and flat. On a coarse pointer the target grows to 44px without growing the toast. */
+:is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    inset: auto;
+    float: none;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    box-sizing: border-box;
+    width: 34px;
+    min-width: 0;
+    height: 34px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: transparent;
+    color: inherit;
+    font-size: 16px;
+    line-height: 1;
+    opacity: 1;
+    text-shadow: none;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+:is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button > i {
+    pointer-events: none;
+}
+
+@media (pointer: coarse) {
+    :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button::after {
+        content: '';
+        position: absolute;
+        inset: -5px;
+    }
+}
+
+@media (hover: hover) {
+    body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:hover {
+        background: color-mix(in srgb, currentColor 7%, transparent);
+        color: inherit;
+        opacity: 1;
+    }
+}
+
+body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:active {
+    background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+/* In an in-app notification, which keeps the pill look until its own form is drawn, the close button adds no height. */
+#toast-container > .toast > .toast-close-button {
+    float: right;
+    margin: -9px -18px -9px 6px;
 }
 
 /* A hidden clone of a toast, laid out on one line at its natural width so that the toast form can read how wide the
@@ -7135,10 +7263,20 @@ body :is(#toast-container, #sb-toast-overlay)[class] > .sb-toast--action {
 
 :is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info)::before {
     content: var(--sb-toast-glyph);
+    font: 900 18px/1 "Font Awesome 6 Free";
+}
+
+#toast-container > .toast:not(.toast-info)::before {
     position: absolute;
     inset: 50% auto auto 12px;
     translate: 0 -50%;
-    font: 900 18px/1 "Font Awesome 6 Free";
+}
+
+/* The glyph is the first part of a toast: 16px, with 6px at its sides like every part. */
+#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before {
+    flex: none;
+    margin-inline: 6px;
+    font-size: 16px;
 }
 
 :is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info)::before,
@@ -7146,7 +7284,65 @@ body :is(#toast-container, #sb-toast-overlay)[class] > .sb-toast--action {
     color: var(--sb-toast-status);
 }
 
-/* Toast enter animation: slides down from its own height */
+/* In-app notifications keep the pill look until their own form is drawn. AdwToast puts its one button at the end of the text;
+   a message with several buttons keeps its block layout. */
+body #toast-container[class] > div {
+    width: fit-content;
+    max-width: min(450px, calc(100% - 24px));
+    margin: 12px auto 0;
+    padding: 9px 24px 9px 36px;
+    background-color: var(--sb-layer-toast) !important;
+    color: var(--sb-layer-toast-fg) !important;
+    border: none !important;
+    border-radius: var(--sb-radius-pill) !important;
+    box-shadow: var(--sb-shadow-toast) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* AdwToast puts its one button at the end of the text; a notification with several buttons keeps its block layout. */
+body #toast-container[class] > .sb-toast--action {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+}
+
+#toast-container .sb-toast--action .toast-message,
+#toast-container .sb-toast--action .toast-message > :has(> button) {
+    display: contents;
+}
+
+#toast-container .sb-toast--action .toast-message button {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+#toast-container .sb-toast--action > .toast-title ~ .toast-message button {
+    grid-row: 1 / span 2;
+}
+
+#toast-container .sb-toast--action > .toast-close-button {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+/* An in-app notification at the position of the toasts sits beyond them: the script writes the height that they take. */
+@media (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) #toast-container {
+        transition: margin var(--sb-transition-slow);
+    }
+}
+
+body #toast-container:is(.toast-top-left, .toast-top-center, .toast-top-right) {
+    margin-top: calc(var(--topBarBlockSize) + var(--sb-toast-stack-offset, 0px));
+}
+
+body #toast-container:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
+    margin-bottom: var(--sb-toast-stack-offset, 0px);
+}
+
+/* A toast comes in by sliding out of the edge it sits at (the script drives it), with no fade. */
 @keyframes sb-toast-in {
     from {
         opacity: 0;
@@ -7173,7 +7369,7 @@ body.reduced-motion .toast {
     animation: none;
 }
 
-/* Toast exit animation (JS-driven via .sb-toast-leaving) */
+/* In-app notification exit animation (JS-driven via .sb-toast-leaving); a toast leaves with the script's fade and scale only. */
 @keyframes sb-toast-exit {
     from {
         opacity: 1;
@@ -7185,19 +7381,19 @@ body.reduced-motion .toast {
     }
 }
 
-:is(#toast-container, #sb-toast-overlay) > div.sb-toast-leaving {
+#toast-container > div.sb-toast-leaving {
     animation: sb-toast-exit var(--sb-transition-slow);
     animation-timing-function: var(--sb-ease-out-cubic);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    :is(#toast-container, #sb-toast-overlay) > div.sb-toast-leaving {
+    #toast-container > div.sb-toast-leaving {
         animation: none;
         opacity: 0;
     }
 }
 
-body.reduced-motion :is(#toast-container, #sb-toast-overlay) > div.sb-toast-leaving {
+body.reduced-motion #toast-container > div.sb-toast-leaving {
     animation: none;
     opacity: 0;
 }

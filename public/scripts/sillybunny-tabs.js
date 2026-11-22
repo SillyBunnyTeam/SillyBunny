@@ -13080,7 +13080,7 @@ function initAll() {
 
     initializeMobileShellUi();
     initializeMessageActions();
-    initializeToastMotion();
+    initializeToastMotion({ translate });
     initializeColorPickers();
     initializePresetAutosave();
 

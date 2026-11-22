@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { BUTTON_SELECTOR } from '../public/scripts/sillybunny-toast-form.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), 'utf8');
@@ -15,14 +16,80 @@ function ruleOf(css, selector) {
     return css.slice(css.indexOf('{', start) + 1, css.indexOf('}', start)).replace(/\s+/g, ' ').trim();
 }
 
+/** The selector of the toast form in `#sb-toast-overlay`, with the part that follows it. */
+const TOAST = '#sb-toast-overlay > .sb-form-toast';
+const BUTTONS = BUTTON_SELECTOR.split(',').map(part => part.trim());
+
 describe('the toast layer', () => {
-    test('a toast is a pill, as wide as its text up to 450px, 12px below the bar', () => {
-        const rule = ruleOf(themeCss, 'body :is(#toast-container, #sb-toast-overlay)[class] > div');
+    test('an in-app notification keeps the pill look until its own form is drawn', () => {
+        const rule = ruleOf(themeCss, 'body #toast-container[class] > div');
         expect(rule).toContain('border-radius: var(--sb-radius-pill) !important');
         expect(rule).toContain('width: fit-content');
         expect(rule).toContain('max-width: min(450px, calc(100% - 24px))');
         expect(rule).toContain('margin: 12px auto 0');
         expect(themeCss).not.toMatch(/\.toast \{\s*border-radius: var\(--sb-radius-md\)/);
+    });
+
+    test('a toast has libadwaita\'s metrics: 12px margin and 24px at its edge, 6px padding and 12px at the start, 6px between parts', () => {
+        const box = ruleOf(themeCss, TOAST);
+        expect(box).toContain('display: flex');
+        expect(box).toContain('gap: 6px');
+        expect(box).toContain('margin: 12px auto');
+        expect(box).toContain('padding-block: 6px');
+        expect(box).toContain('padding-inline: 12px 6px');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) > .sb-form-toast')).toBe('margin-top: 24px;');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast,\ndialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast'))
+            .toBe('margin-top: 12px; margin-bottom: 24px;');
+        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast > :not(.toast-progress)')).toContain('margin-inline: 6px');
+    });
+
+    test('a toast takes the surface of the toast layer: Toast Shadow, no border, the ink of the layer, a pill that a wrapped toast cannot outgrow', () => {
+        const box = ruleOf(themeCss, TOAST);
+        expect(box).toContain('background-color: var(--sb-layer-toast)');
+        expect(box).toContain('color: var(--sb-layer-toast-fg)');
+        expect(box).toContain('box-shadow: var(--sb-shadow-toast)');
+        expect(box).toContain('border: none');
+        expect(box).toContain('background-image: none');
+        expect(box).toContain('border-radius: min(var(--sb-radius-pill), calc((12px + var(--sb-toast-part-size)) / 2))');
+        expect(box).toContain('--sb-toast-part-size: max(34px, 1lh)');
+        expect(box).toContain('backdrop-filter: none');
+        expect(box).toContain('-webkit-backdrop-filter: none');
+    });
+
+    test('a toast is as wide as its text up to 34em and the window minus 24px, and with a button at least 450px', () => {
+        expect(ruleOf(themeCss, TOAST)).toContain('max-width: min(34em, calc(100cqw - 24px))');
+        expect(ruleOf(themeCss, TOAST)).toContain('width: fit-content');
+        const floorSelector = `${TOAST}:has(:where(.toast-message :is(${BUTTONS.join(', ')})))`;
+        expect(ruleOf(themeCss, floorSelector)).toBe('min-width: min(450px, calc(100cqw - 24px));');
+    });
+
+    test('the buttons that the toast CSS places and sizes are the buttons that the classifier counts', () => {
+        const rowSelector = `${TOAST} > .toast-message:has(:where(${BUTTONS.join(', ')}))`;
+        expect(ruleOf(themeCss, rowSelector)).toContain('display: flex');
+        const buttonRule = `body ${TOAST.replace(' > ', ' > ')} .toast-message :is(${BUTTONS.join(', ')})`;
+        expect(ruleOf(themeCss, buttonRule)).toContain('height: 34px');
+    });
+
+    test('the label is bold and may shrink, and the one button sits at the end of it', () => {
+        const label = ruleOf(themeCss, `${TOAST} > .toast-message`);
+        expect(label).toContain('font-weight: 700');
+        expect(label).toContain('min-width: 0');
+        expect(label).toContain('flex: 1 1 auto');
+    });
+
+    test('the status glyph is the first part of a toast, in the lifted status colour, 16px', () => {
+        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before')).toContain('font-size: 16px');
+        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info)')).toContain('background-image: none !important');
+    });
+
+    test('the close button of both forms is round and flat, 34px, with a 44px target on a coarse pointer', () => {
+        const rule = ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button');
+        expect(rule).toContain('width: 34px');
+        expect(rule).toContain('height: 34px');
+        expect(rule).toContain('border-radius: var(--sb-radius-pill)');
+        expect(rule).toContain('background: transparent');
+        expect(rule).toContain('min-height: 0');
+        expect(themeCss).toMatch(/@media \(pointer: coarse\) \{\s*:is\(#toast-container, #sb-toast-overlay\) > \.toast > \.toast-close-button::after \{\s*content: '';\s*position: absolute;\s*inset: -5px;/);
     });
 
     test('the status colour reaches the icon glyph and the title, and nothing else', () => {
@@ -64,12 +131,41 @@ describe('bottom sheets and the safe area', () => {
 });
 
 describe('the toast overlay', () => {
-    test('takes the base rules that toastr gives its own container, with the bottom positions 24px from the edge', () => {
+    test('is a strip across the window, flush with the edge a toast sits at, and clips there only', () => {
         const rule = ruleOf(themeCss, '#sb-toast-overlay');
         expect(rule).toContain('position: fixed');
+        expect(rule).toContain('inset: auto 0');
         expect(rule).toContain('pointer-events: none');
-        expect(ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-left,\n#sb-toast-overlay.toast-bottom-center,\n#sb-toast-overlay.toast-bottom-right')).toBe('bottom: 24px;');
+        expect(rule).toContain('container-type: inline-size');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right)')).toContain('clip-path: inset(0 -100vmax -100vmax)');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toContain('clip-path: inset(-100vmax -100vmax 0)');
         expect(ruleOf(themeCss, '#sb-toast-overlay > div')).toContain('position: relative');
+    });
+
+    test('a bottom overlay sits above the composer and the keyboard by the inset that the script writes, and a top one under the top bar', () => {
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toContain('bottom: var(--sb-toast-bottom-inset, 0px)');
+        const top = ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right)');
+        expect(top).toContain('top: 0');
+        expect(top).toContain('margin-top: var(--topBarBlockSize)');
+    });
+
+    test('in a dialog it is at the bottom of the dialog\'s box, as the containing block that a dialog keeps for it', () => {
+        const rule = ruleOf(themeCss, 'dialog > #sb-toast-overlay[data-sb-toast-in-dialog]');
+        expect(rule).toContain('position: absolute');
+        expect(rule).toContain('inset: auto auto var(--sb-toast-frame-bottom, 0px) var(--sb-toast-frame-left, 0px)');
+        expect(rule).toContain('width: var(--sb-toast-frame-width, 100%)');
+        expect(rule).toContain('clip-path: inset(-100vmax -100vmax 0)');
+    });
+
+    test('an in-app notification at the position of the toasts sits beyond them by the offset that the script writes', () => {
+        expect(ruleOf(themeCss, 'body #toast-container:is(.toast-top-left, .toast-top-center, .toast-top-right)')).toBe('margin-top: calc(var(--topBarBlockSize) + var(--sb-toast-stack-offset, 0px));');
+        expect(ruleOf(themeCss, 'body #toast-container:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toBe('margin-bottom: var(--sb-toast-stack-offset, 0px);');
+    });
+
+    test('a toast does not fade in: it has no CSS enter animation, and the CSS exit animation is the notification\'s only', () => {
+        expect(ruleOf(themeCss, TOAST)).toContain('animation: none');
+        expect(themeCss).toContain('#toast-container > div.sb-toast-leaving {');
+        expect(themeCss).not.toMatch(/:is\(#toast-container, #sb-toast-overlay\) > div\.sb-toast-leaving/);
     });
 
     test('no toast rule is important on what the measuring rule sets, so the measure of a message cannot be changed', () => {

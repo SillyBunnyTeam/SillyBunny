@@ -19,8 +19,8 @@ export const NOTIFICATION_TIMEOUT = 4000;
 
 /** The container that holds the toasts. In-app notifications stay in toastr's own `#toast-container`. */
 export const TOAST_OVERLAY_ID = 'sb-toast-overlay';
-/** Upstream and extensions draw buttons as `div.menu_button` as often as `button`. */
-const BUTTON_SELECTOR = 'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button';
+/** Upstream and extensions draw buttons as `div.menu_button` as often as `button`. The toast CSS lists the same selectors. */
+export const BUTTON_SELECTOR = 'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button';
 /** Each of these is one block of its own, with or without text. Buttons are matched before this list. */
 const ONE_BLOCK_SELECTOR = 'img, picture, video, audio, canvas, table, select, textarea, progress, meter, hr, input:not([type="hidden"])';
 /** Elements that end a line of text. Any other element, including one the browser does not know, is inline. */
