@@ -4059,6 +4059,13 @@ body.reduced-motion .sb-search-entry {
     opacity: 1;
 }
 
+/* An upstream description that became a row subtitle keeps `.toggle-description { width: max-content }`. Its row text is a flex
+   column, so the subtitle would take the width of its longest line and be cut off where that is wider than the row. Inside
+   the Chat Completion drawers a rule with ids sets `width: 100%`, which a row moved out of them no longer meets. */
+.ds-row-subtitle.toggle-description {
+    width: auto;
+}
+
 .ds-row-suffix {
     display: flex;
     align-items: center;
