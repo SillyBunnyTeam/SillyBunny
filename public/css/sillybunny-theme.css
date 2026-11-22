@@ -7015,6 +7015,32 @@ body #toast-container[class] > .sb-toast--action {
     grid-row: 1;
 }
 
+/* A hidden clone of a toast, laid out on one line at its natural width so that the toast form can read how wide the
+   message is. The id in the selector list gives the rule the specificity of an id, so a toast rule that does not use
+   !important cannot change the measurement; the script removes the inline style of the clone. Display stays as the
+   toast's own CSS sets it, because a flex or grid row measures differently from a block. The minimum width goes,
+   because it is a floor of the toast and not part of its text. */
+:is(#sb-toast-overlay, body) > .sb-toast-measure[class] {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: -10000px;
+    width: max-content;
+    min-width: 0;
+    max-width: none;
+    visibility: hidden;
+    pointer-events: none;
+    contain: layout style;
+    animation: none;
+    transition: none;
+    transform: none;
+    scale: none;
+}
+
+:is(#sb-toast-overlay, body) > .sb-toast-measure[class],
+:is(#sb-toast-overlay, body) > .sb-toast-measure[class] * {
+    white-space: nowrap;
+}
+
 /* Status colour on the icon glyph and title only; the toast is dark in both tones, so a light tone's colour is lifted. */
 #toast-container > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
 #toast-container > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
