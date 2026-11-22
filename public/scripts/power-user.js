@@ -101,7 +101,7 @@ import { createBanner } from './sillybunny-editor/banner.js'; // SillyBunny: the
 // SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
 import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
 import { setNotificationPosition } from './sillybunny-toast-motion.js'; // SillyBunny: toasts and in-app notifications have a position each
-import { DEFAULT_TOAST_POSITION, applyToastPosition, bindToastPositionSelect } from './sillybunny-toast-position.js'; // SillyBunny: the position of toasts, kept apart from the notification position
+import { DEFAULT_TOAST_POSITION, applyPositionsEarly, applyToastPosition, bindToastPositionSelect } from './sillybunny-toast-position.js'; // SillyBunny: the position of toasts, kept apart from the notification position
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -2343,6 +2343,9 @@ export async function loadPowerUserSettings(settings, data) {
         }
         Object.assign(power_user, settings.power_user);
     }
+
+    // SillyBunny: toasts and in-app notifications take their saved positions now, before the first await, so that an early message does not show at the default and move.
+    applyPositionsEarly(power_user, toastPositionClasses, defaultToastPosition);
 
     // SillyBunny: normalise saved folder data at the settings boundary.
     const sourceFolders = power_user.sb_folders;

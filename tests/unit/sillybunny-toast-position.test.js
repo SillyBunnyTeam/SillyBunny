@@ -4,9 +4,11 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
+const motion = await import('../../public/scripts/sillybunny-toast-motion.js');
 const {
     DEFAULT_TOAST_POSITION,
     TOAST_POSITION_SELECT_ID,
+    applyPositionsEarly,
     applyToastPosition,
     bindToastPositionSelect,
     parseToastPosition,
@@ -50,6 +52,63 @@ beforeEach(() => {
 
 afterEach(() => {
     jest.restoreAllMocks();
+});
+
+describe('the positions at start-up', () => {
+    const { getNotificationPosition, setNotificationPosition, setToastPosition } = motion;
+
+    afterEach(() => {
+        setToastPosition('toast-bottom-center');
+        setNotificationPosition('toast-top-center');
+    });
+
+    test('moves the overlay and the notification container to the saved positions before the page has its controls', () => {
+        const overlay = addOverlay();
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-top-center';
+        document.body.append(container);
+
+        applyPositionsEarly({ toast_position: 'toast-top-right', toastr_position: 'toast-bottom-left' }, POSITIONS, 'toast-top-center');
+
+        expect(overlay.className).toBe('toast-top-right');
+        expect(container.className).toBe('toast-bottom-left');
+        expect(getNotificationPosition()).toBe('toast-bottom-left');
+    });
+
+    test('takes the defaults for a position that is not offered, and leaves the settings as they are', () => {
+        const settings = { toast_position: 'sideways', toastr_position: 42 };
+        const overlay = addOverlay('toast-top-right');
+        applyPositionsEarly(settings, POSITIONS, 'toast-top-center');
+        expect(overlay.className).toBe('toast-bottom-center');
+        expect(getNotificationPosition()).toBe('toast-top-center');
+        expect(settings).toEqual({ toast_position: 'sideways', toastr_position: 42 });
+    });
+
+    test('touches nothing of the page: it does not write to the select, which the later call does', () => {
+        const select = addSelect();
+        select.value = 'toast-bottom-left';
+        const listener = jest.fn();
+        select.addEventListener('change', listener);
+        applyPositionsEarly({ toast_position: 'toast-top-right', toastr_position: 'toast-top-center' }, POSITIONS, 'toast-top-center');
+        expect(select.value).toBe('toast-bottom-left');
+        expect(listener).not.toHaveBeenCalled();
+    });
+});
+
+describe('the wiring in loadPowerUserSettings', () => {
+    test('moves both positions as soon as power_user holds the saved values, before the first await, and the later calls stay', () => {
+        const load = powerUserSource.slice(powerUserSource.indexOf('export async function loadPowerUserSettings('));
+        const assigned = load.indexOf('Object.assign(power_user, settings.power_user);');
+        const early = load.indexOf('applyPositionsEarly(power_user, toastPositionClasses, defaultToastPosition)');
+        const firstAwait = load.indexOf('await ');
+        expect(assigned).toBeGreaterThan(-1);
+        expect(early).toBeGreaterThan(assigned);
+        // Before the first await, so that an early toast does not show at the default.
+        expect(early).toBeLessThan(firstAwait);
+        expect(powerUserSource).toContain('applyToastPosition(power_user, toastPositionClasses);');
+        expect(powerUserSource.match(/applyToastrPosition\(\);/g).length).toBeGreaterThanOrEqual(2);
+    });
 });
 
 describe('the default and the validation', () => {

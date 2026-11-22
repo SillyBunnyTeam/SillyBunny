@@ -3,7 +3,7 @@
  * (`power_user.toastr_position`) is upstream's and keeps its own code in power-user.js.
  */
 
-import { setToastPosition } from './sillybunny-toast-motion.js';
+import { setNotificationPosition, setToastPosition } from './sillybunny-toast-motion.js';
 
 export const TOAST_POSITION_SELECT_ID = 'toast_position';
 export const DEFAULT_TOAST_POSITION = 'toast-bottom-center';
@@ -15,6 +15,20 @@ export const DEFAULT_TOAST_POSITION = 'toast-bottom-center';
  */
 export function parseToastPosition(value, positionClasses) {
     return positionClasses.includes(value) ? value : DEFAULT_TOAST_POSITION;
+}
+
+/**
+ * Moves the toast overlay and the notification container to the saved positions, as soon as the saved settings are in
+ * `power_user`, so that a message that is raised before the page is drawn does not show at the default and then move.
+ * It leaves the settings and the page alone: a value that is not a position falls back for the move only, and the
+ * select and the correction of the settings are done later by `applyToastPosition()` and the notification handler.
+ * @param {{ toast_position?: unknown, toastr_position?: unknown }} settings
+ * @param {readonly string[]} positionClasses
+ * @param {string} notificationFallback The position of in-app notifications when the saved one is not offered.
+ */
+export function applyPositionsEarly(settings, positionClasses, notificationFallback) {
+    setToastPosition(parseToastPosition(settings.toast_position, positionClasses));
+    setNotificationPosition(positionClasses.includes(settings.toastr_position) ? settings.toastr_position : notificationFallback);
 }
 
 /**
