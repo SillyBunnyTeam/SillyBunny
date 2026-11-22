@@ -791,13 +791,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves.
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261122d', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261122d', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261122e', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI.
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261122d', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261122d', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261122e', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },

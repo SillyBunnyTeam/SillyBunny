@@ -914,6 +914,95 @@ test.describe('folder headers in list and grid view', () => {
     });
 });
 
+// A card of the grid is 190px wide and the grid is centred in its page, so a column added by a wider window does not resize the cards.
+const GRID_CARD_WIDTH = 190;
+const GRID_WIDTHS = [1100, 1180, 1260, 1340, 1440, 1560, 1700, 1900, 2100, 2300, 2450, 2600];
+
+/** The cards of the grid, read against the content box of the grid, in pixels. */
+function readGrid(page, view) {
+    return page.evaluate(view => {
+        const grid = document.querySelector('.sb-character-list #rm_print_characters_block');
+        const style = getComputedStyle(grid);
+        const box = grid.getBoundingClientRect();
+        const left = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+        const right = box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+        const cards = [...grid.querySelectorAll(view === 'groups' ? '.group_select' : '.character_select')].map(card => card.getBoundingClientRect());
+        const rows = [...new Set(cards.map(card => Math.round(card.top)))];
+        const first = cards.filter(card => Math.round(card.top) === rows[0]);
+        const last = cards.filter(card => Math.round(card.top) === rows.at(-1));
+        return {
+            display: style.display,
+            count: cards.length,
+            columns: first.length,
+            rows: rows.length,
+            widths: cards.map(card => card.width),
+            leftGap: first[0].left - left,
+            rightGap: right - first.at(-1).right,
+            lastRowStart: last[0].left - first[0].left,
+            overflow: grid.scrollWidth - grid.clientWidth,
+            pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+    }, view);
+}
+
+test.describe('grid view of the lists', () => {
+    for (const view of ['characters', 'groups']) {
+        test(`${view} cards keep one width and the grid stays centred from 1100px to 2600px`, async ({ page }) => {
+            await prepareList(page, { width: 1440, height: 900 });
+            await page.evaluate(async () => {
+                const app = await import('/script.js');
+                const state = await import('/scripts/sillybunny-character-list-state.js');
+                const { power_user } = await import('/scripts/power-user.js');
+                for (const name of ['characters', 'groups']) {
+                    state.setListPageSize(name, 28);
+                    await state.setListPage(name, 1);
+                }
+                power_user.charListGrid = true;
+                document.body.classList.add('charListGrid');
+                await app.printCharacters(false);
+            });
+            await showView(page, view);
+            await expect(listRows(page, view)).toHaveCount(28);
+            const problems = [];
+            const columns = new Set();
+            for (const width of GRID_WIDTHS) {
+                await page.setViewportSize({ width, height: 900 });
+                await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+                const read = await readGrid(page, view);
+                columns.add(read.columns);
+                const failures = [
+                    [read.display !== 'grid', `display ${read.display}`],
+                    [read.widths.some(cardWidth => Math.abs(cardWidth - GRID_CARD_WIDTH) > 0.01), `card widths ${[...new Set(read.widths)].join(', ')}`],
+                    [Math.abs(read.leftGap - read.rightGap) > 1, `${read.leftGap} left of the cards and ${read.rightGap} right`],
+                    [Math.abs(read.lastRowStart) > 0.5, `the last row starts ${read.lastRowStart}px from the first`],
+                    [Math.max(read.overflow, read.pageOverflow) > 0, `overflows by ${read.overflow} (grid) and ${read.pageOverflow} (page)`],
+                ];
+                problems.push(...failures.filter(([failed]) => failed).map(([, text]) => `${width}: ${text}`));
+            }
+            expect(problems).toEqual([]);
+            // A sweep that never adds a column would not test the step the cards must not feel.
+            expect(columns.size).toBeGreaterThanOrEqual(4);
+        });
+    }
+
+    test('a phone keeps two stretching columns', async ({ page }) => {
+        await prepareList(page, { width: 390, height: 844 });
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const { power_user } = await import('/scripts/power-user.js');
+            power_user.charListGrid = true;
+            document.body.classList.add('charListGrid');
+            await app.printCharacters(false);
+        });
+        const read = await readGrid(page, 'characters');
+        expect(read.columns).toBe(2);
+        expect(Math.abs(read.leftGap - read.rightGap)).toBeLessThanOrEqual(1);
+        expect(read.widths.every(width => Math.abs(width - read.widths[0]) < 0.01)).toBe(true);
+        expect(read.widths[0]).toBeLessThan(GRID_CARD_WIDTH);
+        expect(read.overflow).toBeLessThanOrEqual(0);
+    });
+});
+
 test.describe('Show More', () => {
     test('loads one batch per press under its label and focuses the first new row at the end', async ({ page }) => {
         await prepareList(page, { width: 1440, height: 900 });

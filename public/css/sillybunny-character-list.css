@@ -521,11 +521,14 @@ body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .is-fold
     }
 }
 
-/* GNOME-style cards. Only the entity rows are cards; a folder header keeps its list-view row and spans the grid. */
+/* GNOME-style cards. Only the entity rows are cards; a folder header keeps its list-view row and spans the grid.
+   A card is 190px wide and the columns are centred, so a wider window adds a column and does not resize the cards. The
+   last row starts at the first column. */
 body.charListGrid .sb-character-list #rm_print_characters_block {
     flex-grow: 0;
     display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 190px));
+    justify-content: center;
     align-content: start;
     gap: 8px;
     padding: 8px;
