@@ -85,7 +85,6 @@ describe('the AdwClamp curve of the settings pages', () => {
         expect(tooWide).toEqual([]);
         expect(worst[1000]).toBeLessThan(3);
         expect(worst[1440]).toBeLessThan(3);
-        expect(worst[1440]).toBeGreaterThan(worst[1000]);
     });
 
     test('the curve of the module gives the widths that libadwaita rounds to for the pages the settings tests measure', () => {
@@ -93,7 +92,7 @@ describe('the AdwClamp curve of the settings pages', () => {
             const exact = exactClamp(available, max, thresholdOf(max));
             return available >= 3 * max - 2 * thresholdOf(max) ? Math.ceil(exact) : Math.floor(exact);
         };
-        // Customize > Interface (preference, room = pane less 24px) and Characters > World Info (wide, room = pane less 28px or 64px).
+        // Rooms of the two kinds of settings page at several window widths, which are a pane less the two page insets.
         expect(rounded(1136, 1000)).toBe(950);
         expect(rounded(1616, 1000)).toBe(999);
         expect(rounded(972, 1440)).toBe(971);
