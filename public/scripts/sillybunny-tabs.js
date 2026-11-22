@@ -81,6 +81,7 @@ import {
     SB_DATA_SECURITY_CONTAINER_ID,
     SB_FLAT_SECTION_CLASS,
     SB_FLAT_SECTION_HEADER_CLASS,
+    applyPageWidth,
     applySettingsSectionOrder,
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
@@ -1110,6 +1111,7 @@ const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful fo
 
 const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
 
+// `pageWidth: 'wide'` puts a page in the wide column of the settings page (a list, an editor or a grid); a page with none is a preference page.
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
     {
         id: 'characters',
@@ -1118,6 +1120,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Open and Manage Character Cards',
         description: 'View or create character cards here for your roleplays and chats!',
         searchAliases: ['character card', 'character list', 'avatars', 'cards'],
+        pageWidth: 'wide',
     },
     {
         id: 'groups',
@@ -1126,6 +1129,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Open and Manage Group Conversations',
         description: 'View or create group chats here for your roleplays and chats!',
         searchAliases: ['group chat', 'group chats', 'group members', 'muting'],
+        pageWidth: 'wide',
     },
     {
         id: 'editor',
@@ -1134,6 +1138,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Edit Character Cards and Groups',
         description: 'Edit your character cards or group chats in great detail here!',
         searchAliases: ['character editor', 'group editor', 'edit card', 'first message', 'greetings'],
+        pageWidth: 'wide',
     },
     {
         id: 'world-info',
@@ -1143,6 +1148,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         description: SB_WORLD_INFO_SUBTITLE_HTML,
         descriptionIsHtml: true,
         searchAliases: ['lorebook', 'lorebooks', 'world info book', 'world', 'entries'],
+        pageWidth: 'wide',
     },
     {
         id: 'persona',
@@ -1151,6 +1157,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Manage User Persona/Personality',
         description: 'Edit your own persona here for roleplay and chats!',
         searchAliases: ['personas', 'persona description', 'impersonate'],
+        pageWidth: 'wide',
     },
     {
         id: 'import',
@@ -1217,6 +1224,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Edit prompt content, order, and placement',
                 descriptionI18n: 'Edit prompt content, order, and placement',
                 searchAliases: ['Prompt Manager', 'Prompts'],
+                pageWidth: 'wide',
             },
             {
                 id: 'context',
@@ -1235,6 +1243,7 @@ const SB_SHELLS = Object.freeze({
                 icon: 'fa-robot',
                 tooltip: 'Interact with accompanying pre, post, and sidecar agents',
                 description: 'Configure your in-chat agents here. They can be configured for pre-gen, post-gen, or as a side companion.',
+                pageWidth: 'wide',
             },
         ],
     },
@@ -6611,19 +6620,22 @@ async function openCharacterEditorTab() {
     return false;
 }
 
+/** The tab of the Characters window that a page of its one panel belongs to; the panel's `data-menu-type` names the page. */
+function getCharacterTabIdForMenuType(menuType) {
+    if (menuType === 'persona' || menuType === 'import' || menuType === 'world-info' || menuType === 'groups') {
+        return menuType;
+    }
+
+    return ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters';
+}
+
 function syncCharacterShellTabs(activeTab = null) {
     const panel = getCharacterPanel();
     const menuType = panel?.dataset.menuType;
-    const normalizedTab = activeTab
-        ?? (menuType === 'persona'
-            ? 'persona'
-            : menuType === 'import'
-                ? 'import'
-                : menuType === 'world-info'
-                    ? 'world-info'
-                    : menuType === 'groups'
-                        ? 'groups'
-                        : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
+    const normalizedTab = activeTab ?? getCharacterTabIdForMenuType(menuType);
+
+    // The Characters window shows its pages in one panel, so the page class follows the page that is shown.
+    applyPageWidth(panel, getCharacterPanelTabConfig(normalizedTab));
 
     if (normalizedTab !== 'characters' && normalizedTab !== 'groups') characterListViewRevision++;
 
@@ -6778,6 +6790,7 @@ function bindCharacterDrawerStateObserver() {
         attributes: true,
         attributeFilter: ['class', 'data-menu-type'],
     });
+    applyPageWidth(panel, getCharacterPanelTabConfig(getCharacterTabIdForMenuType(panel.dataset.menuType)));
     syncCharacterDrawerStateFromDom({ force: true });
 }
 
@@ -11298,6 +11311,9 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
     if (!shellState) {
         return;
     }
+
+    // The panel carries its page class for the stylesheet; an extension's own settings page sits in a panel and has the default class.
+    applyPageWidth(panelBundle.panel, tabConfig);
 
     // Tab buttons live in the settings page sidebar; the shell only tracks panel state.
     shellState.tabs.set(tabConfig.id, {

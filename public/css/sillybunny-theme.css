@@ -98,6 +98,13 @@
     --sb-settings-heading-gap: 6px;
     --sb-settings-inset: var(--sb-density-container-padding);
     --sb-settings-inset-top: calc(24px - 6px * var(--sb-density-t));
+    /* libadwaita's `sp` is a pixel scaled by the text size, which is --fontScale here, so these caps grow with the text.
+       A settings page keeps its content in a column of one of the two measures, and --sb-page-measure is the page's own. */
+    --sb-measure-preference: calc(1000px * var(--fontScale, 1));
+    --sb-measure-wide: calc(1440px * var(--fontScale, 1));
+    --sb-page-measure: var(--sb-measure-preference);
+    /* AdwNavigationSplitView sizes its sidebar to 25% of the split view, between 180sp and 280sp. */
+    --sb-split-sidebar-width: clamp(calc(180px * var(--fontScale, 1)), 25%, calc(280px * var(--fontScale, 1)));
     --sb-density-container-padding: calc(12px - 3px * var(--sb-density-t));
     --sb-row-gap: calc(10px - 2px * var(--sb-density-t));
     --sb-section-gap: calc(14px - 4px * var(--sb-density-t));

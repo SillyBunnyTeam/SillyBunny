@@ -1115,3 +1115,31 @@ export function splitUserSettingsContent(originalContent) {
         missing,
     };
 }
+
+/**
+ * The page class of the full-screen settings page. A page keeps its content in a centred AdwClamp of one of two maximums,
+ * `preference` (rows of a form) or `wide` (a list, an editor or a grid), which sillybunny-tabs.css reads from the
+ * `data-sb-page-width` attribute of the page's root. A tab definition says `pageWidth: 'wide'` to opt in; a page with no
+ * definition, such as an extension's settings page, is a preference page.
+ */
+export const PAGE_WIDTH_ATTRIBUTE = 'data-sb-page-width';
+
+/**
+ * @param {{ pageWidth?: string } | null | undefined} tabConfig
+ * @returns {'preference' | 'wide'}
+ */
+export function getPageWidth(tabConfig) {
+    return tabConfig?.pageWidth === 'wide' ? 'wide' : 'preference';
+}
+
+/**
+ * Writes the class of a tab to the root of its page. The attribute is written only when it differs, so a page that is
+ * shown again causes no style change.
+ * @param {Element | null | undefined} root
+ * @param {{ pageWidth?: string } | null | undefined} tabConfig
+ */
+export function applyPageWidth(root, tabConfig) {
+    if (!(root instanceof Element)) return;
+    const width = getPageWidth(tabConfig);
+    if (root.getAttribute(PAGE_WIDTH_ATTRIBUTE) !== width) root.setAttribute(PAGE_WIDTH_ATTRIBUTE, width);
+}

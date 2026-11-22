@@ -1442,6 +1442,29 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-inline: var(--sb-settings-inset);
 }
 
+/* The page class (data-sb-page-width) picks the column. A page with none, such as an extension's, is a preference page. */
+#sb-settings-page [data-sb-page-width='wide'] {
+    --sb-page-measure: var(--sb-measure-wide);
+}
+
+@media (min-width: 769px) {
+    /* A column is centred by the padding of the element that scrolls it. That element spans the pane, so its scrollbar
+       stays on the pane's end edge. A percentage in the padding is a share of the containing block, which is the pane here. */
+    #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
+        padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-measure)) / 2));
+    }
+}
+
+/* A wide page is a visible frame that scrolls inside itself, so the frame is the column and its scrollbars stay in it. Below
+   1440px these boxes take a 14px gutter that only !important can override, so the column starts at that width. The
+   `:not(#sb-specificity)` outweighs the `:has()` rules that pad the box of each list page. */
+@media (min-width: 1440px) {
+    #sb-settings-page #sb-settings-shell-host .sb-shell-panel[data-sb-page-width='wide'] > .sb-shell-panel-scroller,
+    #sb-settings-page #sb-settings-shell-host > #right-nav-panel.openDrawer[data-sb-page-width='wide'] > .scrollableInner:not(#sb-specificity) {
+        padding-inline: max(var(--sb-shell-panel-padding-inline), calc((100% - var(--sb-page-measure)) / 2));
+    }
+}
+
 /* A stacked page scrolls in its list and detail pages, which carry the page padding above. The panel scroller around the stack
    and the stack itself add none, or the groups sit twice the inset from the sides, twice the top space down, and the list ends
    a bottom padding above the window's edge. */
@@ -3284,7 +3307,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 #sb-settings-inner {
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: var(--sb-split-sidebar-width) 1fr;
     width: 100%;
     height: 100%;
     overflow: hidden;
