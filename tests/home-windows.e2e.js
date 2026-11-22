@@ -1700,6 +1700,11 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the About window'))).toBe(true);
 
+                // An error stays until it is dismissed, and at a phone width its card covers the menu button, so a user
+                // dismisses it before pressing the menu again.
+                await toast.locator('.toast-close-button').click();
+                await expect(toast).toHaveCount(0);
+
                 await page.unroute('**/scripts/sillybunny-about.js*');
                 const host = await openFromMenu(page, 'About SillyBunny');
                 await expect(host).toHaveAccessibleName('About SillyBunny');
