@@ -285,6 +285,46 @@ test.describe('a click on the card', () => {
         expect(colours.underline).toBe('underline');
     });
 
+    test('a double click selects a word and leaves the notification, with no action', async ({ page }) => {
+        await page.evaluate(() => {
+            window.__clicks = 0;
+            window.toastr.error('Select a word in this message', 'Double', { timeOut: 0, extendedTimeOut: 0, onclick: () => { window.__clicks += 1; } });
+        });
+        const card = notificationBoxes(page).filter({ hasText: 'Double' });
+        await settled(page);
+        await card.locator('.toast-message').dblclick({ position: { x: 80, y: 8 } });
+        expect(await page.evaluate(() => window.getSelection().toString()), 'a word is selected').not.toBe('');
+        // Nothing is expected to happen, so there is no event to wait for: the card has to survive past the delay of a click.
+        // eslint-disable-next-line playwright/no-wait-for-timeout
+        await page.waitForTimeout(700);
+        await expect(card).toBeVisible();
+        expect(await page.evaluate(() => window.__clicks)).toBe(0);
+    });
+
+    test('a triple click selects the paragraph and leaves the notification', async ({ page }) => {
+        const card = await show(page, 'error', 'Select this whole message', 'Triple');
+        await card.locator('.toast-message').click({ position: { x: 80, y: 8 }, clickCount: 3 });
+        expect(await page.evaluate(() => window.getSelection().toString())).toContain('Select this whole message');
+        // eslint-disable-next-line playwright/no-wait-for-timeout
+        await page.waitForTimeout(700);
+        await expect(card).toBeVisible();
+    });
+
+    test('two clicks from a script run onclick once, and a single click still runs it once and dismisses', async ({ page }) => {
+        await page.evaluate(() => {
+            window.__clicks = 0;
+            window.toastr.info('Quick', 'Quick', { timeOut: 0, extendedTimeOut: 0, onclick: () => { window.__clicks += 1; } });
+        });
+        const card = notificationBoxes(page).filter({ hasText: 'Quick' });
+        await settled(page);
+        await card.evaluate((node) => {
+            node.click();
+            node.click();
+        });
+        await expect(card).toHaveCount(0, { timeout: 3000 });
+        expect(await page.evaluate(() => window.__clicks)).toBe(1);
+    });
+
     test('is not a click when the user selects the text of an error to copy it', async ({ page }) => {
         const card = await show(page, 'error', 'Copy this error message', 'Selectable');
         const text = card.locator('.toast-message');

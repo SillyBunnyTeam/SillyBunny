@@ -1273,7 +1273,8 @@ describe('the parts of a toast and the dismissal of a message', () => {
     test('tapping a notification still hides it', async () => {
         const $notification = toastr.info('A notification', 'Title');
         $notification.trigger('click');
-        await flush();
+        // The card waits to tell a click from the start of a double click.
+        await advance(250);
         expect($notification.hasClass('sb-toast-leaving')).toBe(true);
     });
 

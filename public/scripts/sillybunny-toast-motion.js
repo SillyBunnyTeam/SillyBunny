@@ -966,7 +966,7 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
     if (form === TOAST_FORM) {
         makeInertToTaps($toast, effective.tapToDismiss !== false, options);
     } else {
-        bindCardClick($toast, { options, dismiss: () => hideThroughToastr($toast, options) });
+        bindCardClick($toast, { options, dismiss: () => hideThroughToastr($toast, options), isLeaving: () => leaving.has(element) });
         watchButtons(element);
     }
     // toastr binds the close button itself, so this notes the press before it runs.

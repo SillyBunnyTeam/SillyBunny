@@ -205,22 +205,99 @@ describe('the button row', () => {
 describe('a click on the card', () => {
     const dismissed = $toast => $toast.hasClass('sb-toast-leaving') || !$toast[0].isConnected;
     const options = { timeOut: 0, extendedTimeOut: 0 };
+    const click = (node, detail = 1) => node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
+    const settle = () => jest.advanceTimersByTime(notification.CARD_CLICK_DELAY);
+    const select = (node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+    };
 
-    test('dismisses the notification, and so does a click when the caller gave an onclick, after the onclick ran', () => {
+    afterEach(() => window.getSelection().removeAllRanges());
+
+    test('waits for the time of a double click before it acts, and then dismisses', () => {
         const plain = toastr.info('A message', 'Title', options);
-        plain[0].click();
+        click(plain[0]);
+        jest.advanceTimersByTime(notification.CARD_CLICK_DELAY - 1);
+        // Not yet.
+        expect(dismissed(plain)).toBe(false);
+        jest.advanceTimersByTime(1);
         expect(dismissed(plain)).toBe(true);
+    });
 
+    test('runs the caller\'s onclick once and then dismisses, with onclick', () => {
         const onclick = jest.fn();
         const clickable = toastr.warning('Details', 'Another', { ...options, onclick });
-        clickable.find('.toast-message')[0].click();
+        click(clickable.find('.toast-message')[0]);
+        // Not before the delay.
+        expect(onclick).not.toHaveBeenCalled();
+        settle();
         expect(onclick).toHaveBeenCalledTimes(1);
         expect(dismissed(clickable)).toBe(true);
     });
 
+    test('a double click does neither: the second click cancels the first, so a word can be selected', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('Select a word', 'Title', { ...options, onclick });
+        click($toast[0], 1);
+        jest.advanceTimersByTime(100);
+        click($toast[0], 2);
+        select(message($toast));
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('a double click that selects nothing still does neither, and a third click does not bring the action back', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('A message', 'Title', { ...options, onclick });
+        click($toast[0], 1);
+        click($toast[0], 2);
+        click($toast[0], 3);
+        jest.advanceTimersByTime(notification.CARD_CLICK_DELAY * 2);
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('a selection that exists when the delay ends cancels the action', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('Copy this error', 'Title', { ...options, onclick });
+        click($toast[0]);
+        select(message($toast));
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('runs at most once: two single clicks in the delay, or a click while the card leaves, run onclick once', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('A message', 'Title', { ...options, onclick });
+        click($toast[0], 0);
+        jest.advanceTimersByTime(100);
+        click($toast[0], 0);
+        settle();
+        expect(onclick).toHaveBeenCalledTimes(1);
+        expect(dismissed($toast)).toBe(true);
+        click($toast[0], 0);
+        settle();
+        // A click while it leaves does nothing.
+        expect(onclick).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not run the action of a card that Dismiss closed during the delay', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('A message', 'Title', { ...options, onclick });
+        click($toast[0]);
+        $toast.find('.toast-close-button')[0].click();
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+    });
+
     test('does nothing with tapToDismiss false and no onclick, and runs the onclick and dismisses with tapToDismiss false and an onclick', () => {
         const inert = toastr.info('Stays', 'Title', { ...options, tapToDismiss: false });
-        inert[0].click();
+        click(inert[0]);
+        settle();
         expect(dismissed(inert)).toBe(false);
         expect(inert[0].classList.contains('toast-non-interactable')).toBe(true);
         expect(inert[0].getAttribute('title')).toBeNull();
@@ -229,7 +306,8 @@ describe('a click on the card', () => {
         const clickable = toastr.info('Open it', 'Other', { ...options, tapToDismiss: false, onclick });
         expect(clickable[0].classList.contains('interactable')).toBe(true);
         expect(clickable[0].classList.contains('toast-non-interactable')).toBe(false);
-        clickable[0].click();
+        click(clickable[0]);
+        settle();
         expect(onclick).toHaveBeenCalledTimes(1);
         expect(dismissed(clickable)).toBe(true);
     });
@@ -240,36 +318,38 @@ describe('a click on the card', () => {
         expect(dismissing[0].classList.contains('toast-non-interactable')).toBe(false);
     });
 
-    test('is not a click on a button, a link, an input or the close button, which keep their own action', () => {
+    test('is not a click on a button, a link, an input or the close button, which keep their own action and need no delay', () => {
         const onclick = jest.fn();
         const $toast = toastr.info('<a href="#x" id="link">Link</a> <button id="b">B</button> <input id="i"> <label id="l">L</label>', 'Title', { ...HTML, onclick });
         for (const selector of ['#link', '#b', '#i', '#l']) {
             $toast.find(selector)[0].click();
         }
+        settle();
         expect(onclick).not.toHaveBeenCalled();
         expect(dismissed($toast)).toBe(false);
     });
 
-    test('the close button dismisses and runs onCloseClick, and not onclick', () => {
+    test('the close button dismisses at once and runs onCloseClick, and not onclick', () => {
         const onclick = jest.fn();
         const onCloseClick = jest.fn();
         const $toast = toastr.info('Message', 'Title', { ...options, onclick, onCloseClick });
         $toast.find('.toast-close-button')[0].click();
         expect(onCloseClick).toHaveBeenCalledTimes(1);
-        expect(onclick).not.toHaveBeenCalled();
+        // With no wait.
         expect(dismissed($toast)).toBe(true);
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
     });
 
     test('is not a click when text of the card is selected, so that an error can be copied', () => {
         const $toast = toastr.error('Copy this error', 'Title', options);
-        const range = document.createRange();
-        range.selectNodeContents(message($toast));
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-        $toast[0].click();
+        select(message($toast));
+        click($toast[0]);
+        settle();
         expect(dismissed($toast)).toBe(false);
         window.getSelection().removeAllRanges();
-        $toast[0].click();
+        click($toast[0]);
+        settle();
         expect(dismissed($toast)).toBe(true);
     });
 
@@ -277,8 +357,10 @@ describe('a click on the card', () => {
         const other = jest.fn();
         const $toast = toastr.info('Message', 'Title', options);
         $toast.on('click', other);
-        $toast[0].click();
+        click($toast[0]);
+        // The other handler runs at once.
         expect(other).toHaveBeenCalledTimes(1);
+        settle();
         expect(dismissed($toast)).toBe(true);
     });
 });
@@ -299,6 +381,7 @@ describe('a message that was dismissed', () => {
 
         const clicked = toastr.info('Clicked', 'Three', options);
         clicked[0].click();
+        jest.advanceTimersByTime(notification.CARD_CLICK_DELAY);
         clicked.trigger('mouseenter');
         expect(clicked.hasClass('sb-toast-leaving')).toBe(true);
     });

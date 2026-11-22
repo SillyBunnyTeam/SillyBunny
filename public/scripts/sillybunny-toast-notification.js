@@ -106,23 +106,31 @@ function hasSelectedText(element) {
 }
 
 /**
+ * How long the card waits before a click on it acts, in ms. The first click of a double click, which selects a word, and of a
+ * triple click, which selects a paragraph, is a click on the card too, and the card must not go with the word. A click that
+ * a second click or a selection follows within this time does nothing; a double click that is slower than this still
+ * dismisses the card.
+ */
+export const CARD_CLICK_DELAY = 250;
+
+/**
  * Whether a click on the card does anything: the message's `onclick` runs and the notification goes, or it just goes.
  * A message with `tapToDismiss: false` and no `onclick` is not clickable.
  * @param {Record<string, any>} options The options object that toastr's closures read.
  */
-export function cardClickActs(options) {
+function cardClickActs(options) {
     return typeof options.onclick === 'function' || options.tapToDismiss !== false;
 }
 
 /**
  * Replaces toastr's click handlers on the card. toastr binds them to the whole card, so a press on a button or a link
- * dismissed the notification as well. Here a click outside every control acts, as GNOME Shell activates a banner, and
- * selecting text to copy it does not count as a click.
+ * dismissed the notification as well. Here a click outside every control acts, as GNOME Shell activates a banner, after
+ * `CARD_CLICK_DELAY`, so that a double click and a selection to copy the text do not count as a click. The action runs at
+ * most once, and not on a card that is leaving.
  * @param {any} $toast
- * @param {{ options: Record<string, any>, dismiss: () => void }} parts
- * @returns {boolean} Whether a click on the card acts.
+ * @param {{ options: Record<string, any>, dismiss: () => void, isLeaving: () => boolean }} parts
  */
-export function bindCardClick($toast, { options, dismiss }) {
+export function bindCardClick($toast, { options, dismiss, isLeaving }) {
     const element = $toast[0];
     const acts = cardClickActs(options);
     $toast.off('click');
@@ -130,19 +138,36 @@ export function bindCardClick($toast, { options, dismiss }) {
     element.classList.toggle('toast-non-interactable', !acts);
     if (!acts) {
         element.removeAttribute('title');
-        return false;
+        return;
     }
-    $toast.on('click', (event) => {
-        const control = event.target instanceof Element ? event.target.closest(CONTROL_SELECTOR) : null;
-        if ((control && element.contains(control)) || hasSelectedText(element)) {
+    let timer = 0;
+    let acted = false;
+    let lastClick = null;
+    const act = () => {
+        timer = 0;
+        if (acted || isLeaving() || !element.isConnected || hasSelectedText(element)) {
             return;
         }
+        acted = true;
         if (typeof options.onclick === 'function') {
-            options.onclick(event);
+            options.onclick(lastClick);
         }
         dismiss();
+    };
+    $toast.on('click', (event) => {
+        const control = event.target instanceof Element ? event.target.closest(CONTROL_SELECTOR) : null;
+        if (control && element.contains(control)) {
+            return;
+        }
+        clearTimeout(timer);
+        timer = 0;
+        const isLaterClickOfMany = (event.originalEvent?.detail ?? event.detail ?? 0) > 1;
+        if (isLaterClickOfMany || hasSelectedText(element)) {
+            return;
+        }
+        lastClick = event;
+        timer = setTimeout(act, CARD_CLICK_DELAY);
     });
-    return true;
 }
 
 // The motion
