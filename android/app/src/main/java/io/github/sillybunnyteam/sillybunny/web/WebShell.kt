@@ -284,7 +284,7 @@ internal class WebShell(
 
     @SuppressLint("SetJavaScriptEnabled") // The frontend is a JavaScript app; only its exact origin loads.
     private fun configure(view: WebView, app: AppOrigin) {
-        view.setBackgroundColor(ContextCompat.getColor(appContext, R.color.charcoal_canvas))
+        view.setBackgroundColor(ContextCompat.getColor(appContext, R.color.libadwaita_view))
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true

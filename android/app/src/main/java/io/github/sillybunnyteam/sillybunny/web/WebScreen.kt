@@ -149,7 +149,7 @@ internal fun WebScreenContent(
     val fullscreen = shell.fullscreen
     BackHandler(enabled = fullscreen != null || shell.canGoBack) { shell.onBack() }
     PermissionRequests(shell)
-    Box(modifier.fillMaxSize().background(colorResource(R.color.charcoal_canvas)).debugTestTags()) {
+    Box(modifier.fillMaxSize().background(colorResource(R.color.libadwaita_view)).debugTestTags()) {
         AndroidView(
             factory = { viewContext -> FrameLayout(viewContext).also(shell::mount) },
             modifier = Modifier

@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.app
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
@@ -104,11 +107,29 @@ internal fun AppTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = colorResource(R.color.warm_signal),
-            onPrimary = colorResource(R.color.shadow_ink),
+            onPrimary = colorResource(R.color.libadwaita_on_accent),
+            primaryContainer = colorResource(R.color.libadwaita_card),
+            onPrimaryContainer = colorResource(R.color.linen_text),
+            secondary = colorResource(R.color.libadwaita_accent_soft),
+            onSecondary = colorResource(R.color.libadwaita_on_accent),
+            secondaryContainer = colorResource(R.color.libadwaita_card),
+            onSecondaryContainer = colorResource(R.color.linen_text),
             background = colorResource(R.color.charcoal_canvas),
             onBackground = colorResource(R.color.linen_text),
             surface = colorResource(R.color.charcoal_canvas),
             onSurface = colorResource(R.color.linen_text),
+            surfaceVariant = colorResource(R.color.libadwaita_card),
+            onSurfaceVariant = colorResource(R.color.libadwaita_dim_text),
+            surfaceContainerLowest = colorResource(R.color.libadwaita_view),
+            surfaceContainerLow = colorResource(R.color.charcoal_canvas),
+            surfaceContainer = colorResource(R.color.libadwaita_headerbar),
+            surfaceContainerHigh = colorResource(R.color.libadwaita_dialog),
+            surfaceContainerHighest = colorResource(R.color.libadwaita_outline),
+            outline = colorResource(R.color.libadwaita_outline),
+            outlineVariant = colorResource(R.color.libadwaita_headerbar),
+            error = colorResource(R.color.libadwaita_danger),
+            onError = colorResource(R.color.libadwaita_on_accent),
+            scrim = colorResource(R.color.shadow_ink),
         ),
         content = content,
     )
@@ -391,9 +412,21 @@ private fun ServerFrame(
  */
 @Composable
 private fun AppBar(onOpenSettings: () -> Unit, onOpenInBrowser: (() -> Unit)?) {
+    val headerBg = colorResource(R.color.libadwaita_headerbar)
+    val headerShade = colorResource(R.color.libadwaita_headerbar_shade)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(headerBg)
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    color = headerShade,
+                    start = Offset(0f, size.height - stroke / 2f),
+                    end = Offset(size.width, size.height - stroke / 2f),
+                    strokeWidth = stroke,
+                )
+            }
             .testTag(AppTags.BAR)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .height(BAR_HEIGHT)
