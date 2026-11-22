@@ -32,6 +32,10 @@ export const FRAME_BOTTOM_PROPERTY = '--sb-toast-frame-bottom';
 export const STACK_OFFSET_PROPERTY = '--sb-toast-stack-offset';
 /** How far the middle of the bar that a bottom message sits above is from the middle of the window, in px. */
 export const BAR_SHIFT_PROPERTY = '--sb-toast-bar-shift';
+/** How far the start (left edge) of that bar is from the left of the window, in px, for a message at the bottom left. */
+export const BAR_START_PROPERTY = '--sb-toast-bar-start';
+/** How far the end (right edge) of that bar is from the right of the window, in px and negative, for a message at the bottom right. */
+export const BAR_END_PROPERTY = '--sb-toast-bar-end';
 /**
  * The rows that hold the actions of a dialog at its foot: the responses of an alert (`openAlert`), the extra responses
  * of a Dialog or Window (`openDialog` and the framed Popups), and the controls of an alert Popup and of an upstream
@@ -148,6 +152,23 @@ export function barShift(box, layoutWidth) {
     const left = Math.max(box.left, 0);
     const right = Math.min(box.right, layoutWidth);
     return right > left ? Math.round((left + right) / 2 - layoutWidth / 2) : 0;
+}
+
+/**
+ * Where the sides of a bar are from the sides of the window, counting the part of the bar that is in the window. The end is
+ * negative, so that both are the distance that a message at that side moves to sit against the bar.
+ * @param {{ left: number, right: number }|null|undefined} box
+ * @param {number} layoutWidth
+ * @returns {{ start: number, end: number }}
+ */
+export function barEdges(box, layoutWidth) {
+    if (!box || !(layoutWidth > 0)) {
+        return { start: 0, end: 0 };
+    }
+    return {
+        start: Math.round(Math.max(box.left, 0)) || 0,
+        end: Math.round(Math.min(box.right, layoutWidth) - layoutWidth) || 0,
+    };
 }
 
 /** Points across the window, as shares of its width, where a sheet is looked for. */
@@ -328,7 +349,7 @@ function layoutWidth() {
  * What the bottom messages sit above, and what they are centred on.
  * `source` is what reaches highest: the window edge when nothing does, the keyboard, the composer or a sheet. A message
  * eases when the source changes, as when a panel opens over the composer, and follows at once when the same bar grows.
- * @typedef {{ inset: number, shift: number, source: 'edge'|'keyboard'|'composer'|'sheet' }} Placement
+ * @typedef {{ inset: number, shift: number, start: number, end: number, source: 'edge'|'keyboard'|'composer'|'sheet' }} Placement
  */
 
 /** The bars of the window, from the lowest: the composer while it is docked and nothing covers it, and the sheets above it. */
@@ -361,19 +382,25 @@ function readPlacement() {
     if (inset > 0) {
         source = keyboardInset(window.visualViewport, height) >= inset ? 'keyboard' : highest.kind;
     }
-    return { inset, shift: source === 'composer' || source === 'sheet' ? barShift(highest, layoutWidth()) : 0, source };
+    const onBar = source === 'composer' || source === 'sheet';
+    const sides = onBar ? barEdges(highest, layoutWidth()) : { start: 0, end: 0 };
+    return { inset, shift: onBar ? barShift(highest, layoutWidth()) : 0, start: sides.start, end: sides.end, source };
 }
 
 /** What the last write used, which the watch compares with the page as it is now. */
-let lastPlacement = { inset: 0, shift: 0, source: 'edge' };
+let lastPlacement = { inset: 0, shift: 0, start: 0, end: 0, source: 'edge' };
 
 /**
- * The shift of a message is written for a bottom position only, where the CSS centres it on the bar.
+ * Where the bar is, for a bottom position only: the CSS centres a message at the bottom centre on it, and puts one at the
+ * bottom left against its start and one at the bottom right against its end. A side that is the window's is not written.
  * @param {HTMLElement} element
  * @param {Placement} placement
  */
-function writeShift(element, placement) {
-    setProperty(element, BAR_SHIFT_PROPERTY, placement.shift !== 0 && edgeOf(element.className, false) === 'bottom' ? pixels(placement.shift) : null);
+function writeBarSides(element, placement) {
+    const bottom = edgeOf(element.className, false) === 'bottom';
+    for (const [property, value] of [[BAR_SHIFT_PROPERTY, placement.shift], [BAR_START_PROPERTY, placement.start], [BAR_END_PROPERTY, placement.end]]) {
+        setProperty(element, property, bottom && value !== 0 ? pixels(value) : null);
+    }
 }
 
 /**
@@ -382,7 +409,7 @@ function writeShift(element, placement) {
  */
 function placeInWindow(overlay, placement) {
     setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(placement.inset));
-    writeShift(overlay, placement);
+    writeBarSides(overlay, placement);
     for (const property of [FRAME_LEFT_PROPERTY, FRAME_WIDTH_PROPERTY, FRAME_BOTTOM_PROPERTY]) {
         setProperty(overlay, property, null);
     }
@@ -398,7 +425,9 @@ function placeInWindow(overlay, placement) {
  */
 function placeInDialog(overlay, host) {
     setProperty(overlay, BOTTOM_INSET_PROPERTY, null);
-    setProperty(overlay, BAR_SHIFT_PROPERTY, null);
+    for (const property of [BAR_SHIFT_PROPERTY, BAR_START_PROPERTY, BAR_END_PROPERTY]) {
+        setProperty(overlay, property, null);
+    }
     const surface = dialogSurfaceOf(host);
     const isFrame = surface !== host;
     const originInHost = isFrame ? surface.offsetTop : -host.clientTop;
@@ -434,7 +463,7 @@ function placeNotifications(overlay, notifications, inDialog, placement) {
     const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlayTargetBox(overlay, edge, placement.inset) }) : null;
     setProperty(notifications, STACK_OFFSET_PROPERTY, offset === null ? null : pixels(offset));
     setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(placement.inset));
-    writeShift(notifications, placement);
+    writeBarSides(notifications, placement);
 }
 
 /**
@@ -576,7 +605,7 @@ function checkBars() {
         return;
     }
     const now = readPlacement();
-    if (now.inset !== lastPlacement.inset || now.shift !== lastPlacement.shift) {
+    if (now.inset !== lastPlacement.inset || now.shift !== lastPlacement.shift || now.start !== lastPlacement.start || now.end !== lastPlacement.end) {
         updateToastPlacement({ glide: now.source !== lastPlacement.source });
     } else {
         lastPlacement = now;

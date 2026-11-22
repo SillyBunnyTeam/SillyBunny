@@ -17,18 +17,18 @@ async function clearMessages(page) {
 }
 
 /** A chat, with the toasts and the notifications at the bottom centre, where the composer is the bar that they sit above. */
-async function openChat(page, viewport) {
+async function openChat(page, viewport, position = 'toast-bottom-center') {
     await page.setViewportSize(viewport);
     await protectMaintainerServer(page);
     await page.goto('/');
     await waitForAppReady(page);
     await showToasts(page);
     await selectSampleCharacter(page);
-    await page.evaluate(async () => {
+    await page.evaluate(async (where) => {
         const motion = await import('/scripts/sillybunny-toast-motion.js');
-        motion.setToastPosition('toast-bottom-center');
-        motion.setNotificationPosition('toast-bottom-center');
-    });
+        motion.setToastPosition(where);
+        motion.setNotificationPosition(where);
+    }, position);
     await expect(page.locator('#form_sheld')).toBeVisible();
     await clearMessages(page);
 }
@@ -60,6 +60,10 @@ const measure = page => page.evaluate(({ toast, note }) => {
         windowCentre: Math.round(document.documentElement.clientWidth / 2),
         toastLeft: toastBox && Math.round(toastBox.left),
         toastRight: toastBox && Math.round(document.documentElement.clientWidth - toastBox.right),
+        noteLeft: noteBox && Math.round(noteBox.left),
+        noteRight: noteBox && Math.round(document.documentElement.clientWidth - noteBox.right),
+        composerLeft: composer && Math.round(composer.left),
+        composerRight: composer && Math.round(document.documentElement.clientWidth - composer.right),
     };
 }, { toast: TOAST_FORM_SELECTOR, note: NOTIFICATION_FORM_SELECTOR });
 
@@ -378,7 +382,7 @@ const openActionSheet = page => page.evaluate(async () => {
 });
 
 /** A side panel through the engine, with the shell narrowed as the engine's own spec does, so that the composer has room to move. */
-const openSidePanel = page => page.evaluate(async () => {
+const openSidePanel = (page, side = 'left') => page.evaluate(async (dockedSide) => {
     document.documentElement.style.setProperty('--sheldWidth', '55vw');
     const wrapper = document.createElement('div');
     wrapper.id = 'visual-novel-wrapper';
@@ -395,9 +399,9 @@ const openSidePanel = page => page.evaluate(async () => {
     source.append(control);
     document.getElementById('movingDivs').append(source);
     const sidePanels = await import('/scripts/sillybunny-editor/side-panel.js');
-    window.qaSidePanel = sidePanels.registerSidePanel({ id: 'qa-side-panel', element: source, title: 'Test Panel', defaultSide: 'left', onClose: () => {} });
+    window.qaSidePanel = sidePanels.registerSidePanel({ id: 'qa-side-panel', element: source, title: 'Test Panel', defaultSide: dockedSide, onClose: () => {} });
     await window.qaSidePanel.open({});
-});
+}, side);
 
 const closeSidePanel = page => page.evaluate(() => window.qaSidePanel.close());
 const SIDE_PANEL = '.sb-side-panel[data-sb-side-panel-id="qa-side-panel"]';
@@ -507,6 +511,46 @@ test.describe('a message is centred on the bar that it sits above', () => {
         await expect.poll(async () => (await measure(page)).toastLeft).toBe(12);
         await shiftTo('20px');
         await expect.poll(async () => (await measure(page)).toastCentre).toBe((await measure(page)).windowCentre + 20);
+    });
+    for (const [side, position, edge, end] of [['left', 'toast-bottom-left', 'Left', 'start'], ['right', 'toast-bottom-right', 'Right', 'end']]) {
+        test(`at the bottom ${side}, a message sits against the ${end} of the composer that a docked side panel pushes aside, and against the window at the window edge`, async ({ page }) => {
+            await openChat(page, DESKTOP, position);
+            // The panel docks at the side that the composer is aligned against, so that the composer's edge is off the window's.
+            await openSidePanel(page, side);
+            await expect(page.locator(SIDE_PANEL)).toBeVisible();
+            await expect.poll(async () => (await measure(page))[`composer${edge}`]).toBeGreaterThan(200);
+
+            // A toast keeps 12px from the side that it sits at, and a card 4px, as at the window edge.
+            const sideOf = (measured, key) => measured[`${key}${edge}`];
+            await showToast(page);
+            await expect.poll(async () => {
+                const measured = await measure(page);
+                return sideOf(measured, 'toast') - sideOf(measured, 'composer');
+            }).toBe(12);
+            await clearMessages(page);
+            await showNotification(page);
+            await expect.poll(async () => {
+                const measured = await measure(page);
+                return sideOf(measured, 'note') - sideOf(measured, 'composer');
+            }).toBe(4);
+            await clearMessages(page);
+
+            await showToast(page);
+            await closeSidePanel(page);
+            await expect(page.locator(SIDE_PANEL)).toBeHidden();
+            await togglePanel(page, PANELS[0][1], true);
+            await expect.poll(async () => sideOf(await measure(page), 'toast')).toBe(12);
+        });
+    }
+
+    test('and a side position stays inside the window, however far the bar is', async ({ page }) => {
+        await openChat(page, DESKTOP, 'toast-bottom-left');
+        await showToast(page);
+        const startTo = value => page.evaluate(start => document.getElementById('sb-toast-overlay').style.setProperty('--sb-toast-bar-start', start), value);
+        await startTo('900px');
+        await expect.poll(async () => (await measure(page)).toastRight).toBe(12);
+        await startTo('0px');
+        await expect.poll(async () => (await measure(page)).toastLeft).toBe(12);
     });
 });
 

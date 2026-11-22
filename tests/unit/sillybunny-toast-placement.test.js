@@ -9,9 +9,12 @@ import {
     FRAME_WIDTH_PROPERTY,
     IN_DIALOG_ATTRIBUTE,
     ACTION_ROW_SELECTOR,
+    BAR_END_PROPERTY,
     BAR_SHIFT_PROPERTY,
+    BAR_START_PROPERTY,
     STACK_OFFSET_PROPERTY,
     actionRowTop,
+    barEdges,
     barShift,
     bottomInset,
     composerCovered,
@@ -222,6 +225,23 @@ describe('the shift of a bar from the middle of the window', () => {
 
     test('is nothing with no bar', () => {
         expect(barShift(null, 1000)).toBe(0);
+    });
+});
+
+describe('the edges of a bar from the sides of the window', () => {
+    test('are the distance of its start from the left of the window, and of its end from the right, the end counted backwards', () => {
+        expect(barEdges({ left: 280, right: 1000 }, 1000)).toEqual({ start: 280, end: 0 });
+        expect(barEdges({ left: 100, right: 900 }, 1000)).toEqual({ start: 100, end: -100 });
+        expect(barEdges({ left: 0, right: 1000 }, 1000)).toEqual({ start: 0, end: 0 });
+    });
+
+    test('count only the part of the bar that is in the window', () => {
+        expect(barEdges({ left: -200, right: 1400 }, 1000)).toEqual({ start: 0, end: 0 });
+        expect(barEdges({ left: 800, right: 1600 }, 1000)).toEqual({ start: 800, end: 0 });
+    });
+
+    test('are nothing with no bar', () => {
+        expect(barEdges(null, 1000)).toEqual({ start: 0, end: 0 });
     });
 });
 
@@ -1011,6 +1031,52 @@ describe('writing the placement', () => {
             expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('-200px');
         });
 
+        test('are the start and the end of the composer for a message at the left or the right, which the side positions align to', () => {
+            const left = overlayWith('toast-bottom-left');
+            const right = notificationsAt('toast-bottom-right');
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 280, right: 900, width: 620 });
+            updateToastPlacement();
+            expect(left.style.getPropertyValue(BAR_START_PROPERTY)).toBe('280px');
+            expect(left.style.getPropertyValue(BAR_END_PROPERTY)).toBe('-100px');
+            expect(right.style.getPropertyValue(BAR_START_PROPERTY)).toBe('280px');
+            expect(right.style.getPropertyValue(BAR_END_PROPERTY)).toBe('-100px');
+        });
+
+        test('are nothing at the window edge, where the side positions align to the window, and nothing where the bar fills the window', () => {
+            const panelElement = document.createElement('div');
+            document.body.append(panelElement);
+            elementsFromPoint.mockImplementation(() => [panelElement, composer]);
+            const overlay = overlayWith('toast-bottom-left');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
+            expect(overlay.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
+
+            elementsFromPoint.mockImplementation(() => [composer]);
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 0, right: 1000, width: 1000 });
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
+            expect(overlay.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
+        });
+
+        test('are written for a bottom position that is not in a dialog, like the shift', () => {
+            const top = overlayWith('toast-top-left');
+            updateToastPlacement();
+            expect(top.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
+            top.remove();
+            // The overlay is placed in the window first, and a dialog that opens takes it in, so what it wrote must go.
+            const moved = overlayWith('toast-bottom-left');
+            updateToastPlacement();
+            expect(moved.style.getPropertyValue(BAR_START_PROPERTY)).toBe('280px');
+            const dialog = document.createElement('dialog');
+            dialog.className = 'popup';
+            document.body.append(dialog);
+            dialog.append(moved);
+            updateToastPlacement();
+            expect(moved.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
+            expect(moved.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
+            expect(moved.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+        });
+
         test('is written only for a bottom position that is not in a dialog', () => {
             const top = overlayWith('toast-top-center');
             updateToastPlacement();
@@ -1167,7 +1233,23 @@ describe('writing the placement', () => {
             await settle();
             runFrames();
             expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('140px');
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('280px');
             expect(overlay.style.getPropertyValue('transition')).toBe('');
+        });
+
+        test('follows a composer that narrows from one side, which moves its edge and leaves its middle where it was', async () => {
+            const { overlay } = showMessage('toast-bottom-left');
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 100, right: 900, width: 800 });
+            document.body.className = 'narrowed';
+            await settle();
+            runFrames();
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('100px');
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 300, right: 700, width: 400 });
+            document.body.className = 'narrower';
+            await settle();
+            runFrames();
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('300px');
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
         });
 
         test('looks again when an animation that the Web Animations API runs on a surface has finished', async () => {

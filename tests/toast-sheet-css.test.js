@@ -343,9 +343,35 @@ describe('the middle that a bottom message is centred on', () => {
         expect(ruleOf(themeCss, NOTIFICATION)).toContain('max-width: calc(100% - 24px)');
     });
 
-    test('the shift eases unless motion is reduced, and a toast in a dialog is not shifted', () => {
-        expect(themeCss).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*body:not\(\.reduced-motion\) :is\(#sb-toast-overlay\.toast-bottom-center > \.sb-form-toast, #toast-container\.toast-bottom-center > \.sb-form-notification\) \{\s*transition: translate var\(--sb-transition-slow\);/);
+    test('a toast in a dialog is not shifted', () => {
         expect(themeCss).toContain('#sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast {');
+    });
+});
+
+describe('the edge that a side position aligns to', () => {
+    const CLAMP_LEFT = 'translate: clamp(0px, var(--sb-toast-bar-start, 0px), var(--sb-toast-room));';
+    const CLAMP_RIGHT = 'translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);';
+
+    test('a toast at the bottom left follows the start of the bar and one at the bottom right its end, and neither leaves the window', () => {
+        const left = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-left:not([data-sb-toast-in-dialog]) > .sb-form-toast');
+        expect(left).toContain('--sb-toast-room: max(0px, calc(100cqw - 24px - 100%))');
+        expect(left).toContain(CLAMP_LEFT);
+        const right = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-right:not([data-sb-toast-in-dialog]) > .sb-form-toast');
+        expect(right).toContain('--sb-toast-room: max(0px, calc(100cqw - 24px - 100%))');
+        expect(right).toContain(CLAMP_RIGHT);
+    });
+
+    test('a card does the same against the viewport, which its strip spans', () => {
+        const left = ruleOf(themeCss, 'body #toast-container[class].toast-bottom-left > .sb-form-notification');
+        expect(left).toContain('--sb-toast-room: max(0px, calc(100vw - 24px - 100%))');
+        expect(left).toContain(CLAMP_LEFT);
+        const right = ruleOf(themeCss, 'body #toast-container[class].toast-bottom-right > .sb-form-notification');
+        expect(right).toContain('--sb-toast-room: max(0px, calc(100vw - 24px - 100%))');
+        expect(right).toContain(CLAMP_RIGHT);
+    });
+
+    test('the shift eases at every bottom position unless motion is reduced', () => {
+        expect(themeCss).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*body:not\(\.reduced-motion\) :is\(#sb-toast-overlay:is\(\.toast-bottom-left, \.toast-bottom-center, \.toast-bottom-right\) > \.sb-form-toast, #toast-container:is\(\.toast-bottom-left, \.toast-bottom-center, \.toast-bottom-right\) > \.sb-form-notification\) \{\s*transition: translate var\(--sb-transition-slow\);/);
     });
 });
 

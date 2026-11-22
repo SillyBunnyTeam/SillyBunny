@@ -7552,15 +7552,26 @@ body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(but
     }
 }
 
-/* A message at the bottom centre sits above a bar that may be off the middle of the window: a side panel that is docked at one
-   side pushes the composer to the other. The script writes how far the middle of that bar is from the middle of the window
-   (nothing at the window edge, so the message is in the middle there), and the toast or the card follows it, but never closer
-   than 12px to a side of the window, which is the allowance of its width. The percentage in `translate` is the width of the
-   element itself, so the room is what is left of the window around it. A toast takes the window from its strip, as its width
-   does, and a card from the viewport, which its strip spans. */
+/* A message at a bottom position sits above a bar that may be off the middle of the window: a side panel that is docked at one
+   side pushes the composer to the other. The script writes where that bar is (nothing at the window edge, so the message is
+   where the setting puts it there). At the bottom centre the toast or the card is centred on the bar, at the bottom left it
+   moves by the start of the bar so that it keeps the margin it has against the window, and at the bottom right by the end.
+   None goes closer than 12px to a side of the window, which is the allowance of its width. The percentage in `translate` is
+   the width of the element itself, so the room is what is left of the window around it. A toast takes the window from its
+   strip, as its width does, and a card from the viewport, which its strip spans. */
 #sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast {
     --sb-toast-room: max(0px, calc((100cqw - 24px - 100%) / 2));
     translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room));
+}
+
+#sb-toast-overlay.toast-bottom-left:not([data-sb-toast-in-dialog]) > .sb-form-toast {
+    --sb-toast-room: max(0px, calc(100cqw - 24px - 100%));
+    translate: clamp(0px, var(--sb-toast-bar-start, 0px), var(--sb-toast-room));
+}
+
+#sb-toast-overlay.toast-bottom-right:not([data-sb-toast-in-dialog]) > .sb-form-toast {
+    --sb-toast-room: max(0px, calc(100cqw - 24px - 100%));
+    translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);
 }
 
 body #toast-container[class].toast-bottom-center > .sb-form-notification {
@@ -7568,8 +7579,18 @@ body #toast-container[class].toast-bottom-center > .sb-form-notification {
     translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room));
 }
 
+body #toast-container[class].toast-bottom-left > .sb-form-notification {
+    --sb-toast-room: max(0px, calc(100vw - 24px - 100%));
+    translate: clamp(0px, var(--sb-toast-bar-start, 0px), var(--sb-toast-room));
+}
+
+body #toast-container[class].toast-bottom-right > .sb-form-notification {
+    --sb-toast-room: max(0px, calc(100vw - 24px - 100%));
+    translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);
+}
+
 @media (prefers-reduced-motion: no-preference) {
-    body:not(.reduced-motion) :is(#sb-toast-overlay.toast-bottom-center > .sb-form-toast, #toast-container.toast-bottom-center > .sb-form-notification) {
+    body:not(.reduced-motion) :is(#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast, #toast-container:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-notification) {
         transition: translate var(--sb-transition-slow);
     }
 }
