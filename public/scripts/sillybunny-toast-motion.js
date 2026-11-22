@@ -12,8 +12,8 @@
  * behind it for as long as it stays.
  *
  * A toast moves as libadwaita's AdwToastOverlay moves it: in, it slides out of the edge it sits at (that edge clips it,
- * see the overlay's clip-path), with no fade; out, it fades and scales to 0.95. An in-app notification enters with a
- * fade and a slide from the edge of its container. Under reduced motion a toast fades and a notification does not move.
+ * see the overlay's clip-path), with no fade; out, it fades and scales to 0.95. An in-app notification moves as GNOME
+ * Shell's banner does (sillybunny-toast-notification.js). Under reduced motion both fade.
  */
 
 import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } from './sillybunny-motion.js';
@@ -30,6 +30,7 @@ import {
     TOAST_OVERLAY_ID,
     classifyToast,
 } from './sillybunny-toast-form.js';
+import { bindCardClick, playNotificationEnter, playNotificationLeave, shiftOthersAround, stopNotificationMotion, watchButtons } from './sillybunny-toast-notification.js';
 import { IN_DIALOG_ATTRIBUTE, edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
 
 export const TOAST_SHOW_METHOD = 'sbToastIn';
@@ -154,12 +155,6 @@ function edgeOfToast(element) {
     return edgeOf(container?.className ?? '', container?.hasAttribute(IN_DIALOG_ATTRIBUTE) === true);
 }
 
-/** A notification enters from the edge its container sits at, by its own height, and fades in. */
-function notificationEnterOffset(element) {
-    const height = element.getBoundingClientRect().height || 0;
-    return `${edgeOfToast(element) === 'bottom' ? height : -height}px`;
-}
-
 /**
  * A toast starts fully beyond the edge it sits at: libadwaita offsets it by the height of its widget, which includes
  * the margins, and the edge clips it. The margin box is read from the computed style because the margins differ at
@@ -183,21 +178,30 @@ function showDuration(element) {
 }
 
 function enter(element, complete) {
+    if (!isToastForm(element)) {
+        // The notifications that are on screen make room for the one that comes, and slide to their new places.
+        shiftOthersAround(element, () => element.style.removeProperty('display'));
+        playNotificationEnter(element, edgeOfToast(element), { complete: () => complete?.call(element) });
+        return;
+    }
     element.style.removeProperty('display');
-    const toast = isToastForm(element);
-    const keyframes = toast
-        ? [{ transform: `translateY(${toastEnterOffset(element)})` }, { transform: 'none' }]
-        : [{ opacity: 0, transform: `translateY(${notificationEnterOffset(element)})` }, { opacity: 1, transform: 'none' }];
-    play(element, keyframes, {
+    play(element, [{ transform: `translateY(${toastEnterOffset(element)})` }, { transform: 'none' }], {
         duration: showDuration(element),
         easing: MOTION_EASE,
-        reducedKeyframes: toast ? FADE_IN : null,
+        reducedKeyframes: FADE_IN,
         onFinish: () => complete?.call(element),
     });
 }
 
-/** The leave animation of both forms and of a toast that a high-priority toast pushes back: a fade and a scale to 0.95. */
+/**
+ * The leave animation of a toast, and of one that a high-priority toast pushes back: a fade and a scale to 0.95. An
+ * in-app notification leaves as GNOME Shell's banner does.
+ */
 function playLeave(element, { onFinish, onEnd }) {
+    if (!isToastForm(element)) {
+        playNotificationLeave(element, edgeOfToast(element), { onFinish, onEnd });
+        return;
+    }
     play(element, [
         { opacity: 1, transform: 'none' },
         { opacity: 0, transform: 'scale(0.95)' },
@@ -205,7 +209,7 @@ function playLeave(element, { onFinish, onEnd }) {
         duration: MOTION_SURFACE,
         easing: MOTION_EASE_OUT_CUBIC,
         fill: 'forwards',
-        reducedKeyframes: isToastForm(element) ? FADE_OUT : null,
+        reducedKeyframes: FADE_OUT,
         onFinish,
         onEnd,
     });
@@ -231,8 +235,10 @@ function sbToastIn({ complete } = {}) {
         // Hovering a toast while it leaves keeps it, like toastr's stop(true, true) + fadeIn.
         leaving.delete(element);
         stopMotion(element);
+        stopNotificationMotion(element);
         element.classList.remove(TOAST_LEAVING_CLASS);
-        unpin(element);
+        // The notifications that closed the gap move back.
+        shiftOthersAround(element, () => unpin(element));
         keepShown(queued.get(element));
         complete?.call(element);
         return this;
@@ -256,7 +262,8 @@ function leave(element, { pinned = false, complete = null } = {}) {
     leaving.add(element);
     element.classList.add(TOAST_LEAVING_CLASS);
     if (pinned) {
-        pin(element);
+        // The notifications behind a leaving one close the gap while it goes.
+        shiftOthersAround(element, () => pin(element));
     }
     queue.hiding += 1;
     playLeave(element, {
@@ -300,7 +307,8 @@ function sbToastOut({ complete } = {}) {
         queue.shown = queue.shown.filter(other => other !== entry);
     }
     // The next toast shows in the place of this one while this one fades, so this one is taken out of the flow first.
-    leave(element, { pinned: wasShown && queue.waiting.length > 0, complete });
+    // A notification is always pinned, so the ones behind it close the gap while it goes; a toast only when another waits.
+    leave(element, { pinned: !isToastForm(element) || (wasShown && queue.waiting.length > 0), complete });
     if (wasShown) {
         scheduleNext(queue);
     }
@@ -309,17 +317,23 @@ function sbToastOut({ complete } = {}) {
 
 // The queues
 
-const PINNED_PROPERTIES = ['position', 'top', 'left', 'width', 'margin'];
+const PINNED_PROPERTIES = ['position', 'top', 'bottom', 'left', 'width', 'margin'];
 
-/** Takes a leaving toast out of the flow at the place it has, so the toast that replaces it does not move it. */
+/**
+ * Takes a leaving toast out of the flow at the place it has, so the toast that replaces it does not move it. A
+ * notification at a bottom position keeps its distance from the bottom of its container, which is anchored there and
+ * changes height when this one leaves the flow.
+ */
 function pin(element) {
-    const { offsetTop, offsetLeft, offsetWidth } = element;
+    const { offsetTop, offsetLeft, offsetWidth, offsetHeight } = element;
+    const container = element.parentElement;
+    const fromBottom = !isToastForm(element) && container !== null && edgeOfToast(element) === 'bottom';
     Object.assign(element.style, {
         position: 'absolute',
-        top: `${offsetTop}px`,
         left: `${offsetLeft}px`,
         width: `${offsetWidth}px`,
         margin: '0',
+        ...(fromBottom ? { bottom: `${container.clientHeight - offsetTop - offsetHeight}px` } : { top: `${offsetTop}px` }),
     });
 }
 
@@ -423,6 +437,7 @@ function show(entry) {
     options.extendedTimeOut = entry.extendedTimeOut;
     leaving.delete(element);
     stopMotion(element);
+    stopNotificationMotion(element);
     element.classList.remove(TOAST_LEAVING_CLASS);
     unpin(element);
     pinLeavingSiblings(element);
@@ -713,6 +728,8 @@ function placeToast(element, effective, options) {
         removeEmptyNotificationContainer();
     } else {
         element.classList.add(NOTIFICATION_FORM_CLASS);
+        // The newest notification is nearest the edge: first in the document, which a bottom position draws last.
+        element.parentElement?.prepend(element);
         removeOverlayIfEmpty();
     }
     return form;
@@ -893,7 +910,11 @@ function watchAction($toast) {
 /** Calls toastr directly, with no queue. The message is an in-app notification, because that form shows every part of a message. */
 function showUnqueued(original, message, title, forcedOptions) {
     const $toast = original(message, title, forcedOptions);
-    getToastElement($toast)?.classList.add(NOTIFICATION_FORM_CLASS);
+    const element = getToastElement($toast);
+    if (element) {
+        element.classList.add(NOTIFICATION_FORM_CLASS);
+        watchButtons(element);
+    }
     return $toast;
 }
 
@@ -925,6 +946,9 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
     const form = placeToast(element, effective, options);
     if (form === TOAST_FORM) {
         makeInertToTaps($toast, effective.tapToDismiss !== false, options);
+    } else {
+        bindCardClick($toast, { options, dismiss: () => hideThroughToastr($toast, options) });
+        watchButtons(element);
     }
     const { timeOut, extendedTimeOut, persistent } = timingOf(form, type, optionsOverride, effective);
     return {

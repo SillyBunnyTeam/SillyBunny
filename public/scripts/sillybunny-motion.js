@@ -8,11 +8,15 @@
 export const MOTION_FAST = 200;
 export const MOTION_SLOW = 250;
 export const MOTION_SURFACE = 300;
+/** GNOME Shell's `ANIMATION_TIME`: an in-app notification enters and leaves over this. */
+export const MOTION_NOTIFICATION = 200;
 /** Popover and menu close: a short fade with no movement. */
 export const MOTION_POPOVER_CLOSE = 150;
 export const MOTION_EASE = 'cubic-bezier(0.25, 0.1, 0.25, 1)';
 export const MOTION_EASE_OUT_QUAD = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export const MOTION_EASE_OUT_CUBIC = 'cubic-bezier(0.33, 1, 0.68, 1)';
+/** GNOME Shell's `EASE_OUT_BACK`. It overshoots, and only an in-app notification's slide uses it (DESIGN: Motion). */
+export const MOTION_EASE_OUT_BACK = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
 
 const supportsLinearEasing = typeof CSS !== 'undefined'
     && typeof CSS.supports === 'function'

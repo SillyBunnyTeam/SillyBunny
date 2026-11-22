@@ -348,6 +348,54 @@ describe('writing the placement', () => {
         expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('');
     });
 
+    describe('an in-app notification at a bottom position, with no toast at its place', () => {
+        function notificationsAt(positionClass) {
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = positionClass;
+            document.body.append(notifications);
+            return notifications;
+        }
+
+        test('sits above the composer and, when it reaches higher, above the keyboard, as a toast does', () => {
+            const notifications = notificationsAt('toast-bottom-right');
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+            visualViewport.height = 450;
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('350px');
+        });
+
+        test('keeps the window edge when the composer has no box, and a top position takes no inset', () => {
+            composer.getBoundingClientRect = () => ({ top: 0, bottom: 0, height: 0 });
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            notifications.className = 'toast-top-center';
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
+        });
+
+        test('takes no inset of its own where it shares the stack of the toasts, because the stack offset holds it', () => {
+            const overlay = overlayWith('toast-bottom-center');
+            overlay.getBoundingClientRect = () => ({ top: 640, bottom: 700, height: 60, left: 0, right: 1000, width: 1000 });
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
+            expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('160px');
+        });
+
+        test('keeps its window position while a dialog is open, with the composer and the keyboard as before', () => {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'popup';
+            document.body.append(dialog);
+            overlayWith('toast-top-left', dialog);
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+        });
+    });
+
     test('puts no notification beyond a toast that sits in a dialog, where the two are not at one place', () => {
         const dialog = document.createElement('dialog');
         dialog.className = 'popup';

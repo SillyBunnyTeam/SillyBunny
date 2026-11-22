@@ -169,15 +169,19 @@ function pixels(value) {
     return `${Math.round(value)}px`;
 }
 
-/** @param {HTMLElement} overlay */
-function placeInWindow(overlay) {
+/** How much of the bottom of the window the composer and the software keyboard cover, in px. */
+function windowBottomInset() {
     const composer = document.getElementById(COMPOSER_ID);
-    const inset = bottomInset({
+    return bottomInset({
         layoutHeight: layoutHeight(),
         viewport: window.visualViewport,
         composerBox: composer?.getBoundingClientRect(),
     });
-    setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(inset));
+}
+
+/** @param {HTMLElement} overlay */
+function placeInWindow(overlay) {
+    setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(windowBottomInset()));
     for (const property of [FRAME_LEFT_PROPERTY, FRAME_WIDTH_PROPERTY, FRAME_BOTTOM_PROPERTY]) {
         setProperty(overlay, property, null);
     }
@@ -208,8 +212,10 @@ function placeInDialog(overlay, host) {
 }
 
 /**
- * The in-app notifications sit beyond the toasts when both are at the same position. In a dialog the toast is at the
- * dialog's bottom and the notifications keep their window position, so they do not share a stack there.
+ * The in-app notifications sit beyond the toasts when both are at the same position, and the stack offset already holds
+ * the space under the toasts. Otherwise a bottom notification sits above the composer and the keyboard as a toast does.
+ * In a dialog the toast is at the dialog's bottom and the notifications keep their window position, so they do not
+ * share a stack there.
  * @param {HTMLElement|null} overlay
  * @param {HTMLElement|null} notifications
  * @param {boolean} inDialog
@@ -224,6 +230,7 @@ function placeNotifications(overlay, notifications, inDialog) {
     const edge = edgeOf(notifications.className, false);
     const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlay.getBoundingClientRect() }) : null;
     setProperty(notifications, STACK_OFFSET_PROPERTY, offset === null ? null : pixels(offset));
+    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(windowBottomInset()));
 }
 
 /** Measures the page and writes the placement of the overlay and of the notification container. */

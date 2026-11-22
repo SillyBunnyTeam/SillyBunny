@@ -71,6 +71,8 @@ beforeAll(async () => {
             element: this,
             keyframes,
             duration: options.duration,
+            easing: options.easing,
+            composite: options.composite,
             done: false,
             finished,
             finish() {
@@ -1463,16 +1465,20 @@ describe('the motion of a toast', () => {
         expect(leaves()[0].duration).toBe(300);
     });
 
-    test('an in-app notification keeps its fade and slide', () => {
+    test('an in-app notification enters as GNOME Shell\'s banner: a fade, and a slide with a scale from 0.9, over 200ms', () => {
         toastr.info('A notification', 'Title');
-        expect(animations).toHaveLength(1);
-        expect(animations[0].keyframes).toEqual([{ opacity: 0, transform: 'translateY(-40px)' }, { opacity: 1, transform: 'none' }]);
+        expect(animations.map(({ keyframes, duration, easing }) => ({ keyframes, duration, easing }))).toEqual([
+            { keyframes: [{ opacity: 0 }, { opacity: 1 }], duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' },
+            { keyframes: [{ transform: 'translateY(-40px) scale(0.9)' }, { transform: 'none' }], duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
+        ]);
     });
 
-    test('with reduced motion a notification shows and hides at once, and a toast fades', () => {
+    test('with reduced motion a notification and a toast fade', () => {
         reducedMotion = true;
         toastr.info('A notification', 'Title');
-        expect(animations).toHaveLength(0);
+        expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 0 }, { opacity: 1 }]]);
+        expect(animations[0].duration).toBeLessThanOrEqual(200);
+        animations = [];
         toastr.info('A toast');
         expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 0 }, { opacity: 1 }]]);
     });
