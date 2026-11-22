@@ -70,7 +70,7 @@ const POSITION_CLASSES = [
 
 const leaving = new WeakSet();
 /**
- * Messages that the user or the caller made go: Dismiss, a click on the card, or a `clear` with `force`. A pointer that is
+ * Messages that the user or the caller made go: Dismiss, a click on the card, or a call of `clear()`. A pointer that is
  * over such a message when it starts to leave must not bring it back, which a hover over a leaving message does when a
  * timeout is what ends it. The pointer is still over it after the press that dismissed it, and the browser reports the
  * pointer as entering again when the page moves the message's container (a dialog that opens) or blocks frames.
@@ -1077,6 +1077,23 @@ function wrapNotifier(toastr, type) {
 }
 
 /**
+ * Notes the messages that a call of `clear()` hides, as toastr decides it: the toast that is named, or every toast of both
+ * containers, except one that has focus inside, which `clear()` leaves on screen unless `force` is set.
+ * @param {any} toastElement The jQuery element that was named, if any.
+ * @param {{ force?: boolean }|undefined} clearOptions
+ */
+function markCleared(toastElement, clearOptions) {
+    const named = getToastElement(toastElement);
+    const containers = [document.getElementById(NOTIFICATION_CONTAINER_ID), getOverlay()];
+    const hidden = named ? [named] : containers.flatMap(container => [...(container?.children ?? [])]);
+    for (const element of hidden) {
+        if (clearOptions?.force === true || !element.matches(':focus-within')) {
+            dismissed.add(element);
+        }
+    }
+}
+
+/**
  * toastr's `clear()` and `remove()` act on the one container that it looked up last. Both containers are one for them
  * now, so a call without a toast reaches every message, and a call with a toast acts on that toast wherever it is.
  */
@@ -1091,9 +1108,8 @@ function wrapContainerCommands(toastr) {
         const original = toastr[command].bind(toastr);
         toastr[command] = function (toastElement, ...rest) {
             pointToastrAtBothContainers();
-            const target = getToastElement(toastElement);
-            if (command === 'clear' && target && rest[0]?.force) {
-                dismissed.add(target);
+            if (command === 'clear') {
+                markCleared(toastElement, rest[0]);
             }
             original(toastElement, ...rest);
             settleContainers();

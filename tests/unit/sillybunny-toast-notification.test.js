@@ -386,6 +386,34 @@ describe('a message that was dismissed', () => {
         expect(clicked.hasClass('sb-toast-leaving')).toBe(true);
     });
 
+    test('is not brought back either when a call of clear() without force, or without a toast, is what hid it', () => {
+        const single = toastr.info('One', 'One', options);
+        toastr.clear(single);
+        single.trigger('mouseenter');
+        expect(single.hasClass('sb-toast-leaving')).toBe(true);
+
+        const first = toastr.info('First', 'Two', options);
+        const second = toastr.info('Second', 'Three', options);
+        toastr.clear();
+        first.trigger('mouseenter');
+        second.trigger('mouseenter');
+        expect(first.hasClass('sb-toast-leaving')).toBe(true);
+        expect(second.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
+    test('is not marked when it has focus inside, which clear() leaves on screen, so a timeout that ends it later can still be saved', () => {
+        const $toast = toastr.info('<button id="held">Held</button>', 'Held', { ...HTML });
+        $toast.find('#held')[0].focus();
+        toastr.clear();
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+        $toast.find('#held')[0].blur();
+        // The hide method is what toastr's timer calls, and a pointer that enters the toast then keeps it.
+        $toast.sbToastOut({});
+        expect($toast.hasClass('sb-toast-leaving')).toBe(true);
+        $toast.trigger('mouseenter');
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+    });
+
     test('is still kept by a pointer when it was a timeout that ended it', async () => {
         const $toast = toastr.info('Times out', 'Four', { timeOut: 300, extendedTimeOut: 300 });
         jest.advanceTimersByTime(300);
