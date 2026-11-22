@@ -165,6 +165,28 @@ test.describe('progress toasts that change after they show', () => {
     });
 });
 
+test.describe('taps on a message', () => {
+    test('a tap on a toast or on a notification does not close an open drawer that is not pinned, and a tap on the page does', async ({ page }) => {
+        await page.evaluate(() => {
+            const drawer = document.createElement('div');
+            drawer.id = 'fx-drawer';
+            drawer.className = 'openDrawer';
+            document.body.append(drawer);
+        });
+        await fire(page, 'tapToDismissOff', '');
+        await fire(page, 'tapToDismissOff', 'Title');
+        const drawer = page.locator('#fx-drawer');
+
+        await page.locator(TOAST_FORM_SELECTOR).click();
+        await expect(drawer, 'a tap on a toast leaves the drawer').toHaveClass(/openDrawer/);
+        await page.locator(NOTIFICATION_FORM_SELECTOR).click();
+        await expect(drawer, 'a tap on a notification leaves the drawer').toHaveClass(/openDrawer/);
+
+        await page.evaluate(() => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+        await expect(drawer, 'a tap on the page closes it').toHaveClass(/closedDrawer/);
+    });
+});
+
 test.describe('progress bars', () => {
     for (const [form, title] of [['toast', ''], ['notification', 'Title']]) {
         test(`the progress bar of a ${form} runs down while it shows`, async ({ page }) => {
