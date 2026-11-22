@@ -1319,6 +1319,57 @@ describe('the parts of a toast and the dismissal of a message', () => {
     });
 });
 
+describe('the button of a toast hides it the way toastr hides a toast', () => {
+    afterEach(() => {
+        toastr.subscribe(() => {});
+    });
+
+    for (const timeOut of [0, 400]) {
+        test(`runs onHidden and publishes hidden once when the button is pressed, with a timeOut of ${timeOut}, and the timer does not run them again`, async () => {
+            const onHidden = jest.fn();
+            const onCloseClick = jest.fn();
+            const events = [];
+            toastr.subscribe(({ state }) => events.push(state));
+            const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false, timeOut, extendedTimeOut: timeOut, onHidden, onCloseClick });
+            $toast.find('#undo')[0].click();
+            await advance(0);
+            await finishAnimations();
+            expect(onHidden).toHaveBeenCalledTimes(1);
+            expect(events.filter(state => state === 'hidden')).toHaveLength(1);
+            // The action is not a click on Dismiss.
+            expect(onCloseClick).not.toHaveBeenCalled();
+            expect($toast[0].isConnected).toBe(false);
+
+            await advance(10000);
+            await finishAnimations();
+            expect(onHidden).toHaveBeenCalledTimes(1);
+            expect(events.filter(state => state === 'hidden')).toHaveLength(1);
+        });
+    }
+
+    test('hides a toast that has focus inside it, which toastr does not hide by itself', async () => {
+        const onHidden = jest.fn();
+        const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false, timeOut: 0, extendedTimeOut: 0, onHidden });
+        const button = $toast.find('#undo')[0];
+        button.focus();
+        expect(document.activeElement).toBe(button);
+        button.click();
+        await advance(0);
+        await finishAnimations();
+        expect(onHidden).toHaveBeenCalledTimes(1);
+    });
+
+    test('puts the onCloseClick of the call back, so that the close button still runs it', async () => {
+        const onCloseClick = jest.fn();
+        const $toast = toastr.info('<div>Removed <button type="button" id="undo">Undo</button></div>', '', { escapeHtml: false, timeOut: 0, extendedTimeOut: 0, onCloseClick });
+        const other = toastr.info('Another', '', { timeOut: 0, extendedTimeOut: 0, onCloseClick });
+        $toast.find('#undo')[0].click();
+        await advance(0);
+        other.find('.toast-close-button').trigger('click');
+        expect(onCloseClick).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('the motion of a toast', () => {
     const real = { getBoundingClientRect: HTMLElement.prototype.getBoundingClientRect };
     const openHosts = [];

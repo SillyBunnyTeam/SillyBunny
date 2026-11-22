@@ -169,6 +169,55 @@ test.describe('taps and buttons', () => {
     });
 });
 
+test.describe('keyboard focus', () => {
+    /** Moves focus the way a keyboard does, so that the browser treats it as keyboard focus. */
+    async function focusByKeyboard(page, locator) {
+        await page.keyboard.press('Tab');
+        await locator.focus();
+        expect(await locator.evaluate(node => node.matches(':focus-visible')), 'the focus is keyboard focus').toBe(true);
+    }
+
+    const ringOf = locator => locator.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return { shadow: style.boxShadow, outline: style.outlineStyle };
+    });
+
+    test('the button of a toast and Dismiss show the focus ring of the app, in a visible colour', async ({ page }) => {
+        await page.evaluate(() => window.toastr.info('<span>Removed the prompt</span> <button type="button" class="menu_button" id="fx-undo">Undo</button>', '', { timeOut: 0, extendedTimeOut: 0, escapeHtml: false }));
+        const toast = page.locator(TOAST_FORM_SELECTOR);
+        await expect(toast).toBeVisible();
+        await settled(page);
+        for (const control of [toast.locator('#fx-undo'), toast.getByRole('button', { name: 'Dismiss', exact: true })]) {
+            await focusByKeyboard(page, control);
+            // The ring fades in with the control's transition, so it is read once it has its full width.
+            await expect.poll(async () => (await ringOf(control)).shadow, { message: 'a ring of two pixels, drawn inside the control as the ring of the app is' }).toMatch(/0px 0px 0px 2px inset$/);
+            await page.locator('body').click({ position: { x: 1, y: 1 } });
+        }
+    });
+
+    test('Dismiss of an in-app notification shows it too', async ({ page }) => {
+        await page.evaluate(() => window.toastr.info('A notification', 'Title', { timeOut: 0, extendedTimeOut: 0 }));
+        const dismiss = page.locator(NOTIFICATION_FORM_SELECTOR).getByRole('button', { name: 'Dismiss', exact: true });
+        await expect(dismiss).toBeVisible();
+        await settled(page);
+        await focusByKeyboard(page, dismiss);
+        await expect.poll(async () => (await ringOf(dismiss)).shadow).toMatch(/0px 0px 0px 2px inset$/);
+    });
+
+    test('the ring is not the colour of the toast layer, so that it can be seen on it', async ({ page }) => {
+        const toast = await showToast(page, 'info', 'A toast');
+        const dismiss = toast.getByRole('button', { name: 'Dismiss', exact: true });
+        await focusByKeyboard(page, dismiss);
+        await expect.poll(async () => (await ringOf(dismiss)).shadow).toMatch(/0px 0px 0px 2px inset$/);
+        const colours = await dismiss.evaluate((node) => {
+            const toastStyle = getComputedStyle(node.parentElement);
+            return { shadow: getComputedStyle(node).boxShadow, layer: toastStyle.backgroundColor };
+        });
+        expect(colours.shadow, 'a ring').not.toBe('none');
+        expect(colours.shadow.split(' inset')[0], 'the ring colour differs from the layer it is drawn on').not.toBe(colours.layer);
+    });
+});
+
 test.describe('the width of a toast', () => {
     test('is as wide as its text, and a toast with a button is at least 450px and never wider than the window minus 24px', async ({ page }) => {
         await page.setViewportSize({ width: 1440, height: 900 });

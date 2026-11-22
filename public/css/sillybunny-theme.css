@@ -7157,6 +7157,13 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
     background: color-mix(in srgb, currentColor 20%, transparent);
 }
 
+/* The global ring is an inset box-shadow, and the rules above and below clear the shadow with a longer selector, so the ring
+   is set again here. Its colour is the one of the toast layer's own ring tokens (see the declaration of --sb-focus-ring). */
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
+body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:focus-visible {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):is(:disabled, [aria-disabled='true']) {
     opacity: 0.5;
     pointer-events: none;

@@ -771,18 +771,41 @@ function dismissButtonHtml() {
 }
 
 /**
+ * Hides a toast through toastr's own `hideToast`, which is the function that the close button runs: it clears the hide
+ * timer and runs `onHidden` and the `hidden` publish when the toast has left, and `override` hides a toast that has
+ * focus inside. The call's `onCloseClick` is set aside while the handler runs, because the toast was not closed by a
+ * click on Dismiss.
+ * @param {any} $toast
+ * @param {Record<string, any>} options The options object that toastr's closures read.
+ */
+function hideThroughToastr($toast, options) {
+    const close = $toast.children('.toast-close-button');
+    if (close.length === 0) {
+        toastrApi.clear($toast, { force: true });
+        return;
+    }
+    const { onCloseClick } = options;
+    options.onCloseClick = undefined;
+    try {
+        close.triggerHandler('click');
+    } finally {
+        options.onCloseClick = onCloseClick;
+    }
+}
+
+/**
  * Tapping a toast does nothing: its button and its close button are the only ways to act on it. toastr binds the tap
  * to dismiss when it creates the toast, before the form is known, and the app's listener adds the "Tap to close" hint
  * after that, so both are taken off once the toast is known to be a toast. The close button is the last part of a toast,
  * and toastr puts it first.
  *
- * The tap also used to dismiss the toast when it landed on the button, so a toast with an Undo went after the Undo.
- * That stays, as libadwaita's `action_clicked_cb` does it: the button runs its action once, is disabled, and the toast
- * goes. A toast that a caller made with `tapToDismiss: false` keeps its button and stays, as it did.
+ * A press on the button of a toast dismisses it, as libadwaita's `action_clicked_cb` does: the button runs its action
+ * once, is disabled, and the toast goes. A toast that a caller made with `tapToDismiss: false` keeps its button and stays.
  * @param {any} $toast
  * @param {boolean} dismissesAfterAction
+ * @param {Record<string, any>} options The options object that toastr's closures read.
  */
-function makeInertToTaps($toast, dismissesAfterAction) {
+function makeInertToTaps($toast, dismissesAfterAction, options) {
     const element = $toast[0];
     $toast.off('click');
     element.classList.remove('interactable');
@@ -804,8 +827,7 @@ function makeInertToTaps($toast, dismissesAfterAction) {
                 if (button instanceof HTMLButtonElement || button instanceof HTMLInputElement) {
                     button.disabled = true;
                 }
-                // Focus inside a toast keeps toastr from hiding it, unless the call forces it.
-                toastrApi.clear($toast, { force: true });
+                hideThroughToastr($toast, options);
             }, 0);
         }, true);
     }
@@ -887,7 +909,7 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
     const element = $toast[0];
     const form = placeToast(element, effective, options);
     if (form === TOAST_FORM) {
-        makeInertToTaps($toast, effective.tapToDismiss !== false);
+        makeInertToTaps($toast, effective.tapToDismiss !== false, options);
     }
     const { timeOut, extendedTimeOut, persistent } = timingOf(form, type, optionsOverride, effective);
     return {
