@@ -119,7 +119,11 @@ function validatePanelList(panels) {
     });
 }
 
-export function computeSidePanelLayout({ viewport, chat, topBarHeight, panels }) {
+/**
+ * Lays out the open panels beside the chat. A collapsed layout (the phone layout) never docks: its one active panel is a
+ * sheet whatever room there is, as an overlay split view collapses at its breakpoint.
+ */
+export function computeSidePanelLayout({ viewport, chat, topBarHeight, panels, collapsed = false }) {
     if (!viewport || typeof viewport !== 'object') {
         throw new TypeError('viewport must provide width and height');
     }
@@ -168,7 +172,7 @@ export function computeSidePanelLayout({ viewport, chat, topBarHeight, panels })
         ? clamp(centeredChatLeft, dockStart, viewportWidth - dockEnd - chatWidth)
         : dockStart;
 
-    if (laidOutChatWidth < MIN_CHAT_WIDTH) {
+    if (collapsed || laidOutChatWidth < MIN_CHAT_WIDTH) {
         const sheetPanelId = openPanels.at(-1).id;
         return {
             mode: 'sheet',
@@ -291,14 +295,18 @@ function getPanelRoot() {
     return document.getElementById('movingDivs') ?? document.body;
 }
 
+function isPhoneLayout() {
+    return Boolean(window.matchMedia?.(LAYOUT_MOBILE_QUERY).matches);
+}
+
 function resolveChatWidth(viewportWidth) {
     const chatShell = document.getElementById('sheld');
     if (!chatShell) return viewportWidth;
 
-    // In the phone layout the chat is as wide as the window, so the docked panels take their share of that. Above it the chat
-    // keeps its configured width at every window width: the panels take the gutters and move the chat only as far as they
-    // must, and a panel becomes a sheet when the chat would be under the minimum.
-    if (window.matchMedia?.(LAYOUT_MOBILE_QUERY).matches) return viewportWidth;
+    // In the phone layout the chat is as wide as the window and a panel is a sheet over it. Above it the chat keeps its
+    // configured width at every window width: the panels take the gutters and move the chat only as far as they must, and a
+    // panel becomes a sheet when the chat would be under the minimum.
+    if (isPhoneLayout()) return viewportWidth;
 
     const root = document.documentElement;
     const probe = document.createElement('div');
@@ -328,7 +336,7 @@ function readLayoutInputs(openPanels) {
     const resolvedOffset = offsetProbe.getBoundingClientRect().height;
     offsetProbe.remove();
     const topBarHeight = chatShell?.getBoundingClientRect().top || resolvedOffset || Number.parseFloat(configuredOffset) || 0;
-    return { viewport, chat, topBarHeight, panels: openPanels };
+    return { viewport, chat, topBarHeight, panels: openPanels, collapsed: isPhoneLayout() };
 }
 
 function openEntries() {

@@ -5,7 +5,7 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 // A docked panel has one rule at every width above the phone layout, 1280px included: the chat keeps its Page Width,
 // moves only as far as the panels need, and the panels become a sheet only when the chat would be under 360px.
-// The phone layout (768px and under) is the full window, so a panel takes its share of that.
+// In the phone layout (768px and under) a panel never docks: it is a sheet, as an overlay split view collapses at its breakpoint.
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 // A sweep resizes the window about 45 times, which takes WebKit longer than the default timeout.
 test.describe.configure({ timeout: 120_000 });
@@ -34,10 +34,11 @@ function expectedLayout({ width, pageWidth, sides }) {
     return { mode: 'docked', configured, panel, chat, left, centred, start, end };
 }
 
-async function boot(page, { width, pageWidth, sides }) {
+async function boot(page, { width, pageWidth, sides, home = false }) {
     await protectMaintainerServer(page);
     await page.setViewportSize({ width, height: 900 });
-    await openQuietChatForSmoke(page);
+    await openQuietChatForSmoke(page, { selectCharacter: !home });
+    if (home) await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
     await page.addStyleTag({ content: '#sheld { transition: none !important; }' });
     await page.evaluate(async ({ pageWidth, sides }) => {
         document.documentElement.style.setProperty('--sheldWidth', `${pageWidth}vw`);
@@ -72,6 +73,7 @@ function readLayout(page) {
             variableWidth: px('--sb-chat-width'),
             variableOffset: px('--sb-chat-offset'),
             panel: px('--sb-side-panel-width'),
+            visiblePanels: [...document.querySelectorAll('.sb-side-panel')].filter(panel => !panel.hidden && panel.getClientRects().length > 0).map(panel => panel.dataset.sbSidePanelId),
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         };
     });
@@ -175,16 +177,59 @@ test('the panel becomes a sheet where the chat would be under 360px, and the cha
     expect((await readLayout(page)).mode).toBe('docked');
 });
 
-test('the phone layout keeps the chat as wide as the window less the panel', async ({ page }) => {
-    await boot(page, { width: 769, pageWidth: 55, sides: ['left'] });
-    await setWidth(page, 769);
+// 768px is the phone layout, so it is a sheet there at every Page Width, and the panel docks again from 769px where the chat has room for it.
+for (const pageWidth of [30, 55, 100]) {
+    test(`a side panel is a sheet at 768px and under and docks above it where the chat fits, at Page Width ${pageWidth}`, async ({ page }) => {
+        await boot(page, { width: 800, pageWidth, sides: ['left'] });
+        const problems = [];
+        for (const width of [800, 769, 768, 700, 641, 600, 700, 769]) {
+            await setWidth(page, width);
+            const read = await readLayout(page);
+            const expected = width <= 768 ? { mode: 'sheet' } : expectedLayout({ width, pageWidth, sides: ['left'] });
+            const failures = [
+                [read.mode !== expected.mode, `${read.mode}, expected ${expected.mode}`],
+                [read.visiblePanels.length !== 1, `${read.visiblePanels.length} panels shown`],
+                [read.overflow > 0, `scrolls sideways by ${read.overflow}`],
+                // A sheet leaves the chat as the layout of its width has it: the full window in the phone layout.
+                [width <= 768 && (Math.abs(read.width - width) > 1 || Math.abs(read.left) > 1), `chat ${read.width}px wide at ${read.left}`],
+            ];
+            problems.push(...failures.filter(([failed]) => failed).map(([, text]) => `${width}: ${text}`));
+        }
+        expect(problems).toEqual([]);
+    });
+}
+
+test('two panels leave one sheet in the phone layout, and the first stays closed when the window widens', async ({ page }) => {
+    await boot(page, { width: 1100, pageWidth: 55, sides: ['left', 'right'] });
+    await setWidth(page, 1100);
+    const both = await readLayout(page);
+    expect(both.mode).toBe('docked');
+    expect(both.visiblePanels).toEqual(['qa-side-panel-left', 'qa-side-panel-right']);
+    await setWidth(page, 768);
+    const phone = await readLayout(page);
+    expect(phone.mode).toBe('sheet');
+    expect(phone.visiblePanels).toEqual(['qa-side-panel-right']);
+    await setWidth(page, 1100);
     const wide = await readLayout(page);
-    expect(wide.width).toBeCloseTo(0.55 * 769, 0);
-    for (const width of [768, 700]) {
+    expect(wide.mode).toBe('docked');
+    expect(wide.visiblePanels).toEqual(['qa-side-panel-right']);
+});
+
+// Home is wider than the chat: min(max(1120px, Page Width), window - 32px). A panel docks against it above the phone layout.
+test('a docked panel on Home takes its share of the Home width and is a sheet at 768px and under', async ({ page }) => {
+    await boot(page, { width: 1440, pageWidth: 55, sides: ['left'], home: true });
+    const problems = [];
+    for (const width of [1440, 1280, 1100, 900, 769, 768, 700]) {
         await setWidth(page, width);
         const read = await readLayout(page);
-        expect(read.mode).toBe('docked');
-        expect(read.width).toBeCloseTo(width - MIN_PANEL_WIDTH, 0);
-        expect(read.left).toBeCloseTo(MIN_PANEL_WIDTH, 0);
+        if (width <= 768) {
+            if (read.mode !== 'sheet') problems.push(`${width}: ${read.mode}, expected sheet`);
+            continue;
+        }
+        const home = Math.min(Math.max(1120, width * 0.55), width - 32);
+        const expected = expectedLayout({ width, pageWidth: 100 * home / width, sides: ['left'] });
+        if (read.mode !== 'docked') problems.push(`${width}: ${read.mode}, expected docked`);
+        else if (Math.abs(read.width - expected.chat) > 1 || Math.abs(read.left - expected.left) > 1) problems.push(`${width}: chat ${read.width}px wide at ${read.left}, expected ${expected.chat} at ${expected.left}`);
     }
+    expect(problems).toEqual([]);
 });

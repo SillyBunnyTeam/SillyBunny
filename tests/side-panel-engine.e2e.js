@@ -9,7 +9,7 @@ const VIEWPORTS = [
     { width: 1280, height: 900, expectedMode: 'docked' },
     { width: 1024, height: 768, expectedMode: 'docked' },
     { width: 900, height: 768, expectedMode: 'docked' },
-    { width: 768, height: 1024, expectedMode: 'docked' },
+    { width: 768, height: 1024, expectedMode: 'sheet' },
     { width: 390, height: 844, expectedMode: 'sheet' },
     { width: 844, height: 390, expectedMode: 'docked' },
 ];

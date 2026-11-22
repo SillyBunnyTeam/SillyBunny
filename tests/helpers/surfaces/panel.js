@@ -39,13 +39,12 @@ const COMPANION_PANEL_ID = 'ica-companion-panel';
 const COMPANION_SHELL = sidePanelRoot(COMPANION_PANEL_ID);
 
 /**
- * The viewports where a side panel docks: a panel is 280px at least and the chat keeps 360px (`MIN_CHAT_WIDTH` in
- * `side-panel.js`), so a panel on one side docks from a 640px viewport and is a bottom sheet below it. That makes 768x1024
- * a docked layout although the shell is in its mobile layout there. Measured on the stacked entry at the sizes up to
- * 1440x900: both panels dock at each of them, and one panel is a sheet at 390x844 and below. The wider sizes have more
- * room, so they dock as well.
+ * The viewports where a side panel docks: above the mobile layout, because a panel is always a sheet at 768px and under
+ * (`isPhoneLayout()` in `side-panel.js`). A panel is 280px at least and the chat keeps 360px (`MIN_CHAT_WIDTH`), so a panel
+ * on one side docks at each wide size. Measured on the stacked entry at the sizes up to 1440x900: both panels dock at each of
+ * them. The wider sizes have more room, so they dock as well; 768x1024 is a sheet.
  */
-const DOCKED_VIEWPORTS = [...WIDE_LAYOUT_VIEWPORTS, '768x1024'];
+const DOCKED_VIEWPORTS = WIDE_LAYOUT_VIEWPORTS;
 
 /**
  * The viewports where Visual Novel mode exists. The extension enters it by user agent (`isMobile()` is false only for a

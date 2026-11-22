@@ -8,12 +8,13 @@ function panel(id, side = 'left') {
     return { id, side };
 }
 
-function layout({ width, height = 900, chatWidth, topBarHeight = 60, panels = [panel('panel')] }) {
+function layout({ width, height = 900, chatWidth, topBarHeight = 60, panels = [panel('panel')], collapsed }) {
     return computeSidePanelLayout({
         viewport: { width, height },
         chat: { width: chatWidth },
         topBarHeight,
         panels,
+        collapsed,
     });
 }
 
@@ -91,6 +92,20 @@ describe('computeSidePanelLayout', () => {
         expect(sheet.chatRect).toMatchObject({ x: 119.5, width: 400 });
         expect(docked.mode).toBe('docked');
         expect(docked.chatRect.width).toBe(360);
+    });
+
+    test('is one active sheet in a collapsed layout however much room the panels have', () => {
+        const docked = layout({ width: 768, chatWidth: 768 });
+        const single = layout({ width: 768, chatWidth: 768, collapsed: true });
+        const pair = layout({ width: 768, chatWidth: 768, collapsed: true, panels: [panel('older'), panel('active', 'right')] });
+
+        expect(docked.mode).toBe('docked');
+        expect(single.mode).toBe('sheet');
+        expect(single.sheetPanelId).toBe('panel');
+        expect(single.panelRects).toEqual({});
+        expect(single.chatShift).toBe(0);
+        expect(single.chatRect).toMatchObject({ x: 0, width: 768 });
+        expect(pair.panelModes).toEqual({ older: 'hidden', active: 'sheet' });
     });
 
     test('rejects invalid geometry and duplicate panels', () => {
