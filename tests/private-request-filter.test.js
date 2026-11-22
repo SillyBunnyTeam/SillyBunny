@@ -133,6 +133,61 @@ describe('private request filter', () => {
     });
 });
 
+describe('addresses that reach this host or a private host in another form', () => {
+    test.each([
+        ['0.0.0.0'],
+        ['0.1.2.3'],
+        ['::'],
+        ['::ffff:127.0.0.1'],
+        ['::ffff:7f00:1'],
+        ['0:0:0:0:0:ffff:c0a8:101'],
+        ['::ffff:169.254.169.254'],
+    ])('blocks a direct request to %s', async (host) => {
+        const agent = initAgent();
+
+        await expect(agent.connect({}, { host, port: 80 })).rejects.toThrow('Blocked request to private IP address');
+        expect(mockNetConnect).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['0.0.0.0'],
+        ['::'],
+        ['::ffff:10.0.0.5'],
+    ])('blocks a hostname that resolves to %s', async (address) => {
+        mockLookup.mockResolvedValue({ address });
+        const agent = initAgent();
+
+        await expect(agent.connect({}, { host: 'card-host.example', port: 80 })).rejects.toThrow('Blocked request to private IP address');
+        expect(mockNetConnect).not.toHaveBeenCalled();
+    });
+
+    test('allows the IPv4-mapped form of a whitelisted IPv4 host', async () => {
+        const agent = initAgent({ privateAddressWhitelist: ['192.168.1.20'] });
+
+        await agent.connect({}, { host: '::ffff:192.168.1.20', port: 80 });
+        expect(mockNetConnect).toHaveBeenCalledWith(expect.objectContaining({ host: '::ffff:192.168.1.20' }));
+        await expect(agent.connect({}, { host: '::ffff:192.168.1.21', port: 80 })).rejects.toThrow('Blocked request to private IP address');
+    });
+
+    test('allows the IPv4-mapped form of a public IPv4 host', async () => {
+        const agent = initAgent();
+
+        await agent.connect({}, { host: '::ffff:93.184.216.34', port: 80 });
+        expect(mockNetConnect).toHaveBeenCalledWith(expect.objectContaining({ host: '::ffff:93.184.216.34' }));
+    });
+
+    test('the strict agent blocks the same forms', async () => {
+        initAgent({ enabled: false });
+        const agent = getUntrustedRequestAgent();
+        agent.logBlocked = false;
+
+        for (const host of ['0.0.0.0', '::', '::ffff:127.0.0.1']) {
+            await expect(agent.connect({}, { host, port: 80 })).rejects.toThrow('Blocked request to private IP address');
+        }
+        expect(mockNetConnect).not.toHaveBeenCalled();
+    });
+});
+
 describe('untrusted request agent', () => {
     test('returns undefined when the private request filter is enabled', () => {
         initAgent({ enabled: true });

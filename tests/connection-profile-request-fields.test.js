@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const mockOpenAiSettings = {};
 const mockProxies = [];
+const mockEndpointProfiles = [];
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     CONNECT_API_MAP: {
+        'koboldcpp-chat': { selected: 'openai', source: 'koboldcpp' },
         nanogpt: { selected: 'openai', source: 'nanogpt' },
         openrouter: { selected: 'openai', source: 'openrouter' },
         'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
         openai: { selected: 'openai', source: 'openai' },
         pollinations: { selected: 'openai', source: 'pollinations' },
+        custom: { selected: 'openai', source: 'custom' },
     },
     createModelIcon: jest.fn(),
     getRequestHeaders: jest.fn(() => ({})),
@@ -28,6 +31,8 @@ await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
+    chat_completion_sources: { CUSTOM: 'custom' },
+    custom_endpoint_presets: mockEndpointProfiles,
     oai_settings: mockOpenAiSettings,
     proxies: mockProxies,
     ZAI_ENDPOINT: {
@@ -67,6 +72,7 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
     isValidUrl: jest.fn(() => true),
 }));
 
+const { createModelIcon } = await import('../public/script.js');
 const {
     ConnectionManagerRequestService,
     getChatCompletionProfileRequestOverrides,
@@ -123,6 +129,7 @@ beforeEach(() => {
         delete mockOpenAiSettings[key];
     }
     mockProxies.splice(0, mockProxies.length);
+    mockEndpointProfiles.splice(0, mockEndpointProfiles.length);
 });
 
 test('service tiers stay scoped to the profile or its bound preset, including explicit Default', () => {
@@ -329,6 +336,53 @@ describe('reasoning settings from the profile preset', () => {
     });
 });
 
+describe('Additional Parameters from the Custom endpoint profile', () => {
+    const base = { id: 'profile-custom', mode: 'cc', name: 'Custom Profile', api: 'custom', model: 'local-model', 'custom-endpoint-profile': 'Local' };
+
+    beforeEach(() => {
+        mockEndpointProfiles.push(
+            { name: 'None', url: '', key: '', model: '', secretId: '' },
+            { name: 'Local', url: 'http://127.0.0.1:5000/v1', model: 'local-model', secretId: 'local-id', custom_include_body: '  top_k: 20\n', custom_exclude_body: '', custom_include_headers: 'X-Title: Story' },
+            { name: 'Legacy', url: 'http://127.0.0.1:5001/v1', model: 'legacy-model', secretId: 'legacy-id' },
+        );
+    });
+
+    test('a profile that records none uses the ones its endpoint profile stores', () => {
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(base, {});
+
+        expect(overrides).toEqual({ custom_include_body: '  top_k: 20\n', custom_exclude_body: '', custom_include_headers: 'X-Title: Story' });
+        expect(profileFieldNames).toEqual(['custom_include_body', 'custom_exclude_body', 'custom_include_headers']);
+    });
+
+    test('a value on the profile and a value the caller sends win over the endpoint profile', () => {
+        const profile = { ...base, 'custom-include-body': 'min_p: 0.1' };
+
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides(profile, { custom_include_headers: 'X-Caller: 1' });
+
+        expect(overrides).toEqual({ custom_include_body: 'min_p: 0.1', custom_exclude_body: '' });
+        expect(profileFieldNames).not.toContain('custom_include_headers');
+    });
+
+    test('None sends empty values, as applying the profile clears them', () => {
+        const { overrides } = getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': 'None' }, {});
+
+        expect(overrides).toEqual({ custom_include_body: '', custom_exclude_body: '', custom_include_headers: '' });
+    });
+
+    test('a missing endpoint profile and one that stores none send nothing extra', () => {
+        for (const name of ['Deleted', 'Legacy', undefined]) {
+            expect(getChatCompletionProfileRequestOverrides({ ...base, 'custom-endpoint-profile': name }, {}).overrides).toEqual({});
+        }
+    });
+
+    test.each(['openai', 'nanogpt', 'openrouter-text', 'not-an-api'])('a profile of the %s API that holds a stale endpoint profile name sends nothing extra', api => {
+        const { overrides, profileFieldNames } = getChatCompletionProfileRequestOverrides({ ...base, api }, {});
+
+        expect(overrides).toEqual({});
+        expect(profileFieldNames).toEqual([]);
+    });
+});
+
 test('Pollinations profiles pass only their endpoint and honor a caller endpoint override', async () => {
     const profile = { id: 'pollinations-profile', mode: 'cc', api: 'pollinations', model: 'test-model', 'api-url': 'anonymous' };
     const processRequest = jest.fn(async payload => payload);
@@ -350,6 +404,54 @@ test('Pollinations profiles pass only their endpoint and honor a caller endpoint
         const overridden = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100, {}, { pollinations_endpoint: 'authenticated' });
         expect(overridden.pollinations_endpoint).toBe('authenticated');
         expect(profile['api-url']).toBe('anonymous');
+    } finally {
+        global.SillyTavern = originalContext;
+    }
+});
+
+test('KoboldCpp Chat Completion profiles send their URL and honor a caller URL override', async () => {
+    const profile = { id: 'koboldcpp-profile', mode: 'cc', api: 'koboldcpp-chat', model: '', 'api-url': 'http://127.0.0.1:5001' };
+    const processRequest = jest.fn(async payload => payload);
+    const originalContext = global.SillyTavern;
+    global.SillyTavern = {
+        getContext: () => ({
+            extensionSettings: { disabledExtensions: [], connectionManager: { profiles: [profile] } },
+            ChatCompletionService: { processRequest },
+            CONNECT_API_MAP: { 'koboldcpp-chat': { selected: 'openai', source: 'koboldcpp' } },
+        }),
+    };
+
+    try {
+        const result = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100);
+        expect(result.chat_completion_source).toBe('koboldcpp');
+        expect(result.koboldcpp_url).toBe('http://127.0.0.1:5001');
+        expect(result).not.toHaveProperty('custom_url');
+        const overridden = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100, {}, { koboldcpp_url: 'http://127.0.0.1:5002' });
+        expect(overridden.koboldcpp_url).toBe('http://127.0.0.1:5002');
+        expect(profile['api-url']).toBe('http://127.0.0.1:5001');
+    } finally {
+        global.SillyTavern = originalContext;
+    }
+});
+
+test.each([
+    ['koboldcpp-chat', 'koboldcpp'],
+    ['openrouter-text', 'openrouter'],
+    ['nanogpt', 'nanogpt'],
+    ['unmapped-api', 'unmapped-api'],
+])('a %s profile shows the %s icon', (api, icon) => {
+    const profile = { id: `${api}-profile`, mode: 'cc', api, model: 'test-model' };
+    const originalContext = global.SillyTavern;
+    global.SillyTavern = {
+        getContext: () => ({
+            extensionSettings: { disabledExtensions: [], connectionManager: { profiles: [profile] } },
+        }),
+    };
+    createModelIcon.mockClear();
+
+    try {
+        ConnectionManagerRequestService.getProfileIcon(profile.id);
+        expect(createModelIcon).toHaveBeenCalledWith(icon, 'test-model');
     } finally {
         global.SillyTavern = originalContext;
     }

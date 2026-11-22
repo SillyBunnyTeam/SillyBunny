@@ -104,11 +104,14 @@ import {
     buildChatCompletionSamplingSettingsSnapshot,
     buildCustomEndpointPresetForSave,
     buildReverseProxyPresetForSave,
+    CUSTOM_ENDPOINT_PARAMETER_KEYS,
+    fillMissingCustomEndpointParameters,
     getChatCompletionSamplingProfileLookupKeys,
     getCustomEndpointFavoritesKey,
     migrateNanoGptProviderSettings,
     normalizeCustomEndpointPreset,
     normalizeReverseProxyPreset,
+    pickCustomEndpointParameters,
     shouldIncludeSamplingFieldsInPreset,
 } from './openai-preset-utils.js';
 import {
@@ -126,6 +129,8 @@ import {
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from './openai-model-capabilities.js';
 import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from './tool-call-recurse-limit.js';
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
+// SillyBunny: the KoboldCpp Chat Completion state and model list live in the KoboldCpp module to keep this file close to upstream.
+import { getKoboldCppChatState, refreshKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 // SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
 import { createFailedResponseError, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
 // SillyBunny: model details for the shared picker rows of the Connections select rows.
@@ -145,6 +150,8 @@ export {
     IdentifierNotFoundError,
     Message,
     MessageCollection,
+    // SillyBunny: the KoboldCpp model switcher reconnects after KoboldCpp loads a model.
+    getStatusOpen,
 };
 
 let openai_messages_count = 0;
@@ -289,6 +296,7 @@ export const chat_completion_sources = {
     MINIMAX: 'minimax',
     WORKERS_AI: 'workers_ai',
     LINKAPI: 'linkapi',
+    KOBOLDCPP: 'koboldcpp', // SillyBunny: KoboldCpp's own Chat Completions API, apart from Text Completion KoboldCpp.
 };
 
 export const REVERSE_PROXY_SUPPORTED_SOURCES = [
@@ -461,6 +469,11 @@ const sensitiveFields = [
     'custom_include_body',
     'custom_exclude_body',
     'custom_include_headers',
+    // SillyBunny: KoboldCpp Chat Completion connection.
+    'koboldcpp_url',
+    'koboldcpp_include_body',
+    'koboldcpp_exclude_body',
+    'koboldcpp_include_headers',
     'vertexai_region',
     'vertexai_express_project_id',
     'azure_base_url',
@@ -533,6 +546,11 @@ export const settingsToUpdate = {
     custom_exclude_body: ['#custom_exclude_body', 'custom_exclude_body', false, true],
     custom_include_headers: ['#custom_include_headers', 'custom_include_headers', false, true],
     custom_prompt_post_processing: ['#custom_prompt_post_processing', 'custom_prompt_post_processing', false, true],
+    // SillyBunny: KoboldCpp Chat Completion connection. The Additional Parameters popup reads its fields when it opens.
+    koboldcpp_url: ['#koboldcpp_chat_url_text', 'koboldcpp_url', false, true],
+    koboldcpp_include_body: ['', 'koboldcpp_include_body', false, true],
+    koboldcpp_exclude_body: ['', 'koboldcpp_exclude_body', false, true],
+    koboldcpp_include_headers: ['', 'koboldcpp_include_headers', false, true],
     google_model: ['#model_google_select', 'google_model', false, true],
     vertexai_model: ['#model_vertexai_select', 'vertexai_model', false, true],
     zai_model: ['#model_zai_select', 'zai_model', false, true],
@@ -672,6 +690,11 @@ const default_settings = {
     custom_include_body: '',
     custom_exclude_body: '',
     custom_include_headers: '',
+    // SillyBunny: KoboldCpp Chat Completion connection.
+    koboldcpp_url: '',
+    koboldcpp_include_body: '',
+    koboldcpp_exclude_body: '',
+    koboldcpp_include_headers: '',
     openrouter_model: openrouter_website_model,
     openrouter_use_fallback: false,
     openrouter_group_models: false,
@@ -2251,6 +2274,11 @@ export function getChatCompletionModel(settings = null) {
             return settings.workers_ai_model;
         case chat_completion_sources.LINKAPI:
             return settings.linkapi_model;
+        case chat_completion_sources.KOBOLDCPP: {
+            // SillyBunny: KoboldCpp serves whichever model it has loaded, and reports "inactive" when none is.
+            const loadedModel = getKoboldCppChatState()?.loadedModel;
+            return loadedModel && loadedModel !== 'inactive' ? loadedModel : '';
+        }
         default:
             console.error(`Unknown chat completion source: ${source}`);
             return '';
@@ -5440,6 +5468,7 @@ function getReasoningEffort(settings = null, model = null) {
         chat_completion_sources.ELECTRONHUB,
         chat_completion_sources.CHUTES,
         chat_completion_sources.FIREWORKS,
+        chat_completion_sources.KOBOLDCPP, // SillyBunny: KoboldCpp turns the effort into a thinking limit.
     ];
 
     if (!reasoningEffortSources.includes(settings.chat_completion_source)) {
@@ -5580,6 +5609,7 @@ export async function createGenerationParameters(settings, model, type, messages
         chat_completion_sources.MAKERSUITE,
         chat_completion_sources.CHUTES,
         chat_completion_sources.LINKAPI,
+        chat_completion_sources.KOBOLDCPP, // SillyBunny: KoboldCpp uses the seed as its sampler seed.
     ];
 
     // Sources that support logprobs
@@ -5763,6 +5793,22 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.custom_reasoning_param_format = settings.custom_reasoning_param_format;
         generate_data.custom_reasoning_enabled_value = settings.custom_reasoning_enabled_value;
         generate_data.custom_reasoning_disabled_value = settings.custom_reasoning_disabled_value;
+    }
+
+    // SillyBunny: KoboldCpp's own Chat Completions API.
+    if (settings.chat_completion_source === chat_completion_sources.KOBOLDCPP) {
+        generate_data.koboldcpp_url = settings.koboldcpp_url;
+        generate_data.koboldcpp_include_body = substituteParams(settings.koboldcpp_include_body);
+        generate_data.koboldcpp_exclude_body = substituteParams(settings.koboldcpp_exclude_body);
+        generate_data.koboldcpp_include_headers = substituteParams(settings.koboldcpp_include_headers);
+        generate_data.top_k = Number(settings.top_k_openai);
+        generate_data.min_p = Number(settings.min_p_openai);
+        generate_data.top_a = Number(settings.top_a_openai);
+        generate_data.repetition_penalty = Number(settings.repetition_penalty_openai);
+        // KoboldCpp takes far more stop strings than the OpenAI limit.
+        generate_data.stop = getCustomStoppingStrings();
+        // KoboldCpp uses a frequency penalty only in place of a missing presence penalty.
+        delete generate_data.frequency_penalty;
     }
 
     if (settings.chat_completion_source === chat_completion_sources.COHERE) {
@@ -6007,7 +6053,10 @@ export async function createGenerationParameters(settings, model, type, messages
         frequency_penalty: settings.freq_pen_openai,
     };
 
-    const legacyExclusions = parseLegacySamplingExclusions(settings.custom_exclude_body);
+    // SillyBunny: KoboldCpp keeps its own exclude list.
+    const legacyExclusions = parseLegacySamplingExclusions(settings.chat_completion_source === chat_completion_sources.KOBOLDCPP
+        ? settings.koboldcpp_exclude_body
+        : settings.custom_exclude_body);
 
     const samplingContext = createSamplingRequestContext({
         backend: 'chat',
@@ -6045,7 +6094,8 @@ async function sendOpenAIRequest(type, messages, signal, { jsonSchema = null, ca
     await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);
 
     const requestControls = { maxOutputTokens, responseLength, preserveReasoningBudget };
-    if (generate_data.chat_completion_source === chat_completion_sources.CUSTOM) {
+    // SillyBunny: KoboldCpp also merges its Additional Parameters server-side.
+    if ([chat_completion_sources.CUSTOM, chat_completion_sources.KOBOLDCPP].includes(generate_data.chat_completion_source)) {
         if ((Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) || (Number.isFinite(responseLength) && responseLength > 0)) {
             // SillyBunny: custom YAML is applied server-side, so its final payload owns the limit.
             generate_data.request_controls = requestControls;
@@ -6253,7 +6303,7 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
             }
         });
         return data.choices?.[0]?.delta?.content ?? data.choices?.[0]?.message?.content ?? data.choices?.[0]?.text ?? '';
-    } else if ([chat_completion_sources.CUSTOM, chat_completion_sources.POLLINATIONS, chat_completion_sources.AIMLAPI, chat_completion_sources.MOONSHOT, chat_completion_sources.COMETAPI, chat_completion_sources.ELECTRONHUB, chat_completion_sources.NANOGPT, chat_completion_sources.ZAI, chat_completion_sources.SILICONFLOW, chat_completion_sources.CHUTES, chat_completion_sources.MINIMAX, chat_completion_sources.WORKERS_AI, chat_completion_sources.FIREWORKS].includes(chat_completion_source)) {
+    } else if ([chat_completion_sources.CUSTOM, chat_completion_sources.POLLINATIONS, chat_completion_sources.AIMLAPI, chat_completion_sources.MOONSHOT, chat_completion_sources.COMETAPI, chat_completion_sources.ELECTRONHUB, chat_completion_sources.NANOGPT, chat_completion_sources.ZAI, chat_completion_sources.SILICONFLOW, chat_completion_sources.CHUTES, chat_completion_sources.MINIMAX, chat_completion_sources.WORKERS_AI, chat_completion_sources.FIREWORKS, chat_completion_sources.KOBOLDCPP].includes(chat_completion_source)) { // SillyBunny: KoboldCpp streams thinking as reasoning_content.
         if (show_thoughts) {
             state.reasoning +=
                 data.choices?.filter(x => x?.delta?.reasoning_content)?.[0]?.delta?.reasoning_content ??
@@ -7747,6 +7797,13 @@ async function getStatusOpen() {
         return resultCheckStatus();
     }
 
+    // SillyBunny: KoboldCpp's own Chat Completions API cannot connect without its URL.
+    if (oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP && !isValidUrl(oai_settings.koboldcpp_url)) {
+        console.debug('Invalid KoboldCpp API URL:', oai_settings.koboldcpp_url);
+        setOnlineStatus('no_connection');
+        return resultCheckStatus();
+    }
+
     let data = {
         reverse_proxy: oai_settings.reverse_proxy,
         proxy_password: oai_settings.proxy_password,
@@ -7776,6 +7833,12 @@ async function getStatusOpen() {
         if (selected_custom_endpoint_preset?.secretId) {
             data.secret_id = selected_custom_endpoint_preset.secretId;
         }
+    }
+
+    // SillyBunny: KoboldCpp's own Chat Completions API.
+    if (oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP) {
+        data.koboldcpp_url = oai_settings.koboldcpp_url;
+        data.koboldcpp_include_headers = substituteParams(oai_settings.koboldcpp_include_headers);
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.AZURE_OPENAI) {
@@ -7853,6 +7916,15 @@ async function getStatusOpen() {
         if (!canBypass) {
             setOnlineStatus('no_connection');
         }
+    }
+
+    // SillyBunny: the KoboldCpp model switcher gets the loaded model's context size and media support.
+    if (oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP) {
+        await refreshKoboldCppModels('chat');
+        if (!isCurrentCheck()) {
+            return;
+        }
+        applyConfigurableContextLimit();
     }
 
     updateFeatureSupportFlags();
@@ -8853,6 +8925,12 @@ function applyConfigurableContextLimit() {
         return true;
     }
 
+    // SillyBunny: KoboldCpp drops the start of a prompt longer than the context it loaded.
+    if (oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP) {
+        applyOpenAIContextMax(getKoboldCppChatState()?.contextSize ?? unlocked_max);
+        return true;
+    }
+
     return false;
 }
 
@@ -9567,6 +9645,8 @@ async function onConnectButtonClick(e) {
         [chat_completion_sources.WORKERS_AI]: { key: SECRET_KEYS.WORKERS_AI, selector: '#api_key_workers_ai', proxy: false },
         [chat_completion_sources.MINIMAX]: { key: SECRET_KEYS.MINIMAX, selector: '#api_key_minimax', proxy: false },
         [chat_completion_sources.LINKAPI]: { key: SECRET_KEYS.LINKAPI, selector: '#api_key_linkapi', proxy: false },
+        // SillyBunny: KoboldCpp needs a key only when it was started with a password.
+        [chat_completion_sources.KOBOLDCPP]: { key: SECRET_KEYS.KOBOLDCPP, selector: '#api_key_koboldcpp_chat', proxy: false, keyless: true },
     };
 
     // Vertex AI Express version - use API key
@@ -9696,6 +9776,11 @@ function toggleChatCompletionForms() {
     } else if (oai_settings.chat_completion_source == chat_completion_sources.LINKAPI) {
         $('#linkapi_model_id').val(oai_settings.linkapi_model);
         $('#model_linkapi_select').val(oai_settings.linkapi_model).trigger('change');
+    } else if (oai_settings.chat_completion_source == chat_completion_sources.KOBOLDCPP) {
+        // SillyBunny: KoboldCpp has no model setting whose change handler would reset the temperature and penalty limits.
+        $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
+        $('#pres_pen_openai').attr('max', 2).attr('min', -2).val(oai_settings.pres_pen_openai).trigger('input');
+        $('#freq_pen_openai').attr('max', 2).attr('min', -2).val(oai_settings.freq_pen_openai).trigger('input');
     }
 
     $('[data-source]').each(function () {
@@ -9753,23 +9838,55 @@ function onProxyAccessKeyShowClick() {
     $(this).toggleClass('fa-eye-slash fa-eye');
 }
 
+// SillyBunny: the live Additional Parameters belong to the selected endpoint profile. An edit goes to both, so the
+// next settings save stores it and selecting the profile again brings it back. None stores no edit of its own, so with
+// None selected the live settings are the only store.
+function writeCustomEndpointParameter(parameterKey, value) {
+    oai_settings[parameterKey] = value;
+
+    if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== 'None') {
+        selected_custom_endpoint_preset[parameterKey] = value;
+    }
+}
+
+// SillyBunny: fills the Additional Parameters fields from the live settings and stores each edit with the selected
+// endpoint profile. The fields show the values of the profile that was selected when they were filled. When the
+// selection changes while the dialog is open, the text in the fields belongs to the previous profile, and an edit
+// would write it into the new one. The fields then show the live values again and that edit is dropped.
+function bindCustomEndpointParameterFields(template) {
+    let shownForProfile;
+
+    const showLiveValues = () => {
+        for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+            template.find(`#${parameterKey}`).val(oai_settings[parameterKey]);
+        }
+        shownForProfile = selected_custom_endpoint_preset?.name;
+    };
+
+    showLiveValues();
+
+    for (const parameterKey of CUSTOM_ENDPOINT_PARAMETER_KEYS) {
+        template.find(`#${parameterKey}`).on('input', function () {
+            if (shownForProfile !== selected_custom_endpoint_preset?.name) {
+                showLiveValues();
+                return;
+            }
+
+            writeCustomEndpointParameter(parameterKey, String($(this).val()));
+            saveSettingsDebounced();
+        });
+    }
+}
+
 async function onCustomizeParametersClick() {
     const template = $(await renderTemplateAsync('customEndpointAdditionalParameters'));
 
-    template.find('#custom_include_body').val(oai_settings.custom_include_body).on('input', function () {
-        oai_settings.custom_include_body = String($(this).val());
-        saveSettingsDebounced();
-    });
+    // SillyBunny: KoboldCpp keeps its own Additional Parameters.
+    if (oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP) {
+        return showKoboldCppAdditionalParameters(template);
+    }
 
-    template.find('#custom_exclude_body').val(oai_settings.custom_exclude_body).on('input', function () {
-        oai_settings.custom_exclude_body = String($(this).val());
-        saveSettingsDebounced();
-    });
-
-    template.find('#custom_include_headers').val(oai_settings.custom_include_headers).on('input', function () {
-        oai_settings.custom_include_headers = String($(this).val());
-        saveSettingsDebounced();
-    });
+    bindCustomEndpointParameterFields(template); // SillyBunny: the three fields also store their edits with the selected endpoint profile.
 
     const syncCustomReasoningPopup = () => {
         template.find('#custom_reasoning_preset').val(oai_settings.custom_reasoning_preset);
@@ -9825,6 +9942,25 @@ async function onCustomizeParametersClick() {
 
     // SillyBunny: preserve YAML whitespace while the shared Window body owns scrolling.
     await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true, ...customEndpointParametersOptions(template) });
+}
+
+/**
+ * SillyBunny: binds the Additional Parameters popup to the KoboldCpp settings.
+ * @param {JQuery} template Rendered Additional Parameters popup
+ */
+async function showKoboldCppAdditionalParameters(template) {
+    // The reasoning parameter preset writes Custom endpoint settings only.
+    template.find('#custom_reasoning_preset').closest('.flex1').remove();
+
+    for (const field of ['include_body', 'exclude_body', 'include_headers']) {
+        const key = `koboldcpp_${field}`;
+        template.find(`#custom_${field}`).val(oai_settings[key]).on('input', function () {
+            oai_settings[key] = String($(this).val());
+            saveSettingsDebounced();
+        });
+    }
+
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true });
 }
 
 /**
@@ -9933,6 +10069,9 @@ export function isImageInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.openrouter_model)?.architecture?.input_modalities?.includes('image'));
         case chat_completion_sources.CUSTOM:
             return true;
+        // SillyBunny: KoboldCpp reads images only with a vision projector loaded.
+        case chat_completion_sources.KOBOLDCPP:
+            return getKoboldCppChatState()?.vision === true;
         case chat_completion_sources.MISTRALAI:
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.mistralai_model)?.capabilities?.vision);
         case chat_completion_sources.COHERE:
@@ -10064,6 +10203,9 @@ export function isAudioInliningSupported() {
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.openrouter_model)?.architecture?.input_modalities?.includes('audio'));
         case chat_completion_sources.CUSTOM:
             return true;
+        // SillyBunny: KoboldCpp reads audio only with an audio projector loaded.
+        case chat_completion_sources.KOBOLDCPP:
+            return getKoboldCppChatState()?.audio === true;
         default:
             return false;
     }
@@ -10337,6 +10479,13 @@ export async function loadCustomEndpointPresets(settings) {
         custom_endpoint_presets.push(selected_custom_endpoint_preset);
     }
 
+    // SillyBunny: the live Additional Parameters belong to the selected endpoint profile. A selected profile that
+    // stores none takes them, so it keeps them from then on. No other profile takes them, because that would send
+    // the headers of one provider to another. The settings save stores the filled values, so this runs once.
+    if (fillMissingCustomEndpointParameters(selected_custom_endpoint_preset, oai_settings)) {
+        saveSettingsDebounced();
+    }
+
     $('#custom_endpoint_preset').empty();
 
     for (const preset of custom_endpoint_presets) {
@@ -10416,6 +10565,10 @@ function updateCustomEndpointKeyInput(preset, key) {
 }
 
 // SillyBunny: connection profiles can rotate CUSTOM secrets without using the endpoint preset dropdown.
+// This runs only while a connection profile is applied, and that sets the profile's own Additional Parameters
+// afterwards. A new selection therefore takes the Additional Parameters that its endpoint profile stores, so the
+// live ones do not stay with the profile that was selected before. A caller outside that application would change
+// the live parameters with no profile values to follow.
 export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
     const normalizedSecretId = String(secretId ?? '').trim();
     if (!normalizedSecretId) {
@@ -10424,9 +10577,13 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
 
     const matchedPreset = custom_endpoint_presets.find(preset => preset.name !== 'None' && String(preset.secretId ?? '').trim() === normalizedSecretId);
     if (matchedPreset) {
+        const selectionChanged = matchedPreset !== selected_custom_endpoint_preset;
         selected_custom_endpoint_preset = matchedPreset;
         $('#custom_endpoint_preset').val(matchedPreset.name);
         updateCustomEndpointKeyInput(matchedPreset, matchedPreset.key);
+        if (selectionChanged) {
+            Object.assign(oai_settings, pickCustomEndpointParameters(matchedPreset));
+        }
         return true;
     }
 
@@ -10435,20 +10592,26 @@ export function syncCustomEndpointPresetSelectionBySecretId(secretId) {
         selected_custom_endpoint_preset = custom_endpoint_presets.find(preset => preset.name === 'None') ?? normalizeCustomEndpointPreset({ name: 'None' });
         $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
         updateCustomEndpointKeyInput(selected_custom_endpoint_preset, '');
+        Object.assign(oai_settings, pickCustomEndpointParameters(selected_custom_endpoint_preset));
         return true;
     }
 
     return false;
 }
 
-async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true } = {}) {
-    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId });
+// SillyBunny: endpoint profiles also store the Additional Parameters. Without `parameters` the stored and the live
+// values stay as they are, because the live values can differ from the stored ones on purpose, for example when a
+// connection profile sets its own.
+async function setCustomEndpointPreset(name, url, key, model, { secretId = '', writeKey = true, reconnect = true, parameters = null } = {}) {
+    const normalizedPreset = normalizeCustomEndpointPreset({ name, url, key, model, secretId, ...pickCustomEndpointParameters(parameters) });
+    const parametersToApply = parameters ? pickCustomEndpointParameters(normalizedPreset) : {};
     const preset = custom_endpoint_presets.find(p => p.name === normalizedPreset.name);
     if (preset) {
         preset.url = normalizedPreset.url;
         preset.key = normalizedPreset.key;
         preset.model = normalizedPreset.model;
         preset.secretId = normalizedPreset.secretId || preset.secretId || '';
+        Object.assign(preset, parametersToApply);
         selected_custom_endpoint_preset = preset;
     } else {
         const newPreset = normalizedPreset;
@@ -10464,6 +10627,7 @@ async function setCustomEndpointPreset(name, url, key, model, { secretId = '', w
     $('#custom_model_id').val(oai_settings.custom_model);
     $('#model_custom_select').val(oai_settings.custom_model);
     refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);
+    Object.assign(oai_settings, parametersToApply);
 
     if (writeKey) {
         await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);
@@ -10480,7 +10644,7 @@ async function onCustomEndpointPresetChange() {
     const selectedPreset = custom_endpoint_presets.find(preset => preset.name === value);
 
     if (selectedPreset) {
-        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId });
+        await setCustomEndpointPreset(selectedPreset.name, selectedPreset.url, selectedPreset.key, selectedPreset.model, { secretId: selectedPreset.secretId, parameters: selectedPreset });
     } else {
         console.error(t`Custom endpoint profile '${value}' not found in custom endpoint profiles array.`);
     }
@@ -10503,6 +10667,9 @@ $('#save_custom_endpoint').on('click', async function () {
         key: keyInputValue,
         model: $('#custom_model_id').val(),
         secretId: keyInputValue ? '' : existingPreset?.secretId,
+        // SillyBunny: Save stores the Additional Parameters in effect, which are the live ones. The selected profile
+        // can hold other values when a connection profile set its own.
+        ...pickCustomEndpointParameters(oai_settings),
     });
 
     // Bind the active CUSTOM secret when saving without typing a new key (e.g. picked via the secrets manager)
@@ -10520,7 +10687,7 @@ $('#save_custom_endpoint').on('click', async function () {
         }
     }
 
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, writeKey: false, parameters: preset });
     // SillyBunny: update selection before yielding to persistence so a later user selection wins.
     updateCustomEndpointPresetOption(preset);
     $('#custom_endpoint_preset').val(preset.name);
@@ -10551,7 +10718,7 @@ $('#delete_custom_endpoint').on('click', async function () {
             selected_custom_endpoint_preset.url,
             selected_custom_endpoint_preset.key,
             selected_custom_endpoint_preset.model,
-            { secretId: selected_custom_endpoint_preset.secretId },
+            { secretId: selected_custom_endpoint_preset.secretId, parameters: selected_custom_endpoint_preset },
         );
 
         saveSettingsDebounced();
@@ -10584,7 +10751,7 @@ async function runCustomEndpointPresetCallback(_, value) {
     }
 
     $('#custom_endpoint_preset').val(preset.name);
-    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId });
+    await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, parameters: preset });
     saveSettingsDebounced();
     return preset.name;
 }
@@ -10741,8 +10908,13 @@ function runStringChatCompletionSettingCallback(commandName, settingName, select
 
 // SillyBunny: the Custom endpoint additional parameters are YAML, which is indentation-sensitive, so unlike the
 // other string settings the value is stored verbatim instead of trimmed.
-function runCustomEndpointParameterCallback(settingName, selector) {
+function runCustomEndpointParameterCallback(customSettingName, selector) {
     return (args, value) => {
+        // SillyBunny: KoboldCpp keeps its own Additional Parameters, so its connection profiles record and apply those.
+        const settingName = oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP
+            ? customSettingName.replace(/^custom_/, 'koboldcpp_')
+            : customSettingName;
+
         if (!hasSlashCommandValue(args, value)) {
             return getSlashCommandStringValue(oai_settings[settingName]);
         }
@@ -10881,20 +11053,21 @@ function registerChatCompletionProfileSlashCommands() {
         callback: runStringChatCompletionSettingCallback('custom-reasoning-disabled-value', 'custom_reasoning_disabled_value', '#custom_reasoning_disabled_value', markCustomReasoningPresetForManualCommand),
         description: 'custom reasoning disabled value',
     });
+    // SillyBunny: these three commands also save KoboldCpp connection profiles, which keep their own Additional Parameters.
     registerChatCompletionProfileSlashCommand({
         name: 'custom-include-body',
         callback: runCustomEndpointParameterCallback('custom_include_body', '#custom_include_body'),
-        description: 'custom endpoint include body parameters (YAML)',
+        description: 'include body parameters (YAML) of the Custom endpoint, or of KoboldCpp while it is selected',
     });
     registerChatCompletionProfileSlashCommand({
         name: 'custom-exclude-body',
         callback: runCustomEndpointParameterCallback('custom_exclude_body', '#custom_exclude_body'),
-        description: 'custom endpoint exclude body parameters (YAML)',
+        description: 'exclude body parameters (YAML) of the Custom endpoint, or of KoboldCpp while it is selected',
     });
     registerChatCompletionProfileSlashCommand({
         name: 'custom-include-headers',
         callback: runCustomEndpointParameterCallback('custom_include_headers', '#custom_include_headers'),
-        description: 'custom endpoint include request headers (YAML)',
+        description: 'include request headers (YAML) of the Custom endpoint, or of KoboldCpp while it is selected',
     });
 }
 
@@ -11445,6 +11618,12 @@ export function initOpenAI() {
         saveSettingsDebounced();
     });
 
+    // SillyBunny: KoboldCpp Chat Completion URL.
+    $('#koboldcpp_chat_url_text').on('input', function () {
+        oai_settings.koboldcpp_url = String($(this).val());
+        saveSettingsDebounced();
+    });
+
     $('#custom_api_url_text').on('change', function () {
         oai_settings.custom_url = String($(this).val());
         if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {
@@ -11716,6 +11895,13 @@ export function initOpenAI() {
             searchInputCssClass: 'text_pole',
             width: '100%',
             matcher: textValueMatcher,
+        });
+        // SillyBunny: KoboldCpp admin-mode model switcher.
+        $('#koboldcpp_chat_model').select2({
+            dropdownParent: getApiSelect2DropdownParent(),
+            searchInputPlaceholder: t`Search models...`,
+            searchInputCssClass: 'text_pole',
+            width: '100%',
         });
         $('#completion_prompt_manager_popup_entry_form_injection_trigger').select2({
             dropdownParent: getPromptManagerSelect2DropdownParent(),

@@ -182,6 +182,9 @@ jobs:
       - name: Run Bun startup smoke
         run: bun src/server-init.js
 
+      - name: Run character index tests
+        run: bun test ./tests/character-index.test.js
+
   run-node-checks:
     name: ✅ Check Node Runtime
     runs-on: ubuntu-latest

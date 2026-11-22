@@ -18,6 +18,7 @@ function harness() {
         updateWorldInfoList: jest.fn(), eventSource: { emit: jest.fn() }, event_types: { WORLDINFO_UPDATED: 'updated' },
         toastr: { error: jest.fn(), success: jest.fn() }, console: { error() {}, log() {} },
         t: (parts, ...values) => parts.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+        power_user: { import_external_media: false },
     };
     const importWorldInfo = new Function(...Object.keys(deps), `${importSource}\nreturn importWorldInfo;`)(...Object.values(deps));
     return { ...deps, release, importWorldInfo };

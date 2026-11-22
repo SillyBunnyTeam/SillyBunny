@@ -1,7 +1,9 @@
 import { CONNECT_API_MAP, createModelIcon, getRequestHeaders, substituteParams } from '../../script.js';
 import { extension_settings, openThirdPartyExtensionMenu } from '../extensions.js';
 import { t } from '../i18n.js';
-import { oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
+// SillyBunny: profile requests read the Additional Parameters that a Custom endpoint profile stores.
+import { chat_completion_sources, custom_endpoint_presets, oai_settings, proxies, ZAI_ENDPOINT, POLLINATIONS_ENDPOINT } from '../openai.js';
+import { getCustomEndpointProfileRequestOverrides } from '../openai-preset-utils.js';
 import { getPresetManager } from '../preset-manager.js';
 import { SECRET_KEYS, secret_state } from '../secrets.js';
 import { textgen_types, textgenerationwebui_settings } from '../textgen-settings.js';
@@ -98,6 +100,16 @@ export function getChatCompletionProfileRequestOverrides(profile, overridePayloa
         overrides[requestKey] = coerceValue(value);
         profileFieldNames.push(requestKey);
     }
+
+    // SillyBunny: a profile that records no Additional Parameters of its own uses the ones its Custom endpoint profile stores.
+    const endpointOverrides = getCustomEndpointProfileRequestOverrides({
+        profile,
+        endpointProfiles: custom_endpoint_presets,
+        overridePayload,
+        isCustomSource: CONNECT_API_MAP[profile.api]?.source === chat_completion_sources.CUSTOM,
+    });
+    Object.assign(overrides, endpointOverrides);
+    profileFieldNames.push(...Object.keys(endpointOverrides));
 
     return { overrides, profileFieldNames };
 }
@@ -622,6 +634,10 @@ export class ConnectionManagerRequestService {
                         case 'pollinations':
                             ccRequestData.pollinations_endpoint = overridePayload.pollinations_endpoint || profile['api-url'];
                             break;
+                        // SillyBunny: KoboldCpp's own Chat Completions API.
+                        case 'koboldcpp':
+                            ccRequestData.koboldcpp_url = overridePayload.koboldcpp_url || profile['api-url'];
+                            break;
                     }
 
                     return await context.ChatCompletionService.processRequest(
@@ -735,7 +751,9 @@ export class ConnectionManagerRequestService {
         try {
             const profile = this.getProfile(id);
             if (!profile?.api) return null;
-            return createModelIcon(profile.api, profile.model);
+            // SillyBunny: a profile can name its API by an alias, such as koboldcpp-chat, that has no icon of its own.
+            const api = CONNECT_API_MAP[profile.api];
+            return createModelIcon(api?.source || api?.type || api?.selected || profile.api, profile.model);
         } catch {
             return null;
         }

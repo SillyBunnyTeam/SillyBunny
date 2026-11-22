@@ -41,6 +41,8 @@ import {
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
+// SillyBunny: the user picks the Markdown engine; markdown-it is the default and Showdown the alternative.
+import { MARKDOWN_ENGINES, normalizeMarkdownEngine } from './markdown-engine.js';
 import {
     groups,
     resetSelectedGroup,
@@ -58,7 +60,7 @@ import { resetTokenCache, tokenizers } from './tokenizers.js';
 import { BIAS_CACHE } from './logit-bias.js';
 import { renderTemplateAsync } from './templates.js';
 
-import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
+import { debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 // SillyBunny: the shared sort control delegates Groups persistence to the
 // view-scoped state module
@@ -89,6 +91,7 @@ import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './movi
 // SillyBunny: registered side panels persist a side preference without applying draggable geometry.
 import { applyMovingUIState, configureMovingUIState, resetSidePanelSides } from './sillybunny-editor/side-panel.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
+import { autoFixMarkdown } from './auto-fix-markdown.js';
 // SillyBunny: persisted one-level Characters and Groups folders.
 import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
 // SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
@@ -368,6 +371,8 @@ export const power_user = {
         target_length: 400,
     },
     markdown_escape_strings: '',
+    // SillyBunny: chat Markdown engine; only 'showdown' selects Showdown, and a missing or unknown value means markdown-it.
+    markdown_engine: MARKDOWN_ENGINES.MARKDOWN_IT,
     chat_truncation: 100,
     ooc_context_depth: -1,
     html_context_depth: -1,
@@ -484,6 +489,8 @@ export const power_user = {
     trim_spaces: true,
     relaxed_api_urls: false,
     world_import_dialog: true,
+    // SillyBunny: download external media in imported cards and lorebooks when enabled.
+    import_external_media: false,
     enable_auto_select_input: false,
     enable_md_hotkeys: false,
     tag_import_setting: tag_import_setting.ASK,
@@ -720,44 +727,8 @@ export function collapseNewlines(x) {
  * "^example * text* * harder problem *\n" // "^example *text* *harder problem*\n"
  */
 export function fixMarkdown(text, forDisplay) {
-    // Find pairs of formatting characters and capture the text in between them
-    const format = /([*_]{1,2})([\s\S]*?)\1/gm;
-    let matches = [];
-    let match;
-    while ((match = format.exec(text)) !== null) {
-        matches.push(match);
-    }
-
-    // Iterate through the matches and replace adjacent spaces immediately beside formatting characters
-    let newText = text;
-    for (let i = matches.length - 1; i >= 0; i--) {
-        let matchText = matches[i][0];
-        let replacementText = matchText.replace(/(\*|_)([\t \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]+)|([\t \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]+)(\*|_)/g, '$1$4');
-        newText = newText.slice(0, matches[i].index) + replacementText + newText.slice(matches[i].index + matchText.length);
-    }
-
-    // Don't auto-fix asterisks if this is a message clean-up procedure.
-    // It botches the continue function. Apply this to display only.
-    if (!forDisplay) {
-        return newText;
-    }
-
-    const splitText = newText.split('\n');
-
-    // Fix asterisks, and quotes that are not paired
-    for (let index = 0; index < splitText.length; index++) {
-        const line = splitText[index];
-        const charsToCheck = ['*', '"'];
-        for (const char of charsToCheck) {
-            if (line.includes(char) && isOdd(countOccurrences(line, char))) {
-                splitText[index] = line.trimEnd() + char;
-            }
-        }
-    }
-
-    newText = splitText.join('\n');
-
-    return newText;
+    // SillyBunny: pair whole emphasis runs on each line and skip code, so that nested emphasis, list markers, thematic breaks and code stay intact.
+    return autoFixMarkdown(text, forDisplay);
 }
 
 function switchHotswap() {
@@ -2551,6 +2522,8 @@ export async function loadPowerUserSettings(settings, data) {
     $('#single_line').prop('checked', power_user.single_line);
     $('#relaxed_api_urls').prop('checked', power_user.relaxed_api_urls);
     $('#world_import_dialog').prop('checked', power_user.world_import_dialog);
+    // SillyBunny: sync the external media import toggle from saved settings.
+    $('#import_external_media').prop('checked', power_user.import_external_media);
     $('#enable_auto_select_input').prop('checked', power_user.enable_auto_select_input);
     $('#enable_md_hotkeys').prop('checked', power_user.enable_md_hotkeys);
     $('#trim_spaces').prop('checked', power_user.trim_spaces);
@@ -2594,6 +2567,8 @@ export async function loadPowerUserSettings(settings, data) {
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
     $('#disable_group_trimming').prop('checked', power_user.disable_group_trimming);
     $('#markdown_escape_strings').val(power_user.markdown_escape_strings);
+    // SillyBunny: show markdown-it for a missing or unknown engine without changing the stored value. Setting a value fires no event, so the native input event tells the Markdown Engine toggle row to show the loaded value.
+    $('#markdown_engine').val(normalizeMarkdownEngine(power_user.markdown_engine)).each((_, select) => select.dispatchEvent(new Event('input', { bubbles: true })));
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     $('#waifuMode').prop('checked', power_user.waifuMode);
     $('#movingUImode').prop('checked', power_user.movingUI);
@@ -4467,6 +4442,14 @@ jQuery(async () => {
         reloadMarkdownProcessor();
     });
 
+    // SillyBunny: a new Markdown engine applies to the open chat at once. The choice is saved first, so a chat reload that fails cannot lose it.
+    $('#markdown_engine').on('change', async function () {
+        power_user.markdown_engine = normalizeMarkdownEngine($(this).val());
+        saveSettingsDebounced();
+        reloadMarkdownProcessor();
+        await reloadCurrentChat();
+    });
+
     $('.start-reply-with-input').on('input', function () {
         power_user.user_prompt_bias = String($(this).val());
         saveSettingsDebounced();
@@ -5112,6 +5095,12 @@ jQuery(async () => {
     $('#prefer_character_jailbreak').on('input', function () {
         const value = !!$(this).prop('checked');
         power_user.prefer_character_jailbreak = value;
+        saveSettingsDebounced();
+    });
+
+    // SillyBunny: persist the external media import setting.
+    $('#import_external_media').on('input', function () {
+        power_user.import_external_media = !!$(this).prop('checked');
         saveSettingsDebounced();
     });
 
