@@ -72,6 +72,9 @@ let initialized = false;
  * @property {number} timeOut
  * @property {number} extendedTimeOut
  * @property {Function|undefined} onShown
+ * @property {Animation|undefined} [progress] The running animation of the progress bar.
+ * @property {boolean} [progressBound] True once the hover handlers of the progress bar are bound.
+ * @property {boolean} [startingTimer] True while startHideTimer runs the hover handler of toastr.
  */
 
 /**
@@ -299,8 +302,42 @@ function startHideTimer(entry) {
     }
     const extended = options.extendedTimeOut;
     options.extendedTimeOut = entry.timeOut;
+    // The progress bar listens to the same event, and it starts over the full timeout once this has run.
+    entry.startingTimer = true;
     $toast.triggerHandler('mouseleave');
+    entry.startingTimer = false;
     options.extendedTimeOut = extended;
+}
+
+/**
+ * toastr runs the progress bar only while it shows a toast that has a timeout, and every toast is made held, so the
+ * bar runs here: down over the timeout, stopped while the toast is held, and down over the extended timeout after it.
+ * @param {QueuedToast} entry
+ */
+function runProgressBar(entry) {
+    const { options, element, $toast } = entry;
+    if (!options.progressBar || !(entry.timeOut > 0)) {
+        return;
+    }
+    const progressClass = options.progressClass ?? 'toast-progress';
+    const bar = [...element.children].find(child => child.classList.contains(progressClass));
+    if (typeof bar?.animate !== 'function') {
+        return;
+    }
+    const start = (duration) => {
+        entry.progress?.cancel();
+        entry.progress = bar.animate([{ width: '100%' }, { width: '0%' }], { duration, easing: 'linear', fill: 'forwards' });
+    };
+    if (!entry.progressBound) {
+        entry.progressBound = true;
+        $toast.on('mouseenter', () => entry.progress?.pause());
+        $toast.on('mouseleave', () => {
+            if (!entry.startingTimer && entry.extendedTimeOut > 0) {
+                start(entry.extendedTimeOut);
+            }
+        });
+    }
+    start(entry.timeOut);
 }
 
 /**
@@ -319,6 +356,7 @@ function show(entry) {
     // A toast that was pushed back by a high-priority toast already ran onShown.
     $toast[entry.showMethod]({ complete: entry.resumed ? undefined : entry.onShown });
     startHideTimer(entry);
+    runProgressBar(entry);
 }
 
 /**
@@ -431,6 +469,7 @@ function keepRepeat({ queue, entry }) {
     if (queue.shown.includes(entry) && entry.timeOut > 0 && !isHeld(entry.element)) {
         entry.$toast.triggerHandler('mouseenter');
         startHideTimer(entry);
+        runProgressBar(entry);
     }
     return entry.$toast;
 }

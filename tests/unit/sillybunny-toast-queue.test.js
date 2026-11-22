@@ -75,6 +75,9 @@ beforeAll(async () => {
             cancel() {
                 animation.done = true;
             },
+            pause() {
+                animation.paused = true;
+            },
         };
         animations.push(animation);
         return animation;
@@ -897,5 +900,60 @@ describe('the two queues', () => {
         const first = toastr.info('first');
         const second = toastr.info('second');
         expect([...overlay().children]).toEqual([second[0], first[0]]);
+    });
+});
+
+describe('the progress bar', () => {
+    const bars = () => animations.filter(animation => animation.keyframes[0].width === '100%');
+    const withBar = { progressBar: true };
+
+    test('runs down over the timeout of a toast that shows, because toastr only starts it for a toast with a timeout', () => {
+        const toast = toastr.info('Saved', '', withBar);
+        expect(toast.find('.toast-progress')).toHaveLength(1);
+        expect(bars().map(animation => [animation.element, animation.duration, animation.keyframes[1].width]))
+            .toEqual([[toast.find('.toast-progress')[0], 5000, '0%']]);
+    });
+
+    test('starts when a toast that waited shows, and over the 4 seconds of a notification', async () => {
+        toastr.info('first');
+        const second = toastr.info('second', '', withBar);
+        expect(bars()).toHaveLength(0);
+        await advance(5000);
+        expect(bars().map(animation => [animation.element, animation.duration])).toEqual([[second.find('.toast-progress')[0], 5000]]);
+
+        animations = [];
+        const notification = notice('info', 'Note', withBar);
+        expect(bars().map(animation => [animation.element, animation.duration])).toEqual([[notification.find('.toast-progress')[0], 4000]]);
+    });
+
+    test('stops while the toast is held, and runs down over the extended timeout when it is let go', () => {
+        const toast = toastr.info('Saved', '', { ...withBar, timeOut: 3000, extendedTimeOut: 1500 });
+        const [running] = bars();
+        toast.trigger('mouseenter');
+        expect(running.paused).toBe(true);
+        toast.trigger('mouseleave');
+        expect(bars().map(animation => animation.duration)).toEqual([3000, 1500]);
+        expect(running.done).toBe(true);
+    });
+
+    test('is not drawn for a toast that stays, or when the option is off', () => {
+        toastr.info('Working', '', { ...withBar, timeOut: 0, extendedTimeOut: 0 });
+        toastr.info('Saved');
+        notice('error', 'Failed', withBar);
+        expect(bars()).toHaveLength(0);
+    });
+
+    test('starts again when a toast that a high-priority toast pushed back shows again', async () => {
+        const first = toastr.info('first', '', withBar);
+        const bar = first.find('.toast-progress')[0];
+        toastr.info('<button type="button">Undo</button>', '', { escapeHtml: false });
+        const [pushedBack] = bars();
+        expect(pushedBack.paused).toBe(true);
+
+        await advance(5000);
+        expect(first.hasClass('sb-toast-leaving')).toBe(false);
+        const runs = bars().filter(animation => animation.element === bar);
+        expect(runs).toHaveLength(2);
+        expect(runs[1].duration).toBe(5000);
     });
 });
