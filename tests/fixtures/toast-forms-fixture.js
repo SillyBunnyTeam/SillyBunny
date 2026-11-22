@@ -174,6 +174,38 @@
             return describe(window.toastr.info('From echo', '', { toastClass: 'toast fx-echo-class', timeOut: 0, extendedTimeOut: 0 }));
         },
 
+        /** A SillyBunny dialog host (`openDialog`), which opens with showModal() and is removed with close() and remove(). */
+        async openFrame() {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            window.__frame = openDialog({ tier: 'dialog', title: 'Fixture', content: document.createElement('div'), responses: { cancel: {}, affirmative: { id: 'ok', label: 'Save' } } });
+        },
+
+        async closeFrame() {
+            await window.__frame.close('cancel');
+            await window.__frame.closed;
+        },
+
+        /** An alert, which closes through its own response button. */
+        async openAlertFrame() {
+            const { openAlert } = await import('/scripts/sillybunny-editor/dialog.js');
+            void openAlert({ heading: 'Fixture alert', body: 'A body', responses: [{ id: 'cancel', label: 'Cancel' }, { id: 'ok', label: 'OK' }] });
+        },
+
+        /** A modal dialog of an extension: plain showModal(), and close() with remove() in one task. */
+        openRawModal() {
+            const dialog = document.createElement('dialog');
+            dialog.id = 'fx-raw-modal';
+            dialog.textContent = 'An extension dialog';
+            document.body.append(dialog);
+            dialog.showModal();
+        },
+
+        closeRawModal() {
+            const dialog = document.getElementById('fx-raw-modal');
+            dialog.close();
+            dialog.remove();
+        },
+
         clearAll() {
             window.toastr.clear();
         },

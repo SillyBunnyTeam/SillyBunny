@@ -13,6 +13,7 @@
  */
 
 import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } from './sillybunny-motion.js';
+import { getTopmostDialog } from './sillybunny-editor/overlay-host.js';
 import {
     NOTIFICATION_FORM,
     NOTIFICATION_FORM_CLASS,
@@ -113,6 +114,12 @@ let measureOverride = null;
 let toastPosition = 'toast-bottom-center';
 let notificationPosition = 'toast-top-center';
 let uncapturedLogged = false;
+/**
+ * The two containers as last seen. A dialog that is removed takes the containers that it holds out of the document,
+ * and these references find them again, so that no message is lost with the dialog.
+ * @type {{ overlay: HTMLElement|null, notifications: HTMLElement|null }}
+ */
+const seen = { overlay: null, notifications: null };
 
 function getToastElement(collection) {
     const element = collection?.[0];
@@ -278,6 +285,8 @@ function isHeld(element) {
 }
 
 function pruneDetached() {
+    // A message in a container that left the document with its dialog is not gone yet.
+    adoptOrphans();
     for (const queue of allQueues) {
         queue.waiting = queue.waiting.filter(entry => entry.element.isConnected);
         queue.shown = queue.shown.filter(entry => entry.element.isConnected);
@@ -516,13 +525,41 @@ function makeRoom(queue) {
 
 // The two containers
 
-function topOpenDialog() {
-    const dialogs = document.querySelectorAll('dialog[open]:not([closing])');
-    return dialogs.length > 0 ? dialogs[dialogs.length - 1] : null;
-}
-
 function getOverlay() {
     return document.getElementById(TOAST_OVERLAY_ID);
+}
+
+/** A container that was removed together with an ancestor, such as its dialog. One that was removed itself has no parent. */
+function isOrphaned(container) {
+    return container !== null && !container.isConnected && container.parentElement !== null;
+}
+
+/** Puts a container that left the document inside a removed dialog back, or merges its messages into the live one. */
+function adoptOrphans() {
+    for (const [key, id] of [['overlay', TOAST_OVERLAY_ID], ['notifications', NOTIFICATION_CONTAINER_ID]]) {
+        const orphan = seen[key];
+        if (!isOrphaned(orphan)) {
+            continue;
+        }
+        const live = document.getElementById(id);
+        if (live) {
+            live.append(...orphan.children);
+        } else {
+            (getTopmostDialog() ?? document.body).append(orphan);
+        }
+        seen[key] = live ?? orphan;
+    }
+}
+
+/** Both containers are children of `host`. The messages show above a modal dialog only when they are inside it. */
+function moveContainersInto(host) {
+    const notifications = document.getElementById(NOTIFICATION_CONTAINER_ID);
+    for (const container of [getOverlay(), notifications]) {
+        if (container && container.parentElement !== host) {
+            host.append(container);
+        }
+    }
+    seen.notifications = notifications ?? seen.notifications;
 }
 
 /** The hidden clone that the form measure lays out is not a toast. */
@@ -557,7 +594,7 @@ function removeOverlayIfEmpty() {
 function removeEmptyNotificationContainer() {
     const container = document.getElementById(NOTIFICATION_CONTAINER_ID);
     // A dialog keeps the empty container alive, so the next notification shows inside the dialog and not behind it.
-    if (container && !container.hasChildNodes() && topOpenDialog() === null) {
+    if (container && !container.hasChildNodes() && getTopmostDialog() === null) {
         container.remove();
     }
 }
@@ -573,17 +610,20 @@ function settleContainers() {
     removeEmptyNotificationContainer();
 }
 
-/** The overlay is made when the first toast needs it, in the top open dialog or else in the body, as toastr makes its own. */
+/** The overlay is made when the first toast needs it, and it is in the top open modal dialog or else in the body. */
 function ensureOverlay() {
-    const existing = getOverlay();
-    if (existing) {
-        return existing;
+    let overlay = getOverlay();
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = TOAST_OVERLAY_ID;
+        overlay.classList.add(toastPosition);
+        watchContainer(overlay);
+        seen.overlay = overlay;
     }
-    const overlay = document.createElement('div');
-    overlay.id = TOAST_OVERLAY_ID;
-    overlay.classList.add(toastPosition);
-    (topOpenDialog() ?? document.body).append(overlay);
-    watchContainer(overlay);
+    const host = getTopmostDialog() ?? document.body;
+    if (overlay.parentElement !== host) {
+        host.append(overlay);
+    }
     return overlay;
 }
 
@@ -597,6 +637,8 @@ function ensureOverlay() {
  */
 function placeToast(element, effective, options) {
     ensureOverlay();
+    // toastr made its container in the body if there was none, and a modal dialog hides everything outside it.
+    moveContainersInto(getTopmostDialog() ?? document.body);
     const { form } = classifyToast(element, effective, measureOverride ? { measure: measureOverride } : undefined);
     if (form === TOAST_FORM) {
         element.classList.add(TOAST_FORM_CLASS);
@@ -818,7 +860,10 @@ function wrapNotifier(toastr, type) {
         }
 
         const entry = toastEntry(type, key, effective, optionsOverride, high, created);
-        watchContainer(document.getElementById(NOTIFICATION_CONTAINER_ID) ?? document.body);
+        const notifications = document.getElementById(NOTIFICATION_CONTAINER_ID);
+        if (notifications) {
+            watchContainer(notifications);
+        }
         present(entry);
         return created.$toast;
     };
@@ -896,6 +941,8 @@ export function resetToastQueue() {
         queue.hiding = 0;
         queue.promotionScheduled = false;
     }
+    seen.overlay = null;
+    seen.notifications = null;
     queueEnabled = true;
 }
 
@@ -938,26 +985,30 @@ export function getNotificationPosition() {
 }
 
 /**
- * Moves the overlay into the top open dialog, or back into the body when no dialog is open, and removes it when it is
- * empty and no dialog is open. A toast then shows above the dialog and not behind it, as toastr's container does.
+ * Puts both containers in the top open modal dialog, or in the body when none is open, and drops the ones that are empty
+ * when no dialog is open. A message then shows above a modal dialog and not behind it, and it is not lost when the dialog
+ * is removed. It runs whenever a dialog opens or closes, whoever owns the dialog, and before a message is made.
  */
-export function placeToastOverlay() {
-    const overlay = getOverlay();
-    if (!overlay) {
+export function placeToastContainers() {
+    adoptOrphans();
+    const dialog = getTopmostDialog();
+    moveContainersInto(dialog ?? document.body);
+    if (!dialog) {
+        removeOverlayIfEmpty();
+        removeEmptyNotificationContainer();
+    }
+}
+
+/**
+ * A dialog opens, starts to close or closes by a change of `open` or `closing`, whoever owns it, and a modal dialog hides
+ * everything outside it. The observer only sees these two attributes, so it is cheap on a document of this size.
+ */
+function watchDialogs() {
+    if (typeof MutationObserver !== 'function' || !globalThis.document?.body) {
         return;
     }
-    const dialog = topOpenDialog();
-    if (dialog) {
-        if (!dialog.contains(overlay)) {
-            dialog.append(overlay);
-        }
-        return;
-    }
-    if (!holdsToasts(overlay)) {
-        overlay.remove();
-    } else if (overlay.parentElement !== document.body) {
-        document.body.append(overlay);
-    }
+    new MutationObserver(() => placeToastContainers())
+        .observe(document.body, { attributes: true, subtree: true, attributeFilter: ['open', 'closing'] });
 }
 
 if (globalThis.toastr) {
@@ -1023,6 +1074,7 @@ export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = glo
     jQuery.fn[TOAST_HOLD_METHOD] = sbToastHold;
     hookSubscribe(toastr);
     holdWhilePressed(jQuery, globalThis.document);
+    watchDialogs();
     wrapContainerCommands(toastr);
     for (const type of NOTIFIER_TYPES) {
         wrapNotifier(toastr, type);

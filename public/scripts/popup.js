@@ -5,7 +5,7 @@ import { power_user, toastPositionClasses } from './power-user.js';
 import { clamp, removeFromArray, runAfterAnimation, uuidv4 } from './utils.js';
 // SillyBunny: frames popups in the shared Alert/Dialog/Window tiers (docs/upstream-touch-ledger.md).
 import { framePopup } from './sillybunny-editor/popup-frame.js';
-import { getNotificationPosition, placeToastOverlay } from './sillybunny-toast-motion.js'; // SillyBunny: toasts have a container of their own
+import { getNotificationPosition, placeToastContainers } from './sillybunny-toast-motion.js'; // SillyBunny: toasts have a container of their own
 
 /** @readonly */
 /** @enum {Number} */
@@ -1017,8 +1017,8 @@ export function getTopmostModalLayer() {
  * Fixes the issue with toastr not displaying on top of the dialog by moving the toastr container inside the dialog or back to the main body
  */
 export function fixToastrForDialogs() {
-    // SillyBunny: the toast overlay follows the dialogs as toastr's container does.
-    placeToastOverlay();
+    // SillyBunny: both containers follow the dialogs.
+    placeToastContainers();
 
     // Hacky way of getting toastr to actually display on top of the popup...
     const dlg = Array.from(document.querySelectorAll('dialog[open]:not([closing])')).pop();

@@ -246,6 +246,67 @@ test.describe('extensions that write the options of toastr', () => {
     });
 });
 
+test.describe('dialogs that are not Popups', () => {
+    /** Both messages are in the dialog, above it, and they are still on screen in the page after it closes. */
+    async function expectMessagesFollowTheDialog(page, { open, close }) {
+        await fire(page, 'plain', 'info', 'A toast over the dialog', '', { timeOut: 0, extendedTimeOut: 0 });
+        await fire(page, 'plain', 'info', 'A notification over the dialog', 'Title', { timeOut: 0, extendedTimeOut: 0 });
+        await open();
+        await expect(page.locator('dialog[open] > #sb-toast-overlay')).toHaveCount(1);
+        await expect(page.locator('dialog[open] > #toast-container')).toHaveCount(1);
+        // A trial click needs the message to be the element at its point, so a message under the modal fails here.
+        await page.locator(TOAST_FORM_SELECTOR).click({ trial: true });
+        await page.locator(NOTIFICATION_FORM_SELECTOR).click({ trial: true });
+
+        await close();
+        await expect(page.locator('body > #sb-toast-overlay')).toHaveCount(1);
+        await expect(page.locator('body > #toast-container')).toHaveCount(1);
+        await expect(page.locator(TOAST_FORM_SELECTOR)).toBeVisible();
+        await expect(page.locator(NOTIFICATION_FORM_SELECTOR)).toBeVisible();
+        await expect(page.locator(TOAST_SELECTOR)).toHaveCount(2);
+    }
+
+    test('a dialog host of openDialog keeps the messages above it, and gives them back when it closes', async ({ page }) => {
+        await expectMessagesFollowTheDialog(page, {
+            open: () => fire(page, 'openFrame'),
+            close: () => fire(page, 'closeFrame'),
+        });
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
+    });
+
+    test('an alert keeps the messages above it, and gives them back when its response closes it', async ({ page }) => {
+        await expectMessagesFollowTheDialog(page, {
+            open: () => fire(page, 'openAlertFrame'),
+            close: () => page.getByRole('button', { name: 'Cancel', exact: true }).click(),
+        });
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
+    });
+
+    test('a modal dialog of an extension that closes and removes itself in one task loses no message', async ({ page }) => {
+        await expectMessagesFollowTheDialog(page, {
+            open: () => fire(page, 'openRawModal'),
+            close: () => fire(page, 'closeRawModal'),
+        });
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
+    });
+
+    test('messages raised while such a dialog is open are above it too, and survive it', async ({ page }) => {
+        await fire(page, 'openRawModal');
+        await fire(page, 'plain', 'info', 'A toast in the dialog', '', { timeOut: 0, extendedTimeOut: 0 });
+        await fire(page, 'plain', 'info', 'A notification in the dialog', 'Title', { timeOut: 0, extendedTimeOut: 0 });
+        await expect(page.locator('dialog[open] > #sb-toast-overlay')).toHaveCount(1);
+        await expect(page.locator('dialog[open] > #toast-container')).toHaveCount(1);
+        await page.locator(TOAST_FORM_SELECTOR).click({ trial: true });
+        await page.locator(NOTIFICATION_FORM_SELECTOR).click({ trial: true });
+
+        await fire(page, 'closeRawModal');
+        await expect(page.locator(TOAST_SELECTOR)).toHaveCount(2);
+        await expect(page.locator(TOAST_FORM_SELECTOR)).toBeVisible();
+        await fire(page, 'plain', 'info', 'A toast after the dialog', '', { timeOut: 0, extendedTimeOut: 0 });
+        await expect(page.locator('body > #sb-toast-overlay > .toast')).toHaveCount(2);
+    });
+});
+
 test.describe('clear, remove and dialogs', () => {
     test('toastr.clear() clears both containers, and toastr.remove() does too, and the empty containers go', async ({ page }) => {
         await fire(page, 'plain', 'info', 'A toast', '', { timeOut: 0, extendedTimeOut: 0 });

@@ -851,12 +851,13 @@ describe('the two queues', () => {
         expect(toastQueue.getNotificationPosition()).toBe('toast-bottom-left');
     });
 
-    test('placeToastOverlay moves the overlay into the top open dialog, back to the body, and drops it when empty', async () => {
+    test('placeToastContainers moves both containers into the top open modal dialog, back to the body, and drops them when empty', async () => {
         const toast = toastr.info('A toast');
         const dialog = document.createElement('dialog');
         dialog.setAttribute('open', '');
+        dialog.setAttribute('data-sb-modal', '');
         document.body.append(dialog);
-        toastQueue.placeToastOverlay();
+        toastQueue.placeToastContainers();
         expect(overlay().parentElement).toBe(dialog);
 
         const inside = toastr.info('Another toast in the dialog');
@@ -865,19 +866,20 @@ describe('the two queues', () => {
 
         // A Popup is marked closing before it is removed, and fixToastrForDialogs() runs in between.
         dialog.setAttribute('closing', '');
-        toastQueue.placeToastOverlay();
+        toastQueue.placeToastContainers();
         expect(overlay().parentElement).toBe(document.body);
         dialog.remove();
 
         toastr.remove(toast);
         toastr.remove(inside);
-        toastQueue.placeToastOverlay();
+        toastQueue.placeToastContainers();
         expect(overlay()).toBeNull();
     });
 
     test('a toast made while a dialog is open lands in the overlay inside that dialog', () => {
         const dialog = document.createElement('dialog');
         dialog.setAttribute('open', '');
+        dialog.setAttribute('data-sb-modal', '');
         document.body.append(dialog);
         const toast = toastr.info('A toast');
         expect(overlay().parentElement).toBe(dialog);
@@ -955,5 +957,139 @@ describe('the progress bar', () => {
         const runs = bars().filter(animation => animation.element === bar);
         expect(runs).toHaveLength(2);
         expect(runs[1].duration).toBe(5000);
+    });
+});
+
+describe('toasts and modal dialogs', () => {
+    const overlay = () => document.getElementById('sb-toast-overlay');
+    const notificationContainer = () => document.getElementById('toast-container');
+    const openHosts = [];
+
+    // jsdom has no showModal() and close(). A browser fires `close` in a task after close(), and SillyBunny's own frames
+    // carry the attribute that marks them as modal, because jsdom does not know :modal.
+    beforeAll(() => {
+        HTMLDialogElement.prototype.showModal = function showModal() {
+            this.setAttribute('open', '');
+        };
+        HTMLDialogElement.prototype.close = function close() {
+            this.removeAttribute('open');
+            queueMicrotask(() => this.dispatchEvent(new Event('close')));
+        };
+    });
+
+    function openHost() {
+        const host = document.createElement('dialog');
+        host.setAttribute('data-sb-modal', '');
+        document.body.append(host);
+        host.showModal();
+        openHosts.push(host);
+        return host;
+    }
+
+    afterEach(() => {
+        openHosts.splice(0).forEach(host => host.remove());
+    });
+
+    test('a toast and a notification raised while a modal dialog is open are inside it', () => {
+        const host = openHost();
+        toastr.info('A toast');
+        notice('info', 'Note');
+        expect(overlay().parentElement).toBe(host);
+        expect(notificationContainer().parentElement).toBe(host);
+    });
+
+    test('a dialog that closes and is removed takes no toast and no notification with it, and none leaves its queue', async () => {
+        const host = openHost();
+        const shownToast = toastr.info('first');
+        const waitingToast = toastr.info('second');
+        const notification = notice('info', 'Note');
+
+        host.close();
+        host.remove();
+        // The `close` event has not fired yet, and a look at the queues must already find every message.
+        expect(queueState()).toEqual({ current: shownToast[0], waiting: [waitingToast[0]] });
+        expect(notificationState()).toEqual({ shown: [notification[0]], waiting: [] });
+        await flush();
+
+        expect(shownToast[0].isConnected && waitingToast[0].isConnected && notification[0].isConnected).toBe(true);
+        expect(overlay().parentElement).toBe(document.body);
+        expect(notificationContainer().parentElement).toBe(document.body);
+    });
+
+    test('a dialog that closes and is removed puts the containers back by itself, when nothing else asks', async () => {
+        const host = openHost();
+        const toast = toastr.info('A toast');
+        const notification = notice('info', 'Note');
+        // The observers of the containers have seen the new messages, so only the dialog's own change is left to ask.
+        await flush();
+        host.close();
+        host.remove();
+        expect(document.body.contains(toast[0])).toBe(false);
+
+        await flush();
+        expect(overlay().parentElement).toBe(document.body);
+        expect(notificationContainer().parentElement).toBe(document.body);
+        expect(document.body.contains(toast[0]) && document.body.contains(notification[0])).toBe(true);
+    });
+
+    test('a dialog that only closes lets the next toast land in the body, with the toasts that were in it', async () => {
+        const host = openHost();
+        const before = toastr.info('first');
+        host.close();
+        const after = toastr.info('second');
+
+        expect(overlay().parentElement).toBe(document.body);
+        expect([...overlay().children]).toEqual([after[0], before[0]]);
+        await flush();
+        expect(overlay().parentElement).toBe(document.body);
+    });
+
+    test('a message raised after the dialog was removed and before its `close` event joins the same containers', async () => {
+        const host = openHost();
+        const first = toastr.info('first');
+        const note = notice('info', 'Note');
+        host.close();
+        host.remove();
+
+        const second = toastr.info('second');
+        const next = notice('info', 'Next');
+        await flush();
+
+        expect(document.querySelectorAll('#sb-toast-overlay')).toHaveLength(1);
+        expect(document.querySelectorAll('#toast-container')).toHaveLength(1);
+        expect([...overlay().children]).toEqual(expect.arrayContaining([first[0], second[0]]));
+        expect([...notificationContainer().children]).toEqual(expect.arrayContaining([note[0], next[0]]));
+    });
+
+    test('a dialog that opens over a message that is on screen takes the containers in, and the next dialog down gets them back', async () => {
+        toastr.info('A toast');
+        notice('info', 'Note');
+        await flush();
+        const lower = openHost();
+        await flush();
+        expect(overlay().parentElement).toBe(lower);
+        expect(notificationContainer().parentElement).toBe(lower);
+
+        const upper = openHost();
+        await flush();
+        expect(overlay().parentElement).toBe(upper);
+
+        upper.setAttribute('closing', '');
+        await flush();
+        expect(overlay().parentElement).toBe(lower);
+        expect(notificationContainer().parentElement).toBe(lower);
+    });
+
+    test('a container that toastr.remove() took away on purpose does not come back when its dialog goes', async () => {
+        const host = openHost();
+        toastr.info('A toast');
+        notice('info', 'Note');
+        toastr.remove();
+        host.close();
+        host.remove();
+        await flush();
+        expect(document.querySelectorAll('.toast')).toHaveLength(0);
+        expect(overlay()).toBeNull();
+        expect(notificationContainer()).toBeNull();
     });
 });
