@@ -81,7 +81,7 @@ describe('the toast layer', () => {
         expect(rule).toContain('background-clip: padding-box');
         // A `background` shorthand in a state would reset the clip, and the fill would grow to the 44px target.
         expect(ruleOf(themeCss, `${buttonSelector}:active`)).toMatch(/^background-color:/);
-        expect(themeCss).toMatch(new RegExp(`:hover \\{\\s*background-color: color-mix`));
+        expect(themeCss).toMatch(/:hover \{\s*background-color: color-mix/);
     });
 
     test('the button of a toast and Dismiss draw the focus ring of the app, which the rules that clear the shadow would remove', () => {
