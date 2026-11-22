@@ -96,6 +96,19 @@ async function togglePanel(page, toggle, open) {
     }
 }
 
+/**
+ * Records the transitions that start, as `id:property`, from now on. A transition that has run its course before the next
+ * frame leaves no frame between its ends in an engine that stalls while a panel opens, and still fires its event.
+ */
+const recordTransitions = page => page.evaluate(() => {
+    document.removeEventListener('transitionrun', window.qaRunListener, true);
+    window.qaRuns = [];
+    window.qaRunListener = event => window.qaRuns.push(`${event.target.id}:${event.propertyName}`);
+    document.addEventListener('transitionrun', window.qaRunListener, true);
+});
+
+const transitionsRun = page => page.evaluate(() => window.qaRuns);
+
 /** Reads the distance of the toast from the window edge on every frame, from now until `stopWatching`. */
 const watchToast = page => page.evaluate(() => {
     const vh = document.documentElement.clientHeight;
@@ -196,21 +209,23 @@ for (const viewport of VIEWPORTS) {
             const { composer } = await measure(page);
             const [, toggle] = PANELS[0];
 
+            await recordTransitions(page);
             await watchToast(page);
             await togglePanel(page, toggle, true);
             await expect.poll(() => measure(page)).toMatchObject({ toast: 24 });
             const opening = await stopWatching(page);
             expect(opening.at(0)).toBe(composer + 24);
             expect(opening.at(-1)).toBe(24);
-            expect(opening.filter(gap => gap > 24 && gap < composer + 24).length, 'it glides, and does not jump').toBeGreaterThan(2);
+            expect(await transitionsRun(page), 'it glides, and does not jump').toContain('sb-toast-overlay:bottom');
             expect(opening, 'and only one way').toEqual([...opening].sort((first, second) => second - first));
 
+            await recordTransitions(page);
             await watchToast(page);
             await togglePanel(page, toggle, false);
             await expect.poll(() => measure(page)).toMatchObject({ toast: composer + 24 });
             const closing = await stopWatching(page);
             expect(closing.at(-1)).toBe(composer + 24);
-            expect(closing.filter(gap => gap > 24 && gap < composer + 24).length, 'it glides, and does not jump').toBeGreaterThan(2);
+            expect(await transitionsRun(page), 'it glides, and does not jump').toContain('sb-toast-overlay:bottom');
             expect(closing, 'and only one way').toEqual([...closing].sort((first, second) => first - second));
         });
 
@@ -221,25 +236,27 @@ for (const viewport of VIEWPORTS) {
             const { composer } = await measure(page);
             const [, toggle] = PANELS[0];
 
+            await recordTransitions(page);
             await watchStrips(page);
             await togglePanel(page, toggle, true);
             await expect.poll(() => measure(page)).toMatchObject({ note: 4 });
             const alone = await stopWatchingStrips(page);
             expect(alone.notifications.at(0)).toBe(composer);
             expect(alone.notifications.at(-1)).toBe(0);
-            expect(alone.notifications.filter(gap => gap > 0 && gap < composer).length, 'it glides, and does not jump').toBeGreaterThan(2);
+            expect(await transitionsRun(page), 'it glides, and does not jump').toContain('toast-container:bottom');
 
             await showToast(page);
             await expect.poll(() => measure(page)).toMatchObject({ toast: 24 });
             const stacked = await measure(page);
+            await recordTransitions(page);
             await watchStrips(page);
             await togglePanel(page, toggle, false);
             await expect.poll(() => measure(page)).toMatchObject({ toast: composer + 24 });
             const closing = await stopWatchingStrips(page);
             const settledStack = await measure(page);
             expect(settledStack.between, 'the notification keeps its distance beyond the toast').toBe(stacked.between);
-            expect(closing.overlay.filter(gap => gap > 0 && gap < composer).length, 'the toasts glide').toBeGreaterThan(2);
-            expect(closing.notifications.filter(gap => gap > 0 && gap < closing.notifications.at(-1)).length, 'the notifications glide with them').toBeGreaterThan(2);
+            expect(await transitionsRun(page), 'the toasts and the notifications glide together').toEqual(expect.arrayContaining(['sb-toast-overlay:bottom', 'toast-container:margin-bottom']));
+            expect(closing.notifications, 'and only one way').toEqual([...closing.notifications].sort((first, second) => first - second));
         });
 
         test('a message that is shown while a panel is open appears at the edge, and never above the composer first', async ({ page }) => {
