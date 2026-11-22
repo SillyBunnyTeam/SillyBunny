@@ -751,7 +751,7 @@ function watchAction($toast) {
     return $toast;
 }
 
-/** Calls toastr directly, as it was before the queues. The message is an in-app notification, which shows every part. */
+/** Calls toastr directly, with no queue. The message is an in-app notification, because that form shows every part of a message. */
 function showUnqueued(original, message, title, forcedOptions) {
     const $toast = original(message, title, forcedOptions);
     getToastElement($toast)?.classList.add(NOTIFICATION_FORM_CLASS);

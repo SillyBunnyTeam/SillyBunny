@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-// One row for each way a caller reaches toastr today: core, bundled code, the third-party extensions that the survey read
+// One row for each way a caller reaches toastr: core, bundled code, the third-party extensions that the survey read
 // (`research-extensions.md`) and the options that toastr documents. Each row runs through the real jQuery and the real
 // toastr, and the form that `classifyToast` gives the element toastr returned must be the expected one.
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
