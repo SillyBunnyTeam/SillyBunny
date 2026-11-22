@@ -36,7 +36,9 @@ function expectedLayout({ width, pageWidth, sides }) {
 
 async function boot(page, { width, height = 900, pageWidth, sides, home = false }) {
     await protectMaintainerServer(page);
-    await page.setViewportSize({ width, height });
+    // A context that sets its own size (`test.use`) keeps it: Firefox never settles a resize before the first navigation in a mobile context.
+    const size = page.viewportSize();
+    if (size?.width !== width || size?.height !== height) await page.setViewportSize({ width, height });
     await openQuietChatForSmoke(page, { selectCharacter: !home });
     if (home) await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
     await page.addStyleTag({ content: '#sheld { transition: none !important; }' });
