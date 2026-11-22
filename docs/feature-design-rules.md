@@ -45,7 +45,7 @@ The chat is the product's core, so its messages have their own pattern.
 - **The chat column** is the raw chat tint on mobile (upstream's rule) and `--sb-chat-view-bg` on desktop, so the bundled 0.9 tints stay opaque and lower tints show the background. The page behind `#sheld` mixes BlurTint toward Body, so the main window stays distinct from the canvas in every theme.
 - **Paper Texture:** An opt-in grain over the canvas and chat column. It takes its colours from the active theme and never overrides border or message tints. Deviation: the HIG advises against text over textures or graphical backgrounds; the grain and chat backgrounds stay opt-in and must still meet the Contrast Rule.
 - **Toolbars:** The top bar, bottom chat bar, and composer are separated by a `1px` shade line only. The generating state keeps its accent border and progress bar and has no outer glow.
-- **Overlay** (`--sb-radius-overlay`, `15px`): popovers, menus, dialogs, windows, shell drawers, toasts, and the composer stack. Bottom sheets round their top corners only. Docked side panels are square.
+- **Overlay** (`--sb-radius-overlay`, `15px`): popovers, menus, dialogs, windows, shell drawers, in-app notifications, and the composer stack. Bottom sheets round their top corners only. Docked side panels are square.
 - **The Single Shell Rule:** there is no Shell Style picker, and stored legacy `sb-theme` values are ignored.
 - **Mono Font:** Adwaita Mono for logs, prompt fragments, regex, token diagnostics, and structured output (`--monoFontFamily`).
 - **Display:** Home and first-run welcome titles only; never a control label.
