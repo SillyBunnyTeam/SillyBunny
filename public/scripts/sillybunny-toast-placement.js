@@ -1,14 +1,14 @@
 /*
  * SillyBunny toast placement: where #sb-toast-overlay sits, as numbers that the toast CSS reads.
- * A bottom toast sits above the composer and above the software keyboard, a toast in a dialog sits at the bottom centre
+ * A bottom toast sits above the bottom bars and above the software keyboard, a toast in a dialog sits at the bottom centre
  * of that dialog's box and above its action row, and an in-app notification at the same position as the toasts sits
- * beyond them. The composer is a docked bottom bar only while nothing covers it: a surface that covers it (a panel of the
- * top bar, the character editor) leaves the window edge as the bottom edge. The CSS owns every metric that does not
- * depend on the page; this module only measures what the CSS cannot know.
+ * beyond them. A bottom bar is the composer while it is docked at the bottom edge and nothing covers it, and a sheet that
+ * is docked at the bottom edge or on a bar: with none, the window edge is the bottom edge. At the bottom centre a message is
+ * centred on the bar that it sits above. The CSS owns every metric that does not depend on the page; this module only
+ * measures what the CSS cannot know.
  */
 
 import { createMobileViewportObserver } from './chat-render-lifecycle/mobile-viewport.js';
-import { getTopmostDialog } from './sillybunny-editor/overlay-host.js';
 import { MOTION_SURFACE, prefersReducedMotion } from './sillybunny-motion.js';
 import { TOAST_MEASURE_CLASS } from './sillybunny-toast-form.js';
 
@@ -30,6 +30,8 @@ export const FRAME_LEFT_PROPERTY = '--sb-toast-frame-left';
 export const FRAME_WIDTH_PROPERTY = '--sb-toast-frame-width';
 export const FRAME_BOTTOM_PROPERTY = '--sb-toast-frame-bottom';
 export const STACK_OFFSET_PROPERTY = '--sb-toast-stack-offset';
+/** How far the middle of the bar that a bottom message sits above is from the middle of the window, in px. */
+export const BAR_SHIFT_PROPERTY = '--sb-toast-bar-shift';
 /**
  * The rows that hold the actions of a dialog at its foot: the responses of an alert (`openAlert`), the extra responses
  * of a Dialog or Window (`openDialog` and the framed Popups), and the controls of an alert Popup and of an upstream
@@ -118,6 +120,102 @@ export function composerCovered(composer, {
         }
     }
     return answered > 0 && covered / answered > COVER_MAJORITY;
+}
+
+/** How far the bottom of a bar may be below the bottom of the window or the top of the bar under it, and still rest on it: a height has a fraction. */
+const DOCK_TOLERANCE = 4;
+
+/**
+ * Whether the composer rests on the bottom of the window. One that floats above it (MovingUI moved it) is not a bar.
+ * @param {{ bottom: number, height: number }|null|undefined} box The composer's box in the layout viewport.
+ * @param {number} layoutHeight
+ * @returns {boolean}
+ */
+export function composerDocked(box, layoutHeight) {
+    return Boolean(box) && box.height > 0 && layoutHeight > 0 && Math.abs(box.bottom - layoutHeight) <= DOCK_TOLERANCE;
+}
+
+/**
+ * How far the middle of a bar is from the middle of the window, counting the part of the bar that is in the window.
+ * @param {{ left: number, right: number }|null|undefined} box
+ * @param {number} layoutWidth
+ * @returns {number} px, negative to the left.
+ */
+export function barShift(box, layoutWidth) {
+    if (!box || !(layoutWidth > 0)) {
+        return 0;
+    }
+    const left = Math.max(box.left, 0);
+    const right = Math.min(box.right, layoutWidth);
+    return right > left ? Math.round((left + right) / 2 - layoutWidth / 2) : 0;
+}
+
+/** Points across the window, as shares of its width, where a sheet is looked for. */
+const SHEET_PROBE_SHARES = [0.25, 0.5, 0.75];
+/** How far above the edge that a sheet rests on the points lie, in px: beyond the gap that a bar keeps under a sheet. */
+const SHEET_PROBE_DEPTH = 14;
+/** How far above the edge a sheet may end, in px: the sheet of a side panel ends where the margin of the composer starts. */
+const SHEET_GAP_ABOVE_EDGE = 12;
+/** A sheet spans at least this share of the window; a panel that is docked at one side is narrower. */
+const SHEET_MIN_WIDTH_SHARE = 0.5;
+/** A sheet leaves at least this much of the window under the top bar uncovered; a page that covers the window does not. */
+const SHEET_MIN_ROOM = 24;
+/** Sheets that stand on one another, counted from the edge. */
+const SHEET_MAX_STACK = 3;
+
+/**
+ * The box of an element when it is a sheet that rests on `support`: it is fixed to the window, its bottom is on `support`
+ * (the bottom of the window, or the top of the bar under it) or a little above it, it spans half the window or more, and it
+ * leaves room under the top bar. A dialog, an element in a dialog, a message, an element that holds the composer and the composer itself
+ * are not sheets.
+ * @returns {{ top: number, bottom: number, left: number, right: number }|null}
+ */
+function sheetBoxOn(element, support, { layoutWidth, contentTop, composer }) {
+    if ((composer && (element.contains(composer) || composer.contains(element))) || element.closest(`dialog, ${MESSAGE_SELECTOR}`) !== null) {
+        return null;
+    }
+    const box = element.getBoundingClientRect();
+    if (!(box.height > 0)
+        || box.bottom > support + DOCK_TOLERANCE
+        || box.bottom < support - SHEET_GAP_ABOVE_EDGE
+        || box.width < layoutWidth * SHEET_MIN_WIDTH_SHARE
+        || box.top < contentTop + SHEET_MIN_ROOM
+        || getComputedStyle(element).position !== 'fixed') {
+        return null;
+    }
+    return { top: box.top, bottom: box.bottom, left: box.left, right: box.right };
+}
+
+/**
+ * The sheets that are docked above an edge, from the lowest: a sheet that rests on the edge, then one that rests on it,
+ * and so on. A few points just above the support are hit-tested, and the topmost element at each point and the elements
+ * that hold it are asked whether they are a sheet, so that what lies under another surface is not found. The action menu
+ * of a phone rests on the bottom of the window, and the sheet of a side panel rests on the top of the composer.
+ * @param {{ edge: number, layoutWidth: number, contentTop: number, composer: HTMLElement|null, elementsAt?: (x: number, y: number) => Element[] }} reader
+ * `edge` is the bottom of the window, or the top of the composer while the composer is a bar. `contentTop` is the bottom of the top bar.
+ * @returns {{ top: number, bottom: number, left: number, right: number }[]}
+ */
+export function sheetsAbove({ edge, layoutWidth, contentTop, composer, elementsAt = elementsAtPoint }) {
+    const found = [];
+    let support = edge;
+    while (found.length < SHEET_MAX_STACK) {
+        let highest = null;
+        for (const share of SHEET_PROBE_SHARES) {
+            const topmost = elementsAt(layoutWidth * share, support - SHEET_PROBE_DEPTH)?.find(element => element.closest(MESSAGE_SELECTOR) === null);
+            for (let element = topmost; element && element !== document.body && element !== document.documentElement; element = element.parentElement) {
+                const box = sheetBoxOn(element, support, { layoutWidth, contentTop, composer });
+                if (box && (highest === null || box.top < highest.top)) {
+                    highest = box;
+                }
+            }
+        }
+        if (highest === null) {
+            break;
+        }
+        found.push(highest);
+        support = highest.top;
+    }
+    return found;
 }
 
 /**
@@ -222,31 +320,69 @@ function pixels(value) {
     return `${Math.round(value)}px`;
 }
 
-/** Whether the composer counts as a docked bottom bar now. A modal dialog is not asked: toasts in a dialog sit by the dialog. */
-let composerIsCovered = false;
-
-function readComposerCovered() {
-    const composer = document.getElementById(COMPOSER_ID);
-    return composer !== null && getTopmostDialog() === null && composerCovered(composer);
+function layoutWidth() {
+    return document.documentElement.clientWidth || window.innerWidth;
 }
 
-/** How much of the bottom of the window the composer, while nothing covers it, and the software keyboard cover, in px. */
-function windowBottomInset() {
+/**
+ * What the bottom messages sit above, and what they are centred on.
+ * `source` is what reaches highest: the window edge when nothing does, the keyboard, the composer or a sheet. A message
+ * eases when the source changes, as when a panel opens over the composer, and follows at once when the same bar grows.
+ * @typedef {{ inset: number, shift: number, source: 'edge'|'keyboard'|'composer'|'sheet' }} Placement
+ */
+
+/** The bars of the window, from the lowest: the composer while it is docked and nothing covers it, and the sheets above it. */
+function readBars() {
     const composer = document.getElementById(COMPOSER_ID);
-    composerIsCovered = readComposerCovered();
-    return bottomInset({
-        layoutHeight: layoutHeight(),
-        viewport: window.visualViewport,
-        composerBox: composerIsCovered ? null : composer?.getBoundingClientRect(),
-    });
+    const height = layoutHeight();
+    const bars = [];
+    let edge = height;
+    if (composer) {
+        const box = composer.getBoundingClientRect();
+        if (composerDocked(box, height) && !composerCovered(composer)) {
+            bars.push({ kind: 'composer', top: box.top, bottom: box.bottom, left: box.left, right: box.right });
+            edge = box.top;
+        }
+    }
+    const contentTop = document.getElementById('top-bar')?.getBoundingClientRect().bottom ?? 0;
+    for (const sheet of sheetsAbove({ edge, layoutWidth: layoutWidth(), contentTop, composer })) {
+        bars.push({ kind: 'sheet', ...sheet });
+    }
+    return bars;
+}
+
+/** @returns {Placement} */
+function readPlacement() {
+    const height = layoutHeight();
+    const highest = readBars().reduce((best, bar) => (best === null || bar.top < best.top ? bar : best), null);
+    const barBox = highest && { top: highest.top, bottom: highest.bottom, height: highest.bottom - highest.top };
+    const inset = bottomInset({ layoutHeight: height, viewport: window.visualViewport, composerBox: barBox });
+    let source = 'edge';
+    if (inset > 0) {
+        source = keyboardInset(window.visualViewport, height) >= inset ? 'keyboard' : highest.kind;
+    }
+    return { inset, shift: source === 'composer' || source === 'sheet' ? barShift(highest, layoutWidth()) : 0, source };
+}
+
+/** What the last write used, which the watch compares with the page as it is now. */
+let lastPlacement = { inset: 0, shift: 0, source: 'edge' };
+
+/**
+ * The shift of a message is written for a bottom position only, where the CSS centres it on the bar.
+ * @param {HTMLElement} element
+ * @param {Placement} placement
+ */
+function writeShift(element, placement) {
+    setProperty(element, BAR_SHIFT_PROPERTY, placement.shift !== 0 && edgeOf(element.className, false) === 'bottom' ? pixels(placement.shift) : null);
 }
 
 /**
  * @param {HTMLElement} overlay
- * @param {number} inset
+ * @param {Placement} placement
  */
-function placeInWindow(overlay, inset) {
-    setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(inset));
+function placeInWindow(overlay, placement) {
+    setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(placement.inset));
+    writeShift(overlay, placement);
     for (const property of [FRAME_LEFT_PROPERTY, FRAME_WIDTH_PROPERTY, FRAME_BOTTOM_PROPERTY]) {
         setProperty(overlay, property, null);
     }
@@ -262,6 +398,7 @@ function placeInWindow(overlay, inset) {
  */
 function placeInDialog(overlay, host) {
     setProperty(overlay, BOTTOM_INSET_PROPERTY, null);
+    setProperty(overlay, BAR_SHIFT_PROPERTY, null);
     const surface = dialogSurfaceOf(host);
     const isFrame = surface !== host;
     const originInHost = isFrame ? surface.offsetTop : -host.clientTop;
@@ -278,15 +415,15 @@ function placeInDialog(overlay, host) {
 
 /**
  * The in-app notifications sit beyond the toasts when both are at the same position, and the stack offset already holds
- * the space under the toasts. Otherwise a bottom notification sits above the composer and the keyboard as a toast does.
+ * the space under the toasts. Otherwise a bottom notification sits above the bottom bars and the keyboard as a toast does.
  * In a dialog the toast is at the dialog's bottom and the notifications keep their window position, so they do not
  * share a stack there.
  * @param {HTMLElement|null} overlay
  * @param {HTMLElement|null} notifications
  * @param {boolean} inDialog
- * @param {number} inset What the composer and the keyboard cover at the bottom of the window, from `windowBottomInset`.
+ * @param {Placement} placement What the bars and the keyboard cover at the bottom of the window.
  */
-function placeNotifications(overlay, notifications, inDialog, inset) {
+function placeNotifications(overlay, notifications, inDialog, placement) {
     if (!notifications) {
         return;
     }
@@ -294,9 +431,10 @@ function placeNotifications(overlay, notifications, inDialog, inset) {
         && !inDialog
         && POSITION_CLASSES.some(name => overlay.classList.contains(name) && notifications.classList.contains(name));
     const edge = edgeOf(notifications.className, false);
-    const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlayTargetBox(overlay, edge, inset) }) : null;
+    const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlayTargetBox(overlay, edge, placement.inset) }) : null;
     setProperty(notifications, STACK_OFFSET_PROPERTY, offset === null ? null : pixels(offset));
-    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(inset));
+    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(placement.inset));
+    writeShift(notifications, placement);
 }
 
 /**
@@ -360,7 +498,7 @@ export function updateToastPlacement({ jump = false, glide = false } = {}) {
 function writeToastPlacement(notifications, glide) {
     const overlay = document.getElementById(TOAST_OVERLAY_ID);
     if (!overlay && !notifications) {
-        syncCoverWatch();
+        syncBarWatch();
         return;
     }
     const inDialog = overlay?.parentElement instanceof HTMLDialogElement;
@@ -368,21 +506,22 @@ function writeToastPlacement(notifications, glide) {
         glideToPlace(overlay);
         glideToPlace(notifications);
     }
-    const inset = windowBottomInset();
+    const placement = readPlacement();
+    lastPlacement = placement;
     if (overlay) {
         overlay.toggleAttribute(IN_DIALOG_ATTRIBUTE, inDialog);
         if (inDialog) {
             placeInDialog(overlay, overlay.parentElement);
         } else {
-            placeInWindow(overlay, inset);
+            placeInWindow(overlay, placement);
         }
     }
-    placeNotifications(overlay, notifications, inDialog, inset);
+    placeNotifications(overlay, notifications, inDialog, placement);
     if (overlay) {
         // A dialog builds its action rows after it opens, and the rows that are watched are the ones it has now.
         observeToastPlacement();
     }
-    syncCoverWatch();
+    syncBarWatch();
 }
 
 /** What opens, closes or shows a surface: a class, an inline style, `hidden`, a dialog's `open`, `inert` and `aria-hidden`. */
@@ -397,87 +536,112 @@ function messagesOnScreen() {
 }
 
 /** @type {MutationObserver[]} */
-let coverObservers = [];
-let coverFrame = 0;
-
-/**
- * Looks at the composer once per frame, however many surfaces changed. A change that leaves the composer as it was writes
- * nothing, so a message that is on screen stays where it is while the page changes around it.
- */
-function checkComposerCover() {
-    coverFrame = 0;
-    if (!messagesOnScreen()) {
-        stopCoverWatch();
-        return;
-    }
-    if (readComposerCovered() !== composerIsCovered) {
-        updateToastPlacement({ glide: true });
-    }
-}
-
-function scheduleComposerCoverCheck() {
-    if (coverFrame || typeof requestAnimationFrame !== 'function') {
-        return;
-    }
-    coverFrame = requestAnimationFrame(checkComposerCover);
-}
+let barObservers = [];
+let barFrame = 0;
+/** @type {WeakSet<Animation>} */
+const watchedAnimations = new WeakSet();
 
 /** The messages themselves change all the time, and none of that moves a surface. */
 function isSurface(target) {
     return !(target instanceof Element) || target.closest(MESSAGE_SELECTOR) === null;
 }
 
+/**
+ * A surface that the Web Animations API moves, as a sheet that springs in does, fires no event when it stops, and a
+ * bar that is still on its way is not on its edge yet. The check looks again when each running animation has finished.
+ */
+function watchSurfaceAnimations() {
+    if (typeof document.getAnimations !== 'function') {
+        return;
+    }
+    for (const animation of document.getAnimations()) {
+        if (watchedAnimations.has(animation) || animation.playState === 'finished' || !isSurface(animation.effect?.target)) {
+            continue;
+        }
+        watchedAnimations.add(animation);
+        animation.finished.then(scheduleBarCheck, scheduleBarCheck);
+    }
+}
+
+/**
+ * Looks at the bars once per frame, however many surfaces changed. A change that leaves the bars as they were writes
+ * nothing, so a message that is on screen stays where it is while the page changes around it. A message eases when the
+ * source of its place changes (a panel covers the composer, a sheet opens), and follows at once when the same bar moves
+ * or grows.
+ */
+function checkBars() {
+    barFrame = 0;
+    if (!messagesOnScreen()) {
+        stopBarWatch();
+        return;
+    }
+    const now = readPlacement();
+    if (now.inset !== lastPlacement.inset || now.shift !== lastPlacement.shift) {
+        updateToastPlacement({ glide: now.source !== lastPlacement.source });
+    } else {
+        lastPlacement = now;
+    }
+    watchSurfaceAnimations();
+}
+
+function scheduleBarCheck() {
+    if (barFrame || typeof requestAnimationFrame !== 'function') {
+        return;
+    }
+    barFrame = requestAnimationFrame(checkBars);
+}
+
 function onSurfaceMutation(records) {
     if (!messagesOnScreen()) {
-        stopCoverWatch();
+        stopBarWatch();
         return;
     }
     if (records.some(record => isSurface(record.target))) {
-        scheduleComposerCoverCheck();
+        scheduleBarCheck();
     }
 }
 
 function onSurfaceMotionEnd(event) {
     if (isSurface(event.target)) {
-        scheduleComposerCoverCheck();
+        scheduleBarCheck();
     }
 }
 
 /**
- * Whether a panel covers the composer changes when a surface opens or closes, and nothing else reports that. The watch
- * runs only while a message is on screen: the page's own attributes, the children of the body, and the end of a
- * transition or an animation, which is when a panel that slides in has reached the composer.
+ * What a bar covers changes when a surface opens, closes, moves or ends a motion, and nothing else reports that. The
+ * watch runs only while a message is on screen: the page's own attributes, the children of the body, the end of a
+ * transition or an animation, which is when a panel that slides in has reached its place.
  */
-function startCoverWatch() {
-    if (coverObservers.length > 0 || typeof MutationObserver !== 'function' || !document.body) {
+function startBarWatch() {
+    if (barObservers.length > 0 || typeof MutationObserver !== 'function' || !document.body) {
         return;
     }
     const attributes = new MutationObserver(onSurfaceMutation);
     attributes.observe(document.body, { attributes: true, attributeFilter: SURFACE_ATTRIBUTES, subtree: true });
     const children = new MutationObserver(onSurfaceMutation);
     children.observe(document.body, { childList: true });
-    coverObservers = [attributes, children];
+    barObservers = [attributes, children];
     document.addEventListener('transitionend', onSurfaceMotionEnd, true);
     document.addEventListener('animationend', onSurfaceMotionEnd, true);
 }
 
-function stopCoverWatch() {
-    if (coverObservers.length === 0) {
+function stopBarWatch() {
+    if (barObservers.length === 0) {
         return;
     }
-    for (const observer of coverObservers) {
+    for (const observer of barObservers) {
         observer.disconnect();
     }
-    coverObservers = [];
+    barObservers = [];
     document.removeEventListener('transitionend', onSurfaceMotionEnd, true);
     document.removeEventListener('animationend', onSurfaceMotionEnd, true);
 }
 
-function syncCoverWatch() {
+function syncBarWatch() {
     if (messagesOnScreen()) {
-        startCoverWatch();
+        startBarWatch();
     } else {
-        stopCoverWatch();
+        stopBarWatch();
     }
 }
 

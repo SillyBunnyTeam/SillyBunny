@@ -318,3 +318,25 @@ describe('the toast overlay', () => {
         }
     });
 });
+
+describe('the middle that a bottom message is centred on', () => {
+    test('a toast and a card at the bottom centre follow the shift that the script writes, and stay 12px inside the window', () => {
+        const toast = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast');
+        expect(toast).toContain('--sb-toast-room: max(0px, calc((100cqw - 24px - 100%) / 2))');
+        expect(toast).toContain('translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room))');
+        const card = ruleOf(themeCss, 'body #toast-container[class].toast-bottom-center > .sb-form-notification');
+        expect(card).toContain('--sb-toast-room: max(0px, calc((100vw - 24px - 100%) / 2))');
+        expect(card).toContain('translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room))');
+    });
+
+    test('the room is the allowance of the width of each form: the toast takes the window minus 24px, and so does the card', () => {
+        expect(ruleOf(themeCss, TOAST)).toContain('max-width: min(34em, calc(100cqw - 24px))');
+        expect(ruleOf(themeCss, NOTIFICATION)).toContain('max-width: calc(100% - 24px)');
+    });
+
+    test('the shift eases unless motion is reduced, and a toast in a dialog is not shifted', () => {
+        expect(themeCss).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{\s*body:not\(\.reduced-motion\) :is\(#sb-toast-overlay\.toast-bottom-center > \.sb-form-toast, #toast-container\.toast-bottom-center > \.sb-form-notification\) \{\s*transition: translate var\(--sb-transition-slow\);/);
+        expect(themeCss).toContain('#sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast {');
+    });
+});
+

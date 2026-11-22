@@ -9,15 +9,19 @@ import {
     FRAME_WIDTH_PROPERTY,
     IN_DIALOG_ATTRIBUTE,
     ACTION_ROW_SELECTOR,
+    BAR_SHIFT_PROPERTY,
     STACK_OFFSET_PROPERTY,
     actionRowTop,
+    barShift,
     bottomInset,
     composerCovered,
+    composerDocked,
     composerInset,
     dialogSurfaceOf,
     dialogToastBottom,
     edgeOf,
     keyboardInset,
+    sheetsAbove,
     stackOffset,
     updateToastPlacement,
 } from '../../public/scripts/sillybunny-toast-placement.js';
@@ -186,6 +190,182 @@ describe('the dialog surface', () => {
     });
 });
 
+describe('whether the composer is docked', () => {
+    test('is docked when its bottom edge is on the bottom of the window, give or take the few px that a fraction of a height leaves', () => {
+        expect(composerDocked({ top: 727, bottom: 900, height: 173 }, 900)).toBe(true);
+        expect(composerDocked({ top: 727, bottom: 899.4, height: 172.4 }, 900)).toBe(true);
+        expect(composerDocked({ top: 727, bottom: 897, height: 170 }, 900)).toBe(true);
+    });
+
+    test('is not docked when it floats above the bottom of the window, as a composer that MovingUI has moved does', () => {
+        expect(composerDocked({ top: 464, bottom: 636, height: 172 }, 900)).toBe(false);
+        expect(composerDocked({ top: 700, bottom: 890, height: 190 }, 900)).toBe(false);
+    });
+
+    test('is not docked with no box, as on Home', () => {
+        expect(composerDocked({ top: 0, bottom: 0, height: 0 }, 900)).toBe(false);
+        expect(composerDocked(null, 900)).toBe(false);
+    });
+});
+
+describe('the shift of a bar from the middle of the window', () => {
+    test('is the distance of the middle of the bar from the middle of the window', () => {
+        expect(barShift({ left: 280, right: 1000 }, 1000)).toBe(140);
+        expect(barShift({ left: 0, right: 600 }, 1000)).toBe(-200);
+        expect(barShift({ left: 100, right: 900 }, 1000)).toBe(0);
+    });
+
+    test('counts only the part of the bar that is in the window', () => {
+        expect(barShift({ left: -200, right: 1400 }, 1000)).toBe(0);
+        expect(barShift({ left: 800, right: 1600 }, 1000)).toBe(400);
+    });
+
+    test('is nothing with no bar', () => {
+        expect(barShift(null, 1000)).toBe(0);
+    });
+});
+
+describe('the sheets docked above an edge', () => {
+    let composer;
+    let sheet;
+    let row;
+
+    function place(element, box) {
+        element.getBoundingClientRect = () => ({ ...box, width: box.right - box.left, height: box.bottom - box.top });
+    }
+
+    /** A page with the composer, a top bar, a sheet that holds a row, a dialog and one message of each form. */
+    beforeEach(() => {
+        document.body.innerHTML = `
+            <div id="top-bar"></div>
+            <div id="sheld"><div id="chat"></div><div id="form_sheld"><div id="bar"></div></div></div>
+            <div id="sheet"><div id="row"></div></div>
+            <dialog id="dialog" open><div id="dialog-row"></div></dialog>
+            <div id="toast-container"><div id="note"></div></div>`;
+        composer = document.getElementById('form_sheld');
+        sheet = document.getElementById('sheet');
+        row = document.getElementById('row');
+        sheet.style.position = 'fixed';
+        place(sheet, { top: 500, bottom: 800, left: 0, right: 1000 });
+    });
+
+    const find = (overrides = {}) => sheetsAbove({
+        edge: 800,
+        layoutWidth: 1000,
+        contentTop: 44,
+        composer,
+        elementsAt: () => [row, sheet, document.body],
+        ...overrides,
+    });
+
+    test('finds a fixed element that ends on the edge, from a point inside it', () => {
+        expect(find()).toEqual([{ top: 500, bottom: 800, left: 0, right: 1000 }]);
+    });
+
+    test('finds one that rests on the top of the composer when the composer is the edge', () => {
+        place(sheet, { top: 300, bottom: 700, left: 0, right: 1000 });
+        expect(find({ edge: 700 })).toEqual([{ top: 300, bottom: 700, left: 0, right: 1000 }]);
+    });
+
+    test('allows the gap that a bar keeps under a sheet, and a few px the other way, and no more', () => {
+        place(sheet, { top: 500, bottom: 794, left: 0, right: 1000 });
+        expect(find()).toHaveLength(1);
+        place(sheet, { top: 500, bottom: 790, left: 0, right: 1000 });
+        expect(find()).toHaveLength(1);
+        place(sheet, { top: 500, bottom: 780, left: 0, right: 1000 });
+        expect(find()).toEqual([]);
+        place(sheet, { top: 500, bottom: 803, left: 0, right: 1000 });
+        expect(find()).toHaveLength(1);
+        place(sheet, { top: 500, bottom: 810, left: 0, right: 1000 });
+        expect(find()).toEqual([]);
+    });
+
+    test('finds the sheets that stand on one another, from the lowest', () => {
+        const upper = document.createElement('div');
+        const upperRow = document.createElement('div');
+        upper.append(upperRow);
+        upper.style.position = 'fixed';
+        document.body.append(upper);
+        place(upper, { top: 300, bottom: 500, left: 0, right: 1000 });
+        const found = find({ elementsAt: (x, y) => (y >= 500 ? [row, sheet] : [upperRow, upper]) });
+        expect(found.map(box => box.top)).toEqual([500, 300]);
+    });
+
+    test('reads a few points just above the edge, across the window, and none where a message lies', () => {
+        const points = [];
+        // Nothing answers, so that the edge stays where it is and only its points are read.
+        find({
+            elementsAt: (x, y) => {
+                points.push([x, y]);
+                return [];
+            },
+        });
+        expect(points.length).toBeGreaterThanOrEqual(2);
+        for (const [x, y] of points) {
+            expect(y).toBeGreaterThan(780);
+            expect(y).toBeLessThan(800);
+            expect(x).toBeGreaterThan(0);
+            expect(x).toBeLessThan(1000);
+        }
+        expect(new Set(points.map(([x]) => x)).size).toBe(points.length);
+    });
+
+    test('takes the topmost element that is not a message, and the elements that hold it', () => {
+        const note = document.getElementById('note');
+        expect(find({ elementsAt: () => [note, row, sheet] })).toHaveLength(1);
+    });
+
+    test('is not a sheet when it is not fixed to the window', () => {
+        sheet.style.position = 'absolute';
+        expect(find()).toEqual([]);
+    });
+
+    test('is not a sheet when it is narrower than half the window, as a panel that is docked at one side', () => {
+        place(sheet, { top: 500, bottom: 800, left: 0, right: 400 });
+        expect(find()).toEqual([]);
+        place(sheet, { top: 500, bottom: 800, left: 0, right: 500 });
+        expect(find()).toHaveLength(1);
+    });
+
+    test('is not a sheet when it leaves no room under the top bar, which is a page that covers the window', () => {
+        place(sheet, { top: 44, bottom: 800, left: 0, right: 1000 });
+        expect(find()).toEqual([]);
+        place(sheet, { top: 60, bottom: 800, left: 0, right: 1000 });
+        expect(find()).toEqual([]);
+        place(sheet, { top: 80, bottom: 800, left: 0, right: 1000 });
+        expect(find()).toHaveLength(1);
+    });
+
+    test('is not a sheet when it is a dialog, or in one: the toasts of a dialog are placed by the dialog', () => {
+        const dialog = document.getElementById('dialog');
+        dialog.style.position = 'fixed';
+        place(dialog, { top: 500, bottom: 800, left: 0, right: 1000 });
+        const dialogRow = document.getElementById('dialog-row');
+        expect(find({ elementsAt: () => [dialogRow, dialog] })).toEqual([]);
+    });
+
+    test('is not a sheet when it holds the composer or is part of it', () => {
+        const shell = document.getElementById('sheld');
+        shell.style.position = 'fixed';
+        place(shell, { top: 500, bottom: 800, left: 0, right: 1000 });
+        const bar = document.getElementById('bar');
+        composer.style.position = 'fixed';
+        place(composer, { top: 700, bottom: 800, left: 0, right: 1000 });
+        expect(find({ elementsAt: () => [bar, composer, shell] })).toEqual([]);
+    });
+
+    test('is not a sheet when it is a message', () => {
+        const messages = document.getElementById('toast-container');
+        messages.style.position = 'fixed';
+        place(messages, { top: 500, bottom: 800, left: 0, right: 1000 });
+        expect(find({ elementsAt: () => [document.getElementById('note'), messages] })).toEqual([]);
+    });
+
+    test('finds nothing when no point answers', () => {
+        expect(find({ elementsAt: () => [] })).toEqual([]);
+    });
+});
+
 describe('whether the composer is covered', () => {
     let composer;
     let bar;
@@ -284,6 +464,7 @@ describe('writing the placement', () => {
         composer = document.getElementById('form_sheld');
         composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 0, right: 1000, width: 1000 });
         Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, value: 800 });
+        Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 1000 });
         visualViewport = { height: 800, offsetTop: 0, addEventListener: jest.fn(), removeEventListener: jest.fn() };
         Object.defineProperty(window, 'visualViewport', { configurable: true, value: visualViewport });
     });
@@ -291,6 +472,7 @@ describe('writing the placement', () => {
     afterEach(() => {
         document.body.innerHTML = '';
         delete document.documentElement.clientHeight;
+        delete document.documentElement.clientWidth;
     });
 
     function overlayWith(positionClass, parent = document.body) {
@@ -492,7 +674,7 @@ describe('writing the placement', () => {
             expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('160px');
         });
 
-        test('keeps its window position while a dialog is open, with the composer and the keyboard as before', () => {
+        test('keeps its window position while a toast is in a dialog, and the composer and the keyboard lift it as before', () => {
             const dialog = document.createElement('dialog');
             dialog.className = 'popup';
             document.body.append(dialog);
@@ -589,7 +771,7 @@ describe('writing the placement', () => {
             expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('160px');
         });
 
-        test('the check is not made while a modal dialog is open, so that a notification keeps its place above the composer', () => {
+        test('a modal dialog covers the composer with its dimming, so a bottom notification sits at the window edge', () => {
             const dialog = document.createElement('dialog');
             dialog.setAttribute('open', '');
             dialog.setAttribute('data-sb-modal', '');
@@ -600,8 +782,39 @@ describe('writing the placement', () => {
             document.body.append(notifications);
             coveredBy(dialog);
             updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            expect(elementsFromPoint).toHaveBeenCalled();
+        });
+
+        test('a toast in a modal dialog is placed by the dialog, with no window offset, as before', () => {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'popup';
+            dialog.setAttribute('open', '');
+            dialog.setAttribute('data-sb-modal', '');
+            document.body.append(dialog);
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            coveredBy(dialog);
+            updateToastPlacement();
+            expect(overlay.hasAttribute(IN_DIALOG_ATTRIBUTE)).toBe(true);
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
+            expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).not.toBe('');
+        });
+
+        test('a dialog that closes leaves the composer to the page again', () => {
+            const dialog = document.createElement('dialog');
+            dialog.setAttribute('open', '');
+            document.body.append(dialog);
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = 'toast-bottom-center';
+            document.body.append(notifications);
+            coveredBy(dialog);
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            dialog.remove();
+            uncovered();
+            updateToastPlacement();
             expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
-            expect(elementsFromPoint).not.toHaveBeenCalled();
         });
 
         test('a browser without elementsFromPoint leaves the composer uncovered', () => {
@@ -609,6 +822,207 @@ describe('writing the placement', () => {
             const overlay = overlayWith('toast-bottom-center');
             updateToastPlacement();
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+        });
+    });
+
+    describe('a composer that is not docked at the bottom edge', () => {
+        beforeEach(() => {
+            document.elementsFromPoint = jest.fn(() => [composer]);
+        });
+
+        afterEach(() => {
+            delete document.elementsFromPoint;
+        });
+
+        test('is not a bottom bar: a toast and a notification sit at the window edge', () => {
+            // MovingUI has moved it up, and it floats with 328px under it.
+            composer.getBoundingClientRect = () => ({ top: 300, bottom: 472, height: 172, left: 100, right: 900, width: 800 });
+            const overlay = overlayWith('toast-bottom-center');
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = 'toast-bottom-right';
+            document.body.append(notifications);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+
+        test('is a bottom bar again when it is back at the bottom edge', () => {
+            composer.getBoundingClientRect = () => ({ top: 300, bottom: 472, height: 172, left: 100, right: 900, width: 800 });
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 100, right: 900, width: 800 });
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+        });
+
+        test('leaves the keyboard to lift the toast', () => {
+            composer.getBoundingClientRect = () => ({ top: 300, bottom: 472, height: 172, left: 100, right: 900, width: 800 });
+            const overlay = overlayWith('toast-bottom-center');
+            visualViewport.height = 450;
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('350px');
+        });
+    });
+
+    describe('a sheet that is docked at the bottom', () => {
+        let sheet;
+        let row;
+
+        function dock(box) {
+            sheet = document.createElement('div');
+            row = document.createElement('div');
+            sheet.append(row);
+            sheet.style.position = 'fixed';
+            sheet.getBoundingClientRect = () => ({ ...box, width: box.right - box.left, height: box.bottom - box.top });
+            document.body.append(sheet);
+            return sheet;
+        }
+
+        afterEach(() => {
+            delete document.elementsFromPoint;
+        });
+
+        test('over the composer, like the action menu of a phone, is the bar that a toast and a notification sit above', () => {
+            dock({ top: 500, bottom: 800, left: 0, right: 1000 });
+            document.elementsFromPoint = jest.fn(() => [row, sheet, composer]);
+            const overlay = overlayWith('toast-bottom-center');
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = 'toast-bottom-right';
+            document.body.append(notifications);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+        });
+
+        test('on top of the composer, like the sheet of a side panel, is the bar when it reaches higher than the composer', () => {
+            dock({ top: 300, bottom: 700, left: 0, right: 1000 });
+            document.elementsFromPoint = jest.fn((x, y) => (y >= 700 ? [composer] : [row, sheet]));
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('500px');
+        });
+
+        test('with two docked surfaces, a toast sits above the highest', () => {
+            dock({ top: 500, bottom: 800, left: 0, right: 1000 });
+            const lower = sheet;
+            const lowerRow = row;
+            dock({ top: 300, bottom: 500, left: 0, right: 1000 });
+            const upper = sheet;
+            const upperRow = row;
+            document.elementsFromPoint = jest.fn((x, y) => (y >= 500 ? [lowerRow, lower, composer] : [upperRow, upper]));
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('500px');
+        });
+
+        test('is not lower than the keyboard when the keyboard reaches higher', () => {
+            dock({ top: 500, bottom: 800, left: 0, right: 1000 });
+            document.elementsFromPoint = jest.fn(() => [row, sheet, composer]);
+            visualViewport.height = 150;
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('650px');
+        });
+
+        test('goes with the stack: the notifications beyond the toasts start above the sheet', () => {
+            dock({ top: 500, bottom: 800, left: 0, right: 1000 });
+            document.elementsFromPoint = jest.fn(() => [row, sheet, composer]);
+            const overlay = overlayWith('toast-bottom-center');
+            overlay.getBoundingClientRect = () => ({ top: 440, bottom: 500, height: 60, left: 0, right: 1000, width: 1000 });
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = 'toast-bottom-center';
+            document.body.append(notifications);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+            expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('360px');
+        });
+
+        test('is not a bar when it covers the window under the top bar, as a page of the top bar does', () => {
+            document.body.insertAdjacentHTML('afterbegin', '<div id="top-bar"></div>');
+            document.getElementById('top-bar').getBoundingClientRect = () => ({ top: 0, bottom: 44, height: 44, left: 0, right: 1000, width: 1000 });
+            dock({ top: 44, bottom: 800, left: 0, right: 1000 });
+            document.elementsFromPoint = jest.fn(() => [row, sheet, composer]);
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+    });
+
+    describe('where a bottom message is centred', () => {
+        let elementsFromPoint;
+
+        beforeEach(() => {
+            elementsFromPoint = jest.fn(() => [composer]);
+            document.elementsFromPoint = elementsFromPoint;
+            // A side panel docks at the left and pushes the composer to the right.
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 280, right: 1000, width: 720 });
+        });
+
+        afterEach(() => {
+            delete document.elementsFromPoint;
+        });
+
+        function notificationsAt(positionClass) {
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = positionClass;
+            document.body.append(notifications);
+            return notifications;
+        }
+
+        test('is the middle of the composer while the message sits above it', () => {
+            const overlay = overlayWith('toast-bottom-center');
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('140px');
+            expect(notifications.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('140px');
+        });
+
+        test('is the middle of the window at the window edge, where nothing is docked', () => {
+            const panelElement = document.createElement('div');
+            document.body.append(panelElement);
+            elementsFromPoint.mockImplementation(() => [panelElement, composer]);
+            const overlay = overlayWith('toast-bottom-center');
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+            expect(notifications.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+        });
+
+        test('is the middle of the window when the keyboard reaches higher than the composer', () => {
+            visualViewport.height = 450;
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+        });
+
+        test('is the middle of the sheet that the message sits above', () => {
+            const sheet = document.createElement('div');
+            sheet.style.position = 'fixed';
+            sheet.getBoundingClientRect = () => ({ top: 500, bottom: 800, height: 300, left: 0, right: 600, width: 600 });
+            document.body.append(sheet);
+            elementsFromPoint.mockImplementation(() => [sheet, composer]);
+            const overlay = overlayWith('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('-200px');
+        });
+
+        test('is written only for a bottom position that is not in a dialog', () => {
+            const top = overlayWith('toast-top-center');
+            updateToastPlacement();
+            expect(top.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+            top.remove();
+
+            const dialog = document.createElement('dialog');
+            dialog.className = 'popup';
+            document.body.append(dialog);
+            const inDialog = overlayWith('toast-bottom-center', dialog);
+            updateToastPlacement();
+            expect(inDialog.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
         });
     });
 
@@ -627,7 +1041,7 @@ describe('writing the placement', () => {
             });
             window.matchMedia = jest.fn(() => ({ matches: reducedMotion }));
             hit = [composer];
-            elementsFromPoint = jest.fn(() => hit);
+            elementsFromPoint = jest.fn((x, y) => (typeof hit === 'function' ? hit(x, y) : hit));
             document.elementsFromPoint = elementsFromPoint;
         });
 
@@ -711,6 +1125,71 @@ describe('writing the placement', () => {
             expect(overlay.style.getPropertyValue('transition')).toContain('bottom');
             jest.advanceTimersByTime(400);
             expect(overlay.style.getPropertyValue('transition')).toBe('');
+        });
+
+        test('lifts a toast that is on screen to the top of a sheet that opens, and drops it when the sheet goes, easing both ways', async () => {
+            const { overlay } = showMessage();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+            const sheet = document.createElement('div');
+            const row = document.createElement('div');
+            sheet.append(row);
+            sheet.style.position = 'fixed';
+            sheet.getBoundingClientRect = () => ({ top: 300, bottom: 700, height: 400, left: 0, right: 1000, width: 1000 });
+            document.body.append(sheet);
+            hit = (x, y) => (y >= 700 ? [composer] : [row, sheet]);
+            await settle();
+            runFrames();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('500px');
+            expect(overlay.style.getPropertyValue('transition')).toContain('bottom');
+
+            sheet.remove();
+            hit = [composer];
+            await settle();
+            runFrames();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+        });
+
+        test('follows a composer that grows with no glide, because it is the same bar', async () => {
+            const { overlay } = showMessage();
+            composer.getBoundingClientRect = () => ({ top: 650, bottom: 800, height: 150, left: 0, right: 1000, width: 1000 });
+            document.body.className = 'typing';
+            await settle();
+            runFrames();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('150px');
+            expect(overlay.style.getPropertyValue('transition')).toBe('');
+        });
+
+        test('follows a composer that moves sideways without a new size, which no resize observer reports', async () => {
+            const { overlay } = showMessage();
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+            composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 280, right: 1000, width: 720 });
+            document.body.className = 'docked';
+            await settle();
+            runFrames();
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('140px');
+            expect(overlay.style.getPropertyValue('transition')).toBe('');
+        });
+
+        test('looks again when an animation that the Web Animations API runs on a surface has finished', async () => {
+            const { overlay } = showMessage();
+            const panelElement = document.createElement('div');
+            document.body.append(panelElement);
+            let finish;
+            const animation = { playState: 'running', effect: { target: panelElement }, finished: new Promise((resolve) => { finish = resolve; }) };
+            document.getAnimations = () => [animation];
+            document.body.className = 'sheet-opening';
+            await settle();
+            runFrames();
+            expect(frames).toHaveLength(0);
+
+            // The sheet has got to its place, and nothing in the page changed but the end of its motion.
+            hit = [panelElement, composer];
+            finish();
+            await settle();
+            expect(frames).toHaveLength(1);
+            runFrames();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            delete document.getAnimations;
         });
 
         test('does not ease under reduced motion', () => {
