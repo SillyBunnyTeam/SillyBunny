@@ -620,18 +620,47 @@ describe('the two queues', () => {
         expect(queueState()).toEqual({ current: undo[0], waiting: [first[0]] });
     });
 
-    test('a timeout of 0 from the caller is never held back, and takes a place while it is on screen', async () => {
+    test('a notification with a timeout of 0 from the caller shows at once whatever is on screen, and takes no place', async () => {
         const staying = ['A', 'B', 'C', 'D'].map(name => notice('info', name, { timeOut: 0, extendedTimeOut: 0 }));
         expect(staying.map(shown)).toEqual([true, true, true, true]);
-        const next = notice('info', 'Next');
-        expect(shown(next)).toBe(false);
+        expect(notificationState()).toEqual({ shown: [], waiting: [] });
+
+        const next = ['E', 'F', 'G'].map(name => notice('info', name));
+        expect(next.map(shown)).toEqual([true, true, true]);
+        expect(notificationState().shown).toEqual(next.map($toast => $toast[0]));
+        const waiting = notice('info', 'H');
+        expect(shown(waiting)).toBe(false);
 
         toastr.clear(staying[0]);
         await flush();
-        expect(shown(next)).toBe(false);
-        toastr.clear(staying[1]);
-        await flush();
-        expect(shown(next)).toBe(true);
+        expect(shown(waiting)).toBe(false);
+    });
+
+    test('three progress notifications on screen do not hold a titled error back', () => {
+        const progress = ['A', 'B', 'C'].map(name => notice('info', name, { timeOut: 0, extendedTimeOut: 0 }));
+        const error = notice('error', 'Failed');
+        expect(progress.map(shown)).toEqual([true, true, true]);
+        expect(shown(error)).toBe(true);
+        expect(notificationState()).toEqual({ shown: [error[0]], waiting: [] });
+    });
+
+    test('three errors that stay fill the places, a fourth error waits, and a progress notification still shows at once', () => {
+        const errors = ['A', 'B', 'C'].map(name => notice('error', name));
+        const fourth = notice('error', 'D');
+        const progress = notice('info', 'Working', { timeOut: 0, extendedTimeOut: 0 });
+        expect(errors.map(shown)).toEqual([true, true, true]);
+        expect(shown(fourth)).toBe(false);
+        expect(shown(progress)).toBe(true);
+        expect(notificationState()).toEqual({ shown: errors.map($toast => $toast[0]), waiting: [fourth[0]] });
+    });
+
+    test('a high-priority notification never pushes back one that the caller made to stay', () => {
+        const staying = notice('info', 'Working', { timeOut: 0, extendedTimeOut: 0 });
+        const [a, b, c] = ['A', 'B', 'C'].map(name => notice('info', name));
+        const urgent = notice('info', 'Urgent', { priority: 'high' });
+        expect(staying[0].classList.contains('sb-toast-leaving')).toBe(false);
+        expect(a[0].classList.contains('sb-toast-leaving')).toBe(true);
+        expect(notificationState()).toEqual({ shown: [b[0], c[0], urgent[0]], waiting: [a[0]] });
     });
 
     test('a toast with a timeout of 0 does not take the place of the toast queue', () => {

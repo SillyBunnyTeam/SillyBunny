@@ -73,7 +73,7 @@ let initialized = false;
  * @property {string|null} key Same type, title and message, for collapsing repeats. Null when a repeat is not a duplicate.
  * @property {string} state
  * @property {boolean} high The message asked to show at once.
- * @property {boolean} persistent The caller made it stay with a timeOut of 0, so it is never held back or pushed back.
+ * @property {boolean} persistent The caller made it stay with a timeOut of 0. It shows at once and is not in a queue.
  * @property {boolean} resumed True once the toast was shown and pushed back by a high-priority toast.
  * @property {string} showMethod
  * @property {number} timeOut
@@ -106,8 +106,7 @@ function createQueue(form, capacity, canPushBack) {
 const queues = {
     // One toast at a time, as in libadwaita. A high-priority toast takes the place of the shown one, whatever it is.
     [TOAST_FORM]: createQueue(TOAST_FORM, 1, () => true),
-    // A message that a caller made to stay is not pushed back, because that would hide a state that has to stay.
-    [NOTIFICATION_FORM]: createQueue(NOTIFICATION_FORM, NOTIFICATION_MAX_SHOWN, entry => !entry.high && !entry.persistent),
+    [NOTIFICATION_FORM]: createQueue(NOTIFICATION_FORM, NOTIFICATION_MAX_SHOWN, entry => !entry.high),
 };
 const allQueues = Object.values(queues);
 
@@ -807,17 +806,17 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
 /** Shows the message now, or lets it wait for its turn in the queue of its form. */
 function present(entry) {
     const queue = queues[entry.form];
-    // A toast that a class hides, or that a caller made to stay in the toast form, shows at once with its own timer and
-    // takes no place, so a bulk move or a progress toast does not hold real messages back.
-    if (isHiddenByClass(entry.element) || (entry.persistent && entry.form === TOAST_FORM)) {
+    // A message that a class hides, or that a caller made to stay (progress and persistent states), shows at once and
+    // takes no place, so it does not hold back the messages that time out or wait to be dismissed, errors included.
+    if (isHiddenByClass(entry.element) || entry.persistent) {
         show(entry);
         return;
     }
 
     queued.set(entry.element, entry);
     const busy = queue.shown.length >= queue.capacity || queue.waiting.length > 0;
-    if (entry.persistent || entry.high || !busy) {
-        if (entry.high && !entry.persistent) {
+    if (entry.high || !busy) {
+        if (entry.high) {
             makeRoom(queue);
         }
         activate(queue, entry);
