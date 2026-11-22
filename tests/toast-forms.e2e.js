@@ -49,6 +49,13 @@ test.describe('which form a message takes, and where it shows', () => {
         await expect(page.locator(NOTIFICATION_FORM_SELECTOR)).toHaveAttribute('role', 'status');
     });
 
+    test('a toast and a notification whose toastClass replaces the toast class are announced as status messages', async ({ page }) => {
+        await fire(page, 'plain', 'info', 'A toast', '', { timeOut: 0, extendedTimeOut: 0, toastClass: 'foo' });
+        await fire(page, 'plain', 'info', 'A notification', 'Title', { timeOut: 0, extendedTimeOut: 0, toastClass: 'foo' });
+        await expect(page.locator('#sb-toast-overlay > .sb-form-toast.foo')).toHaveAttribute('role', 'status');
+        await expect(page.locator('#toast-container > .sb-form-notification.foo')).toHaveAttribute('role', 'status');
+    });
+
     test('a click action, several buttons and several blocks make a notification, and one button keeps a toast', async ({ page }) => {
         expect(await fire(page, 'onclick')).toMatchObject({ form: 'notification' });
         expect(await fire(page, 'severalButtons')).toMatchObject({ form: 'notification' });
