@@ -4064,11 +4064,13 @@
                 "pop-up notifications",
                 "toast confirmations",
                 "notifications at the bottom",
-                "toasts at the top"
+                "toasts at the top",
+                "dismiss a toast",
+                "close a toast"
             ],
             "keysecondary": [],
             "comment": "A83 Notification and toast positions",
-            "content": "Customize ▸ Appearance ▸ Chat Display has two position settings for the messages that pop up over the interface: \"Notifications\" and \"Toasts\". Both offer Top Left, Top Center, Top Right, Bottom Left, Bottom Center and Bottom Right. A choice applies at once and is saved with the other settings. Neither is part of a UI theme, so changing the theme leaves them as they are. \"Toasts\" places toasts: short plain messages, such as a confirmation, with no title, one line of text and at most one button. It starts at Bottom Center. \"Notifications\" places in-app notifications: messages with a title, several parts, more than one button, a click action or text that does not fit on one line. It starts at Top Center.",
+            "content": "Customize ▸ Appearance ▸ Chat Display has two position settings for the messages that pop up over the interface: \"Notifications\" and \"Toasts\". Both offer Top Left, Top Center, Top Right, Bottom Left, Bottom Center and Bottom Right. A choice applies at once and is saved with the other settings. Neither is part of a UI theme, so changing the theme leaves them as they are. \"Toasts\" places toasts: short plain messages, such as a confirmation, with no title, one line of text and at most one button. It starts at Bottom Center. \"Notifications\" places in-app notifications: messages with a title, several parts, more than one button, a click action or text that does not fit on one line. It starts at Top Center. While a dialog is open, a toast shows at the bottom centre of that dialog, above its buttons, whatever \"Toasts\" says, and in-app notifications keep their place in the window. When \"Toasts\" and \"Notifications\" are set to the same position, a toast and the in-app notifications form one stack, with the toast nearest the edge. A toast closes with its Dismiss button, and tapping the toast does nothing.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
