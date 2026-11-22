@@ -4051,6 +4051,54 @@
             "extensions": {
                 "sb_topic": []
             }
+        },
+        "83": {
+            "uid": 83,
+            "key": [
+                "notification position",
+                "toast position",
+                "move notifications",
+                "move toasts",
+                "where notifications appear",
+                "where toasts appear",
+                "pop-up notifications",
+                "toast confirmations",
+                "notifications at the bottom",
+                "toasts at the top"
+            ],
+            "keysecondary": [],
+            "comment": "A83 Notification and toast positions",
+            "content": "Customize ▸ Appearance ▸ Chat Display has two position settings for the messages that pop up over the interface: \"Notifications\" and \"Toasts\". Both offer Top Left, Top Center, Top Right, Bottom Left, Bottom Center and Bottom Right. A choice applies at once and is saved with the other settings. Neither is part of a UI theme, so changing the theme leaves them as they are. \"Toasts\" places toasts: short plain messages, such as a confirmation, with no title, one line of text and at most one button. It starts at Bottom Center. \"Notifications\" places in-app notifications: messages with a title, several parts, more than one button, a click action or text that does not fit on one line. It starts at Top Center.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 980,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 83,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": []
+            }
         }
     }
 }
