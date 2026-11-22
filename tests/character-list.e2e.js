@@ -11,7 +11,7 @@ import { parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
 const showMore = page => list(page).locator('.sb-list-show-more__button');
-// At 1440px the list is a wide settings page, an AdwClamp that gives its frame 1115px of the 1136px between the page's 12px insets.
+// At 1440px the list is a wide settings page: its frame is an AdwClamp of the room between the page insets, in a pane that is the window less the sidebar.
 const selectionLayout = {
     1440: { titleX: 100, descriptionRight: 1073, truncated: false },
     390: { titleX: 100, descriptionRight: 304, truncated: false },

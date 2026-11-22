@@ -1472,7 +1472,7 @@ body:not(.movingUI) .drawer-content.maximized {
     /* clamp-curve:end */
 }
 
-/* Limit Content Width is off: the content has all the room, which is today's inset on each side. */
+/* Limit Content Width is off: the content has all the room between the page insets. */
 :root[data-sb-content-clamp='off'] #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail, .scrollableInner) {
     --sb-page-content: var(--sb-page-available);
 }

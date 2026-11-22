@@ -171,7 +171,7 @@ test.describe('One side inset on every settings page', () => {
     test('a page the clamp does not narrow sits 12px from the pane at every desktop width, and no page steps at 1440px', async ({ page }) => {
         await boot(page, { width: 1100, height: 900 });
         const reads = {};
-        // 1260px is the widest window at which a wide page still has less room than its threshold (960sp); 1436 and 1440 are the two sides of the old step.
+        // 1260px is the widest window at which a wide page still has less room than its threshold (960sp). No page steps at 1440px, so 1436px and 1440px are read.
         for (const width of [900, 1100, 1260, 1436, 1440]) {
             await page.setViewportSize({ width, height: 900 });
             reads[width] = { wide: await readWidePages(page), preference: await readPreferencePage(page, PREFERENCE_PAGES[0]) };
@@ -197,7 +197,7 @@ test.describe('One side inset on every settings page', () => {
 });
 
 test.describe('One top space on every settings page', () => {
-    // The old space under the bar followed the window height (clamp(16px, 2.2vh, 24px) less 4px) from 1440px and was 14px below it.
+    // The space under the bar is the settings page's at every window width and height, so it does not step at 1440px or follow the height.
     for (const height of [900, 700]) {
         test(`a list or editor frame starts where a preference page starts its content, at 1436px and 1444px, ${height}px high`, async ({ page }) => {
             await boot(page, { width: 1436, height });

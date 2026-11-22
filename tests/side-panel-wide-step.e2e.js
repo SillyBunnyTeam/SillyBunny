@@ -14,7 +14,7 @@ const MIN_CHAT_WIDTH = 360;
 const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 420;
 
-// Every 20 to 50px, with a 1px sweep through the 1280px step that the chat used to take below it.
+// Every 20 to 50px, with a 1px sweep through 1280px, where the chat must not step.
 const WIDTHS = [
     1500, 1440, 1400, 1360, 1320, 1300,
     ...Array.from({ length: 21 }, (_, index) => 1290 - index),
@@ -138,7 +138,7 @@ for (const pageWidth of [30, 55, 100]) {
     }
 }
 
-// Rows of the layout one left panel gives, at the widths where the chat used to take the rest of the window below 1280px: chat left, chat width, panel width.
+// Rows of the layout that one left panel gives below 1280px, where the chat keeps its Page Width: chat left, chat width, panel width.
 const ONE_PANEL_ROWS = [
     { pageWidth: 30, width: 1279, left: 447.7, chat: 383.7, panel: 420 },
     { pageWidth: 30, width: 1200, left: 420, chat: 360, panel: 420 },

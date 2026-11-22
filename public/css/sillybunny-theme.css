@@ -99,8 +99,8 @@
     --sb-settings-inset: var(--sb-density-container-padding);
     --sb-settings-inset-top: calc(24px - 6px * var(--sb-density-t));
     /* libadwaita's `sp` is a pixel scaled by the text size, which is --fontScale here, so these maximums grow with the text.
-       A settings page keeps its content in an AdwClamp of one of the two maximums (see the settings page in sillybunny-tabs.css).
-       --sb-page-max is the maximum of the page that is shown. */
+       A settings page keeps its content in an AdwClamp of one of the two maximums, and --sb-page-max is the maximum of the
+       page that is shown. */
     --sb-measure-preference: calc(1000px * var(--fontScale, 1));
     --sb-measure-wide: calc(1440px * var(--fontScale, 1));
     --sb-page-max: var(--sb-measure-preference);
@@ -326,8 +326,7 @@
     --sb-message-radius: 22px;
 }
 
-/* Limit Content Width is off. A ceiling of 100dvw is no ceiling, and the settings pages take their unclamped width from the
-   rule that follows the clamp in sillybunny-tabs.css. The root attribute is the only write. */
+/* Limit Content Width is off: a ceiling of 100dvw is no ceiling. */
 :root[data-sb-content-clamp='off'] {
     --sb-window-ceiling: 100dvw;
 }
