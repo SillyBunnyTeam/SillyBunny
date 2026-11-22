@@ -2,7 +2,7 @@ import { t } from '../i18n.js';
 import { closeActionMenu, isActionMenuOpen, openActionMenu } from '../sillybunny-action-menu.js';
 import { HOME_STATE_CHANGED_EVENT } from '../sillybunny-home-state.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
-import { WIDE_LAYOUT_MIN_WIDTH } from './breakpoints.js';
+import { LAYOUT_MOBILE_QUERY } from './breakpoints.js';
 import { bindHeaderLayout } from './dialog.js';
 import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
@@ -295,8 +295,10 @@ function resolveChatWidth(viewportWidth) {
     const chatShell = document.getElementById('sheld');
     if (!chatShell) return viewportWidth;
 
-    // Below the wide layouts the chat takes whatever the docked panels leave, not the configured chat width.
-    if (viewportWidth < WIDE_LAYOUT_MIN_WIDTH) return viewportWidth;
+    // In the phone layout the chat is as wide as the window, so the docked panels take their share of that. Above it the chat
+    // keeps its configured width at every window width: the panels take the gutters and move the chat only as far as they
+    // must, and a panel becomes a sheet when the chat would be under the minimum.
+    if (window.matchMedia?.(LAYOUT_MOBILE_QUERY).matches) return viewportWidth;
 
     const root = document.documentElement;
     const probe = document.createElement('div');

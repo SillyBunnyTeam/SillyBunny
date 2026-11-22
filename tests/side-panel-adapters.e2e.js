@@ -464,7 +464,8 @@ async function readGeometry(page, panel) {
         const chatContentRect = document.getElementById('chat').getBoundingClientRect();
         const composerRect = document.getElementById('form_sheld').getBoundingClientRect();
         const topBarRect = document.getElementById('top-bar').getBoundingClientRect();
-        const intersects = (left, right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+        // Edges that touch are not an overlap: the chat keeps its fractional Page Width beside a panel, and a browser rounds that edge by a few thousandths of a pixel.
+        const intersects = (left, right) => left.left < right.right - 0.5 && left.right > right.left + 0.5 && left.top < right.bottom - 0.5 && left.bottom > right.top + 0.5;
         return {
             mode: element.classList.contains('sb-side-panel--sheet') ? 'sheet' : 'docked',
             side: element.dataset.sbSidePanelSide,

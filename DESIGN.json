@@ -128,7 +128,7 @@
       {"name": "overlay-sheet", "value": "max-width: 450px or max-height: 360px", "purpose": "AdwDialog condition for alerts, dialogs and windows; independent of the 768px shell layout breakpoint."},
       {"name": "menu-sheet", "value": "max-width: 768px or max-height: 360px", "purpose": "Menus and pickers become sheets in the whole mobile layout, so a menu opened there is never a desktop popover."},
       {"name": "mobile", "value": "768px", "purpose": "Shell layout breakpoint: sidebars collapse, List → Split Editor, message action row, mobile-styles.css and coarse layout, and menus and pickers become sheets. Alerts, dialogs and windows use the separate 450px/360px sheet condition."},
-      {"name": "wide", "value": "1280px and 1440px", "purpose": "Wide layouts step here, where side panels gain their wider gutters."},
+      {"name": "wide", "value": "1280px and 1440px", "purpose": "Wide layouts step here."},
       {"name": "landscape-phone", "value": "max-height: 450px", "purpose": "A phone held in landscape (375 to 430px tall) keeps the phone layout."},
       {"name": "hig-phone-minimum", "value": "360×294px", "purpose": "Smallest size every layout must support (HIG Scaling & Adaptiveness). Down to 320px wide nothing overlaps and nothing scrolls sideways."},
       {"name": "hig-desktop-minimum", "value": "1024×600px", "purpose": "Smallest supported desktop size in the HIG."},
