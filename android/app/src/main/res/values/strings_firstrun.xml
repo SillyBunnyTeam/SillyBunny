@@ -3,7 +3,7 @@
     <!-- First-run flow (plan §4.3). Every value is placeholder copy for a human to replace. -->
     <string name="firstrun_loading">Getting ready</string>
     <string name="firstrun_welcome_title">TODO(copy)</string>
-    <string name="firstrun_welcome_body">TODO(copy)</string>
+    <string name="firstrun_welcome_body">Welcome to SillyBunny! This wizard will help you download SillyBunny and its packages directly from GitHub and npm, and will auto-start a local server for you.\n\nPlease review the following permissions:</string>
     <string name="firstrun_notifications_title">Notifications</string>
     <string name="firstrun_notifications_body">TODO(copy)</string>
     <string name="firstrun_notifications_allow">Allow notifications</string>
