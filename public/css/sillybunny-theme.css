@@ -98,11 +98,13 @@
     --sb-settings-heading-gap: 6px;
     --sb-settings-inset: var(--sb-density-container-padding);
     --sb-settings-inset-top: calc(24px - 6px * var(--sb-density-t));
-    /* libadwaita's `sp` is a pixel scaled by the text size, which is --fontScale here, so these caps grow with the text.
-       A settings page keeps its content in a column of one of the two measures, and --sb-page-measure is the page's own. */
+    /* libadwaita's `sp` is a pixel scaled by the text size, which is --fontScale here, so these maximums grow with the text.
+       A settings page keeps its content in an AdwClamp of one of the two maximums (see the settings page in sillybunny-tabs.css).
+       --sb-page-max and --sb-page-inset are the maximum and the side padding of the page that is shown. */
     --sb-measure-preference: calc(1000px * var(--fontScale, 1));
     --sb-measure-wide: calc(1440px * var(--fontScale, 1));
-    --sb-page-measure: var(--sb-measure-preference);
+    --sb-page-max: var(--sb-measure-preference);
+    --sb-page-inset: var(--sb-settings-inset);
     /* The widest a Window dialog grows, aside included. Below it a Window keeps following Page Width. */
     --sb-window-ceiling: calc(1440px * var(--fontScale, 1));
     /* AdwNavigationSplitView sizes its sidebar to 25% of the split view, between 180sp and 280sp. */
@@ -325,11 +327,9 @@
     --sb-message-radius: 22px;
 }
 
-/* Limit Content Width is off. A measure of 100% leaves the padding of a column at its inset, and a ceiling of 100dvw is no
-   ceiling. The rules that read these tokens stay as they are, so the root attribute is the only write. */
+/* Limit Content Width is off. A ceiling of 100dvw is no ceiling, and the settings pages take their unclamped width from the
+   rule that follows the clamp in sillybunny-tabs.css. The root attribute is the only write. */
 :root[data-sb-content-clamp='off'] {
-    --sb-measure-preference: 100%;
-    --sb-measure-wide: 100%;
     --sb-window-ceiling: 100dvw;
 }
 

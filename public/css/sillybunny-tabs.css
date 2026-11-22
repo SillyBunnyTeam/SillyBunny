@@ -1442,26 +1442,58 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-inline: var(--sb-settings-inset);
 }
 
-/* The page class (data-sb-page-width) picks the column. A page with none, such as an extension's, is a preference page. */
+/* The page class (data-sb-page-width) picks the maximum and the side padding of a page. A page with none, such as an
+   extension's, is a preference page. A wide page pads 14px at the sides below 1440px and the shell's padding from there. */
 #sb-settings-page [data-sb-page-width='wide'] {
-    --sb-page-measure: var(--sb-measure-wide);
+    --sb-page-max: var(--sb-measure-wide);
+    --sb-page-inset: 14px;
+}
+
+@media (min-width: 1440px) {
+    #sb-settings-page [data-sb-page-width='wide'] {
+        --sb-page-inset: var(--sb-shell-panel-padding-inline);
+    }
+}
+
+/* The content of a page is libadwaita's AdwClamp: as wide as the page can be up to its tightening threshold, then less than
+   that room as the room grows, and at most the maximum. The threshold is 2/3 of the maximum. The curve is the min() of eight
+   chords, written by scripts/generate-clamp-curve.js; --sb-page-available is the room between the insets. Both are read where
+   the padding is, because the percentage in the first resolves against the box that is padded. */
+#sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail, .scrollableInner) {
+    --sb-page-available: calc(100% - 2 * var(--sb-page-inset));
+    /* clamp-curve:begin (written by scripts/generate-clamp-curve.js; do not edit by hand) */
+    --sb-page-content: min(
+        var(--sb-page-available),
+        calc(0.05517 * var(--sb-page-max) + 0.917245 * var(--sb-page-available)),
+        calc(0.175022 * var(--sb-page-max) + 0.757833 * var(--sb-page-available)),
+        calc(0.3024 * var(--sb-page-max) + 0.606406 * var(--sb-page-available)),
+        calc(0.435731 * var(--sb-page-max) + 0.463907 * var(--sb-page-available)),
+        calc(0.572873 * var(--sb-page-max) + 0.331622 * var(--sb-page-available)),
+        calc(0.710693 * var(--sb-page-max) + 0.211427 * var(--sb-page-available)),
+        calc(0.844057 * var(--sb-page-max) + 0.106401 * var(--sb-page-available)),
+        calc(0.965278 * var(--sb-page-max) + 0.020833 * var(--sb-page-available)),
+        var(--sb-page-max)
+    );
+    /* clamp-curve:end */
+}
+
+/* Limit Content Width is off: the content has all the room, which is today's inset on each side. */
+:root[data-sb-content-clamp='off'] #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail, .scrollableInner) {
+    --sb-page-content: var(--sb-page-available);
 }
 
 @media (min-width: 769px) {
     /* A column is centred by the padding of the element that scrolls it. That element spans the pane, so its scrollbar
-       stays on the pane's end edge. A percentage in the padding is a share of the containing block, which is the pane here. */
+       stays on the pane's end edge. */
     #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
-        padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-measure)) / 2));
+        padding-inline: max(var(--sb-page-inset), calc((100% - var(--sb-page-content)) / 2));
     }
-}
 
-/* A wide page is a visible frame that scrolls inside itself, so the frame is the column and its scrollbars stay in it. Below
-   1440px these boxes take a 14px gutter that only !important can override, so the column starts at that width. The
-   `:not(#sb-specificity)` outweighs the `:has()` rules that pad the box of each list page. */
-@media (min-width: 1440px) {
+    /* A wide page is a visible frame that scrolls inside itself, so the frame is the column and its scrollbars stay in it.
+       The `:not(#sb-specificity)` outweighs the `:has()` rules that pad the box of each list page. */
     #sb-settings-page #sb-settings-shell-host .sb-shell-panel[data-sb-page-width='wide'] > .sb-shell-panel-scroller,
     #sb-settings-page #sb-settings-shell-host > #right-nav-panel.openDrawer[data-sb-page-width='wide'] > .scrollableInner:not(#sb-specificity) {
-        padding-inline: max(var(--sb-shell-panel-padding-inline), calc((100% - var(--sb-page-measure)) / 2));
+        padding-inline: max(var(--sb-page-inset), calc((100% - var(--sb-page-content)) / 2));
     }
 }
 

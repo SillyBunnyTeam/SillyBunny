@@ -291,14 +291,16 @@
     }
 }
 
-@media (max-width: 1439px) {
+/* From 769px the side padding of these pages comes from the settings page rule for its columns; the phone layout keeps this one. */
+@media (min-width: 769px) and (max-width: 1439px) {
     #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-persona-editor-mounted) {
-        padding: 14px 14px 9px !important;
+        padding-block: var(--sb-page-inset) 9px;
     }
 }
 
 @media (max-width: 768px) {
     #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-persona-editor-mounted) {
+        padding: 14px 14px 9px !important;
         padding-bottom: calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
     }
 }
