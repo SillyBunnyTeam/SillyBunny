@@ -487,6 +487,60 @@ describe('the browser measure', () => {
         expect(toast.id).toBe('toast-id');
     });
 
+    describe('a clone repeats nothing that the message does', () => {
+        const IMAGE = '<img id="picture" src="http://localhost/a.png" srcset="http://localhost/a.png 1x, http://localhost/b.png 2x" onerror="window.__errors += 1" onload="window.__errors += 1">';
+
+        const eventAttributesOf = root => [root, ...root.querySelectorAll('*')]
+            .flatMap(node => [...node.attributes].map(attribute => attribute.name))
+            .filter(name => name.startsWith('on'));
+
+        function cloneOf(markup) {
+            const toast = toastr.info(markup, undefined, { escapeHtml: false })[0];
+            const [{ node: clone }] = addedNodesDuring(() => form.classifyToast(toast, { ...toastr.options, escapeHtml: false }));
+            return { toast, clone };
+        }
+
+        test('has no on* attribute, on the clone or in it, and the toast keeps its own', () => {
+            const { toast, clone } = cloneOf(`<span onclick="window.__errors += 1" onmouseover="window.__errors += 1">${IMAGE}</span>`);
+            expect(eventAttributesOf(clone)).toEqual([]);
+            expect(eventAttributesOf(toast)).toEqual(['onclick', 'onmouseover', 'onerror', 'onload']);
+            expect(clone.querySelector('.toast-message > span')).not.toBeNull();
+        });
+
+        test('does not run the handler of an image a second time when the image fails or loads', () => {
+            window.__errors = 0;
+            const toast = toastr.info(IMAGE, undefined, { escapeHtml: false })[0];
+            jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                if (this.classList.contains(form.TOAST_MEASURE_CLASS)) {
+                    const image = this.querySelector('img');
+                    image.dispatchEvent(new Event('error'));
+                    image.dispatchEvent(new Event('load'));
+                }
+                return { width: 1 };
+            });
+            form.classifyToast(toast, { ...toastr.options, escapeHtml: false });
+            expect(window.__errors).toBe(0);
+            toast.querySelector('img').dispatchEvent(new Event('error'));
+            expect(window.__errors).toBe(1);
+        });
+
+        test('loads no image: src and srcset are gone from img and source, and the elements stay', () => {
+            const { toast, clone } = cloneOf('<picture><source srcset="http://localhost/a.webp" type="image/webp"><img src="http://localhost/a.png" srcset="http://localhost/a.png 1x" alt="A"></picture>');
+            expect(clone.querySelector('picture')).not.toBeNull();
+            expect(clone.querySelectorAll('source, img')).toHaveLength(2);
+            for (const node of clone.querySelectorAll('source, img')) {
+                expect(node.hasAttribute('src')).toBe(false);
+                expect(node.hasAttribute('srcset')).toBe(false);
+            }
+            expect(toast.querySelector('img').getAttribute('src')).toBe('http://localhost/a.png');
+            expect(toast.querySelector('source').getAttribute('srcset')).toBe('http://localhost/a.webp');
+        });
+
+        test('still counts an image as a block, because the structure is the same', () => {
+            expect(classified(`${IMAGE}<div>Text</div>`, undefined, { escapeHtml: false }).result.reason).toBe('blocks');
+        });
+    });
+
     test('a toast that is hidden or moving is measured without its inline style, and the toast keeps it', () => {
         const toast = toastr.info('Saved')[0];
         toast.style.display = 'none';

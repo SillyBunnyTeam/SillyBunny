@@ -126,6 +126,26 @@ export function countBlocks(messageElement) {
 }
 
 /**
+ * A clone that is added to the document runs the inline handlers of its elements and loads its images, which would
+ * repeat what the message already did, such as a counter in an `onerror`. The elements stay, so the clone has the same
+ * structure for the block and width rules.
+ * @param {HTMLElement} clone
+ */
+function stripActiveContent(clone) {
+    for (const node of [clone, ...clone.querySelectorAll('*')]) {
+        for (const { name } of [...node.attributes]) {
+            if (name.startsWith('on')) {
+                node.removeAttribute(name);
+            }
+        }
+    }
+    for (const node of clone.querySelectorAll('img, source')) {
+        node.removeAttribute('src');
+        node.removeAttribute('srcset');
+    }
+}
+
+/**
  * Lays out a hidden clone of the toast on one line and reads its width, so the toast's own CSS applies to the
  * measurement. It never reads the window width: the same message must take the same form in every window.
  * @param {HTMLElement} element
@@ -137,6 +157,7 @@ function measureOnOneLine(element) {
     clone.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
     clone.querySelectorAll('audio, video, iframe, object, embed, script').forEach(node => node.remove());
     clone.removeAttribute('id');
+    stripActiveContent(clone);
     // A toast that waits for its turn is hidden with an inline `display: none`, which would measure as zero, and an
     // inline transform from a running animation would change the width that is read.
     clone.removeAttribute('style');
