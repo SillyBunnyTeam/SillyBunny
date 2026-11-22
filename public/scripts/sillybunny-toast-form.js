@@ -146,6 +146,27 @@ function stripActiveContent(clone) {
 }
 
 /**
+ * The width of the box of `element` in layout px. getBoundingClientRect() includes the transforms of the ancestors, and a
+ * toast can be measured inside a surface that is scaled, such as a Popup while it opens, where a message of 560px
+ * would read as 448px. The computed width is the used width of the layout. Where the layout gives none (jsdom), the
+ * box is the answer.
+ * @param {HTMLElement} element
+ * @param {CSSStyleDeclaration} style The computed style of `element`.
+ * @returns {number}
+ */
+function layoutWidth(element, style) {
+    const width = parseFloat(style.width);
+    if (!Number.isFinite(width)) {
+        return element.getBoundingClientRect().width;
+    }
+    if (style.boxSizing !== 'content-box') {
+        return width;
+    }
+    const sides = [style.paddingLeft, style.paddingRight, style.borderLeftWidth, style.borderRightWidth];
+    return width + sides.reduce((sum, side) => sum + (parseFloat(side) || 0), 0);
+}
+
+/**
  * Lays out a hidden clone of the toast on one line and reads its width, so the toast's own CSS applies to the
  * measurement. It never reads the window width: the same message must take the same form in every window.
  * @param {HTMLElement} element
@@ -164,10 +185,8 @@ function measureOnOneLine(element) {
     clone.classList.add(TOAST_FORM_CLASS, TOAST_MEASURE_CLASS);
     (document.getElementById(TOAST_OVERLAY_ID) ?? document.body).append(clone);
     try {
-        return {
-            width: clone.getBoundingClientRect().width,
-            em: parseFloat(getComputedStyle(clone).fontSize),
-        };
+        const style = getComputedStyle(clone);
+        return { width: layoutWidth(clone, style), em: parseFloat(style.fontSize) };
     } finally {
         clone.remove();
     }

@@ -255,6 +255,41 @@ test.describe('the width of a toast', () => {
         await expect(page.locator(TOAST_FORM_SELECTOR)).toHaveCount(0);
     });
 
+    test('is measured in layout px while a Popup that scales opens: a message just over 34em is still a notification, and one just under a toast', async ({ page }) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const over = await page.evaluate(() => window.__toastForms.messageNearLimit(8));
+        const under = await page.evaluate(() => window.__toastForms.messageNearLimit(-8));
+        const scale = await page.evaluate(async () => {
+            const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+            window.__popup = new Popup('<h3>A Popup</h3><p>Some text in a Popup.</p>', POPUP_TYPE.TEXT, '');
+            void window.__popup.show();
+            const dialog = await new Promise((resolve) => {
+                const watch = () => {
+                    const open = document.querySelector('dialog[open]');
+                    return open && open.getAnimations().length > 0 ? resolve(open) : requestAnimationFrame(watch);
+                };
+                watch();
+            });
+            // The opening animation scales the dialog from 0.8, so everything in it is drawn smaller than its layout.
+            dialog.getAnimations().forEach((animation) => {
+                animation.pause();
+                animation.currentTime = 0;
+            });
+            return dialog.getBoundingClientRect().width / dialog.offsetWidth;
+        });
+        expect(scale, 'the Popup is drawn scaled down').toBeLessThan(0.9);
+
+        const forms = await page.evaluate(([overText, underText]) => ({
+            over: window.toastr.info(overText, '', { timeOut: 0, extendedTimeOut: 0 })[0].className.match(/sb-form-\w+/)?.[0],
+            under: window.toastr.info(underText, '', { timeOut: 0, extendedTimeOut: 0 })[0].className.match(/sb-form-\w+/)?.[0],
+        }), [over.text, under.text]);
+        expect(forms).toEqual({ over: 'sb-form-notification', under: 'sb-form-toast' });
+        await page.evaluate(() => {
+            window.toastr.clear();
+            window.__popup.completeCancelled();
+        });
+    });
+
     test('wraps in a window narrower than its text, at half the height of a one-line toast, and shows all of the text', async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 700 });
         // The limit is measured for an info toast, which has no glyph, so the toast is one too.

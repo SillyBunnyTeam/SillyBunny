@@ -579,6 +579,45 @@ describe('the browser measure', () => {
     });
 });
 
+describe('the browser measure in a surface that is scaled', () => {
+    function measureWith({ box, style }) {
+        // Each call spies on the real functions again, and not on the spies of the call before.
+        jest.restoreAllMocks();
+        const toast = toastr.info('Saved')[0];
+        jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            return { width: this.classList.contains(form.TOAST_MEASURE_CLASS) ? box : 1 };
+        });
+        const originalComputedStyle = window.getComputedStyle;
+        jest.spyOn(window, 'getComputedStyle').mockImplementation(node => (
+            node.classList.contains(form.TOAST_MEASURE_CLASS) ? { fontSize: '16px', ...style } : originalComputedStyle(node)
+        ));
+        return form.classifyToast(toast, toastr.options);
+    }
+
+    test('takes the width of the layout, not the box that an ancestor\'s transform scaled', () => {
+        // A Popup that opens scales to 0.8: 560px of layout is drawn as 448px, and 34em is 544px.
+        expect(measureWith({ box: 448, style: { width: '560px', boxSizing: 'border-box' } })).toEqual({ form: 'notification', reason: 'width' });
+        expect(measureWith({ box: 520, style: { width: '520px', boxSizing: 'border-box' } })).toEqual({ form: 'toast', reason: 'fits' });
+    });
+
+    test('is not misled the other way, by a surface that is scaled up', () => {
+        expect(measureWith({ box: 600, style: { width: '500px', boxSizing: 'border-box' } })).toEqual({ form: 'toast', reason: 'fits' });
+    });
+
+    test('adds the padding and the border to a width that is the width of the content', () => {
+        // 34em is 544px. 530px of content with 18px of padding is 548px, and 520px with 18px is 538px.
+        const style = { boxSizing: 'content-box', paddingLeft: '12px', paddingRight: '6px', borderLeftWidth: '0px', borderRightWidth: '0px' };
+        expect(measureWith({ box: 100, style: { ...style, width: '530px' } })).toEqual({ form: 'notification', reason: 'width' });
+        expect(measureWith({ box: 100, style: { ...style, width: '520px' } })).toEqual({ form: 'toast', reason: 'fits' });
+        expect(measureWith({ box: 100, style: { ...style, width: '530px', paddingLeft: '4px', paddingRight: '4px' } })).toEqual({ form: 'toast', reason: 'fits' });
+    });
+
+    test('falls back to the box where the layout gives no width, as in jsdom', () => {
+        expect(measureWith({ box: 600, style: { width: 'auto' } })).toEqual({ form: 'notification', reason: 'width' });
+        expect(measureWith({ box: 100, style: { width: '' } })).toEqual({ form: 'toast', reason: 'fits' });
+    });
+});
+
 describe('toastr class options', () => {
     test('a title and a message class set by the caller are the ones that are read', () => {
         const options = { titleClass: 'my-title', messageClass: 'my-message', escapeHtml: false };
