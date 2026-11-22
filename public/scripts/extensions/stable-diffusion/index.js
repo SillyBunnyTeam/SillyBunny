@@ -70,8 +70,8 @@ import { registerExtensionCapability } from '../../sillybunny-conversation/exten
 import { adoptImageGenerationSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the swap button and the style picker get rows.
 import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
 // SillyBunny: NovelAI Precise Reference shares its request checks and editor with Quick Image Gen.
-import { buildNovelAIPreciseReferenceParameters } from '../../novelai-precise-reference.js';
-import { mountNovelAIPreciseReferenceEditor } from '../../novelai-precise-reference-ui.js';
+import { normalizeNovelAIPreciseReferencePath, resolveNovelAIPreciseReferences } from '../../novelai-precise-reference.js';
+import { deleteNovelAIPreciseReferenceFile, mountNovelAIPreciseReferenceEditor } from '../../novelai-precise-reference-ui.js';
 
 export { MODULE_NAME };
 
@@ -592,12 +592,19 @@ async function loadSettings() {
     // SillyBunny: keep reference images in provider settings, separate from reusable prompt styles.
     if (!novelPreciseReferenceEditor) {
         novelPreciseReferenceEditor = mountNovelAIPreciseReferenceEditor(document.querySelector('#sd_novel_precise_reference'), {
+            id: 'sd_novel_precise_reference_enabled',
             getState: () => extension_settings.sd.novel_precise_reference,
             onChange: state => {
                 extension_settings.sd.novel_precise_reference = state;
                 saveSettingsDebounced();
             },
             getModel: () => extension_settings.sd.model,
+            getRequestHeaders,
+            onRemoveFile: filePath => {
+                const refs = extension_settings.sd.novel_precise_reference?.references;
+                const stillUsed = Array.isArray(refs) && refs.some(ref => normalizeNovelAIPreciseReferencePath(ref?.path) === filePath);
+                if (!stillUsed) return deleteNovelAIPreciseReferenceFile(filePath, { getRequestHeaders });
+            },
         });
     }
     novelPreciseReferenceEditor.refresh();
@@ -4026,7 +4033,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
     // SillyBunny: send the Precise References with the request, and check them first so that a set the server refuses is not uploaded.
     const referenceState = extension_settings.sd.novel_precise_reference;
     const preciseReference = referenceState?.enabled === true && Array.isArray(referenceState.references) ? referenceState.references : [];
-    buildNovelAIPreciseReferenceParameters(extension_settings.sd.model, preciseReference, {
+    const { references: resolvedReferences } = await resolveNovelAIPreciseReferences(extension_settings.sd.model, preciseReference, {
         anlasGuard: extension_settings.sd.novel_anlas_guard,
     });
     const { steps, width, height, sm, sm_dyn } = getNovelParams();
@@ -4039,7 +4046,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
             prompt: prompt,
             model: extension_settings.sd.model,
             novel_anlas_guard: extension_settings.sd.novel_anlas_guard,
-            precise_reference: preciseReference,
+            precise_reference: resolvedReferences,
             sampler: extension_settings.sd.sampler,
             scheduler: extension_settings.sd.scheduler,
             steps: steps,

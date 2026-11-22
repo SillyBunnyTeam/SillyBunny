@@ -1,7 +1,7 @@
 import { NOVELAI_IMAGE_MODELS, isNovelAIV5Model, normalizeNovelAIImageParameters } from "../../novelai-image-models.js";
 // SillyBunny divergence: NovelAI Precise Reference shares its request checks and editor with Image Generation.
-import { buildNovelAIPreciseReferenceParameters } from "../../novelai-precise-reference.js";
-import { mountNovelAIPreciseReferenceEditor } from "../../novelai-precise-reference-ui.js";
+import { normalizeNovelAIPreciseReferencePath, resolveNovelAIPreciseReferences } from "../../novelai-precise-reference.js";
+import { deleteNovelAIPreciseReferenceFile, mountNovelAIPreciseReferenceEditor } from "../../novelai-precise-reference-ui.js";
 import { createModelCatalogRefresher, fetchModelCatalog, getModelCatalogRequest, getRoutewayModelSizes, LIVE_MODEL_PROVIDERS, modelSuggestions, QIG_MODEL_INPUTS } from "./lib/model-catalogs.js";
 import {
     MAX_IMAGE_BYTES,
@@ -7786,10 +7786,10 @@ async function genNovelAI(prompt, negative, s, signal, options = {}) {
     // SillyBunny divergence: check Precise References before any request, and refuse them
     // for OpenAI-compatible proxies, which cannot carry them.
     const references = s.naiPreciseReference?.enabled ? s.naiPreciseReference.references : [];
-    const preciseReferenceParameters = buildNovelAIPreciseReferenceParameters(s.naiModel, references);
     if (references?.length && s.naiProxyUrl && isNovelAICompatibleProxyUrl(s.naiProxyUrl)) {
-        throw new Error("NovelAI Precise Reference requires the official API or a native NovelAI proxy; OpenAI-compatible proxies are not supported.");
+        throw new Error("NovelAI Precise Reference requires the official API or a native NovelAI proxy; OpenAI-compatible proxies are not supported");
     }
+    const { parameters: preciseReferenceParameters } = await resolveNovelAIPreciseReferences(s.naiModel, references);
     normalizeSize(s);
     const effectiveDimensions = { width: s.width, height: s.height };
     const withEffectiveDimensions = (url, dimensions = effectiveDimensions) => ({ url, effectiveRequest: { parameters: dimensions } });
@@ -17690,14 +17690,39 @@ const DYNAMIC_PROVIDER_SELECT_IDS = new Set([
     "qig-a1111-cn-model",
 ]);
 
+// SillyBunny divergence: check every QIG copy before deleting a removed Precise Reference user file.
+function hasNaiPreciseReferencePath(state, filePath) {
+    return Array.isArray(state?.references)
+        && state.references.some(reference => normalizeNovelAIPreciseReferencePath(reference?.path) === filePath);
+}
+
+function isNaiPreciseReferencePathInUse(filePath) {
+    const s = getSettings();
+    if (hasNaiPreciseReferencePath(s?.naiPreciseReference, filePath)) return true;
+    if (hasNaiPreciseReferencePath(charSettingsBaseState?.naiPreciseReference, filePath)) return true;
+    if (hasNaiPreciseReferencePath(s?._charSettingsBaseState?.naiPreciseReference, filePath)) return true;
+    if (Array.isArray(configurations) && configurations.some(entry => hasNaiPreciseReferencePath(entry?.naiPreciseReference, filePath))) return true;
+    if (charRefImages && typeof charRefImages === "object"
+        && Object.values(charRefImages).some(record => hasNaiPreciseReferencePath(record?.naiPreciseReference, filePath))) return true;
+    return regenerationReferenceStore.hasPreciseReferencePath(filePath);
+}
+
 // SillyBunny divergence: the Precise Reference editor is kept on its container, so a rebuilt panel mounts a new one.
 function refreshNaiPreciseReferenceEditor() {
     const container = document.getElementById("qig-nai-precise-reference");
     if (!container) return;
     if (!container.preciseReferenceEditor) {
+        const headers = () => (typeof getRequestHeaders === "function" ? getRequestHeaders() : { "Content-Type": "application/json" });
         container.preciseReferenceEditor = mountNovelAIPreciseReferenceEditor(container, {
+            id: "qig-nai-precise-reference-enabled",
             getState: () => getSettings().naiPreciseReference || { enabled: false, references: [] },
             getModel: () => getSettings().naiModel,
+            getRequestHeaders: headers,
+            onRemoveFile: filePath => {
+                if (!isNaiPreciseReferencePathInUse(filePath)) {
+                    return deleteNovelAIPreciseReferenceFile(filePath, { getRequestHeaders: headers });
+                }
+            },
             onChange: state => {
                 if (settingsImportInProgress) return;
                 getSettings().naiPreciseReference = cloneNovelAIPreciseReferenceState(state);

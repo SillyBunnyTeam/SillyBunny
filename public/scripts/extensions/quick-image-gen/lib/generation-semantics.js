@@ -56,9 +56,10 @@ function cloneReferenceSnapshot(snapshot) {
 
 function countReferenceChars(snapshot) {
     let count = 0;
-    // SillyBunny divergence: nested Precise Reference images count toward the retention limit.
+    // SillyBunny divergence: nested Precise Reference images and stored paths count toward the retention limit.
     for (const reference of snapshot?.settings?.naiPreciseReference?.references || []) {
         if (typeof reference.image === "string") count += reference.image.length;
+        if (typeof reference.path === "string") count += reference.path.length;
     }
     for (const value of Object.values(snapshot?.settings || {})) {
         if (typeof value === "string") count += value.length;
@@ -180,6 +181,16 @@ export class RegenerationReferenceStore {
         this.#entryOrder.clear();
         this.#totalReferenceChars = 0;
         this.#activeGroupKey = "";
+    }
+
+    // SillyBunny divergence: keep a stored Precise Reference file while a retained regeneration snapshot still points to it.
+    hasPreciseReferencePath(filePath) {
+        if (typeof filePath !== "string" || !filePath) return false;
+        for (const record of this.#groups.values()) {
+            const refs = record.references?.settings?.naiPreciseReference?.references;
+            if (Array.isArray(refs) && refs.some(reference => reference?.path === filePath)) return true;
+        }
+        return false;
     }
 
     #getLink(entry, scopeId) {

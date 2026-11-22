@@ -62,6 +62,24 @@ describe('QIG precise reference ownership', () => {
         expect(getCharacterProviderReferences(record, 'proxy')).toEqual(['https://example.com/ref.png']);
         expect(getCharacterProviderReferences({}, 'novelai')).toEqual({ enabled: false, references: [] });
     });
+
+    test('regeneration tracks stored user-file reference paths and excludes them from portable exports', () => {
+        const refPath = '/user/files/sb-nai-ref-0123456789abcdef.png';
+        const pathSettings = {
+            provider: 'novelai',
+            naiModel: 'nai-diffusion-4-5-full',
+            naiPreciseReference: {
+                enabled: true,
+                references: [{ path: refPath, bytes: 2048, type: 'character', strength: 0.9, fidelity: 0.7 }],
+            },
+        };
+        const store = new RegenerationReferenceStore();
+        store.remember(entry, captureRegenerationReferences(pathSettings), { scopeId: 'chat-1' });
+        expect(store.hasPreciseReferencePath(refPath)).toBe(true);
+        expect(store.hasPreciseReferencePath('/user/files/sb-nai-ref-ffffffffffffffff.png')).toBe(false);
+        const exported = createSettingsExport({ activeSettings: pathSettings });
+        expect(JSON.stringify(exported)).not.toContain(refPath);
+    });
 });
 
 describe('QIG precise reference privacy', () => {

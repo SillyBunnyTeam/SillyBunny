@@ -14,7 +14,7 @@ import { cloneSynchronizedValue } from '../public/scripts/extensions/quick-image
 import { isNovelAICompatibleProxyUrl } from '../public/scripts/extensions/quick-image-gen/lib/provider-adapters.js';
 import { buildNovelAIProxyRequestUrl } from '../public/scripts/extensions/quick-image-gen/lib/hosted-provider.js';
 import { isNovelAIV5Model, normalizeNovelAIImageParameters } from '../public/scripts/novelai-image-models.js';
-import { buildNovelAIPreciseReferenceParameters } from '../public/scripts/novelai-precise-reference.js';
+import { normalizeNovelAIPreciseReferencePath, resolveNovelAIPreciseReferences } from '../public/scripts/novelai-precise-reference.js';
 
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
 const qigSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/index.js', import.meta.url)), 'utf8');
@@ -196,7 +196,7 @@ describe('Conversation extension media integration', () => {
             substituteParams: (text, options) => text.replaceAll('{{char}}', options?.name2Override || 'Roleplay'),
             getRequestHeaders: () => ({}),
             loadNovelSchedulers: () => ['karras'],
-            buildNovelAIPreciseReferenceParameters,
+            resolveNovelAIPreciseReferences,
             humanizedDateTime: () => 'timestamp',
             saveBase64AsFile: save,
             sendMessage,
@@ -251,7 +251,7 @@ describe('Conversation extension media integration', () => {
         const settings = { sd: { model: 'nai-diffusion-4-5-full', steps: 23, width: 832, height: 1216, novel_anlas_guard: false } };
         const requests = [];
         const context = createQigContext({
-            buildNovelAIPreciseReferenceParameters,
+            resolveNovelAIPreciseReferences,
             extension_settings: settings,
             getRequestHeaders: () => ({}),
             loadNovelSchedulers: () => ['karras'],
@@ -269,6 +269,46 @@ describe('Conversation extension media integration', () => {
             await expect(context.generateNovelImage('prompt', 'negative')).resolves.toEqual({ format: 'png', data: 'image-data' });
         }
         expect(requests.map(body => body.precise_reference)).toEqual([[], [], []]);
+    });
+
+    test('Image Generation resolves user-file Precise References to base64 before calling the server route', async () => {
+        const pngBytes = Buffer.from(preparedReferenceImage(), 'base64');
+        const refPath = '/user/files/sb-nai-ref-0123456789abcdef.png';
+        const settings = {
+            sd: {
+                model: 'nai-diffusion-4-5-full', steps: 23, width: 832, height: 1216, novel_anlas_guard: false,
+                novel_precise_reference: { enabled: true, references: [{ path: refPath, bytes: pngBytes.byteLength, type: 'style', strength: 0.7, fidelity: 0.4 }] },
+            },
+        };
+        const requests = [];
+        const fileFetch = jest.fn(async url => {
+            if (url === refPath) return { ok: true, arrayBuffer: async () => pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength) };
+            return { ok: false, status: 404 };
+        });
+        const context = createQigContext({
+            resolveNovelAIPreciseReferences: (model, refs, opts) => resolveNovelAIPreciseReferences(model, refs, { ...opts, fetchFn: fileFetch }),
+            extension_settings: settings,
+            getRequestHeaders: () => ({}),
+            loadNovelSchedulers: () => ['karras'],
+            fetch: async (_url, options) => {
+                requests.push(JSON.parse(options.body));
+                return { ok: true, text: async () => 'image-data' };
+            },
+        });
+        for (const name of ['getNovelParams', 'generateNovelImage']) {
+            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
+        }
+
+        await expect(context.generateNovelImage('prompt', 'negative')).resolves.toEqual({ format: 'png', data: 'image-data' });
+        expect(fileFetch).toHaveBeenCalledWith(refPath, { credentials: 'same-origin' });
+        expect(requests[0].precise_reference).toEqual([{ image: preparedReferenceImage(), type: 'style', strength: 0.7, fidelity: 0.4 }]);
+
+        // A blocked Anlas guard rejects without fetching user files or hitting the server route.
+        fileFetch.mockClear();
+        settings.sd.novel_anlas_guard = true;
+        await expect(context.generateNovelImage('prompt', 'negative')).rejects.toThrow('costs additional Anlas');
+        expect(fileFetch).not.toHaveBeenCalled();
+        expect(requests).toHaveLength(1);
     });
 
     test('uses the activated QIG capability with the explicit Conversation speaker only', async () => {
@@ -531,11 +571,11 @@ describe('Conversation extension media integration', () => {
         expect(context.snapshotConfiguration(settings).naiPreciseReference).toEqual(preciseReferences('EDITED'));
     });
 
-    function createNovelAIGenerationContext() {
+    function createNovelAIGenerationContext({ fileFetch } = {}) {
         const requests = [];
         const context = createQigContext({
             assertSafeConfigurableEndpoint() {},
-            buildNovelAIPreciseReferenceParameters,
+            resolveNovelAIPreciseReferences: (model, refs, opts) => resolveNovelAIPreciseReferences(model, refs, { ...opts, ...(fileFetch ? { fetchFn: fileFetch } : {}) }),
             buildNovelAIProxyRequestUrl,
             isNovelAICompatibleProxyUrl,
             isNovelAIV5Model,
@@ -604,6 +644,55 @@ describe('Conversation extension media integration', () => {
         await expect(context.genNovelAI('prompt', 'negative', settings)).rejects.toThrow('request captured');
         expect(requests).toHaveLength(1);
         expect(requests[0].body.parameters).not.toHaveProperty('director_reference_images');
+    });
+
+    test('QIG resolves user-file Precise References and refuses invalid paths before any provider request', async () => {
+        const pngBytes = Buffer.from(preparedReferenceImage(), 'base64');
+        const refPath = '/user/files/sb-nai-ref-fedcba9876543210.png';
+        const fileFetch = jest.fn(async url => {
+            if (url === refPath) return { ok: true, arrayBuffer: async () => pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength) };
+            return { ok: false, status: 404 };
+        });
+        const { context, requests } = createNovelAIGenerationContext({ fileFetch });
+
+        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({
+            naiPreciseReference: { enabled: true, references: [{ path: refPath, bytes: pngBytes.byteLength, type: 'character&style', strength: 0.8, fidelity: 0.25 }] },
+        }))).rejects.toThrow('request captured');
+        expect(fileFetch).toHaveBeenCalledWith(refPath, { credentials: 'same-origin' });
+        expect(requests[0].body.parameters).toMatchObject({
+            director_reference_images: [preparedReferenceImage()],
+            director_reference_descriptions: [{ caption: { base_caption: 'character&style', char_captions: [] }, legacy_uc: false }],
+            director_reference_strength_values: [0.8],
+            director_reference_secondary_strength_values: [0.75],
+        });
+
+        fileFetch.mockClear();
+        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({
+            naiPreciseReference: { enabled: true, references: [{ path: '/etc/passwd', type: 'character', strength: 1, fidelity: 1 }] },
+        }))).rejects.toThrow('path is invalid');
+        expect(fileFetch).not.toHaveBeenCalled();
+    });
+
+    test('QIG keeps a removed Precise Reference user file while any config, character override, base state, or regeneration snapshot references it', () => {
+        const pathA = '/user/files/sb-nai-ref-1111111111111111.png';
+        const pathB = '/user/files/sb-nai-ref-2222222222222222.png';
+        const stateWith = path => ({ enabled: true, references: [{ path, type: 'character', strength: 1, fidelity: 1 }] });
+        const settings = { naiPreciseReference: { enabled: true, references: [] }, _charSettingsBaseState: null };
+        const context = createQigContext({
+            normalizeNovelAIPreciseReferencePath,
+            getSettings: () => settings,
+            charSettingsBaseState: null,
+            configurations: [{ id: 'cfg-1', naiPreciseReference: stateWith(pathA) }],
+            charRefImages: {},
+            regenerationReferenceStore: { hasPreciseReferencePath: filePath => filePath === pathB },
+        });
+        for (const name of ['hasNaiPreciseReferencePath', 'isNaiPreciseReferencePathInUse']) {
+            evaluateInContext(name, context);
+        }
+
+        expect(context.isNaiPreciseReferencePathInUse(pathA)).toBe(true);
+        expect(context.isNaiPreciseReferencePathInUse(pathB)).toBe(true);
+        expect(context.isNaiPreciseReferencePathInUse('/user/files/sb-nai-ref-3333333333333333.png')).toBe(false);
     });
 
     test('QIG readiness follows complete initialization and propagates failure', async () => {
