@@ -100,6 +100,7 @@ import { setIconBusy } from './sillybunny-editor/status-page.js'; // SillyBunny:
 import { createBanner } from './sillybunny-editor/banner.js'; // SillyBunny: the shared banner
 // SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
 import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
+import { setNotificationPosition } from './sillybunny-toast-motion.js'; // SillyBunny: toasts and in-app notifications have a position each
 
 export const toastPositionClasses = [
     'toast-top-left',
@@ -1425,6 +1426,7 @@ function applyToastrPosition() {
     }
 
     toastr.options.positionClass = power_user.toastr_position;
+    setNotificationPosition(power_user.toastr_position); // SillyBunny: the position of in-app notifications, kept apart from toastr.options
     fixToastrForDialogs();
     $('#toastr_position').val(power_user.toastr_position);
     $(`#toastr_position option[value="${power_user.toastr_position}"]`).prop('selected', true);

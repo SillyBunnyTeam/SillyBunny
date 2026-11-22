@@ -475,7 +475,7 @@ body.sb-topbar-compact #sb-topbar-stack {
     max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
 }
 
-body #toast-container {
+body :is(#toast-container, #sb-toast-overlay) {
     margin-top: var(--sb-topbar-layout-offset);
 }
 

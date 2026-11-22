@@ -17,7 +17,7 @@ function ruleOf(css, selector) {
 
 describe('the toast layer', () => {
     test('a toast is a pill, as wide as its text up to 450px, 12px below the bar', () => {
-        const rule = ruleOf(themeCss, 'body #toast-container[class] > div');
+        const rule = ruleOf(themeCss, 'body :is(#toast-container, #sb-toast-overlay)[class] > div');
         expect(rule).toContain('border-radius: var(--sb-radius-pill) !important');
         expect(rule).toContain('width: fit-content');
         expect(rule).toContain('max-width: min(450px, calc(100% - 24px))');
@@ -26,10 +26,10 @@ describe('the toast layer', () => {
     });
 
     test('the status colour reaches the icon glyph and the title, and nothing else', () => {
-        expect(ruleOf(themeCss, '#toast-container > .toast-error')).toContain('--sb-toast-src: var(--sb-color-danger)');
-        expect(ruleOf(themeCss, '#toast-container > .toast-warning')).toContain('--sb-toast-src: var(--sb-color-warning)');
-        expect(ruleOf(themeCss, '#toast-container > .toast-success')).toContain('--sb-toast-src: var(--sb-color-success)');
-        expect(ruleOf(themeCss, '#toast-container > .toast:not(.toast-info)::before,\n#toast-container > .toast:not(.toast-info) .toast-title')).toBe('color: var(--sb-toast-status);');
+        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast-error')).toContain('--sb-toast-src: var(--sb-color-danger)');
+        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast-warning')).toContain('--sb-toast-src: var(--sb-color-warning)');
+        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast-success')).toContain('--sb-toast-src: var(--sb-color-success)');
+        expect(ruleOf(themeCss, ':is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info)::before,\n:is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info) .toast-title')).toBe('color: var(--sb-toast-status);');
     });
 
     test('toast timing is declared once, in script.js, at 5 seconds and 300ms', () => {
@@ -60,5 +60,25 @@ describe('bottom sheets and the safe area', () => {
         expect(themeCss).toContain('--sb-safe-area-right: env(safe-area-inset-right, 0px)');
         expect(read('public', 'scripts', 'sillybunny-message-actions.js')).toContain('safeAreaInset(\'right\')');
         expect(read('public', 'scripts', 'sillybunny-tabs.js')).toContain('--sb-safe-area-right');
+    });
+});
+
+describe('the toast overlay', () => {
+    test('takes the base rules that toastr gives its own container, with the bottom positions 24px from the edge', () => {
+        const rule = ruleOf(themeCss, '#sb-toast-overlay');
+        expect(rule).toContain('position: fixed');
+        expect(rule).toContain('pointer-events: none');
+        expect(ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-left,\n#sb-toast-overlay.toast-bottom-center,\n#sb-toast-overlay.toast-bottom-right')).toBe('bottom: 24px;');
+        expect(ruleOf(themeCss, '#sb-toast-overlay > div')).toContain('position: relative');
+    });
+
+    test('no toast rule is important on what the measuring rule sets, so the measure of a message cannot be changed', () => {
+        const measured = /^\s*(width|min-width|max-width|position|white-space)\s*:[^;]*!important/m;
+        const rules = [...themeCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+            .filter(([, selector]) => /#toast-container|#sb-toast-overlay/.test(selector) && !selector.includes('.sb-toast-measure'));
+        expect(rules.length).toBeGreaterThan(10);
+        for (const [, selector, declarations] of rules) {
+            expect({ selector: selector.trim(), important: measured.test(declarations) }).toEqual({ selector: selector.trim(), important: false });
+        }
     });
 });

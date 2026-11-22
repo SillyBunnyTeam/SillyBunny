@@ -192,6 +192,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (task 9.4b). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/popup.js`, `public/scripts/power-user.js`, `public/scripts/a11y.js` and `public/index.html` - toast overlay and notification position
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/popup.js` (`fixToastrForDialogs()` also calls `placeToastOverlay()`, and the class of a container that it makes or moves back to the body is the notification position instead of `toastr.options.positionClass`); `public/scripts/power-user.js` (`applyToastrPosition()` also calls `setNotificationPosition()`); `public/scripts/a11y.js` (the toast rule that gives `role="status"` also matches a toast in `#sb-toast-overlay`, and not the hidden clone that measures a toast); `public/index.html` (the cache keys of `sillybunny-theme.css` and `sillybunny-tabs.css` only). |
+| Area | Toasts and in-app notifications. |
+| Divergence reason | SillyBunny shows a plain message as a toast in a container of its own, `#sb-toast-overlay`, and a structured message as an in-app notification in toastr's `#toast-container`. The overlay has to follow the open dialog as toastr's container does, a toast has to get its accessible role, and the position of in-app notifications has to come from the setting, because an extension that writes `toastr.options.positionClass` must not move either container. |
+| Target seam | `placeToastOverlay()`, `setNotificationPosition()` and `getNotificationPosition()` in `public/scripts/sillybunny-toast-motion.js`; the classification in `public/scripts/sillybunny-toast-form.js`. |
+| Adapter shape | One import and one call each in `popup.js` and `power-user.js`, two uses of `getNotificationPosition()` in `popup.js`, and one selector in `a11y.js`, each marked `SillyBunny:`. |
+| Protecting tests | `tests/unit/sillybunny-toast-queue.test.js` (the overlay, the dialogs, the positions); `tests/unit/sillybunny-toast-queue-fallback.test.js`; `tests/toast-forms.e2e.js`; `tests/toast-queue.e2e.js`; `tests/toast-surface.e2e.js`; `tests/toast-sheet-css.test.js`; `tests/focus-contrast-css.test.js`; `tests/dialogs-accessibility.e2e.js`. |
+| Validation | 2026-11-22: root and tests lint, the full unit run, `npm run check:frontend-budgets`, `npm run check:design-rules`, `e2e-related --run`, and `tests/toast-forms.e2e.js`. |
+| Rollback path | In `popup.js`, remove the `sillybunny-toast-motion.js` import and the `placeToastOverlay()` call, and put `toastr.options.positionClass` back where `getNotificationPosition()` is. In `power-user.js`, remove the import and the `setNotificationPosition()` call. In `a11y.js`, restore the single selector `#toast-container .toast`. These hooks alone leave toasts in an overlay that does not follow the dialogs, so remove the overlay from `sillybunny-toast-motion.js` in the same change. |
+| Last reviewed | 2026-11-22, toast and notification forms, Phase 1. |
+| Owner | The toast and notification forms work. |
+
 ### Confirm response labels
 | Field | Value |
 | --- | --- |

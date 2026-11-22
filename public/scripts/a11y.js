@@ -113,7 +113,8 @@ const a11yRules = {
     [tabItemSelectors]: (element) => {
         element.setAttribute('role', 'tab');
     },
-    '#toast-container .toast': (element) => {
+    // SillyBunny: toasts sit in #sb-toast-overlay, and the hidden clone that measures a toast is not one.
+    '#toast-container .toast, #sb-toast-overlay > :not(.sb-toast-measure)': (element) => {
         element.setAttribute('role', 'status');
     },
 };

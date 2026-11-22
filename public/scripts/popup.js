@@ -5,6 +5,7 @@ import { power_user, toastPositionClasses } from './power-user.js';
 import { clamp, removeFromArray, runAfterAnimation, uuidv4 } from './utils.js';
 // SillyBunny: frames popups in the shared Alert/Dialog/Window tiers (docs/upstream-touch-ledger.md).
 import { framePopup } from './sillybunny-editor/popup-frame.js';
+import { getNotificationPosition, placeToastOverlay } from './sillybunny-toast-motion.js'; // SillyBunny: toasts have a container of their own
 
 /** @readonly */
 /** @enum {Number} */
@@ -1016,6 +1017,9 @@ export function getTopmostModalLayer() {
  * Fixes the issue with toastr not displaying on top of the dialog by moving the toastr container inside the dialog or back to the main body
  */
 export function fixToastrForDialogs() {
+    // SillyBunny: the toast overlay follows the dialogs as toastr's container does.
+    placeToastOverlay();
+
     // Hacky way of getting toastr to actually display on top of the popup...
     const dlg = Array.from(document.querySelectorAll('dialog[open]:not([closing])')).pop();
 
@@ -1024,7 +1028,8 @@ export function fixToastrForDialogs() {
     if (!toastContainer) {
         toastContainer = document.createElement('div');
         toastContainer.setAttribute('id', 'toast-container');
-        if (toastr.options.positionClass) toastContainer.classList.add(toastr.options.positionClass);
+        // SillyBunny: the notification setting owns this class, and a write of toastr.options.positionClass by an extension does not.
+        toastContainer.classList.add(getNotificationPosition());
     }
 
     // Check if toastr is already a child. If not, we need to move it inside this dialog.
@@ -1044,7 +1049,7 @@ export function fixToastrForDialogs() {
         } else {
             document.body.appendChild(toastContainer);
             toastContainer.classList.remove(...toastPositionClasses);
-            toastContainer.classList.add(toastr.options.positionClass);
+            toastContainer.classList.add(getNotificationPosition()); // SillyBunny: see above
         }
     }
 }

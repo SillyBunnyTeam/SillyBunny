@@ -387,12 +387,12 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
 }
 
 /* On a dark overlay a link is Accent mixed with white. */
-#toast-container .toast-message a[href] {
+:is(#toast-container, #sb-toast-overlay) .toast-message a[href] {
     color: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-layer-toast-fg));
     text-decoration: underline;
 }
 
-#toast-container .toast-message a[href]:visited {
+:is(#toast-container, #sb-toast-overlay) .toast-message a[href]:visited {
     color: color-mix(in srgb, var(--sb-accent) 25%, var(--sb-layer-toast-fg));
 }
 
@@ -1199,6 +1199,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 @media (prefers-contrast: more) {
     .sb-boolean-radio-group,
     #toast-container > div,
+    #sb-toast-overlay > div,
     .sb-boolean-radio-option:active > input[type="radio"]:not(:checked) + span {
         outline: 1px solid var(--sb-shell-border);
         outline-offset: -1px;
@@ -4583,14 +4584,14 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 /* The toast layer is dark in both tones, where the accent ring does not reach 3:1. The ring takes the ink of the toast,
    or, where relative colours work, libadwaita's light form of the accent. The two tokens that read --sb-focus-ring
    resolve where they are declared, so they are declared again here. */
-body #toast-container {
+body :is(#toast-container, #sb-toast-overlay) {
     --sb-focus-ring: currentColor;
     --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
     --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
 }
 
 @supports (color: oklab(from red l a b)) {
-    body #toast-container {
+    body :is(#toast-container, #sb-toast-overlay) {
         --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b);
     }
 }
@@ -6661,7 +6662,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     }
 
     /* A toast is told from the page by its shadow alone, which forced colours remove. */
-    #toast-container > div {
+    :is(#toast-container, #sb-toast-overlay) > div {
         outline: 1px solid CanvasText;
         outline-offset: -1px;
     }
@@ -6973,8 +6974,83 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     }
 }
 
+/* The toast overlay (AdwToastOverlay) holds the toast form. It takes the base rules that toastr.min.css, style.css and
+   popup.css give #toast-container by its id, so that a toast looks and moves the same in either container. The sizes of
+   the toast box stay with the pill rule below, and none of the rules here is important, so the measure rule wins. */
+#sb-toast-overlay {
+    position: fixed;
+    z-index: 999999;
+    pointer-events: none;
+}
+
+#sb-toast-overlay.toast-bottom-left,
+#sb-toast-overlay.toast-bottom-center,
+#sb-toast-overlay.toast-bottom-right {
+    bottom: 24px;
+}
+
+#sb-toast-overlay * {
+    box-sizing: border-box;
+}
+
+#sb-toast-overlay > div {
+    position: relative;
+    pointer-events: auto;
+    overflow: hidden;
+    opacity: 1;
+    filter: none;
+    font-size: calc(var(--mainFontSize) * 0.95);
+    cursor: pointer;
+}
+
+#sb-toast-overlay > div.rtl {
+    direction: rtl;
+}
+
+body #sb-toast-overlay > .toast-non-interactable {
+    cursor: default;
+}
+
+body #sb-toast-overlay .toast-message :is(a, label) {
+    color: var(--toast-link-color);
+}
+
+body #sb-toast-overlay .toast-close-button {
+    color: var(--toast-text-color);
+    text-shadow: none;
+}
+
+body #sb-toast-overlay .toast-close-button:focus {
+    color: var(--toast-text-color);
+    opacity: 0.7;
+}
+
+@media (hover: hover) {
+    body #sb-toast-overlay .toast-close-button:hover {
+        color: var(--toast-text-color);
+        opacity: 0.7;
+    }
+}
+
+.popup[opening] #sb-toast-overlay {
+    visibility: hidden;
+}
+
+.popup #sb-toast-overlay {
+    text-align: left;
+}
+
+.popup #sb-toast-overlay.toast-top-left,
+.popup #sb-toast-overlay.toast-top-right {
+    top: calc(var(--toast-edge) + var(--topBarBlockSize));
+}
+
+.popup #sb-toast-overlay.toast-top-center {
+    top: var(--topBarBlockSize);
+}
+
 /* Toasts: a pill on the toast layer. `[class]` beats toastr's per-position width and margin; the end padding clears the caps. */
-body #toast-container[class] > div {
+body :is(#toast-container, #sb-toast-overlay)[class] > div {
     width: fit-content;
     max-width: min(450px, calc(100% - 24px));
     margin: 12px auto 0;
@@ -6989,7 +7065,7 @@ body #toast-container[class] > div {
 }
 
 /* AdwToast puts its one button at the end of the text; a toast with several buttons keeps its block layout. */
-body #toast-container[class] > .sb-toast--action {
+body :is(#toast-container, #sb-toast-overlay)[class] > .sb-toast--action {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -7042,22 +7118,22 @@ body #toast-container[class] > .sb-toast--action {
 }
 
 /* Status colour on the icon glyph and title only; the toast is dark in both tones, so a light tone's colour is lifted. */
-#toast-container > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
-#toast-container > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
-#toast-container > .toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
+:is(#toast-container, #sb-toast-overlay) > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
+:is(#toast-container, #sb-toast-overlay) > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
+:is(#toast-container, #sb-toast-overlay) > .toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
 
-#toast-container > .toast:not(.toast-info) {
+:is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info) {
     --sb-toast-status: var(--sb-toast-src);
     background-image: none !important;
 }
 
 @supports (color: oklab(from red l a b)) {
-    #toast-container > .toast:not(.toast-info) {
+    :is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info) {
         --sb-toast-status: oklab(from var(--sb-toast-src) max(l, 0.76) a b);
     }
 }
 
-#toast-container > .toast:not(.toast-info)::before {
+:is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info)::before {
     content: var(--sb-toast-glyph);
     position: absolute;
     inset: 50% auto auto 12px;
@@ -7065,8 +7141,8 @@ body #toast-container[class] > .sb-toast--action {
     font: 900 18px/1 "Font Awesome 6 Free";
 }
 
-#toast-container > .toast:not(.toast-info)::before,
-#toast-container > .toast:not(.toast-info) .toast-title {
+:is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info)::before,
+:is(#toast-container, #sb-toast-overlay) > .toast:not(.toast-info) .toast-title {
     color: var(--sb-toast-status);
 }
 
@@ -7109,19 +7185,19 @@ body.reduced-motion .toast {
     }
 }
 
-#toast-container > div.sb-toast-leaving {
+:is(#toast-container, #sb-toast-overlay) > div.sb-toast-leaving {
     animation: sb-toast-exit var(--sb-transition-slow);
     animation-timing-function: var(--sb-ease-out-cubic);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #toast-container > div.sb-toast-leaving {
+    :is(#toast-container, #sb-toast-overlay) > div.sb-toast-leaving {
         animation: none;
         opacity: 0;
     }
 }
 
-body.reduced-motion #toast-container > div.sb-toast-leaving {
+body.reduced-motion :is(#toast-container, #sb-toast-overlay) > div.sb-toast-leaving {
     animation: none;
     opacity: 0;
 }
