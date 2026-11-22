@@ -169,6 +169,48 @@ test.describe('taps and buttons', () => {
     });
 });
 
+test.describe('on a coarse pointer', () => {
+    test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+    test('the button of a toast and Dismiss have a 44px target, and the toast stays 46px high', async ({ page }) => {
+        test.skip(!await page.evaluate(() => matchMedia('(pointer: coarse)').matches), 'this engine does not report a coarse pointer for an emulated touch screen');
+        await page.evaluate(() => window.toastr.info('<span>Removed</span> <button type="button" class="menu_button" id="fx-undo">Undo</button>', '', { timeOut: 0, extendedTimeOut: 0, escapeHtml: false }));
+        const toast = page.locator(TOAST_FORM_SELECTOR);
+        await expect(toast).toBeVisible();
+        await settled(page);
+
+        const toastBox = await boxOf(toast);
+        expect(toastBox.height, 'the target does not make the toast taller').toBeCloseTo(46, 0);
+        for (const control of [toast.locator('#fx-undo'), toast.getByRole('button', { name: 'Dismiss', exact: true })]) {
+            const hit = await control.evaluate((node) => {
+                const box = node.getBoundingClientRect();
+                const at = (x, y) => document.elementFromPoint(x, y);
+                const inside = element => element === node || node.contains(element);
+                const style = getComputedStyle(node);
+                const visible = node.matches('.toast-close-button')
+                    ? { width: 34, height: 34 }
+                    : { width: box.width - 2 * Number.parseFloat(style.borderLeftWidth), height: box.height - 2 * Number.parseFloat(style.borderTopWidth) };
+                return {
+                    // The target: the points 2px inside each edge of a 44px square around the centre.
+                    top: inside(at(box.left + box.width / 2, box.top + box.height / 2 - 20)),
+                    bottom: inside(at(box.left + box.width / 2, box.top + box.height / 2 + 20)),
+                    left: inside(at(box.left + box.width / 2 - Math.min(20, box.width / 2 - 2), box.top + box.height / 2)),
+                    right: inside(at(box.left + box.width / 2 + Math.min(20, box.width / 2 - 2), box.top + box.height / 2)),
+                    height: box.height,
+                    width: box.width,
+                    visibleHeight: visible.height,
+                    clip: style.backgroundClip,
+                };
+            });
+            expect(hit).toMatchObject({ top: true, bottom: true, left: true, right: true });
+            expect(hit.visibleHeight, 'the fill and the ring stay 34px').toBeCloseTo(34, 0);
+        }
+        const undo = await toast.locator('#fx-undo').evaluate(node => ({ height: node.getBoundingClientRect().height, width: node.getBoundingClientRect().width }));
+        expect(undo.height, 'the button reaches the 44px floor').toBeGreaterThanOrEqual(44);
+        expect(undo.width).toBeGreaterThanOrEqual(44);
+    });
+});
+
 test.describe('keyboard focus', () => {
     /** Moves focus the way a keyboard does, so that the browser treats it as keyboard focus. */
     async function focusByKeyboard(page, locator) {

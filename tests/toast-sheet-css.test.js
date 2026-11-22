@@ -70,6 +70,26 @@ describe('the toast layer', () => {
         expect(ruleOf(themeCss, buttonRule)).toContain('height: 34px');
     });
 
+    test('the button of a toast has a 44px target on a coarse pointer, drawn as 34px, and its fills in the states keep that clip', () => {
+        const buttonSelector = `body ${TOAST} .toast-message :is(${BUTTONS.join(', ')})`;
+        const coarse = themeCss.slice(themeCss.indexOf('@media (pointer: coarse) {\n    body #sb-toast-overlay > .sb-form-toast .toast-message'));
+        const rule = coarse.slice(coarse.indexOf('{', coarse.indexOf(buttonSelector)) + 1, coarse.indexOf('}', coarse.indexOf(buttonSelector))).replace(/\s+/g, ' ').trim();
+        expect(rule).toContain('height: 44px');
+        expect(rule).toContain('--sb-toast-target-extra: calc((44px - 34px) / 2)');
+        expect(rule).toContain('margin: calc(var(--sb-toast-target-extra) * -1)');
+        expect(rule).toContain('border: var(--sb-toast-target-extra) solid transparent');
+        expect(rule).toContain('background-clip: padding-box');
+        // A `background` shorthand in a state would reset the clip, and the fill would grow to the 44px target.
+        expect(ruleOf(themeCss, `${buttonSelector}:active`)).toMatch(/^background-color:/);
+        expect(themeCss).toMatch(new RegExp(`:hover \\{\\s*background-color: color-mix`));
+    });
+
+    test('the button of a toast and Dismiss draw the focus ring of the app, which the rules that clear the shadow would remove', () => {
+        const ring = themeCss.slice(themeCss.indexOf(`body ${TOAST} .toast-message :is(${BUTTONS.join(', ')}):focus-visible,`));
+        expect(ring.slice(0, ring.indexOf('}'))).toContain('body :is(#toast-container, #sb-toast-overlay) > .toast > .toast-close-button:focus-visible');
+        expect(ring.slice(ring.indexOf('{'), ring.indexOf('}')).replace(/\s+/g, ' ')).toContain('box-shadow: var(--sb-focus-ring-inset)');
+    });
+
     test('the label is bold and may shrink, and the one button sits at the end of it', () => {
         const label = ruleOf(themeCss, `${TOAST} > .toast-message`);
         expect(label).toContain('font-weight: 700');

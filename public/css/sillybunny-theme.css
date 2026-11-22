@@ -7147,14 +7147,28 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
     cursor: pointer;
 }
 
+/* The fills of the states set the colour only, so that the clip of the fill on a coarse pointer (below) stays. */
 @media (hover: hover) {
     body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):hover {
-        background: color-mix(in srgb, currentColor 15%, transparent);
+        background-color: color-mix(in srgb, currentColor 15%, transparent);
     }
 }
 
 body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):active {
-    background: color-mix(in srgb, currentColor 20%, transparent);
+    background-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+/* On a coarse pointer the target is 44px (DESIGN: Layout) and the fill and the ring stay the 34px of a drawn button: a transparent
+   border carries the extra 5px, a negative margin takes it back out of the layout, and the fill is clipped to the padding box. */
+@media (pointer: coarse) {
+    body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button) {
+        --sb-toast-target-extra: calc((44px - 34px) / 2);
+        height: 44px;
+        margin: calc(var(--sb-toast-target-extra) * -1);
+        border: var(--sb-toast-target-extra) solid transparent;
+        border-radius: calc(var(--sb-radius-control) + var(--sb-toast-target-extra));
+        background-clip: padding-box;
+    }
 }
 
 /* The global ring is an inset box-shadow, and the rules above and below clear the shadow with a longer selector, so the ring
