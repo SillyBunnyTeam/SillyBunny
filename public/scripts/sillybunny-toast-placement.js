@@ -258,7 +258,7 @@ export function observeToastPlacement() {
 
 /** Starts the listeners once. Calling it again changes nothing. */
 export function startToastPlacement() {
-    if (started || typeof window === 'undefined') {
+    if (started || typeof window?.addEventListener !== 'function' || typeof document?.addEventListener !== 'function') {
         return;
     }
     started = true;

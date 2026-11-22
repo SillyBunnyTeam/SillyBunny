@@ -7,7 +7,7 @@ class FakeElement {
     constructor({ display = 'none', height = 64, containerClass = 'toast-top-center' } = {}) {
         this.isConnected = true;
         this.inert = false;
-        this.parentElement = { className: containerClass };
+        this.parentElement = { className: containerClass, hasAttribute: () => false };
         this.height = height;
         this.classes = new Set(['toast']);
         this.classList = {
@@ -87,7 +87,7 @@ describe('sillybunny toast motion', () => {
         toastr.options = previous;
     });
 
-    test('slides in from its own height with a 300ms fade', async () => {
+    test('an in-app notification slides in from its own height with a 300ms fade', async () => {
         const element = new FakeElement({ height: 80 });
         let completed = false;
         $(element).sbToastIn({ duration: 250, easing: 'linear', complete: () => { completed = true; } });
@@ -106,7 +106,7 @@ describe('sillybunny toast motion', () => {
         expect(completed).toBe(true);
     });
 
-    test('rises from below in bottom-anchored containers', () => {
+    test('a notification rises from below in bottom-anchored containers', () => {
         const element = new FakeElement({ height: 50, containerClass: 'toast-bottom-right' });
         $(element).sbToastIn({});
         expect(animations[0].keyframes[0].transform).toBe('translateY(50px)');
