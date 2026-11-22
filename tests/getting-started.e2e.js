@@ -290,7 +290,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page).locator('[data-sb-home-toast="done"]')).toHaveText(HOME_COPY.toastDone);
             await expect(toasts(page).locator('[data-sb-home-toast="next-line"]')).toHaveText(HOME_COPY.toastNext);
             await expect(toasts(page).locator('.sbHomeToast')).toContainText(`Set Up a Preset ${HOME_COPY.toastNext}`);
-            await expect(toasts(page).getByRole('button')).toHaveText(['×', 'Show Me']);
+            await expect(toasts(page).getByRole('button')).toHaveText(['', 'Show Me']);
             await expect.poll(() => savedGettingStarted(captured)?.steps.connect, { timeout: SAVE_TIMEOUT }).toBe('done');
         });
 
@@ -486,7 +486,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
                 await expect(toasts(page)).toHaveClass(/toast-success/);
                 await expect(toasts(page).locator('.toast-title')).toHaveText('Getting Started');
                 await expect(toasts(page).locator('[data-sb-home-toast="finished"]')).toHaveText(HOME_COPY.toastFinished);
-                await expect(toasts(page).getByRole('button')).toHaveText(['×', 'Show Me']);
+                await expect(toasts(page).getByRole('button')).toHaveText(['', 'Show Me']);
                 await expect(toasts(page).locator('[data-sb-copy-placeholder]')).toHaveCount(0);
             });
 

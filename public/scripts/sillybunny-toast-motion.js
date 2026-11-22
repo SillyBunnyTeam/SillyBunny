@@ -69,6 +69,13 @@ const POSITION_CLASSES = [
 ];
 
 const leaving = new WeakSet();
+/**
+ * Messages that the user or the caller made go: Dismiss, a click on the card, or a `clear` with `force`. A pointer that is
+ * over such a message when it starts to leave must not bring it back, which a hover over a leaving message does when a
+ * timeout is what ends it. The pointer is still over it after the press that dismissed it, and the browser reports the
+ * pointer as entering again when the page moves the message's container (a dialog that opens) or blocks frames.
+ */
+const dismissed = new WeakSet();
 let initialized = false;
 
 /**
@@ -231,6 +238,9 @@ function sbToastIn({ complete } = {}) {
         return this;
     }
 
+    if (leaving.has(element) && dismissed.has(element)) {
+        return this;
+    }
     if (leaving.has(element)) {
         // Hovering a toast while it leaves keeps it, like toastr's stop(true, true) + fadeIn.
         leaving.delete(element);
@@ -729,7 +739,9 @@ function placeToast(element, effective, options) {
     } else {
         element.classList.add(NOTIFICATION_FORM_CLASS);
         // The newest notification is nearest the edge: first in the document, which a bottom position draws last.
-        element.parentElement?.prepend(element);
+        if (element.parentElement && element.parentElement.firstElementChild !== element) {
+            element.parentElement.prepend(element);
+        }
         removeOverlayIfEmpty();
         // The overlay that decided the form was at the position of the notifications, and is gone now, so the inset
         // that it left them is stale. The notification is placed before it shows.
@@ -814,6 +826,7 @@ function dismissButtonHtml() {
  * @param {Record<string, any>} options The options object that toastr's closures read.
  */
 function hideThroughToastr($toast, options) {
+    dismissed.add($toast[0]);
     const close = $toast.children('.toast-close-button');
     if (close.length === 0) {
         toastrApi.clear($toast, { force: true });
@@ -953,6 +966,12 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
         bindCardClick($toast, { options, dismiss: () => hideThroughToastr($toast, options) });
         watchButtons(element);
     }
+    // toastr binds the close button itself, so this notes the press before it runs.
+    element.addEventListener('click', (event) => {
+        if (event.target instanceof Element && event.target.closest('.toast-close-button')) {
+            dismissed.add(element);
+        }
+    }, true);
     const { timeOut, extendedTimeOut, persistent } = timingOf(form, type, optionsOverride, effective);
     return {
         $toast,
@@ -1069,6 +1088,10 @@ function wrapContainerCommands(toastr) {
         const original = toastr[command].bind(toastr);
         toastr[command] = function (toastElement, ...rest) {
             pointToastrAtBothContainers();
+            const target = getToastElement(toastElement);
+            if (command === 'clear' && target && rest[0]?.force) {
+                dismissed.add(target);
+            }
             original(toastElement, ...rest);
             settleContainers();
         };

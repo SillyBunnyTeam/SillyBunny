@@ -283,6 +283,36 @@ describe('a click on the card', () => {
     });
 });
 
+describe('a message that was dismissed', () => {
+    const options = { timeOut: 0, extendedTimeOut: 0 };
+
+    test('is not brought back by a pointer that enters it while it leaves, whichever way it was dismissed', () => {
+        const cleared = toastr.info('Cleared', 'One', options);
+        toastr.clear(cleared, { force: true });
+        cleared.trigger('mouseenter');
+        expect(cleared.hasClass('sb-toast-leaving')).toBe(true);
+
+        const pressed = toastr.info('Pressed', 'Two', options);
+        pressed.find('.toast-close-button')[0].click();
+        pressed.trigger('mouseenter');
+        expect(pressed.hasClass('sb-toast-leaving')).toBe(true);
+
+        const clicked = toastr.info('Clicked', 'Three', options);
+        clicked[0].click();
+        clicked.trigger('mouseenter');
+        expect(clicked.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
+    test('is still kept by a pointer when it was a timeout that ended it', async () => {
+        const $toast = toastr.info('Times out', 'Four', { timeOut: 300, extendedTimeOut: 300 });
+        jest.advanceTimersByTime(300);
+        await flush();
+        expect($toast.hasClass('sb-toast-leaving')).toBe(true);
+        $toast.trigger('mouseenter');
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+    });
+});
+
 describe('the order and the container', () => {
     test('the newest notification is first in the document, whatever newestOnTop says, so a bottom position can draw it last', () => {
         const first = toastr.info('One', 'T1', { timeOut: 0, extendedTimeOut: 0 });

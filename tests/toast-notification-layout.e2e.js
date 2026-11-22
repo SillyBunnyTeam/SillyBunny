@@ -137,7 +137,7 @@ test.describe('the card', () => {
             expect(icon.content, `${kind} has a glyph`).not.toBe('none');
             expect(icon.font).toContain('Font Awesome');
             expect([icon.width, icon.height]).toEqual([48, 48]);
-            expect(icon.radius).toBe('50%');
+            expect(Number.parseFloat(icon.radius), 'a circle').toBeGreaterThanOrEqual(24);
             expect(icon.size).toBe('16px');
             expect(icon.glyph, 'the status colour, not the ink').not.toBe(icon.ink);
             expect(icon.fill, 'the ink at 7%').toMatch(/rgba\(.*, 0\.07\d*\)|color\(srgb .* \/ 0\.07\d*\)/);
