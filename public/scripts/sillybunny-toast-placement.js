@@ -2,11 +2,15 @@
  * SillyBunny toast placement: where #sb-toast-overlay sits, as numbers that the toast CSS reads.
  * A bottom toast sits above the composer and above the software keyboard, a toast in a dialog sits at the bottom centre
  * of that dialog's box and above its action row, and an in-app notification at the same position as the toasts sits
- * beyond them. The CSS owns every metric that does not depend on the page; this module only measures what the CSS
- * cannot know.
+ * beyond them. The composer is a docked bottom bar only while nothing covers it: a surface that covers it (a panel of the
+ * top bar, the character editor) leaves the window edge as the bottom edge. The CSS owns every metric that does not
+ * depend on the page; this module only measures what the CSS cannot know.
  */
 
 import { createMobileViewportObserver } from './chat-render-lifecycle/mobile-viewport.js';
+import { getTopmostDialog } from './sillybunny-editor/overlay-host.js';
+import { MOTION_SURFACE, prefersReducedMotion } from './sillybunny-motion.js';
+import { TOAST_MEASURE_CLASS } from './sillybunny-toast-form.js';
 
 export const TOAST_OVERLAY_ID = 'sb-toast-overlay';
 export const NOTIFICATION_CONTAINER_ID = 'toast-container';
@@ -65,6 +69,55 @@ export function composerInset(box, layoutHeight) {
         return 0;
     }
     return Math.max(0, Math.round(layoutHeight - box.top));
+}
+
+/** Points across the composer's width, as shares of it, where the topmost element is read. */
+const COVER_PROBE_SHARES = [0.1, 0.3, 0.5, 0.7, 0.9];
+/** How far inside the composer's top edge the points lie, in px. */
+const COVER_PROBE_DEPTH = 3;
+/** The composer is covered when more than this share of the points that answer lie under another surface. */
+const COVER_MAJORITY = 0.5;
+const MESSAGE_SELECTOR = `#${NOTIFICATION_CONTAINER_ID}, #${TOAST_OVERLAY_ID}`;
+
+function elementsAtPoint(x, y) {
+    return typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : [];
+}
+
+/**
+ * Whether another surface covers the composer, whichever surface it is. A few points just inside the composer's top edge
+ * are hit-tested, and a point is covered when the topmost element there is not part of the composer. A message of either
+ * form is drawn above whatever it sits over, so it does not count, and an element that holds the composer (the chat shell,
+ * where a gap of the composer lets the pointer through) does not cover it either. A small menu over a part of the edge does
+ * not count: most of the points that answer have to be covered.
+ * @param {HTMLElement} composer
+ * @param {{ elementsAt?: (x: number, y: number) => Element[], layoutWidth?: number, layoutHeight?: number }} [reader]
+ * @returns {boolean}
+ */
+export function composerCovered(composer, {
+    elementsAt = elementsAtPoint,
+    layoutWidth = document.documentElement.clientWidth || window.innerWidth,
+    layoutHeight = document.documentElement.clientHeight || window.innerHeight,
+} = {}) {
+    const box = composer.getBoundingClientRect();
+    const y = box.top + COVER_PROBE_DEPTH;
+    if (!(box.height > 0) || y < 0 || y >= layoutHeight) {
+        return false;
+    }
+    let answered = 0;
+    let covered = 0;
+    for (const share of COVER_PROBE_SHARES) {
+        const x = Math.min(Math.max(box.left + box.width * share, 0), layoutWidth - 1);
+        const elements = elementsAt(x, y);
+        if (!elements?.length) {
+            continue;
+        }
+        answered += 1;
+        const topmost = elements.find(element => element.closest(MESSAGE_SELECTOR) === null);
+        if (topmost && !composer.contains(topmost) && !topmost.contains(composer)) {
+            covered += 1;
+        }
+    }
+    return answered > 0 && covered / answered > COVER_MAJORITY;
 }
 
 /**
@@ -169,19 +222,31 @@ function pixels(value) {
     return `${Math.round(value)}px`;
 }
 
-/** How much of the bottom of the window the composer and the software keyboard cover, in px. */
+/** Whether the composer counts as a docked bottom bar now. A modal dialog is not asked: toasts in a dialog sit by the dialog. */
+let composerIsCovered = false;
+
+function readComposerCovered() {
+    const composer = document.getElementById(COMPOSER_ID);
+    return composer !== null && getTopmostDialog() === null && composerCovered(composer);
+}
+
+/** How much of the bottom of the window the composer, while nothing covers it, and the software keyboard cover, in px. */
 function windowBottomInset() {
     const composer = document.getElementById(COMPOSER_ID);
+    composerIsCovered = readComposerCovered();
     return bottomInset({
         layoutHeight: layoutHeight(),
         viewport: window.visualViewport,
-        composerBox: composer?.getBoundingClientRect(),
+        composerBox: composerIsCovered ? null : composer?.getBoundingClientRect(),
     });
 }
 
-/** @param {HTMLElement} overlay */
-function placeInWindow(overlay) {
-    setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(windowBottomInset()));
+/**
+ * @param {HTMLElement} overlay
+ * @param {number} inset
+ */
+function placeInWindow(overlay, inset) {
+    setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(inset));
     for (const property of [FRAME_LEFT_PROPERTY, FRAME_WIDTH_PROPERTY, FRAME_BOTTOM_PROPERTY]) {
         setProperty(overlay, property, null);
     }
@@ -219,8 +284,9 @@ function placeInDialog(overlay, host) {
  * @param {HTMLElement|null} overlay
  * @param {HTMLElement|null} notifications
  * @param {boolean} inDialog
+ * @param {number} inset What the composer and the keyboard cover at the bottom of the window, from `windowBottomInset`.
  */
-function placeNotifications(overlay, notifications, inDialog) {
+function placeNotifications(overlay, notifications, inDialog, inset) {
     if (!notifications) {
         return;
     }
@@ -228,9 +294,42 @@ function placeNotifications(overlay, notifications, inDialog) {
         && !inDialog
         && POSITION_CLASSES.some(name => overlay.classList.contains(name) && notifications.classList.contains(name));
     const edge = edgeOf(notifications.className, false);
-    const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlay.getBoundingClientRect() }) : null;
+    const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlayTargetBox(overlay, edge, inset) }) : null;
     setProperty(notifications, STACK_OFFSET_PROPERTY, offset === null ? null : pixels(offset));
-    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(windowBottomInset()));
+    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(inset));
+}
+
+/**
+ * The box that the overlay is going to have, not the one it has while it glides to a new place, which would give the
+ * notifications beyond it an offset from where the toasts were.
+ * @param {HTMLElement} overlay
+ * @param {'top'|'bottom'} edge
+ * @param {number} inset
+ * @returns {{ top: number, height: number }}
+ */
+function overlayTargetBox(overlay, edge, inset) {
+    const { top, height } = overlay.getBoundingClientRect();
+    return { top: edge === 'bottom' ? layoutHeight() - inset - height : top, height };
+}
+
+/** Longer than the glide, so that the transition is not taken off while it runs. */
+const GLIDE_SLACK = 50;
+/** @type {WeakMap<HTMLElement, number>} */
+const glideTimers = new WeakMap();
+
+/**
+ * Lets a bottom container ease to the place that the next write gives it, for a message that is on screen: its `bottom`,
+ * and its `margin`, which the stack offset moves. A transition that is taken off while it runs ends at once, so it stays
+ * until the glide is over. It is skipped under reduced motion, as the CSS transition of the margin is.
+ * @param {HTMLElement|null} element
+ */
+function glideToPlace(element) {
+    if (!element || edgeOf(element.className, false) !== 'bottom' || prefersReducedMotion()) {
+        return;
+    }
+    clearTimeout(glideTimers.get(element));
+    element.style.setProperty('transition', 'margin var(--sb-transition-slow), bottom var(--sb-transition-slow)');
+    glideTimers.set(element, setTimeout(() => element.style.removeProperty('transition'), MOTION_SURFACE + GLIDE_SLACK));
 }
 
 /**
@@ -239,37 +338,146 @@ function placeNotifications(overlay, notifications, inDialog) {
  * its margin when the stack offset changes, which suits a toast that comes or goes beside notifications that are on
  * screen, but a container that has just been made would glide from the top bar to its place under the toasts, and its
  * clip edge with it.
+ * `glide` eases a bottom message that is on screen to its new place, as when a panel opens over the composer.
  */
-export function updateToastPlacement({ jump = false } = {}) {
+export function updateToastPlacement({ jump = false, glide = false } = {}) {
     const notifications = document.getElementById(NOTIFICATION_CONTAINER_ID);
     if (jump && notifications) {
         notifications.style.setProperty('transition', 'none');
-        writeToastPlacement(notifications);
+        writeToastPlacement(notifications, glide);
         // The style is resolved without the transition before it comes back.
         void notifications.offsetHeight;
         notifications.style.removeProperty('transition');
         return;
     }
-    writeToastPlacement(notifications);
+    writeToastPlacement(notifications, glide);
 }
 
-/** @param {HTMLElement|null} notifications */
-function writeToastPlacement(notifications) {
+/**
+ * @param {HTMLElement|null} notifications
+ * @param {boolean} glide
+ */
+function writeToastPlacement(notifications, glide) {
     const overlay = document.getElementById(TOAST_OVERLAY_ID);
+    if (!overlay && !notifications) {
+        syncCoverWatch();
+        return;
+    }
+    const inDialog = overlay?.parentElement instanceof HTMLDialogElement;
+    if (glide && !inDialog) {
+        glideToPlace(overlay);
+        glideToPlace(notifications);
+    }
+    const inset = windowBottomInset();
     if (overlay) {
-        const host = overlay.parentElement;
-        const inDialog = host instanceof HTMLDialogElement;
         overlay.toggleAttribute(IN_DIALOG_ATTRIBUTE, inDialog);
         if (inDialog) {
-            placeInDialog(overlay, host);
+            placeInDialog(overlay, overlay.parentElement);
         } else {
-            placeInWindow(overlay);
+            placeInWindow(overlay, inset);
         }
-        placeNotifications(overlay, notifications, inDialog);
+    }
+    placeNotifications(overlay, notifications, inDialog, inset);
+    if (overlay) {
         // A dialog builds its action rows after it opens, and the rows that are watched are the ones it has now.
         observeToastPlacement();
+    }
+    syncCoverWatch();
+}
+
+/** What opens, closes or shows a surface: a class, an inline style, `hidden`, a dialog's `open`, `inert` and `aria-hidden`. */
+const SURFACE_ATTRIBUTES = ['class', 'style', 'hidden', 'open', 'inert', 'aria-hidden'];
+
+/** Whether either container holds a message. A toast that is only being measured is not one. */
+function messagesOnScreen() {
+    return [TOAST_OVERLAY_ID, NOTIFICATION_CONTAINER_ID].some((id) => {
+        const container = document.getElementById(id);
+        return container !== null && [...container.children].some(child => !child.classList.contains(TOAST_MEASURE_CLASS));
+    });
+}
+
+/** @type {MutationObserver[]} */
+let coverObservers = [];
+let coverFrame = 0;
+
+/**
+ * Looks at the composer once per frame, however many surfaces changed. A change that leaves the composer as it was writes
+ * nothing, so a message that is on screen stays where it is while the page changes around it.
+ */
+function checkComposerCover() {
+    coverFrame = 0;
+    if (!messagesOnScreen()) {
+        stopCoverWatch();
+        return;
+    }
+    if (readComposerCovered() !== composerIsCovered) {
+        updateToastPlacement({ glide: true });
+    }
+}
+
+function scheduleComposerCoverCheck() {
+    if (coverFrame || typeof requestAnimationFrame !== 'function') {
+        return;
+    }
+    coverFrame = requestAnimationFrame(checkComposerCover);
+}
+
+/** The messages themselves change all the time, and none of that moves a surface. */
+function isSurface(target) {
+    return !(target instanceof Element) || target.closest(MESSAGE_SELECTOR) === null;
+}
+
+function onSurfaceMutation(records) {
+    if (!messagesOnScreen()) {
+        stopCoverWatch();
+        return;
+    }
+    if (records.some(record => isSurface(record.target))) {
+        scheduleComposerCoverCheck();
+    }
+}
+
+function onSurfaceMotionEnd(event) {
+    if (isSurface(event.target)) {
+        scheduleComposerCoverCheck();
+    }
+}
+
+/**
+ * Whether a panel covers the composer changes when a surface opens or closes, and nothing else reports that. The watch
+ * runs only while a message is on screen: the page's own attributes, the children of the body, and the end of a
+ * transition or an animation, which is when a panel that slides in has reached the composer.
+ */
+function startCoverWatch() {
+    if (coverObservers.length > 0 || typeof MutationObserver !== 'function' || !document.body) {
+        return;
+    }
+    const attributes = new MutationObserver(onSurfaceMutation);
+    attributes.observe(document.body, { attributes: true, attributeFilter: SURFACE_ATTRIBUTES, subtree: true });
+    const children = new MutationObserver(onSurfaceMutation);
+    children.observe(document.body, { childList: true });
+    coverObservers = [attributes, children];
+    document.addEventListener('transitionend', onSurfaceMotionEnd, true);
+    document.addEventListener('animationend', onSurfaceMotionEnd, true);
+}
+
+function stopCoverWatch() {
+    if (coverObservers.length === 0) {
+        return;
+    }
+    for (const observer of coverObservers) {
+        observer.disconnect();
+    }
+    coverObservers = [];
+    document.removeEventListener('transitionend', onSurfaceMotionEnd, true);
+    document.removeEventListener('animationend', onSurfaceMotionEnd, true);
+}
+
+function syncCoverWatch() {
+    if (messagesOnScreen()) {
+        startCoverWatch();
     } else {
-        placeNotifications(null, notifications, false);
+        stopCoverWatch();
     }
 }
 
