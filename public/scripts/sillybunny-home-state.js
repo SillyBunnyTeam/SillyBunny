@@ -1,6 +1,10 @@
 export const HOME_STATE_CHANGED_EVENT = 'sb:home-state-changed';
 
 const HOME_ATTRIBUTE = 'data-sb-home';
+// The shell has this attribute only while it goes from the Home width to the chat width, so that this change animates and a
+// window resize never does. The limit ends it when the width does not change, and so no transition ends.
+const LEAVING_ATTRIBUTE = 'data-sb-home-leaving';
+const LEAVING_LIMIT_MS = 500;
 const CONVERSATION_MODE_ATTRIBUTE = 'data-sb-conversation-mode';
 
 const state = {
@@ -8,6 +12,7 @@ const state = {
     sheld: null,
     observer: null,
     active: false,
+    leavingTimer: 0,
 };
 
 function hasWelcomePanel(chat) {
@@ -24,16 +29,42 @@ function deriveHomeActive() {
     return hasWelcomePanel(chat) && !isConversationModeOn(sheld);
 }
 
+function stopLeaving(sheld) {
+    window.clearTimeout(state.leavingTimer);
+    state.leavingTimer = 0;
+    sheld?.removeEventListener('transitionend', onLeavingTransitionEnd);
+    sheld?.removeAttribute(LEAVING_ATTRIBUTE);
+}
+
+function onLeavingTransitionEnd(event) {
+    if (event.target === event.currentTarget && event.propertyName === 'width') {
+        stopLeaving(event.currentTarget);
+    }
+}
+
+function startLeaving(sheld) {
+    stopLeaving(sheld);
+    sheld.setAttribute(LEAVING_ATTRIBUTE, '');
+    sheld.addEventListener('transitionend', onLeavingTransitionEnd);
+    state.leavingTimer = window.setTimeout(() => stopLeaving(sheld), LEAVING_LIMIT_MS);
+}
+
 function writeHomeAttribute() {
     if (!state.sheld) {
         return;
     }
 
     if (state.active) {
+        stopLeaving(state.sheld);
         state.sheld.setAttribute(HOME_ATTRIBUTE, 'on');
-    } else {
-        state.sheld.removeAttribute(HOME_ATTRIBUTE);
+        return;
     }
+
+    // The mark and the end of Home are written in one turn, so the style that follows has both.
+    if (state.sheld.hasAttribute(HOME_ATTRIBUTE)) {
+        startLeaving(state.sheld);
+    }
+    state.sheld.removeAttribute(HOME_ATTRIBUTE);
 }
 
 function syncHomeState() {
@@ -50,6 +81,7 @@ function syncHomeState() {
 function releaseElements() {
     state.observer?.disconnect();
     state.observer = null;
+    stopLeaving(state.sheld);
     state.sheld?.removeAttribute(HOME_ATTRIBUTE);
 }
 

@@ -32,6 +32,63 @@ afterEach(async () => {
     await settle();
 });
 
+describe('the way back from Home', () => {
+    const endTransition = propertyName => sheld.dispatchEvent(Object.assign(new Event('transitionend'), { propertyName }));
+
+    test('marks the shell in the turn that Home ends, and never when Home starts', async () => {
+        const panel = createWelcomePanel();
+        chat.append(panel);
+        await settle();
+
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(false);
+
+        panel.remove();
+        await settle();
+
+        expect(sheld.hasAttribute('data-sb-home')).toBe(false);
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(true);
+    });
+
+    test('ends the mark with the width transition, and not with another property', async () => {
+        const panel = createWelcomePanel();
+        chat.append(panel);
+        await settle();
+        panel.remove();
+        await settle();
+
+        endTransition('transform');
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(true);
+
+        endTransition('width');
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(false);
+    });
+
+    test('ends the mark by itself when the width does not change and no transition ends', async () => {
+        const panel = createWelcomePanel();
+        chat.append(panel);
+        await settle();
+        panel.remove();
+        await settle();
+
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(false);
+    });
+
+    test('clears the mark when Home returns before the transition ends', async () => {
+        const panel = createWelcomePanel();
+        chat.append(panel);
+        await settle();
+        panel.remove();
+        await settle();
+        chat.append(createWelcomePanel());
+        await settle();
+
+        expect(sheld.getAttribute('data-sb-home')).toBe('on');
+        expect(sheld.hasAttribute('data-sb-home-leaving')).toBe(false);
+    });
+});
+
 describe('Home state', () => {
     test('is inactive while #chat has no welcome panel', async () => {
         chat.append(document.createElement('div'));
