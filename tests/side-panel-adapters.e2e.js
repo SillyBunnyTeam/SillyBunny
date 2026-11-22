@@ -456,8 +456,10 @@ async function expectControlAtRowEdge(panel, controlSelector, edge) {
 }
 
 async function readGeometry(page, panel) {
-    // A sheet springs in from below and passes over the composer, so only the settled position is the layout.
+    // A sheet springs in from below and passes over the composer, and the chat moves aside for a docked panel with a
+    // transition, so only the settled position is the layout.
     await expect.poll(() => panel.evaluate(element => element.getAnimations().length)).toBe(0);
+    await expect.poll(() => page.evaluate(() => document.getElementById('sheld').getAnimations().length)).toBe(0);
     return panel.evaluate(element => {
         const panelRect = element.getBoundingClientRect();
         const chatRect = document.getElementById('sheld').getBoundingClientRect();

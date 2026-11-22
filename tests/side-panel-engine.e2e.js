@@ -81,8 +81,10 @@ for (const viewport of VIEWPORTS) {
                 .toBeLessThanOrEqual(1);
         }
 
-        // The sheet springs in from below and settles after its entry motion, so only the settled position is the layout.
+        // The sheet springs in from below and settles after its entry motion, and the chat moves aside for a docked panel with a
+        // transition, so only the settled position is the layout.
         await expect.poll(() => panel.evaluate(element => element.getAnimations().length)).toBe(0);
+        await expect.poll(() => page.evaluate(() => document.getElementById('sheld').getAnimations().length)).toBe(0);
 
         const geometry = await page.evaluate(() => {
             const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="qa-side-panel"]');

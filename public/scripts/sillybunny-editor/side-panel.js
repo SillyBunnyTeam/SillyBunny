@@ -1,14 +1,14 @@
 import { t } from '../i18n.js';
 import { closeActionMenu, isActionMenuOpen, openActionMenu } from '../sillybunny-action-menu.js';
 import { HOME_STATE_CHANGED_EVENT } from '../sillybunny-home-state.js';
-import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
+import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion, transitionChange } from '../sillybunny-motion.js';
 import { LAYOUT_MOBILE_QUERY } from './breakpoints.js';
 import { bindHeaderLayout } from './dialog.js';
 import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261117za',
+    href: 'css/sillybunny-side-panel.css?v=20261122h',
     id: 'deferred-side-panel-css',
 };
 
@@ -29,6 +29,8 @@ let windowEventsBound = false;
 let resizeFrame = 0;
 let pendingLayoutRevealTimer = 0;
 let layoutSettled = Promise.resolve();
+// The open panels and their sides at the last layout. The chat animates only when this changes, never on a window resize.
+let lastPanelSet = '';
 let getMovingUIState = () => ({});
 let setMovingUIState = () => {};
 let activatedControl = null;
@@ -472,10 +474,21 @@ function updateLayout() {
     const root = document.documentElement;
     const body = document.body;
     const open = openEntries();
+    const panelSet = open.map(entry => `${entry.id}:${entry.side}`).join('|');
+    const panelsChanged = panelSet !== lastPanelSet;
+    lastPanelSet = panelSet;
 
     if (open.length === 0) {
-        body.classList.remove('sb-has-docked-panel', 'sb-has-side-panel-sheet');
-        for (const property of ROOT_LAYOUT_PROPERTIES) root.style.removeProperty(property);
+        const clearDock = () => {
+            body.classList.remove('sb-has-docked-panel', 'sb-has-side-panel-sheet');
+            for (const property of ROOT_LAYOUT_PROPERTIES) root.style.removeProperty(property);
+        };
+        const dockedShell = document.getElementById('sheld');
+        if (dockedShell && panelsChanged && body.classList.contains('sb-has-docked-panel')) {
+            transitionChange(dockedShell, 'data-sb-dock-moving', clearDock, { properties: ['transform', 'width'] });
+        } else {
+            clearDock();
+        }
         document.getElementById('chat')?.style.removeProperty('--sb-side-panel-chat-height');
         for (const entry of sidePanels.values()) {
             entry.panel.classList.remove('sb-side-panel--sheet', 'sb-side-panel--left', 'sb-side-panel--right');
@@ -537,7 +550,8 @@ function updateLayout() {
     }
 
     const chatShell = document.getElementById('sheld');
-    if (chatShell) deferPanelRevealUntilChatSettles(open, chatShell, layout.chatRect);
+    // A panel appears after the chat has made room for it. A resize moves the chat and the panels together.
+    if (chatShell && panelsChanged) deferPanelRevealUntilChatSettles(open, chatShell, layout.chatRect);
     const chatShellRect = chatShell?.getBoundingClientRect();
     if (chatShellRect && Number.isFinite(chatShellRect.top) && Number.isFinite(chatShellRect.bottom)) {
         for (const side of ['left', 'right']) {
@@ -553,12 +567,19 @@ function updateLayout() {
     }
     body.classList.remove('sb-has-side-panel-sheet');
     body.classList.add('sb-has-docked-panel');
-    root.style.setProperty('--sb-dock-start', `${layout.dockStart}px`);
-    root.style.setProperty('--sb-dock-end', `${layout.dockEnd}px`);
-    root.style.setProperty('--sb-chat-offset', `${layout.chatOffset}px`);
-    root.style.setProperty('--sb-chat-shift', `${layout.chatShift}px`);
-    root.style.setProperty('--sb-chat-width', `${layout.chatWidth}px`);
-    root.style.setProperty('--sb-side-panel-width', `${layout.panelWidth}px`);
+    const writeDock = () => {
+        root.style.setProperty('--sb-dock-start', `${layout.dockStart}px`);
+        root.style.setProperty('--sb-dock-end', `${layout.dockEnd}px`);
+        root.style.setProperty('--sb-chat-offset', `${layout.chatOffset}px`);
+        root.style.setProperty('--sb-chat-shift', `${layout.chatShift}px`);
+        root.style.setProperty('--sb-chat-width', `${layout.chatWidth}px`);
+        root.style.setProperty('--sb-side-panel-width', `${layout.panelWidth}px`);
+    };
+    if (chatShell && panelsChanged) {
+        transitionChange(chatShell, 'data-sb-dock-moving', writeDock, { properties: ['transform', 'width'] });
+    } else {
+        writeDock();
+    }
     document.getElementById('chat')?.style.removeProperty('--sb-side-panel-chat-height');
 
     for (const entry of sidePanels.values()) {
