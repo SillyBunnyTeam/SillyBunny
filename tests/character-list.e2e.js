@@ -7,6 +7,7 @@ import { q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 import { selectTheme } from './helpers/page-contrast.js';
 import { parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION_TONES } from './helpers/selection-forms.js';
+import { TOAST_CONTAINERS } from './helpers/toasts.js';
 
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
@@ -239,7 +240,7 @@ async function prepareList(page, viewport) {
     await page.goto('/');
     await waitForAppReady(page);
     await page.waitForFunction(() => !document.getElementById('preloader'));
-    await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
+    await page.addStyleTag({ content: `${TOAST_CONTAINERS} { display: none !important; }` });
     await showView(page, 'characters');
     await page.evaluate(async () => {
         const app = await import('/script.js');

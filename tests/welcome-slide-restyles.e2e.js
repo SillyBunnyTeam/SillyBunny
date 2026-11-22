@@ -104,7 +104,7 @@ async function recordSlideWrites(page) {
         const structural = (record) => {
             const target = elementOf(record.target);
             // A node that has left the document, such as a toast that has finished leaving, restyles nothing.
-            if (!target.isConnected || target.closest('#toast-container') || [...record.addedNodes, ...record.removedNodes].some(node => node.id === 'toast-container')) return true;
+            if (!target.isConnected || target.closest('#toast-container, #sb-toast-overlay') || [...record.addedNodes, ...record.removedNodes].some(node => node.id === 'toast-container' || node.id === 'sb-toast-overlay')) return true;
             return record.attributeName === 'style' && target.matches('.sb-dialog__header') && target.style.length === 1 && target.style.getPropertyValue('--sb-dialog-header-side') !== '';
         };
         const describe = (record) => {

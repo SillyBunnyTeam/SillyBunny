@@ -9,6 +9,7 @@ import { protectMaintainerServer, showToasts } from './helpers/maintainer-server
 import { DESKTOP, matrixViewports } from './helpers/matrix.js';
 import { readTextContrast, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { TOAST_MESSAGE_SELECTOR, TOAST_SELECTOR } from './helpers/toasts.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -35,13 +36,13 @@ const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const alertOf = page => hosts(page).locator('.sb-dialog--alert');
 const restoreOf = (page, key = 'assistant-reisen') => cardOf(page, key).locator('.sbHomeFootButton', { hasText: 'Restore' });
 // Every failure toast of an assistant card ends the same way, so a check that none is shown covers all three.
-const failureToast = page => page.locator('#toast-container .toast-message', { hasText: 'Try again, or reload SillyBunny.' });
+const failureToast = page => page.locator(TOAST_MESSAGE_SELECTOR, { hasText: 'Try again, or reload SillyBunny.' });
 const stored = (page, key) => page.evaluate(async storageKey => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem(storageKey), key);
 const renderHome = page => page.evaluate(async () => (await import('/scripts/welcome-screen.js')).openWelcomeScreen({ force: true }));
 // The app shows other success toasts of its own at start, so the message is told by its text.
 /** A toast stays for a few seconds, so a check that it is absent must look at once: a retrying check would pass when the toast leaves. */
 const expectNoToast = async locator => expect(await locator.count()).toBe(0);
-const updatedToast = page => page.locator('#toast-container .toast-success .toast-message').filter({ hasText: 'A backup of your version was kept' });
+const updatedToast = page => page.locator(`${TOAST_SELECTOR}.toast-success .toast-message`).filter({ hasText: 'A backup of your version was kept' });
 const labelsOfOpenMenu = async (page, key) => {
     await openMenu(page, key);
     const labels = await menuLabels(page);
@@ -270,7 +271,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
                 await restoreOf(page).click();
                 await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeCardOpen')).toBeEnabled();
 
-                await expectNoToast(page.locator('#toast-container .toast-message').filter({ hasText: /Reisen|backup/ }));
+                await expectNoToast(page.locator(TOAST_MESSAGE_SELECTOR).filter({ hasText: /Reisen|backup/ }));
             });
 
             test('leaves the keyboard on the restored card, at its first chat button, and not on the page', async ({ page }) => {

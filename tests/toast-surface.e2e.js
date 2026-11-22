@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { TOAST_SELECTOR } from './helpers/toasts.js';
 
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
@@ -9,41 +10,53 @@ test.beforeEach(async ({ page }) => {
     await showToasts(page);
 });
 
-test('a toast is a pill, and only an error, warning or success toast takes the status colour, on its icon and title', async ({ page }) => {
-    const measured = await page.evaluate(() => {
-        const read = (kind) => {
-            const toast = window.toastr[kind]('A message that is long enough to wrap onto a second line in a narrow toast.', 'Title', { timeOut: 0, extendedTimeOut: 0 });
-            const node = toast[0];
-            const style = getComputedStyle(node);
-            const title = getComputedStyle(node.querySelector('.toast-title'));
-            const icon = getComputedStyle(node, '::before');
-            const box = node.getBoundingClientRect();
-            return {
-                radius: Number.parseFloat(style.borderTopLeftRadius),
-                height: box.height,
-                titleColour: title.color,
-                ink: style.color,
-                iconContent: icon.content,
-                iconColour: icon.color,
-                background: style.backgroundImage,
-            };
-        };
-        const result = Object.fromEntries(['error', 'warning', 'success', 'info'].map(kind => [kind, read(kind)]));
-        window.toastr.remove();
-        return result;
-    });
+// Both forms keep the pill and the status colour in Phase 1, so the same checks run on a toast (a short message with no title)
+// and on an in-app notification (a message with a title).
+const FORMS = [
+    { form: 'toast', title: '', message: 'A short message.' },
+    { form: 'notification', title: 'Title', message: 'A message that is long enough to wrap onto a second line in a narrow toast.' },
+];
 
-    for (const [kind, toast] of Object.entries(measured)) {
-        expect(toast.radius, `${kind} toast radius`).toBeGreaterThanOrEqual(toast.height / 2);
-    }
-    for (const kind of ['error', 'warning', 'success']) {
-        expect(measured[kind].titleColour, `${kind} title colour`).not.toBe(measured[kind].ink);
-        expect(measured[kind].iconColour, `${kind} icon colour is the title's`).toBe(measured[kind].titleColour);
-        expect(measured[kind].iconContent, `${kind} icon glyph`).not.toBe('none');
-        expect(measured[kind].background, `${kind} toast draws no PNG icon`).toBe('none');
-    }
-    expect(measured.info.titleColour, 'info title keeps the toast ink').toBe(measured.info.ink);
-});
+for (const { form, title, message } of FORMS) {
+    test(`a ${form} is a pill, and only an error, warning or success one takes the status colour, on its icon and title`, async ({ page }) => {
+        const measured = await page.evaluate(({ titleText, messageText }) => {
+            const read = (kind) => {
+                const toast = window.toastr[kind](messageText, titleText, { timeOut: 0, extendedTimeOut: 0 });
+                const node = toast[0];
+                const style = getComputedStyle(node);
+                const titleNode = node.querySelector('.toast-title');
+                const icon = getComputedStyle(node, '::before');
+                const box = node.getBoundingClientRect();
+                return {
+                    radius: Number.parseFloat(style.borderTopLeftRadius),
+                    height: box.height,
+                    titleColour: titleNode ? getComputedStyle(titleNode).color : null,
+                    form: node.classList.contains('sb-form-toast') ? 'toast' : 'notification',
+                    ink: style.color,
+                    iconContent: icon.content,
+                    iconColour: icon.color,
+                    background: style.backgroundImage,
+                };
+            };
+            const result = Object.fromEntries(['error', 'warning', 'success', 'info'].map(kind => [kind, read(kind)]));
+            window.toastr.remove();
+            return result;
+        }, { titleText: title, messageText: message });
+
+        for (const [kind, toast] of Object.entries(measured)) {
+            expect(toast.form, `${kind} is a ${form}`).toBe(form);
+            expect(toast.radius, `${kind} ${form} radius`).toBeGreaterThanOrEqual(toast.height / 2);
+        }
+        for (const kind of ['error', 'warning', 'success']) {
+            expect(measured[kind].iconColour, `${kind} icon colour is not the ink`).not.toBe(measured[kind].ink);
+            // A toast has no title, and the status colour is then on its icon alone.
+            expect(measured[kind].titleColour ?? measured[kind].iconColour, `${kind} title colour is the icon's`).toBe(measured[kind].iconColour);
+            expect(measured[kind].iconContent, `${kind} icon glyph`).not.toBe('none');
+            expect(measured[kind].background, `${kind} ${form} draws no PNG icon`).toBe('none');
+        }
+        expect(measured.info.titleColour ?? measured.info.ink, 'info title keeps the toast ink').toBe(measured.info.ink);
+    });
+}
 
 test('a toast stays for 5 seconds and shows and hides over 300ms', async ({ page }) => {
     const options = await page.evaluate(() => ({ ...window.toastr.options }));
@@ -58,7 +71,7 @@ test('a toast is kept while it is hovered or has keyboard focus inside it, and g
     await page.evaluate(() => {
         window.toastr.info('<a href="#" id="toast-link">Details</a>', 'Held', { timeOut: 600, extendedTimeOut: 600, escapeHtml: false });
     });
-    const toast = page.locator('#toast-container .toast', { hasText: 'Held' });
+    const toast = page.locator(TOAST_SELECTOR, { hasText: 'Held' });
     await expect(toast).toBeVisible();
     await page.locator('#toast-link').focus();
     await page.waitForTimeout(1800);
@@ -69,7 +82,7 @@ test('a toast is kept while it is hovered or has keyboard focus inside it, and g
     await page.evaluate(() => {
         window.toastr.info('Hover me', 'Hovered', { timeOut: 600, extendedTimeOut: 600 });
     });
-    const hovered = page.locator('#toast-container .toast', { hasText: 'Hovered' });
+    const hovered = page.locator(TOAST_SELECTOR, { hasText: 'Hovered' });
     await expect(hovered).toBeVisible();
     await hovered.hover();
     await page.waitForTimeout(1800);

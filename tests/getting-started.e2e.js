@@ -7,6 +7,7 @@ import { captureAccountStorageSaves, gettingStartedValue, savedGettingStarted, s
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { BUNDLED_THEME_NAMES, GLYPH_CONTRAST, readChipContrast, resolveColor, selectTheme } from './helpers/page-contrast.js';
+import { TOAST_SELECTOR } from './helpers/toasts.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -23,7 +24,7 @@ const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton
 const tile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="getting-started"]');
 const progressOf = page => tile(page).locator('.sbHomeTileSub');
 /** The toasts of Getting Started only: other parts of the app toast on their own events, such as a preset change. */
-const toasts = page => page.locator('#toast-container .toast', { has: page.locator('.sbHomeToast') });
+const toasts = page => page.locator(TOAST_SELECTOR, { has: page.locator('.sbHomeToast') });
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const rowOf = (host, title) => host.locator('.ds-row', { hasText: title });
 const helpTile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="help"]');

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { TOAST_CONTAINERS } from './helpers/toasts.js';
 
 const persistenceRequests = new WeakMap();
 const groupDefinitionKeys = [
@@ -71,7 +72,7 @@ async function expectOnlyLiveGroupPayloads(page) {
 async function openCreateGroup(page, mobile) {
     await page.goto('/');
     await page.waitForFunction(() => !document.getElementById('preloader'));
-    await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
+    await page.addStyleTag({ content: `${TOAST_CONTAINERS} { display: none !important; }` });
     await page.locator('#sb-character-toggle').click();
     if (mobile) {
         await page.getByRole('button', { name: 'Back to Settings Navigation', exact: true }).click();

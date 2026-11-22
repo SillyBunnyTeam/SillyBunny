@@ -8,6 +8,7 @@ import { protectMaintainerServer, showToasts } from './helpers/maintainer-server
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { BUNDLED_THEME_NAMES, readChipContrast, selectTheme } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { TOAST_MESSAGE_SELECTOR } from './helpers/toasts.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -500,7 +501,7 @@ for (const { name, checksColours, options } of VIEWPORTS) {
 
                 await buttonsOf(rowOf(host, 'Fixture Midnight')).getByText('Install').click();
 
-                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.extrasActionError })).toHaveText(HOME_COPY.extrasActionError);
+                await expect(page.locator(TOAST_MESSAGE_SELECTOR, { hasText: HOME_COPY.extrasActionError })).toHaveText(HOME_COPY.extrasActionError);
                 await expect(statusOf(rowOf(host, 'Fixture Midnight'))).toHaveText('Not installed');
                 await expect(buttonsOf(rowOf(host, 'Fixture Midnight'))).toHaveText(['Install']);
                 await expect(buttonsOf(rowOf(host, 'Fixture Midnight'))).toBeEnabled();

@@ -12,6 +12,7 @@ import { protectMaintainerServer, showToasts } from './helpers/maintainer-server
 import { ABOUT_LOGO, expectRealLogo } from './helpers/logo.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { TOAST_MESSAGE_SELECTOR, TOAST_SELECTOR } from './helpers/toasts.js';
 
 // A describe whose tests assert how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
 const test = base.extend({ bundledCardsOnly: [false, { option: true }] });
@@ -1694,7 +1695,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await menuButton(page).click();
                 await page.getByRole('menuitem', { name: 'About SillyBunny', exact: true }).click();
 
-                const toast = page.locator('#toast-container .toast', { hasText: HOME_COPY.windowLoadError });
+                const toast = page.locator(TOAST_SELECTOR, { hasText: HOME_COPY.windowLoadError });
                 await expect(toast).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the About window'))).toBe(true);
@@ -2231,7 +2232,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await homeTile(page, 'getting-started').click();
 
-                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.windowLoadError })).toHaveText(HOME_COPY.windowLoadError);
+                await expect(page.locator(TOAST_MESSAGE_SELECTOR, { hasText: HOME_COPY.windowLoadError })).toHaveText(HOME_COPY.windowLoadError);
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the Getting Started window'))).toBe(true);
 
@@ -2419,7 +2420,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await homeTile(page, 'extras').click();
 
-                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.windowLoadError })).toBeVisible();
+                await expect(page.locator(TOAST_MESSAGE_SELECTOR, { hasText: HOME_COPY.windowLoadError })).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the Bundled Extras window'))).toBe(true);
 
@@ -2469,7 +2470,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await chooseAssistant(page).click();
 
-                await expect(page.locator('#toast-container .toast-message', { hasText: HOME_COPY.windowLoadError })).toBeVisible();
+                await expect(page.locator(TOAST_MESSAGE_SELECTOR, { hasText: HOME_COPY.windowLoadError })).toBeVisible();
                 await expect(hosts(page)).toHaveCount(0);
                 expect(errors.some(line => line.includes('Could not open the Choose Assistant window'))).toBe(true);
 
