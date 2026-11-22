@@ -29,6 +29,7 @@ import {
     TOAST_MEASURE_CLASS,
     TOAST_OVERLAY_ID,
     classifyToast,
+    markButtons,
 } from './sillybunny-toast-form.js';
 import { bindCardClick, playNotificationEnter, playNotificationLeave, shiftOthersAround, stopNotificationMotion, watchButtons } from './sillybunny-toast-notification.js';
 import { IN_DIALOG_ATTRIBUTE, edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
@@ -729,6 +730,7 @@ function placeToast(element, effective, options) {
     const { form } = classifyToast(element, effective, measureOverride ? { measure: measureOverride } : undefined);
     if (form === TOAST_FORM) {
         element.classList.add(TOAST_FORM_CLASS);
+        markButtons(element);
         const overlay = ensureOverlay();
         if (options.newestOnTop) {
             overlay.prepend(element);
@@ -914,6 +916,10 @@ function hasInlineAction(element) {
 
 function markAction(element) {
     element.classList.toggle(TOAST_ACTION_CLASS, hasInlineAction(element));
+    // An in-app notification keeps the markup of its caller, so only the toast form is marked.
+    if (element.classList.contains(TOAST_FORM_CLASS)) {
+        markButtons(element);
+    }
 }
 
 /** Marks the toast now and again when a caller changes its content after it is shown. */

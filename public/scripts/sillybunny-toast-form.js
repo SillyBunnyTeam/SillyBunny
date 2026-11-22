@@ -72,6 +72,33 @@ export function countButtons(messageElement) {
     }).length;
 }
 
+/** Set on a toast whose message holds a button, so that the CSS lays the button out without a `:has()` rule. */
+export const TOAST_BUTTON_CLASS = 'sb-toast--button';
+/** Set on the element that directly holds a button of a toast's message, when that element is not the message itself. */
+export const TOAST_BUTTON_HOLDER_CLASS = 'sb-toast-button-holder';
+
+/**
+ * Marks where the buttons of a toast are, for the CSS that puts the one button at the end of the label. A `:has()` rule
+ * that names `[role="button"]` makes the browser check its anchors at every write of a `role` attribute anywhere in the
+ * page, and a Welcome slide, which writes `role` on its buttons, restyles the whole document once more because of it.
+ * Markers that follow the content cost nothing outside the toast. toastr builds the message as a direct child of the toast.
+ * @param {Element} toast
+ */
+export function markButtons(toast) {
+    const message = [...toast.children].find(child => child.classList.contains('toast-message')) ?? null;
+    const buttons = message ? [...message.querySelectorAll(BUTTON_SELECTOR)] : [];
+    toast.classList.toggle(TOAST_BUTTON_CLASS, buttons.length > 0);
+    const holders = new Set(buttons.map(button => button.parentElement).filter(parent => parent && parent !== message));
+    for (const stale of toast.querySelectorAll(`.${TOAST_BUTTON_HOLDER_CLASS}`)) {
+        if (!holders.has(stale)) {
+            stale.classList.remove(TOAST_BUTTON_HOLDER_CLASS);
+        }
+    }
+    for (const holder of holders) {
+        holder.classList.add(TOAST_BUTTON_HOLDER_CLASS);
+    }
+}
+
 /**
  * Adds the blocks that `parent` holds to `count`. A run of text and inline elements is one block, and a line
  * break or a block element ends it. A button is neither a block nor the end of a run.
@@ -183,6 +210,8 @@ function measureOnOneLine(element) {
     // inline transform from a running animation would change the width that is read.
     clone.removeAttribute('style');
     clone.classList.add(TOAST_FORM_CLASS, TOAST_MEASURE_CLASS);
+    // The clone is laid out as a toast, and a toast puts its button in a row that measures differently from a block.
+    markButtons(clone);
     (document.getElementById(TOAST_OVERLAY_ID) ?? document.body).append(clone);
     try {
         const style = getComputedStyle(clone);

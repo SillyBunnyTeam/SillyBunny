@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BUTTON_SELECTOR } from '../public/scripts/sillybunny-toast-form.js';
+import { BUTTON_SELECTOR, TOAST_BUTTON_CLASS, TOAST_BUTTON_HOLDER_CLASS } from '../public/scripts/sillybunny-toast-form.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), 'utf8');
@@ -148,13 +148,22 @@ describe('the toast layer', () => {
     test('a toast is as wide as its text up to 34em and the window minus 24px, and with a button at least 450px', () => {
         expect(ruleOf(themeCss, TOAST)).toContain('max-width: min(34em, calc(100cqw - 24px))');
         expect(ruleOf(themeCss, TOAST)).toContain('width: fit-content');
-        const floorSelector = `${TOAST}:has(:where(.toast-message :is(${BUTTONS.join(', ')})))`;
-        expect(ruleOf(themeCss, floorSelector)).toBe('min-width: min(450px, calc(100cqw - 24px));');
+        expect(ruleOf(themeCss, `${TOAST}:where(.${TOAST_BUTTON_CLASS})`)).toBe('min-width: min(450px, calc(100cqw - 24px));');
+    });
+
+    test('no toast rule matches a button through :has(), which restyled the whole document at every write of a role or a type, as a Welcome slide makes', () => {
+        const start = themeCss.indexOf('/* The toast overlay (AdwToastOverlay) holds the toast form.');
+        const end = themeCss.indexOf('body.reduced-motion .toast');
+        expect(start).toBeGreaterThan(0);
+        expect(end).toBeGreaterThan(start);
+        const hasWithAttribute = themeCss.slice(start, end).match(/:has\((?:[^()]|\([^()]*\))*\[[^\]]*\]/g) ?? [];
+        expect(hasWithAttribute).toEqual([]);
+        expect(themeCss.slice(start, end)).not.toMatch(/\.sb-form-toast[^{]*:has\(/);
     });
 
     test('the buttons that the toast CSS places and sizes are the buttons that the classifier counts', () => {
-        const rowSelector = `${TOAST} > .toast-message:has(:where(${BUTTONS.join(', ')}))`;
-        expect(ruleOf(themeCss, rowSelector)).toContain('display: flex');
+        expect(ruleOf(themeCss, `${TOAST}:where(.${TOAST_BUTTON_CLASS}) > .toast-message`)).toContain('display: flex');
+        expect(ruleOf(themeCss, `${TOAST} > .toast-message :where(.${TOAST_BUTTON_HOLDER_CLASS})`)).toBe('display: contents;');
         const buttonRule = `body ${TOAST.replace(' > ', ' > ')} .toast-message :is(${BUTTONS.join(', ')})`;
         expect(ruleOf(themeCss, buttonRule)).toContain('height: 34px');
     });

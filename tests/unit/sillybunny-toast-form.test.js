@@ -676,3 +676,85 @@ describe('order of the rules', () => {
         expect(result.reason).toBe('blocks');
     });
 });
+
+describe('the button markers', () => {
+    /** A toast as toastr builds it: the message is a direct child of the toast. */
+    function toastOf(markup) {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.append(messageOf(markup));
+        document.body.append(toast);
+        return toast;
+    }
+    const holders = toast => [...toast.querySelectorAll(`.${form.TOAST_BUTTON_HOLDER_CLASS}`)];
+
+    test('a toast with a button of any form is marked, and one without is not', () => {
+        const forms = [
+            '<button>Undo</button>',
+            '<div class="menu_button">Undo</div>',
+            '<span role="button">Undo</span>',
+            '<input type="button" value="Undo">',
+            '<input type="submit" value="Undo">',
+            '<input type="reset" value="Undo">',
+        ];
+        const marked = forms.map((markup) => {
+            const toast = toastOf(`Removed ${markup}`);
+            form.markButtons(toast);
+            return [markup, toast.classList.contains(form.TOAST_BUTTON_CLASS)];
+        });
+        expect(marked).toEqual(forms.map(markup => [markup, true]));
+        const plain = toastOf('Removed <a href="#">link</a> <input type="text">');
+        form.markButtons(plain);
+        expect(plain.classList.contains(form.TOAST_BUTTON_CLASS)).toBe(false);
+    });
+
+    test('the element that directly holds a button is marked, and the message that holds it is not', () => {
+        const toast = toastOf('<div class="wrapper"><span>Removed</span> <button>Undo</button></div>');
+        form.markButtons(toast);
+        expect(holders(toast).map(node => node.className.replace(form.TOAST_BUTTON_HOLDER_CLASS, '').trim())).toEqual(['wrapper']);
+
+        const direct = toastOf('Removed <button>Undo</button>');
+        form.markButtons(direct);
+        expect(holders(direct)).toEqual([]);
+        expect(direct.classList.contains(form.TOAST_BUTTON_CLASS)).toBe(true);
+    });
+
+    test('a marker that no longer holds a button is taken off when the content changes', () => {
+        const toast = toastOf('<div class="wrapper"><button>Undo</button></div>');
+        form.markButtons(toast);
+        expect(holders(toast)).toHaveLength(1);
+        toast.querySelector('button').remove();
+        form.markButtons(toast);
+        expect(holders(toast)).toHaveLength(0);
+        expect(toast.classList.contains(form.TOAST_BUTTON_CLASS)).toBe(false);
+    });
+
+    test('the close button that toastr adds is not a button of the message', () => {
+        const $toast = toastr.info('Saved', undefined, { closeButton: true });
+        form.markButtons($toast[0]);
+        expect($toast[0].querySelector('.toast-close-button')).not.toBeNull();
+        expect($toast[0].classList.contains(form.TOAST_BUTTON_CLASS)).toBe(false);
+    });
+
+    test('the markers are the same buttons that the classifier counts', () => {
+        const markups = ['<div class="menu_button"><span role="button"><input type="button"></span></div>', '<div><div class="menu_button">A</div></div>', 'text'];
+        const compared = markups.map((markup) => {
+            const toast = toastOf(markup);
+            form.markButtons(toast);
+            return [markup, toast.classList.contains(form.TOAST_BUTTON_CLASS) === form.countButtons(toast.firstElementChild) > 0];
+        });
+        expect(compared).toEqual(markups.map(markup => [markup, true]));
+    });
+
+    test('the clone that is measured is marked, so that it is laid out as the toast is', () => {
+        const $toast = toastr.info('Removed <button type="button">Undo</button>', undefined, { escapeHtml: false });
+        const seen = [];
+        const appended = jest.spyOn(document.body, 'append').mockImplementation((clone) => {
+            seen.push(clone.classList.contains(form.TOAST_BUTTON_CLASS));
+        });
+        form.classifyToast($toast[0], { ...toastr.options, escapeHtml: false });
+        appended.mockRestore();
+        expect(seen).toEqual([true]);
+    });
+});
+

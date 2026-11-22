@@ -7069,9 +7069,11 @@ body #sb-toast-overlay .toast-message :is(a, label) {
     text-align: start;
 }
 
-/* A toast with a button is at least 450px wide (libadwaita's NATURAL_WIDTH). The condition is inside :where() so that it
-   adds no specificity, and the measure rule below still removes the floor from the measuring clone. */
-#sb-toast-overlay > .sb-form-toast:has(:where(.toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button))) {
+/* A toast with a button is at least 450px wide (libadwaita's NATURAL_WIDTH). The script marks a toast that holds a button
+   (`markButtons`), because a `:has()` rule that names `[role="button"]` costs a style check at every write of a role in the
+   page. The marker is inside :where() so that it adds no specificity, and the measure rule below still removes the floor
+   from the measuring clone. */
+#sb-toast-overlay > .sb-form-toast:where(.sb-toast--button) {
     min-width: min(450px, calc(100cqw - 24px));
 }
 
@@ -7115,14 +7117,14 @@ dialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast {
 }
 
 /* The one button sits at the end of the label: the message becomes a row, and a wrapper that holds the button adds no box. */
-#sb-toast-overlay > .sb-form-toast > .toast-message:has(:where(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button)) {
+#sb-toast-overlay > .sb-form-toast:where(.sb-toast--button) > .toast-message {
     display: flex;
     align-items: center;
     justify-content: space-between;
     column-gap: 18px;
 }
 
-#sb-toast-overlay > .sb-form-toast > .toast-message :where(:has(> :where(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button))) {
+#sb-toast-overlay > .sb-form-toast > .toast-message :where(.sb-toast-button-holder) {
     display: contents;
 }
 

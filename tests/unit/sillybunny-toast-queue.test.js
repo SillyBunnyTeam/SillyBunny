@@ -150,6 +150,44 @@ describe('the action class', () => {
     });
 });
 
+describe('the button markers', () => {
+    const options = { escapeHtml: false, timeOut: 0, extendedTimeOut: 0 };
+    const toastMarked = $toast => $toast[0].classList.contains(toastForm.TOAST_BUTTON_CLASS);
+    const holders = $toast => $toast[0].querySelectorAll(`.${toastForm.TOAST_BUTTON_HOLDER_CLASS}`).length;
+    const isToast = $toast => $toast[0].classList.contains(toastForm.TOAST_FORM_CLASS);
+
+    test('are set on a toast with a button, so that the CSS needs no `:has()` for the layout of its button', async () => {
+        // Read at once: the first frame of the toast is laid out with its button in a row, not after a later mutation.
+        const $toast = toastr.info('<div class="wrap">Removed <button type="button">Undo</button></div>', '', options);
+        expect(isToast($toast)).toBe(true);
+        expect(toastMarked($toast)).toBe(true);
+        expect(holders($toast)).toBe(1);
+        const plain = toastr.info('A plain toast', '', { ...options, timeOut: 5000 });
+        await flush();
+        expect(toastMarked(plain)).toBe(false);
+    });
+
+    test('are not set on an in-app notification, which keeps the markup of its caller', async () => {
+        const $card = toastr.info('<div class="wrap">Removed <button type="button">Undo</button></div>', 'A title', options);
+        await flush();
+        expect(isToast($card)).toBe(false);
+        expect(toastMarked($card)).toBe(false);
+        expect(holders($card)).toBe(0);
+    });
+
+    test('follow the content when a caller changes it after the toast is shown', async () => {
+        const $toast = toastr.info('<div>Removed</div>', '', options);
+        await flush();
+        expect(toastMarked($toast)).toBe(false);
+        $toast.find('.toast-message').append('<button type="button">Undo</button>');
+        await flush();
+        expect(toastMarked($toast)).toBe(true);
+        $toast.find('.toast-message button').remove();
+        await flush();
+        expect(toastMarked($toast)).toBe(false);
+    });
+});
+
 describe('the toast queue', () => {
     test('a second toast waits behind the first, and every call returns the toast element that toastr makes', () => {
         const first = toastr.info('first message');
