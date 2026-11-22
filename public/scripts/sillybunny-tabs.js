@@ -12294,6 +12294,26 @@ function scheduleBottomChatBarRefresh(delay = 0) {
     }, delay);
 }
 
+// The entries are written only when they differ from what the picker holds, so a refresh that finds the same chats changes
+// nothing in the page.
+function writeBottomChatOptions(select, entries) {
+    const unchanged = select.options.length === entries.length && entries.every((entry, index) => {
+        const option = select.options[index];
+        return option.value === entry.value && option.textContent === entry.label && option.selected === entry.selected;
+    });
+    if (unchanged) {
+        return;
+    }
+
+    select.replaceChildren(...entries.map(entry => {
+        const option = document.createElement('option');
+        option.value = entry.value;
+        option.textContent = entry.label;
+        option.selected = entry.selected;
+        return option;
+    }));
+}
+
 async function refreshBottomChatSelect() {
     const chatSelect = sbState.bottomChatBar?.chatSelect;
     if (!(chatSelect instanceof HTMLSelectElement)) {
@@ -12315,14 +12335,14 @@ async function refreshBottomChatSelect() {
     }
 
     const currentChatName = chatContext.chatId;
-    chatSelect.replaceChildren();
+    const current = { value: '', label: describeChatName(currentChatName) || 'No chat selected', selected: true };
 
-    // Add placeholder option showing the current chat
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = describeChatName(currentChatName) || 'No chat selected';
-    placeholder.selected = true;
-    chatSelect.appendChild(placeholder);
+    // The picker shows the current chat at once, before its list arrives, unless it already shows it.
+    const showsCurrentChat = [...chatSelect.selectedOptions].some(option => (currentChatName !== '' && option.value === currentChatName)
+        || (option.value === '' && option.textContent === current.label));
+    if (!chatContext.canBrowseChats || !showsCurrentChat) {
+        writeBottomChatOptions(chatSelect, [current]);
+    }
 
     if (!chatContext.canBrowseChats) {
         return;
@@ -12330,27 +12350,17 @@ async function refreshBottomChatSelect() {
 
     try {
         const chats = await getChatFilesForContext(chatContext);
-        const chatNames = chats.map(chat => chat.fileName);
+        const entries = chats.filter(chat => chat.fileName).map(chat => ({
+            value: chat.fileName,
+            label: formatChatSelectorLabel(chat.fileName, chat.tokenEstimate),
+            selected: chat.fileName === currentChatName,
+        }));
 
-        chatSelect.replaceChildren();
-
-        for (const chat of chats) {
-            const chatName = chat.fileName;
-            if (!chatName) continue;
-            const option = document.createElement('option');
-            option.value = chatName;
-            option.textContent = formatChatSelectorLabel(chatName, chat.tokenEstimate);
-            option.selected = chatName === currentChatName;
-            chatSelect.appendChild(option);
+        if (!chats.some(chat => chat.fileName === currentChatName)) {
+            entries.unshift(current);
         }
 
-        if (!chatNames.includes(currentChatName)) {
-            const fallback = document.createElement('option');
-            fallback.value = '';
-            fallback.textContent = describeChatName(currentChatName) || 'No chat selected';
-            fallback.selected = true;
-            chatSelect.prepend(fallback);
-        }
+        writeBottomChatOptions(chatSelect, entries);
 
         if (chatContext.canBrowseChats && chats.length === 0) {
             const attempts = Number(sbState.bottomChatBarRefreshAttempts ?? 0);
@@ -12580,17 +12590,21 @@ function bindBottomChatBarWindowEvents() {
         return;
     }
 
-    const refreshWithContext = () => {
+    // A resize changes the layout of the bar and not the chats it lists, so it does not load the list again.
+    const syncWithWindow = () => {
         syncBottomChatBarSecondaryState();
         syncBottomChatBarSearchState();
-        scheduleBottomChatBarRefresh(0);
         window.requestAnimationFrame(() => updatePersonaBubble(bottomChatBarState.personaBubble));
+    };
+    const refreshWithContext = () => {
+        syncWithWindow();
+        scheduleBottomChatBarRefresh(0);
         bindBottomChatBarEvents();
     };
 
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
     window.addEventListener('focus', refreshWithContext, { passive: true });
-    window.addEventListener('resize', refreshWithContext, { passive: true });
+    window.addEventListener('resize', syncWithWindow, { passive: true });
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             refreshWithContext();

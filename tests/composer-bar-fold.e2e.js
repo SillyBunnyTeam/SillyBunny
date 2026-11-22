@@ -148,6 +148,33 @@ test.describe('composer row and bottom chat bar on a desktop window', () => {
         expect(folded).toEqual([...folded].sort((a, b) => b - a));
     });
 
+    test('a resize sweep does not rebuild the chat picker, and a changed list still does', async ({ page }) => {
+        await page.route('**/api/characters/chats', route => route.fulfill({ json: [
+            { file_name: 'QA chat one', mes: 'hi', last_mes: '2026-10-01', chat_items: 2, token_estimate: 10 },
+            { file_name: 'QA chat two', mes: 'hi', last_mes: '2026-10-02', chat_items: 2, token_estimate: 20 },
+        ] }));
+        await setViewport(page, 1440);
+        const select = page.locator('#sb-bottom-chat-select');
+        // The list of the mock and the current chat, which the mock does not hold.
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(select.locator('option')).toHaveCount(3);
+        await page.evaluate(() => {
+            const records = [];
+            window.__sbPickerRecords = records;
+            new MutationObserver(batch => records.push(...batch.map(record => `${record.type} +${record.addedNodes.length} -${record.removedNodes.length}`)))
+                .observe(document.getElementById('sb-bottom-chat-select'), { childList: true, subtree: true, characterData: true, attributes: true });
+        });
+        // 769px to 1440px is one layout state of the bar: the desktop one, with the search and the buttons folding as the row narrows.
+        for (const width of [1300, 1200, 1100, 1000, 900, 800, 900, 1100, 1300, 1440]) await setViewport(page, width);
+        expect(await page.evaluate(() => window.__sbPickerRecords)).toEqual([]);
+
+        // The picker still follows its list: an entry that the list does not hold goes when the window is focused again.
+        await select.evaluate(node => node.append(new Option('stale entry', 'stale-entry')));
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(select.locator('option')).toHaveCount(3);
+        expect((await page.evaluate(() => window.__sbPickerRecords)).length).toBeGreaterThan(0);
+    });
+
     test('opens a folded search in the picker\'s place and a folded button from the menu, on the same row', async ({ page }) => {
         await setViewport(page, 1200);
         const folded = await measureBar(page);
