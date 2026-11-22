@@ -1,16 +1,29 @@
 /*
- * SillyBunny toast motion and queue (AdwToast, AdwToastOverlay).
+ * SillyBunny toast motion and queues (AdwToast, AdwToastOverlay).
  * Upstream toastr animates with jQuery fadeIn/fadeOut (script.js toastr.options). Instead of editing
  * that file, this registers jQuery methods that use the shared WAAPI helpers and points toastr at
  * them, re-applying the names whenever upstream reassigns toastr.options.
  *
- * The queue wraps toastr.info/success/warning/error. A toast that times out is created at once, so the
- * jQuery element that the caller receives is always real, but it stays hidden (display: none, no hide timer)
- * until it is its turn. A toast that never times out (timeOut 0: progress and persistent states) is not queued:
- * it would hold every error behind it for as long as it stays.
+ * The wrapper of toastr.info/success/warning/error makes every toast hidden and held, so the jQuery element that
+ * the caller receives is always real, and decides its form on that element (sillybunny-toast-form.js). A toast moves
+ * into #sb-toast-overlay, an in-app notification stays in toastr's own #toast-container. Each form has a queue of its
+ * own. A message that waits stays hidden, with no hide timer, until it is its turn. A toast that a caller made to
+ * stay (timeOut 0: progress and persistent states) is never held back, because it would hold every later message
+ * behind it for as long as it stays.
  */
 
 import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } from './sillybunny-motion.js';
+import {
+    NOTIFICATION_FORM,
+    NOTIFICATION_FORM_CLASS,
+    NOTIFICATION_MAX_SHOWN,
+    NOTIFICATION_TIMEOUT,
+    TOAST_FORM,
+    TOAST_FORM_CLASS,
+    TOAST_MEASURE_CLASS,
+    TOAST_OVERLAY_ID,
+    classifyToast,
+} from './sillybunny-toast-form.js';
 
 export const TOAST_SHOW_METHOD = 'sbToastIn';
 export const TOAST_HIDE_METHOD = 'sbToastOut';
@@ -21,7 +34,7 @@ export const TOAST_ACTION_CLASS = 'sb-toast--action';
 export const TOAST_HOLD_METHOD = 'sbToastHold';
 /** libadwaita's REPLACE_DURATION: how long a toast takes to show while another one is still leaving. */
 export const TOAST_REPLACE_DURATION = 500;
-/** Waiting toasts above this number drop the oldest info or success toast. Errors and warnings are never dropped. */
+/** Waiting messages above this number drop the oldest info or success one. Errors and warnings are never dropped. */
 export const TOAST_MAX_WAITING = 6;
 
 const NOTIFIER_TYPES = ['info', 'success', 'warning', 'error'];
@@ -29,6 +42,16 @@ const DEFAULT_TIME_OUT = 5000;
 const DEFAULT_EXTENDED_TIME_OUT = 1000;
 const WAITING = 'waiting';
 const SHOWN = 'shown';
+/** The id that toastr gives its container. In-app notifications stay in it, because readers and styles look there. */
+const NOTIFICATION_CONTAINER_ID = 'toast-container';
+const POSITION_CLASSES = [
+    'toast-top-left',
+    'toast-top-center',
+    'toast-top-right',
+    'toast-bottom-left',
+    'toast-bottom-center',
+    'toast-bottom-right',
+];
 
 const leaving = new WeakSet();
 let initialized = false;
@@ -39,8 +62,11 @@ let initialized = false;
  * @property {HTMLElement} element
  * @property {Record<string, any>} options The options object that toastr's own closures read.
  * @property {string} type
+ * @property {string} form
  * @property {string|null} key Same type, title and message, for collapsing repeats. Null when a repeat is not a duplicate.
  * @property {string} state
+ * @property {boolean} high The message asked to show at once.
+ * @property {boolean} persistent The caller made it stay with a timeOut of 0, so it is never held back or pushed back.
  * @property {boolean} resumed True once the toast was shown and pushed back by a high-priority toast.
  * @property {string} showMethod
  * @property {number} timeOut
@@ -48,19 +74,42 @@ let initialized = false;
  * @property {Function|undefined} onShown
  */
 
+/**
+ * @typedef {object} FormQueue
+ * @property {string} form
+ * @property {number} capacity How many messages show at once.
+ * @property {(entry: QueuedToast) => boolean} canPushBack Whether a high-priority message may take the place of this one.
+ * @property {QueuedToast[]} shown In the order they were shown.
+ * @property {QueuedToast[]} waiting In the order they show.
+ * @property {number} hiding How many messages of this form play their leave animation.
+ * @property {boolean} promotionScheduled
+ */
+
 /** @type {WeakMap<HTMLElement, QueuedToast>} */
 const queued = new WeakMap();
-/** @type {QueuedToast[]} */
-let waiting = [];
-/** @type {QueuedToast|null} */
-let current = null;
-/** How many toasts are playing their leave animation. */
-let hiding = 0;
-let promotionScheduled = false;
+
+/** @returns {FormQueue} */
+function createQueue(form, capacity, canPushBack) {
+    return { form, capacity, canPushBack, shown: [], waiting: [], hiding: 0, promotionScheduled: false };
+}
+
+const queues = {
+    // One toast at a time, as in libadwaita. A high-priority toast takes the place of the shown one, whatever it is.
+    [TOAST_FORM]: createQueue(TOAST_FORM, 1, () => true),
+    // A message that a caller made to stay is not pushed back, because that would hide a state that has to stay.
+    [NOTIFICATION_FORM]: createQueue(NOTIFICATION_FORM, NOTIFICATION_MAX_SHOWN, entry => !entry.high && !entry.persistent),
+};
+const allQueues = Object.values(queues);
+
 let queueEnabled = true;
 let capturedOptions = null;
 let userListener = null;
 let subscribeHooked = false;
+let toastrApi = null;
+let measureOverride = null;
+let toastPosition = 'toast-bottom-center';
+let notificationPosition = 'toast-top-center';
+let uncapturedLogged = false;
 
 function getToastElement(collection) {
     const element = collection?.[0];
@@ -71,6 +120,11 @@ function isHidden(element) {
     return element.style.display === 'none';
 }
 
+/** A toast without a form marker is one that toastr made without this wrapper, which sits in #toast-container. */
+function queueOf(element) {
+    return element.classList.contains(TOAST_FORM_CLASS) ? queues[TOAST_FORM] : queues[NOTIFICATION_FORM];
+}
+
 function enterOffset(element) {
     const height = element.getBoundingClientRect().height || 0;
     // Bottom-anchored containers rise from below; the rest drop in from above.
@@ -78,8 +132,8 @@ function enterOffset(element) {
     return `${fromBelow ? height : -height}px`;
 }
 
-function showDuration() {
-    return hiding > 0 ? TOAST_REPLACE_DURATION : MOTION_SURFACE;
+function showDuration(element) {
+    return queueOf(element).hiding > 0 ? TOAST_REPLACE_DURATION : MOTION_SURFACE;
 }
 
 function enter(element, complete) {
@@ -88,10 +142,18 @@ function enter(element, complete) {
         { opacity: 0, transform: `translateY(${enterOffset(element)})` },
         { opacity: 1, transform: 'none' },
     ], {
-        duration: showDuration(),
+        duration: showDuration(element),
         easing: MOTION_EASE,
         onFinish: () => complete?.call(element),
     });
+}
+
+/** A toast that a pointer saved while it left is on screen again, so it takes a place in its queue if one is free. */
+function keepShown(entry) {
+    const queue = entry && queues[entry.form];
+    if (queue && !queue.shown.includes(entry) && queue.shown.length < queue.capacity) {
+        queue.shown.push(entry);
+    }
 }
 
 /** toastr calls this as `$toast[showMethod]({ duration, easing, complete })`, and again on hover. */
@@ -108,10 +170,7 @@ function sbToastIn({ complete } = {}) {
         stopMotion(element);
         element.classList.remove(TOAST_LEAVING_CLASS);
         unpin(element);
-        const entry = queued.get(element);
-        if (entry && !current) {
-            current = entry;
-        }
+        keepShown(queued.get(element));
         complete?.call(element);
         return this;
     }
@@ -130,12 +189,13 @@ function sbToastHold() {
 }
 
 function leave(element, { pinned = false, complete = null } = {}) {
+    const queue = queueOf(element);
     leaving.add(element);
     element.classList.add(TOAST_LEAVING_CLASS);
     if (pinned) {
         pin(element);
     }
-    hiding += 1;
+    queue.hiding += 1;
     play(element, [
         { opacity: 1, transform: 'none' },
         { opacity: 0, transform: 'scale(0.95)' },
@@ -150,7 +210,7 @@ function leave(element, { pinned = false, complete = null } = {}) {
             complete?.call(element);
         },
         onEnd: () => {
-            hiding -= 1;
+            queue.hiding -= 1;
         },
     });
 }
@@ -167,27 +227,28 @@ function sbToastOut({ complete } = {}) {
     }
 
     const entry = queued.get(element);
+    const queue = entry ? queues[entry.form] : null;
     if (entry?.state === WAITING) {
         // A toast that never showed has nothing to animate. toastr removes it in `complete`.
-        waiting = waiting.filter(other => other !== entry);
+        queue.waiting = queue.waiting.filter(other => other !== entry);
         element.style.display = 'none';
         complete?.call(element);
         return this;
     }
 
-    const wasCurrent = entry !== undefined && entry === current;
-    if (wasCurrent) {
-        current = null;
+    const wasShown = queue !== null && queue.shown.includes(entry);
+    if (wasShown) {
+        queue.shown = queue.shown.filter(other => other !== entry);
     }
     // The next toast shows in the place of this one while this one fades, so this one is taken out of the flow first.
-    leave(element, { pinned: wasCurrent && waiting.length > 0, complete });
-    if (wasCurrent) {
-        scheduleNext();
+    leave(element, { pinned: wasShown && queue.waiting.length > 0, complete });
+    if (wasShown) {
+        scheduleNext(queue);
     }
     return this;
 }
 
-// The queue
+// The queues
 
 const PINNED_PROPERTIES = ['position', 'top', 'left', 'width', 'margin'];
 
@@ -214,9 +275,9 @@ function isHeld(element) {
 }
 
 function pruneDetached() {
-    waiting = waiting.filter(entry => entry.element.isConnected);
-    if (current && !current.element.isConnected) {
-        current = null;
+    for (const queue of allQueues) {
+        queue.waiting = queue.waiting.filter(entry => entry.element.isConnected);
+        queue.shown = queue.shown.filter(entry => entry.element.isConnected);
     }
 }
 
@@ -233,7 +294,7 @@ function startHideTimer(entry) {
     }
     if (options.closeOnHover === false) {
         // Without hover handlers there is nothing to run, so the timer is the module's own.
-        setTimeout(() => globalThis.toastr.clear($toast), entry.timeOut);
+        setTimeout(() => toastrApi.clear($toast), entry.timeOut);
         return;
     }
     const extended = options.extendedTimeOut;
@@ -242,13 +303,15 @@ function startHideTimer(entry) {
     options.extendedTimeOut = extended;
 }
 
-/** @param {QueuedToast} entry */
-function activate(entry) {
+/**
+ * Shows a toast that was made held. toastr's closures read the options object, so it gets the real values again.
+ * @param {QueuedToast} entry
+ */
+function show(entry) {
     const { options, $toast, element } = entry;
-    current = entry;
-    entry.state = SHOWN;
     options.showMethod = entry.showMethod;
     options.timeOut = entry.timeOut;
+    options.extendedTimeOut = entry.extendedTimeOut;
     leaving.delete(element);
     stopMotion(element);
     element.classList.remove(TOAST_LEAVING_CLASS);
@@ -258,43 +321,55 @@ function activate(entry) {
     startHideTimer(entry);
 }
 
-function showNext() {
-    promotionScheduled = false;
+/**
+ * @param {FormQueue} queue
+ * @param {QueuedToast} entry
+ */
+function activate(queue, entry) {
+    queue.shown.push(entry);
+    entry.state = SHOWN;
+    show(entry);
+}
+
+/** @param {FormQueue} queue */
+function showNext(queue) {
+    queue.promotionScheduled = false;
     pruneDetached();
-    if (current) {
-        return;
-    }
-    const next = waiting.shift();
-    if (next) {
-        activate(next);
+    while (queue.shown.length < queue.capacity && queue.waiting.length > 0) {
+        activate(queue, queue.waiting.shift());
     }
 }
 
 /**
  * Shows the next toast after the current task. `toastr.clear()` hides every toast in one loop, and a toast that was
  * promoted inside that loop would show for a moment and be cleared again.
+ * @param {FormQueue} queue
  */
-function scheduleNext() {
-    if (promotionScheduled) {
+function scheduleNext(queue) {
+    if (queue.promotionScheduled) {
         return;
     }
-    promotionScheduled = true;
-    queueMicrotask(showNext);
+    queue.promotionScheduled = true;
+    queueMicrotask(() => showNext(queue));
 }
 
-/** Puts the shown toast back at the head of the queue and stops its hide timer. */
-function pushBack(entry) {
-    current = null;
+/**
+ * Puts a shown toast back at the head of its queue and stops its hide timer.
+ * @param {FormQueue} queue
+ * @param {QueuedToast} entry
+ */
+function pushBack(queue, entry) {
+    queue.shown = queue.shown.filter(other => other !== entry);
     // The handler of a pointer that enters the toast clears its hide timer.
     entry.$toast.triggerHandler('mouseenter');
     entry.state = WAITING;
     entry.resumed = true;
-    waiting.unshift(entry);
+    queue.waiting.unshift(entry);
     const { element } = entry;
     leaving.add(element);
     element.classList.add(TOAST_LEAVING_CLASS);
     pin(element);
-    hiding += 1;
+    queue.hiding += 1;
     play(element, [
         { opacity: 1, transform: 'none' },
         { opacity: 0, transform: 'scale(0.95)' },
@@ -307,7 +382,7 @@ function pushBack(entry) {
             element.style.display = 'none';
         },
         onEnd: () => {
-            hiding -= 1;
+            queue.hiding -= 1;
         },
     });
 }
@@ -329,41 +404,224 @@ function isHighPriority(message, options) {
 }
 
 function duplicateKey(type, title, message, options, high) {
-    // With preventDuplicates, toastr answers a repeat itself, and a caller may read that answer.
-    if (high || typeof message !== 'string' || options.onclick || options.onShown || options.preventDuplicates) {
+    // With preventDuplicates, toastr answers a repeat itself, and a caller may read that answer. A toast that never
+    // times out is a state that a caller updates, and two of them are not one.
+    if (high || typeof message !== 'string' || options.onclick || options.onShown || options.preventDuplicates || !(Number(options.timeOut) > 0)) {
         return null;
     }
     return `${type}\u0000${title ?? ''}\u0000${message}`;
 }
 
-function dropWaiting(entry) {
-    waiting = waiting.filter(other => other !== entry);
-    globalThis.toastr.remove(entry.$toast);
+/** @returns {{ queue: FormQueue, entry: QueuedToast }|null} The message with this key that is shown or waits, in either form. */
+function findDuplicate(key) {
+    for (const queue of allQueues) {
+        const entry = [...queue.shown, ...queue.waiting].find(other => other.key === key);
+        if (entry) {
+            return { queue, entry };
+        }
+    }
+    return null;
+}
+
+/**
+ * The same message is on screen or waits already, so the repeat only keeps it for another timeout. A toast that is
+ * hovered or has focus inside holds itself, and toastr starts its timer again when it is let go.
+ */
+function keepRepeat({ queue, entry }) {
+    if (queue.shown.includes(entry) && entry.timeOut > 0 && !isHeld(entry.element)) {
+        entry.$toast.triggerHandler('mouseenter');
+        startHideTimer(entry);
+    }
+    return entry.$toast;
+}
+
+function dropWaiting(queue, entry) {
+    queue.waiting = queue.waiting.filter(other => other !== entry);
+    toastrApi.remove(entry.$toast);
     entry.options.onHidden?.();
 }
 
-/** Keeps the waiting toasts to a number that a user can read through: the oldest info or success toast goes first. */
-function trimWaiting() {
-    while (waiting.length > TOAST_MAX_WAITING) {
-        const oldest = waiting.find(entry => !entry.resumed && (entry.type === 'info' || entry.type === 'success'));
+/** Keeps the waiting messages to a number that a user can read through: the oldest info or success one goes first. */
+function trimWaiting(queue) {
+    while (queue.waiting.length > TOAST_MAX_WAITING) {
+        const oldest = queue.waiting.find(entry => !entry.resumed && (entry.type === 'info' || entry.type === 'success'));
         if (!oldest) {
             return;
         }
-        dropWaiting(oldest);
+        dropWaiting(queue, oldest);
     }
 }
 
-/** An error goes ahead of the toasts that are not errors, so a long queue of notices does not hide it. */
-function insertWaiting(entry) {
+/** An error goes ahead of the messages that are not errors, so a long queue of notices does not hide it. */
+function insertWaiting(queue, entry) {
     if (entry.type === 'error') {
-        const index = waiting.findIndex(other => !other.resumed && other.type !== 'error');
+        const index = queue.waiting.findIndex(other => !other.resumed && other.type !== 'error');
         if (index !== -1) {
-            waiting.splice(index, 0, entry);
+            queue.waiting.splice(index, 0, entry);
             return;
         }
     }
-    waiting.push(entry);
+    queue.waiting.push(entry);
 }
+
+/** Makes room for a message that must show at once: the shown message that may be pushed back goes back to the queue. */
+function makeRoom(queue) {
+    if (queue.shown.length < queue.capacity) {
+        return;
+    }
+    const victim = queue.shown.find(entry => queue.canPushBack(entry));
+    if (victim) {
+        pushBack(queue, victim);
+    }
+}
+
+// The two containers
+
+function topOpenDialog() {
+    const dialogs = document.querySelectorAll('dialog[open]:not([closing])');
+    return dialogs.length > 0 ? dialogs[dialogs.length - 1] : null;
+}
+
+function getOverlay() {
+    return document.getElementById(TOAST_OVERLAY_ID);
+}
+
+/** The hidden clone that the form measure lays out is not a toast. */
+function holdsToasts(container) {
+    return [...container.children].some(child => !child.classList.contains(TOAST_MEASURE_CLASS));
+}
+
+function setPositionClass(container, positionClass) {
+    container.classList.remove(...POSITION_CLASSES);
+    container.classList.add(positionClass);
+}
+
+let containerObserver = null;
+
+/** Watches a container for toasts that leave without the queue knowing, such as a caller that removes its own toast. */
+function watchContainer(container) {
+    if (typeof MutationObserver !== 'function') {
+        return;
+    }
+    containerObserver ??= new MutationObserver(settleContainers);
+    containerObserver.observe(container, { childList: true });
+}
+
+function removeOverlayIfEmpty() {
+    const overlay = getOverlay();
+    if (overlay && !holdsToasts(overlay)) {
+        overlay.remove();
+    }
+}
+
+/** toastr removes its container when it is empty, but the toast that moved out of it did not go through toastr. */
+function removeEmptyNotificationContainer() {
+    const container = document.getElementById(NOTIFICATION_CONTAINER_ID);
+    // A dialog keeps the empty container alive, so the next notification shows inside the dialog and not behind it.
+    if (container && !container.hasChildNodes() && topOpenDialog() === null) {
+        container.remove();
+    }
+}
+
+function settleContainers() {
+    pruneDetached();
+    for (const queue of allQueues) {
+        if (queue.waiting.length > 0) {
+            scheduleNext(queue);
+        }
+    }
+    removeOverlayIfEmpty();
+    removeEmptyNotificationContainer();
+}
+
+/** The overlay is made when the first toast needs it, in the top open dialog or else in the body, as toastr makes its own. */
+function ensureOverlay() {
+    const existing = getOverlay();
+    if (existing) {
+        return existing;
+    }
+    const overlay = document.createElement('div');
+    overlay.id = TOAST_OVERLAY_ID;
+    overlay.classList.add(toastPosition);
+    (topOpenDialog() ?? document.body).append(overlay);
+    watchContainer(overlay);
+    return overlay;
+}
+
+/**
+ * Decides the form of a toast that toastr has made and puts it in the container of that form. The overlay exists
+ * while the form is decided, so that the measure of the width gets the toast's own CSS.
+ * @param {HTMLElement} element
+ * @param {Record<string, any>} effective
+ * @param {Record<string, any>} options The options object of the toast, with toastr's defaults.
+ * @returns {string} The form.
+ */
+function placeToast(element, effective, options) {
+    ensureOverlay();
+    const { form } = classifyToast(element, effective, measureOverride ? { measure: measureOverride } : undefined);
+    if (form === TOAST_FORM) {
+        element.classList.add(TOAST_FORM_CLASS);
+        const overlay = ensureOverlay();
+        if (options.newestOnTop) {
+            overlay.prepend(element);
+        } else {
+            overlay.append(element);
+        }
+        removeEmptyNotificationContainer();
+    } else {
+        element.classList.add(NOTIFICATION_FORM_CLASS);
+        removeOverlayIfEmpty();
+    }
+    return form;
+}
+
+/**
+ * A class can hide a toast, as WI-Bulk-Mover's `toastClass = 'displayNone'` does to silence every toast during a bulk
+ * move. A toast made held has an inline `display: none`, so the inline value is taken off while the class is read.
+ */
+function isHiddenByClass(element) {
+    const inline = element.style.getPropertyValue('display');
+    const priority = element.style.getPropertyPriority('display');
+    element.style.removeProperty('display');
+    try {
+        return getComputedStyle(element).display === 'none';
+    } finally {
+        if (inline) {
+            element.style.setProperty('display', inline, priority);
+        }
+    }
+}
+
+// Timing
+
+function hasOwnValue(options, name) {
+    return options != null && options[name] !== undefined;
+}
+
+/**
+ * A toast keeps the timing of the call. An in-app notification follows GNOME Shell's urgency: an error or a warning
+ * stays until it is dismissed, and an info or success message leaves after `NOTIFICATION_TIMEOUT`. A `timeOut` that
+ * the call sets itself replaces these, and a global `toastr.options.timeOut` is not the call's own.
+ * @returns {{ timeOut: number, extendedTimeOut: number, persistent: boolean }}
+ */
+function timingOf(form, type, optionsOverride, effective) {
+    const effectiveExtended = Number(effective.extendedTimeOut ?? DEFAULT_EXTENDED_TIME_OUT);
+    if (form === TOAST_FORM) {
+        const timeOut = Number(effective.timeOut ?? DEFAULT_TIME_OUT);
+        return { timeOut, extendedTimeOut: effectiveExtended, persistent: !(timeOut > 0) };
+    }
+    if (hasOwnValue(optionsOverride, 'timeOut')) {
+        const timeOut = Number(optionsOverride.timeOut);
+        return { timeOut, extendedTimeOut: effectiveExtended, persistent: !(timeOut > 0) };
+    }
+    if (type === 'error' || type === 'warning') {
+        return { timeOut: 0, extendedTimeOut: 0, persistent: false };
+    }
+    const extendedTimeOut = hasOwnValue(optionsOverride, 'extendedTimeOut') ? Number(optionsOverride.extendedTimeOut) : NOTIFICATION_TIMEOUT;
+    return { timeOut: NOTIFICATION_TIMEOUT, extendedTimeOut, persistent: false };
+}
+
+// The wrapper
 
 /** Calls toastr's own function and returns the element with the options object that toastr's closures read. */
 function createToast(original, args) {
@@ -372,26 +630,6 @@ function createToast(original, args) {
     const options = capturedOptions;
     capturedOptions = null;
     return { $toast, options };
-}
-
-function toastEntry(type, message, title, effective, high, { $toast, options }) {
-    const element = $toast[0];
-    /** @type {QueuedToast} */
-    const entry = {
-        $toast,
-        element,
-        options,
-        type,
-        key: duplicateKey(type, title, message, effective, high),
-        state: SHOWN,
-        resumed: false,
-        showMethod: effective.showMethod ?? TOAST_SHOW_METHOD,
-        timeOut: Number(effective.timeOut ?? DEFAULT_TIME_OUT),
-        extendedTimeOut: Number(effective.extendedTimeOut ?? DEFAULT_EXTENDED_TIME_OUT),
-        onShown: effective.onShown,
-    };
-    queued.set(element, entry);
-    return entry;
 }
 
 /**
@@ -418,6 +656,86 @@ function watchAction($toast) {
     return $toast;
 }
 
+/** Calls toastr directly, as it was before the queues. The message is an in-app notification, which shows every part. */
+function showUnqueued(original, message, title, forcedOptions) {
+    const $toast = original(message, title, forcedOptions);
+    getToastElement($toast)?.classList.add(NOTIFICATION_FORM_CLASS);
+    return $toast;
+}
+
+/**
+ * toastr did not hand its options over, so nothing can start the hide timer of a toast that was made held. The held
+ * toast is taken away and the message is made again without the queue, which switches off for every later call.
+ */
+function recoverUncaptured(original, created, message, title, forcedOptions) {
+    queueEnabled = false;
+    if (!uncapturedLogged) {
+        uncapturedLogged = true;
+        console.warn('SillyBunny: toastr did not hand over the options of a toast, so toasts are shown without a queue.');
+    }
+    toastrApi.remove(created.$toast);
+    return showUnqueued(original, message, title, { ...forcedOptions, preventDuplicates: false });
+}
+
+/**
+ * @param {string} type
+ * @param {string|null} key
+ * @param {Record<string, any>} effective
+ * @param {Record<string, any>|undefined} optionsOverride
+ * @param {boolean} high
+ * @param {{ $toast: any, options: Record<string, any> }} created
+ * @returns {QueuedToast}
+ */
+function toastEntry(type, key, effective, optionsOverride, high, { $toast, options }) {
+    const element = $toast[0];
+    const form = placeToast(element, effective, options);
+    const { timeOut, extendedTimeOut, persistent } = timingOf(form, type, optionsOverride, effective);
+    return {
+        $toast,
+        element,
+        options,
+        type,
+        form,
+        key,
+        state: SHOWN,
+        high,
+        persistent,
+        resumed: false,
+        showMethod: effective.showMethod ?? TOAST_SHOW_METHOD,
+        timeOut,
+        extendedTimeOut,
+        onShown: effective.onShown,
+    };
+}
+
+/** Shows the message now, or lets it wait for its turn in the queue of its form. */
+function present(entry) {
+    const queue = queues[entry.form];
+    // A toast that a class hides, or that a caller made to stay in the toast form, shows at once with its own timer and
+    // takes no place, so a bulk move or a progress toast does not hold real messages back.
+    if (isHiddenByClass(entry.element) || (entry.persistent && entry.form === TOAST_FORM)) {
+        show(entry);
+        return;
+    }
+
+    queued.set(entry.element, entry);
+    const busy = queue.shown.length >= queue.capacity || queue.waiting.length > 0;
+    if (entry.persistent || entry.high || !busy) {
+        if (entry.high && !entry.persistent) {
+            makeRoom(queue);
+        }
+        activate(queue, entry);
+        return;
+    }
+
+    entry.state = WAITING;
+    insertWaiting(queue, entry);
+    trimWaiting(queue);
+    if (queue.shown.length < queue.capacity) {
+        scheduleNext(queue);
+    }
+}
+
 function wrapNotifier(toastr, type) {
     if (typeof toastr[type] !== 'function') {
         return;
@@ -425,71 +743,75 @@ function wrapNotifier(toastr, type) {
     const notify = toastr[type].bind(toastr);
     const original = (...args) => watchAction(notify(...args));
     toastr[type] = function (message, title, optionsOverride) {
-        const args = [message, title, optionsOverride];
-        const effective = { ...toastr.options, ...optionsOverride };
-        if (!queueEnabled || !(Number(effective.timeOut) > 0)) {
-            return original(...args);
+        // The two settings own the containers, so a call or a global write of these options is not obeyed.
+        const forced = {
+            ...optionsOverride,
+            containerId: NOTIFICATION_CONTAINER_ID,
+            target: 'body',
+            positionClass: notificationPosition,
+        };
+        if (!queueEnabled) {
+            return showUnqueued(original, message, title, forced);
         }
 
+        const effective = { ...toastr.options, ...optionsOverride };
         pruneDetached();
         const high = isHighPriority(message, effective);
         const key = duplicateKey(type, title, message, effective, high);
-        if (key !== null) {
-            if (current?.key === key) {
-                // The same toast is on screen already, so the repeat only keeps it for another timeout. A toast that
-                // is hovered or has focus inside holds itself, and toastr starts its timer again when it is let go.
-                if (!isHeld(current.element)) {
-                    current.$toast.triggerHandler('mouseenter');
-                    startHideTimer(current);
-                }
-                return current.$toast;
-            }
-            const repeat = waiting.find(entry => entry.key === key);
-            if (repeat) {
-                return repeat.$toast;
-            }
+        const repeat = key === null ? null : findDuplicate(key);
+        if (repeat) {
+            return keepRepeat(repeat);
         }
 
-        const busy = current !== null || waiting.length > 0;
-        if (!busy || high) {
-            if (current) {
-                pushBack(current);
-            }
-            const created = createToast(original, args);
-            if (!created.$toast) {
-                return created.$toast;
-            }
-            if (!created.options) {
-                // Nothing told toastr's options to this module, so this toast cannot be queued, and no later one can.
-                queueEnabled = false;
-                return created.$toast;
-            }
-            current = toastEntry(type, message, title, effective, high, created);
-            return created.$toast;
-        }
-
+        // Every message is made held: its form, and so its queue and its timing, is known only from the element.
         const created = createToast(original, [message, title, {
-            ...optionsOverride,
+            ...forced,
             showMethod: TOAST_HOLD_METHOD,
             timeOut: 0,
+            extendedTimeOut: 0,
             onShown: () => {},
         }]);
         if (!created.$toast) {
             return created.$toast;
         }
         if (!created.options) {
-            queueEnabled = false;
-            return created.$toast;
+            return recoverUncaptured(original, created, message, title, forced);
         }
-        const entry = toastEntry(type, message, title, effective, false, created);
-        entry.state = WAITING;
-        insertWaiting(entry);
-        trimWaiting();
-        if (!current) {
-            scheduleNext();
-        }
+
+        const entry = toastEntry(type, key, effective, optionsOverride, high, created);
+        watchContainer(document.getElementById(NOTIFICATION_CONTAINER_ID) ?? document.body);
+        present(entry);
         return created.$toast;
     };
+}
+
+/**
+ * toastr's `clear()` and `remove()` act on the one container that it looked up last. Without a toast they have to reach
+ * both containers, and with a toast they act on that toast wherever it is.
+ */
+function wrapContainerCommands(toastr) {
+    if (typeof toastr.getContainer !== 'function') {
+        return;
+    }
+    for (const command of ['clear', 'remove']) {
+        if (typeof toastr[command] !== 'function') {
+            continue;
+        }
+        const original = toastr[command].bind(toastr);
+        toastr[command] = function (toastElement, ...rest) {
+            if (toastElement) {
+                original(toastElement, ...rest);
+            } else {
+                // getContainer() points toastr at a container. The notification container goes last, so it stays the one
+                // that toastr's removeToast() checks for being empty.
+                for (const containerId of [TOAST_OVERLAY_ID, NOTIFICATION_CONTAINER_ID]) {
+                    toastr.getContainer({ containerId }, false);
+                    original(undefined, ...rest);
+                }
+            }
+            settleContainers();
+        };
+    }
 }
 
 /**
@@ -517,15 +839,86 @@ function hookSubscribe(toastr) {
 /** The shown toast and the waiting ones, in the order they show. */
 export function getToastQueue() {
     pruneDetached();
-    return { current: current?.element ?? null, waiting: waiting.map(entry => entry.element) };
+    const { shown, waiting } = queues[TOAST_FORM];
+    return { current: shown[0]?.element ?? null, waiting: waiting.map(entry => entry.element) };
+}
+
+/** The in-app notifications on screen, in the order they were shown, and the ones that wait. */
+export function getNotificationQueue() {
+    pruneDetached();
+    const { shown, waiting } = queues[NOTIFICATION_FORM];
+    return { shown: shown.map(entry => entry.element), waiting: waiting.map(entry => entry.element) };
 }
 
 export function resetToastQueue() {
-    waiting = [];
-    current = null;
-    hiding = 0;
-    promotionScheduled = false;
+    for (const queue of allQueues) {
+        queue.shown = [];
+        queue.waiting = [];
+        queue.hiding = 0;
+        queue.promotionScheduled = false;
+    }
     queueEnabled = true;
+}
+
+/**
+ * Sets where toasts show, and moves the overlay if it exists.
+ * @param {string} positionClass One of toastr's six position classes.
+ * @returns {boolean} False when the class is not one of them.
+ */
+export function setToastPosition(positionClass) {
+    if (!POSITION_CLASSES.includes(positionClass)) {
+        return false;
+    }
+    toastPosition = positionClass;
+    const overlay = getOverlay();
+    if (overlay) {
+        setPositionClass(overlay, positionClass);
+    }
+    return true;
+}
+
+/**
+ * Sets where in-app notifications show, and moves toastr's container if it exists.
+ * @param {string} positionClass One of toastr's six position classes.
+ * @returns {boolean} False when the class is not one of them.
+ */
+export function setNotificationPosition(positionClass) {
+    if (!POSITION_CLASSES.includes(positionClass)) {
+        return false;
+    }
+    notificationPosition = positionClass;
+    const container = document.getElementById(NOTIFICATION_CONTAINER_ID);
+    if (container) {
+        setPositionClass(container, positionClass);
+    }
+    return true;
+}
+
+export function getNotificationPosition() {
+    return notificationPosition;
+}
+
+/**
+ * Moves the overlay into the top open dialog, or back into the body when no dialog is open, and removes it when it is
+ * empty and no dialog is open. A toast then shows above the dialog and not behind it, as toastr's container does.
+ */
+export function placeToastOverlay() {
+    const overlay = getOverlay();
+    if (!overlay) {
+        return;
+    }
+    const dialog = topOpenDialog();
+    if (dialog) {
+        if (!dialog.contains(overlay)) {
+            dialog.append(overlay);
+        }
+        return;
+    }
+    if (!holdsToasts(overlay)) {
+        overlay.remove();
+    } else if (overlay.parentElement !== document.body) {
+        document.body.append(overlay);
+    }
 }
 
 if (globalThis.toastr) {
@@ -560,8 +953,8 @@ function holdWhilePressed(jQuery, document) {
         if (event.pointerType === 'mouse' || !(event.target instanceof Element)) {
             return;
         }
-        const element = event.target.closest('#toast-container .toast');
-        if (!element) {
+        const element = event.target.closest(`#${NOTIFICATION_CONTAINER_ID} > *, #${TOAST_OVERLAY_ID} > *`);
+        if (!element || element.classList.contains(TOAST_MEASURE_CLASS)) {
             return;
         }
         release();
@@ -572,16 +965,26 @@ function holdWhilePressed(jQuery, document) {
     document.addEventListener('pointercancel', release, true);
 }
 
-export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = globalThis.toastr } = {}) {
+/**
+ * @param {object} [dependencies]
+ * @param {any} [dependencies.jQuery]
+ * @param {any} [dependencies.toastr]
+ * @param {(element: HTMLElement) => { width: number, em: number }} [dependencies.measure] Replaces the browser's measure
+ * of a toast on one line, for a test that has no layout.
+ */
+export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = globalThis.toastr, measure } = {}) {
     if (initialized || !jQuery?.fn || !toastr) {
         return;
     }
     initialized = true;
+    toastrApi = toastr;
+    measureOverride = measure ?? null;
     jQuery.fn[TOAST_SHOW_METHOD] = sbToastIn;
     jQuery.fn[TOAST_HIDE_METHOD] = sbToastOut;
     jQuery.fn[TOAST_HOLD_METHOD] = sbToastHold;
     hookSubscribe(toastr);
     holdWhilePressed(jQuery, globalThis.document);
+    wrapContainerCommands(toastr);
     for (const type of NOTIFIER_TYPES) {
         wrapNotifier(toastr, type);
     }

@@ -14,12 +14,22 @@ let reducedMotion = false;
 let animations = [];
 let toastr;
 let toastQueue;
+let toastForm;
+let measured = { width: 0, em: 16 };
 
 const shown = $toast => $toast[0].style.display !== 'none';
 const queueState = () => {
     const { current, waiting } = toastQueue.getToastQueue();
     return { current, waiting };
 };
+const notificationState = () => {
+    const { shown: onScreen, waiting } = toastQueue.getNotificationQueue();
+    return { shown: onScreen, waiting };
+};
+const inOverlay = $toast => $toast.closest('#sb-toast-overlay').length === 1;
+const inNotifications = $toast => $toast.closest('#toast-container').length === 1;
+/** A message with a title is an in-app notification, so these tests make notifications with a title. */
+const notice = (type, name, options) => toastr[type](`${name} message`, name, options);
 /** The enter animations (they start from opacity 0) and the leave animations (they end at opacity 0). */
 const enters = () => animations.filter(animation => animation.keyframes[0].opacity === 0);
 const leaves = () => animations.filter(animation => animation.keyframes[1].opacity === 0);
@@ -73,7 +83,9 @@ beforeAll(async () => {
     window.eval(readFileSync(path.join(libRoot, 'toastr.min.js'), 'utf8'));
     toastr = window.toastr;
     toastQueue = await import('../../public/scripts/sillybunny-toast-motion.js');
-    toastQueue.initializeToastMotion({ jQuery: window.jQuery, toastr });
+    toastForm = await import('../../public/scripts/sillybunny-toast-form.js');
+    // jsdom has no layout, so the width rule reads whatever the test sets here.
+    toastQueue.initializeToastMotion({ jQuery: window.jQuery, toastr, measure: () => measured });
     toastr.options = {
         positionClass: 'toast-top-center',
         showDuration: 300,
@@ -88,6 +100,7 @@ beforeEach(() => {
     jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
     reducedMotion = false;
     animations = [];
+    measured = { width: 0, em: 16 };
 });
 
 afterEach(async () => {
@@ -129,15 +142,15 @@ describe('the action class', () => {
 
 describe('the toast queue', () => {
     test('a second toast waits behind the first, and every call returns the toast element that toastr makes', () => {
-        const first = toastr.info('first message', 'First');
-        const second = toastr.success('second message', 'Second');
+        const first = toastr.info('first message');
+        const second = toastr.success('second message');
         const third = toastr.warning('third message');
 
         for (const $toast of [first, second, third]) {
             expect($toast.jquery).toBeTruthy();
-            expect($toast.closest('#toast-container').length).toBe(1);
+            expect(inOverlay($toast)).toBe(true);
         }
-        expect(second.find('.toast-title').text()).toBe('Second');
+        expect(second.find('.toast-message').text()).toBe('second message');
         expect(second.hasClass('toast-success')).toBe(true);
         expect(shown(first)).toBe(true);
         expect(shown(second)).toBe(false);
@@ -198,7 +211,7 @@ describe('the toast queue', () => {
     test('a toast with a button shows at once, and the shown toast goes back to the head of the queue', async () => {
         const first = toastr.info('first');
         const second = toastr.info('second');
-        const undo = toastr.info('<button type="button">Undo</button>', 'Deleted', { escapeHtml: false });
+        const undo = toastr.info('<button type="button">Undo</button>', '', { escapeHtml: false });
 
         expect(shown(undo)).toBe(true);
         expect(first[0].classList.contains('sb-toast-leaving')).toBe(true);
@@ -224,22 +237,22 @@ describe('the toast queue', () => {
 
     test('a toast that asks for high priority, and one with a button in a node, are shown at once too', () => {
         toastr.info('first');
-        const asked = toastr.info('asked', 'Priority', { priority: 'high' });
+        const asked = toastr.info('asked', '', { priority: 'high' });
         expect(shown(asked)).toBe(true);
 
         const node = document.createElement('div');
         node.innerHTML = '<span>Removed</span> <button type="button">Undo</button>';
-        const withNode = toastr.info(node, 'Node', { escapeHtml: false });
+        const withNode = toastr.info(node, '', { escapeHtml: false });
         expect(shown(withNode)).toBe(true);
         expect(asked[0].classList.contains('sb-toast-leaving')).toBe(true);
 
-        const plain = toastr.info('<b>bold</b> text', 'Plain', { escapeHtml: false });
+        const plain = toastr.info('<b>bold</b> text', '', { escapeHtml: false });
         expect(shown(plain)).toBe(false);
     });
 
     test('an escaped message that spells out a button is only text', () => {
         toastr.info('first');
-        const text = toastr.info('<button>Undo</button>', 'Escaped');
+        const text = toastr.info('<button>Undo</button>');
         expect(shown(text)).toBe(false);
     });
 
@@ -315,19 +328,19 @@ describe('the toast queue', () => {
 
     test('an identical toast that waits is shown once', () => {
         toastr.info('first');
-        const one = toastr.error('Could not save', 'Chat');
-        const two = toastr.error('Could not save', 'Chat');
-        const other = toastr.error('Could not save', 'Settings');
+        const one = toastr.error('Could not save the chat');
+        const two = toastr.error('Could not save the chat');
+        const other = toastr.error('Could not save the settings');
         expect(two[0]).toBe(one[0]);
         expect(other[0]).not.toBe(one[0]);
         expect(queueState().waiting.length).toBe(2);
     });
 
     test('the same toast again while it is on screen is not queued, and keeps it for another timeout', async () => {
-        const first = toastr.error('Could not save', 'Chat');
+        const first = toastr.error('Could not save the chat');
         const second = toastr.info('another');
         await advance(4000);
-        const again = toastr.error('Could not save', 'Chat');
+        const again = toastr.error('Could not save the chat');
         expect(again[0]).toBe(first[0]);
         expect(queueState()).toEqual({ current: first[0], waiting: [second[0]] });
 
@@ -338,12 +351,12 @@ describe('the toast queue', () => {
     });
 
     test('the same toast again while the shown one is hovered changes nothing, and the hover still lets it go', async () => {
-        const first = toastr.error('Could not save', 'Chat');
+        const first = toastr.error('Could not save the chat');
         const second = toastr.info('another');
         first[0].matches = selector => selector === ':hover' || Element.prototype.matches.call(first[0], selector);
         first.trigger('mouseenter');
         await advance(6000);
-        expect(toastr.error('Could not save', 'Chat')[0]).toBe(first[0]);
+        expect(toastr.error('Could not save the chat')[0]).toBe(first[0]);
         await advance(20000);
         expect(shown(second)).toBe(false);
         delete first[0].matches;
@@ -446,5 +459,443 @@ describe('the toast queue', () => {
         expect(first.closest('body').length).toBe(0);
         expect(shown(second)).toBe(true);
         expect(animations).toHaveLength(0);
+    });
+});
+
+describe('the two queues', () => {
+    const overlay = () => document.getElementById('sb-toast-overlay');
+    const notificationContainer = () => document.getElementById('toast-container');
+    const leavingOrGone = $toast => !$toast[0].isConnected || $toast[0].classList.contains('sb-toast-leaving');
+
+    afterEach(() => {
+        toastQueue.setToastPosition('toast-bottom-center');
+        toastQueue.setNotificationPosition('toast-top-center');
+        toastr.subscribe(() => {});
+    });
+
+    test('a toast and a notification show at once, each in its container with its marker class and position class', () => {
+        const toast = toastr.info('Saved');
+        const notification = toastr.info('Saved the chat', 'Chat');
+
+        expect(shown(toast)).toBe(true);
+        expect(shown(notification)).toBe(true);
+        expect(inOverlay(toast)).toBe(true);
+        expect(toast[0].classList.contains(toastForm.TOAST_FORM_CLASS)).toBe(true);
+        expect(toast[0].classList.contains(toastForm.NOTIFICATION_FORM_CLASS)).toBe(false);
+        expect(overlay().className).toBe('toast-bottom-center');
+        expect(inNotifications(notification)).toBe(true);
+        expect(notification[0].classList.contains(toastForm.NOTIFICATION_FORM_CLASS)).toBe(true);
+        expect(notification[0].classList.contains(toastForm.TOAST_FORM_CLASS)).toBe(false);
+        expect(notificationContainer().classList.contains('toast-top-center')).toBe(true);
+        expect(notificationContainer().contains(toast[0])).toBe(false);
+        expect(queueState()).toEqual({ current: toast[0], waiting: [] });
+        expect(notificationState()).toEqual({ shown: [notification[0]], waiting: [] });
+    });
+
+    test('both forms keep toastr\'s class names and content', () => {
+        const toast = toastr.error('Could not save');
+        const notification = toastr.success('Saved the chat', 'Chat');
+        expect(toast.hasClass('toast') && toast.hasClass('toast-error')).toBe(true);
+        expect(toast.find('.toast-message').text()).toBe('Could not save');
+        expect(notification.hasClass('toast') && notification.hasClass('toast-success')).toBe(true);
+        expect(notification.find('.toast-title').text()).toBe('Chat');
+        expect(notification.find('.toast-message').text()).toBe('Saved the chat');
+    });
+
+    test('three notifications show at once, and a fourth waits and shows when one is dismissed', async () => {
+        const [a, b, c, d] = ['A', 'B', 'C', 'D'].map(name => notice('info', name));
+        expect([a, b, c].map(shown)).toEqual([true, true, true]);
+        expect(shown(d)).toBe(false);
+        expect(notificationState()).toEqual({ shown: [a[0], b[0], c[0]], waiting: [d[0]] });
+
+        toastr.clear(b);
+        await flush();
+        expect(shown(d)).toBe(true);
+        expect(notificationState()).toEqual({ shown: [a[0], c[0], d[0]], waiting: [] });
+    });
+
+    test('an error and a warning stay until they are dismissed: no timer, and none after a hover and a leave', async () => {
+        const error = notice('error', 'Failed');
+        const warning = notice('warning', 'Careful');
+        await advance(60000);
+        expect(leavingOrGone(error) || leavingOrGone(warning)).toBe(false);
+
+        error.trigger('mouseenter');
+        error.trigger('mouseleave');
+        warning.trigger('mouseenter');
+        warning.trigger('mouseleave');
+        await advance(60000);
+        expect(leavingOrGone(error) || leavingOrGone(warning)).toBe(false);
+
+        toastr.clear(error);
+        await finishAnimations();
+        expect(error[0].isConnected).toBe(false);
+    });
+
+    test('an info and a success notification leave after 4 seconds, and a global timeout is not the caller\'s', async () => {
+        toastr.options = { ...toastr.options, timeOut: 9000, extendedTimeOut: 9000 };
+        const info = notice('info', 'Note');
+        const success = notice('success', 'Done');
+        await advance(3999);
+        expect(leavingOrGone(info) || leavingOrGone(success)).toBe(false);
+        await advance(1);
+        expect(leavingOrGone(info) && leavingOrGone(success)).toBe(true);
+        toastr.options = { ...toastr.options, timeOut: 5000, extendedTimeOut: 5000 };
+    });
+
+    test('a timeout of the caller replaces the default of a notification, and so does its extended timeout', async () => {
+        const error = notice('error', 'Failed', { timeOut: 2000, extendedTimeOut: 1000 });
+        await advance(1999);
+        expect(leavingOrGone(error)).toBe(false);
+        await advance(1);
+        expect(leavingOrGone(error)).toBe(true);
+
+        const info = notice('info', 'Note', { timeOut: 9000, extendedTimeOut: 1500 });
+        await advance(8999);
+        expect(leavingOrGone(info)).toBe(false);
+        await advance(1);
+        expect(leavingOrGone(info)).toBe(true);
+
+        const held = notice('success', 'Held', { timeOut: 9000, extendedTimeOut: 1500 });
+        held.trigger('mouseenter');
+        await advance(30000);
+        expect(leavingOrGone(held)).toBe(false);
+        held.trigger('mouseleave');
+        await advance(1499);
+        expect(leavingOrGone(held)).toBe(false);
+        await advance(1);
+        expect(leavingOrGone(held)).toBe(true);
+    });
+
+    test('a toast takes the timeout of the call or the global 5 seconds, whatever the status', async () => {
+        const error = toastr.error('Could not save');
+        const custom = toastr.info('Custom', '', { timeOut: 1000, extendedTimeOut: 1000 });
+        await advance(5000);
+        expect(leavingOrGone(error)).toBe(true);
+        await finishAnimations();
+        expect(shown(custom)).toBe(true);
+        await advance(1000);
+        expect(leavingOrGone(custom)).toBe(true);
+    });
+
+    test('a repeat collapses into a notification that is shown or waits, and into a toast that waits', () => {
+        const [a, , , d] = ['A', 'B', 'C', 'D'].map(name => notice('info', name));
+        expect(notice('info', 'D')[0]).toBe(d[0]);
+        expect(notice('info', 'A')[0]).toBe(a[0]);
+        expect(notificationState().waiting).toEqual([d[0]]);
+
+        toastr.info('first');
+        const second = toastr.info('second');
+        expect(toastr.info('second')[0]).toBe(second[0]);
+        expect(queueState().waiting).toEqual([second[0]]);
+    });
+
+    test('a high-priority notification shows at once and pushes back the oldest one that is not high priority', () => {
+        const [a, b, c] = ['A', 'B', 'C'].map(name => notice('info', name));
+        const waiting = notice('info', 'W');
+        const urgent = notice('info', 'U', { priority: 'high' });
+
+        expect(shown(urgent)).toBe(true);
+        expect(a[0].classList.contains('sb-toast-leaving')).toBe(true);
+        expect(notificationState()).toEqual({ shown: [b[0], c[0], urgent[0]], waiting: [a[0], waiting[0]] });
+    });
+
+    test('when every notification on screen is high priority, a fourth one shows as well', () => {
+        const high = ['A', 'B', 'C', 'D'].map(name => notice('info', name, { priority: 'high' }));
+        expect(high.map(shown)).toEqual([true, true, true, true]);
+        expect(notificationState().shown).toEqual(high.map($toast => $toast[0]));
+        expect(notificationState().waiting).toEqual([]);
+    });
+
+    test('a high-priority toast pushes back the shown toast and leaves the notifications alone', () => {
+        const notification = notice('info', 'Note');
+        const first = toastr.info('first');
+        const undo = toastr.info('<button type="button">Undo</button>', '', { escapeHtml: false });
+        expect(shown(undo)).toBe(true);
+        expect(first[0].classList.contains('sb-toast-leaving')).toBe(true);
+        expect(notification[0].classList.contains('sb-toast-leaving')).toBe(false);
+        expect(queueState()).toEqual({ current: undo[0], waiting: [first[0]] });
+    });
+
+    test('a timeout of 0 from the caller is never held back, and takes a place while it is on screen', async () => {
+        const staying = ['A', 'B', 'C', 'D'].map(name => notice('info', name, { timeOut: 0, extendedTimeOut: 0 }));
+        expect(staying.map(shown)).toEqual([true, true, true, true]);
+        const next = notice('info', 'Next');
+        expect(shown(next)).toBe(false);
+
+        toastr.clear(staying[0]);
+        await flush();
+        expect(shown(next)).toBe(false);
+        toastr.clear(staying[1]);
+        await flush();
+        expect(shown(next)).toBe(true);
+    });
+
+    test('a toast with a timeout of 0 does not take the place of the toast queue', () => {
+        const progress = toastr.info('Working', '', { timeOut: 0, extendedTimeOut: 0 });
+        const first = toastr.info('first');
+        expect(shown(progress) && shown(first)).toBe(true);
+        expect(queueState()).toEqual({ current: first[0], waiting: [] });
+    });
+
+    test('a toast that a class hides is shown outside the queue with its own timer and takes no place', async () => {
+        const style = document.createElement('style');
+        style.textContent = '.displayNone { display: none !important; }';
+        document.head.append(style);
+        try {
+            const hidden = toastr.info('Moving entries', '', { toastClass: 'displayNone', timeOut: 3000, extendedTimeOut: 3000 });
+            const real = toastr.info('A real message');
+            expect(shown(real)).toBe(true);
+            expect(queueState()).toEqual({ current: real[0], waiting: [] });
+            expect(hidden[0].classList.contains('displayNone')).toBe(true);
+
+            await advance(3000);
+            expect(hidden[0].classList.contains('sb-toast-leaving')).toBe(true);
+            expect(real[0].classList.contains('sb-toast-leaving')).toBe(false);
+            const another = toastr.info('Another real message');
+            expect(shown(another)).toBe(false);
+        } finally {
+            style.remove();
+        }
+    });
+
+    test('toastr.clear() and toastr.remove() without a toast reach both containers', async () => {
+        toastr.info('A toast');
+        notice('info', 'Note');
+        toastr.clear();
+        await flush();
+        await finishAnimations();
+        await flush();
+        expect(document.querySelectorAll('.toast').length).toBe(0);
+        expect(overlay()).toBeNull();
+        expect(notificationContainer()).toBeNull();
+
+        toastr.info('A toast');
+        notice('info', 'Note');
+        toastr.remove();
+        await flush();
+        expect(document.querySelectorAll('.toast').length).toBe(0);
+        expect(overlay()).toBeNull();
+        expect(notificationContainer()).toBeNull();
+    });
+
+    test('toastr.clear() and toastr.remove() with a toast act on that toast wherever it is', async () => {
+        const toast = toastr.info('A toast');
+        const notification = notice('info', 'Note');
+        toastr.clear(toast);
+        await finishAnimations();
+        expect(toast[0].isConnected).toBe(false);
+        expect(notification[0].isConnected).toBe(true);
+
+        toastr.remove(notification);
+        expect(notification[0].isConnected).toBe(false);
+        await flush();
+        expect(overlay()).toBeNull();
+        expect(notificationContainer()).toBeNull();
+    });
+
+    test('waiting toasts leave their queue when they are cleared or removed', async () => {
+        toastr.info('first');
+        const second = toastr.info('second');
+        const third = toastr.info('third');
+        toastr.remove(second);
+        toastr.clear(third);
+        await flush();
+        expect(queueState().waiting).toEqual([]);
+        notice('info', 'A');
+        notice('info', 'B');
+        notice('info', 'C');
+        const waiting = notice('info', 'D');
+        toastr.remove(waiting);
+        await flush();
+        expect(notificationState().waiting).toEqual([]);
+    });
+
+    test('an empty overlay is removed, and the toast container goes when the last notification has gone', async () => {
+        const toast = toastr.info('A toast');
+        expect(overlay()).not.toBeNull();
+        expect(notificationContainer()).toBeNull();
+        toast.remove();
+        await flush();
+        expect(overlay()).toBeNull();
+
+        const notification = notice('info', 'Note');
+        expect(overlay()).toBeNull();
+        expect(notificationContainer()).not.toBeNull();
+        notification.remove();
+        await flush();
+        expect(notificationContainer()).toBeNull();
+    });
+
+    test('a position class, container id or target of a call or of the global options does not move or merge the containers', () => {
+        const options = { positionClass: 'toast-bottom-left', containerId: 'my-container', target: '#nowhere' };
+        const check = (toast, notification) => {
+            expect(inOverlay(toast)).toBe(true);
+            expect(inNotifications(notification)).toBe(true);
+            expect(overlay().className).toBe('toast-bottom-center');
+            expect(notificationContainer().className).toBe('toast-top-center');
+            expect(document.getElementById('my-container')).toBeNull();
+            expect(document.getElementById('global-container')).toBeNull();
+        };
+        check(toastr.info('A toast', '', options), toastr.info('A notice', 'Notice', options));
+
+        toastr.clear(undefined, { force: true });
+        toastr.remove();
+        const saved = toastr.options;
+        toastr.options = { ...saved, containerId: 'global-container', positionClass: 'toast-bottom-right', target: '#nowhere' };
+        try {
+            check(toastr.info('Another toast'), toastr.info('Another notice', 'Notice'));
+        } finally {
+            toastr.options = saved;
+        }
+    });
+
+    test('the call returns toastr\'s element at once, and it is in #toast-container while the subscriber runs', () => {
+        const seen = [];
+        toastr.subscribe((args) => {
+            if (args.state === 'visible') {
+                seen.push([...document.querySelectorAll('#toast-container > .toast')]);
+            }
+        });
+        const toast = toastr.info('A toast');
+        const notification = toastr.info('A notice', 'Notice');
+
+        expect(toast.jquery).toBeTruthy();
+        expect(seen[0]).toEqual([toast[0]]);
+        expect(seen[1]).toEqual([notification[0]]);
+        expect(inOverlay(toast)).toBe(true);
+    });
+
+    test('a wrapper that an extension installs afterwards and that returns null breaks nothing', () => {
+        const inner = toastr.info;
+        toastr.info = (...args) => {
+            inner(...args);
+            return null;
+        };
+        try {
+            expect(toastr.info('first')).toBeNull();
+            expect(toastr.info('second')).toBeNull();
+            expect(toastr.info('A notice', 'Notice')).toBeNull();
+        } finally {
+            toastr.info = inner;
+        }
+        expect(queueState().current).not.toBeNull();
+        expect(queueState().waiting).toHaveLength(1);
+        expect(notificationState().shown).toHaveLength(1);
+    });
+
+    test('a toast with a title, a click action or two buttons is a notification', () => {
+        expect(inNotifications(toastr.info('Message', 'Title'))).toBe(true);
+        expect(inNotifications(toastr.info('Message', '', { onclick: () => {} }))).toBe(true);
+        expect(inNotifications(toastr.info('<button>A</button><button>B</button>', '', { escapeHtml: false }))).toBe(true);
+        expect(inOverlay(toastr.info('Message', ''))).toBe(true);
+        expect(inOverlay(toastr.info('Message', undefined, { onclick: undefined }))).toBe(true);
+    });
+
+    test('the width rule reads the toast\'s own measure, and 34em itself is still a toast', () => {
+        measured = { width: toastForm.TOAST_MAX_WIDTH_EM * 16 + 1, em: 16 };
+        expect(inNotifications(toastr.info('A long message'))).toBe(true);
+        measured = { width: toastForm.TOAST_MAX_WIDTH_EM * 16, em: 16 };
+        expect(inOverlay(toastr.info('A message of the limit'))).toBe(true);
+    });
+
+    test('a toast that cannot be classified is a notification, and the call still returns its element', () => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        measured = null;
+        const $toast = toastr.info('A message');
+        warn.mockRestore();
+        expect($toast.jquery).toBeTruthy();
+        expect(inNotifications($toast)).toBe(true);
+        expect($toast[0].classList.contains(toastForm.NOTIFICATION_FORM_CLASS)).toBe(true);
+    });
+
+    test('a toast keeps its form when its text grows after it is shown', async () => {
+        const toast = toastr.info('Working', '', { timeOut: 0, extendedTimeOut: 0 });
+        toast.find('.toast-message').text('x'.repeat(2000));
+        measured = { width: 100000, em: 16 };
+        await flush();
+        expect(inOverlay(toast)).toBe(true);
+        expect(toast[0].classList.contains(toastForm.TOAST_FORM_CLASS)).toBe(true);
+    });
+
+    test('the notification queue keeps the rules of the toast queue: errors first, six waiting, a hover holds', async () => {
+        const shownNotifications = ['A', 'B', 'C'].map(name => notice('info', name));
+        const infos = Array.from({ length: 8 }, (_, index) => notice('info', `Info ${index}`));
+        expect(notificationState().waiting).toHaveLength(6);
+        expect(notificationState().waiting[0]).toBe(infos[2][0]);
+
+        const error = notice('error', 'Failed');
+        expect(notificationState().waiting[0]).toBe(error[0]);
+
+        shownNotifications[0].trigger('mouseenter');
+        await advance(20000);
+        expect(shown(shownNotifications[0])).toBe(true);
+        expect(leavingOrGone(shownNotifications[1])).toBe(true);
+    });
+
+    test('the position setters accept toastr\'s six classes, refuse others, and move an existing container', () => {
+        toastr.info('A toast');
+        notice('info', 'Note');
+
+        expect(toastQueue.setToastPosition('toast-top-right')).toBe(true);
+        expect(overlay().className).toBe('toast-top-right');
+        expect(toastQueue.setToastPosition('toast-middle')).toBe(false);
+        expect(overlay().className).toBe('toast-top-right');
+
+        expect(toastQueue.setNotificationPosition('toast-bottom-left')).toBe(true);
+        expect(notificationContainer().className).toBe('toast-bottom-left');
+        expect(toastQueue.setNotificationPosition('toast-top-full-width')).toBe(false);
+        expect(toastQueue.getNotificationPosition()).toBe('toast-bottom-left');
+    });
+
+    test('placeToastOverlay moves the overlay into the top open dialog, back to the body, and drops it when empty', async () => {
+        const toast = toastr.info('A toast');
+        const dialog = document.createElement('dialog');
+        dialog.setAttribute('open', '');
+        document.body.append(dialog);
+        toastQueue.placeToastOverlay();
+        expect(overlay().parentElement).toBe(dialog);
+
+        const inside = toastr.info('Another toast in the dialog');
+        expect(inside.closest('#sb-toast-overlay').length).toBe(1);
+        expect(overlay().parentElement).toBe(dialog);
+
+        // A Popup is marked closing before it is removed, and fixToastrForDialogs() runs in between.
+        dialog.setAttribute('closing', '');
+        toastQueue.placeToastOverlay();
+        expect(overlay().parentElement).toBe(document.body);
+        dialog.remove();
+
+        toastr.remove(toast);
+        toastr.remove(inside);
+        toastQueue.placeToastOverlay();
+        expect(overlay()).toBeNull();
+    });
+
+    test('a toast made while a dialog is open lands in the overlay inside that dialog', () => {
+        const dialog = document.createElement('dialog');
+        dialog.setAttribute('open', '');
+        document.body.append(dialog);
+        const toast = toastr.info('A toast');
+        expect(overlay().parentElement).toBe(dialog);
+        expect(inOverlay(toast)).toBe(true);
+    });
+
+    test('newestOnTop decides where in the overlay a toast goes', () => {
+        const saved = toastr.options;
+        toastr.options = { ...saved, newestOnTop: false };
+        try {
+            const first = toastr.info('first');
+            const second = toastr.info('second');
+            const third = toastr.info('third');
+            expect([...overlay().children]).toEqual([first[0], second[0], third[0]]);
+        } finally {
+            toastr.options = saved;
+        }
+        toastr.clear(undefined, { force: true });
+        toastr.remove();
+        const first = toastr.info('first');
+        const second = toastr.info('second');
+        expect([...overlay().children]).toEqual([second[0], first[0]]);
     });
 });
