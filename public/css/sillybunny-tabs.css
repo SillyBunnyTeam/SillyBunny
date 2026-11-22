@@ -1484,6 +1484,12 @@ body:not(.movingUI) .drawer-content.maximized {
         padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-content)) / 2));
     }
 
+    /* A scrollbar that takes room from this box makes the percentage padding half a scrollbar off the centre of the pane, so
+       such a page keeps the gutter on both edges. A wide page is a frame that scrolls inside itself, which has no such offset. */
+    :root[data-sb-classic-scrollbars] #sb-settings-page [data-sb-page-width='preference'] :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
+        scrollbar-gutter: stable both-edges;
+    }
+
     /* A wide page is a visible frame that scrolls inside itself, so the frame is the column and its scrollbars stay in it.
        The `:not(#sb-specificity)` outweighs the `:has()` rules that pad the box of each list page. */
     #sb-settings-page #sb-settings-shell-host .sb-shell-panel[data-sb-page-width='wide'] > .sb-shell-panel-scroller,

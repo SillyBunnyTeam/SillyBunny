@@ -1143,3 +1143,38 @@ export function applyPageWidth(root, tabConfig) {
     const width = getPageWidth(tabConfig);
     if (root.getAttribute(PAGE_WIDTH_ATTRIBUTE) !== width) root.setAttribute(PAGE_WIDTH_ATTRIBUTE, width);
 }
+
+/**
+ * A scrollbar that takes room from the box it scrolls (a classic scrollbar, which every desktop Chromium and Safari shows once
+ * the page styles it) makes a column that is centred by padding sit half a scrollbar off the centre of its pane: the padding
+ * is a percentage of the pane, and the scrollbar is inside it. sillybunny-tabs.css keeps a gutter on both edges of such a
+ * box, and only where the root has this attribute, so a browser whose scrollbars take no room (overlay, or hidden in a test
+ * browser) reserves nothing.
+ */
+export const CLASSIC_SCROLLBARS_ATTRIBUTE = 'data-sb-classic-scrollbars';
+
+/**
+ * The width that a scrollbar takes from a box that scrolls, in the style of the page.
+ * @returns {number}
+ */
+export function measureScrollbarWidth() {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:100px;height:100px;overflow:scroll';
+    (document.body ?? document.documentElement).append(probe);
+    const width = probe.offsetWidth - probe.clientWidth;
+    probe.remove();
+    return width;
+}
+
+/**
+ * Writes the attribute of classic scrollbars to the root, only when it differs, so a measure that finds the same causes no style change.
+ * @param {Element} [root]
+ * @returns {boolean} Whether scrollbars take room.
+ */
+export function syncClassicScrollbars(root = document.documentElement) {
+    const classic = measureScrollbarWidth() > 0;
+    if (root.hasAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE) !== classic) {
+        root.toggleAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE, classic);
+    }
+    return classic;
+}

@@ -83,6 +83,7 @@ import {
     SB_FLAT_SECTION_HEADER_CLASS,
     applyPageWidth,
     applySettingsSectionOrder,
+    syncClassicScrollbars,
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
@@ -1571,6 +1572,9 @@ const sbState = {
 
 // The attribute is written when the module loads, before the shell exists, so a Window or a settings page that opens first is already laid out the user's way.
 applyContentClampPreference();
+// SillyBunny: the scrollbars of the browser can change while the page is open (a mouse that is plugged in), so a window that is focused again measures them once more.
+syncClassicScrollbars();
+window.addEventListener('focus', () => syncClassicScrollbars(), { passive: true });
 
 function normalizeTopbarLabelPart(value, fallback = '') {
     const fallbackValue = SB_TOPBAR_LABEL_PART_IDS.has(fallback) ? fallback : '';
