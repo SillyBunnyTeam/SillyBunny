@@ -1,5 +1,12 @@
 /* global globalThis */
 import { expect, test } from '@playwright/test';
+import { waitForAppReady } from './helpers/app-ready.js';
+import {
+    createStreamingReasoningFixture,
+    measureIdleActivity,
+    measureSettingsInteractions,
+    measureStreamingWithReasoning,
+} from '../scripts/measure-frontend-performance.js';
 
 const coreAssetPaths = [
     '/script.js',
@@ -119,6 +126,115 @@ test.describe('frontend performance smoke', () => {
         expect(snapshot.fontRequests).toBeLessThan(18);
         for (const assetPath of coreAssetPaths) {
             expect(snapshot.coreAssetBytes[assetPath]).toBeGreaterThan(0);
+        }
+    });
+
+    test('keeps idle recalc and DOM mutations quiet behind open Settings', async ({ page, context }) => {
+        test.setTimeout(90_000);
+        const pageErrors = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
+        await page.waitForFunction(() => (
+            globalThis.document.readyState === 'complete'
+            && globalThis.document.getElementById('preloader') === null
+            && Boolean(globalThis.SillyBunnyShell?.openTab)
+        ), null, { timeout: 60000 });
+
+        let cdpSession = null;
+        try {
+            cdpSession = await context.newCDPSession(page);
+        } catch {
+            cdpSession = null;
+        }
+
+        try {
+            await page.evaluate(async () => {
+                await globalThis.SillyBunnyShell.openTab('right', 'appearance');
+                await new Promise(resolve => globalThis.setTimeout(resolve, 600));
+            });
+
+            const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
+            expect(idle.available).toBe(true);
+            expect(idle.runningAnimations).toBe(0);
+            expect(idle.mutationCallbacks).toBeLessThanOrEqual(10);
+            expect(idle.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(6);
+            expect(idle.cdp?.layoutCount ?? 0).toBeLessThanOrEqual(6);
+            expect(pageErrors).toEqual([]);
+        } finally {
+            await cdpSession?.detach().catch(() => {});
+        }
+    });
+
+    test('bounds layout reads and style recalc during streaming after a large reasoning block', async ({ page, context }) => {
+        test.setTimeout(90_000);
+        const pageErrors = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
+        await page.waitForFunction(() => (
+            globalThis.document.readyState === 'complete'
+            && globalThis.document.getElementById('preloader') === null
+            && typeof globalThis.SillyTavern?.getContext === 'function'
+        ), null, { timeout: 60000 });
+
+        let cdpSession = null;
+        try {
+            cdpSession = await context.newCDPSession(page);
+        } catch {
+            cdpSession = null;
+        }
+
+        try {
+            const fixture = createStreamingReasoningFixture({ stepCount: 20, reasoningRepeat: 320, responseRepeat: 24 });
+            const stream = await measureStreamingWithReasoning(page, fixture, { cdpSession });
+            expect(stream.available).toBe(true);
+            expect(stream.reasoningBytes).toBeGreaterThan(8000);
+            expect(stream.getBoundingClientRectCount).toBeLessThanOrEqual(250);
+            expect(stream.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(120);
+            expect(pageErrors).toEqual([]);
+        } finally {
+            await cdpSession?.detach().catch(() => {});
+        }
+    });
+
+    test('keeps Settings, Extensions, and search interactions bounded without page errors', async ({ page, context }) => {
+        test.setTimeout(90_000);
+        const pageErrors = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.setViewportSize({ width: 1366, height: 900 });
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
+        await page.waitForFunction(() => (
+            globalThis.document.readyState === 'complete'
+            && globalThis.document.getElementById('preloader') === null
+            && Boolean(globalThis.SillyBunnyShell?.openTab)
+        ), null, { timeout: 60000 });
+
+        let cdpSession = null;
+        try {
+            cdpSession = await context.newCDPSession(page);
+        } catch {
+            cdpSession = null;
+        }
+
+        try {
+            const interaction = await measureSettingsInteractions(page, { cdpSession, idleDurationMs: 1000 });
+            expect(interaction.available).toBe(true);
+            expect(interaction.tabsVisited).toEqual(expect.arrayContaining(['extensions', 'editor', 'appearance']));
+            expect(interaction.idleBehindSettings?.available).toBe(true);
+            expect(interaction.idleBehindSettings.runningAnimations).toBe(0);
+            expect(interaction.idleBehindSettings.mutationCallbacks).toBeLessThanOrEqual(10);
+            expect(interaction.idleBehindSettings.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(6);
+            expect(interaction.idleBehindSettings.cdp?.layoutCount ?? 0).toBeLessThanOrEqual(6);
+            expect(pageErrors).toEqual([]);
+        } finally {
+            await cdpSession?.detach().catch(() => {});
         }
     });
 });

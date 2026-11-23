@@ -1,0 +1,18 @@
+{
+    "max": {
+        "profiles.desktop.cold.metrics.resourceCount": 900,
+        "profiles.desktop.cold.metrics.chatRender.streamingReasoning.getBoundingClientRectCount": 250,
+        "profiles.desktop.cold.metrics.chatRender.streamingReasoning.cdp.recalcStyleCount": 120,
+        "profiles.desktop.cold.metrics.settingsInteractions.idleBehindSettings.runningAnimations": 0,
+        "profiles.desktop.cold.metrics.settingsInteractions.idleBehindSettings.mutationCallbacks": 10,
+        "profiles.desktop.cold.metrics.settingsInteractions.idleBehindSettings.cdp.recalcStyleCount": 8,
+        "profiles.desktop.cold.metrics.settingsInteractions.idleBehindSettings.cdp.layoutCount": 8,
+        "profiles.mobile.cold.metrics.resourceCount": 900,
+        "profiles.mobile.cold.metrics.chatRender.streamingReasoning.getBoundingClientRectCount": 250,
+        "profiles.mobile.cold.metrics.chatRender.streamingReasoning.cdp.recalcStyleCount": 120,
+        "profiles.mobile.cold.metrics.settingsInteractions.idleBehindSettings.runningAnimations": 0,
+        "profiles.mobile.cold.metrics.settingsInteractions.idleBehindSettings.mutationCallbacks": 10,
+        "profiles.mobile.cold.metrics.settingsInteractions.idleBehindSettings.cdp.recalcStyleCount": 8,
+        "profiles.mobile.cold.metrics.settingsInteractions.idleBehindSettings.cdp.layoutCount": 8
+    }
+}

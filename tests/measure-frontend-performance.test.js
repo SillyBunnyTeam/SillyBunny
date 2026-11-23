@@ -1,21 +1,32 @@
 /* global globalThis */
 import { describe, expect, test } from '@jest/globals';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
     collectBudgetFailures,
     createLongChatRenderFixture,
+    createStreamingReasoningFixture,
     createStreamingRenderFixture,
+    diffCdpPerfMetrics,
     installLongTaskObserver,
     LONG_CHAT_RENDER_FILLER_REPEAT,
     LONG_CHAT_RENDER_MESSAGE_COUNT,
     LONG_CHAT_RENDER_VISIBLE_COUNT,
+    measureIdleActivity,
     measureLongChatRender,
     measureProfile,
     measureScrollFps,
     measureStreamingRender,
+    measureStreamingWithReasoning,
     parseCpuThrottleRate,
     parseProfileNames,
     readBootMarksFromPage,
+    readCdpPerfMetrics,
+    STREAM_REASONING_REPEAT,
+    STREAM_REASONING_RESPONSE_REPEAT,
+    STREAM_REASONING_STEP_COUNT,
     STREAM_RENDER_CODE_REPEAT,
     STREAM_RENDER_FILLER_REPEAT,
     STREAM_RENDER_STEP_COUNT,
@@ -697,5 +708,148 @@ describe('boot marks of a measured page', () => {
         const page = { evaluate: async () => { throw new Error('Execution context was destroyed'); } };
 
         await expect(readBootMarksFromPage(page)).resolves.toEqual([]);
+    });
+});
+
+describe('runtime regression measurement helpers and budget preset', () => {
+    test('builds a multi-step streaming fixture with a large completed reasoning block', () => {
+        const fixture = createStreamingReasoningFixture();
+        expect(fixture.stepCount).toBe(STREAM_REASONING_STEP_COUNT);
+        expect(fixture.reasoningRepeat).toBe(STREAM_REASONING_REPEAT);
+        expect(fixture.responseRepeat).toBe(STREAM_REASONING_RESPONSE_REPEAT);
+        expect(fixture.steps).toHaveLength(STREAM_REASONING_STEP_COUNT);
+        expect(fixture.reasoningText.length).toBeGreaterThan(8000);
+        expect(fixture.steps.at(-1)).toBe(fixture.fullResponse);
+    });
+
+    test('reads and diffs CDP performance counters cleanly', async () => {
+        const snapshots = [
+            [
+                { name: 'RecalcStyleCount', value: 10 },
+                { name: 'RecalcStyleDuration', value: 0.05 },
+                { name: 'LayoutCount', value: 4 },
+                { name: 'LayoutDuration', value: 0.02 },
+                { name: 'ScriptDuration', value: 0.1 },
+            ],
+            [
+                { name: 'RecalcStyleCount', value: 13 },
+                { name: 'RecalcStyleDuration', value: 0.065 },
+                { name: 'LayoutCount', value: 5 },
+                { name: 'LayoutDuration', value: 0.025 },
+                { name: 'ScriptDuration', value: 0.12 },
+            ],
+        ];
+        let callIndex = 0;
+        const cdp = {
+            send: async (method) => {
+                if (method === 'Performance.getMetrics') {
+                    return { metrics: snapshots[callIndex++] };
+                }
+                return {};
+            },
+        };
+
+        const before = await readCdpPerfMetrics(cdp);
+        const after = await readCdpPerfMetrics(cdp);
+        expect(diffCdpPerfMetrics(before, after)).toEqual({
+            recalcStyleCount: 3,
+            recalcStyleMs: 15,
+            layoutCount: 1,
+            layoutMs: 5,
+            scriptMs: 20,
+        });
+        expect(await readCdpPerfMetrics(null)).toBeNull();
+        expect(diffCdpPerfMetrics(null, after)).toBeNull();
+    });
+
+    test('measures idle DOM mutations and CDP deltas', async () => {
+        const page = {
+            evaluate: async (fn, ms) => {
+                const prevDoc = globalThis.document;
+                const prevMO = globalThis.MutationObserver;
+                const prevSetTimeout = globalThis.setTimeout;
+                try {
+                    globalThis.document = {
+                        documentElement: {},
+                        getAnimations: () => [{ playState: 'paused' }, { playState: 'running' }],
+                    };
+                    globalThis.MutationObserver = class {
+                        constructor(cb) { this.cb = cb; }
+                        observe() { this.cb([{}, {}]); }
+                        takeRecords() { return [{}]; }
+                        disconnect() {}
+                    };
+                    globalThis.setTimeout = (cb) => { cb(); return 1; };
+                    return await fn(ms);
+                } finally {
+                    globalThis.document = prevDoc;
+                    globalThis.MutationObserver = prevMO;
+                    globalThis.setTimeout = prevSetTimeout;
+                }
+            },
+        };
+
+        const result = await measureIdleActivity(page, { durationMs: 250 });
+        expect(result).toEqual({
+            available: true,
+            durationMs: 250,
+            mutationRecords: 3,
+            mutationCallbacks: 2,
+            runningAnimations: 1,
+            cdp: null,
+        });
+    });
+
+    test('reports streaming-with-reasoning unavailable cleanly when chat context is absent', async () => {
+        const page = {
+            evaluate: async (fn, arg) => {
+                const prevST = globalThis.SillyTavern;
+                const prevDoc = globalThis.document;
+                try {
+                    globalThis.SillyTavern = undefined;
+                    globalThis.document = { querySelector: () => null };
+                    return await fn(arg);
+                } finally {
+                    globalThis.SillyTavern = prevST;
+                    globalThis.document = prevDoc;
+                }
+            },
+        };
+
+        const result = await measureStreamingWithReasoning(page, createStreamingReasoningFixture({ stepCount: 2, reasoningRepeat: 4, responseRepeat: 2 }));
+        expect(result).toEqual({
+            available: false,
+            reason: 'chat-formatting-unavailable',
+            cdp: null,
+        });
+    });
+
+    test('checked-in frontend-perf-budget.json is valid and works with collectBudgetFailures', () => {
+        const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+        const budget = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts', 'frontend-perf-budget.json'), 'utf8'));
+        expect(Object.keys(budget.max).length).toBeGreaterThanOrEqual(8);
+        const passing = {
+            profiles: {
+                desktop: {
+                    cold: {
+                        metrics: {
+                            resourceCount: 500,
+                            chatRender: { streamingReasoning: { getBoundingClientRectCount: 40, cdp: { recalcStyleCount: 30 } } },
+                            settingsInteractions: { idleBehindSettings: { runningAnimations: 0, mutationCallbacks: 1, cdp: { recalcStyleCount: 0, layoutCount: 0 } } },
+                        },
+                    },
+                },
+                mobile: {
+                    cold: {
+                        metrics: {
+                            resourceCount: 500,
+                            chatRender: { streamingReasoning: { getBoundingClientRectCount: 40, cdp: { recalcStyleCount: 30 } } },
+                            settingsInteractions: { idleBehindSettings: { runningAnimations: 0, mutationCallbacks: 1, cdp: { recalcStyleCount: 0, layoutCount: 0 } } },
+                        },
+                    },
+                },
+            },
+        };
+        expect(collectBudgetFailures(passing, budget)).toEqual([]);
     });
 });
