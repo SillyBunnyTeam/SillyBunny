@@ -2967,6 +2967,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-23, Track 1 Slice 1B performance pass. |
 | Owner | Frontend performance owner. |
 
+### `public/script.js`, `public/scripts/reasoning.js` and `public/scripts/util/stream-fadein.js` - streaming reasoning dirty-checks, scroll coalescing, and segmenter reuse
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `public/scripts/reasoning.js`, `public/scripts/util/stream-fadein.js` |
+| Area | Streaming message updates, reasoning DOM/regex updates, `#chat` scroll viewport-anchor refreshes, and stream fade-in text segmentation. |
+| Divergence reason | During prose streaming after a completed reasoning block, upstream `ReasoningHandler.updateDom()` re-formatted and morphed the unchanged reasoning block on every prose tick, `updateReasoning()` ran `getRegexedString()` twice per tick, `updateReasoningUI()` constructed a handler and morphed empty reasoning on every plain message, `refreshObservedChatMessageResizeViewportStates()` ran synchronously on every scroll event and forced full linear anchor scans, `setFirstSwipe()` deep-cloned `message.extra` on every intermediate tick, and `segmentTextInElement()` allocated a new `Intl.Segmenter` and wrote `innerText` on every tick. |
+| Target seam | Binary search in `public/scripts/chat-render-lifecycle/anchor.js`; private dirty-tracking fields in `ReasoningHandler` (`public/scripts/reasoning.js`); module-level `segmenterCache` in `public/scripts/util/stream-fadein.js`; rAF coalescing and shallow intermediate swipe updates in `public/script.js`. |
+| Adapter shape | `script.js`: skip anchor scans in `captureChatMessageResizeViewportState()` while pinned near the bottom during active streaming; coalesce `refreshObservedChatMessageResizeViewportStates()` to one `requestAnimationFrame` callback and cancel it in `disposeChatMessageResizeObserver()`; default `refreshChatMessageResizeState()` to the microtask-shared delivery viewport state; shallow-copy `extra` during intermediate `setFirstSwipe()` ticks while keeping full `structuredClone` on initial/final/stop paths. `reasoning.js`: fast-path plain messages without reasoning in `updateReasoningUI()`; cache raw/regexed reasoning inputs in `updateReasoning()` and rendered text/DOM in `updateDom()`. `stream-fadein.js`: cache `Intl.Segmenter` per granularity and assign `span.textContent`. |
+| Protecting tests | `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/mobile-streaming.test.js`, `tests/unit/sillybunny-streaming-hotfixes.test.js`, `tests/reasoning-token-accounting.test.js`. |
+| Validation | 2026-11-23: `npm run lint`, `tests/` eslint on modified files, and focused streaming, reasoning, anchor, and chat-render-lifecycle unit suites covering long-chat scrolling, streaming after completed reasoning, and stream fade-in segmentation. |
+| Rollback path | Remove `pendingChatMessageResizeViewportRefreshFrame`, the streaming near-bottom anchor skip, the delivery-state default, and the intermediate shallow copy in `public/script.js`; remove the plain-message fast path and `#last*` caches in `public/scripts/reasoning.js`; remove `segmenterCache` and restore `innerText` in `public/scripts/util/stream-fadein.js`. No stored settings or chat data change. |
+| Last reviewed | 2026-11-23, Track 1 Slice 1C performance pass. |
+| Owner | Frontend performance owner. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

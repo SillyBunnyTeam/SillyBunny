@@ -139,4 +139,35 @@ describe('chat render lifecycle anchor helpers', () => {
 
         expect(scrollElement.scrollTop).toBe(0);
     });
+
+    test('uses binary search to bound getBoundingClientRect reads on long chats', () => {
+        let rectReads = 0;
+        const messages = Array.from({ length: 500 }, (_value, index) => {
+            const top = (index - 450) * 50;
+            const element = new FakeMessageElement(index, { top, bottom: top + 48 });
+            const originalGetRect = element.getBoundingClientRect.bind(element);
+            element.getBoundingClientRect = () => {
+                rectReads += 1;
+                return originalGetRect();
+            };
+            return element;
+        });
+
+        const anchor = captureVisibleMessageAnchor(new FakeScrollElement(messages, { top: 0, bottom: 200 }));
+        expect(anchor).toEqual({ messageId: '450', offsetTop: 0 });
+        expect(rectReads).toBeLessThanOrEqual(12);
+    });
+
+    test('falls back cleanly when a collapsed zero-box message sits in the list', () => {
+        const messages = [
+            new FakeMessageElement(1, { top: -120, bottom: -20, width: 300, height: 100 }),
+            new FakeMessageElement(2, { top: 0, bottom: 0, width: 0, height: 0 }),
+            new FakeMessageElement(3, { top: 16, bottom: 84, width: 300, height: 68 }),
+        ];
+
+        expect(captureVisibleMessageAnchor(new FakeScrollElement(messages, { top: 0, bottom: 200 }))).toEqual({
+            messageId: '3',
+            offsetTop: 16,
+        });
+    });
 });

@@ -4286,6 +4286,9 @@ async function onMessageReceived(messageIndex, generationType) {
     clearPostGenerationStateAfterCompletion();
 }
 
+let lastStreamRegexSnapshotProcessor = null;
+let lastStreamRegexSnapshotMessageId = -1;
+
 function onStreamTokenReceived() {
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
         return;
@@ -4300,6 +4303,13 @@ function onStreamTokenReceived() {
     if (!Number.isInteger(numericMessageIndex) || numericMessageIndex < 0) {
         return;
     }
+
+    // Active agents do not change mid-stream, so capture the regex snapshot once per streamed message.
+    if (lastStreamRegexSnapshotProcessor === liveStreamingProcessor && lastStreamRegexSnapshotMessageId === numericMessageIndex) {
+        return;
+    }
+    lastStreamRegexSnapshotProcessor = liveStreamingProcessor;
+    lastStreamRegexSnapshotMessageId = numericMessageIndex;
 
     const generationType = pendingGenerationSnapshot?.generationType
         ?? currentMainGenerationType

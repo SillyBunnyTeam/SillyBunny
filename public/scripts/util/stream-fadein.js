@@ -1,11 +1,24 @@
 import { morphdom } from '../../lib.js';
 
+/** @type {Map<string, Intl.Segmenter>} */
+const segmenterCache = new Map();
+
 /**
  * Check if the current browser supports native segmentation function.
  * @returns {boolean} True if the Segmenter is supported by the current browser.
  */
 export function isSegmenterSupported() {
     return typeof Intl.Segmenter === 'function';
+}
+
+function getSegmenter(granularity) {
+    let segmenter = segmenterCache.get(granularity);
+    if (!segmenter) {
+        // SillyBunny: reuse one Intl.Segmenter per granularity instead of constructing a new instance on every stream tick.
+        segmenter = new Intl.Segmenter('en-US', { granularity });
+        segmenterCache.set(granularity, segmenter);
+    }
+    return segmenter;
 }
 
 /**
@@ -22,7 +35,7 @@ export function segmentTextInElement(htmlElement, htmlContent, granularity = 'wo
     }
 
     // TODO: Support more locales, make granularity configurable.
-    const segmenter = new Intl.Segmenter('en-US', { granularity });
+    const segmenter = getSegmenter(granularity);
     const textNodes = [];
     const walker = document.createTreeWalker(htmlElement, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
@@ -49,7 +62,8 @@ export function segmentTextInElement(htmlElement, htmlContent, granularity = 'wo
             // TODO: Apply a different class for different segment length/content?
             // For now, just use a single class for all segments.
             const span = document.createElement('span');
-            span.innerText = segment.segment;
+            // SillyBunny: textContent avoids style-aware innerText work on detached spans.
+            span.textContent = segment.segment;
             span.className = 'text_segment';
             fragment.appendChild(span);
         }
