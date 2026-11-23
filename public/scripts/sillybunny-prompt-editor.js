@@ -286,10 +286,27 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     const contentRequests = new Map();
     const listGroups = new Map();
     const mobile = matchMedia(LAYOUT_MOBILE_QUERY);
+    let indexedState = null;
+    let promptsById = new Map();
+    let orderedIdSet = new Set();
+
+    function ensureStateIndex() {
+        if (indexedState === state) return;
+        indexedState = state;
+        promptsById = new Map((state?.prompts ?? []).map(prompt => [prompt.identifier, prompt]));
+        orderedIdSet = new Set((state?.order ?? []).map(entry => entry.identifier));
+    }
 
     const dirty = () => Boolean(draft) && (unsaved || session.isDirty());
     const textCompletionView = () => state?.type === 'text-completions';
-    const promptFor = id => state.prompts.find(prompt => prompt.identifier === id);
+    const promptFor = id => {
+        ensureStateIndex();
+        return promptsById.get(id);
+    };
+    const isOrdered = id => {
+        ensureStateIndex();
+        return orderedIdSet.has(id);
+    };
     const rowFor = id => id == null ? null : listBody.querySelector(`[data-prompt-id="${CSS.escape(id)}"]`);
     const selectedId = () => draft?.identifier;
 
@@ -383,7 +400,8 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         const pending = request.then(count => {
             if (tokenizerKey === expectedTokenizer) {
                 contentCounts.set(content, count);
-                if (contentCounts.size > 128) contentCounts.delete(contentCounts.keys().next().value);
+                // Keep enough cached prompt bodies for large 300+ prompt presets without thrashing.
+                if (contentCounts.size > 2048) contentCounts.delete(contentCounts.keys().next().value);
             }
             return count;
         }).finally(() => {
@@ -704,7 +722,15 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
             key: ({ prompt }) => textCompletion ? prompt.id : prompt.identifier,
             signature: ({ prompt, utility = false }) => {
                 const id = textCompletion ? prompt.id : prompt.identifier;
-                return JSON.stringify([prompt, utility ? model.readUtility(id) : textCompletion ? prompt : [model.permissions(prompt), describe(prompt)]]);
+                if (textCompletion) {
+                    const preview = Object.values(prompt.values).find(value => typeof value === 'string' && value.trim()) ?? '';
+                    return `${id}\u0000${prompt.name}\u0000${prompt.disabled ? 1 : 0}\u0000${templateSubtitle(prompt, preview, true)}`;
+                }
+                if (utility) {
+                    return `${id}\u0000${prompt.name}\u0000${templateSubtitle(prompt, model.readUtility(id), false)}\u0000${model.canRestoreUtility(id) ? 1 : 0}`;
+                }
+                const perms = model.permissions(prompt);
+                return `${id}\u0000${prompt.name}\u0000${prompt.role ?? ''}\u0000${prompt.marker ? 1 : 0}\u0000${prompt.runtime ? 1 : 0}\u0000${prompt.injection_position ?? ''}\u0000${describe(prompt)}\u0000${perms.edit ? 1 : 0}${perms.rename ? 1 : 0}${perms.toggle ? 1 : 0}${perms.remove ? 1 : 0}${perms.delete ? 1 : 0}${perms.reset ? 1 : 0}`;
             },
             create: ({ prompt, orderEntry = null, available = false, utility = false }) => makeRow(prompt, orderEntry, available, utility),
             update: (row, { prompt, orderEntry = null }) => {
@@ -795,14 +821,29 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
             return true;
         }
         const utilities = UTILITY_FIELDS.map(([identifier, name]) => ({ identifier, name: translate(name), content: model.readUtility(identifier) }));
-        // A token sort reads counts that arrive after the state does, so the counts it read are part of the key.
-        const tokenCounts = sortOrder.startsWith('tokens') ? state.prompts.map(knownCount) : null;
-        const nextKey = JSON.stringify([state.scope, state.prompts, state.order, state.counts, state.sources, state.error, state.runtime, state.character?.name, utilities, filter, selectedId(), tokenizerKey, sortOrder, tokenCounts]);
+        // Build a lightweight list fingerprint without serializing full prompt bodies on every render or keystroke.
+        const promptSummaries = state.prompts.map(prompt => `${prompt.identifier}\u001f${prompt.name}\u001f${prompt.role ?? ''}\u001f${prompt.marker ? 1 : 0}\u001f${prompt.runtime ? 1 : 0}\u001f${prompt.system_prompt ? 1 : 0}\u001f${prompt.injection_position ?? ''}\u001f${prompt.injection_depth ?? ''}\u001f${(prompt.injection_trigger ?? []).join(',')}\u001f${knownCount(prompt)}\u001f${state.sources?.[prompt.identifier] ?? ''}`);
+        const orderSummary = state.order.map(entry => `${entry.identifier}:${entry.enabled ? 1 : 0}`);
+        const utilitySummary = utilities.map(item => `${item.identifier}:${model.canRestoreUtility(item.identifier) ? 1 : 0}:${item.content.length}:${item.content.slice(0, 120)}`);
+        const nextKey = [
+            state.scope,
+            state.error ?? '',
+            state.runtime?.name ?? '',
+            state.character?.name ?? '',
+            filter,
+            selectedId() ?? '',
+            tokenizerKey,
+            sortOrder,
+            promptSummaries.join('\u001e'),
+            orderSummary.join(','),
+            utilitySummary.join('\u001e'),
+        ].join('\u0000');
         if (nextKey === renderedListKey) return false;
         renderedListKey = nextKey;
         const focused = listBody.contains(document.activeElement) ? document.activeElement : null;
         const focusedId = focused?.closest('[data-prompt-id]')?.dataset.promptId;
-        const matches = prompt => prompt.name.toLowerCase().includes(filter.toLowerCase());
+        const normalizedFilter = filter.toLowerCase();
+        const matches = prompt => !normalizedFilter || prompt.name.toLowerCase().includes(normalizedFilter);
         const rows = sortEntries(state.order.flatMap(entry => {
             const prompt = promptFor(entry.identifier);
             return prompt && matches(prompt) ? [{ prompt, orderEntry: entry }] : [];
@@ -819,7 +860,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         if (!state.error) error?.remove();
         else if (!error) listBody.prepend(element('div', 'sb-prompt-error', state.error));
         else if (error.textContent !== state.error) error.textContent = state.error;
-        const available = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier));
+        const available = state.prompts.filter(prompt => !isOrdered(prompt.identifier));
         const availableRows = sortEntries(available.filter(matches).map(prompt => ({ prompt, available: true })), sortOrder);
         const utilityRows = utilities.filter(matches).map(prompt => ({ prompt, utility: true }));
         renderRows(group(t`Available`, 'sb-prompt-available'), availableRows);
@@ -926,7 +967,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     }
 
     function openAddMenu(trigger) {
-        const count = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier)).length;
+        const count = state.prompts.filter(prompt => !isOrdered(prompt.identifier)).length;
         menu(trigger, t`Add Prompt`, [[
             menuItem(t`New Prompt`, 'plus', async () => {
                 if (!(await allowLeave())) return;
@@ -1723,7 +1764,11 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         replayingChange = false;
     }, true);
     document.addEventListener('sb:shell-tab-activated', async event => {
-        if (event.detail.tabId === 'editor') { synchronize(); return; }
+        if (event.detail.tabId === 'editor') {
+            promptManager?.flushDeferredRender?.({ force: true });
+            synchronize();
+            return;
+        }
         shell.cancelNavigation();
         closeOverlays();
         if (!dirty()) return;

@@ -52,6 +52,7 @@ import { getEventSourceStream } from './sse-stream.js';
 import { fetchResumable } from './resumable-generation.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish } from './generation-request-controls.js';
 import {
+    cancelDebounce,
     createThumbnail,
     delay,
     download,
@@ -6986,11 +6987,13 @@ function loadOpenAISettings(data, settings) {
     ensureModelFavoritesStore(settings);
 
 
+    // SillyBunny: index settingsToUpdate by key once so initial settings hydration stays O(K) instead of O(K^2).
+    const settingsToUpdateByKey = new Map(Object.values(settingsToUpdate).map(entry => [entry[1], entry]));
     for (const key of Object.keys(default_settings)) {
         // Invalid NanoGPT restrictions must reach request validation, not become unrestricted defaults.
         const isNanoGptRequestSetting = ['nanogpt_allowed_providers', 'nanogpt_ignored_providers', 'nanogpt_payg_override'].includes(key);
         oai_settings[key] = isNanoGptRequestSetting && Object.hasOwn(settings, key) ? settings[key] : settings[key] ?? default_settings[key];
-        const settingToUpdate = Object.values(settingsToUpdate).find(([_, k]) => k === key);
+        const settingToUpdate = settingsToUpdateByKey.get(key);
         if (settingToUpdate) {
             const [selector] = settingToUpdate;
             const $element = $(selector);
@@ -8012,6 +8015,15 @@ function restoreOpenAIPresetSelection(presetName = oai_settings.preset_settings_
     $('#settings_preset_openai').val(String(presetValue));
 }
 
+// SillyBunny: suppress redundant debounced saves while applying a preset; onSettingsPresetChange saves once at completion.
+let isApplyingOpenAiPreset = false;
+
+function scheduleOpenAiSettingsSave() {
+    if (!isApplyingOpenAiPreset) {
+        saveSettingsDebounced();
+    }
+}
+
 // Load OpenAI preset settings
 function onSettingsPresetChange() {
     const changeGeneration = ++settingsPresetChangeGeneration;
@@ -8041,68 +8053,76 @@ function onSettingsPresetChange() {
             return;
         }
 
-        if (oai_settings.bind_preset_to_connection) {
-            $('.model_custom_select').empty();
-        }
-
-        for (const [key, [selector, setting, isCheckbox, isConnection, isSampling]] of Object.entries(settingsToUpdate)) {
-            if (isConnection && !oai_settings.bind_preset_to_connection) {
-                continue;
+        isApplyingOpenAiPreset = true;
+        try {
+            if (oai_settings.bind_preset_to_connection) {
+                $('.model_custom_select').empty();
             }
 
-            if (isSampling && !shouldIncludeSamplingFieldsInPreset(oai_settings)) {
-                continue;
-            }
-
-            // Extensions don't need UI updates and shouldn't fallback to current settings
-            if (key === 'extensions') {
-                oai_settings.extensions = preset.extensions || {};
-                continue;
-            }
-
-            if (key === 'bias_preset_selected') {
-                continue;
-            }
-
-            if (key === 'bias_presets') {
-                applyLogitBiasPresetSettings(preset);
-                continue;
-            }
-
-            if (preset[key] !== undefined) {
-                if (isCheckbox) {
-                    updateCheckbox(selector, preset[key]);
-                } else {
-                    updateInput(selector, preset[key]);
+            for (const [key, [selector, setting, isCheckbox, isConnection, isSampling]] of Object.entries(settingsToUpdate)) {
+                if (isConnection && !oai_settings.bind_preset_to_connection) {
+                    continue;
                 }
-                oai_settings[setting] = preset[key];
+
+                if (isSampling && !shouldIncludeSamplingFieldsInPreset(oai_settings)) {
+                    continue;
+                }
+
+                // Extensions don't need UI updates and shouldn't fallback to current settings
+                if (key === 'extensions') {
+                    oai_settings.extensions = preset.extensions || {};
+                    continue;
+                }
+
+                if (key === 'bias_preset_selected') {
+                    continue;
+                }
+
+                if (key === 'bias_presets') {
+                    applyLogitBiasPresetSettings(preset);
+                    continue;
+                }
+
+                if (preset[key] !== undefined) {
+                    if (isCheckbox) {
+                        updateCheckbox(selector, preset[key]);
+                    } else {
+                        updateInput(selector, preset[key]);
+                    }
+                    oai_settings[setting] = preset[key];
+                }
             }
+
+            syncMaxContextUnlockedControl(oai_settings);
+
+            // These cannot be changed via preset if unbound to connection
+            if (oai_settings.bind_preset_to_connection) {
+                $('#chat_completion_source').trigger('change');
+                setOpenRouterProviders('#openrouter_providers_chat', oai_settings.openrouter_providers);
+                $('#openrouter_quantizations_chat').trigger('change');
+                updateNanoGptProviderControls();
+            }
+
+            rebuildOpenAIModelSelect();
+            updateOpenAIModelFavoriteButton();
+            updateAdvancedFormattingVisibility();
+            updateOpenAISettingsGroupVisibility();
+            scheduleOpenAIUiRefresh();
+            $('#openai_logit_bias_preset').trigger('change');
+
+            // SillyBunny: re-assert the per-model sampling profile after a preset has
+            // written its sampling values, so a bound model profile always wins over
+            // the (Default/char) preset. Without this, starting a new chat or switching to a backend
+            // with a saved sampling profile silently reverts to the preset's sampling.
+            maybeApplyModelSamplingProfile();
+        } finally {
+            isApplyingOpenAiPreset = false;
         }
 
-        syncMaxContextUnlockedControl(oai_settings);
-
-        // These cannot be changed via preset if unbound to connection
-        if (oai_settings.bind_preset_to_connection) {
-            $('#chat_completion_source').trigger('change');
-            setOpenRouterProviders('#openrouter_providers_chat', oai_settings.openrouter_providers);
-            $('#openrouter_quantizations_chat').trigger('change');
-            updateNanoGptProviderControls();
-        }
-
-        rebuildOpenAIModelSelect();
-        updateOpenAIModelFavoriteButton();
-        updateAdvancedFormattingVisibility();
-        updateOpenAISettingsGroupVisibility();
-        scheduleOpenAIUiRefresh();
-        $('#openai_logit_bias_preset').trigger('change');
-
-        // SillyBunny: re-assert the per-model sampling profile after a preset has
-        // written its sampling values, so a bound model profile always wins over
-        // the (Default/char) preset — the core promise of "decouple sampling from
-        // preset". Without this, starting a new chat or switching to a backend
-        // with a saved sampling profile silently reverts to the preset's sampling.
-        maybeApplyModelSamplingProfile();
-
+        calculateOpenRouterCost();
+        calculateElectronHubCost();
+        calculateChutesCost();
+        cancelDebounce(saveSettingsDebounced);
         await saveSettings();
         await eventSource.emit(event_types.OAI_PRESET_CHANGED_AFTER);
         await eventSource.emit(event_types.PRESET_CHANGED, { apiId: 'openai', name: presetName });
@@ -10799,136 +10819,140 @@ export function initOpenAI() {
     $('#temp_openai').on('input', function () {
         oai_settings.temp_openai = Number($(this).val());
         $('#temp_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#freq_pen_openai').on('input', function () {
         oai_settings.freq_pen_openai = Number($(this).val());
         $('#freq_pen_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#pres_pen_openai').on('input', function () {
         oai_settings.pres_pen_openai = Number($(this).val());
         $('#pres_pen_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#top_p_openai').on('input', function () {
         oai_settings.top_p_openai = Number($(this).val());
         $('#top_p_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#claude_disable_temperature').on('input', function () {
         oai_settings.claude_disable_temperature = !!$(this).prop('checked');
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#claude_disable_top_p').on('input', function () {
         oai_settings.claude_disable_top_p = !!$(this).prop('checked');
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#top_k_openai').on('input', function () {
         oai_settings.top_k_openai = Number($(this).val());
         $('#top_k_counter_openai').val(Number($(this).val()).toFixed(0));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#top_a_openai').on('input', function () {
         oai_settings.top_a_openai = Number($(this).val());
         $('#top_a_counter_openai').val(Number($(this).val()));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#min_p_openai').on('input', function () {
         oai_settings.min_p_openai = Number($(this).val());
         $('#min_p_counter_openai').val(Number($(this).val()));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#repetition_penalty_openai').on('input', function () {
         oai_settings.repetition_penalty_openai = Number($(this).val());
         $('#repetition_penalty_counter_openai').val(Number($(this).val()));
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#openai_max_context').on('input', function () {
         oai_settings.openai_max_context = Number($(this).val());
         $('#openai_max_context_counter').val(`${$(this).val()}`);
-        calculateOpenRouterCost();
-        calculateElectronHubCost();
-        calculateChutesCost();
-        saveSettingsDebounced();
+        if (!isApplyingOpenAiPreset) {
+            calculateOpenRouterCost();
+            calculateElectronHubCost();
+            calculateChutesCost();
+        }
+        scheduleOpenAiSettingsSave();
     });
 
     $('#openai_max_tokens').on('input', function () {
         oai_settings.openai_max_tokens = Number($(this).val());
-        calculateOpenRouterCost();
-        calculateElectronHubCost();
-        calculateChutesCost();
-        saveSettingsDebounced();
+        if (!isApplyingOpenAiPreset) {
+            calculateOpenRouterCost();
+            calculateElectronHubCost();
+            calculateChutesCost();
+        }
+        scheduleOpenAiSettingsSave();
     });
 
     $('#stream_toggle').on('change', function () {
         oai_settings.stream_openai = !!$('#stream_toggle').prop('checked');
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#use_sysprompt').on('change', function () {
         oai_settings.use_sysprompt = !!$('#use_sysprompt').prop('checked');
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#send_if_empty_textarea').on('input', function () {
         oai_settings.send_if_empty = String($('#send_if_empty_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#impersonation_prompt_textarea').on('input', function () {
         oai_settings.impersonation_prompt = String($('#impersonation_prompt_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#newchat_prompt_textarea').on('input', function () {
         oai_settings.new_chat_prompt = String($('#newchat_prompt_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#newgroupchat_prompt_textarea').on('input', function () {
         oai_settings.new_group_chat_prompt = String($('#newgroupchat_prompt_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#newexamplechat_prompt_textarea').on('input', function () {
         oai_settings.new_example_chat_prompt = String($('#newexamplechat_prompt_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#continue_nudge_prompt_textarea').on('input', function () {
         oai_settings.continue_nudge_prompt = String($('#continue_nudge_prompt_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#wi_format_textarea').on('input', function () {
         oai_settings.wi_format = String($('#wi_format_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#scenario_format_textarea').on('input', function () {
         oai_settings.scenario_format = String($('#scenario_format_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#personality_format_textarea').on('input', function () {
         oai_settings.personality_format = String($('#personality_format_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#group_nudge_prompt_textarea').on('input', function () {
         oai_settings.group_nudge_prompt = String($('#group_nudge_prompt_textarea').val());
-        saveSettingsDebounced();
+        scheduleOpenAiSettingsSave();
     });
 
     $('#update_oai_preset').on('click', async function () {

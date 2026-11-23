@@ -20,6 +20,11 @@ const AUTOSAVE_DELAY_MS = 1000;
 const PRESET_KINDS = Object.freeze(['openai', 'textgenerationwebui', 'kobold', 'novel', 'instruct', 'context', 'sysprompt', 'reasoning']);
 const TEMPLATE_KINDS = Object.freeze(['instruct', 'context', 'sysprompt']);
 const EDIT_EVENTS = Object.freeze(['pointerdown', 'keydown', 'input', 'change']);
+const NON_EDIT_KEYS = Object.freeze(new Set([
+    'Tab', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape',
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown',
+    'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+]));
 const KEEPALIVE_BODY_LIMIT = 60_000;
 
 const EDIT_SURFACE_SELECTOR = [
@@ -47,6 +52,8 @@ const DIALOG_SELECTOR = 'dialog[open], .popup[open], .popup.active';
 
 /** @type {Map<string, { name: string, baseline: string, timer: number|null }>} */
 const pendingEdits = new Map();
+/** @type {Map<string, { name: string, json: string }>} */
+const cachedBaselines = new Map();
 /** @type {Map<string, Promise<void>>} */
 const writeQueues = new Map();
 /** @type {Map<string, Promise<Set<string>>>} */
@@ -259,7 +266,9 @@ function flushKind(kind, { name, keepalive = false } = {}) {
     // The preset changed under the edit without a flush point; its live state belongs to another preset.
     if (liveName !== pending.name) return;
     const payload = readPresetPayload(kind, liveName);
-    if (JSON.stringify(payload) === pending.baseline) return;
+    const payloadJson = JSON.stringify(payload);
+    cachedBaselines.set(kind, { name: liveName, json: payloadJson });
+    if (payloadJson === pending.baseline) return;
     void enqueueWrite(kind, liveName, structuredClone(payload), { keepalive });
 }
 
@@ -291,7 +300,12 @@ function noteUserEdit() {
         const pending = pendingEdits.get(kind);
         if (pending && pending.name !== name) flushKind(kind);
         if (!pendingEdits.has(kind)) {
-            pendingEdits.set(kind, { name, baseline: JSON.stringify(readPresetPayload(kind, name)), timer: null });
+            const cached = cachedBaselines.get(kind);
+            const baseline = cached && cached.name === name
+                ? cached.json
+                : JSON.stringify(readPresetPayload(kind, name));
+            cachedBaselines.set(kind, { name, json: baseline });
+            pendingEdits.set(kind, { name, baseline, timer: null });
         }
         schedule(kind);
     }
@@ -300,6 +314,7 @@ function noteUserEdit() {
 /** @param {Event} event */
 function handleTrustedInteraction(event) {
     if (!event.isTrusted || !(event.target instanceof Element)) return;
+    if (event.type === 'keydown' && NON_EDIT_KEYS.has(/** @type {KeyboardEvent} */ (event).key)) return;
     if (event.target.closest(FLUSH_CONTROL_SELECTOR)) {
         flushAll();
         return;
@@ -445,11 +460,22 @@ export function initializePresetAutosave() {
     eventSource.on(event_types.OAI_PRESET_CHANGED_BEFORE, (event = {}) => {
         const pending = pendingEdits.get('openai');
         if (pending && pending.name === event.presetNameBefore) flushKind('openai', { name: pending.name });
+        cachedBaselines.delete('openai');
     });
     // Profiles replace preset values without a user edit; anything pending was flushed when it began.
-    eventSource.on(event_types.CONNECTION_PROFILE_LOADED, () => pendingEdits.clear());
-    eventSource.on(event_types.PRESET_CHANGED, () => refreshPresetProtectionUi());
-    $(document).on('change', 'select[data-preset-manager-for]', () => refreshPresetProtectionUi());
+    eventSource.on(event_types.CONNECTION_PROFILE_LOADED, () => {
+        pendingEdits.clear();
+        cachedBaselines.clear();
+    });
+    eventSource.on(event_types.PRESET_CHANGED, (event = {}) => {
+        if (event?.apiId) cachedBaselines.delete(normalizeKind(event.apiId));
+        else cachedBaselines.clear();
+        refreshPresetProtectionUi();
+    });
+    $(document).on('change', 'select[data-preset-manager-for]', () => {
+        cachedBaselines.clear();
+        refreshPresetProtectionUi();
+    });
 
     void Promise.allSettled(PRESET_KINDS.map(loadBundledNames)).then(results => {
         for (const result of results) {

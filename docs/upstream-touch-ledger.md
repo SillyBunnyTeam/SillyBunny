@@ -2981,6 +2981,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-23, Track 1 Slice 1C performance pass. |
 | Owner | Frontend performance owner. |
 
+### `public/scripts/PromptManager.js` and `public/scripts/openai.js` - deferred prompt renders, owned list skip, and batched preset saves
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/PromptManager.js`, `public/scripts/openai.js` |
+| Area | Prompt Manager rendering, injection-position edit form listener lifecycle, OpenAI initial settings hydration, and preset switching. |
+| Divergence reason | Upstream `PromptManager.render()` triggers dry-run generation and constructs hidden legacy prompt list DOM and jQuery UI sortables even when the prompt editor tab is closed or owned by SillyBunny's prompt editor, and leaks anonymous `change` listeners on `#completion_prompt_manager_popup_entry_form_injection_position`. Upstream `openai.js` scans `Object.values(settingsToUpdate)` inside the `default_settings` loop (`O(K^2)`) and triggers dozens of redundant `saveSettingsDebounced()` and cost-recalculation calls while applying a single preset in `onSettingsPresetChange()`. |
+| Target seam | Deferred render state (`#isPromptSurfaceHidden()`, `flushDeferredRender()`) and `#isPromptEditorOwned()` guards in `public/scripts/PromptManager.js` paired with `public/scripts/sillybunny-prompt-editor.js`; `settingsToUpdateByKey` lookup map and `isApplyingOpenAiPreset` / `scheduleOpenAiSettingsSave()` batching in `public/scripts/openai.js`. |
+| Adapter shape | `PromptManager.js`: defer `render()` while inside a closed drawer, inactive `.sb-shell-panel`, or hidden `#sb-settings-page` and flush on `sb:shell-tab-activated` for `editor`; keep the legacy shell once for contract controls when owned by `.sb-prompt-owned` without `<option>` elements, and skip `renderPromptManagerListItems()` and `makeDraggable()`; reuse `this.boundHandleInjectionPositionChange` on the injection-position select. `openai.js`: index `settingsToUpdate` once by setting key in `loadOpenAISettings()`; wrap `onSettingsPresetChange()` updates in `isApplyingOpenAiPreset = true`, recalculate provider costs once after the batch, cancel any pending debounced save, and route control handlers through `scheduleOpenAiSettingsSave()`. |
+| Protecting tests | `tests/unit/sillybunny-prompt-preset-hotfixes.test.js`, `tests/prompt-manager-lifecycle-wiring.test.js`, `tests/prompt-manager-lifecycle.test.js`, `tests/unit/sillybunny-prompt-editor.test.js`, `tests/openai-sampling-profiles-wiring.test.js`, `tests/openai-proxy-preset-wiring.test.js`. |
+| Validation | 2026-11-23: `npm run lint`, `tests/` eslint on modified files, and focused PromptManager, prompt editor, preset autosave, and OpenAI unit suites covering hidden-tab deferral, owned-tab skip, listener reuse, and preset switching. |
+| Rollback path | Remove `pendingDeferredRender`, `forcingDeferredRender`, `boundHandleInjectionPositionChange`, `#isPromptEditorOwned()`, `#isPromptSurfaceHidden()`, and `flushDeferredRender()` in `public/scripts/PromptManager.js`; remove `settingsToUpdateByKey`, `isApplyingOpenAiPreset`, and `scheduleOpenAiSettingsSave()` in `public/scripts/openai.js` and restore direct `saveSettingsDebounced()` calls. No stored presets or settings change. |
+| Last reviewed | 2026-11-23, Track 1 Slice 1D performance pass. |
+| Owner | Frontend performance owner. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

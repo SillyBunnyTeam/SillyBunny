@@ -429,6 +429,11 @@ class PromptManager {
 
         /** Dry-run for generate, must return a promise  */
         this.tryGenerate = async () => { };
+        // SillyBunny: defer closed-tab dry-run renders and reuse one bound handler for injection position changes.
+        this.pendingDeferredRender = null;
+        this.boundHandleInjectionPositionChange = (e) => this.handleInjectionPositionChange(e);
+        this.deferredRenderTabListenerBound = false;
+        this.forcingDeferredRender = false;
 
         /** Called to persist the configuration, must return a promise */
         this.saveServiceSettings = () => { return Promise.resolve(); };
@@ -1256,12 +1261,65 @@ class PromptManager {
         return renderRequestId === this.renderRequestId;
     }
 
+    #isPromptEditorOwned() {
+        return Boolean(this.containerElement?.closest?.('.sb-prompt-owned'));
+    }
+
+    #isPromptSurfaceHidden() {
+        if (this.forcingDeferredRender) {
+            return false;
+        }
+        const panel = this.containerElement?.closest?.('.sb-shell-panel');
+        if (panel && !panel.classList.contains('sb-shell-panel-active')) {
+            return true;
+        }
+        if (this.containerElement?.closest?.('.closedDrawer')) {
+            return true;
+        }
+        const settingsPage = this.containerElement?.closest?.('#sb-settings-page');
+        if (!settingsPage) {
+            return false;
+        }
+        return Boolean(settingsPage.hidden || document.documentElement?.dataset?.sbSettingsOpen !== 'true');
+    }
+
+    #ensureDeferredRenderListener() {
+        if (this.deferredRenderTabListenerBound || typeof document?.addEventListener !== 'function') {
+            return;
+        }
+        this.deferredRenderTabListenerBound = true;
+        document.addEventListener('sb:shell-tab-activated', (event) => {
+            if (event?.detail?.tabId === 'editor') {
+                this.flushDeferredRender({ force: true });
+            }
+        });
+    }
+
+    flushDeferredRender({ force = false } = {}) {
+        if (!this.pendingDeferredRender) {
+            return false;
+        }
+        const { afterTryGenerate } = this.pendingDeferredRender;
+        this.pendingDeferredRender = null;
+        const previousForce = this.forcingDeferredRender;
+        if (force) {
+            this.forcingDeferredRender = true;
+        }
+        try {
+            this.render(afterTryGenerate);
+        } finally {
+            this.forcingDeferredRender = previousForce;
+        }
+        return true;
+    }
+
     /**
      * Main rendering function
      *
      * @param afterTryGenerate - Whether a dry run should be attempted before rendering
      */
     render(afterTryGenerate = true) {
+        this.#ensureDeferredRenderListener();
         const renderRequestId = ++this.renderRequestId;
         const renderState = resolvePromptManagerRenderState({
             mainApi: main_api,
@@ -1272,6 +1330,14 @@ class PromptManager {
             isGroupGenerating: is_group_generating,
         });
         if (!renderState.shouldRender && !renderState.shouldWaitForGeneration) return;
+        // SillyBunny: defer dry-run generation and DOM rendering while the prompt surface is closed.
+        if (this.#isPromptSurfaceHidden()) {
+            this.pendingDeferredRender = {
+                afterTryGenerate: Boolean(this.pendingDeferredRender?.afterTryGenerate || afterTryGenerate),
+            };
+            return;
+        }
+        this.pendingDeferredRender = null;
         this.error = null;
 
         const renderPromptManagerDom = async () => {
@@ -1853,8 +1919,9 @@ class PromptManager {
             resetPromptButton.style.display = 'none';
         }
 
-        injectionPositionField.removeEventListener('change', (e) => this.handleInjectionPositionChange(e));
-        injectionPositionField.addEventListener('change', (e) => this.handleInjectionPositionChange(e));
+        // SillyBunny: reuse one bound listener reference so reopening the edit form does not leak change handlers.
+        injectionPositionField.removeEventListener('change', this.boundHandleInjectionPositionChange);
+        injectionPositionField.addEventListener('change', this.boundHandleInjectionPositionChange);
 
         const savePromptButton = document.getElementById(this.configuration.prefix + 'prompt_manager_popup_entry_form_save');
         savePromptButton.dataset.pmPrompt = prompt.identifier;
@@ -2202,6 +2269,11 @@ class PromptManager {
         if (!this.#isRenderCurrent(renderRequestId)) {
             return false;
         }
+        // SillyBunny: keep the legacy shell once for contract controls, then skip repeated hidden rebuilds.
+        const isPromptEditorOwned = this.#isPromptEditorOwned();
+        if (isPromptEditorOwned && this.listElement && (this.activeCharacter === null || document.getElementById(`${this.configuration.prefix}prompt_manager_footer_append_prompt`))) {
+            return true;
+        }
 
         let selectedPromptIndex = 0;
         const existingAppendSelect = document.getElementById(`${this.configuration.prefix}prompt_manager_footer_append_prompt`);
@@ -2226,17 +2298,20 @@ class PromptManager {
 
         let footerHtml = '';
         if (null !== this.activeCharacter) {
-            const prompts = [...this.serviceSettings.prompts]
-                .filter(prompt => prompt && !prompt?.system_prompt)
-                .sort((promptA, promptB) => promptA.name.localeCompare(promptB.name));
-            const promptsHtml = prompts.reduce((acc, prompt) => acc + `<option value="${prompt.identifier}">${escapeHtml(prompt.name)}</option>`, '');
+            let promptsHtml = '';
+            if (!isPromptEditorOwned) {
+                const prompts = [...this.serviceSettings.prompts]
+                    .filter(prompt => prompt && !prompt?.system_prompt)
+                    .sort((promptA, promptB) => promptA.name.localeCompare(promptB.name));
+                promptsHtml = prompts.reduce((acc, prompt) => acc + `<option value="${prompt.identifier}">${escapeHtml(prompt.name)}</option>`, '');
 
-            if (selectedPromptIndex > 0) {
-                selectedPromptIndex = Math.min(selectedPromptIndex, prompts.length - 1);
-            }
+                if (selectedPromptIndex > 0) {
+                    selectedPromptIndex = Math.min(selectedPromptIndex, prompts.length - 1);
+                }
 
-            if (selectedPromptIndex === -1 && prompts.length) {
-                selectedPromptIndex = 0;
+                if (selectedPromptIndex === -1 && prompts.length) {
+                    selectedPromptIndex = 0;
+                }
             }
 
             footerHtml = await renderTemplateAsync('promptManagerFooter', { promptsHtml, prefix: this.configuration.prefix });
@@ -2311,6 +2386,10 @@ class PromptManager {
      */
     async renderPromptManagerListItems(renderRequestId = this.renderRequestId) {
         if (!this.serviceSettings.prompts || !this.#isRenderCurrent(renderRequestId)) return false;
+        // SillyBunny: skip hidden legacy list construction when SillyBunny's prompt editor owns the tab.
+        if (this.#isPromptEditorOwned()) {
+            return true;
+        }
 
         const promptManagerList = this.listElement;
         if (!(promptManagerList instanceof HTMLElement)) return false;
@@ -2617,6 +2696,10 @@ class PromptManager {
      * @returns {void}
      */
     makeDraggable() {
+        // SillyBunny: skip hidden jQuery UI sortable initialization when SillyBunny's prompt editor owns the tab.
+        if (this.#isPromptEditorOwned()) {
+            return;
+        }
         $(`#${this.configuration.prefix}prompt_manager_list`).sortable({
             delay: this.configuration.sortableDelay,
             handle: isMobile() ? '.drag-handle' : null,
