@@ -214,6 +214,11 @@ describe('the toast layer', () => {
         expect(ruleOf(themeCss, buttonRule)).toContain('height: 34px');
     });
 
+    test('the button of a toast has a bold label, as libadwaita draws every button and as the notification row does', () => {
+        const buttonRule = `body ${TOAST} .toast-message :is(${BUTTONS.join(', ')})`;
+        expect(ruleOf(themeCss, buttonRule)).toContain('font-weight: 700');
+    });
+
     test('the button of a toast has a 44px target on a coarse pointer, drawn as 34px, and its fills in the states keep that clip', () => {
         const buttonSelector = `body ${TOAST} .toast-message :is(${BUTTONS.join(', ')})`;
         const coarse = themeCss.slice(themeCss.indexOf('@media (pointer: coarse) {\n    body #sb-toast-overlay > .sb-form-toast .toast-message'));

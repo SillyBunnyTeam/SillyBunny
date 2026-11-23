@@ -7111,7 +7111,7 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
     background: color-mix(in srgb, currentColor 10%, transparent);
     color: inherit;
     font: inherit;
-    font-weight: 400;
+    font-weight: 700;
     line-height: 1;
     box-shadow: none;
     text-shadow: none;
