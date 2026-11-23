@@ -303,12 +303,18 @@ const DEFAULT_TOAST_EXTENT = 82;
  * window. With room above the sheet, the toast sits above its top edge, and its own margin gives the 24px. The room is a
  * toast and its margins between the top bar and the sheet. A sheet that leaves no room, because it reaches up to the top
  * bar, carries the toast at its foot, above the bottom action row or above the bottom edge when it has none.
- * @param {{ box: { top: number, bottom: number, left: number, right: number, width: number, height: number }|null, rowTop: number|null, layoutWidth: number, layoutHeight: number, contentTop: number, extent: number }} measures
+ * @param {{ box: { top: number, bottom: number, left: number, right: number, width: number, height: number }|null, rowTop: number|null, layoutWidth: number, layoutHeight: number, contentTop: number, extent: number, keyboard?: number }} measures
  * `rowTop` is the top of the bottom action row, and `contentTop` the bottom of the top bar, in px from the top of the window.
+ * `keyboard` is how much of the bottom of the window the software keyboard covers: the dialog lifts its foot to the top of
+ * the keyboard (`--sb-dialog-keyboard-inset`), so a sheet rests on that edge as well as on the window's.
  * @returns {number|null} px, or null when the dialog is not a bottom sheet: one that floats above the bottom of the window, or is narrower than half of it.
  */
-export function sheetToastInset({ box, rowTop, layoutWidth, layoutHeight, contentTop, extent }) {
-    if (!box || !(box.height > 0) || Math.abs(box.bottom - layoutHeight) > DOCK_TOLERANCE || box.width < layoutWidth * SHEET_MIN_WIDTH_SHARE) {
+export function sheetToastInset({ box, rowTop, layoutWidth, layoutHeight, contentTop, extent, keyboard = 0 }) {
+    if (!box || !(box.height > 0) || box.width < layoutWidth * SHEET_MIN_WIDTH_SHARE) {
+        return null;
+    }
+    const restsOnEdge = [layoutHeight, layoutHeight - keyboard].some(edge => Math.abs(box.bottom - edge) <= DOCK_TOLERANCE);
+    if (!restsOnEdge) {
         return null;
     }
     if (box.top - contentTop >= extent) {
@@ -440,7 +446,15 @@ function readDialogSheet(height) {
     const box = layoutBoxOf(surface);
     const row = actionRowTop(surface);
     const contentTop = document.getElementById('top-bar')?.getBoundingClientRect().bottom ?? 0;
-    const inset = sheetToastInset({ box, rowTop: row === null ? null : box.top + row, layoutWidth: layoutWidth(), layoutHeight: height, contentTop, extent: toastExtent() });
+    const inset = sheetToastInset({
+        box,
+        rowTop: row === null ? null : box.top + row,
+        layoutWidth: layoutWidth(),
+        layoutHeight: height,
+        contentTop,
+        extent: toastExtent(),
+        keyboard: keyboardInset(window.visualViewport, height),
+    });
     return inset === null ? null : { inset, box };
 }
 

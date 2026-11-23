@@ -144,6 +144,31 @@ describe('the place of a toast above a bottom sheet', () => {
         expect(sheetToastInset({ ...measures, box: { ...sheet, bottom: 797 }, rowTop: null })).toBe(300);
         expect(sheetToastInset({ ...measures, box: { ...sheet, bottom: 790 }, rowTop: null })).toBeNull();
     });
+
+    describe('with the software keyboard open, which lifts the foot of the sheet to its own top', () => {
+        const lifted = { ...sheet, top: 200, bottom: 500 };
+
+        test('is a sheet when its bottom is at the top of the keyboard, and the toast sits above its top edge', () => {
+            expect(sheetToastInset({ ...measures, keyboard: 300, box: lifted, rowTop: 440 })).toBe(600);
+            expect(sheetToastInset({ ...measures, keyboard: 300, box: { ...lifted, bottom: 498 }, rowTop: null })).toBe(600);
+        });
+
+        test('keeps the toast above the action row of a lifted sheet that leaves no room above it', () => {
+            const tall = { ...lifted, top: 50, height: 450 };
+            expect(sheetToastInset({ ...measures, keyboard: 300, box: tall, rowTop: 440 })).toBe(360);
+            expect(sheetToastInset({ ...measures, keyboard: 300, box: tall, rowTop: null })).toBe(300);
+        });
+
+        test('is not a sheet when its bottom is at neither the keyboard nor the window, and without a keyboard the top of the keyboard is no edge', () => {
+            expect(sheetToastInset({ ...measures, keyboard: 300, box: { ...lifted, bottom: 400, top: 100 }, rowTop: null })).toBeNull();
+            expect(sheetToastInset({ ...measures, keyboard: 0, box: lifted, rowTop: null })).toBeNull();
+            expect(sheetToastInset({ ...measures, box: lifted, rowTop: null })).toBeNull();
+        });
+
+        test('is still a sheet that the keyboard did not lift', () => {
+            expect(sheetToastInset({ ...measures, keyboard: 300, box: sheet, rowTop: null })).toBe(300);
+        });
+    });
 });
 
 describe('the action row of a dialog', () => {
@@ -649,6 +674,16 @@ describe('writing the placement', () => {
             toastIn(overlay);
             updateToastPlacement();
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+        });
+
+        test('a bottom sheet that the software keyboard lifts carries the toast above its top edge, not over its action row', () => {
+            visualViewport.height = 500;
+            openDialog({ rect: { left: 0, top: 200, width: 1000, height: 300 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            // The keyboard alone would lift the toast by 300px, to the foot of the sheet.
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('600px');
         });
 
         test('a tall sheet, which leaves no room above it, carries the toast above its bottom action row', () => {
