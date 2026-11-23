@@ -1569,13 +1569,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `start.sh` |
 | Area | Android app runtime. |
-| Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer and default to Node.js when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools and the installer relies on download tools that may not exist on Android. |
+| Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer, default to Node.js, clear the leftover npm download cache after Android installs, and skip redundant dependency/init subprocesses on unchanged warm Android boots when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools, runs on limited mobile storage, and pays high fork cost on Android. |
 | Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependencies; no separate seam yet for APK runtime selection. |
-| Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, and the prerequisite call. Honor Node/Bun overrides, otherwise default APK launches to Node; keep existing update/dependency helper calls. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
+| Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, prerequisite skip, warm boot stamp (`node_modules/.sillybunny-android-boot-stamp`), and post-install npm cache cleanup. Defer lockfile git-restore checks until package installation is needed. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
 | Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
 | Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
-| Rollback path | Remove `is_android_app()` and its guards in `start.sh`: the early return in `is_termux()`, the Node.js default in `prefer_node_runtime()` and the skip of `scripts/install-prerequisites.sh`. The Android app then runs the prerequisite installer, whose download tools may not exist on Android. No saved data changes. |
-| Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918. |
+| Rollback path | Remove `is_android_app()` and its guards in `start.sh`: the early return in `is_termux()`, the Node.js default in `prefer_node_runtime()`, the skip of `scripts/install-prerequisites.sh`, the warm boot stamp check, and post-install npm cache cleanup. The Android app then runs the full desktop startup path. No saved data changes. |
+| Last reviewed | 2026-11-24, PR SillyBunnyTeam/SillyBunny#918 (Android cold-start and storage optimization). |
 | Owner | Runtime and release integrator. |
 
 ### Repository policy, launchers, packaging, and build infrastructure

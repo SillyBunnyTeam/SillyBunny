@@ -295,6 +295,7 @@ run_package_install() {
     "$PACKAGE_MANAGER_CMD" "${fallback_args[@]}"
 }
 
+# SillyBunny: fast warm-boot stamp helpers avoid extra Node and npm spawns on unchanged Android launches.
 android_git_head() {
     local head_file="$SCRIPT_DIR/.git/HEAD"
     local line ref_path
