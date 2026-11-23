@@ -411,7 +411,24 @@ describe('the sheets docked above an edge', () => {
         expect(find()).toEqual([]);
         place(sheet, { top: 60, bottom: 800, left: 0, right: 1000 });
         expect(find()).toEqual([]);
-        place(sheet, { top: 80, bottom: 800, left: 0, right: 1000 });
+        place(sheet, { top: 140, bottom: 800, left: 0, right: 1000 });
+        expect(find()).toHaveLength(1);
+    });
+
+    test('is not a sheet when it leaves less room under the top bar than the toast needs, with its margins, and is when it leaves that much', () => {
+        place(sheet, { top: 100, bottom: 800, left: 0, right: 1000 });
+        expect(find({ room: 82 })).toEqual([]);
+        expect(find({ room: 56 })).toHaveLength(1);
+        place(sheet, { top: 126, bottom: 800, left: 0, right: 1000 });
+        expect(find({ room: 82 })).toHaveLength(1);
+        place(sheet, { top: 125, bottom: 800, left: 0, right: 1000 });
+        expect(find({ room: 82 })).toEqual([]);
+    });
+
+    test('takes the room of a toast of its default size when it is not told one', () => {
+        place(sheet, { top: 125, bottom: 800, left: 0, right: 1000 });
+        expect(find()).toEqual([]);
+        place(sheet, { top: 126, bottom: 800, left: 0, right: 1000 });
         expect(find()).toHaveLength(1);
     });
 
@@ -1060,6 +1077,58 @@ describe('writing the placement', () => {
             updateToastPlacement();
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
             expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+        });
+
+        describe('under a top bar, with a toast on screen', () => {
+            let frames;
+
+            beforeEach(() => {
+                frames = [];
+                jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+                    frames.push(callback);
+                    return frames.length;
+                });
+                const bar = document.createElement('div');
+                bar.id = 'top-bar';
+                bar.getBoundingClientRect = () => ({ top: 0, bottom: 44, height: 44, left: 0, right: 1000, width: 1000 });
+                document.body.prepend(bar);
+            });
+
+            afterEach(() => {
+                while (frames.length > 0) {
+                    frames.shift()(0);
+                }
+                jest.restoreAllMocks();
+            });
+
+            /** One toast of 46px with 36px of margins: 82px, which a sheet has to leave between the bar and its own top. */
+            function showToast(overlay) {
+                const toast = document.createElement('div');
+                toast.className = 'toast sb-form-toast';
+                toast.style.marginTop = '12px';
+                toast.style.marginBottom = '24px';
+                lay(toast, { rect: { left: 300, top: 0, width: 400, height: 46 } });
+                overlay.append(toast);
+            }
+
+            test('a sheet that leaves less room than the toast needs is no bar, and the toast stays at the window edge', () => {
+                dock({ top: 100, bottom: 800, left: 0, right: 1000 });
+                document.elementsFromPoint = jest.fn(() => [row, sheet, composer]);
+                const overlay = overlayWith('toast-bottom-center');
+                showToast(overlay);
+                updateToastPlacement();
+                // At 700px the toast would reach from 18 to 100, over the bar that ends at 44.
+                expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            });
+
+            test('a sheet that leaves the room of the toast and its margins carries the toast above its top edge', () => {
+                dock({ top: 126, bottom: 800, left: 0, right: 1000 });
+                document.elementsFromPoint = jest.fn(() => [row, sheet, composer]);
+                const overlay = overlayWith('toast-bottom-center');
+                showToast(overlay);
+                updateToastPlacement();
+                expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('674px');
+            });
         });
 
         test('on top of the composer, like the sheet of a side panel, is the bar when it reaches higher than the composer', () => {

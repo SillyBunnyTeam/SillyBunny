@@ -177,19 +177,21 @@ const SHEET_PROBE_DEPTH = 14;
 const SHEET_GAP_ABOVE_EDGE = 12;
 /** A sheet spans at least this share of the window; a panel that is docked at one side is narrower. */
 const SHEET_MIN_WIDTH_SHARE = 0.5;
-/** A sheet leaves at least this much of the window under the top bar uncovered; a page that covers the window does not. */
-const SHEET_MIN_ROOM = 24;
+/** A one-line toast and its margins, which a sheet must leave above it when no toast is on screen to measure. */
+const DEFAULT_TOAST_EXTENT = 82;
 /** Sheets that stand on one another, counted from the edge. */
 const SHEET_MAX_STACK = 3;
 
 /**
  * The box of an element when it is a sheet that rests on `support`: it is fixed to the window, its bottom is on `support`
  * (the bottom of the window, or the top of the bar under it) or a little above it, it spans half the window or more, and it
- * leaves room under the top bar. A dialog, an element in a dialog, a message, an element that holds the composer and the composer itself
- * are not sheets.
+ * leaves `room` under the top bar, which is what a toast and its margins need above it. A sheet that leaves less would put
+ * the toast over the bar, so it is no bar for the toast, which then sits lower, as it does over a dialog sheet that leaves no
+ * room. A page that covers the window leaves none. A dialog, an element in a dialog, a message, an element that holds the
+ * composer and the composer itself are not sheets.
  * @returns {{ top: number, bottom: number, left: number, right: number }|null}
  */
-function sheetBoxOn(element, support, { layoutWidth, contentTop, composer }) {
+function sheetBoxOn(element, support, { layoutWidth, contentTop, composer, room }) {
     if ((composer && (element.contains(composer) || composer.contains(element))) || element.closest(`dialog, ${MESSAGE_SELECTOR}`) !== null) {
         return null;
     }
@@ -198,7 +200,7 @@ function sheetBoxOn(element, support, { layoutWidth, contentTop, composer }) {
         || box.bottom > support + DOCK_TOLERANCE
         || box.bottom < support - SHEET_GAP_ABOVE_EDGE
         || box.width < layoutWidth * SHEET_MIN_WIDTH_SHARE
-        || box.top < contentTop + SHEET_MIN_ROOM
+        || box.top < contentTop + room
         || getComputedStyle(element).position !== 'fixed') {
         return null;
     }
@@ -212,9 +214,10 @@ function sheetBoxOn(element, support, { layoutWidth, contentTop, composer }) {
  * of a phone rests on the bottom of the window, and the sheet of a side panel rests on the top of the composer.
  * @param {{ edge: number, layoutWidth: number, contentTop: number, composer: HTMLElement|null, elementsAt?: (x: number, y: number) => Element[] }} reader
  * `edge` is the bottom of the window, or the top of the composer while the composer is a bar. `contentTop` is the bottom of the top bar.
+ * `room` is the least that a sheet leaves between the top bar and its own top: the extent of the tallest toast, as for a dialog sheet.
  * @returns {{ top: number, bottom: number, left: number, right: number }[]}
  */
-export function sheetsAbove({ edge, layoutWidth, contentTop, composer, elementsAt = elementsAtPoint }) {
+export function sheetsAbove({ edge, layoutWidth, contentTop, composer, room = DEFAULT_TOAST_EXTENT, elementsAt = elementsAtPoint }) {
     const found = [];
     let support = edge;
     while (found.length < SHEET_MAX_STACK) {
@@ -222,7 +225,7 @@ export function sheetsAbove({ edge, layoutWidth, contentTop, composer, elementsA
         for (const share of SHEET_PROBE_SHARES) {
             const topmost = elementsAt(layoutWidth * share, support - SHEET_PROBE_DEPTH)?.find(element => element.closest(MESSAGE_SELECTOR) === null);
             for (let element = topmost; element && element !== document.body && element !== document.documentElement; element = element.parentElement) {
-                const box = sheetBoxOn(element, support, { layoutWidth, contentTop, composer });
+                const box = sheetBoxOn(element, support, { layoutWidth, contentTop, composer, room });
                 if (box && (highest === null || box.top < highest.top)) {
                     highest = box;
                 }
@@ -294,9 +297,6 @@ export function dialogToastBottom({ hostHeight, surfaceBottom, rowTop }) {
     const top = rowTop === null ? surfaceBottom : Math.min(surfaceBottom, rowTop);
     return Math.max(0, Math.round(hostHeight - top));
 }
-
-/** A one-line toast and its margins, which a sheet must leave above it when no toast is on screen to measure. */
-const DEFAULT_TOAST_EXTENT = 82;
 
 /**
  * Where a toast sits above a modal dialog that is a bottom sheet, as the space that it keeps clear at the bottom of the
@@ -392,7 +392,7 @@ function readBars() {
         }
     }
     const contentTop = document.getElementById('top-bar')?.getBoundingClientRect().bottom ?? 0;
-    for (const sheet of sheetsAbove({ edge, layoutWidth: layoutWidth(), contentTop, composer })) {
+    for (const sheet of sheetsAbove({ edge, layoutWidth: layoutWidth(), contentTop, composer, room: toastExtent() })) {
         bars.push({ kind: 'sheet', ...sheet });
     }
     return bars;
