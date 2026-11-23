@@ -7748,14 +7748,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     gap: 0;
 }
 
-/* Draft-recovery toast actions (sillybunny-editor/chrome.js). The toast renders outside the editors, and can
-   appear while the editors' deferred sheet is still loading. */
-.sb-draft-toast__actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-
 /* Forced colours remove the fill that marks the selected sidebar tab, so it takes the system selection colours, as the selected segment of a segmented control does. */
 @media (forced-colors: active) {
     .sb-settings-tab[aria-selected='true'],

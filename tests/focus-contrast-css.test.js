@@ -282,10 +282,6 @@ describe('the focus ring inside the toast layer', () => {
         const supports = blockAt(themeCss, supportsStart);
         expect(supports.replace(/\s+/g, ' ').trim()).toBe('body #sb-toast-overlay { --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b); }');
     });
-
-    test('the Home toast action uses the ordinary inset ring', () => {
-        expect(declarationsOf(read('public', 'css', 'sillybunny-home.css'), '.sbHomeToastAction:focus-visible')).toBe('outline: none; box-shadow: var(--sb-focus-ring-inset);');
-    });
 });
 
 describe('popover edges', () => {

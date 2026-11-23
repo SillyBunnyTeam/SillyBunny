@@ -123,33 +123,6 @@ afterEach(async () => {
     document.body.innerHTML = '';
 });
 
-describe('the action class', () => {
-    const marked = $toast => $toast[0].classList.contains(toastQueue.TOAST_ACTION_CLASS);
-    const options = { escapeHtml: false, timeOut: 0, extendedTimeOut: 0 };
-
-    test('is set on a toast with exactly one button, queued or not, and on no other toast', () => {
-        expect(marked(toastr.info('<div>Removed <button type="button">Undo</button></div>', '', options))).toBe(true);
-        expect(marked(toastr.info('<div><button>Restore</button><button>Discard</button></div>', '', options))).toBe(false);
-        expect(marked(toastr.info('A plain toast', 'Plain', options))).toBe(false);
-        expect(marked(toastr.info('<div>Queued <button type="button">Undo</button></div>', '', { ...options, timeOut: 5000 }))).toBe(true);
-    });
-
-    test('is not set on a toast whose message lays out several text blocks beside its button', () => {
-        expect(marked(toastr.info('<div class="sbHomeToast"><div>Well done.</div><div>Next is Start Chatting.</div><button type="button">Show Me</button></div>', 'Get a Character Card', options))).toBe(false);
-    });
-
-    test('follows the content when a caller changes it after the toast is shown', async () => {
-        const $toast = toastr.info('<div>Removed</div>', '', options);
-        expect(marked($toast)).toBe(false);
-        $toast.find('.toast-message').append('<button type="button">Undo</button>');
-        await flush();
-        expect(marked($toast)).toBe(true);
-        $toast.find('.toast-message').append('<button type="button">Redo</button>');
-        await flush();
-        expect(marked($toast)).toBe(false);
-    });
-});
-
 describe('the button markers', () => {
     const options = { escapeHtml: false, timeOut: 0, extendedTimeOut: 0 };
     const toastMarked = $toast => $toast[0].classList.contains(toastForm.TOAST_BUTTON_CLASS);

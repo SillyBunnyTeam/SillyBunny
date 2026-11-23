@@ -189,7 +189,6 @@ describe('the button row', () => {
 
         test('the button of a notification of the bundled call sites keeps its handler: the Getting Started and connection patterns', () => {
             const showMe = document.createElement('button');
-            showMe.className = 'sbHomeToastAction';
             const wrapper = document.createElement('div');
             wrapper.className = 'sbHomeToast';
             wrapper.append(Object.assign(document.createElement('div'), { textContent: 'Well done!' }), showMe);

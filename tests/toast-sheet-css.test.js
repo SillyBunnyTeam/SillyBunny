@@ -119,6 +119,13 @@ describe('the toast layer', () => {
         expect(themeCss).not.toContain('#toast-container > div.sb-toast-leaving');
     });
 
+    test('no surface styles a button inside a toast: the notification\'s row and the toast form own every button', () => {
+        expect(read('public', 'css', 'sillybunny-home.css')).not.toMatch(/sbHomeToast/);
+        expect(read('public', 'css', 'sillybunny-tabs.css')).not.toMatch(/sb-draft-toast/);
+        const scripts = ['sillybunny-toast-motion.js', 'sillybunny-toast-form.js', 'sillybunny-toast-notification.js'];
+        expect(scripts.filter(script => read('public', 'scripts', script).includes('sb-toast--action'))).toEqual([]);
+    });
+
     test('a toast has libadwaita\'s metrics: 12px margin and 24px at its edge, 6px padding and 12px at the start, 6px between parts', () => {
         const box = ruleOf(themeCss, TOAST);
         expect(box).toContain('display: flex');

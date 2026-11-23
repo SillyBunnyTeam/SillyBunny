@@ -554,7 +554,8 @@ test.describe('under forced colours', () => {
 
     test('the card and every button of its row have an edge, as forced colours remove the shadow and the fill that draw them', async ({ page }) => {
         // A plain button, as the Getting Started toast has: it has no menu_button class that a rule for flat controls would find.
-        await page.evaluate(htmlOptions => window.toastr.warning('<div>Choose</div><button type="button" class="sbHomeToastAction" id="plain">Show Me</button><button type="button" id="bare">Bare</button>', 'Forced', htmlOptions), HTML);
+        // Another has a class of its own that no sheet styles, as a caller's button may.
+        await page.evaluate(htmlOptions => window.toastr.warning('<div>Choose</div><button type="button" class="caller-button" id="plain">Show Me</button><button type="button" id="bare">Bare</button>', 'Forced', htmlOptions), HTML);
         await settled(page);
         const card = notificationBoxes(page).filter({ hasText: 'Forced' });
         const outlines = await card.evaluate((node) => {

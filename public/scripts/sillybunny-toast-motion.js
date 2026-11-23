@@ -30,6 +30,7 @@ import {
     TOAST_OVERLAY_ID,
     classifyToast,
     markButtons,
+    watchToastButtons,
 } from './sillybunny-toast-form.js';
 import { bindCardClick, playNotificationEnter, playNotificationLeave, shiftOthersAround, stopNotificationMotion, watchButtons } from './sillybunny-toast-notification.js';
 import { edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
@@ -37,8 +38,6 @@ import { edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacem
 export const TOAST_SHOW_METHOD = 'sbToastIn';
 export const TOAST_HIDE_METHOD = 'sbToastOut';
 export const TOAST_LEAVING_CLASS = 'sb-toast-leaving';
-/** On a toast that holds exactly one button, so its styles can put the button at the end of the text. */
-export const TOAST_ACTION_CLASS = 'sb-toast--action';
 
 export const TOAST_HOLD_METHOD = 'sbToastHold';
 /** libadwaita's REPLACE_DURATION: how long a toast takes to show while another one is still leaving. */
@@ -904,34 +903,6 @@ function createToast(original, args) {
     return { $toast, options };
 }
 
-/**
- * The action layout turns the message boxes into `display: contents`, so the text must be one block that the button can
- * follow. A message that holds several text blocks beside its button, such as the Getting Started toast, would put
- * them into the implicit grid columns and squeeze the text column to nothing; it keeps the layout of its own sheet.
- */
-function hasInlineAction(element) {
-    const buttons = element.querySelectorAll('.toast-message button');
-    return buttons.length === 1 && buttons[0].parentElement.querySelectorAll(':scope > :not(button)').length <= 1;
-}
-
-function markAction(element) {
-    element.classList.toggle(TOAST_ACTION_CLASS, hasInlineAction(element));
-    // An in-app notification keeps the markup of its caller, so only the toast form is marked.
-    if (element.classList.contains(TOAST_FORM_CLASS)) {
-        markButtons(element);
-    }
-}
-
-/** Marks the toast now and again when a caller changes its content after it is shown. */
-function watchAction($toast) {
-    const element = getToastElement($toast);
-    if (element && typeof MutationObserver === 'function') {
-        markAction(element);
-        new MutationObserver(() => markAction(element)).observe(element, { childList: true, subtree: true });
-    }
-    return $toast;
-}
-
 /** Calls toastr directly, with no queue. The message is an in-app notification, because that form shows every part of a message. */
 function showUnqueued(original, message, title, forcedOptions) {
     const $toast = original(message, title, forcedOptions);
@@ -971,6 +942,7 @@ function toastEntry(type, key, effective, optionsOverride, high, { $toast, optio
     const form = placeToast(element, effective, options);
     if (form === TOAST_FORM) {
         makeInertToTaps($toast, effective.tapToDismiss !== false, options);
+        watchToastButtons(element);
     } else {
         bindCardClick($toast, { options, dismiss: () => hideThroughToastr($toast, options), isLeaving: () => leaving.has(element) });
         watchButtons(element);
@@ -1032,8 +1004,7 @@ function wrapNotifier(toastr, type) {
     if (typeof toastr[type] !== 'function') {
         return;
     }
-    const notify = toastr[type].bind(toastr);
-    const original = (...args) => watchAction(notify(...args));
+    const original = toastr[type].bind(toastr);
     toastr[type] = function (message, title, optionsOverride) {
         // The two settings own the containers, so a call or a global write of these options is not obeyed.
         const forced = {

@@ -100,6 +100,18 @@ export function markButtons(toast) {
 }
 
 /**
+ * Marks the buttons of a toast again each time a caller changes its content after it shows, as a message that adds an
+ * Undo button to a text that is already on screen does. Only the toast form needs it: an in-app notification keeps the
+ * markup of its caller.
+ * @param {Element} toast
+ */
+export function watchToastButtons(toast) {
+    if (typeof MutationObserver === 'function') {
+        new MutationObserver(() => markButtons(toast)).observe(toast, { childList: true, subtree: true });
+    }
+}
+
+/**
  * Adds the blocks that `parent` holds to `count`. A run of text and inline elements is one block, and a line
  * break or a block element ends it. A button is neither a block nor the end of a run.
  * @param {Element} parent
