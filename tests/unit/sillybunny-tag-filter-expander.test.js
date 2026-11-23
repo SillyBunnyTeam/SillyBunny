@@ -153,6 +153,17 @@ describe('tag filter picker with more than 50 tags (real tag printing)', () => {
         expect(expanders()).toHaveLength(0);
     });
 
+    test('the expansion removes only the chips of its own print from a list that is not emptied', () => {
+        const printTagList = loadTagPrinting();
+        const tags = makeTags(60);
+        filter.insertAdjacentHTML('beforeend', '<span class="tag" id="earlier-print"><span class="tag_name">Earlier</span></span>');
+        printFilterChips(printTagList, tags);
+        $(expanders()[0]).trigger('click');
+        expect(chips().map(chip => chip.id)).toEqual(['earlier-print', ...tags.map(tag => tag.id)]);
+        expect(expanders()).toHaveLength(0);
+        expect(filter.querySelector('.actionable.clearAllFilters')).not.toBeNull();
+    });
+
     test('a print that empties its list rebuilds it in full when the expander is clicked', () => {
         const printTagList = loadTagPrinting();
         const tags = makeTags(60);
