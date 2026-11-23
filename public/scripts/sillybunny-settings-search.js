@@ -47,6 +47,8 @@ const ATTRIBUTE_TEXT_NAMES = ['title', 'aria-label', 'placeholder', 'data-sb-sea
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
 const COMBINING_MARKS = /\p{M}/gu;
+// eslint-disable-next-line no-control-regex -- Fast check for pure ASCII text before NFD folding.
+const NON_ASCII = /[^\x00-\x7f]/;
 
 /**
  * Lowercase with the accents taken off ("Résumé" is "resume"), one code unit for one code unit, so an offset in
@@ -54,8 +56,12 @@ const COMBINING_MARKS = /\p{M}/gu;
  * (a ligature, a letter with a long lowercase form) stays as it was typed.
  */
 export function foldSearchText(value) {
+    const text = String(value ?? '');
+    if (!NON_ASCII.test(text)) {
+        return text.toLowerCase();
+    }
     let folded = '';
-    for (const character of String(value ?? '')) {
+    for (const character of text) {
         const stripped = character.normalize('NFD').replace(COMBINING_MARKS, '');
         const lower = stripped.toLowerCase();
         folded += lower.length === character.length ? lower : character;
@@ -260,15 +266,21 @@ export function collectSearchGroups(root) {
  * @param {{isAvailable?: (element: HTMLElement, root: HTMLElement) => boolean}} [options]
  * @returns {{groups: (SearchGroup & {matched: SearchRow[], needsReveal: SearchRow[]})[], count: number}}
  */
-export function analyzeSearchRoots(roots, tokens, { isAvailable = (element, root) => !isHiddenWithin(element, root) } = {}) {
+export function analyzeSearchRoots(roots, tokens, {
+    isAvailable = (element, root) => !isHiddenWithin(element, root),
+    getGroups = collectSearchGroups,
+} = {}) {
     const groups = [];
     let count = 0;
     for (const root of roots) {
-        for (const group of collectSearchGroups(root)) {
+        for (const group of getGroups(root)) {
             group.matched = [];
             group.needsReveal = [];
             for (const row of group.rows) {
-                row.text = getRowSearchText(row.element);
+                if (!row.textComputed) {
+                    row.text = getRowSearchText(row.element);
+                    row.textComputed = true;
+                }
                 row.match = isRowMatch(row.text, group.text, tokens);
                 if (!row.match) continue;
                 // Availability reads computed styles, so it is only read for the rows that match.
@@ -397,6 +409,18 @@ export function createSidebarSearch(adapter) {
     let observedKey = [];
     let applying = false;
     let lastRevealKey = '';
+    let cachedShellKey = null;
+    /** @type {Map<HTMLElement, SearchGroup[]>} */
+    const rootGroupsCache = new Map();
+
+    const getCachedGroups = root => {
+        let groups = rootGroupsCache.get(root);
+        if (!groups) {
+            groups = collectSearchGroups(root);
+            rootGroupsCache.set(root, groups);
+        }
+        return groups;
+    };
 
     const tabButtons = () => Array.from(adapter.getTabList()?.querySelectorAll('.sb-settings-tab') ?? []);
 
@@ -464,6 +488,7 @@ export function createSidebarSearch(adapter) {
     };
 
     function scheduleReapply() {
+        rootGroupsCache.clear();
         clearTimeout(reapplyTimer);
         reapplyTimer = setTimeout(() => void run({ reveal: false }), REAPPLY_DELAY_MS);
     }
@@ -547,13 +572,17 @@ export function createSidebarSearch(adapter) {
             if (current !== request || shellKey !== adapter.getShellKey()) return;
         }
 
+        if (shellKey !== cachedShellKey) {
+            rootGroupsCache.clear();
+            cachedShellKey = shellKey;
+        }
         applying = true;
         try {
             restoreFilteredRows();
             const analyses = new Map();
             for (const tab of tabs) {
                 const roots = adapter.getRoots(tab.id);
-                if (roots) analyses.set(tab.id, { roots, ...analyzeSearchRoots(roots, tokens, { isAvailable: adapter.isAvailable }) });
+                if (roots) analyses.set(tab.id, { roots, ...analyzeSearchRoots(roots, tokens, { isAvailable: adapter.isAvailable, getGroups: getCachedGroups }) });
             }
             const entries = new Map();
             for (const match of adapter.getContentMatches(rawQuery)) {
@@ -597,6 +626,8 @@ export function createSidebarSearch(adapter) {
         tokens = [];
         rawQuery = '';
         lastRevealKey = '';
+        cachedShellKey = null;
+        rootGroupsCache.clear();
         clearTimeout(revealTimer);
         stopObserving();
         adapter.getTabList()?.removeAttribute('aria-busy');
@@ -625,6 +656,7 @@ export function createSidebarSearch(adapter) {
             const current = request;
             await adapter.whenTabReady(tabId);
             if (current !== request || !tokens.length) return;
+            rootGroupsCache.clear();
             await run({ reveal: false, activeChanged: true });
         },
         clear,

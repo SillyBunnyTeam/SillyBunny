@@ -129,8 +129,15 @@ let accessibilityObserver = null;
  */
 function applyA11yRules(element) {
     try {
-        // SillyBunny: scan each added subtree once, including controls supplied by extensions.
-        for (const candidate of [element, ...element.querySelectorAll(a11ySelector)]) {
+        // SillyBunny: avoid scanning leaf elements and skip rule loops on elements that do not match any selector.
+        const candidates = [];
+        if (element.matches(a11ySelector)) {
+            candidates.push(element);
+        }
+        if (element.childElementCount > 0) {
+            candidates.push(...element.querySelectorAll(a11ySelector));
+        }
+        for (const candidate of candidates) {
             for (const [selector, rule] of a11yRuleEntries) {
                 if (candidate.matches(selector)) {
                     rule(candidate);

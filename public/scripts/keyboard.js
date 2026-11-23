@@ -45,6 +45,50 @@ export const CUSTOM_INTERACTABLE_CONTROL_CLASS = 'custom_interactable';
 export const NOT_FOCUSABLE_CONTROL_CLASS = 'not_focusable';
 export const DISABLED_CONTROL_CLASS = 'disabled';
 
+// SillyBunny: cache one combined selector and track classes that can change descendant interactability so class toggles do not rescan full subtrees.
+let combinedInteractableSelector = null;
+/** @type {Set<string> | null} */
+let descendantAffectingClasses = null;
+
+function rebuildSelectorCaches() {
+    combinedInteractableSelector = interactableSelectors.join(', ');
+    const classes = new Set([DISABLED_CONTROL_CLASS, NOT_FOCUSABLE_CONTROL_CLASS]);
+    for (const selectorList of interactableSelectors) {
+        for (const selector of selectorList.split(',')) {
+            const parts = selector.trim().split(/[\s>+~]+/);
+            if (parts.length < 2) {
+                continue;
+            }
+            for (let index = 0; index < parts.length - 1; index++) {
+                for (const match of parts[index].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
+                    classes.add(match[1]);
+                }
+            }
+        }
+    }
+    descendantAffectingClasses = classes;
+}
+
+function getCombinedInteractableSelector() {
+    if (combinedInteractableSelector === null) {
+        rebuildSelectorCaches();
+    }
+    return combinedInteractableSelector;
+}
+
+function classChangeAffectsDescendants(oldValue, element) {
+    if (descendantAffectingClasses === null) {
+        rebuildSelectorCaches();
+    }
+    const previous = new Set(String(oldValue ?? '').split(/\s+/).filter(Boolean));
+    for (const name of descendantAffectingClasses) {
+        if (previous.has(name) !== element.classList.contains(name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * An observer that will check if any new interactables or scroll reset containers are added to the body
  * @type {MutationObserver}
@@ -53,39 +97,57 @@ const observer = new MutationObserver(mutations => {
     // One batch can carry thousands of records for the same subtree (a page swap adds a node and then
     // toggles classes inside it). Rescanning each one repeats full-subtree queries, so collapse the
     // batch to its unique outermost elements first.
-    const changed = new Set();
+    const subtreeChanged = new Set();
+    const selfOnlyChanged = new Set();
     for (const mutation of mutations) {
         if (mutation.type === 'childList') {
-            mutation.addedNodes.forEach(node => node instanceof Element && changed.add(node));
+            mutation.addedNodes.forEach(node => node instanceof Element && subtreeChanged.add(node));
         } else if (mutation.type === 'attributes' && mutation.attributeName === 'class' && mutation.target instanceof Element) {
-            changed.add(mutation.target);
+            // SillyBunny: only rescan descendants when a class affecting descendant focusability or selector ancestry changed.
+            if (mutation.target.childElementCount > 0 && classChangeAffectsDescendants(mutation.oldValue, mutation.target)) {
+                subtreeChanged.add(mutation.target);
+            } else {
+                selfOnlyChanged.add(mutation.target);
+            }
         }
     }
-    for (const node of changed) {
+    for (const node of subtreeChanged) {
         if (!node.isConnected) continue;
         let ancestor = node.parentElement;
-        while (ancestor && !changed.has(ancestor)) ancestor = ancestor.parentElement;
-        if (!ancestor) handleNodeChange(node);
+        while (ancestor && !subtreeChanged.has(ancestor)) ancestor = ancestor.parentElement;
+        if (!ancestor) handleNodeChange(node, true);
+    }
+    for (const node of selfOnlyChanged) {
+        if (!node.isConnected || subtreeChanged.has(node)) continue;
+        let ancestor = node.parentElement;
+        while (ancestor && !subtreeChanged.has(ancestor)) ancestor = ancestor.parentElement;
+        if (!ancestor) handleNodeChange(node, false);
     }
 });
 
 /**
  * Function to handle node changes (added or modified nodes)
  * @param {Element} node
+ * @param {boolean} [scanDescendants=true]
  */
-function handleNodeChange(node) {
+function handleNodeChange(node, scanDescendants = true) {
     if (node.nodeType === Node.ELEMENT_NODE && node instanceof Element) {
         // Handle keyboard interactables
         if (isKeyboardInteractable(node)) {
             makeKeyboardInteractable(node);
         }
-        initializeInteractables(node);
+        // SillyBunny: skip descendant querySelectorAll when the element has no element children or only its own class changed.
+        if (scanDescendants && node.childElementCount > 0) {
+            initializeInteractables(node);
+        }
 
         // Handle scroll reset containers
         if (node.classList.contains('scroll-reset-container')) {
             applyScrollResetBehavior(node);
         }
-        initializeScrollResetBehaviors(node);
+        if (scanDescendants && node.childElementCount > 0) {
+            initializeScrollResetBehaviors(node);
+        }
     }
 }
 
@@ -100,6 +162,8 @@ function handleNodeChange(node) {
  */
 export function registerInteractableType(interactableSelector, { disabledByDefault = false, notFocusableByDefault = false } = {}) {
     interactableSelectors.push(interactableSelector);
+    combinedInteractableSelector = null;
+    descendantAffectingClasses = null;
 
     const interactables = document.querySelectorAll(interactableSelector);
 
@@ -120,8 +184,12 @@ export function registerInteractableType(interactableSelector, { disabledByDefau
  * @returns {boolean} Returns true if the control is a keyboard interactable, false otherwise
  */
 export function isKeyboardInteractable(control) {
-    // Check if this control matches any of the selectors
-    return interactableSelectors.some(selector => control.matches(selector));
+    // SillyBunny: match once against the cached selector list instead of iterating 30 selectors per node.
+    try {
+        return control.matches(getCombinedInteractableSelector());
+    } catch {
+        return interactableSelectors.some(selector => control.matches(selector));
+    }
 }
 
 /**
@@ -190,8 +258,12 @@ function initializeInteractables(element = document) {
  * @returns {HTMLElement[]} An array containing all the interactables that match the given selectors
  */
 function getAllInteractables(element) {
-    // Query each selector individually and combine all to a big array to return
-    return [].concat(...interactableSelectors.map(selector => Array.from(element.querySelectorAll(`${selector}`))));
+    // SillyBunny: run one deduplicated querySelectorAll instead of 30 separate subtree scans.
+    try {
+        return Array.from(element.querySelectorAll(getCombinedInteractableSelector()));
+    } catch {
+        return [].concat(...interactableSelectors.map(selector => Array.from(element.querySelectorAll(`${selector}`))));
+    }
 }
 
 // SillyBunny: containers are found again on every rescan of an ancestor; bind each one only once.
@@ -270,6 +342,7 @@ export function initKeyboard() {
         childList: true,
         subtree: true,
         attributes: true,
+        attributeOldValue: true,
         attributeFilter: ['class'],
     });
 

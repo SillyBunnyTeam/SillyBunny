@@ -70,11 +70,31 @@ export function arrangeButtons(message) {
     }
 }
 
+/** @type {WeakMap<Element, MutationObserver>} */
+const notificationButtonObservers = new WeakMap();
+
+/**
+ * Stops watching a notification for dynamic button changes.
+ * @param {Element | null | undefined} element
+ */
+export function unwatchButtons(element) {
+    if (!element) {
+        return;
+    }
+    const observer = notificationButtonObservers.get(element);
+    if (observer) {
+        observer.disconnect();
+        notificationButtonObservers.delete(element);
+    }
+}
+
 /**
  * Arranges the buttons of a notification now and whenever a caller changes its content.
  * @param {HTMLElement} element The notification.
+ * @returns {() => void} Stops observing the notification.
  */
 export function watchButtons(element) {
+    unwatchButtons(element);
     const arrange = () => {
         const message = element.querySelector(':scope > .toast-message');
         if (message) {
@@ -83,14 +103,20 @@ export function watchButtons(element) {
     };
     arrange();
     if (typeof MutationObserver !== 'function') {
-        return;
+        return () => {};
     }
     const observer = new MutationObserver(() => {
+        if (!element.isConnected) {
+            unwatchButtons(element);
+            return;
+        }
         arrange();
         // Moving the buttons into a row is a change too, and must not start the next round.
         observer.takeRecords();
     });
     observer.observe(element, { childList: true, subtree: true });
+    notificationButtonObservers.set(element, observer);
+    return () => unwatchButtons(element);
 }
 
 // The click

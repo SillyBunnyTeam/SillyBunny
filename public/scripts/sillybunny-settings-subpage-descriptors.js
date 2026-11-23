@@ -413,7 +413,7 @@ function isContainerEmpty(container) {
     if (container.childElementCount === 0) {
         return true;
     }
-    return container.textContent.replace(/\s+/g, '').length === 0
+    return !/\S/.test(container.textContent ?? '')
         && container.querySelector('input, select, textarea, img, canvas, button') === null;
 }
 

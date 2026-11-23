@@ -354,18 +354,29 @@ function installSettingsSubpage(shellKey, tabId) {
 
     if (built.observe instanceof HTMLElement) {
         // Extension containers mount over the first seconds after the panel is built, so the list is
-        // rebuilt from the DOM rather than captured once.
+        // rebuilt from the DOM rather than captured once. Coalesce bursts so rapid inserts rebuild once.
+        let rebuildTimer = 0;
         const observer = new MutationObserver(() => {
-            stack.rebuild(() => spec(panel));
-            // The list just changed, so what the tab's search index holds for it is now short of a
-            // row at best. A search taken before an extension finished mounting must not stick.
-            const tab = getShellState(shellKey)?.tabs.get(tabId);
-            if (tab) {
-                tab.searchIndex = null;
+            if (rebuildTimer) {
+                return;
             }
+            rebuildTimer = window.setTimeout(() => {
+                rebuildTimer = 0;
+                stack.rebuild(() => spec(panel));
+                // The list just changed, so what the tab's search index holds for it is now short of a
+                // row at best. A search taken before an extension finished mounting must not stick.
+                const tab = getShellState(shellKey)?.tabs.get(tabId);
+                if (tab) {
+                    tab.searchIndex = null;
+                }
+            }, 50);
         });
         observer.observe(built.observe, { childList: true, subtree: true });
-        stack.observeWith(() => observer.disconnect());
+        stack.observeWith(() => {
+            window.clearTimeout(rebuildTimer);
+            rebuildTimer = 0;
+            observer.disconnect();
+        });
     }
 }
 
@@ -1578,9 +1589,21 @@ const sbState = {
 
 // The attribute is written when the module loads, before the shell exists, so a Window or a settings page that opens first is already laid out the user's way.
 applyContentClampPreference();
-// SillyBunny: the scrollbars of the browser can change while the page is open (a mouse that is plugged in), so a window that is focused again measures them once more.
-syncClassicScrollbars();
-window.addEventListener('focus', () => syncClassicScrollbars(), { passive: true });
+// Scrollbar width matters only for the desktop settings page; defer measurement until settings open and mark dirty on window focus.
+let classicScrollbarsDirty = true;
+function ensureClassicScrollbarsSynced() {
+    if (!classicScrollbarsDirty || isMobileViewport()) {
+        return;
+    }
+    classicScrollbarsDirty = false;
+    syncClassicScrollbars();
+}
+window.addEventListener('focus', () => {
+    classicScrollbarsDirty = true;
+    if (sbSettingsState.open && !isMobileViewport()) {
+        ensureClassicScrollbarsSynced();
+    }
+}, { passive: true });
 
 function normalizeTopbarLabelPart(value, fallback = '') {
     const fallbackValue = SB_TOPBAR_LABEL_PART_IDS.has(fallback) ? fallback : '';
@@ -3192,7 +3215,27 @@ function initChatAvatarVariables() {
     window.clearTimeout(sbState.chatAvatars.retryTimer);
     sbState.chatAvatars.retryTimer = 0;
 
-    const observer = new MutationObserver(() => scheduleChatAvatarVariableUpdate());
+    const observer = new MutationObserver(records => {
+        for (const record of records) {
+            if (record.type === 'attributes') {
+                if (record.target instanceof Element && record.target.closest('.avatar')) {
+                    scheduleChatAvatarVariableUpdate();
+                    return;
+                }
+                continue;
+            }
+            if (record.target === chatContainer) {
+                scheduleChatAvatarVariableUpdate();
+                return;
+            }
+            for (const node of record.addedNodes) {
+                if (node instanceof Element && (node.classList.contains('mes') || node.classList.contains('avatar') || node.closest('.avatar') || node.querySelector?.('.avatar'))) {
+                    scheduleChatAvatarVariableUpdate();
+                    return;
+                }
+            }
+        }
+    });
     observer.observe(chatContainer, {
         childList: true,
         subtree: true,
@@ -10502,7 +10545,7 @@ function getSearchMatchKey(shellKey, entry) {
     ].filter(Boolean).join('::');
 }
 
-function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true } = {}) {
+function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true, shellKeys = null, tabIds = null } = {}) {
     const normalizedQuery = normalizeText(query);
 
     if (!normalizedQuery) {
@@ -10512,11 +10555,18 @@ function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities =
     const searchTerms = normalizedQuery.split(' ').filter(Boolean);
     const matches = new Map();
     const availableByEntry = new WeakMap();
+    const allowedShells = shellKeys ? new Set(shellKeys) : null;
 
     for (const [shellKey, shellState] of Object.entries(sbState.shells)) {
+        if (allowedShells && !allowedShells.has(shellKey)) {
+            continue;
+        }
         const shellLabel = getShellConfig(shellKey)?.title || shellKey;
 
         for (const tabState of shellState.tabs.values()) {
+            if (tabIds && !tabIds.has(tabState.id)) {
+                continue;
+            }
             if (!tabState.searchIndex) {
                 tabState.searchIndex = createSearchIndex(tabState);
             }
@@ -11040,8 +11090,6 @@ function setActiveTab(shellKey, tabId) {
         const isActive = currentTabId === tabId;
         tabState.panel.classList.toggle('sb-shell-panel-active', isActive);
         tabState.panel.setAttribute('aria-hidden', String(!isActive));
-        // Invalidate search index when switching to a tab so stale DOM isn't searched
-        if (isActive) tabState.searchIndex = null;
     }
 
     queueTopbarSectionStateSync();
@@ -13427,6 +13475,7 @@ function openSettingsPage(shellKey, tabId = null) {
     }
 
     closeMobileSurfacesForSettingsPage(shellKey);
+    ensureClassicScrollbarsSynced();
 
     const wasOpen = sbSettingsState.open;
     const previousShell = sbSettingsState.activeShell;
@@ -13962,10 +14011,30 @@ function initSettingsPageClose() {
         searchInput.dataset.sbBound = 'true';
         // Escape clears the query before it can close the page; the clear button and Escape both send `input`.
         createSearchEntry({ input: searchInput, variant: 'bar', clearLabel: t`Clear Entry` });
-        searchInput.addEventListener('input', () => void filterSettingsSidebarTabs(searchInput.value));
+        let sidebarSearchTimer = 0;
+        searchInput.addEventListener('input', () => {
+            window.clearTimeout(sidebarSearchTimer);
+            if (!normalizeText(searchInput.value)) {
+                sidebarSearchTimer = 0;
+                void filterSettingsSidebarTabs('');
+                return;
+            }
+            sidebarSearchTimer = window.setTimeout(() => {
+                sidebarSearchTimer = 0;
+                void filterSettingsSidebarTabs(searchInput.value);
+            }, 100);
+        });
         searchInput.addEventListener('keydown', event => {
             if (event.key === 'Enter') {
                 event.preventDefault();
+                if (sidebarSearchTimer) {
+                    window.clearTimeout(sidebarSearchTimer);
+                    sidebarSearchTimer = 0;
+                    void filterSettingsSidebarTabs(searchInput.value).then(() => {
+                        document.querySelector('.sb-settings-tab:not(.sb-settings-tab--filtered)')?.click();
+                    });
+                    return;
+                }
                 const firstMatch = document.querySelector('.sb-settings-tab:not(.sb-settings-tab--filtered)');
                 firstMatch?.click();
             }
@@ -14009,7 +14078,10 @@ function getSettingsSearchRoots(tabId) {
 function getSettingsSearchContentMatches(rawQuery) {
     const shellKey = sbSettingsState.activeShell;
     const matches = [];
-    for (const match of collectGlobalSearchMatches(rawQuery, { limit: Infinity })) {
+    const options = shellKey === 'characters'
+        ? { limit: Infinity, includeEntities: true, shellKeys: [] }
+        : { limit: Infinity, includeEntities: false, shellKeys: [shellKey], tabIds: SB_SEARCH_ENTRY_TABS };
+    for (const match of collectGlobalSearchMatches(rawQuery, options)) {
         const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
         if (matchShell !== shellKey || !match.tabId) continue;
         // A page's own name and aliases are matched by the sidebar itself.
