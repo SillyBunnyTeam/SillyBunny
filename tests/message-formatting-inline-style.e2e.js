@@ -73,4 +73,30 @@ test.describe('message formatting inline styles', () => {
         expect(result.fontStretchTextShadow).not.toBe('none');
         expect(result.fontStretchBackgroundImage).toBe('none');
     });
+
+    test('keeps message style blocks inside the message', async ({ page }) => {
+        await testSetup.awaitST({ page });
+
+        const result = await page.evaluate(async () => {
+            const { messageFormatting } = await import('/script.js');
+            const { power_user } = await import('/scripts/power-user.js');
+            const format = (text) => messageFormatting(text, 'Bob', false, false, 123, {}, false);
+            const forbidExternalMedia = power_user.forbid_external_media;
+            // The external media filter in decodeStyleTags() also fails on nested rules, so turn it off to test the scoping alone.
+            power_user.forbid_external_media = false;
+            try {
+                return {
+                    atRule: format('<style>@property --SmartThemeBodyColor { syntax: "*"; inherits: true; } .a { color: red; }</style>'),
+                    nested: format('<style>.a { color: red; :root:has(&) #send_form { display: none; } }</style>'),
+                };
+            } finally {
+                power_user.forbid_external_media = forbidExternalMedia;
+            }
+        });
+
+        expect(result.atRule).toContain('.mes_text .custom-a');
+        expect(result.atRule).not.toContain('@property');
+        expect(result.nested).toContain('CSS ERROR');
+        expect(result.nested).not.toContain('#send_form');
+    });
 });
