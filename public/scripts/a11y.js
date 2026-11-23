@@ -113,7 +113,9 @@ const a11yRules = {
     [tabItemSelectors]: (element) => {
         element.setAttribute('role', 'tab');
     },
-    '#toast-container .toast': (element) => {
+    // SillyBunny: in-app notifications sit in #toast-container and toasts in #sb-toast-overlay. A caller's toastClass can
+    // replace the toast class, so every child of either container counts, except the hidden clone that measures a toast.
+    '#toast-container > :not(.sb-toast-measure), #sb-toast-overlay > :not(.sb-toast-measure)': (element) => {
         element.setAttribute('role', 'status');
     },
 };

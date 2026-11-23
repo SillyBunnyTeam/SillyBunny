@@ -764,7 +764,7 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261122g', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261122j', id: 'deferred-prompt-editor-css' },
     ],
@@ -777,13 +777,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/world-info.css?v=20261120a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261122g', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261122g', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261122g', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261122g', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261118zv', id: 'deferred-persona-detail-css' },
@@ -791,13 +791,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves.
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261122g', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261122g', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI.
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261122g', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261122g', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
@@ -13167,7 +13167,7 @@ function initAll() {
 
     initializeMobileShellUi();
     initializeMessageActions();
-    initializeToastMotion();
+    initializeToastMotion({ translate });
     initializeColorPickers();
     initializePresetAutosave();
 

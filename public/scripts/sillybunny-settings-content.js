@@ -384,7 +384,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'chat-display',
                 title: 'Chat Display',
-                description: 'Avatars, message layout, media, and notifications',
+                description: 'Avatars, message layout, media, notifications, and toasts',
                 body: '[name="AvatarAndChatDisplay"]',
             },
             {

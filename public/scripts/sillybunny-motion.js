@@ -1,17 +1,22 @@
 /*
  * Shared WAAPI motion helpers for the SillyBunny shell.
  * Durations and easing mirror --sb-transition-fast/--sb-transition/--sb-transition-slow, so JS and CSS motion stay in step.
- * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable.
+ * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable. The exception is `play()` with
+ * `reducedKeyframes`, which fades.
  */
 
 export const MOTION_FAST = 200;
 export const MOTION_SLOW = 250;
 export const MOTION_SURFACE = 300;
+/** GNOME Shell's `ANIMATION_TIME`: an in-app notification enters and leaves over this. */
+export const MOTION_NOTIFICATION = 200;
 /** Popover and menu close: a short fade with no movement. */
 export const MOTION_POPOVER_CLOSE = 150;
 export const MOTION_EASE = 'cubic-bezier(0.25, 0.1, 0.25, 1)';
 export const MOTION_EASE_OUT_QUAD = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export const MOTION_EASE_OUT_CUBIC = 'cubic-bezier(0.33, 1, 0.68, 1)';
+/** GNOME Shell's `EASE_OUT_BACK`. It overshoots, and only an in-app notification's slide uses it (DESIGN: Motion). */
+export const MOTION_EASE_OUT_BACK = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
 
 const supportsLinearEasing = typeof CSS !== 'undefined'
     && typeof CSS.supports === 'function'
@@ -103,11 +108,14 @@ export function transitionChange(element, attribute, change, { properties = null
     transitionMarks.get(element).set(attribute, end);
 }
 
-function canAnimate(element) {
+function canAnimateElement(element) {
     return element instanceof HTMLElement
         && element.isConnected
-        && typeof element.animate === 'function'
-        && !prefersReducedMotion();
+        && typeof element.animate === 'function';
+}
+
+function canAnimate(element) {
+    return canAnimateElement(element) && !prefersReducedMotion();
 }
 
 function applyInlineStyles(element, styles) {
@@ -141,11 +149,15 @@ export function stopMotion(element) {
  * Plays keyframes on the element. `styles` are applied inline (!important) for the duration,
  * `onFinish` runs only when the animation completes, `onEnd` runs on finish and on cancel. `onEnd` also
  * runs when other code cancels the animation directly, for example through `getAnimations()`.
- * Without motion, `onFinish` and `onEnd` run synchronously.
+ * Without motion, `onFinish` and `onEnd` run synchronously. `reducedKeyframes` is for a surface that DESIGN.md says
+ * fades under reduced motion: they replace `keyframes`, over at most `MOTION_FAST`, when reduced motion is on.
  */
-export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null } = {}) {
+export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null, reducedKeyframes = null } = {}) {
     stopMotion(element);
-    if (!canAnimate(element)) {
+    if (reducedKeyframes && prefersReducedMotion() && canAnimateElement(element)) {
+        keyframes = reducedKeyframes;
+        duration = Math.min(duration, MOTION_FAST);
+    } else if (!canAnimate(element)) {
         onFinish?.();
         onEnd?.();
         return null;

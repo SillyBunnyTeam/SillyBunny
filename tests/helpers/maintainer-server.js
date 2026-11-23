@@ -100,7 +100,7 @@ export async function protectMaintainerServer(page) {
     await page.addInitScript(() => {
         document.addEventListener('DOMContentLoaded', () => {
             const style = document.createElement('style');
-            style.textContent = 'html:not([data-qa-show-toasts]) #toast-container { display: none !important; }';
+            style.textContent = 'html:not([data-qa-show-toasts]) :is(#toast-container, #sb-toast-overlay) { display: none !important; }';
             document.head.append(style);
         }, { once: true });
     });

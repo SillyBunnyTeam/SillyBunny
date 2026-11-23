@@ -7,6 +7,7 @@ import { captureAccountStorageSaves, gettingStartedValue, savedGettingStarted, s
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { BUNDLED_THEME_NAMES, GLYPH_CONTRAST, readChipContrast, resolveColor, selectTheme } from './helpers/page-contrast.js';
+import { TOAST_SELECTOR } from './helpers/toasts.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -23,7 +24,7 @@ const menuButton = page => page.locator('#chat > .welcomePanel .sbHomeMenuButton
 const tile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="getting-started"]');
 const progressOf = page => tile(page).locator('.sbHomeTileSub');
 /** The toasts of Getting Started only: other parts of the app toast on their own events, such as a preset change. */
-const toasts = page => page.locator('#toast-container .toast', { has: page.locator('.sbHomeToast') });
+const toasts = page => page.locator(TOAST_SELECTOR, { has: page.locator('.sbHomeToast') });
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const rowOf = (host, title) => host.locator('.ds-row', { hasText: title });
 const helpTile = page => page.locator('#chat > .welcomePanel .sbHomeTile[data-sb-home-key="help"]');
@@ -289,7 +290,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect(toasts(page).locator('[data-sb-home-toast="done"]')).toHaveText(HOME_COPY.toastDone);
             await expect(toasts(page).locator('[data-sb-home-toast="next-line"]')).toHaveText(HOME_COPY.toastNext);
             await expect(toasts(page).locator('.sbHomeToast')).toContainText(`Set Up a Preset ${HOME_COPY.toastNext}`);
-            await expect(toasts(page).getByRole('button')).toHaveText(['×', 'Show Me']);
+            await expect(toasts(page).getByRole('button')).toHaveText(['', 'Show Me']);
             await expect.poll(() => savedGettingStarted(captured)?.steps.connect, { timeout: SAVE_TIMEOUT }).toBe('done');
         });
 
@@ -485,7 +486,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
                 await expect(toasts(page)).toHaveClass(/toast-success/);
                 await expect(toasts(page).locator('.toast-title')).toHaveText('Getting Started');
                 await expect(toasts(page).locator('[data-sb-home-toast="finished"]')).toHaveText(HOME_COPY.toastFinished);
-                await expect(toasts(page).getByRole('button')).toHaveText(['×', 'Show Me']);
+                await expect(toasts(page).getByRole('button')).toHaveText(['', 'Show Me']);
                 await expect(toasts(page).locator('[data-sb-copy-placeholder]')).toHaveCount(0);
             });
 

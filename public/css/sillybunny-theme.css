@@ -27,6 +27,7 @@
     --sb-ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --sb-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
     --sb-ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+    --sb-ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
     /* Switch: one size for every switch. The thumb sits one padding from the outer edge, so its inset is the padding less the border. */
     --sb-switch-width: 46px;
     --sb-switch-height: 26px;
@@ -263,7 +264,7 @@
     --sb-layer-view-source: var(--SmartThemeChatTintColor);
     --sb-layer-window-source: var(--SmartThemeBlurTintColor);
     /* The mixes give libadwaita's role colours on the bundled dark theme, whose 0.9 BlurTint alpha color-mix() weighs in:
-       header bar and sidebar #2e2e32, popover and dialog #36363a, toast #505053. */
+       header bar and sidebar #2e2e32, popover and dialog #36363a, toast #505053, which tooltips and the press-and-hold label use. */
     --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
     --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
     --sb-layer-drawer-source: var(--sb-layer-headerbar-source);
@@ -399,16 +400,6 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:']):active {
 
 a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='true'] {
     opacity: var(--sb-disabled-opacity);
-}
-
-/* On a dark overlay a link is Accent mixed with white. */
-#toast-container .toast-message a[href] {
-    color: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-layer-toast-fg));
-    text-decoration: underline;
-}
-
-#toast-container .toast-message a[href]:visited {
-    color: color-mix(in srgb, var(--sb-accent) 25%, var(--sb-layer-toast-fg));
 }
 
 .zoomed_avatar_container,
@@ -558,7 +549,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     --color-danger: #c30000;
     --color-warning: #905400;
     /* libadwaita light: white View, header bars, bottom bars and popovers, which the 1px shade line separates; a #ebebed
-       sidebar; toasts stay dark (#505053). */
+       sidebar; the toast layer, which tooltips and the press-and-hold label use, stays dark (#505053). */
     --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 93.3%, var(--SmartThemeBodyColor) 6.7%);
     --sb-layer-headerbar-source: var(--SmartThemeChatTintColor);
     --sb-layer-bottombar-source: var(--SmartThemeChatTintColor);
@@ -1214,6 +1205,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 @media (prefers-contrast: more) {
     .sb-boolean-radio-group,
     #toast-container > div,
+    #sb-toast-overlay > div,
     .sb-boolean-radio-option:active > input[type="radio"]:not(:checked) + span {
         outline: 1px solid var(--sb-shell-border);
         outline-offset: -1px;
@@ -4595,21 +4587,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     color: var(--sb-accent-ink);
 }
 
-/* The toast layer is dark in both tones, where the accent ring does not reach 3:1. The ring takes the ink of the toast,
-   or, where relative colours work, libadwaita's light form of the accent. The two tokens that read --sb-focus-ring
-   resolve where they are declared, so they are declared again here. */
-body #toast-container {
-    --sb-focus-ring: currentColor;
-    --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
-    --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
-}
-
-@supports (color: oklab(from red l a b)) {
-    body #toast-container {
-        --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b);
-    }
-}
-
 @keyframes sb-entity-select-pulse {
     0% {
         box-shadow:
@@ -6676,7 +6653,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     }
 
     /* A toast is told from the page by its shadow alone, which forced colours remove. */
-    #toast-container > div {
+    :is(#toast-container, #sb-toast-overlay) > div {
         outline: 1px solid CanvasText;
         outline-offset: -1px;
     }
@@ -6719,6 +6696,14 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
 
     /* Forced colours remove the fill that is a flat control's only edge. */
     :is(.menu_button, .sb-dialog__icon-button, .sb-dialog__close, .sb-dialog__back, .sb-action-menu-item, .sb-action-sheet-close, .sb-boolean-radio-option > span) {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+
+    /* The buttons of a notification's row are a flat fill too, and a caller's button need not be a .menu_button. This rule
+       stays apart from the list above: inside :is() its id would raise every control of that list to id specificity, and a
+       pressed accent preset's wider ring would lose to the 1px edge. */
+    #toast-container .sb-toast-actions > * {
         outline: 1px solid ButtonBorder;
         outline-offset: -1px;
     }
@@ -6988,78 +6973,609 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     }
 }
 
-/* Toasts: a pill on the toast layer. `[class]` beats toastr's per-position width and margin; the end padding clears the caps. */
-body #toast-container[class] > div {
-    width: fit-content;
-    max-width: min(450px, calc(100% - 24px));
-    margin: 12px auto 0;
-    padding: 9px 24px 9px 36px;
-    background-color: var(--sb-layer-toast) !important;
-    color: var(--sb-layer-toast-fg) !important;
-    border: none !important;
-    border-radius: var(--sb-radius-pill) !important;
-    box-shadow: var(--sb-shadow-toast) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+/* The toast overlay (AdwToastOverlay) holds the toast form. It is a strip across the window, flush with the edge that the
+   toasts sit at, so that its own edge is the edge that clips a toast while it slides in. While a modal dialog is open the
+   strip is a child of the dialog, which draws it above the dialog and keeps it from being inert, and it stays fixed to the
+   window like any other strip while the dialog is not the containing block of its fixed descendants. The Popup and the
+   frames of the shared dialog are not at rest. A dialog that an extension gives a transform (to centre itself), a filter or
+   `contain: paint` is one, and the strip is then laid out against its padding box: the script writes `--sb-toast-cb-*`, the
+   distances of the window's edges from that box, which the four edges below add, when the dialog only moves and shows its
+   overflow. A Popup is the containing block, scaled, while it opens and closes, and hides the strip then. The
+   toast carries the margins (libadwaita's toast margins) and is the only part that takes pointer events. toastr's
+   position classes only choose the edge and the side. A width, a minimum or maximum width, a position and white-space
+   are never important here, so the measure rule below keeps winning. */
+#sb-toast-overlay {
+    position: fixed;
+    z-index: 999999;
+    inset: auto var(--sb-toast-cb-right, 0px) auto var(--sb-toast-cb-left, 0px);
+    width: auto;
+    pointer-events: none;
+    container-type: inline-size;
 }
 
-/* AdwToast puts its one button at the end of the text; a toast with several buttons keeps its block layout. */
-body #toast-container[class] > .sb-toast--action {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+#sb-toast-overlay * {
+    box-sizing: border-box;
+}
+
+#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) {
+    top: var(--sb-toast-cb-top, 0px);
+    margin-top: var(--sb-topbar-layout-offset, var(--topBarBlockSize));
+    clip-path: inset(0 -100vmax -100vmax);
+}
+
+#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
+    bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px));
+    clip-path: inset(-100vmax -100vmax 0);
+}
+
+#sb-toast-overlay > div {
+    position: relative;
+    pointer-events: auto;
+    overflow: hidden;
+    opacity: 1;
+    filter: none;
+    font-size: calc(var(--mainFontSize) * 0.95);
+}
+
+#sb-toast-overlay > div.rtl {
+    direction: rtl;
+}
+
+.popup[opening] #sb-toast-overlay {
+    visibility: hidden;
+}
+
+.popup #sb-toast-overlay {
+    text-align: start;
+}
+
+/* A toast: a pill on the Popover layer, in the colours of an in-app notification, with its parts in one row (glyph, label, one button, close), as AdwToast. */
+#sb-toast-overlay > .sb-form-toast {
+    --sb-toast-part-size: max(34px, 1lh);
+    display: flex;
     align-items: center;
-    column-gap: 6px;
+    gap: 6px;
+    width: fit-content;
+    max-width: min(34em, calc(100cqw - 24px));
+    margin: 12px auto;
+    padding-block: 6px;
+    padding-inline: 12px 6px;
+    background-color: var(--sb-layer-popover);
+    background-image: none;
+    color: var(--SmartThemeBodyColor);
+    border: none;
+    /* A one-line toast is a pill. One that wraps keeps half the height of a one-line toast, so its corners do not eat the text. */
+    border-radius: min(var(--sb-radius-pill), calc((12px + var(--sb-toast-part-size)) / 2));
+    box-shadow: var(--sb-shadow-popover);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    cursor: default;
+    line-height: 1.18;
+    animation: none;
+    text-align: start;
 }
 
-.sb-toast--action .toast-message,
-.sb-toast--action .toast-message > :has(> button) {
+/* A toast with a button is at least 450px wide (libadwaita's NATURAL_WIDTH). The script marks a toast that holds a button
+   (`markButtons`), because a `:has()` rule that names `[role="button"]` costs a style check at every write of a role in the
+   page. The marker is inside :where() so that it adds no specificity, and the measure rule below still removes the floor
+   from the measuring clone. */
+#sb-toast-overlay > .sb-form-toast:where(.sb-toast--button) {
+    min-width: min(450px, calc(100cqw - 24px));
+}
+
+/* The edge the toast sits at has 24px of margin (libadwaita's margin-bottom), and a corner position keeps 12px at its side. */
+#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) > .sb-form-toast {
+    margin-top: 24px;
+}
+
+#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast {
+    margin-top: 12px;
+    margin-bottom: 24px;
+}
+
+#sb-toast-overlay:is(.toast-top-left, .toast-bottom-left) > .sb-form-toast {
+    margin-left: 12px;
+    margin-right: auto;
+}
+
+#sb-toast-overlay:is(.toast-top-right, .toast-bottom-right) > .sb-form-toast {
+    margin-left: auto;
+    margin-right: 12px;
+}
+
+/* Every part has 6px at its sides, and 6px lies between parts (the gap). */
+#sb-toast-overlay > .sb-form-toast > :not(.toast-progress) {
+    flex: none;
+    margin-inline: 6px;
+}
+
+#sb-toast-overlay > .sb-form-toast > .toast-message {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+/* The one button sits at the end of the label: the message becomes a row, and a wrapper that holds the button adds no box. */
+#sb-toast-overlay > .sb-form-toast:where(.sb-toast--button) > .toast-message {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    column-gap: 18px;
+}
+
+#sb-toast-overlay > .sb-form-toast > .toast-message :where(.sb-toast-button-holder) {
     display: contents;
 }
 
-.sb-toast--action .toast-message button {
-    grid-column: 2;
-    grid-row: 1;
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button) {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    height: 34px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: none;
+    text-shadow: none;
+    cursor: pointer;
 }
 
-.sb-toast--action > .toast-title ~ .toast-message button {
-    grid-row: 1 / span 2;
-}
-
-.sb-toast--action > .toast-close-button {
-    grid-column: 3;
-    grid-row: 1;
-}
-
-/* Status colour on the icon glyph and title only; the toast is dark in both tones, so a light tone's colour is lifted. */
-#toast-container > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
-#toast-container > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
-#toast-container > .toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
-
-#toast-container > .toast:not(.toast-info) {
-    --sb-toast-status: var(--sb-toast-src);
-    background-image: none !important;
-}
-
-@supports (color: oklab(from red l a b)) {
-    #toast-container > .toast:not(.toast-info) {
-        --sb-toast-status: oklab(from var(--sb-toast-src) max(l, 0.76) a b);
+/* The fills of the states set the colour only, so that the clip of the fill on a coarse pointer (below) stays. */
+@media (hover: hover) {
+    body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):hover {
+        background-color: color-mix(in srgb, currentColor 15%, transparent);
     }
 }
 
-#toast-container > .toast:not(.toast-info)::before {
-    content: var(--sb-toast-glyph);
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):active {
+    background-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+/* On a coarse pointer the target is 44px (DESIGN: Layout) and the fill and the ring stay the 34px of a drawn button: a transparent
+   border carries the extra 5px, a negative margin takes it back out of the layout, and the fill is clipped to the padding box. */
+@media (pointer: coarse) {
+    body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button) {
+        --sb-toast-target-extra: calc((44px - 34px) / 2);
+        height: 44px;
+        margin: calc(var(--sb-toast-target-extra) * -1);
+        border: var(--sb-toast-target-extra) solid transparent;
+        border-radius: calc(var(--sb-radius-control) + var(--sb-toast-target-extra));
+        background-clip: padding-box;
+    }
+}
+
+/* The global ring is an inset box-shadow, and the rules above and below clear the shadow with a longer selector, so the ring
+   is set again here. It is the ring of the app, in both forms. */
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
+body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
+body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:focus-visible {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* The close button of both forms: round and flat. On a coarse pointer the target grows to 44px without growing the toast. */
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    inset: auto;
+    float: none;
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    box-sizing: border-box;
+    width: 34px;
+    min-width: 0;
+    height: 34px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: transparent;
+    color: inherit;
+    font-size: 16px;
+    line-height: 1;
+    opacity: 1;
+    text-shadow: none;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button > i {
+    pointer-events: none;
+}
+
+@media (pointer: coarse) {
+    :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button::after {
+        content: '';
+        position: absolute;
+        inset: -5px;
+    }
+}
+
+@media (hover: hover) {
+    body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:hover {
+        background: color-mix(in srgb, currentColor 7%, transparent);
+        color: inherit;
+        opacity: 1;
+    }
+}
+
+body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:active {
+    background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+/* Upstream's sheet dims a focused close button of #toast-container to 70%, which also lowers the contrast of its glyph. The ring
+   marks the focus, so the button keeps its full strength. The toast overlay is not under that rule. */
+body #toast-container[class] > .sb-form-notification > .toast-close-button:focus {
+    color: inherit;
+    opacity: 1;
+}
+
+/* A hidden clone of a toast, laid out on one line at its natural width so that the toast form can read how wide the
+   message is. The id in the selector list gives the rule the specificity of an id, so a toast rule that does not use
+   !important cannot change the measurement; the script removes the inline style of the clone. Display stays as the
+   toast's own CSS sets it, because a flex or grid row measures differently from a block. The minimum width goes,
+   because it is a floor of the toast and not part of its text. */
+:is(#sb-toast-overlay, body) > .sb-toast-measure[class] {
     position: absolute;
-    inset: 50% auto auto 12px;
-    translate: 0 -50%;
-    font: 900 18px/1 "Font Awesome 6 Free";
+    inset-block-start: 0;
+    inset-inline-start: -10000px;
+    width: max-content;
+    min-width: 0;
+    max-width: none;
+    visibility: hidden;
+    pointer-events: none;
+    contain: layout style;
+    animation: none;
+    transition: none;
+    transform: none;
+    scale: none;
 }
 
-#toast-container > .toast:not(.toast-info)::before,
-#toast-container > .toast:not(.toast-info) .toast-title {
-    color: var(--sb-toast-status);
+:is(#sb-toast-overlay, body) > .sb-toast-measure[class],
+:is(#sb-toast-overlay, body) > .sb-toast-measure[class] * {
+    white-space: nowrap;
 }
 
-/* Toast enter animation: slides down from its own height */
+/* The status colour is the standalone colour of the tone, on the glyph of a toast and in the icon of a notification, and
+   nowhere else. */
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
+
+/* toastr's PNG icon of each kind is important, and the `[class]` makes the rule outweigh it. The glyph of both forms is drawn instead. */
+:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast)[class] {
+    background-image: none !important;
+}
+
+/* The glyph is the first part of a toast: 16px, with 6px at its sides like every part. */
+#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before {
+    content: var(--sb-toast-glyph);
+    flex: none;
+    margin-inline: 6px;
+    color: var(--sb-toast-src);
+    font: 900 16px/1 "Font Awesome 6 Free";
+}
+
+
+/* An in-app notification is GNOME Shell's banner drawn inside the window (DESIGN: In-app notifications). The container is a
+   strip across the window, as the toast overlay is, and toastr's position classes choose the edge and the side. The cards
+   take the 4px margin of Shell's banner. The strip takes no pointer events; only the cards do. At a bottom position the
+   newest card is first in the document and drawn last, so it is nearest the edge. */
+body #toast-container[class] {
+    left: var(--sb-toast-cb-left, 0px);
+    right: var(--sb-toast-cb-right, 0px);
+    width: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* A strip clips at the edge its cards come out of, as GNOME Shell's message tray clips to the work area under the panel: at a
+   top position its top edge, which is the bottom of the top bar, or beyond the toasts when both forms share the position. Only
+   that edge clips, so the shadow and the ring survive on the other sides and between the cards. A card's overshoot moves
+   away from the edge, so the clip does not cut it. */
+body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right) {
+    top: var(--sb-toast-cb-top, 0px);
+    bottom: auto;
+    margin-top: calc(var(--sb-topbar-layout-offset, var(--topBarBlockSize)) + var(--sb-toast-stack-offset, 0px));
+    clip-path: inset(0 -100vmax -100vmax);
+}
+
+/* A notification at the position of the toasts sits beyond them by the stack offset, which the script writes; with no toast
+   there it sits above the composer and the keyboard by the bottom inset, as a toast does. */
+body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
+    top: auto;
+    bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px));
+    margin-bottom: var(--sb-toast-stack-offset, 0px);
+    flex-direction: column-reverse;
+    clip-path: inset(-100vmax -100vmax 0);
+}
+
+body #toast-container[class]:is(.toast-top-left, .toast-bottom-left) {
+    align-items: flex-start;
+}
+
+body #toast-container[class]:is(.toast-top-right, .toast-bottom-right) {
+    align-items: flex-end;
+}
+
+/* The card: the Popover layer and ink, the Overlay radius and the Popover Shadow, opaque under any theme (the layer is
+   made opaque where it is declared). The values that toastr's sheet and the per-type PNG icons set are important, so
+   these are too. Metrics are Shell's `.message`: 6px of padding around a content box with 6px of its own; the text
+   starts after the icon and ends before Dismiss, which are floats, and the button row clears them. Motion is the
+   script's, so a CSS animation does not run on it. */
+body #toast-container[class] > .sb-form-notification {
+    --sb-n-line: calc(var(--mainFontSize) * 0.95 * 1.3);
+    --sb-n-start: 6px;
+    --sb-n-end: 6px;
+    --sb-n-space: 4px;
+    position: relative;
+    box-sizing: border-box;
+    width: 34em;
+    max-width: calc(100% - 24px);
+    margin: var(--sb-n-space);
+    padding: 12px 6px;
+    background-color: var(--sb-layer-popover) !important;
+    color: var(--SmartThemeBodyColor) !important;
+    border: none !important;
+    border-radius: var(--sb-radius-overlay) !important;
+    box-shadow: var(--sb-shadow-popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    opacity: 1;
+    cursor: default;
+    font-size: calc(var(--mainFontSize) * 0.95);
+    line-height: var(--sb-n-line);
+    text-align: start;
+    animation: none;
+}
+
+body #toast-container[class] > .sb-form-notification.interactable {
+    cursor: pointer;
+}
+
+body #toast-container[class] > .sb-form-notification:is(.toast-error, .toast-warning, .toast-success) {
+    --sb-n-start: 60px;
+}
+
+/* The icon: a 48px circle of the ink at 7% with the 16px status glyph in the standalone status colour. An info message has none. */
+body #toast-container[class] > .sb-form-notification::before {
+    content: none;
+}
+
+body #toast-container[class] > .sb-form-notification:is(.toast-error, .toast-warning, .toast-success)::before {
+    content: var(--sb-toast-glyph);
+    float: inline-start;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 48px;
+    height: 48px;
+    margin-inline: 6px;
+    border-radius: var(--sb-radius-pill);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    color: var(--sb-toast-src);
+    font: 900 16px/1 "Font Awesome 6 Free";
+}
+
+/* Dismiss ends the first row: it floats at the end, centred on the first line, and the text gives way to it 6px short of it. The
+   float's box reaches below the first line by the 4px that separates a body from its title, less half a pixel, so a second
+   line of a message or of a title that Dismiss reaches into gives way too, and the first line of a body under a title does not.
+   The lines below use the whole column, because the float is in the text's own formatting context. */
+body #toast-container[class] > .sb-form-notification > .toast-close-button {
+    float: inline-end;
+    margin-block: calc((var(--sb-n-line) - 34px) / 2) calc((var(--sb-n-line) - 34px) / 2 + var(--sb-n-space) - 0.5px);
+    margin-inline: 6px;
+}
+
+body #toast-container[class] > .sb-form-notification > :is(.toast-title, .toast-message) {
+    padding-inline: var(--sb-n-start) var(--sb-n-end);
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+body #toast-container[class] > .sb-form-notification > .toast-title {
+    color: inherit;
+    font-weight: 700;
+}
+
+body #toast-container[class] > .sb-form-notification > .toast-message {
+    font-weight: 400;
+}
+
+body #toast-container[class] > .sb-form-notification > .toast-title + .toast-message {
+    margin-top: var(--sb-n-space);
+}
+
+/* The text and the links of a toast are those of an in-app notification: a link is Accent and underlined, visited it is Accent
+   mixed 80% with the ink, and on hover its saturation and lightness are each multiplied by 1.1. Upstream's sheet gives every
+   anchor of #toast-container the link colour, and toastr's own sheet gives every anchor of a message white, so a label and an
+   anchor with no href take the ink here. The hover colour needs a relative colour that an engine with an older draft of the
+   syntax may not read, so the rule sits behind an @supports that tests the functions it uses and the brightness filter stays
+   for such an engine. */
+body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href] {
+    color: var(--sb-accent);
+    text-decoration: underline;
+}
+
+body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:visited {
+    color: color-mix(in srgb, var(--sb-accent) 80%, var(--SmartThemeBodyColor));
+}
+
+body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message :is(label, a:not([href])) {
+    color: inherit;
+}
+
+@media (hover: hover) {
+    body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:hover {
+        filter: brightness(1.1);
+    }
+}
+
+@supports (color: hsl(from red h calc(s * 1.1) calc(l * 1.1))) {
+    @media (hover: hover) {
+        body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:hover {
+            color: hsl(from var(--sb-accent) h calc(s * 1.1) calc(l * 1.1));
+            filter: none;
+        }
+    }
+}
+
+/* The button row: three buttons to a row of equal widths, a fourth starts a second row. The script puts each run of buttons of
+   the message in a row in the place of the run, inside the element that held them. The row clears the icon and Dismiss and
+   reaches back over the text's inset to the edge of the card's padding, as Shell's action bin spans the card. A wrapper that
+   lays itself out as a flex row or column would hold the row beside the icon, and a wrapper that holds only the row adds no margin. */
+body #toast-container[class] > .sb-form-notification .toast-message :has(> .sb-toast-actions) {
+    display: block;
+}
+
+/* The 4px between the blocks that such a wrapper laid out with its own gap. */
+body #toast-container[class] > .sb-form-notification .toast-message :has(> .sb-toast-actions) > :not(.sb-toast-actions) + :not(.sb-toast-actions) {
+    margin-top: var(--sb-n-space);
+}
+
+body #toast-container[class] > .sb-form-notification .toast-message :has(> .sb-toast-actions:only-child) {
+    margin: 0;
+    padding: 0;
+}
+
+/* GNOME Shell spaces its banner buttons with a margin of $base_margin (4px) at each side of a button and none at the ends
+   of the row (`.message-action-bin *`), so two buttons are twice that apart. */
+body #toast-container[class] > .sb-form-notification .sb-toast-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--sb-n-space) * 2);
+    clear: both;
+    margin-block: 6px -6px;
+    margin-inline: calc(var(--sb-n-start) * -1) calc(var(--sb-n-end) * -1);
+    padding: var(--sb-n-space);
+}
+
+body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button) {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 calc((100% - var(--sb-n-space) * 4) / 3);
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    margin: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    text-shadow: none;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+/* The fills of the states set the colour only, so that the clip of the fill on a coarse pointer (below) stays. */
+@media (hover: hover) {
+    body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):hover {
+        background-color: color-mix(in srgb, currentColor 15%, transparent);
+    }
+}
+
+body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):active {
+    background-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):is(:disabled, [aria-disabled='true']) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* On a coarse pointer the target is 44px (DESIGN: Layout) and the fill and the ring stay the 32px of a drawn button. */
+@media (pointer: coarse) {
+    body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button) {
+        --sb-n-target-extra: calc((44px - 32px) / 2);
+        margin: calc(var(--sb-n-target-extra) * -1);
+        border: var(--sb-n-target-extra) solid transparent;
+        border-radius: calc(var(--sb-radius-control) + var(--sb-n-target-extra));
+        background-clip: padding-box;
+    }
+}
+
+/* An in-app notification at the position of the toasts moves with the stack offset that the script writes. */
+@media (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) #toast-container {
+        transition: margin var(--sb-transition-slow);
+    }
+}
+
+/* A message at a bottom position sits above a bar that may be off the middle of the window: a side panel that is docked at one
+   side pushes the composer to the other. The script writes where that bar is (nothing at the window edge, so the message is
+   where the setting puts it there). At the bottom centre the toast or the card is centred on the bar, at the bottom left it
+   moves by the start of the bar so that it keeps the margin it has against the window, and at the bottom right by the end.
+   None goes closer than 12px to a side of the window, which is the allowance of its width. The percentage in `translate` is
+   the width of the element itself, so the room is what is left of the window around it. A toast takes the window from its
+   strip, as its width does, and a card from the viewport, which its strip spans. */
+#sb-toast-overlay.toast-bottom-center > .sb-form-toast {
+    --sb-toast-room: max(0px, calc((100cqw - 24px - 100%) / 2));
+    translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room));
+}
+
+#sb-toast-overlay.toast-bottom-left > .sb-form-toast {
+    --sb-toast-room: max(0px, calc(100cqw - 24px - 100%));
+    translate: clamp(0px, var(--sb-toast-bar-start, 0px), var(--sb-toast-room));
+}
+
+#sb-toast-overlay.toast-bottom-right > .sb-form-toast {
+    --sb-toast-room: max(0px, calc(100cqw - 24px - 100%));
+    translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);
+}
+
+body #toast-container[class].toast-bottom-center > .sb-form-notification {
+    --sb-toast-room: max(0px, calc((100vw - 24px - 100%) / 2));
+    translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room));
+}
+
+body #toast-container[class].toast-bottom-left > .sb-form-notification {
+    --sb-toast-room: max(0px, calc(100vw - 24px - 100%));
+    translate: clamp(0px, var(--sb-toast-bar-start, 0px), var(--sb-toast-room));
+}
+
+body #toast-container[class].toast-bottom-right > .sb-form-notification {
+    --sb-toast-room: max(0px, calc(100vw - 24px - 100%));
+    translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) :is(#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast, #toast-container:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-notification) {
+        transition: translate var(--sb-transition-slow);
+    }
+}
+
+/* A toast in a container that the app does not draw, such as an extension's own, fades in and slides down from above. */
 @keyframes sb-toast-in {
     from {
         opacity: 0;
@@ -7084,35 +7600,6 @@ body #toast-container[class] > .sb-toast--action {
 
 body.reduced-motion .toast {
     animation: none;
-}
-
-/* Toast exit animation (JS-driven via .sb-toast-leaving) */
-@keyframes sb-toast-exit {
-    from {
-        opacity: 1;
-        transform: translateY(0);
-    }
-    to {
-        opacity: 0;
-        transform: translateY(-100%);
-    }
-}
-
-#toast-container > div.sb-toast-leaving {
-    animation: sb-toast-exit var(--sb-transition-slow);
-    animation-timing-function: var(--sb-ease-out-cubic);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    #toast-container > div.sb-toast-leaving {
-        animation: none;
-        opacity: 0;
-    }
-}
-
-body.reduced-motion #toast-container > div.sb-toast-leaving {
-    animation: none;
-    opacity: 0;
 }
 
 /* Tooltips: libadwaita OSD (shadow ink, white text, subtle border, no shadow) */

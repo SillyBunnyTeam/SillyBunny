@@ -48,7 +48,6 @@ function showToast({ title: titleText, lines, onShowMe, toast, moveIntoDialog })
 
     const showMe = document.createElement('button');
     showMe.type = 'button';
-    showMe.className = 'sbHomeToastAction';
     showMe.textContent = t`Show Me`;
 
     const message = document.createElement('div');

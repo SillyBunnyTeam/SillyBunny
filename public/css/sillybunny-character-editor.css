@@ -8,8 +8,8 @@
  * This is a deferred stylesheet: index.html preloads it and the editors, the lists
  * and the windows that use its rules load it through loadListEditorStyles() and wait
  * for it before they show. A rule that a surface outside the editors needs at first
- * paint belongs in a blocking sheet instead (.sb-editor-section and
- * .sb-draft-toast__actions are in sillybunny-tabs.css).
+ * paint belongs in a blocking sheet instead (.sb-editor-section is in
+ * sillybunny-tabs.css).
  */
 
 /* Sheet container and scroll behavior

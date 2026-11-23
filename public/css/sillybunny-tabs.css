@@ -475,10 +475,6 @@ body.sb-topbar-compact #sb-topbar-stack {
     max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
 }
 
-body #toast-container {
-    margin-top: var(--sb-topbar-layout-offset);
-}
-
 #select_chat_popup {
     max-height: calc(100vh - var(--sb-topbar-layout-offset));
     max-height: calc(100dvh - var(--sb-topbar-layout-offset));
@@ -7809,14 +7805,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     display: flex;
     flex-direction: column;
     gap: 0;
-}
-
-/* Draft-recovery toast actions (sillybunny-editor/chrome.js). The toast renders outside the editors, and can
-   appear while the editors' deferred sheet is still loading. */
-.sb-draft-toast__actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
 }
 
 /* Forced colours remove the fill that marks the selected sidebar tab, so it takes the system selection colours, as the selected segment of a segmented control does. */

@@ -189,12 +189,12 @@ async function quietChatForSmoke(page) {
 
         try {
             const agentRunner = await import('/scripts/extensions/in-chat-agents/agent-runner.js');
-            const toastsBefore = new Set(document.querySelectorAll('#toast-container .toast'));
+            const toastsBefore = new Set(document.querySelectorAll(':is(#toast-container, #sb-toast-overlay) > .toast'));
 
             agentRunner.cancelAgentGeneration?.();
 
             // With nothing to cancel it says so in a toast. A toast of the page that waits behind this one would not show for 5 seconds.
-            for (const toast of document.querySelectorAll('#toast-container .toast')) {
+            for (const toast of document.querySelectorAll(':is(#toast-container, #sb-toast-overlay) > .toast')) {
                 if (!toastsBefore.has(toast)) {
                     window.toastr.clear(window.jQuery(toast), { force: true });
                 }

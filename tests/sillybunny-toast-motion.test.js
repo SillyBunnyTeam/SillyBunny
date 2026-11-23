@@ -7,8 +7,10 @@ class FakeElement {
     constructor({ display = 'none', height = 64, containerClass = 'toast-top-center' } = {}) {
         this.isConnected = true;
         this.inert = false;
-        this.parentElement = { className: containerClass };
+        this.parentElement = { className: containerClass, hasAttribute: () => false, children: [], getBoundingClientRect: () => ({ top: 0 }) };
         this.height = height;
+        this.offsetHeight = height;
+        this.offsetTop = 0;
         this.classes = new Set(['toast']);
         this.classList = {
             add: name => this.classes.add(name),
@@ -27,12 +29,16 @@ class FakeElement {
         return { height: this.height };
     }
 
+    getClientRects() {
+        return [{ width: 1, height: this.height }];
+    }
+
     animate(keyframes, options) {
         let resolve;
         const finished = new Promise(resolvePromise => {
             resolve = resolvePromise;
         });
-        const animation = { keyframes, options, finished, finish: () => resolve(), cancel() {} };
+        const animation = { keyframes, options, finished, finish: () => resolve(), cancel() {}, element: this };
         animations.push(animation);
         return animation;
     }
@@ -87,44 +93,55 @@ describe('sillybunny toast motion', () => {
         toastr.options = previous;
     });
 
-    test('slides in from its own height with a 300ms fade', async () => {
+    test('an in-app notification enters as GNOME Shell\'s banner: a fade and a slide with a scale from 0.9, both over 200ms', async () => {
         const element = new FakeElement({ height: 80 });
         let completed = false;
         $(element).sbToastIn({ duration: 250, easing: 'linear', complete: () => { completed = true; } });
 
         expect(element.style.display).toBeUndefined();
-        expect(animations).toHaveLength(1);
-        expect(animations[0].keyframes).toEqual([
-            { opacity: 0, transform: 'translateY(-80px)' },
-            { opacity: 1, transform: 'none' },
+        expect(animations.map(animation => animation.keyframes)).toEqual([
+            [{ opacity: 0 }, { opacity: 1 }],
+            [{ transform: 'translateY(-80px) scale(0.9)' }, { transform: 'none' }],
         ]);
-        expect(animations[0].options.duration).toBe(300);
+        expect(animations.map(animation => animation.options)).toEqual([
+            { duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', fill: undefined },
+            { duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: undefined },
+        ]);
         expect(completed).toBe(false);
 
         animations[0].finish();
         await flush();
+        // It is in when both animations have finished.
+        expect(completed).toBe(false);
+        animations[1].finish();
+        await flush();
         expect(completed).toBe(true);
     });
 
-    test('rises from below in bottom-anchored containers', () => {
+    test('a notification rises from below in bottom-anchored containers', () => {
         const element = new FakeElement({ height: 50, containerClass: 'toast-bottom-right' });
         $(element).sbToastIn({});
-        expect(animations[0].keyframes[0].transform).toBe('translateY(50px)');
+        expect(animations[1].keyframes[0].transform).toBe('translateY(50px) scale(0.9)');
     });
 
-    test('fades and scales out over 300ms, then hides so toastr can remove it', async () => {
-        const element = new FakeElement({ display: '' });
+    test('leaves with a fade and a slide back by its own height over 200ms, then hides so toastr can remove it', async () => {
+        const element = new FakeElement({ display: '', height: 80 });
         let completed = false;
         $(element).sbToastOut({ complete: () => { completed = true; } });
 
         expect(element.classList.contains('sb-toast-leaving')).toBe(true);
-        expect(animations[0].keyframes).toEqual([
-            { opacity: 1, transform: 'none' },
-            { opacity: 0, transform: 'scale(0.95)' },
+        expect(animations.map(animation => animation.keyframes)).toEqual([
+            [{ opacity: 1 }, { opacity: 0 }],
+            [{ transform: 'none' }, { transform: 'translateY(-80px)' }],
         ]);
-        expect(animations[0].options).toMatchObject({ duration: 300, fill: 'forwards' });
+        expect(animations.map(animation => animation.options)).toEqual([
+            { duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' },
+            { duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' },
+        ]);
 
-        animations[0].finish();
+        for (const animation of animations) {
+            animation.finish();
+        }
         await flush();
         expect(element.style.display).toBe('none');
         expect(completed).toBe(true);
@@ -137,25 +154,33 @@ describe('sillybunny toast motion', () => {
         $(element).sbToastIn({});
 
         expect(element.classList.contains('sb-toast-leaving')).toBe(false);
-        animations[0].finish();
+        for (const animation of animations) {
+            animation.finish();
+        }
         await flush();
         expect(removed).toBe(false);
         expect(element.style.display).toBe('');
     });
 
-    test('reduced motion shows and hides at once and still completes', () => {
+    test('reduced motion fades in and out and still completes', async () => {
         reducedMotion = true;
         const element = new FakeElement();
         let shown = false;
         let hidden = false;
 
         $(element).sbToastIn({ complete: () => { shown = true; } });
-        expect(shown).toBe(true);
         expect(element.style.display).toBeUndefined();
+        expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 0 }, { opacity: 1 }]]);
+        animations[0].finish();
+        await flush();
+        expect(shown).toBe(true);
 
+        animations.length = 0;
         $(element).sbToastOut({ complete: () => { hidden = true; } });
+        expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 1 }, { opacity: 0 }]]);
+        animations[0].finish();
+        await flush();
         expect(hidden).toBe(true);
         expect(element.style.display).toBe('none');
-        expect(animations).toHaveLength(0);
     });
 });

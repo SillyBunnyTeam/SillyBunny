@@ -8,6 +8,7 @@ import { protectMaintainerServer, showToasts } from './helpers/maintainer-server
 import { PHONE, quickOr } from './helpers/matrix.js';
 import { readTextContrast, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { TOAST_SELECTOR } from './helpers/toasts.js';
 
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -196,7 +197,7 @@ test.describe('the toast of a failed request on a phone and in forced colours', 
         await pointChatAtFailure(page, { api: KEY_ROW[0], failure: KEY_ROW[1], port: provider.port });
         await page.locator('#send_textarea').fill('hello phone');
         await page.locator('#send_but').click();
-        const toast = page.locator('#toast-container .toast').filter({ hasText: TOAST_TITLES[0] });
+        const toast = page.locator(TOAST_SELECTOR).filter({ hasText: TOAST_TITLES[0] });
         await expect(toast).toBeVisible({ timeout: 15000 });
         await expect(toast.locator('[data-sb-request-error-hint]')).toHaveText(HINTS.key);
         return toast;
@@ -280,9 +281,9 @@ test.describe('the toast of a failed request on a phone and in forced colours', 
                 window.toastr.success('A success.', 'Done');
                 window.toastr.info('A note.', 'Note');
             });
-            await expect(page.locator('#toast-container .toast-error, #toast-container .toast-warning, #toast-container .toast-success, #toast-container .toast-info')).not.toHaveCount(0);
+            await expect(page.locator(['error', 'warning', 'success', 'info'].map(kind => `${TOAST_SELECTOR}.toast-${kind}`).join(', '))).not.toHaveCount(0);
 
-            const edges = await page.locator('#toast-container .toast').evaluateAll(nodes => nodes.map((node) => {
+            const edges = await page.locator(TOAST_SELECTOR).evaluateAll(nodes => nodes.map((node) => {
                 const style = getComputedStyle(node);
                 return { type: ['toast-error', 'toast-warning', 'toast-success', 'toast-info'].find(name => node.classList.contains(name)), outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
             }));

@@ -9,6 +9,7 @@ import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { TOAST_MESSAGE_SELECTOR } from './helpers/toasts.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 90_000 });
@@ -20,7 +21,7 @@ const SUBTITLES = {
     pointer: 'Chosen from your character library.',
     own: 'Pick any character from your library as a third assistant.',
 };
-const actionErrorToast = page => page.locator('#toast-container .toast-message', { hasText: HOME_COPY.assistantActionError });
+const actionErrorToast = page => page.locator(TOAST_MESSAGE_SELECTOR, { hasText: HOME_COPY.assistantActionError });
 const THUMBNAIL = readFileSync(new URL('../public/img/ai4.png', import.meta.url));
 
 const VIEWPORTS = [

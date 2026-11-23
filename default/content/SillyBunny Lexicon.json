@@ -4051,6 +4051,61 @@
             "extensions": {
                 "sb_topic": []
             }
+        },
+        "83": {
+            "uid": 83,
+            "key": [
+                "notification position",
+                "toast position",
+                "move notifications",
+                "move toasts",
+                "where notifications appear",
+                "where toasts appear",
+                "pop-up notifications",
+                "toast confirmations",
+                "notifications at the bottom",
+                "toasts at the top",
+                "dismiss a toast",
+                "close a toast",
+                "how long toasts stay",
+                "how long notifications stay",
+                "notification timeout",
+                "toast timeout",
+                "awaitdismissal"
+            ],
+            "keysecondary": [],
+            "comment": "A83 Notification and toast positions",
+            "content": "Customize ▸ Appearance ▸ Chat Display has two position settings for the messages that pop up over the interface: \"Notifications\" and \"Toasts\". Both offer Top Left, Top Center, Top Right, Bottom Left, Bottom Center and Bottom Right. A choice applies at once and is saved with the other settings. Neither is part of a UI theme, so changing the theme leaves them as they are. \"Toasts\" places toasts: short plain messages, such as a confirmation, with no title, one line of text and at most one button. It starts at Bottom Center. \"Notifications\" places in-app notifications: messages with a title, several parts, more than one button, a click action or text that does not fit on one line. It starts at Top Center. While a dialog is open, a toast keeps the position that \"Toasts\" gives it and shows above the dialog and its dimming, so it can be read and dismissed. The dimming covers the message box, so a bottom toast sits a little above the window edge. On a phone, where a dialog is a sheet that rises from the bottom, a bottom toast sits above the top of the sheet, and above the buttons at the foot of the sheet when the sheet reaches too far up to leave room above it. In-app notifications keep their place in the window, and a bottom one sits at the window edge. When \"Toasts\" and \"Notifications\" are set to the same position, a toast and the in-app notifications form one stack, with the toast nearest the edge. At a bottom position, a message sits above the message box, and above a sheet that is docked at the bottom of the window (on a phone, the action menu and the sheet of a side panel), whichever reaches highest. At Bottom Center it is centred on that bar, and at Bottom Left and Bottom Right it sits against its start or its end, so it follows a message box that a docked side panel has moved to one side. When a panel such as Backend or Customize covers the message box, or the message box has been moved away from the bottom of the window, a bottom message sits at the window edge instead. A toast closes with its Dismiss button, and tapping the toast does nothing. A toast stays for 5 seconds. An in-app notification stays as long as its kind says: an error or a warning stays until it is dismissed, and an info or success message goes after 4 seconds. A timeout that a message sets itself wins over both. At most three in-app notifications show at once, and the others wait and show as one goes. An in-app notification closes with its Dismiss button, and a click on the card, outside its buttons and links, runs its action, if it has one, and closes it. A click that ends a text selection in the card, such as a double click on a word or a drag over the text, neither runs its action nor closes it, so the text of a message that stays can be copied. A slash command /echo with a title, the severity error or warning, awaitDismissal=true and no timeout therefore waits until its notification is dismissed.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 980,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 83,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": []
+            }
         }
     }
 }

@@ -32,7 +32,7 @@ async function openBarForTest(page) {
             }
         }
 
-        document.querySelectorAll('#toast-container .toast').forEach(toast => toast.remove());
+        document.querySelectorAll(':is(#toast-container, #sb-toast-overlay) > .toast').forEach(toast => toast.remove());
     });
     await waitForAnimationFrames(page, 2);
 }
