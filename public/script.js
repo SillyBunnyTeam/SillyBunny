@@ -351,7 +351,7 @@ import { extractReasoningFromData, extractReasoningSignatureFromData, initReason
 import { accountStorage } from './scripts/util/AccountStorage.js';
 import { initWelcomeScreen, openPermanentAssistantChat, openPermanentAssistantCard, getPermanentAssistantAvatar } from './scripts/welcome-screen.js';
 import { initDataMaid } from './scripts/data-maid.js';
-import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPrompts, findItemizedPromptSet, initItemizedPrompts, itemizedParams, itemizedPrompts, loadItemizedPrompts, promptItemize, replaceItemizedPromptText, saveItemizedPrompts, swapItemizedPrompts, trimItemizedPrompts } from './scripts/itemized-prompts.js';
+import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPrompts, findItemizedPromptSet, initItemizedPrompts, itemizedParams, itemizedPrompts, loadItemizedPrompts, promptItemize, replaceItemizedPromptText, saveItemizedPrompts, swapItemizedPrompts } from './scripts/itemized-prompts.js';
 import { getSystemMessageByType, initSystemMessages, SAFETY_CHAT, sendSystemMessage, system_message_types, system_messages } from './scripts/system-messages.js';
 import { event_types, eventSource } from './scripts/events.js';
 import { initAccessibility } from './scripts/a11y.js';
@@ -9273,8 +9273,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 itemizedPrompts[itemizedIndex] = additionalPromptStuff;
             } else {
                 itemizedPrompts.push(additionalPromptStuff);
-                // SillyBunny: keep only the latest prompt snapshots so long sessions stay bounded in memory.
-                trimItemizedPrompts(itemizedPrompts);
+                // SillyBunny: keep only the latest prompt snapshots inline so extracted VM test harnesses need no extra import.
+                if (itemizedPrompts.length > 50) {
+                    itemizedPrompts.splice(0, itemizedPrompts.length - 50);
+                }
             }
 
             console.debug(`pushed prompt bits to itemizedPrompts array. Length is now: ${itemizedPrompts.length}`);

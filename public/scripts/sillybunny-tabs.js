@@ -13362,7 +13362,9 @@ function getSettingsPage() {
 
 function clearSettingsAnimationState() {
     const page = getSettingsPage();
-    page?.classList.remove('sb-settings-page--opening', 'sb-settings-page--closing');
+    if (page?.classList.contains('sb-settings-page--opening') || page?.classList.contains('sb-settings-page--closing')) {
+        page.classList.remove('sb-settings-page--opening', 'sb-settings-page--closing');
+    }
     if (sbSettingsState.pageAnimation) {
         sbSettingsState.pageAnimation.onfinish = null;
         sbSettingsState.pageAnimation.cancel();
