@@ -376,6 +376,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-16, UI polish sweep (task 6.7, the shared removal and bulk Delete). |
 | Owner | UI overhaul integrator. |
 
+### Tag filter chip expansion
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/tags.js` |
+| Area | `showHiddenTags` in `printTagList()`: the expander chip of a filter list that `printTagFilters()` prints without emptying it (#945). |
+| Divergence reason | Upstream's `showHiddenTags` prints again with the `empty` option of the print that made the expander. `printTagFilters()` prints the tag chips with `empty: false`, so the expander chip stays in the list and the skipped tags come after it, out of sort order. SillyBunny's tag filter picker reads its options from these chips and clicks the expander when it opens, so it needs a list without the expander and in sort order. |
+| Target seam | `public/scripts/sillybunny-editor/tag-filter-menu.js` (`TAG_SELECTOR` skips `.placeholder-expander`; `open()` clicks the expander before it reads the chips). |
+| Adapter shape | Gated by `!empty`, so only a list that is not emptied is changed. Before the repeat print, `showHiddenTags` removes the direct `.tag` children whose ID is the expander's or one of the tags of its own print. Chips that other prints added to the same list (the action chips of `printTagFilters()`) stay. The tag data, the filter state, `expanded_tags_cache` and the `tags-expanded` class are unchanged, and the repeat print restores each chip state from the filter helper. |
+| Protecting tests | `tests/unit/sillybunny-tag-filter-expander.test.js` (the real `printTagList()` and the real menu); `tests/unit/sillybunny-tag-filter-menu.test.js`; `tests/unit/sillybunny-character-list-state.test.js` (the 50-chip limit); `tests/character-list.e2e.js` "tag filter picker lists every tag past the 50-chip limit in order…" (real browser, 65 seeded tags). |
+| Validation | Root lint; tests lint; focused Jest (menu, expander, character list state, Tag Manager); frontend budgets. The focused tests fail with only the `public/` change reverted, and pass with it applied (2026-11-22). The `character-list.e2e.js` case fails at 1440px and 390px with `public/` reverted (an extra "..." option), and passes at both with it applied (Chromium, Node.js runtime, 2026-11-22). 2026-11-23, after the removal was limited to the chips of its own print: root and tests lint; full Jest (709 suites); frontend budgets; the case "the expansion removes only the chips of its own print…" fails with the earlier `.tag:not(.actionable)` removal and passes with this one; Chromium run of the seven specs that `e2e-related` lists, including the `character-list.e2e.js` case at 1440px and 390px (192 passed, 1 skipped). |
+| Rollback path | In `public/scripts/tags.js`, remove the `if (!empty)` block under the `SillyBunny:` marker in `showHiddenTags`. The picker still skips the expander through `TAG_SELECTOR`, but the expander chip stays in the filter list after the first open, each later open clicks it again, and an active tag beyond the 50th is listed out of order. No saved data changes, because the block only removes chips that the repeat print draws again. Then remove the cases of `tests/unit/sillybunny-tag-filter-expander.test.js` that expect no expander and the sorted order, and the expander and order checks of the `tests/character-list.e2e.js` case. |
+| Last reviewed | 2026-11-23, #1010 review (the removal is limited to the chips of its own print). |
+| Owner | UI overhaul integrator. |
+
 ### Utility dialogs - shared content rows
 | Field | Value |
 | --- | --- |
