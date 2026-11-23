@@ -163,7 +163,11 @@ upstream_remote="${upstream_ref%%/*}"
 echo "Checking for updates on $upstream_ref..."
 if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]] && (( OPTIONAL )); then
     # Bound stalled mobile connections and skip fetching release tags during automatic Android cold-start checks.
-    if ! git -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=5 fetch --quiet --no-tags "$upstream_remote"; then
+    if ! GIT_CONFIG_COUNT=3 \
+        GIT_CONFIG_KEY_0=http.lowSpeedLimit GIT_CONFIG_VALUE_0=1024 \
+        GIT_CONFIG_KEY_1=http.lowSpeedTime GIT_CONFIG_VALUE_1=5 \
+        GIT_CONFIG_KEY_2="remote.$upstream_remote.tagOpt" GIT_CONFIG_VALUE_2=--no-tags \
+        git fetch --quiet "$upstream_remote"; then
         finish_early "could not fetch from '$upstream_remote'."
     fi
 elif ! git fetch --quiet "$upstream_remote"; then
