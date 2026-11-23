@@ -432,9 +432,12 @@ function layoutHeight() {
     return document.documentElement.clientHeight || window.innerHeight;
 }
 
+/** Writes a custom property when its value changes, and takes it away only when it is there, so that a check that finds nothing new writes nothing. */
 function setProperty(element, property, value) {
     if (value === null) {
-        element.style.removeProperty(property);
+        if (element.style.getPropertyValue(property) !== '') {
+            element.style.removeProperty(property);
+        }
     } else if (element.style.getPropertyValue(property) !== value) {
         element.style.setProperty(property, value);
     }
@@ -744,6 +747,10 @@ function messagesOnScreen() {
 /** @type {MutationObserver[]} */
 let barObservers = [];
 let barFrame = 0;
+let barTimer = 0;
+let lastBarCheck = Number.NEGATIVE_INFINITY;
+/** The bars are looked at once in this many ms at most, however often the page changes: each look hit-tests about eight points. */
+const BAR_CHECK_INTERVAL = 100;
 /** @type {WeakSet<Animation>} */
 const watchedAnimations = new WeakSet();
 
@@ -770,13 +777,14 @@ function watchSurfaceAnimations() {
 }
 
 /**
- * Looks at the bars once per frame, however many surfaces changed. A change that leaves the bars as they were writes
- * nothing, so a message that is on screen stays where it is while the page changes around it. A message eases when the
- * source of its place changes (a panel covers the composer, a sheet opens), and follows at once when the same bar moves
- * or grows.
+ * Looks at the bars, at most once in `BAR_CHECK_INTERVAL` however many surfaces changed. A change that leaves the bars as
+ * they were writes nothing, so a message that is on screen stays where it is while the page changes around it. A message
+ * eases when the source of its place changes (a panel covers the composer, a sheet opens), and follows at once when the
+ * same bar moves or grows.
  */
 function checkBars() {
     barFrame = 0;
+    lastBarCheck = Date.now();
     if (!messagesOnScreen()) {
         stopBarWatch();
         return;
@@ -793,11 +801,24 @@ function checkBars() {
     watchSurfaceAnimations();
 }
 
+/**
+ * Asks for a look at the bars. The first change after a quiet time is looked at in the next frame. A change that comes less
+ * than `BAR_CHECK_INTERVAL` after the last look waits for the end of that interval, and the changes that come meanwhile
+ * join it, so the look that follows sees the last of them.
+ */
 function scheduleBarCheck() {
-    if (barFrame || typeof requestAnimationFrame !== 'function') {
+    if (barFrame || barTimer || typeof requestAnimationFrame !== 'function') {
         return;
     }
-    barFrame = requestAnimationFrame(checkBars);
+    const wait = lastBarCheck + BAR_CHECK_INTERVAL - Date.now();
+    if (wait <= 0) {
+        barFrame = requestAnimationFrame(checkBars);
+        return;
+    }
+    barTimer = setTimeout(() => {
+        barTimer = 0;
+        barFrame = requestAnimationFrame(checkBars);
+    }, wait);
 }
 
 function onSurfaceMutation(records) {
@@ -835,6 +856,9 @@ function startBarWatch() {
 }
 
 function stopBarWatch() {
+    clearTimeout(barTimer);
+    barTimer = 0;
+    lastBarCheck = Number.NEGATIVE_INFINITY;
     if (barObservers.length === 0) {
         return;
     }

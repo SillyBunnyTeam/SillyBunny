@@ -1470,10 +1470,18 @@ describe('writing the placement', () => {
         let elementsFromPoint;
         let hit;
         let reducedMotion;
+        let clock;
+
+        /** The checks of the bars are spaced by time, so a test that changes the page twice lets it pass between the two. */
+        const elapse = () => {
+            clock += 150;
+        };
 
         beforeEach(() => {
             frames = [];
             reducedMotion = false;
+            clock = 1000;
+            jest.spyOn(Date, 'now').mockImplementation(() => clock);
             jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
                 frames.push(callback);
                 return frames.length;
@@ -1529,6 +1537,7 @@ describe('writing the placement', () => {
             runFrames();
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
 
+            elapse();
             hit = [composer];
             panelElement.className = '';
             await settle();
@@ -1581,6 +1590,7 @@ describe('writing the placement', () => {
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('500px');
             expect(overlay.style.getPropertyValue('transition')).toContain('bottom');
 
+            elapse();
             sheet.remove();
             hit = [composer];
             await settle();
@@ -1617,6 +1627,7 @@ describe('writing the placement', () => {
             await settle();
             runFrames();
             expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('100px');
+            elapse();
             composer.getBoundingClientRect = () => ({ top: 700, bottom: 800, height: 100, left: 300, right: 700, width: 400 });
             document.body.className = 'narrower';
             await settle();
@@ -1638,6 +1649,7 @@ describe('writing the placement', () => {
             expect(frames).toHaveLength(0);
 
             // The sheet has got to its place, and nothing in the page changed but the end of its motion.
+            elapse();
             hit = [panelElement, composer];
             finish();
             await settle();
@@ -1689,12 +1701,16 @@ describe('writing the placement', () => {
 
         test('writes nothing when the page changes and the composer stays as it was', async () => {
             const { overlay } = showMessage();
-            const writes = [];
-            const original = overlay.style.setProperty.bind(overlay.style);
-            overlay.style.setProperty = (name, value) => {
-                writes.push(name);
-                return original(name, value);
-            };
+            // A value that a placement would not give: a check that wrote the placement again would put the composer's 100px back.
+            overlay.style.setProperty(BOTTOM_INSET_PROPERTY, '7px');
+            const calls = [];
+            for (const name of ['setProperty', 'removeProperty']) {
+                const original = overlay.style[name].bind(overlay.style);
+                overlay.style[name] = (...args) => {
+                    calls.push([name, ...args]);
+                    return original(...args);
+                };
+            }
             document.body.className = 'changed';
             await settle();
             // The check was made, and found the composer as it was.
@@ -1702,7 +1718,8 @@ describe('writing the placement', () => {
             elementsFromPoint.mockClear();
             runFrames();
             expect(elementsFromPoint).toHaveBeenCalled();
-            expect(writes).toEqual([]);
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('7px');
+            expect(calls).toEqual([]);
         });
 
         test('ignores what the messages do to themselves', async () => {
@@ -1748,6 +1765,87 @@ describe('writing the placement', () => {
             document.body.className = 'changed';
             await settle();
             expect(frames).toHaveLength(0);
+        });
+
+        describe('how often the bars are looked at', () => {
+            const BURST = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+
+            beforeEach(() => {
+                jest.useFakeTimers({ doNotFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+            });
+
+            test('looks at once for the first change, and then at most once in 100ms however often the page changes, so the last change is seen', async () => {
+                const { overlay } = showMessage();
+                document.body.className = 'first';
+                await jest.advanceTimersByTimeAsync(0);
+                expect(frames).toHaveLength(1);
+                elementsFromPoint.mockClear();
+                runFrames();
+                const callsPerCheck = elementsFromPoint.mock.calls.length;
+                expect(callsPerCheck).toBeGreaterThan(0);
+                elementsFromPoint.mockClear();
+
+                for (const name of BURST) {
+                    document.body.className = name;
+                    await jest.advanceTimersByTimeAsync(10);
+                }
+                expect(frames).toHaveLength(0);
+                expect(elementsFromPoint).not.toHaveBeenCalled();
+
+                // The change that moves a bar comes last, 90ms into the interval.
+                openPanel().className = 'open';
+                await jest.advanceTimersByTimeAsync(0);
+                expect(frames).toHaveLength(0);
+                await jest.advanceTimersByTimeAsync(15);
+                expect(frames).toHaveLength(1);
+                runFrames();
+                expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+                // One look, and the write that it made when it found a bar: the nine changes before it asked for nothing.
+                expect(elementsFromPoint.mock.calls.length).toBeLessThanOrEqual(callsPerCheck * 2);
+            });
+
+            test('looks at once again when the interval has passed, and a change after a quiet time is not held back', async () => {
+                showMessage();
+                document.body.className = 'first';
+                await jest.advanceTimersByTimeAsync(0);
+                runFrames();
+                await jest.advanceTimersByTimeAsync(100);
+                document.body.className = 'second';
+                await jest.advanceTimersByTimeAsync(0);
+                expect(frames).toHaveLength(1);
+            });
+
+            test('keeps the check that a message that shows makes at once, in the middle of an interval', async () => {
+                const { overlay } = showMessage();
+                document.body.className = 'first';
+                await jest.advanceTimersByTimeAsync(0);
+                runFrames();
+                openPanel();
+                await jest.advanceTimersByTimeAsync(20);
+                expect(frames).toHaveLength(0);
+                updateToastPlacement();
+                expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            });
+
+            test('holds no check over when the last message goes, so that the next watch starts with a frame', async () => {
+                const { overlay, toast } = showMessage();
+                document.body.className = 'first';
+                await jest.advanceTimersByTimeAsync(0);
+                runFrames();
+                document.body.className = 'second';
+                await jest.advanceTimersByTimeAsync(0);
+                expect(frames).toHaveLength(0);
+                toast.remove();
+                updateToastPlacement();
+                await jest.advanceTimersByTimeAsync(200);
+                runFrames();
+                expect(jest.getTimerCount()).toBe(0);
+                overlay.append(document.createElement('div'));
+                updateToastPlacement();
+                document.body.className = 'third';
+                await jest.advanceTimersByTimeAsync(0);
+                expect(frames).toHaveLength(1);
+            });
         });
 
         test('looks again when a transition or an animation of a surface ends', () => {
