@@ -11,11 +11,14 @@ const originalCwd = process.cwd();
 beforeAll(() => process.chdir(path.resolve(originalCwd, '..')));
 afterAll(() => process.chdir(originalCwd));
 
+const pngPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
 /**
  * Builds a minimal valid BYAF archive in memory.
+ * @param {string} [imagePath] Character image path, relative to the character file
  * @returns {Promise<Buffer>} Zipped BYAF bytes
  */
-function buildByafArchive() {
+function buildByafArchive(imagePath = 'images/icon.png') {
     return new Promise((resolve, reject) => {
         const archive = archiver('zip', { zlib: { level: 9 } });
         const chunks = [];
@@ -30,10 +33,9 @@ function buildByafArchive() {
         archive.append(JSON.stringify({
             name: 'Byaf Test Character',
             persona: 'A test persona.',
-            images: [{ path: 'images/icon.png', label: '' }],
+            images: [{ path: imagePath, label: '' }],
         }), { name: 'characters/character.json' });
-        const pngPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-        archive.append(pngPixel, { name: 'characters/images/icon.png' });
+        archive.append(pngPixel, { name: `characters/${imagePath}` });
         archive.append(JSON.stringify({
             name: 'Test Scenario',
             messages: [],
@@ -69,5 +71,17 @@ describe('BYAF import buffer handling', () => {
     test('the raw oversized backing buffer is not parseable, which is why callers must slice', async () => {
         const parser = new ByafParser(pooledView.buffer);
         await expect(parser.parse()).rejects.toThrow();
+    });
+});
+
+describe('BYAF character image paths', () => {
+    test('extracts an image whose file name has URL characters in it', async () => {
+        const archive = await buildByafArchive('images/Tom & Jerry?#1.png');
+
+        const result = await new ByafParser(getArrayBufferSlice(archive)).parse();
+
+        expect(result.images).toHaveLength(1);
+        expect(result.images[0].filename).toBe('Tom & Jerry?#1.png');
+        expect(Buffer.compare(result.images[0].image, pngPixel)).toBe(0);
     });
 });

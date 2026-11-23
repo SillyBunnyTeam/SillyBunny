@@ -2768,6 +2768,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-21, open pull request audit (security audit of #1002). |
 | Owner | Server runtime integrator. |
 
+### `public/scripts/chats.js` - message style blocks under @adobe/css-tools 4.5
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js` |
+| Area | Message rendering: `decodeStyleTags()`, which turns a message's `<style>` blocks into CSS scoped to the message (`.mes_text `) or to an in-chat agent panel. |
+| Divergence reason | Upstream pins @adobe/css-tools at 4.4.4. SillyBunny takes 4.5, which gives `@property`, `@counter-style`, `@scope`, `@view-transition` and other at-rules their own node types and parses nested rules inside declarations. `sanitizeRuleSet()` prefixes only rule selectors, so those nodes applied to the whole page: a message could register a theme variable such as `--SmartThemeBodyColor`, and with external media allowed a nested `:root:has(&) #send_form { display: none }` hid the send form. Version 4.4 parsed the at-rules as rules with an `@` selector that the prefix made invalid, and rejected nested CSS. |
+| Target seam | `public/scripts/sillybunny-style-tag-scope.js` (`removeUnscopableCss()`). |
+| Adapter shape | One marked import, and one marked `removeUnscopableCss(sheet)` call before `sanitizeRuleSet()`. The helper removes every node type outside the 4.4 set, and throws on a nested rule or at-rule, which `decodeStyleTags()` shows as `CSS ERROR` as before. |
+| Protecting tests | `tests/unit/sillybunny-style-tag-scope.test.js`; `tests/message-formatting-inline-style.e2e.js` (`keeps message style blocks inside the message`). |
+| Validation | 2026-11-23: root and `tests/` lint, both tests, the e2e test failing without the change; 78 message CSS inputs through staging (css-tools 4.4.4) and this change (4.5.0), with external media allowed and forbidden: 58 outputs identical, and the 20 others only the new at-rules removed and nested CSS rejected with a new error text. |
+| Rollback path | Remove the import and the call from `chats.js` and delete `sillybunny-style-tag-scope.js` and its unit test, then pin `@adobe/css-tools` to `~4.4.4` in `package.json` and regenerate both lockfiles. Nothing is stored: chats keep their `<style>` text. |
+| Last reviewed | 2026-11-23, #1016 (in-range dependency refresh). |
+| Owner | Server and data compatibility integrator. |
+
+### `src/byaf.js` - BYAF character image paths
+| Field | Value |
+| --- | --- |
+| File | `src/byaf.js` |
+| Area | BYAF character import: `getCharacterImages()`. |
+| Divergence reason | Upstream joins the character file's folder and the image path with url-join 5.0. url-join 5.2 rewrites `&` in a path part to `?`, so `images/Tom & Jerry.png` was looked up as `images/Tom ? Jerry.png`, and the import fell back to the default avatar. ZIP entry names are POSIX paths, so `path.posix.join()` builds them without URL rules. It also resolves `./` and repeated slashes, and gives `images/icon.png` instead of `./images/icon.png` for a character file at the archive root. |
+| Target seam | none yet; the change is one line. |
+| Adapter shape | One marked `path.posix.join(path.posix.dirname(characterPath), imagePath)` line in place of `urlJoin(path.dirname(characterPath), imagePath)`, and no `url-join` import. |
+| Protecting tests | `tests/byaf-import.test.js` (`extracts an image whose file name has URL characters in it`). |
+| Validation | 2026-11-23: root and `tests/` lint; the test fails with the upstream line and url-join 5.2.0 and passes with the change. |
+| Rollback path | Restore the upstream `urlJoin` line and import, then pin `url-join` to `~5.0.0` in `package.json` and regenerate both lockfiles. Cards that were imported keep their stored avatar. |
+| Last reviewed | 2026-11-23, #1016 (in-range dependency refresh). |
+| Owner | Server and data compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
