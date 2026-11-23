@@ -18,6 +18,20 @@ describe('reading a reference version statement', () => {
         expect(parseRecordedReference(text)).toEqual({ libadwaita: '1.10.0', higCommit: '97028ea', shell: '51.1' });
     });
 
+    test('takes the GNOME Shell release when it ends a sentence, or is followed by a comma or a parenthesis', () => {
+        expect(parseRecordedReference('libadwaita 1.10.0; GNOME Shell 51.1.').shell).toBe('51.1');
+        expect(parseRecordedReference('libadwaita 1.10.0; GNOME Shell 51.1. The banner files were read.').shell).toBe('51.1');
+        expect(parseRecordedReference('libadwaita 1.10.0; GNOME Shell 51.1, banner sources; later').shell).toBe('51.1');
+        expect(parseRecordedReference('libadwaita 1.10.0; GNOME Shell 51.12 (banner sources)').shell).toBe('51.12');
+        expect(parseRecordedReference('GNOME Shell 51.1').shell).toBe('51.1');
+    });
+
+    test('does not take a part of a longer version for the GNOME Shell release', () => {
+        expect(parseRecordedReference('GNOME Shell 51.1.2 (banner sources)').shell).toBeNull();
+        expect(parseRecordedReference('GNOME Shell 51.1.2.').shell).toBeNull();
+        expect(parseRecordedReference('GNOME Shell 51 (banner sources)').shell).toBeNull();
+    });
+
     test('does not take GNOME Shell from a statement that names the Shell without a release', () => {
         const text = 'libadwaita 1.10.0; GNOME HIG at commit `97028ea`; GNOME Shell\'s banner styles at main (read 2026-11-22).';
 

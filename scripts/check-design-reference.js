@@ -60,7 +60,7 @@ Options:
 export function parseRecordedReference(text) {
     const libadwaita = /libadwaita\s+(\d+\.\d+\.\d+)/i.exec(text);
     const higCommit = /HIG[^`\n]*commit\s+`([0-9a-f]{7,40})`/i.exec(text);
-    const shell = /GNOME\s+Shell\s+(\d+\.\d+)(?![\d.])/i.exec(text);
+    const shell = /GNOME\s+Shell\s+(\d+\.\d+)(?!\.?\d)/i.exec(text);
     return { libadwaita: libadwaita ? libadwaita[1] : null, higCommit: higCommit ? higCommit[1] : null, shell: shell ? shell[1] : null };
 }
 
