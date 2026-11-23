@@ -1,3 +1,4 @@
+import { getTopmostDialog } from '../sillybunny-editor/overlay-host.js';
 import { afterPageMotion, isPageMotionRunning } from '../sillybunny-editor/page-motion.js';
 import { prefersReducedMotion } from '../sillybunny-motion.js';
 import { createBlinkState, parseBreathScene, planScene } from './art-motion.js';
@@ -48,13 +49,80 @@ function installConditionWatch() {
     document.addEventListener('visibilitychange', notifyConditionListeners);
     const query = typeof matchMedia === 'function' ? matchMedia(REDUCED_MOTION_QUERY) : null;
     query?.addEventListener('change', notifyConditionListeners);
-    const bodyClass = document.body ? new MutationObserver(notifyConditionListeners) : null;
-    bodyClass?.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    if (typeof MutationObserver !== 'function') {
+        return () => {
+            document.removeEventListener('visibilitychange', notifyConditionListeners);
+            query?.removeEventListener('change', notifyConditionListeners);
+        };
+    }
+
+    const dialogAttrObserver = new MutationObserver(notifyConditionListeners);
+    const watchDialog = (node) => {
+        if (node?.nodeName === 'DIALOG') {
+            dialogAttrObserver.observe(node, { attributes: true, attributeFilter: ['open', 'closing'] });
+            return true;
+        }
+        return false;
+    };
+
+    const bodyObserver = document.body
+        ? new MutationObserver((records) => {
+            let changed = false;
+            for (const record of records) {
+                if (record.type === 'attributes') {
+                    changed = true;
+                    continue;
+                }
+                for (const node of record.addedNodes) {
+                    if (watchDialog(node)) {
+                        changed = true;
+                    }
+                }
+                for (const node of record.removedNodes) {
+                    if (node?.nodeName === 'DIALOG') {
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                notifyConditionListeners();
+            }
+        })
+        : null;
+    if (document.body && bodyObserver) {
+        for (const child of document.body.children) {
+            watchDialog(child);
+        }
+        bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class'], childList: true });
+    }
+
+    const rootObserver = document.documentElement ? new MutationObserver(notifyConditionListeners) : null;
+    rootObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-settings-open'] });
+
     return () => {
         document.removeEventListener('visibilitychange', notifyConditionListeners);
         query?.removeEventListener('change', notifyConditionListeners);
-        bodyClass?.disconnect();
+        bodyObserver?.disconnect();
+        dialogAttrObserver.disconnect();
+        rootObserver?.disconnect();
     };
+}
+
+/**
+ * Checks whether a full-viewport settings page or modal dialog covers `figure`.
+ * @param {HTMLElement} figure
+ * @returns {boolean}
+ */
+function isOccludedByOverlay(figure) {
+    if (document.documentElement?.dataset?.sbSettingsOpen === 'true') {
+        const settingsPage = document.getElementById('sb-settings-page');
+        if (!settingsPage || !settingsPage.contains(figure)) {
+            return true;
+        }
+    }
+    const topmostDialog = getTopmostDialog();
+    return topmostDialog !== null && !topmostDialog.contains(figure);
 }
 
 /**
@@ -298,7 +366,7 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
         tick();
     };
 
-    const canMove = () => placed && inView && figure.isConnected && !inHiddenPage() && !document.hidden && !readReducedMotion() && !isShrunkSmooth(figure);
+    const canMove = () => placed && inView && figure.isConnected && !inHiddenPage() && !document.hidden && !readReducedMotion() && !isShrunkSmooth(figure) && !isOccludedByOverlay(figure);
 
     /** Looks at the figure again once, when the pages of its dialog have stopped moving. */
     const waitForPagesToRest = () => {

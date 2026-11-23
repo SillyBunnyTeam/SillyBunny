@@ -3239,6 +3239,7 @@ function applyPaperTextureOpacity() {
     const enabled = sbState.paperTextureEnabled;
     const opacity = enabled ? normalizePaperTextureOpacity(sbState.paperTextureOpacity) / 100 : 0;
     document.documentElement.style.setProperty('--sb-paper-texture-opacity', opacity.toFixed(2));
+    document.documentElement.dataset.sbPaperTexture = (enabled && opacity > 0) ? 'on' : 'off';
 }
 
 function setPaperTextureEnabled(enabled, { persist = true } = {}) {
@@ -13313,9 +13314,7 @@ function getSettingsPage() {
 
 function clearSettingsAnimationState() {
     const page = getSettingsPage();
-    if (page?.classList.contains('sb-settings-page--opening')) {
-        page.classList.remove('sb-settings-page--opening');
-    }
+    page?.classList.remove('sb-settings-page--opening', 'sb-settings-page--closing');
     if (sbSettingsState.pageAnimation) {
         sbSettingsState.pageAnimation.onfinish = null;
         sbSettingsState.pageAnimation.cancel();
@@ -13507,12 +13506,14 @@ function closeSettingsPage() {
 
     const closeGen = ++sbSettingsState.closeGen;
     clearSettingsAnimationState();
+    page.classList.add('sb-settings-page--closing');
     deactivateSettingsPageRoot(closingShell);
 
     const finishClose = () => {
         if (sbSettingsState.closeGen !== closeGen) {
             return;
         }
+        page.classList.remove('sb-settings-page--closing');
         page.hidden = true;
         syncSettingsPaneInert();
         if (sbSettingsState.closeTimer) {

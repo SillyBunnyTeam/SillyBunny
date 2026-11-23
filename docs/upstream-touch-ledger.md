@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/expressions/index.js` and `public/css/mobile-styles.css` - idle poll caching and simplified icon-control selectors
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/expressions/index.js`, `public/css/mobile-styles.css` |
+| Area | Expressions 2-second `moduleWorker` poll and mobile icon-control `:has()` selector matching. |
+| Divergence reason | Upstream `expressions/index.js` calls `removeExpression()`, `$('#visual-novel-wrapper').is(':visible')`, `offlineMode.is(':visible')`, and jQuery `.show()`/`.hide()` every 2 seconds even on the idle Home view or in hidden tabs, causing repeated computed-style reads and layout flushes. The fork's icon-control override in `mobile-styles.css` chained five `:has()` pseudo-classes per button; collapsing them to one `:has()` (two for the `input[hidden] +` branch) matches the same elements with less selector work during style recalculation. |
+| Target seam | Local boolean state guards (`expressionRemovedForEmptyChat`, `lastVnMode`, `vnWrapperInitialized`, `lastOfflineModeDisplayed`) in `public/scripts/extensions/expressions/index.js`; shared icon-control sizing contract in `public/css/sillybunny-theme.css` and `tests/icon-control-sizing-css.test.js`. |
+| Adapter shape | `expressions/index.js`: skip `moduleWorker()` when `document.hidden`; run `removeExpression()` once per transition into an empty chat; cache visual-novel wrapper and offline banner visibility states so jQuery `.show()`/`.hide()` and `.is(':visible')` run only when state changes; reset `expressionRemovedForEmptyChat` in `setImage()` and `lastOfflineModeDisplayed` in `removeExpression()`. `mobile-styles.css`: keep the existing SillyBunny divergence block and collapse the four `:not(:has(> ...))` predicates into `:not(span, small, b, strong)` on the `:only-child` branches and `:not(:has(> :is(span, small, b, strong)))` on the `input[hidden] +` branches. |
+| Protecting tests | `tests/unit/sillybunny-idle-render-hotfixes.test.js`, `tests/icon-control-sizing-css.test.js`, `tests/mobile-css-budgets.test.js`, `tests/css-has-scope.test.js`. |
+| Validation | 2026-11-23: `npm run lint`, `tests/` eslint on modified files, `npm run check:frontend-budgets`, `npm run check:design-rules`, `npm run check:frontend-contracts`, and 7 focused unit suites (91 passed) covering idle Home, hidden-tab polling, and mobile icon-control sizing. |
+| Rollback path | Remove the four cached state flags, the `document.hidden` early return, and the state guards in `public/scripts/extensions/expressions/index.js` to restore unconditional 2-second jQuery calls. Restore the expanded `:not(:has(> ...))` chain in `public/css/mobile-styles.css` and `tests/icon-control-sizing-css.test.js`. No stored settings or user data change. |
+| Last reviewed | 2026-11-23, Track 1 Slice 1A performance pass. |
+| Owner | Frontend performance owner. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

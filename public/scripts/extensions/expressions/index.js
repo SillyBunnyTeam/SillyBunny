@@ -150,6 +150,11 @@ let inApiCall = false;
 let lastServerResponseTime = 0;
 let inSpriteGeneration = false;
 let expressionGenerationCancelRequested = false;
+// SillyBunny: cache empty-chat, visual-novel and offline UI states so the 2s poll avoids repeated jQuery style queries.
+let expressionRemovedForEmptyChat = false;
+let lastVnMode = false;
+let vnWrapperInitialized = false;
+let lastOfflineModeDisplayed = null;
 
 /** @type {{[characterName: string]: string}} */
 export let lastExpression = {};
@@ -453,6 +458,10 @@ export async function visualNovelUpdateLayers(container) {
  * @returns {Promise<void>} - A promise that resolves when the image is set
  */
 async function setImage(img, path) {
+    // SillyBunny: mark expression state dirty when a sprite source is applied so empty-chat cleanup runs again later.
+    if (path) {
+        expressionRemovedForEmptyChat = false;
+    }
     // Cohee: If something goes wrong, uncomment this to return to the old behavior
     /*
     img.attr('src', path);
@@ -543,26 +552,38 @@ async function setImage(img, path) {
 }
 
 async function moduleWorker({ newChat = false } = {}) {
+    // SillyBunny: skip periodic polling while the tab is hidden to avoid background DOM work.
+    if (document.hidden) {
+        return;
+    }
+
     const context = getContext();
 
     // non-characters not supported
     if (!context.groupId && context.characterId === undefined) {
-        removeExpression();
+        // SillyBunny: run empty-chat cleanup once per transition instead of querying jQuery display styles every 2s.
+        if (!expressionRemovedForEmptyChat) {
+            removeExpression();
+            expressionRemovedForEmptyChat = true;
+        }
         return;
     }
+    expressionRemovedForEmptyChat = false;
 
     const vnMode = isVisualNovelMode();
-    const vnWrapperVisible = $('#visual-novel-wrapper').is(':visible');
-
-    if (vnMode) {
-        $('#expression-wrapper').hide();
-        $('#visual-novel-wrapper').show();
-    } else {
-        $('#expression-wrapper').show();
-        $('#visual-novel-wrapper').hide();
+    // SillyBunny: compare cached visual-novel state instead of calling .is(':visible') and .show()/.hide() every 2s.
+    const vnStateChanged = vnMode !== lastVnMode;
+    if (!vnWrapperInitialized || vnStateChanged) {
+        if (vnMode) {
+            $('#expression-wrapper').hide();
+            $('#visual-novel-wrapper').show();
+        } else {
+            $('#expression-wrapper').show();
+            $('#visual-novel-wrapper').hide();
+        }
+        lastVnMode = vnMode;
+        vnWrapperInitialized = true;
     }
-
-    const vnStateChanged = vnMode !== vnWrapperVisible;
 
     if (vnStateChanged) {
         lastMessage = null;
@@ -579,11 +600,14 @@ async function moduleWorker({ newChat = false } = {}) {
         lastCharacter = context.groupId || context.characterId;
     }
 
-    const offlineMode = $('.expression_settings .offline_mode');
+    // SillyBunny: track offline banner state in JS instead of forcing layout with .is(':visible') on every poll.
     if (!modules.includes('classify') && extension_settings.expressions.api == EXPRESSION_API.extras) {
-        $('#open_chat_expressions').show();
-        $('#no_chat_expressions').hide();
-        offlineMode.css('display', 'block');
+        if (lastOfflineModeDisplayed !== true) {
+            $('#open_chat_expressions').show();
+            $('#no_chat_expressions').hide();
+            $('.expression_settings .offline_mode').css('display', 'block');
+            lastOfflineModeDisplayed = true;
+        }
         lastCharacter = context.groupId || context.characterId;
 
         if (context.groupId) {
@@ -594,7 +618,7 @@ async function moduleWorker({ newChat = false } = {}) {
         return;
     } else {
         // force reload expressions list on connect to API
-        if (offlineMode.is(':visible')) {
+        if (lastOfflineModeDisplayed === true) {
             expressionsList = null;
             spriteCache = {};
             expressionsList = await getExpressionsList();
@@ -607,7 +631,10 @@ async function moduleWorker({ newChat = false } = {}) {
             await forceUpdateVisualNovelMode();
         }
 
-        offlineMode.css('display', 'none');
+        if (lastOfflineModeDisplayed !== false) {
+            $('.expression_settings .offline_mode').css('display', 'none');
+            lastOfflineModeDisplayed = false;
+        }
     }
 
     if (context.groupId && vnMode && newChat) {
@@ -2262,6 +2289,8 @@ function getLastCharacterMessage({ characterName = '' } = {}) {
 
 function removeExpression() {
     lastMessage = null;
+    // SillyBunny: reset cached offline display state because hiding #open_chat_expressions invalidates it.
+    lastOfflineModeDisplayed = null;
     $('img.expression').off('error');
     // SillyBunny: the no-character poll must not keep assigning an already empty image source.
     $('img.expression').filter((_index, image) => image.getAttribute('src') !== '').prop('src', '');

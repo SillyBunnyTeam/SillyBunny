@@ -3328,17 +3328,27 @@ body.reduced-motion .sb-shell-main {
     align-items: stretch;
     background: var(--sb-layer-canvas);
     transform-origin: center 40%;
+}
+
+#sb-settings-page.sb-settings-page--opening,
+#sb-settings-page.sb-settings-page--closing {
     will-change: transform, opacity;
 }
 
 /* Closed state keeps the page in the render tree so reopening reuses the cached layout of
    the hosted panels instead of laying out every panel again on the first animation frame.
-   No `content-visibility: hidden` here: on this root Chromium kept the closed styles after
-   `hidden` was removed, so the page opened invisible until an unrelated style recalc. */
+   No `content-visibility: hidden` on `#sb-settings-page` itself: on this root Chromium kept
+   the closed styles after `hidden` was removed, so the page opened invisible until an
+   unrelated style recalc. Applying it to `#sb-settings-inner` skips closed-subtree style
+   and layout work while leaving the animated root unaffected. */
 #sb-settings-page[hidden] {
     display: flex;
     visibility: hidden;
     pointer-events: none;
+}
+
+#sb-settings-page[hidden] > #sb-settings-inner {
+    content-visibility: hidden;
 }
 
 /* Native floating portraits sit above settings. Keep their position and open state while

@@ -141,6 +141,7 @@ afterEach(() => {
     jest.restoreAllMocks();
     document.body.replaceChildren();
     document.body.className = '';
+    delete document.documentElement.dataset.sbSettingsOpen;
     delete window.IntersectionObserver;
     delete window.matchMedia;
 });
@@ -467,6 +468,49 @@ describe('when it cannot be seen or may not move', () => {
 
         second.observer.report(false);
         expect(reducedQuery.listeners.size).toBe(0);
+    });
+
+    test('pauses while the full-screen settings page covers it, and plays again when settings close', async () => {
+        const figure = mountFigure();
+        const { observer } = start(figure);
+        await appear(observer);
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+
+        document.documentElement.dataset.sbSettingsOpen = 'true';
+        await flush();
+        expect(jest.getTimerCount()).toBe(0);
+        expect(figure.dataset.sbArtMotion).toBe('still');
+
+        delete document.documentElement.dataset.sbSettingsOpen;
+        await flush();
+        expect(jest.getTimerCount()).toBe(1);
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+    });
+
+    test('pauses when a modal dialog covers it, while a figure inside the open dialog keeps playing', async () => {
+        const backgroundFigure = mountFigure();
+        const background = start(backgroundFigure);
+        await appear(background.observer);
+        expect(backgroundFigure.dataset.sbArtMotion).toBe('playing');
+
+        const dialog = document.createElement('dialog');
+        dialog.setAttribute('open', '');
+        dialog.setAttribute('data-sb-modal', '');
+        const dialogFigure = createPixelFigure('hero-duo');
+        sizePixelFigure(dialogFigure, { step: 2, ratio: 2 });
+        dialog.append(dialogFigure);
+        document.body.append(dialog);
+        await flush();
+
+        expect(backgroundFigure.dataset.sbArtMotion).toBe('still');
+
+        const inside = start(dialogFigure);
+        await appear(inside.observer);
+        expect(dialogFigure.dataset.sbArtMotion).toBe('playing');
+
+        dialog.remove();
+        await flush();
+        expect(backgroundFigure.dataset.sbArtMotion).toBe('playing');
     });
 });
 

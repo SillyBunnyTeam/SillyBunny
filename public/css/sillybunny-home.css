@@ -457,6 +457,9 @@
     flex: none;
     overflow: hidden;
     line-height: 0;
+    /* Isolates idle frame visibility swaps from full-document style recalculation and repainting. */
+    contain: layout style paint;
+    isolation: isolate;
 }
 
 .sbPixelArt {

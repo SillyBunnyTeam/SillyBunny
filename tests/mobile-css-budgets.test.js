@@ -123,9 +123,9 @@ describe('paper texture regression guards', () => {
         expect(paperThemeCss).toMatch(/body::after\s*\{/);
     });
 
-    test('gates both page and message paper overlays behind texture opacity', () => {
-        const bodyAfterRule = paperThemeCss.match(/body::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
-        const messageAfterRule = paperThemeCss.match(/\.mes::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    test('gates both page and message paper overlays behind texture state and opacity', () => {
+        const bodyAfterRule = paperThemeCss.match(/:root\[data-sb-paper-texture='on'\]\s+body::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
+        const messageAfterRule = paperThemeCss.match(/:root\[data-sb-paper-texture='on'\]\s+body\.bubblechat\s+\.mes::after\s*\{[\s\S]*?\}/)?.[0] ?? '';
 
         expect(bodyAfterRule).toContain('--sb-paper-texture-opacity');
         expect(messageAfterRule).toContain('--sb-paper-texture-opacity');
