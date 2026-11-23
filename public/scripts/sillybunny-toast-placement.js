@@ -1,14 +1,16 @@
 /*
  * SillyBunny toast placement: where #sb-toast-overlay sits, as numbers that the toast CSS reads.
- * A bottom toast sits above the bottom bars and above the software keyboard, a toast in a dialog sits at the bottom centre
- * of that dialog's box and above its action row, and an in-app notification at the same position as the toasts sits
- * beyond them. A bottom bar is the composer while it is docked at the bottom edge and nothing covers it, and a sheet that
- * is docked at the bottom edge or on a bar: with none, the window edge is the bottom edge. At the bottom centre a message is
- * centred on the bar that it sits above. The CSS owns every metric that does not depend on the page; this module only
- * measures what the CSS cannot know.
+ * A bottom toast sits above the bottom bars and above the software keyboard, and an in-app notification at the same
+ * position as the toasts sits beyond them. A bottom bar is the composer while it is docked at the bottom edge and nothing
+ * covers it, and a sheet that is docked at the bottom edge or on a bar: with none, the window edge is the bottom edge. At
+ * the bottom centre a message is centred on the bar that it sits above. While a modal dialog is open the toast stays at its
+ * place in the window, above the dialog: the dimming covers the composer, and a dialog that is a bottom sheet is a bar for
+ * the toasts. The CSS owns every metric that does not depend on the page; this module only measures what the CSS cannot
+ * know.
  */
 
 import { createMobileViewportObserver } from './chat-render-lifecycle/mobile-viewport.js';
+import { getTopmostDialog } from './sillybunny-editor/overlay-host.js';
 import { MOTION_SURFACE, prefersReducedMotion } from './sillybunny-motion.js';
 import { TOAST_MEASURE_CLASS } from './sillybunny-toast-form.js';
 
@@ -26,9 +28,6 @@ const POSITION_CLASSES = [
 const COMPOSER_ID = 'form_sheld';
 
 export const BOTTOM_INSET_PROPERTY = '--sb-toast-bottom-inset';
-export const FRAME_LEFT_PROPERTY = '--sb-toast-frame-left';
-export const FRAME_WIDTH_PROPERTY = '--sb-toast-frame-width';
-export const FRAME_BOTTOM_PROPERTY = '--sb-toast-frame-bottom';
 export const STACK_OFFSET_PROPERTY = '--sb-toast-stack-offset';
 /** How far the middle of the bar that a bottom message sits above is from the middle of the window, in px. */
 export const BAR_SHIFT_PROPERTY = '--sb-toast-bar-shift';
@@ -40,10 +39,9 @@ export const BAR_END_PROPERTY = '--sb-toast-bar-end';
  * The rows that hold the actions of a dialog at its foot: the responses of an alert (`openAlert`), the extra responses
  * of a Dialog or Window (`openDialog` and the framed Popups), and the controls of an alert Popup and of an upstream
  * Popup. The controls of a framed Dialog or Window Popup are `display: contents` in its header, so they have no box.
+ * A tall sheet that leaves no room above it carries the toast above such a row.
  */
 export const ACTION_ROW_SELECTOR = '.sb-dialog__responses, .sb-dialog__bottom-bar, .popup-controls';
-/** Set on the overlay while it sits in a dialog, where it is at the bottom centre whatever the setting says. */
-export const IN_DIALOG_ATTRIBUTE = 'data-sb-toast-in-dialog';
 
 /**
  * How much of the bottom of the layout viewport the software keyboard covers. With `interactive-widget=resizes-visual`
@@ -249,19 +247,18 @@ export function bottomInset({ layoutHeight, viewport, composerBox }) {
 }
 
 /**
- * Which edge a toast sits at. In a dialog it is the bottom edge of the dialog whatever the position class says.
+ * Which edge a toast sits at.
  * @param {string} positionClass One of toastr's six position classes.
- * @param {boolean} inDialog
  * @returns {'top'|'bottom'}
  */
-export function edgeOf(positionClass, inDialog) {
-    return inDialog || /\btoast-bottom-/.test(positionClass) ? 'bottom' : 'top';
+export function edgeOf(positionClass) {
+    return /\btoast-bottom-/.test(positionClass) ? 'bottom' : 'top';
 }
 
 /**
  * The element whose box is "the dialog" for a toast. A Popup is itself the surface. A frame of the shared dialog
  * (`sillybunny-editor/dialog.js`) is a transparent modal host that covers the window, with the visible surface inside.
- * @param {HTMLElement} host The dialog that holds the overlay.
+ * @param {HTMLElement} host The modal dialog.
  * @returns {HTMLElement}
  */
 export function dialogSurfaceOf(host) {
@@ -288,14 +285,36 @@ export function stackOffset({ edge, layoutHeight, overlayBox }) {
 }
 
 /**
- * The space that a toast in a dialog keeps clear at the bottom of the dialog's padding box: what lies under the
- * action row when there is one, and what lies under the surface when there is not.
- * @param {{ hostHeight: number, surfaceBottom: number, rowTop: number|null }} measures All in px from the top of the host's padding box.
+ * The space that a toast keeps clear at the foot of a sheet that leaves no room above it: what lies under the action row
+ * when there is one, and what lies under the sheet when there is not.
+ * @param {{ hostHeight: number, surfaceBottom: number, rowTop: number|null }} measures All in px from the top of the window.
  * @returns {number} px, never negative.
  */
 export function dialogToastBottom({ hostHeight, surfaceBottom, rowTop }) {
     const top = rowTop === null ? surfaceBottom : Math.min(surfaceBottom, rowTop);
     return Math.max(0, Math.round(hostHeight - top));
+}
+
+/** A one-line toast and its margins, which a sheet must leave above it when no toast is on screen to measure. */
+const DEFAULT_TOAST_EXTENT = 82;
+
+/**
+ * Where a toast sits above a modal dialog that is a bottom sheet, as the space that it keeps clear at the bottom of the
+ * window. With room above the sheet, the toast sits above its top edge, and its own margin gives the 24px. The room is a
+ * toast and its margins between the top bar and the sheet. A sheet that leaves no room, because it reaches up to the top
+ * bar, carries the toast at its foot, above the bottom action row or above the bottom edge when it has none.
+ * @param {{ box: { top: number, bottom: number, left: number, right: number, width: number, height: number }|null, rowTop: number|null, layoutWidth: number, layoutHeight: number, contentTop: number, extent: number }} measures
+ * `rowTop` is the top of the bottom action row, and `contentTop` the bottom of the top bar, in px from the top of the window.
+ * @returns {number|null} px, or null when the dialog is not a bottom sheet: one that floats above the bottom of the window, or is narrower than half of it.
+ */
+export function sheetToastInset({ box, rowTop, layoutWidth, layoutHeight, contentTop, extent }) {
+    if (!box || !(box.height > 0) || Math.abs(box.bottom - layoutHeight) > DOCK_TOLERANCE || box.width < layoutWidth * SHEET_MIN_WIDTH_SHARE) {
+        return null;
+    }
+    if (box.top - contentTop >= extent) {
+        return Math.max(0, Math.round(layoutHeight - box.top));
+    }
+    return dialogToastBottom({ hostHeight: layoutHeight, surfaceBottom: box.bottom, rowTop });
 }
 
 /**
@@ -349,7 +368,8 @@ function layoutWidth() {
  * What the bottom messages sit above, and what they are centred on.
  * `source` is what reaches highest: the window edge when nothing does, the keyboard, the composer or a sheet. A message
  * eases when the source changes, as when a panel opens over the composer, and follows at once when the same bar grows.
- * @typedef {{ inset: number, shift: number, start: number, end: number, source: 'edge'|'keyboard'|'composer'|'sheet' }} Placement
+ * `note` is where an in-app notification sits, which a dialog that is a sheet does not change.
+ * @typedef {{ inset: number, shift: number, start: number, end: number, source: 'edge'|'keyboard'|'composer'|'sheet'|'dialog', note: { inset: number, shift: number, start: number, end: number, source: string } }} Placement
  */
 
 /** The bars of the window, from the lowest: the composer while it is docked and nothing covers it, and the sheets above it. */
@@ -372,32 +392,109 @@ function readBars() {
     return bars;
 }
 
+/**
+ * The box of a surface at its layout size. A surface that is scaled or moved while it opens is drawn off its place, so its
+ * layout offsets are read, from its offset parent.
+ * @param {HTMLElement} element
+ */
+function layoutBoxOf(element) {
+    const drawn = element.getBoundingClientRect();
+    const transform = getComputedStyle(element).transform;
+    if (!transform || transform === 'none') {
+        return drawn;
+    }
+    const parent = element.offsetParent;
+    const origin = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 };
+    const left = origin.left + (parent?.clientLeft ?? 0) + element.offsetLeft;
+    const top = origin.top + (parent?.clientTop ?? 0) + element.offsetTop;
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+    return { left, top, width, height, right: left + width, bottom: top + height };
+}
+
+/** The tallest toast on screen with its margins, which is the room that a sheet must leave above it. */
+function toastExtent() {
+    let extent = 0;
+    for (const toast of document.querySelectorAll(`#${TOAST_OVERLAY_ID} > :not(.${TOAST_MEASURE_CLASS})`)) {
+        const style = getComputedStyle(toast);
+        const height = toast.getBoundingClientRect().height;
+        if (height > 0) {
+            extent = Math.max(extent, height + (Number.parseFloat(style.marginTop) || 0) + (Number.parseFloat(style.marginBottom) || 0));
+        }
+    }
+    return extent || DEFAULT_TOAST_EXTENT;
+}
+
+/**
+ * Where the toasts sit while a modal dialog is open and the dialog is a bottom sheet: as a bar, from its top edge or from
+ * its foot. The toasts stay in the window, so a dialog that floats is no bar, and the dimming that covers the composer
+ * already put them at the window edge.
+ * @returns {{ inset: number, box: DOMRect|object }|null}
+ */
+function readDialogSheet(height) {
+    const dialog = getTopmostDialog();
+    if (!dialog) {
+        return null;
+    }
+    const surface = dialogSurfaceOf(dialog);
+    const box = layoutBoxOf(surface);
+    const row = actionRowTop(surface);
+    const contentTop = document.getElementById('top-bar')?.getBoundingClientRect().bottom ?? 0;
+    const inset = sheetToastInset({ box, rowTop: row === null ? null : box.top + row, layoutWidth: layoutWidth(), layoutHeight: height, contentTop, extent: toastExtent() });
+    return inset === null ? null : { inset, box };
+}
+
+/**
+ * What a message sits above and what it is centred on, from the bar that reaches highest and the keyboard.
+ * @param {{ layoutHeight: number, bar: { kind: 'composer'|'sheet'|'dialog', top: number, bottom: number, left: number, right: number }|null }} measures
+ * @returns {Omit<Placement, 'note'>}
+ */
+function placementOf({ layoutHeight: height, bar }) {
+    const barBox = bar && { top: bar.top, bottom: bar.bottom, height: bar.bottom - bar.top };
+    const inset = bottomInset({ layoutHeight: height, viewport: window.visualViewport, composerBox: barBox });
+    let source = 'edge';
+    if (inset > 0) {
+        source = keyboardInset(window.visualViewport, height) >= inset ? 'keyboard' : bar.kind;
+    }
+    const onBar = source !== 'edge' && source !== 'keyboard';
+    const sides = onBar ? barEdges(bar, layoutWidth()) : { start: 0, end: 0 };
+    return { inset, shift: onBar ? barShift(bar, layoutWidth()) : 0, start: sides.start, end: sides.end, source };
+}
+
 /** @returns {Placement} */
 function readPlacement() {
     const height = layoutHeight();
     const highest = readBars().reduce((best, bar) => (best === null || bar.top < best.top ? bar : best), null);
-    const barBox = highest && { top: highest.top, bottom: highest.bottom, height: highest.bottom - highest.top };
-    const inset = bottomInset({ layoutHeight: height, viewport: window.visualViewport, composerBox: barBox });
-    let source = 'edge';
-    if (inset > 0) {
-        source = keyboardInset(window.visualViewport, height) >= inset ? 'keyboard' : highest.kind;
+    const note = placementOf({ layoutHeight: height, bar: highest });
+    const sheet = readDialogSheet(height);
+    // A bar of the page that reaches as high as the sheet keeps the toast, so that a toast does not change its bar for nothing.
+    if (!sheet || sheet.inset <= note.inset) {
+        return { ...note, note };
     }
-    const onBar = source === 'composer' || source === 'sheet';
-    const sides = onBar ? barEdges(highest, layoutWidth()) : { start: 0, end: 0 };
-    return { inset, shift: onBar ? barShift(highest, layoutWidth()) : 0, start: sides.start, end: sides.end, source };
+    const bar = { kind: 'dialog', top: height - sheet.inset, bottom: height, left: sheet.box.left, right: sheet.box.right };
+    return { ...placementOf({ layoutHeight: height, bar }), note };
 }
 
 /** What the last write used, which the watch compares with the page as it is now. */
-let lastPlacement = { inset: 0, shift: 0, start: 0, end: 0, source: 'edge' };
+const EDGE_PLACEMENT = { inset: 0, shift: 0, start: 0, end: 0, source: 'edge' };
+let lastPlacement = { ...EDGE_PLACEMENT, note: EDGE_PLACEMENT };
+
+/** Whether two placements put every message where the other does. */
+function samePlacement(first, second) {
+    return [first, first.note].every((part, index) => {
+        const other = index === 0 ? second : second.note;
+        return part.inset === other.inset && part.shift === other.shift && part.start === other.start && part.end === other.end;
+    });
+}
 
 /**
  * Where the bar is, for a bottom position only: the CSS centres a message at the bottom centre on it, and puts one at the
  * bottom left against its start and one at the bottom right against its end. A side that is the window's is not written.
  * @param {HTMLElement} element
- * @param {Placement} placement
+ * @param {Omit<Placement, 'note'>} placement
  */
 function writeBarSides(element, placement) {
-    const bottom = edgeOf(element.className, false) === 'bottom';
+    const bottom = edgeOf(element.className) === 'bottom';
     for (const [property, value] of [[BAR_SHIFT_PROPERTY, placement.shift], [BAR_START_PROPERTY, placement.start], [BAR_END_PROPERTY, placement.end]]) {
         setProperty(element, property, bottom && value !== 0 ? pixels(value) : null);
     }
@@ -410,60 +507,27 @@ function writeBarSides(element, placement) {
 function placeInWindow(overlay, placement) {
     setProperty(overlay, BOTTOM_INSET_PROPERTY, pixels(placement.inset));
     writeBarSides(overlay, placement);
-    for (const property of [FRAME_LEFT_PROPERTY, FRAME_WIDTH_PROPERTY, FRAME_BOTTOM_PROPERTY]) {
-        setProperty(overlay, property, null);
-    }
-}
-
-/**
- * Puts the overlay at the bottom of the dialog's surface, above its action row. The host is the overlay's containing
- * block. A Popup is its own surface, so the CSS gives the overlay its width. A frame of the shared dialog is a
- * full-window host, so the left and width of its surface are written too.
- * Layout offsets are used, because a surface is scaled while it opens and a drawn box would be read too small.
- * @param {HTMLElement} overlay
- * @param {HTMLElement} host
- */
-function placeInDialog(overlay, host) {
-    setProperty(overlay, BOTTOM_INSET_PROPERTY, null);
-    for (const property of [BAR_SHIFT_PROPERTY, BAR_START_PROPERTY, BAR_END_PROPERTY]) {
-        setProperty(overlay, property, null);
-    }
-    const surface = dialogSurfaceOf(host);
-    const isFrame = surface !== host;
-    const originInHost = isFrame ? surface.offsetTop : -host.clientTop;
-    const rowTop = actionRowTop(surface);
-    const bottom = dialogToastBottom({
-        hostHeight: host.clientHeight,
-        surfaceBottom: isFrame ? surface.offsetTop + surface.offsetHeight : host.clientHeight,
-        rowTop: rowTop === null ? null : originInHost + rowTop,
-    });
-    setProperty(overlay, FRAME_BOTTOM_PROPERTY, pixels(bottom));
-    setProperty(overlay, FRAME_LEFT_PROPERTY, isFrame ? pixels(surface.offsetLeft) : null);
-    setProperty(overlay, FRAME_WIDTH_PROPERTY, isFrame ? pixels(surface.offsetWidth) : null);
 }
 
 /**
  * The in-app notifications sit beyond the toasts when both are at the same position, and the stack offset already holds
- * the space under the toasts. Otherwise a bottom notification sits above the bottom bars and the keyboard as a toast does.
- * In a dialog the toast is at the dialog's bottom and the notifications keep their window position, so they do not
- * share a stack there.
+ * the space under the toasts. Otherwise a bottom notification sits above the bottom bars and the keyboard as a toast does,
+ * and a dialog that is a sheet is no bar for it.
  * @param {HTMLElement|null} overlay
  * @param {HTMLElement|null} notifications
- * @param {boolean} inDialog
  * @param {Placement} placement What the bars and the keyboard cover at the bottom of the window.
  */
-function placeNotifications(overlay, notifications, inDialog, placement) {
+function placeNotifications(overlay, notifications, placement) {
     if (!notifications) {
         return;
     }
     const samePosition = overlay !== null
-        && !inDialog
         && POSITION_CLASSES.some(name => overlay.classList.contains(name) && notifications.classList.contains(name));
-    const edge = edgeOf(notifications.className, false);
+    const edge = edgeOf(notifications.className);
     const offset = samePosition ? stackOffset({ edge, layoutHeight: layoutHeight(), overlayBox: overlayTargetBox(overlay, edge, placement.inset) }) : null;
     setProperty(notifications, STACK_OFFSET_PROPERTY, offset === null ? null : pixels(offset));
-    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(placement.inset));
-    writeBarSides(notifications, placement);
+    setProperty(notifications, BOTTOM_INSET_PROPERTY, samePosition || edge === 'top' ? null : pixels(placement.note.inset));
+    writeBarSides(notifications, samePosition ? placement : placement.note);
 }
 
 /**
@@ -491,7 +555,7 @@ const glideTimers = new WeakMap();
  * @param {HTMLElement|null} element
  */
 function glideToPlace(element) {
-    if (!element || edgeOf(element.className, false) !== 'bottom' || prefersReducedMotion()) {
+    if (!element || edgeOf(element.className) !== 'bottom' || prefersReducedMotion()) {
         return;
     }
     clearTimeout(glideTimers.get(element));
@@ -530,22 +594,16 @@ function writeToastPlacement(notifications, glide) {
         syncBarWatch();
         return;
     }
-    const inDialog = overlay?.parentElement instanceof HTMLDialogElement;
-    if (glide && !inDialog) {
+    if (glide) {
         glideToPlace(overlay);
         glideToPlace(notifications);
     }
     const placement = readPlacement();
     lastPlacement = placement;
     if (overlay) {
-        overlay.toggleAttribute(IN_DIALOG_ATTRIBUTE, inDialog);
-        if (inDialog) {
-            placeInDialog(overlay, overlay.parentElement);
-        } else {
-            placeInWindow(overlay, placement);
-        }
+        placeInWindow(overlay, placement);
     }
-    placeNotifications(overlay, notifications, inDialog, placement);
+    placeNotifications(overlay, notifications, placement);
     if (overlay) {
         // A dialog builds its action rows after it opens, and the rows that are watched are the ones it has now.
         observeToastPlacement();
@@ -605,8 +663,8 @@ function checkBars() {
         return;
     }
     const now = readPlacement();
-    if (now.inset !== lastPlacement.inset || now.shift !== lastPlacement.shift || now.start !== lastPlacement.start || now.end !== lastPlacement.end) {
-        updateToastPlacement({ glide: now.source !== lastPlacement.source });
+    if (!samePlacement(now, lastPlacement)) {
+        updateToastPlacement({ glide: now.source !== lastPlacement.source || now.note.source !== lastPlacement.note.source });
     } else {
         lastPlacement = now;
     }
@@ -703,8 +761,8 @@ export function observeToastPlacement() {
     }
     resizeObserver ??= new ResizeObserver(scheduleToastPlacement);
     const overlay = document.getElementById(TOAST_OVERLAY_ID);
-    const host = overlay?.parentElement;
-    const surface = host instanceof HTMLDialogElement ? dialogSurfaceOf(host) : null;
+    const host = getTopmostDialog();
+    const surface = host ? dialogSurfaceOf(host) : null;
     const targets = [
         document.getElementById(COMPOSER_ID),
         overlay,

@@ -577,21 +577,6 @@ test.describe('under a modal dialog', () => {
             await expect.poll(() => measure(page)).toMatchObject({ note: composer + 4 });
         });
     }
-
-    test('a toast in the dialog stays in it, as before', async ({ page }) => {
-        await openChat(page, VIEWPORTS[0]);
-        await openPopup(page);
-        await expect(page.locator('dialog.popup[open]')).toBeVisible();
-        await showToast(page);
-        const inside = await page.evaluate(() => {
-            const overlay = document.getElementById('sb-toast-overlay');
-            const dialog = overlay.closest('dialog');
-            const toast = overlay.querySelector('.sb-form-toast').getBoundingClientRect();
-            const box = dialog.getBoundingClientRect();
-            return { inDialog: overlay.hasAttribute('data-sb-toast-in-dialog'), within: toast.bottom <= box.bottom && toast.top >= box.top };
-        });
-        expect(inside).toEqual({ inDialog: true, within: true });
-    });
 });
 
 test.describe('a composer that MovingUI has moved', () => {

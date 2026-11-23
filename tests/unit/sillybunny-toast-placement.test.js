@@ -4,10 +4,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import {
     BOTTOM_INSET_PROPERTY,
-    FRAME_BOTTOM_PROPERTY,
-    FRAME_LEFT_PROPERTY,
-    FRAME_WIDTH_PROPERTY,
-    IN_DIALOG_ATTRIBUTE,
     ACTION_ROW_SELECTOR,
     BAR_END_PROPERTY,
     BAR_SHIFT_PROPERTY,
@@ -24,6 +20,7 @@ import {
     dialogToastBottom,
     edgeOf,
     keyboardInset,
+    sheetToastInset,
     sheetsAbove,
     stackOffset,
     updateToastPlacement,
@@ -76,11 +73,11 @@ describe('the space that a bottom toast keeps clear', () => {
 });
 
 describe('the edge a toast sits at', () => {
-    test('follows the position class, and is the bottom edge in a dialog whatever the class says', () => {
-        expect(edgeOf('toast-bottom-center', false)).toBe('bottom');
-        expect(edgeOf('toast-bottom-left', false)).toBe('bottom');
-        expect(edgeOf('toast-top-right', false)).toBe('top');
-        expect(edgeOf('toast-top-center', true)).toBe('bottom');
+    test('follows the position class', () => {
+        expect(edgeOf('toast-bottom-center')).toBe('bottom');
+        expect(edgeOf('toast-bottom-left')).toBe('bottom');
+        expect(edgeOf('toast-top-right')).toBe('top');
+        expect(edgeOf('toast-top-center')).toBe('top');
     });
 });
 
@@ -100,7 +97,7 @@ describe('the offset of the notifications at the position of the toasts', () => 
     });
 });
 
-describe('the space that a toast in a dialog keeps clear', () => {
+describe('the space that a toast over a sheet keeps clear at its foot', () => {
     test('is the space under the action row when the dialog has one, and under the surface when it has none', () => {
         expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 700, rowTop: null })).toBe(100);
         expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 700, rowTop: 640 })).toBe(160);
@@ -109,6 +106,43 @@ describe('the space that a toast in a dialog keeps clear', () => {
     test('never goes under the surface, and never below nothing', () => {
         expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 700, rowTop: 760 })).toBe(100);
         expect(dialogToastBottom({ hostHeight: 800, surfaceBottom: 900, rowTop: null })).toBe(0);
+    });
+});
+
+describe('the place of a toast above a bottom sheet', () => {
+    const measures = { layoutWidth: 400, layoutHeight: 800, contentTop: 44, extent: 82 };
+    const sheet = { top: 500, bottom: 800, left: 0, right: 400, width: 400, height: 300 };
+
+    test('with room above it, is the top of the sheet, which the toast clears by its own margin', () => {
+        expect(sheetToastInset({ ...measures, box: sheet, rowTop: 740 })).toBe(300);
+    });
+
+    test('has room when the top bar and the sheet are a toast and its margins apart, and not when they are closer', () => {
+        expect(sheetToastInset({ ...measures, box: { ...sheet, top: 126 }, rowTop: null })).toBe(674);
+        expect(sheetToastInset({ ...measures, box: { ...sheet, top: 125 }, rowTop: null })).toBe(0);
+    });
+
+    test('with no room, is the foot of the sheet: the top of its bottom action row, or its bottom edge when it has none', () => {
+        const tall = { ...sheet, top: 60, height: 740 };
+        expect(sheetToastInset({ ...measures, box: tall, rowTop: 700 })).toBe(100);
+        expect(sheetToastInset({ ...measures, box: tall, rowTop: null })).toBe(0);
+        expect(sheetToastInset({ ...measures, box: tall, rowTop: 810 })).toBe(0);
+    });
+
+    test('is not a sheet when it floats above the bottom of the window, as a centred dialog does', () => {
+        expect(sheetToastInset({ ...measures, box: { ...sheet, top: 300, bottom: 560, height: 260 }, rowTop: null })).toBeNull();
+    });
+
+    test('is not a sheet when it is narrower than half the window, or has no box', () => {
+        expect(sheetToastInset({ ...measures, box: { ...sheet, left: 0, right: 150, width: 150 }, rowTop: null })).toBeNull();
+        expect(sheetToastInset({ ...measures, box: { ...sheet, left: 0, right: 200, width: 200 }, rowTop: null })).toBe(300);
+        expect(sheetToastInset({ ...measures, box: null, rowTop: null })).toBeNull();
+        expect(sheetToastInset({ ...measures, box: { ...sheet, height: 0, top: 800 }, rowTop: null })).toBeNull();
+    });
+
+    test('allows the few px that a fraction of a height leaves at the bottom of the window', () => {
+        expect(sheetToastInset({ ...measures, box: { ...sheet, bottom: 797 }, rowTop: null })).toBe(300);
+        expect(sheetToastInset({ ...measures, box: { ...sheet, bottom: 790 }, rowTop: null })).toBeNull();
     });
 });
 
@@ -507,7 +541,6 @@ describe('writing the placement', () => {
         const overlay = overlayWith('toast-bottom-center');
         updateToastPlacement();
         expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
-        expect(overlay.hasAttribute(IN_DIALOG_ATTRIBUTE)).toBe(false);
 
         visualViewport.height = 450;
         updateToastPlacement();
@@ -521,18 +554,6 @@ describe('writing the placement', () => {
         expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
     });
 
-    test('in a Popup, is marked as in a dialog and writes no window offset and no frame box', () => {
-        const dialog = document.createElement('dialog');
-        dialog.className = 'popup';
-        document.body.append(dialog);
-        const overlay = overlayWith('toast-top-left', dialog);
-        overlay.style.setProperty(BOTTOM_INSET_PROPERTY, '100px');
-        updateToastPlacement();
-        expect(overlay.hasAttribute(IN_DIALOG_ATTRIBUTE)).toBe(true);
-        expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
-        expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('');
-    });
-
     /** Gives an element the boxes that jsdom does not lay out: its drawn rectangle and its layout offsets. */
     function lay(element, { rect, offset = {}, client = {}, visible = true }) {
         element.getBoundingClientRect = () => ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height });
@@ -542,78 +563,195 @@ describe('writing the placement', () => {
         }
     }
 
-    function frameInHost() {
-        const host = document.createElement('dialog');
-        host.className = 'sb-dialog-host';
-        const frame = document.createElement('div');
-        frame.className = 'sb-dialog';
-        host.append(frame);
-        document.body.append(host);
-        lay(host, { rect: { left: 0, top: 0, width: 1000, height: 800 }, offset: { offsetHeight: 800 }, client: { clientHeight: 800, clientTop: 0 } });
-        return { host, frame };
-    }
+    describe('while a modal dialog is open', () => {
+        let dialog;
 
-    test('in a shared dialog host, writes the box of the frame inside the host', () => {
-        const { host, frame } = frameInHost();
-        lay(frame, { rect: { left: 250, top: 100, width: 500, height: 600 }, offset: { offsetLeft: 250, offsetWidth: 500, offsetTop: 100, offsetHeight: 600 } });
-        const overlay = overlayWith('toast-top-center', host);
-        updateToastPlacement();
-        expect(overlay.style.getPropertyValue(FRAME_LEFT_PROPERTY)).toBe('250px');
-        expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('500px');
-        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('100px');
-    });
+        /** A dialog in the top layer. Its dimming covers the page, so what answers at the composer is the dialog. */
+        function openDialog({ className = 'popup', rect = null } = {}) {
+            dialog = document.createElement('dialog');
+            dialog.className = className;
+            dialog.setAttribute('open', '');
+            dialog.setAttribute('data-sb-modal', '');
+            document.body.append(dialog);
+            if (rect) {
+                lay(dialog, { rect });
+            }
+            document.elementsFromPoint = jest.fn(() => [dialog]);
+            return dialog;
+        }
 
-    test('takes the left of the frame from its layout while it opens, when a scale makes the drawn box smaller and off to one side', () => {
-        const { host, frame } = frameInHost();
-        // Scaled to 0.8 about its centre: drawn from 350 to 650 wide, though it is laid out from 250 to 750.
-        lay(frame, { rect: { left: 300, top: 140, width: 400, height: 480 }, offset: { offsetLeft: 250, offsetWidth: 500, offsetTop: 100, offsetHeight: 600 } });
-        const overlay = overlayWith('toast-top-center', host);
-        updateToastPlacement();
-        expect(overlay.style.getPropertyValue(FRAME_LEFT_PROPERTY)).toBe('250px');
-        expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('500px');
-        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('100px');
-    });
+        function notificationsAt(positionClass) {
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = positionClass;
+            document.body.append(notifications);
+            return notifications;
+        }
 
-    test('keeps the toast above the action row of a frame, read at its layout size while the frame is scaled', () => {
-        const { host, frame } = frameInHost();
-        // The frame is laid out 600px high from y=100, and drawn at 0.8: 480px from y=160. Its responses are 60px high at its foot.
-        lay(frame, { rect: { left: 300, top: 160, width: 400, height: 480 }, offset: { offsetLeft: 250, offsetWidth: 500, offsetTop: 100, offsetHeight: 600 } });
-        const responses = document.createElement('div');
-        responses.className = 'sb-dialog__responses';
-        frame.append(responses);
-        // Laid out at y=640 to 700 inside the host, so drawn at 160 + (640 - 100) * 0.8 = 592.
-        lay(responses, { rect: { left: 300, top: 592, width: 400, height: 48 } });
-        const overlay = overlayWith('toast-top-center', host);
-        updateToastPlacement();
-        // The row starts 540px below the frame's top, so at y=640 in the host, 160px above the bottom of the host.
-        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('160px');
-    });
+        /** A toast of a given height in the overlay, which the room above a sheet is measured against. */
+        function toastIn(overlay, height = 46) {
+            const toast = document.createElement('div');
+            toast.className = 'toast sb-form-toast';
+            lay(toast, { rect: { left: 300, top: 0, width: 400, height } });
+            overlay.append(toast);
+            return toast;
+        }
 
-    test('in a Popup, keeps the toast above its action row, counting from the inside of its border', () => {
-        const popup = document.createElement('dialog');
-        popup.className = 'popup sb-dialog sb-dialog--alert';
-        document.body.append(popup);
-        lay(popup, { rect: { left: 300, top: 200, width: 400, height: 300 }, offset: { offsetHeight: 300 }, client: { clientHeight: 298, clientTop: 1 } });
-        const controls = document.createElement('div');
-        controls.className = 'popup-controls';
-        popup.append(controls);
-        lay(controls, { rect: { left: 301, top: 420, width: 398, height: 79 } });
-        const overlay = overlayWith('toast-top-left', popup);
-        updateToastPlacement();
-        // The row starts 220px below the popup's top edge, 219px below the inside of its border, and the inside is 298px high.
-        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('79px');
-        expect(overlay.style.getPropertyValue(FRAME_LEFT_PROPERTY)).toBe('');
-        expect(overlay.style.getPropertyValue(FRAME_WIDTH_PROPERTY)).toBe('');
-    });
+        let frames;
 
-    test('in a Popup with no action row at the bottom, keeps the toast at the dialog edge', () => {
-        const popup = document.createElement('dialog');
-        popup.className = 'popup';
-        document.body.append(popup);
-        lay(popup, { rect: { left: 300, top: 200, width: 400, height: 300 }, offset: { offsetHeight: 300 }, client: { clientHeight: 298, clientTop: 1 } });
-        const overlay = overlayWith('toast-top-left', popup);
-        updateToastPlacement();
-        expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).toBe('0px');
+        beforeEach(() => {
+            // A toast in the overlay starts the watch of the surfaces, and a frame that stays pending would keep the next test from asking for one.
+            frames = [];
+            jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+                frames.push(callback);
+                return frames.length;
+            });
+        });
+
+        afterEach(() => {
+            while (frames.length > 0) {
+                frames.shift()(0);
+            }
+            jest.restoreAllMocks();
+            delete document.elementsFromPoint;
+        });
+
+        test('a bottom toast in the dialog sits at its place in the window: at the window edge, since the dimming covers the composer', () => {
+            openDialog({ rect: { left: 300, top: 200, width: 400, height: 300 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+            expect(overlay.hasAttribute('data-sb-toast-in-dialog')).toBe(false);
+            expect(overlay.style.getPropertyValue('--sb-toast-frame-bottom')).toBe('');
+        });
+
+        test('a toast at a top position is placed as without a dialog, whatever the dialog is', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            const overlay = overlayWith('toast-top-left', dialog);
+            overlay.getBoundingClientRect = () => ({ top: 54, bottom: 124, height: 70, left: 0, right: 1000, width: 1000 });
+            const notifications = notificationsAt('toast-top-left');
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('70px');
+        });
+
+        test('a dialog that does not reach the bottom of the window, such as a centred one, is not a sheet', () => {
+            openDialog({ rect: { left: 300, top: 300, width: 400, height: 260 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+
+        test('a bottom sheet with room above it carries the toast above its top edge', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+        });
+
+        test('a tall sheet, which leaves no room above it, carries the toast above its bottom action row', () => {
+            openDialog({ className: 'sb-dialog-host', rect: { left: 0, top: 0, width: 1000, height: 800 } });
+            const frame = document.createElement('div');
+            frame.className = 'sb-dialog';
+            dialog.append(frame);
+            lay(frame, { rect: { left: 0, top: 20, width: 1000, height: 780 } });
+            const responses = document.createElement('div');
+            responses.className = 'sb-dialog__responses';
+            frame.append(responses);
+            lay(responses, { rect: { left: 0, top: 700, width: 1000, height: 100 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+        });
+
+        test('a tall sheet with no action row carries the toast above its bottom edge', () => {
+            openDialog({ rect: { left: 0, top: 20, width: 1000, height: 780 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+
+        test('the room that a sheet must leave is the height of the tallest toast with its margins', () => {
+            openDialog({ rect: { left: 0, top: 100, width: 1000, height: 700 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            const toast = toastIn(overlay, 60);
+            toast.style.marginTop = '12px';
+            toast.style.marginBottom = '24px';
+            updateToastPlacement();
+            // 60px and its 36px of margins fit between the top at 0 and the sheet at 100.
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('700px');
+            lay(toast, { rect: { left: 300, top: 0, width: 400, height: 70 } });
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+
+        test('the sheet is read at its layout size while it moves in, so the toast does not follow the spring', () => {
+            openDialog({ rect: { left: 0, top: 640, width: 1000, height: 300 } });
+            // Laid out at 500 and drawn 140px lower while it slides up: its layout offsets are what count.
+            Object.defineProperty(dialog, 'offsetTop', { configurable: true, value: 500 });
+            Object.defineProperty(dialog, 'offsetLeft', { configurable: true, value: 0 });
+            Object.defineProperty(dialog, 'offsetHeight', { configurable: true, value: 300 });
+            Object.defineProperty(dialog, 'offsetWidth', { configurable: true, value: 1000 });
+            dialog.style.transform = 'translateY(140px)';
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+        });
+
+        test('a bottom notification with no toast at its place keeps the window edge under the sheet, as before', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+
+        test('a notification beyond a toast at one position starts above the place of the toast', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            overlay.getBoundingClientRect = () => ({ top: 300, bottom: 500, height: 60, left: 0, right: 1000, width: 1000 });
+            toastIn(overlay);
+            const notifications = notificationsAt('toast-bottom-center');
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+            expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('360px');
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
+        });
+
+        test('the keyboard lifts the toast above a sheet when it reaches higher', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            visualViewport.height = 150;
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('650px');
+        });
+
+        test('a toast is above the composer again when the dialog has gone', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            const overlay = overlayWith('toast-bottom-center', dialog);
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('300px');
+            document.body.append(overlay);
+            dialog.remove();
+            document.elementsFromPoint = jest.fn(() => [composer]);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('100px');
+        });
+
+        test('a dialog that is closing is no sheet any more', () => {
+            openDialog({ rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            dialog.setAttribute('closing', '');
+            const overlay = overlayWith('toast-bottom-center');
+            toastIn(overlay);
+            updateToastPlacement();
+            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
     });
 
     test('puts the notifications beyond the toasts when both sit at the same position, and only then', () => {
@@ -705,19 +843,6 @@ describe('writing the placement', () => {
         });
     });
 
-    test('puts no notification beyond a toast that sits in a dialog, where the two are not at one place', () => {
-        const dialog = document.createElement('dialog');
-        dialog.className = 'popup';
-        document.body.append(dialog);
-        const overlay = overlayWith('toast-bottom-center', dialog);
-        overlay.getBoundingClientRect = () => ({ top: 640, bottom: 700, height: 60, left: 0, right: 1000, width: 1000 });
-        const notifications = document.createElement('div');
-        notifications.id = 'toast-container';
-        notifications.className = 'toast-bottom-center';
-        document.body.append(notifications);
-        updateToastPlacement();
-        expect(notifications.style.getPropertyValue(STACK_OFFSET_PROPERTY)).toBe('');
-    });
     describe('while the composer is covered', () => {
         let elementsFromPoint;
 
@@ -804,20 +929,6 @@ describe('writing the placement', () => {
             updateToastPlacement();
             expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
             expect(elementsFromPoint).toHaveBeenCalled();
-        });
-
-        test('a toast in a modal dialog is placed by the dialog, with no window offset, as before', () => {
-            const dialog = document.createElement('dialog');
-            dialog.className = 'popup';
-            dialog.setAttribute('open', '');
-            dialog.setAttribute('data-sb-modal', '');
-            document.body.append(dialog);
-            const overlay = overlayWith('toast-bottom-center', dialog);
-            coveredBy(dialog);
-            updateToastPlacement();
-            expect(overlay.hasAttribute(IN_DIALOG_ATTRIBUTE)).toBe(true);
-            expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('');
-            expect(overlay.style.getPropertyValue(FRAME_BOTTOM_PROPERTY)).not.toBe('');
         });
 
         test('a dialog that closes leaves the composer to the page again', () => {
@@ -1058,37 +1169,28 @@ describe('writing the placement', () => {
             expect(overlay.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
         });
 
-        test('are written for a bottom position that is not in a dialog, like the shift', () => {
+        test('are written for a bottom position only, like the shift', () => {
             const top = overlayWith('toast-top-left');
             updateToastPlacement();
             expect(top.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
-            top.remove();
-            // The overlay is placed in the window first, and a dialog that opens takes it in, so what it wrote must go.
-            const moved = overlayWith('toast-bottom-left');
-            updateToastPlacement();
-            expect(moved.style.getPropertyValue(BAR_START_PROPERTY)).toBe('280px');
-            const dialog = document.createElement('dialog');
-            dialog.className = 'popup';
-            document.body.append(dialog);
-            dialog.append(moved);
-            updateToastPlacement();
-            expect(moved.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
-            expect(moved.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
-            expect(moved.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+            expect(top.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
+            expect(top.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
         });
 
-        test('is written only for a bottom position that is not in a dialog', () => {
-            const top = overlayWith('toast-top-center');
+        test('are nothing under a modal dialog, whose dimming covers the composer, so the message is where the window puts it', () => {
+            const overlay = overlayWith('toast-bottom-left');
             updateToastPlacement();
-            expect(top.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
-            top.remove();
-
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('280px');
             const dialog = document.createElement('dialog');
-            dialog.className = 'popup';
+            dialog.setAttribute('open', '');
+            dialog.setAttribute('data-sb-modal', '');
             document.body.append(dialog);
-            const inDialog = overlayWith('toast-bottom-center', dialog);
+            dialog.append(overlay);
+            elementsFromPoint.mockImplementation(() => [dialog]);
             updateToastPlacement();
-            expect(inDialog.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
+            expect(overlay.style.getPropertyValue(BAR_START_PROPERTY)).toBe('');
+            expect(overlay.style.getPropertyValue(BAR_END_PROPERTY)).toBe('');
+            expect(overlay.style.getPropertyValue(BAR_SHIFT_PROPERTY)).toBe('');
         });
     });
 
@@ -1272,6 +1374,29 @@ describe('writing the placement', () => {
             runFrames();
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
             delete document.getAnimations;
+        });
+
+        test('follows a notification under a sheet when only the notification moves, because the sheet keeps the place of the toasts', async () => {
+            const dialog = document.createElement('dialog');
+            dialog.setAttribute('open', '');
+            dialog.setAttribute('data-sb-modal', '');
+            document.body.append(dialog);
+            lay(dialog, { rect: { left: 0, top: 500, width: 1000, height: 300 } });
+            hit = [dialog];
+            const notifications = document.createElement('div');
+            notifications.id = 'toast-container';
+            notifications.className = 'toast-bottom-center';
+            notifications.append(document.createElement('div'));
+            dialog.append(notifications);
+            updateToastPlacement();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+
+            // The keyboard reaches 200px up, below the sheet's 300px, so the toasts stay where they are and the notification lifts.
+            visualViewport.height = 600;
+            document.body.className = 'keyboard';
+            await settle();
+            runFrames();
+            expect(notifications.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('200px');
         });
 
         test('does not ease under reduced motion', () => {

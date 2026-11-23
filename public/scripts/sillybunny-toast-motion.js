@@ -32,7 +32,7 @@ import {
     markButtons,
 } from './sillybunny-toast-form.js';
 import { bindCardClick, playNotificationEnter, playNotificationLeave, shiftOthersAround, stopNotificationMotion, watchButtons } from './sillybunny-toast-notification.js';
-import { IN_DIALOG_ATTRIBUTE, edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
+import { edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
 
 export const TOAST_SHOW_METHOD = 'sbToastIn';
 export const TOAST_HIDE_METHOD = 'sbToastOut';
@@ -160,7 +160,7 @@ function queueOf(element) {
 /** @returns {'top'|'bottom'} The edge that the toast's container sits at. */
 function edgeOfToast(element) {
     const container = element.parentElement;
-    return edgeOf(container?.className ?? '', container?.hasAttribute(IN_DIALOG_ATTRIBUTE) === true);
+    return edgeOf(container?.className ?? '');
 }
 
 /**
@@ -1224,7 +1224,14 @@ export function placeToastContainers() {
         removeOverlayIfEmpty();
         removeEmptyNotificationContainer();
     }
-    updateToastPlacement();
+    // A container that moved to another parent has no computed style until it is resolved, so it would have nothing to ease
+    // from: the place that the dialog gives it is reached by a glide only if the old one is resolved first.
+    for (const container of [getOverlay(), document.getElementById(NOTIFICATION_CONTAINER_ID)]) {
+        if (container) {
+            void getComputedStyle(container).bottom;
+        }
+    }
+    updateToastPlacement({ glide: true });
     observeToastPlacement();
 }
 

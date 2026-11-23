@@ -6978,8 +6978,11 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     }
 }
 
-/* The toast overlay (AdwToastOverlay) holds the toast form. It is a strip across the window (or across a dialog), flush
-   with the edge that the toasts sit at, so that its own edge is the edge that clips a toast while it slides in. The
+/* The toast overlay (AdwToastOverlay) holds the toast form. It is a strip across the window, flush with the edge that the
+   toasts sit at, so that its own edge is the edge that clips a toast while it slides in. While a modal dialog is open the
+   strip is a child of the dialog, which draws it above the dialog and keeps it from being inert, and it stays fixed to the
+   window like any other strip, because a dialog at rest has no transform or filter that would make it the containing
+   block. A Popup is the containing block while it opens and closes, and hides the strip then. The
    toast carries the margins (libadwaita's toast margins) and is the only part that takes pointer events. toastr's
    position classes only choose the edge and the side. A width, a minimum or maximum width, a position and white-space
    are never important here, so the measure rule below keeps winning. */
@@ -7004,17 +7007,6 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
 
 #sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
     bottom: var(--sb-toast-bottom-inset, 0px);
-    clip-path: inset(-100vmax -100vmax 0);
-}
-
-/* In a dialog the toast is at the bottom centre of the dialog's box, whatever the position setting says. A Popup is
-   the overlay's containing block, which a dialog's transform or backdrop filter would otherwise move away from the
-   window. A frame of the shared dialog fills the window, so the script writes the box of the frame inside it. */
-dialog > #sb-toast-overlay[data-sb-toast-in-dialog] {
-    position: absolute;
-    inset: auto auto var(--sb-toast-frame-bottom, 0px) var(--sb-toast-frame-left, 0px);
-    width: var(--sb-toast-frame-width, 100%);
-    margin-top: 0;
     clip-path: inset(-100vmax -100vmax 0);
 }
 
@@ -7082,8 +7074,7 @@ body #sb-toast-overlay .toast-message :is(a, label) {
     margin-top: 24px;
 }
 
-#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast,
-dialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast {
+#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast {
     margin-top: 12px;
     margin-bottom: 24px;
 }
@@ -7096,11 +7087,6 @@ dialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast {
 #sb-toast-overlay:is(.toast-top-right, .toast-bottom-right) > .sb-form-toast {
     margin-left: auto;
     margin-right: 12px;
-}
-
-dialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast {
-    margin-left: auto;
-    margin-right: auto;
 }
 
 /* Every part has 6px at its sides, and 6px lies between parts (the gap). */
@@ -7559,17 +7545,17 @@ body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(but
    None goes closer than 12px to a side of the window, which is the allowance of its width. The percentage in `translate` is
    the width of the element itself, so the room is what is left of the window around it. A toast takes the window from its
    strip, as its width does, and a card from the viewport, which its strip spans. */
-#sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast {
+#sb-toast-overlay.toast-bottom-center > .sb-form-toast {
     --sb-toast-room: max(0px, calc((100cqw - 24px - 100%) / 2));
     translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room));
 }
 
-#sb-toast-overlay.toast-bottom-left:not([data-sb-toast-in-dialog]) > .sb-form-toast {
+#sb-toast-overlay.toast-bottom-left > .sb-form-toast {
     --sb-toast-room: max(0px, calc(100cqw - 24px - 100%));
     translate: clamp(0px, var(--sb-toast-bar-start, 0px), var(--sb-toast-room));
 }
 
-#sb-toast-overlay.toast-bottom-right:not([data-sb-toast-in-dialog]) > .sb-form-toast {
+#sb-toast-overlay.toast-bottom-right > .sb-form-toast {
     --sb-toast-room: max(0px, calc(100cqw - 24px - 100%));
     translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);
 }

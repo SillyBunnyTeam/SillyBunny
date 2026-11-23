@@ -127,7 +127,7 @@ describe('the toast layer', () => {
         expect(box).toContain('padding-block: 6px');
         expect(box).toContain('padding-inline: 12px 6px');
         expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) > .sb-form-toast')).toBe('margin-top: 24px;');
-        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast,\ndialog > #sb-toast-overlay[data-sb-toast-in-dialog] > .sb-form-toast'))
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) > .sb-form-toast'))
             .toBe('margin-top: 12px; margin-bottom: 24px;');
         expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast > :not(.toast-progress)')).toContain('margin-inline: 6px');
     });
@@ -279,12 +279,10 @@ describe('the toast overlay', () => {
         expect(top).toContain('margin-top: var(--sb-topbar-layout-offset, var(--topBarBlockSize))');
     });
 
-    test('in a dialog it is at the bottom of the dialog\'s box, as the containing block that a dialog keeps for it', () => {
-        const rule = ruleOf(themeCss, 'dialog > #sb-toast-overlay[data-sb-toast-in-dialog]');
-        expect(rule).toContain('position: absolute');
-        expect(rule).toContain('inset: auto auto var(--sb-toast-frame-bottom, 0px) var(--sb-toast-frame-left, 0px)');
-        expect(rule).toContain('width: var(--sb-toast-frame-width, 100%)');
-        expect(rule).toContain('clip-path: inset(-100vmax -100vmax 0)');
+    test('in a dialog it is the same strip, fixed to the window: no rule of its own places it in the dialog or reads a frame box', () => {
+        expect(themeCss).not.toContain('data-sb-toast-in-dialog');
+        expect(themeCss).not.toContain('--sb-toast-frame-');
+        expect(ruleOf(themeCss, '#sb-toast-overlay')).toContain('position: fixed');
     });
 
     test('an in-app notification at the position of the toasts sits beyond them by the offset that the script writes, and above the composer and keyboard by the inset otherwise', () => {
@@ -330,7 +328,7 @@ describe('the toast overlay', () => {
 
 describe('the middle that a bottom message is centred on', () => {
     test('a toast and a card at the bottom centre follow the shift that the script writes, and stay 12px inside the window', () => {
-        const toast = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast');
+        const toast = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-center > .sb-form-toast');
         expect(toast).toContain('--sb-toast-room: max(0px, calc((100cqw - 24px - 100%) / 2))');
         expect(toast).toContain('translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-shift, 0px), var(--sb-toast-room))');
         const card = ruleOf(themeCss, 'body #toast-container[class].toast-bottom-center > .sb-form-notification');
@@ -343,9 +341,6 @@ describe('the middle that a bottom message is centred on', () => {
         expect(ruleOf(themeCss, NOTIFICATION)).toContain('max-width: calc(100% - 24px)');
     });
 
-    test('a toast in a dialog is not shifted', () => {
-        expect(themeCss).toContain('#sb-toast-overlay.toast-bottom-center:not([data-sb-toast-in-dialog]) > .sb-form-toast {');
-    });
 });
 
 describe('the edge that a side position aligns to', () => {
@@ -353,10 +348,10 @@ describe('the edge that a side position aligns to', () => {
     const CLAMP_RIGHT = 'translate: clamp(calc(-1 * var(--sb-toast-room)), var(--sb-toast-bar-end, 0px), 0px);';
 
     test('a toast at the bottom left follows the start of the bar and one at the bottom right its end, and neither leaves the window', () => {
-        const left = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-left:not([data-sb-toast-in-dialog]) > .sb-form-toast');
+        const left = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-left > .sb-form-toast');
         expect(left).toContain('--sb-toast-room: max(0px, calc(100cqw - 24px - 100%))');
         expect(left).toContain(CLAMP_LEFT);
-        const right = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-right:not([data-sb-toast-in-dialog]) > .sb-form-toast');
+        const right = ruleOf(themeCss, '#sb-toast-overlay.toast-bottom-right > .sb-form-toast');
         expect(right).toContain('--sb-toast-room: max(0px, calc(100cqw - 24px - 100%))');
         expect(right).toContain(CLAMP_RIGHT);
     });

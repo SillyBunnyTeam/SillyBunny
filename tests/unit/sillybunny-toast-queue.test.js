@@ -1484,7 +1484,7 @@ describe('the motion of a toast', () => {
         expect(animations[0].keyframes).toEqual([{ transform: 'translateY(-76px)' }, { transform: 'none' }]);
     });
 
-    test('a toast in a dialog slides up from the dialog\'s bottom edge, whatever the position setting says', () => {
+    test('a toast in a dialog comes out of the edge that its position puts it at, as without a dialog', () => {
         toastQueue.setToastPosition('toast-top-left');
         const host = document.createElement('dialog');
         host.setAttribute('data-sb-modal', '');
@@ -1492,8 +1492,8 @@ describe('the motion of a toast', () => {
         host.showModal();
         openHosts.push(host);
         toastr.info('A toast');
-        expect(document.getElementById('sb-toast-overlay').hasAttribute('data-sb-toast-in-dialog')).toBe(true);
-        expect(animations[0].keyframes).toEqual([{ transform: 'translateY(76px)' }, { transform: 'none' }]);
+        expect(document.getElementById('sb-toast-overlay').parentElement).toBe(host);
+        expect(animations[0].keyframes).toEqual([{ transform: 'translateY(-76px)' }, { transform: 'none' }]);
     });
 
     test('a toast leaves with a fade and a scale to 0.95 from its centre over 300ms', async () => {
