@@ -156,4 +156,61 @@ describePosix('Android app launcher without prerequisite installation', () => {
         expect(calls).toContain(`${runtime === 'node' ? 'npm' : 'bun'}: run init\n`);
         expect(calls).toContain(`${runtime}: ${runtime === 'node' ? '--no-warnings ' : ''}server.js --port 54321\n`);
     });
+
+    test('warm Android node boot skips redundant dependency-state and init spawns until HEAD changes', () => {
+        const repoDir = mkdtempSync(path.join(tmpdir(), 'sb-android-fastboot-'));
+        try {
+            mkdirSync(path.join(repoDir, 'scripts'));
+            mkdirSync(path.join(repoDir, 'default'));
+            mkdirSync(path.join(repoDir, 'node_modules'));
+            mkdirSync(path.join(repoDir, '.git', 'refs', 'heads'), { recursive: true });
+            writeFileSync(path.join(repoDir, 'start.sh'), launcherSource);
+            writeFileSync(path.join(repoDir, 'package.json'), '{"name":"sillybunny"}\n');
+            writeFileSync(path.join(repoDir, 'package-lock.json'), '{}\n');
+            writeFileSync(path.join(repoDir, 'default', 'config.yaml'), 'port: 8000\n');
+            writeFileSync(path.join(repoDir, 'config.yaml'), 'port: 8000\n');
+            writeFileSync(path.join(repoDir, 'node_modules', '.sillybunny-dependencies.json'), '{"version":1}\n');
+            writeFileSync(path.join(repoDir, '.git', 'HEAD'), 'ref: refs/heads/release\n');
+            writeFileSync(path.join(repoDir, '.git', 'refs', 'heads', 'release'), '1111111111111111111111111111111111111111\n');
+
+            const runBoot = (label) => {
+                const callsFile = path.join(repoDir, `calls-${label}`);
+                const result = spawnSync('bash', [path.join(repoDir, 'start.sh'), '--skip-self-update', '--port', '54321'], {
+                    cwd: repoDir,
+                    env: launcherEnv({
+                        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                        HOME: homeDir,
+                        SILLYBUNNY_ANDROID_APP: '1',
+                        SILLYBUNNY_ANDROID_APP_VERSION_CODE: '1',
+                        TEST_CALLS: callsFile,
+                    }),
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                });
+                return { result, calls: readFileSync(callsFile, 'utf8') };
+            };
+
+            // First boot has no fast-boot stamp yet, so it runs dependency-state + npm run init and writes the stamp.
+            const first = runBoot('first');
+            expect(first.result.status).toBe(0);
+            expect(first.calls).toContain('dependency-state.js check node-production');
+            expect(first.calls).toContain('npm: run init\n');
+
+            // Second boot matches the stamp and launches server.js directly.
+            const second = runBoot('second');
+            expect(second.result.status).toBe(0);
+            expect(second.calls).not.toContain('dependency-state.js');
+            expect(second.calls).not.toContain('npm: run init');
+            expect(second.calls).toContain('node: --no-warnings server.js --port 54321\n');
+
+            // Advancing HEAD invalidates the stamp so dependency checks and init run again.
+            writeFileSync(path.join(repoDir, '.git', 'refs', 'heads', 'release'), '2222222222222222222222222222222222222222\n');
+            const third = runBoot('third');
+            expect(third.result.status).toBe(0);
+            expect(third.calls).toContain('dependency-state.js check node-production');
+            expect(third.calls).toContain('npm: run init\n');
+        } finally {
+            rmSync(repoDir, { recursive: true, force: true });
+        }
+    });
 });

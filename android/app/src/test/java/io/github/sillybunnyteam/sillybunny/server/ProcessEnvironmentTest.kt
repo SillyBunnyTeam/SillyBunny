@@ -195,6 +195,46 @@ class ProcessEnvironmentTest {
     }
 
     @Test
+    fun recommendedHeapLimitScalesWithDeviceMemory() {
+        val gib = 1024L * 1024L * 1024L
+        assertEquals(384, ProcessEnvironment.recommendedMaxOldSpaceSizeMb(0L))
+        assertEquals(256, ProcessEnvironment.recommendedMaxOldSpaceSizeMb(2L * gib))
+        assertEquals(256, ProcessEnvironment.recommendedMaxOldSpaceSizeMb(3L * gib))
+        assertEquals(384, ProcessEnvironment.recommendedMaxOldSpaceSizeMb(4L * gib))
+        assertEquals(512, ProcessEnvironment.recommendedMaxOldSpaceSizeMb(6L * gib))
+        assertEquals(768, ProcessEnvironment.recommendedMaxOldSpaceSizeMb(8L * gib))
+    }
+
+    @Test
+    fun heapLimitMergesWithFatalErrorReportAndIgnoresInheritedNodeOptions() {
+        val reports = File("$files/crash/reports")
+        val server = ProcessEnvironment.build(
+            paths,
+            frameworkRoots + hostile,
+            4021,
+            autoUpdate = true,
+            launchToken = token,
+            reportDirectory = reports,
+            maxOldSpaceSizeMb = 384,
+        )
+        val setup = ProcessEnvironment.build(
+            paths,
+            frameworkRoots + hostile,
+            4021,
+            autoUpdate = true,
+            launchToken = null,
+            maxOldSpaceSizeMb = 384,
+        )
+
+        assertEquals(
+            "--max-old-space-size=384 --report-on-fatalerror --report-compact --report-exclude-env --report-exclude-network " +
+                "--report-directory=\"$files/crash/reports\"",
+            server.getValue(ProcessEnvironment.NODE_OPTIONS),
+        )
+        assertEquals("--max-old-space-size=384", setup.getValue(ProcessEnvironment.NODE_OPTIONS))
+    }
+
+    @Test
     fun anInvalidTokenIsRejectedWithoutEchoingIt() {
         val bad = "ABCDEF".repeat(11)
         val error = assertThrows(IllegalArgumentException::class.java) {

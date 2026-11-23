@@ -41,8 +41,8 @@ internal class ProcessEnvironment(
          * Builds the environment as a pure function of its inputs. [launchToken] is set only for the
          * server; setup scripts run without one. [autoUpdate] maps to `SILLYBUNNY_AUTO_UPDATE`, which
          * `start.sh` reads with `is_truthy` (`1`, `true`, `yes`, `on`, any case) and treats as on when
-         * unset, so "off" must be an explicit `0`. [reportDirectory] adds [reportOptions] to `NODE_OPTIONS`; only
-         * the server gets it.
+         * unset, so "off" must be an explicit `0`. [maxOldSpaceSizeMb] bounds V8 old-space growth on
+         * mobile RAM budgets; [reportDirectory] adds [reportOptions] to `NODE_OPTIONS` for the server.
          */
         fun build(
             paths: RuntimePaths,
@@ -51,6 +51,7 @@ internal class ProcessEnvironment(
             autoUpdate: Boolean,
             launchToken: String?,
             reportDirectory: File? = null,
+            maxOldSpaceSizeMb: Int? = null,
         ): ProcessEnvironment {
             val environment = LinkedHashMap<String, String>()
             for (key in FRAMEWORK_ROOTS) {
@@ -89,11 +90,29 @@ internal class ProcessEnvironment(
                 require(LaunchTokens.isValid(launchToken)) { "token" }
                 environment[LAUNCH_TOKEN] = launchToken
             }
+            if (maxOldSpaceSizeMb != null) {
+                require(maxOldSpaceSizeMb > 0) { "maxOldSpaceSizeMb" }
+                environment[NODE_OPTIONS] = mergeNodeOptions(environment[NODE_OPTIONS], heapOptions(maxOldSpaceSizeMb))
+            }
             if (reportDirectory != null) {
                 environment[NODE_OPTIONS] = mergeNodeOptions(environment[NODE_OPTIONS], reportOptions(reportDirectory))
             }
             return ProcessEnvironment(environment)
         }
+
+        /**
+         * Scales V8's old-space limit to device RAM so webpack and the Node server trigger major GC
+         * before Android's low-memory killer terminates the WebView or server process.
+         */
+        fun recommendedMaxOldSpaceSizeMb(totalRamBytes: Long): Int = when {
+            totalRamBytes <= 0L -> 384
+            totalRamBytes <= 3L * 1024 * 1024 * 1024 -> 256
+            totalRamBytes <= (9L * 1024 * 1024 * 1024) / 2 -> 384
+            totalRamBytes <= (13L * 1024 * 1024 * 1024) / 2 -> 512
+            else -> 768
+        }
+
+        fun heapOptions(maxOldSpaceSizeMb: Int): List<String> = listOf("--max-old-space-size=$maxOldSpaceSizeMb")
 
         /**
          * Node's diagnostic report on a fatal error, written into [directory]. `--report-exclude-env` keeps the launch

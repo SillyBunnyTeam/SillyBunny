@@ -260,13 +260,6 @@ if [[ "$runtime_kind" == node ]]; then
     else
         install_args+=(--omit=dev)
     fi
-
-    if command -v git >/dev/null 2>&1 \
-        && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-        && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 \
-        && git diff --quiet -- package-lock.json; then
-        restore_package_lock_after_install=1
-    fi
 else
     install_args=(install --frozen-lockfile --no-progress --no-summary)
     if has_existing_dev_dependencies; then
@@ -277,13 +270,6 @@ else
 
     if is_termux; then
         install_args+=(--backend=copyfile)
-    fi
-
-    if command -v git >/dev/null 2>&1 \
-        && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-        && git ls-files --error-unmatch bun.lock >/dev/null 2>&1 \
-        && git diff --quiet -- bun.lock; then
-        restore_bun_lock_after_install=1
     fi
 fi
 
@@ -309,37 +295,136 @@ run_package_install() {
     "$PACKAGE_MANAGER_CMD" "${fallback_args[@]}"
 }
 
-if ! "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1; then
-    if [[ "$dependency_profile" == *development ]]; then
-        if [[ "$runtime_kind" == node ]]; then
-            echo "Installing packages via npm including development tooling (Node.js mode)..."
-        else
-            echo "Installing Bun packages including development tooling..."
+android_git_head() {
+    local head_file="$SCRIPT_DIR/.git/HEAD"
+    local line ref_path
+    [[ -f "$head_file" ]] || return 1
+    IFS= read -r line < "$head_file" || return 1
+    if [[ "$line" == ref:\ * ]]; then
+        ref_path="$SCRIPT_DIR/.git/${line#ref: }"
+        if [[ -f "$ref_path" ]]; then
+            IFS= read -r line < "$ref_path" || return 1
+            printf '%s' "$line"
+            return 0
         fi
-    elif [[ "$runtime_kind" == node ]]; then
-        echo "Installing packages via npm (Node.js mode)..."
-    else
-        echo "Installing Bun packages..."
+        git rev-parse HEAD 2>/dev/null && return 0
+        return 1
     fi
+    printf '%s' "$line"
+}
 
-    run_package_install
-
-    if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
-        echo "Restoring tracked package-lock.json after npm metadata rewrite..."
-        git restore -- package-lock.json
+android_file_stamp() {
+    local target="$1"
+    if [[ ! -f "$target" ]]; then
+        printf 'missing'
+        return
     fi
+    stat -c '%s:%Y' "$target" 2>/dev/null || stat -f '%z:%m' "$target" 2>/dev/null || printf 'present'
+}
 
-    if (( restore_bun_lock_after_install )) && ! git diff --quiet -- bun.lock; then
-        echo "Restoring tracked bun.lock after Bun lockfile refresh..."
-        git restore -- bun.lock
+android_boot_stamp_key() {
+    local head_sha
+    head_sha="$(android_git_head)" || return 1
+    [[ -n "$head_sha" ]] || return 1
+    printf 'v1|%s|%s|%s|%s|%s|%s' \
+        "$dependency_profile" \
+        "$head_sha" \
+        "${SILLYBUNNY_ANDROID_APP_VERSION_CODE:-}" \
+        "$(android_file_stamp "$SCRIPT_DIR/package.json")" \
+        "$(android_file_stamp "$SCRIPT_DIR/package-lock.json")" \
+        "$(android_file_stamp "$SCRIPT_DIR/default/config.yaml")"
+}
+
+android_fast_boot_valid() {
+    local stamp_file="$SCRIPT_DIR/node_modules/.sillybunny-android-boot-stamp"
+    local expected actual
+    is_android_app || return 1
+    [[ "$runtime_kind" == node ]] || return 1
+    [[ -d "$SCRIPT_DIR/node_modules" && -f "$SCRIPT_DIR/node_modules/.sillybunny-dependencies.json" ]] || return 1
+    [[ -f "$SCRIPT_DIR/config.yaml" && ! -f "$SCRIPT_DIR/config.conf" ]] || return 1
+    [[ -f "$stamp_file" ]] || return 1
+    expected="$(android_boot_stamp_key)" || return 1
+    IFS= read -r actual < "$stamp_file" || return 1
+    [[ "$actual" == "$expected" ]]
+}
+
+write_android_boot_stamp() {
+    local stamp_file="$SCRIPT_DIR/node_modules/.sillybunny-android-boot-stamp"
+    local stamp_tmp="$stamp_file.tmp.$$"
+    local value
+    is_android_app || return 0
+    [[ "$runtime_kind" == node ]] || return 0
+    [[ -d "$SCRIPT_DIR/node_modules" && -f "$SCRIPT_DIR/config.yaml" && ! -f "$SCRIPT_DIR/config.conf" ]] || return 0
+    value="$(android_boot_stamp_key)" || return 0
+    if printf '%s\n' "$value" > "$stamp_tmp" 2>/dev/null; then
+        mv -f "$stamp_tmp" "$stamp_file" 2>/dev/null || rm -f "$stamp_tmp" 2>/dev/null || true
     fi
+}
 
-    "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
-else
+cleanup_android_npm_cache() {
+    is_android_app || return 0
+    [[ "$runtime_kind" == node ]] || return 0
+    if [[ -n "${HOME:-}" && -d "$HOME/.npm" ]]; then
+        rm -rf "$HOME/.npm" || true
+    fi
+    if [[ -n "${TMPDIR:-}" && -d "$TMPDIR/npm-cache" ]]; then
+        rm -rf "$TMPDIR/npm-cache" || true
+    fi
+}
+
+if android_fast_boot_valid; then
     echo "Dependencies are up to date."
-fi
+else
+    if ! "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1; then
+        if [[ "$dependency_profile" == *development ]]; then
+            if [[ "$runtime_kind" == node ]]; then
+                echo "Installing packages via npm including development tooling (Node.js mode)..."
+            else
+                echo "Installing Bun packages including development tooling..."
+            fi
+        elif [[ "$runtime_kind" == node ]]; then
+            echo "Installing packages via npm (Node.js mode)..."
+        else
+            echo "Installing Bun packages..."
+        fi
 
-"$PACKAGE_MANAGER_CMD" run init
+        if [[ "$runtime_kind" == node ]]; then
+            if command -v git >/dev/null 2>&1 \
+                && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+                && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 \
+                && git diff --quiet -- package-lock.json; then
+                restore_package_lock_after_install=1
+            fi
+        else
+            if command -v git >/dev/null 2>&1 \
+                && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+                && git ls-files --error-unmatch bun.lock >/dev/null 2>&1 \
+                && git diff --quiet -- bun.lock; then
+                restore_bun_lock_after_install=1
+            fi
+        fi
+
+        run_package_install
+        cleanup_android_npm_cache
+
+        if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
+            echo "Restoring tracked package-lock.json after npm metadata rewrite..."
+            git restore -- package-lock.json
+        fi
+
+        if (( restore_bun_lock_after_install )) && ! git diff --quiet -- bun.lock; then
+            echo "Restoring tracked bun.lock after Bun lockfile refresh..."
+            git restore -- bun.lock
+        fi
+
+        "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
+    else
+        echo "Dependencies are up to date."
+    fi
+
+    "$PACKAGE_MANAGER_CMD" run init
+    write_android_boot_stamp
+fi
 
 if is_truthy "${SILLYBUNNY_BUN_SMOL:-}" && [[ "$runtime_kind" == node ]]; then
     echo "[SillyBunny] SILLYBUNNY_BUN_SMOL is set, but this host resolved to Node.js — --smol is a Bun flag and will be ignored."

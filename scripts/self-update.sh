@@ -150,7 +150,9 @@ if [[ -z "$upstream_ref" ]]; then
     finish_early "branch '$current_branch' does not have an upstream configured."
 fi
 
-restore_lone_bun_lock_change
+if [[ "${SILLYBUNNY_ANDROID_APP:-}" != 1 ]]; then
+    restore_lone_bun_lock_change
+fi
 
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
     finish_early "the working tree is not clean. Commit, stash, or remove local changes first."
@@ -159,7 +161,12 @@ fi
 upstream_remote="${upstream_ref%%/*}"
 
 echo "Checking for updates on $upstream_ref..."
-if ! git fetch --quiet "$upstream_remote"; then
+if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]] && (( OPTIONAL )); then
+    # Bound stalled mobile connections and skip fetching release tags during automatic Android cold-start checks.
+    if ! git -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=5 fetch --quiet --no-tags "$upstream_remote"; then
+        finish_early "could not fetch from '$upstream_remote'."
+    fi
+elif ! git fetch --quiet "$upstream_remote"; then
     finish_early "could not fetch from '$upstream_remote'."
 fi
 

@@ -1,5 +1,6 @@
 package io.github.sillybunnyteam.sillybunny.server
 
+import android.app.ActivityManager
 import android.app.Service
 import android.content.Context
 import android.content.pm.PackageManager
@@ -64,6 +65,7 @@ internal data class ServerDependencies(
     val serviceStarter: ServiceStarter = PLATFORM_STARTER,
     val nativeLog: NativeLog = LogcatNativeLog(),
     val crashDir: File = File(logsDir.parentFile ?: logsDir, CrashRecords.DIRECTORY),
+    val nodeMaxOldSpaceSizeMb: () -> Int? = { null },
 ) {
     companion object {
         val PLATFORM_STARTER = ServiceStarter { context, action ->
@@ -75,6 +77,7 @@ internal data class ServerDependencies(
             // logsDir does not depend on nativeLibraryDir, which every launch resolves afresh.
             val stable = RuntimePaths(app.filesDir, app.cacheDir, File(app.applicationInfo.nativeLibraryDir.orEmpty()))
             val controlDir = File(stable.cacheDir, "server-process")
+            val maxOldSpaceSizeMb = recommendedHeapLimitMb(app)
             return ServerDependencies(
                 // A START_STICKY recreation can launch without MainActivity, so this ensures the layout too
                 // (plan §2.4 step 1).
@@ -91,7 +94,15 @@ internal data class ServerDependencies(
                 autoUpdate = { AppSettings(app).autoUpdateGit },
                 lastExitUserRequested = { ExitHistory.lastExitUserRequested(app) },
                 crashDir = CrashRecords.directory(app),
+                nodeMaxOldSpaceSizeMb = { maxOldSpaceSizeMb },
             )
+        }
+
+        private fun recommendedHeapLimitMb(context: Context): Int {
+            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val info = ActivityManager.MemoryInfo()
+            manager?.getMemoryInfo(info)
+            return ProcessEnvironment.recommendedMaxOldSpaceSizeMb(info.totalMem)
         }
 
         private fun installedVersionCode(context: Context): Long = try {
@@ -220,6 +231,7 @@ class ServerManager internal constructor(
                 dependencies.versionCode(),
                 dependencies.autoUpdate(),
                 launchToken = null,
+                maxOldSpaceSizeMb = dependencies.nodeMaxOldSpaceSizeMb(),
             ),
         )
     }
@@ -558,6 +570,7 @@ class ServerManager internal constructor(
                 dependencies.autoUpdate(),
                 session.token,
                 reportDirectory = reports,
+                maxOldSpaceSizeMb = dependencies.nodeMaxOldSpaceSizeMb(),
             )
             spec = dependencies.launchSpecs.create(paths, session, environment)
         } catch (error: LaunchUnavailableException) {
