@@ -61,6 +61,7 @@ import {
     zipEntryNames,
 } from './smoke-config.js';
 import { appendOutputs, appendSummary, evaluateRuntimeLockFile, guardReport } from './smoke-guard.js';
+import { collectDevicePerfSnapshot, DEFAULT_ANDROID_PERF_BUDGETS, evaluateAndroidPerfBudgets, formatPerfSummaryMarkdown } from './perf-metrics.js';
 import { parseStepSelection, runSteps, STEPS, summarize, summaryTable } from './smoke-runner.js';
 
 /**
@@ -109,6 +110,7 @@ export const OPTIONS = Object.freeze({
     'ui-timeout-seconds': { type: 'string' },
     'dns-timeout-seconds': { type: 'string' },
     'dns-host': { type: 'string' },
+    'perf-budget': { type: 'string' },
     'help': { type: 'boolean' },
 });
 
@@ -214,6 +216,7 @@ export function parseRunOptions(values, env = process.env) {
         ref: values.ref ?? 'HEAD',
         pkg: values.package ?? DEFAULT_PACKAGE,
         summary: values.summary ?? env.GITHUB_STEP_SUMMARY ?? null,
+        perfBudget: values['perf-budget'] === undefined ? null : existingFile(values, 'perf-budget'),
         uiTags: {
             openSettings: values['open-settings-tag'] ?? DEFAULT_UI_TAGS.openSettings,
             failedRestart: values['failed-restart-tag'] ?? DEFAULT_UI_TAGS.failedRestart,
@@ -591,6 +594,8 @@ async function commandRun(values) {
     let fixtures = null;
     let ctx = null;
     let records = [];
+    let perfSnapshot = null;
+    let perfEvaluation = null;
     // A rejection nobody awaits (for example from a Playwright page handler) would end the process before the
     // port rules, the fixtures and the results are dealt with. It is logged instead, and fails the step that was
     // running when it came, or the run when no step was.
@@ -643,6 +648,24 @@ async function commandRun(values) {
         result.error = MESSAGE;
         result.detail = redactLabel(error.message);
     } finally {
+        if (ctx) {
+            perfSnapshot = await collectDevicePerfSnapshot({ adb, pkg: options.pkg, records }).catch(() => null);
+            if (perfSnapshot) {
+                if (options.perfBudget) {
+                    const customBudgets = {
+                        ...DEFAULT_ANDROID_PERF_BUDGETS,
+                        ...JSON.parse(fs.readFileSync(options.perfBudget, 'utf8')),
+                    };
+                    perfEvaluation = evaluateAndroidPerfBudgets(perfSnapshot, customBudgets);
+                    if (!perfEvaluation.ok && result.ok) {
+                        result.ok = false;
+                        result.error = MESSAGE;
+                        result.detail = `performance budget failed: ${perfEvaluation.violations.map(v => `${v.metric}=${v.actual} > ${v.max}`).join(', ')}`;
+                    }
+                }
+                fs.writeFileSync(path.join(out, 'perf-summary.json'), `${JSON.stringify({ snapshot: perfSnapshot, evaluation: perfEvaluation }, null, 4)}\n`);
+            }
+        }
         if (ctx && !result.ok) {
             await collectDiagnostics(ctx);
         }
@@ -657,8 +680,11 @@ async function commandRun(values) {
         process.off('unhandledRejection', onUnhandled);
     }
     result.records = records;
+    if (perfSnapshot) {
+        result.performance = perfSnapshot;
+    }
     fs.writeFileSync(path.join(out, 'results.json'), `${JSON.stringify(result, null, 4)}\n`);
-    const lines = runSummary(records, result.detail);
+    const lines = [...runSummary(records, result.detail), ...formatPerfSummaryMarkdown(perfSnapshot, perfEvaluation)];
     fs.writeFileSync(path.join(out, 'summary.md'), `${lines.join('\n')}\n`);
     if (options.summary) {
         appendSummary(options.summary, [`API ${result.sdk ?? '?'} (${options.serial})`, '', ...lines, '']);
