@@ -91,8 +91,8 @@ describe('forced colours: the edge of a surface that draws it as a shadow ring',
     });
 
     // A drag helper is a copy of a row that is on the page already. A menu sheet is the same element as its popover.
-    // The card of an in-app notification draws the popover ring too, and the rule for toasts above (`:is(#toast-container, #sb-toast-overlay) > div`) gives it its edge.
-    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]', 'body #toast-container[class] > .sb-form-notification']);
+    // The card of an in-app notification and the pill of a toast draw the popover ring too, and the rule for messages above (`:is(#toast-container, #sb-toast-overlay) > div`) gives each its edge.
+    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]', 'body #toast-container[class] > .sb-form-notification', '#sb-toast-overlay > .sb-form-toast']);
 
     test('one rule in the theme sheet, inside forced-colors, draws a 1px inset outline in a system colour', () => {
         expect(edgeRule).toBeDefined();
@@ -113,8 +113,9 @@ describe('forced colours: the edge of a surface that draws it as a shadow ring',
         expect(missing).toEqual([]);
     });
 
-    test('the toast rule gives the card of a notification its edge, so the card is not repeated in the popover rule', () => {
+    test('the message rule gives the card of a notification and the pill of a toast their edge, so neither is repeated in the popover rule', () => {
         expect(edgeSelectors).not.toContain('body #toast-container[class] > .sb-form-notification');
+        expect(edgeSelectors).not.toContain('#sb-toast-overlay > .sb-form-toast');
         const toastEdge = forcedColorsBlocks.join('\n').match(/:is\(#toast-container, #sb-toast-overlay\) > div \{\s*outline: 1px solid CanvasText;\s*outline-offset: -1px;\s*\}/);
         expect(toastEdge).not.toBeNull();
     });
@@ -268,20 +269,17 @@ describe('the outer ring on solid fills and pictures', () => {
     });
 });
 
-describe('the focus ring inside the toast layer', () => {
-    const fallbackStart = themeCss.indexOf('body #sb-toast-overlay {\n    --sb-focus-ring: currentColor;');
-    // The guard tests the shape that the ring uses, `max(l, ...)`, because an engine with an older draft of relative colours cannot read it.
-    const supportsStart = themeCss.indexOf('@supports (color: oklab(from red max(l, 0.5) a b))', fallbackStart);
+describe('the focus ring of a toast', () => {
+    test('is the ring of the app, as the ring of a notification is: no rule of the overlay or of a toast declares the ring, its colour or its inset form', () => {
+        const rules = [...themeCss.matchAll(/([^{}]*(?:#sb-toast-overlay|\.sb-form-toast)[^{}]*)\{([^{}]*)\}/g)];
 
-    test('the toast takes its own ink as the ring, and declares the two tokens that read it again', () => {
-        expect(fallbackStart).toBeGreaterThan(-1);
-        expect(blockAt(themeCss, fallbackStart).replace(/\s+/g, ' ').trim()).toBe('--sb-focus-ring: currentColor; --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent); --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);');
+        expect(rules.length).toBeGreaterThan(20);
+        expect(rules.filter(([, , body]) => /--sb-focus-ring(-color|-inset)?:/.test(body)).map(([, selector]) => selector.trim())).toEqual([]);
+        expect(themeCss).not.toContain('oklab(from var(--sb-accent) max(l, 0.85) a b)');
     });
 
-    test('where relative colours work, the ring is the light form of the accent, as libadwaita draws it', () => {
-        expect(supportsStart).toBeGreaterThan(fallbackStart);
-        const supports = blockAt(themeCss, supportsStart);
-        expect(supports.replace(/\s+/g, ' ').trim()).toBe('body #sb-toast-overlay { --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b); }');
+    test('is drawn inside the button and Dismiss of a toast by the inset ring of the app', () => {
+        expect(themeCss).toMatch(/body #sb-toast-overlay > \.sb-form-toast \.toast-message :is\([^)]*\):focus-visible,[\s\S]*?\{\s*box-shadow: var\(--sb-focus-ring-inset\);/);
     });
 });
 

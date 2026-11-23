@@ -19,6 +19,8 @@ function ruleOf(css, selector) {
 /** The selector of the toast form in `#sb-toast-overlay`, with the part that follows it. */
 const TOAST = '#sb-toast-overlay > .sb-form-toast';
 const NOTIFICATION = 'body #toast-container[class] > .sb-form-notification';
+/** The two forms, with the specificity of the notification card, which the rules for their text and links share. */
+const CARDS = ':is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast)';
 const BUTTONS = BUTTON_SELECTOR.split(',').map(part => part.trim());
 
 describe('the toast layer', () => {
@@ -102,10 +104,14 @@ describe('the toast layer', () => {
         expect(block).toContain('background-clip: padding-box');
     });
 
-    test('a link in a notification takes the normal link colours, and the overlay\'s link colours are for the toast only', () => {
-        expect(ruleOf(themeCss, `${NOTIFICATION} .toast-message a[href]`)).toContain('color: var(--sb-accent)');
-        expect(ruleOf(themeCss, '#sb-toast-overlay .toast-message a[href]')).toContain('color: var(--sb-toast-link)');
-        expect(ruleOf(themeCss, '#sb-toast-overlay .toast-message a[href]:visited')).toBe('color: var(--sb-toast-link-visited);');
+    test('a link in a toast takes the normal link colours, by the same rules as a link in a notification', () => {
+        const links = `body ${CARDS} .toast-message a[href]`;
+        expect(ruleOf(themeCss, links)).toBe('color: var(--sb-accent); text-decoration: underline;');
+        expect(ruleOf(themeCss, `${links}:visited`)).toBe('color: color-mix(in srgb, var(--sb-accent) 80%, var(--SmartThemeBodyColor));');
+        expect(themeCss).toMatch(/@supports \(color: hsl\(from red h calc\(s \* 1\.1\) calc\(l \* 1\.1\)\)\) \{\s*@media \(hover: hover\) \{\s*body :is\(#toast-container\[class\] > \.sb-form-notification, #sb-toast-overlay > \.sb-form-toast\) \.toast-message a\[href\]:hover \{\s*color: hsl\(from var\(--sb-accent\) h calc\(s \* 1\.1\) calc\(l \* 1\.1\)\);/);
+        // No rule of the dark toast is left: the overlay has no link colours of its own, and a notification has none of its own either.
+        expect(themeCss).not.toMatch(/\n#sb-toast-overlay \.toast-message a\[href\]/);
+        expect(themeCss).not.toContain(`${NOTIFICATION} .toast-message a[href]`);
         expect(themeCss).not.toContain(':is(#toast-container, #sb-toast-overlay) .toast-message a[href]');
     });
 
@@ -126,15 +132,16 @@ describe('the toast layer', () => {
         expect(themeCss).not.toContain('because a dialog at rest has no transform or filter that would make it the containing');
     });
 
-    test('a label and an anchor with no href in a toast are text in the ink of the toast, and only an anchor with an href takes the link mix', () => {
-        expect(ruleOf(themeCss, 'body #sb-toast-overlay .toast-message :is(label, a:not([href]))')).toBe('color: inherit;');
+    test('a label and an anchor with no href in a toast are text in the ink of the toast, and only an anchor with an href is a link', () => {
+        expect(ruleOf(themeCss, `body ${CARDS} .toast-message :is(label, a:not([href]))`)).toBe('color: inherit;');
         expect(themeCss).not.toContain('body #sb-toast-overlay .toast-message :is(a, label)');
         expect(themeCss).not.toMatch(/#sb-toast-overlay[^{]*\{[^}]*--toast-link-color/);
     });
 
-    test('the focus ring of the toast layer is for the toast layer: a notification keeps the ring of the app', () => {
-        expect(themeCss).toMatch(/\nbody #sb-toast-overlay \{\n {4}--sb-focus-ring: currentColor;/);
-        expect(themeCss).not.toMatch(/body :is\(#toast-container, #sb-toast-overlay\) \{\n {4}--sb-focus-ring/);
+    test('the toast keeps the focus ring of the app, as the notification does: the overlay declares no ring of its own', () => {
+        expect(themeCss).not.toMatch(/#sb-toast-overlay \{[^}]*--sb-focus-ring/);
+        expect(themeCss).not.toMatch(/body :is\(#toast-container, #sb-toast-overlay\) \{\s*--sb-focus-ring/);
+        expect(themeCss).not.toContain('--sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b)');
     });
 
     test('a notification has no action grid and no CSS exit motion, because its layout is a button row and its motion is the script\'s', () => {
@@ -145,7 +152,7 @@ describe('the toast layer', () => {
 
     test('a notification overrides the two rules of upstream\'s sheet that its design does not follow: a focused close button is not dimmed, and an anchor with no href is not a link', () => {
         expect(ruleOf(themeCss, `${NOTIFICATION} > .toast-close-button:focus`)).toBe('color: inherit; opacity: 1;');
-        expect(ruleOf(themeCss, `${NOTIFICATION} .toast-message :is(label, a:not([href]))`)).toBe('color: inherit;');
+        expect(ruleOf(themeCss, `body ${CARDS} .toast-message :is(label, a:not([href]))`)).toBe('color: inherit;');
     });
 
     test('no surface styles a toast or a button inside one: the two forms own every container and button', () => {
@@ -168,17 +175,20 @@ describe('the toast layer', () => {
         expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast > :not(.toast-progress)')).toContain('margin-inline: 6px');
     });
 
-    test('a toast takes its own surface, the toast layer capped in lightness: Toast Shadow, no border, white ink, a pill that a wrapped toast cannot outgrow', () => {
+    test('a toast takes the surface of a notification: the Popover layer, ink and shadow, no border, a pill that a wrapped toast cannot outgrow', () => {
         const box = ruleOf(themeCss, TOAST);
-        expect(box).toContain('background-color: var(--sb-toast-surface)');
-        expect(box).toContain('color: var(--sb-toast-ink)');
-        expect(box).toContain('box-shadow: var(--sb-shadow-toast)');
+        expect(box).toContain('background-color: var(--sb-layer-popover)');
+        expect(box).toContain('color: var(--SmartThemeBodyColor)');
+        expect(box).toContain('box-shadow: var(--sb-shadow-popover)');
         expect(box).toContain('border: none');
         expect(box).toContain('background-image: none');
         expect(box).toContain('border-radius: min(var(--sb-radius-pill), calc((12px + var(--sb-toast-part-size)) / 2))');
         expect(box).toContain('--sb-toast-part-size: max(34px, 1lh)');
         expect(box).toContain('backdrop-filter: none');
         expect(box).toContain('-webkit-backdrop-filter: none');
+        // Neither the dark toast layer nor its shadow is the toast's any more: those are for the tooltips and the press-and-hold label.
+        expect(box).not.toContain('--sb-layer-toast');
+        expect(box).not.toContain('--sb-shadow-toast');
     });
 
     test('a toast is as wide as its text up to 34em and the window minus 24px, and with a button at least 450px', () => {
@@ -246,11 +256,12 @@ describe('the toast layer', () => {
         expect(themeCss).toMatch(/@media \(pointer: coarse\) \{\s*:is\(#toast-container > \.sb-form-notification, #sb-toast-overlay > \.sb-form-toast\) > \.toast-close-button::after \{\s*content: '';\s*position: absolute;\s*inset: -5px;/);
     });
 
-    test('the status colour reaches the icon glyph and the title, and nothing else', () => {
+    test('the status colour reaches the icon glyph and nothing else, in the standalone colour of the tone, as in a notification', () => {
         expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-error')).toContain('--sb-toast-src: var(--sb-color-danger)');
         expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-warning')).toContain('--sb-toast-src: var(--sb-color-warning)');
         expect(ruleOf(themeCss, ':is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-success')).toContain('--sb-toast-src: var(--sb-color-success)');
-        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before,\n#sb-toast-overlay > .sb-form-toast:not(.toast-info) .toast-title')).toBe('color: var(--sb-toast-status);');
+        expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before')).toContain('color: var(--sb-toast-src);');
+        expect(themeCss).not.toContain('--sb-toast-status');
     });
 
     test('toast timing is declared once, in script.js, at 5 seconds and 300ms', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 
-import { colourOf, declarationsOf, declaredValue, displayed, parseStylesheet, rgbToOklab, toHex } from './helpers/css-colour.js';
+import { colourOf, declarationsOf, declaredValue, displayed, paint, parseStylesheet, toHex } from './helpers/css-colour.js';
 import { APP_SHEETS, STATUS_KINDS, layersOf, pairsOf, rootScopeOf, toneOf } from './helpers/toast-theme-colours.js';
 
 const themesDirectory = new URL('../default/content/themes/', import.meta.url);
@@ -15,12 +15,52 @@ const themeNamed = (name) => themes.find(theme => theme.name === name);
  * failure makes it fail until it is fixed or added here. The failure message of a theme's test gives the ratio and the
  * colours of each case that is not listed.
  *
- * Every case left here is on the in-app notification, where the fill of a button and the colours of a link are GNOME
- * Shell's and the theme's own, so a fix needs a value that is not either (a deviation of DESIGN.md) and is for the
- * maintainers to decide. The toast form has none: its ink, surface, status lift and link lift are set to hold every
- * pair of every bundled theme.
+ * The toast is drawn in the colours of the in-app notification (T1 of the decision log, DESIGN.md Toasts, Surface), on the
+ * same layer, in the same ink, with the same links and the same fill under a button, so it fails where the notification
+ * does and for the same cause. Every case left here is a colour that is GNOME Shell's (the fill of a button is the ink at
+ * 10%) or the theme's own (a link is its accent), and a fix needs a value that is neither, which is a deviation of DESIGN.md
+ * for the maintainers to decide.
  */
 const KNOWN_FAILURES = [
+    {
+        pair: 'toast link',
+        reason: [
+            'The link is `--sb-accent`, the quote colour mixed 38% toward the body colour, on the popover layer, as in a notification.',
+            'The theme\'s own text colours on its own popover layer are borderline (4.44:1), and a link that holds 4.5:1 needs a colour that the',
+            'theme does not give it.',
+        ].join(' '),
+        themes: [
+            'Solarized Dark',
+        ],
+    },
+    {
+        pair: 'toast visited link',
+        reason: [
+            'The visited link is `--sb-accent` mixed 20% toward the body colour, on the popover layer, as in a notification; the cause is the',
+            'same as for the link at rest (4.41:1).',
+        ].join(' '),
+        themes: [
+            'Solarized Dark',
+        ],
+    },
+    {
+        pair: 'toast button text',
+        reason: [
+            'The text is the ink on a fill of the ink at 10% over the popover layer, as in a notification (GNOME Shell\'s fill). The fill lifts',
+            'the background of the button above the layer on the dark tone, which lowers the ratio below that of the label (4.7 to 5.4:1 in these',
+            'themes, 4.11 to 4.49:1 on the button). A fill that holds 4.5:1 is not 10% of the ink.',
+        ].join(' '),
+        themes: [
+            'Glacier',
+            'Lime',
+            'Magenta',
+            'Mint',
+            'Nord',
+            'Slate',
+            'Solarized Dark',
+            'Sonokai Atlantis',
+        ],
+    },
     {
         pair: 'notification link',
         reason: [
@@ -132,7 +172,7 @@ const withAlpha = (value, alpha) => value.replace(/rgba?\(([^)]*)\)/, (_match, i
 describe('the surfaces of the two forms are opaque whatever the tints of the theme', () => {
     const translucent = (theme, alpha) => ({ ...theme, blur_tint_color: withAlpha(theme.blur_tint_color, alpha), chat_tint_color: withAlpha(theme.chat_tint_color, alpha) });
 
-    test.each([['Libadwaita Dark'], ['Libadwaita Light']])('%s keeps an opaque toast layer and popover layer under a translucent blur tint and chat tint', (name) => {
+    test.each([['Libadwaita Dark'], ['Libadwaita Light']])('%s keeps an opaque toast layer, which the tooltips share, and popover layer under a translucent blur tint and chat tint', (name) => {
         for (const alpha of [0.6, 0.3, 0.1]) {
             const variant = translucent(themeNamed(name), alpha);
             const layers = layersOf(variant);
@@ -141,15 +181,14 @@ describe('the surfaces of the two forms are opaque whatever the tints of the the
             // The light-tone toast layer mixes the body colour with white, so only the dark-tone one is made of the tint.
             expect(layers.toastSource.alpha < 1).toBe(toneOf(variant) === 'dark');
             expect(layers.toast.alpha).toBe(1);
-            expect(layers.toastSurface.alpha).toBe(1);
             expect(layers.popover.alpha).toBe(1);
         }
     });
 
     test('keeps both layers opaque for every bundled theme at a blur tint and chat tint of alpha 0.3', () => {
         const translucentLayers = themes.filter((theme) => {
-            const { toast, toastSurface, popover } = layersOf(translucent(theme, 0.3));
-            return toast.alpha !== 1 || toastSurface.alpha !== 1 || popover.alpha !== 1;
+            const { toast, popover } = layersOf(translucent(theme, 0.3));
+            return toast.alpha !== 1 || popover.alpha !== 1;
         });
 
         expect(translucentLayers.map(theme => theme.name)).toEqual([]);
@@ -162,87 +201,6 @@ describe('the surfaces of the two forms are opaque whatever the tints of the the
     });
 });
 
-/** Both 8-bit colours as OKLab: lightness, and the hue in degrees with the chroma. */
-const oklabOf = (rgb) => {
-    const [lightness, a, b] = rgbToOklab(rgb);
-    return { lightness, chroma: Math.hypot(a, b), hue: (Math.atan2(b, a) * 180) / Math.PI };
-};
-const OVERLAY = '#sb-toast-overlay';
-const overlayValue = (property, conditions) => declaredValue(APP_SHEETS, { selector: OVERLAY, property, ...(conditions ? { conditions } : {}) });
-
-describe('the toast form has its own ink and surface, and leaves the layer that the tooltips share as it is', () => {
-    const withoutSupports = new Set();
-    const surfaceOf = (theme) => displayed(layersOf(theme).toastSurface);
-    const layerOf = (theme) => displayed(layersOf(theme).toast);
-    const cap = () => Number(overlayValue('--sb-toast-lightness-cap'));
-
-    test('the ink of a toast is white on every theme, where the layer ink is the body colour on the dark tone and white on the light', () => {
-        for (const theme of themes) {
-            const root = rootScopeOf(theme);
-            const toastInk = pairsOf(theme).find(({ id }) => id === 'toast label').foreground;
-            const expectedLayerInk = toneOf(theme) === 'dark' ? colourOf('var(--SmartThemeBodyColor)', root) : colourOf('#ffffff', root);
-
-            expect(toastInk).toBe('#ffffff');
-            expect(colourOf('var(--sb-layer-toast-fg)', root)).toEqual(expectedLayerInk);
-        }
-    });
-
-    test('the tooltips and the press-and-hold label still paint with the toast layer and its own ink, and the tokens of the toast form are declared on the overlay only', () => {
-        const messageActions = [parseStylesheet(readFileSync(new URL('../public/css/sillybunny-message-actions.css', import.meta.url), 'utf8'))];
-
-        for (const [sheets, selector] of [[APP_SHEETS, '.tooltip-inner'], [messageActions, '.sb-press-tooltip']]) {
-            expect(declaredValue(sheets, { selector, property: 'background', conditions: withoutSupports })).toBe('var(--sb-layer-toast)');
-            expect(declaredValue(sheets, { selector, property: 'color', conditions: withoutSupports })).toBe('var(--sb-layer-toast-fg)');
-        }
-        const declaredAt = (name) => declarationsOf(FORM_SHEETS).filter(declaration => declaration.name === name).flatMap(({ selectors }) => selectors);
-        for (const name of ['--sb-toast-ink', '--sb-toast-surface', '--sb-toast-link', '--sb-toast-link-visited', '--sb-toast-lightness-cap', '--sb-toast-link-floor']) {
-            expect([name, [...new Set(declaredAt(name))]]).toEqual([name, [OVERLAY]]);
-        }
-    });
-
-    test('the surface is the toast layer with its lightness capped at the lightness of libadwaita\'s toast, so #505053 is not changed', () => {
-        const hex = (theme) => toHex(surfaceOf(theme));
-
-        expect(cap()).toBeGreaterThanOrEqual(oklabOf([0x50, 0x50, 0x54]).lightness);
-        expect(cap()).toBeLessThan(0.44);
-        expect(hex(themeNamed('Libadwaita Dark'))).toBe(toHex(layerOf(themeNamed('Libadwaita Dark'))));
-        expect(hex(themeNamed('Libadwaita Dark'))).toBe('#505053');
-        expect(hex(themeNamed('Libadwaita Light'))).toBe(toHex(layerOf(themeNamed('Libadwaita Light'))));
-    });
-
-    test('a layer under the cap is the surface as it is, and a layer over it keeps its hue at the cap', () => {
-        const problems = [];
-        const capped = [];
-        for (const theme of themes) {
-            const layer = layerOf(theme);
-            const surface = surfaceOf(theme);
-            const layerLab = oklabOf(layer);
-            const surfaceLab = oklabOf(surface);
-            const channelShift = Math.max(...layer.map((channel, at) => Math.abs(channel - surface[at])));
-
-            if (surfaceLab.lightness > cap() + 0.004) problems.push(`${theme.name}: the surface is lighter than the cap`);
-            if (layerLab.lightness <= cap()) {
-                if (channelShift > 1) problems.push(`${theme.name}: a layer under the cap changed by ${channelShift}`);
-                continue;
-            }
-            capped.push(theme.name);
-            if (Math.abs(surfaceLab.lightness - cap()) > 0.004) problems.push(`${theme.name}: a layer over the cap is not at it`);
-            const hueShift = Math.abs(((surfaceLab.hue - layerLab.hue + 540) % 360) - 180);
-            if (layerLab.chroma > 0.04 && hueShift > 4) problems.push(`${theme.name}: the hue moved by ${hueShift.toFixed(1)} degrees`);
-        }
-
-        expect(problems).toEqual([]);
-        expect(capped.length).toBeGreaterThan(10);
-        expect(capped).toEqual(expect.arrayContaining(['Solarized Light', 'Lime']));
-    });
-
-    test('where relative colours do not work, the surface is the layer and a link is the plain mix, so the bundled Libadwaita themes keep libadwaita\'s toast', () => {
-        expect(overlayValue('--sb-toast-surface', withoutSupports)).toBe('var(--sb-layer-toast)');
-        expect(overlayValue('--sb-toast-link', withoutSupports)).toBe('color-mix(in srgb, var(--sb-accent) 50%, var(--sb-toast-ink))');
-        expect(overlayValue('--sb-toast-link-visited', withoutSupports)).toBe('color-mix(in srgb, var(--sb-accent) 25%, var(--sb-toast-ink))');
-    });
-});
-
 /** Where the colours of the two forms are declared: every rule that names a part of them, and the tokens they paint with. */
 const FORM_SHEETS = ['public/style.css', 'public/css/popup.css', 'public/css/sillybunny-theme.css', 'public/css/sillybunny-tabs.css', 'public/css/sillybunny-home.css']
     .map(path => parseStylesheet(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')));
@@ -250,12 +208,11 @@ const FORM_SELECTOR = /#sb-toast-overlay|#toast-container|\.sb-form-toast|\.sb-f
 const FORM_TOKEN = /^--(sb-layer-(toast|popover)(-source|-fg)?|sb-shadow-(toast|popover)|sb-popover-ring|sb-toast-[\w-]+|toast-[\w-]+)$/;
 
 /**
- * The hard-coded colour of the forms: DESIGN.md (Toasts, Surface) gives the toast white ink in both tones. It is written
- * twice: as the ink of the toast layer in the light tone, which the tooltips share, and as the ink of the toast form.
+ * The hard-coded colour of the forms: the ink of the toast layer in the light tone, which the tooltips and the press-and-hold
+ * label share (libadwaita's OSD text is white). The toast and the in-app notification are drawn in theme colours alone.
  */
 const ALLOWED_LITERALS = [
     { name: '--sb-layer-toast-fg', literal: '#ffffff' },
-    { name: '--sb-toast-ink', literal: '#ffffff' },
 ];
 
 const NAMED_COLOURS = new Set(`aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood
@@ -288,6 +245,68 @@ function hardCodedColoursIn(value) {
     return found;
 }
 
+describe('the toast is drawn in the colours of the in-app notification, and leaves the layer that the tooltips share as it is', () => {
+    const withoutSupports = new Set();
+    const pairOf = (theme, id) => pairsOf(theme).find(pair => pair.id === id);
+    const SHARED = [
+        ['toast label', 'notification body'],
+        ['toast link', 'notification link'],
+        ['toast visited link', 'notification visited link'],
+        ['toast hovered link', 'notification hovered link'],
+        ['toast anchor without href or label', 'notification anchor without href or label'],
+        ['toast error glyph', 'notification error glyph'],
+        ['toast warning glyph', 'notification warning glyph'],
+        ['toast success glyph', 'notification success glyph'],
+    ];
+
+    test.each(SHARED)('%s is the colour of %s, on the same popover layer, on every theme', (toastId, notificationId) => {
+        const differing = themes
+            .map(theme => [theme.name, pairOf(theme, toastId), pairOf(theme, notificationId)])
+            .filter(([, toast, notification]) => toast.foreground !== notification.foreground || (!notificationId.includes('glyph') && toast.background !== notification.background))
+            .map(([name, toast, notification]) => `${name}: ${toast.foreground} on ${toast.background} against ${notification.foreground} on ${notification.background}`);
+
+        expect(differing).toEqual([]);
+    });
+
+    test('the toast stands on the popover layer, in the body colour of the theme, which is the ink of the notification', () => {
+        for (const theme of themes) {
+            const root = rootScopeOf(theme);
+            const layers = layersOf(theme);
+            const label = pairOf(theme, 'toast label');
+
+            const popover = displayed(layers.popover);
+
+            expect([theme.name, label.background]).toEqual([theme.name, toHex(popover)]);
+            // A body colour that is translucent, as Dracula's is, is painted over the layer before it is read.
+            expect([theme.name, label.foreground]).toEqual([theme.name, toHex(paint(colourOf('var(--SmartThemeBodyColor)', root), popover))]);
+        }
+    });
+
+    test('the tooltips and the press-and-hold label still paint with the toast layer and its own ink, which is the body colour on the dark tone and white on the light', () => {
+        const messageActions = [parseStylesheet(readFileSync(new URL('../public/css/sillybunny-message-actions.css', import.meta.url), 'utf8'))];
+
+        for (const [sheets, selector] of [[APP_SHEETS, '.tooltip-inner'], [messageActions, '.sb-press-tooltip']]) {
+            expect(declaredValue(sheets, { selector, property: 'background', conditions: withoutSupports })).toBe('var(--sb-layer-toast)');
+            expect(declaredValue(sheets, { selector, property: 'color', conditions: withoutSupports })).toBe('var(--sb-layer-toast-fg)');
+        }
+        for (const theme of themes) {
+            const root = rootScopeOf(theme);
+            const expectedInk = toneOf(theme) === 'dark' ? colourOf('var(--SmartThemeBodyColor)', root) : colourOf('#ffffff', root);
+
+            expect(colourOf('var(--sb-layer-toast-fg)', root)).toEqual(expectedInk);
+        }
+        expect(toHex(displayed(layersOf(themeNamed('Libadwaita Dark')).toast))).toBe('#505053');
+    });
+
+    test('declares none of the tokens of the dark toast: its ink, its capped surface, its lifted links and its status lift', () => {
+        const names = new Set(declarationsOf(FORM_SHEETS).map(({ name }) => name));
+        const gone = ['--sb-toast-ink', '--sb-toast-surface', '--sb-toast-link', '--sb-toast-link-visited', '--sb-toast-lightness-cap', '--sb-toast-link-floor', '--sb-toast-status'];
+
+        expect(gone.filter(name => names.has(name))).toEqual([]);
+        expect(FORM_SHEETS.some(sheet => JSON.stringify(sheet).includes('--sb-toast-status'))).toBe(false);
+    });
+});
+
 describe('the rules of the two forms use theme aliases only', () => {
     test('finds hard-coded colours and leaves colours that come from the theme alone', () => {
         expect(hardCodedColoursIn('#fff')).toEqual(['#fff']);
@@ -313,11 +332,11 @@ describe('the rules of the two forms use theme aliases only', () => {
         expect(hardCoded).toEqual([]);
     });
 
-    test('keeps the allowed literal where DESIGN.md asks for it, and nowhere else', () => {
+    test('keeps the allowed literal for the ink of the tooltips, and nowhere else', () => {
         const uses = declarationsOf(FORM_SHEETS).filter(({ value }) => ALLOWED_LITERALS.some(({ literal }) => value.includes(literal)));
 
-        expect(uses.map(({ name }) => name)).toEqual(['--sb-layer-toast-fg', '--sb-toast-ink']);
-        expect(readFileSync(new URL('../DESIGN.md', import.meta.url), 'utf8')).toMatch(/Toast layer with white ink in both tones/);
+        expect(uses.map(({ name }) => name)).toEqual(['--sb-layer-toast-fg']);
+        expect(readFileSync(new URL('../DESIGN.md', import.meta.url), 'utf8')).toMatch(/libadwaita OSD tooltip: shadow ink at 80%, white text/);
     });
 });
 
@@ -339,8 +358,12 @@ describe('every relative colour of the two forms sits behind a guard that tests 
         expect(namesIn('rgb(from var(--a) r g b / 1)', MATH_FUNCTION)).toEqual(new Set());
     });
 
-    test('has relative colours to check', () => {
-        expect(relative.length).toBeGreaterThanOrEqual(8);
+    test('has relative colours to check: the two opaque layers and the hover colour of a link', () => {
+        expect(relative.map(describeDeclaration).sort()).toEqual([
+            ':root { --sb-layer-popover }',
+            ':root { --sb-layer-toast }',
+            'body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:hover { color }',
+        ]);
     });
 
     test('puts each of them in an @supports whose condition uses the same colour function and the same math functions', () => {

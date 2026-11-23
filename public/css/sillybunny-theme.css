@@ -254,7 +254,7 @@
     --sb-layer-view-source: var(--SmartThemeChatTintColor);
     --sb-layer-window-source: var(--SmartThemeBlurTintColor);
     /* The mixes give libadwaita's role colours on the bundled dark theme, whose 0.9 BlurTint alpha color-mix() weighs in:
-       header bar and sidebar #2e2e32, popover and dialog #36363a, toast #505053. */
+       header bar and sidebar #2e2e32, popover and dialog #36363a, toast #505053, which tooltips and the press-and-hold label use. */
     --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
     --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
     --sb-layer-drawer-source: var(--sb-layer-headerbar-source);
@@ -385,18 +385,6 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:']):active {
 
 a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='true'] {
     opacity: var(--sb-disabled-opacity);
-}
-
-/* On the dark toast layer a link is Accent mixed with the ink of the toast (--sb-toast-link, declared with the toast form).
-   An in-app notification is on the popover layer, where a link keeps the normal link colours (see the notification rules
-   below). */
-#sb-toast-overlay .toast-message a[href] {
-    color: var(--sb-toast-link);
-    text-decoration: underline;
-}
-
-#sb-toast-overlay .toast-message a[href]:visited {
-    color: var(--sb-toast-link-visited);
 }
 
 .zoomed_avatar_container,
@@ -546,7 +534,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     --color-danger: #c30000;
     --color-warning: #905400;
     /* libadwaita light: white View, header bars, bottom bars and popovers, which the 1px shade line separates; a #ebebed
-       sidebar; toasts stay dark (#505053). */
+       sidebar; the toast layer, which tooltips and the press-and-hold label use, stays dark (#505053). */
     --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 93.3%, var(--SmartThemeBodyColor) 6.7%);
     --sb-layer-headerbar-source: var(--SmartThemeChatTintColor);
     --sb-layer-bottombar-source: var(--SmartThemeChatTintColor);
@@ -4584,25 +4572,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     color: var(--sb-accent-ink);
 }
 
-/* The toast layer is dark in both tones, where the accent ring does not reach 3:1. The ring takes the ink of the toast,
-   or, where relative colours work, libadwaita's light form of the accent. The two tokens that read --sb-focus-ring
-   resolve where they are declared, so they are declared again here. An in-app notification is on the popover layer
-   and keeps the ring of the app. */
-body #sb-toast-overlay {
-    --sb-focus-ring: currentColor;
-    --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
-    --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
-}
-
-/* Each relative-colour declaration of the toast and the notification is behind an @supports that tests the functions it uses.
-   An engine that implements an older draft of the syntax, where the channel keywords keep a percentage-like type, cannot read
-   `max(l, 0.5)`, and a custom property that it cannot read would turn the background that uses it transparent. */
-@supports (color: oklab(from red max(l, 0.5) a b)) {
-    body #sb-toast-overlay {
-        --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b);
-    }
-}
-
 @keyframes sb-entity-select-pulse {
     0% {
         box-shadow:
@@ -7037,11 +7006,6 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     direction: rtl;
 }
 
-/* A label, and an anchor with no href, is text on the toast layer: it takes the ink, not the link mix. */
-body #sb-toast-overlay .toast-message :is(label, a:not([href])) {
-    color: inherit;
-}
-
 .popup[opening] #sb-toast-overlay {
     visibility: hidden;
 }
@@ -7050,37 +7014,7 @@ body #sb-toast-overlay .toast-message :is(label, a:not([href])) {
     text-align: start;
 }
 
-/* The ink and the surface of the toast form. The ink is white in both tones, where --sb-layer-toast-fg is the theme's body colour
-   on the dark tone, which the tooltips and the press-and-hold label keep. The surface is the toast layer and, where relative colours
-   work, no lighter than libadwaita's own toast (OKLab lightness 0.433, which keeps #505053 as it is), so that a theme with a
-   mid-tone layer still gives white ink 4.5:1 under the fill of a button. The chroma scales with the lightness, so the hue and
-   its relative strength stay and the darker colour does not leave the sRGB gamut. A link is Accent mixed with the ink, lifted to
-   the lightness that the focus ring of this layer has, so that it reads on every capped surface. The two lifts are guarded
-   apart, each by the shape it uses, because an engine may read one and not the other; where it reads neither, the surface is
-   the layer and a link is the plain mix. */
-#sb-toast-overlay {
-    --sb-toast-ink: #ffffff;
-    --sb-toast-lightness-cap: 0.433;
-    --sb-toast-link-floor: 0.85;
-    --sb-toast-surface: var(--sb-layer-toast);
-    --sb-toast-link: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-toast-ink));
-    --sb-toast-link-visited: color-mix(in srgb, var(--sb-accent) 25%, var(--sb-toast-ink));
-}
-
-@supports (color: oklab(from red min(l, 0.5) calc(a * min(1, 0.5 / l)) calc(b * min(1, 0.5 / l)))) {
-    #sb-toast-overlay {
-        --sb-toast-surface: oklab(from var(--sb-layer-toast) min(l, var(--sb-toast-lightness-cap)) calc(a * min(1, var(--sb-toast-lightness-cap) / l)) calc(b * min(1, var(--sb-toast-lightness-cap) / l)));
-    }
-}
-
-@supports (color: oklab(from red max(l, 0.5) a b)) {
-    #sb-toast-overlay {
-        --sb-toast-link: oklab(from color-mix(in srgb, var(--sb-accent) 50%, var(--sb-toast-ink)) max(l, var(--sb-toast-link-floor)) a b);
-        --sb-toast-link-visited: oklab(from color-mix(in srgb, var(--sb-accent) 25%, var(--sb-toast-ink)) max(l, var(--sb-toast-link-floor)) a b);
-    }
-}
-
-/* A toast: a pill on the toast layer with its parts in one row (glyph, label, one button, close), as AdwToast. */
+/* A toast: a pill on the Popover layer, in the colours of an in-app notification, with its parts in one row (glyph, label, one button, close), as AdwToast. */
 #sb-toast-overlay > .sb-form-toast {
     --sb-toast-part-size: max(34px, 1lh);
     display: flex;
@@ -7091,13 +7025,13 @@ body #sb-toast-overlay .toast-message :is(label, a:not([href])) {
     margin: 12px auto;
     padding-block: 6px;
     padding-inline: 12px 6px;
-    background-color: var(--sb-toast-surface);
+    background-color: var(--sb-layer-popover);
     background-image: none;
-    color: var(--sb-toast-ink);
+    color: var(--SmartThemeBodyColor);
     border: none;
     /* A one-line toast is a pill. One that wraps keeps half the height of a one-line toast, so its corners do not eat the text. */
     border-radius: min(var(--sb-radius-pill), calc((12px + var(--sb-toast-part-size)) / 2));
-    box-shadow: var(--sb-shadow-toast);
+    box-shadow: var(--sb-shadow-popover);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     cursor: default;
@@ -7209,7 +7143,7 @@ body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button
 }
 
 /* The global ring is an inset box-shadow, and the rules above and below clear the shadow with a longer selector, so the ring
-   is set again here. Its colour is the one of the toast layer's own ring tokens (see the declaration of --sb-focus-ring). */
+   is set again here. It is the ring of the app, in both forms. */
 body #sb-toast-overlay > .sb-form-toast .toast-message :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
 body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .menu_button):focus-visible,
 body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) > .toast-close-button:focus-visible {
@@ -7306,25 +7240,15 @@ body #toast-container[class] > .sb-form-notification > .toast-close-button:focus
     white-space: nowrap;
 }
 
-/* Status colour on the icon glyph and title only; the toast is dark in both tones, so a colour is lifted to a lightness that holds
-   3:1 on the lightest surface that the cap allows. */
+/* The status colour is the standalone colour of the tone, on the glyph of a toast and in the icon of a notification, and
+   nowhere else. */
 :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
 :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
 :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast).toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
 
-:is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast):not(.toast-info) {
-    --sb-toast-status: var(--sb-toast-src);
-}
-
 /* toastr's PNG icon of each kind is important, and the `[class]` makes the rule outweigh it. The glyph of both forms is drawn instead. */
 :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast)[class] {
     background-image: none !important;
-}
-
-@supports (color: oklab(from red max(l, 0.5) a b)) {
-    :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast):not(.toast-info) {
-        --sb-toast-status: oklab(from var(--sb-toast-src) max(l, 0.8) a b);
-    }
 }
 
 /* The glyph is the first part of a toast: 16px, with 6px at its sides like every part. */
@@ -7332,15 +7256,10 @@ body #toast-container[class] > .sb-form-notification > .toast-close-button:focus
     content: var(--sb-toast-glyph);
     flex: none;
     margin-inline: 6px;
+    color: var(--sb-toast-src);
     font: 900 16px/1 "Font Awesome 6 Free";
 }
 
-/* The status colour of a toast is lifted for the dark toast layer. The title and the glyph of an in-app notification
-   take the ink and the standalone status colour (see below). */
-#sb-toast-overlay > .sb-form-toast:not(.toast-info)::before,
-#sb-toast-overlay > .sb-form-toast:not(.toast-info) .toast-title {
-    color: var(--sb-toast-status);
-}
 
 /* An in-app notification is GNOME Shell's banner drawn inside the window (DESIGN: In-app notifications). The container is a
    strip across the window, as the toast overlay is, and toastr's position classes choose the edge and the side. The cards
@@ -7474,30 +7393,34 @@ body #toast-container[class] > .sb-form-notification > .toast-title + .toast-mes
     margin-top: var(--sb-n-space);
 }
 
-/* A link takes the normal link colours here, not the overlay's. */
-body #toast-container[class] > .sb-form-notification .toast-message a[href] {
+/* The text and the links of a toast are those of an in-app notification: a link is Accent and underlined, visited it is Accent
+   mixed 80% with the ink, and on hover its saturation and lightness are each multiplied by 1.1. Upstream's sheet gives every
+   anchor of #toast-container the link colour, and toastr's own sheet gives every anchor of a message white, so a label and an
+   anchor with no href take the ink here. The hover colour needs a relative colour that an engine with an older draft of the
+   syntax may not read, so the rule sits behind an @supports that tests the functions it uses and the brightness filter stays
+   for such an engine. */
+body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href] {
     color: var(--sb-accent);
     text-decoration: underline;
 }
 
-body #toast-container[class] > .sb-form-notification .toast-message a[href]:visited {
+body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:visited {
     color: color-mix(in srgb, var(--sb-accent) 80%, var(--SmartThemeBodyColor));
 }
 
-/* Upstream's sheet gives every anchor of #toast-container the link colour, and an anchor with no href is text. */
-body #toast-container[class] > .sb-form-notification .toast-message :is(label, a:not([href])) {
+body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message :is(label, a:not([href])) {
     color: inherit;
 }
 
 @media (hover: hover) {
-    body #toast-container[class] > .sb-form-notification .toast-message a[href]:hover {
+    body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:hover {
         filter: brightness(1.1);
     }
 }
 
 @supports (color: hsl(from red h calc(s * 1.1) calc(l * 1.1))) {
     @media (hover: hover) {
-        body #toast-container[class] > .sb-form-notification .toast-message a[href]:hover {
+        body :is(#toast-container[class] > .sb-form-notification, #sb-toast-overlay > .sb-form-toast) .toast-message a[href]:hover {
             color: hsl(from var(--sb-accent) h calc(s * 1.1) calc(l * 1.1));
             filter: none;
         }

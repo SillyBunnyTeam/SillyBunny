@@ -113,18 +113,24 @@ test.describe('the parts of a toast', () => {
         expect(look.icon).toBe(true);
     });
 
-    test('are one line of 46px at the pill radius, with no PNG icon, no border and the toast shadow', async ({ page }) => {
+    test('are one line of 46px at the pill radius, with no PNG icon, no border and the popover shadow', async ({ page }) => {
         for (const kind of ['error', 'warning', 'success', 'info']) {
             const toast = await showToast(page, kind, `A ${kind} toast`);
             const look = await toast.evaluate((node) => {
                 const style = getComputedStyle(node);
                 const box = node.getBoundingClientRect();
-                return { height: box.height, radius: Number.parseFloat(style.borderTopLeftRadius), image: style.backgroundImage, border: style.borderTopWidth, shadow: style.boxShadow };
+                const probe = document.createElement('div');
+                probe.style.boxShadow = 'var(--sb-shadow-popover)';
+                document.body.append(probe);
+                const popoverShadow = getComputedStyle(probe).boxShadow;
+                probe.remove();
+                return { height: box.height, radius: Number.parseFloat(style.borderTopLeftRadius), image: style.backgroundImage, border: style.borderTopWidth, shadow: style.boxShadow, popoverShadow };
             });
             expect(look.height, `${kind} is one line high`).toBeCloseTo(46, 0);
             expect(look.radius, `${kind} is a pill`).toBeGreaterThanOrEqual(look.height / 2);
             expect(look.image).toBe('none');
             expect(look.border).toBe('0px');
+            expect(look.shadow, `${kind} casts the Popover Shadow with its ring, as a notification does`).toBe(look.popoverShadow);
             expect(look.shadow).not.toBe('none');
             await page.evaluate(() => window.toastr.clear());
             await expect(toast).toHaveCount(0);
@@ -260,7 +266,7 @@ test.describe('keyboard focus', () => {
         await expect.poll(async () => (await ringOf(dismiss)).shadow).toMatch(/0px 0px 0px 2px inset$/);
     });
 
-    test('the ring is not the colour of the toast layer, so that it can be seen on it', async ({ page }) => {
+    test('the ring is not the colour of the toast surface, so that it can be seen on it', async ({ page }) => {
         const toast = await showToast(page, 'info', 'A toast');
         const dismiss = toast.getByRole('button', { name: 'Dismiss', exact: true });
         await focusByKeyboard(page, dismiss);
@@ -270,7 +276,7 @@ test.describe('keyboard focus', () => {
             return { shadow: getComputedStyle(node).boxShadow, layer: toastStyle.backgroundColor };
         });
         expect(colours.shadow, 'a ring').not.toBe('none');
-        expect(colours.shadow.split(' inset')[0], 'the ring colour differs from the layer it is drawn on').not.toBe(colours.layer);
+        expect(colours.shadow.split(' inset')[0], 'the ring colour differs from the surface it is drawn on').not.toBe(colours.layer);
     });
 });
 
