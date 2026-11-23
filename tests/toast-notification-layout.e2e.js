@@ -500,10 +500,10 @@ test.describe('the button row', () => {
             expect(boxes[0].left, 'the row spans the card: 6px of padding and 4px of the row\'s own').toBeCloseTo(10, 0);
             expect(boxes[0].right, 'a row of one fills to the other edge').toBeGreaterThan(0);
             if (rows[0] > 1) {
-                expect(boxes[1].left - boxes[0].left - boxes[0].width, '6px between buttons').toBeCloseTo(6, 0);
+                expect(boxes[1].left - boxes[0].left - boxes[0].width, '8px between buttons').toBeCloseTo(8, 0);
             }
             if (rows.length > 1) {
-                expect(boxes[rows[0]].top - boxes[0].top - boxes[0].height, '6px between rows').toBeCloseTo(6, 0);
+                expect(boxes[rows[0]].top - boxes[0].top - boxes[0].height, '8px between rows').toBeCloseTo(8, 0);
             }
         });
     }

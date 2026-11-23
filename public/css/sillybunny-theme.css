@@ -7476,10 +7476,12 @@ body #toast-container[class] > .sb-form-notification .toast-message :has(> .sb-t
     padding: 0;
 }
 
+/* GNOME Shell spaces its banner buttons with a margin of $base_margin (4px) at each side of a button and none at the ends
+   of the row (`.message-action-bin *`), so two buttons are twice that apart. */
 body #toast-container[class] > .sb-form-notification .sb-toast-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: calc(var(--sb-n-space) * 2);
     clear: both;
     margin-block: 6px -6px;
     margin-inline: calc(var(--sb-n-start) * -1) calc(var(--sb-n-end) * -1);
@@ -7492,7 +7494,7 @@ body #toast-container[class] > .sb-form-notification .sb-toast-actions > :is(but
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 1 1 calc((100% - 12px) / 3);
+    flex: 1 1 calc((100% - var(--sb-n-space) * 4) / 3);
     box-sizing: border-box;
     min-width: 0;
     min-height: 0;

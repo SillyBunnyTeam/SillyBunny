@@ -72,15 +72,15 @@ describe('the toast layer', () => {
         expect(themeCss).not.toContain('--sb-n-end: 46px');
     });
 
-    test('the button row has three buttons to a row of equal widths, 6px apart, with 4px of padding and the Control radius and bold, 6px 12px buttons', () => {
+    test('the button row has three buttons to a row of equal widths, 8px apart, with 4px of padding and the Control radius and bold, 6px 12px buttons', () => {
         const row = ruleOf(themeCss, `${NOTIFICATION} .sb-toast-actions`);
         expect(row).toContain('display: flex');
         expect(row).toContain('flex-wrap: wrap');
-        expect(row).toContain('gap: 6px');
+        expect(row).toContain('gap: calc(var(--sb-n-space) * 2)');
         expect(row).toContain('padding: var(--sb-n-space)');
         expect(row).toContain('clear: both');
         const button = ruleOf(themeCss, `${NOTIFICATION} .sb-toast-actions > :is(${BUTTONS.join(', ')})`);
-        expect(button).toContain('flex: 1 1 calc((100% - 12px) / 3)');
+        expect(button).toContain('flex: 1 1 calc((100% - var(--sb-n-space) * 4) / 3)');
         expect(button).toContain('padding: 6px 12px');
         expect(button).toContain('border-radius: var(--sb-radius-control)');
         expect(button).toContain('background: color-mix(in srgb, currentColor 10%, transparent)');
