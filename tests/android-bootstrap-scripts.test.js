@@ -395,4 +395,53 @@ describePosix('Android bootstrap against a bare fixture upstream', () => {
         expect(result.stdout).toMatch(/^ {2}--allow-git-source +Allow --migrate-from to copy from a Git install$/m);
         expect(result.stderr).toBe('');
     });
+
+    test('APK mode uses a shallow sparse checkout while preserving remote branches and min-app-version reads', () => {
+        const seed = path.join(workDir, 'sparse-seed');
+        const bare = path.join(workDir, 'sparse-upstream.git');
+        writeFile(path.join(seed, 'package.json'), '{"name":"sillybunny"}\n');
+        writeFile(path.join(seed, 'start.sh'), 'exit 0\n');
+        writeFile(path.join(seed, 'scripts', 'self-update.sh'), 'exit 0\n');
+        writeFile(path.join(seed, '.github', 'ci.yml'), 'name: ci\n');
+        writeFile(path.join(seed, 'android', 'min-app-version'), '1\n');
+        writeFile(path.join(seed, 'assets-src', 'master.png'), 'art\n');
+        writeFile(path.join(seed, 'docs', 'guide.md'), 'doc\n');
+        writeFile(path.join(seed, 'output', 'artifact.txt'), 'out\n');
+        writeFile(path.join(seed, 'screenshots', 'home.png'), 'shot\n');
+        writeFile(path.join(seed, 'tests', 'sample.test.js'), 'test\n');
+        git(workDir, 'init', '--quiet', '--initial-branch=release', seed);
+        git(seed, 'add', '-A');
+        git(seed, 'commit', '--quiet', '-m', 'c1');
+        writeFile(path.join(seed, 'package.json'), '{"name":"sillybunny","version":"2.0.0"}\n');
+        git(seed, 'commit', '--quiet', '-am', 'c2');
+        git(seed, 'checkout', '--quiet', '-b', 'staging');
+        writeFile(path.join(seed, 'package.json'), '{"name":"sillybunny","version":"2.1.0"}\n');
+        git(seed, 'commit', '--quiet', '-am', 'staging-head');
+        git(seed, 'checkout', '--quiet', 'release');
+        git(workDir, 'clone', '--quiet', '--bare', seed, bare);
+        git(bare, 'config', 'uploadpack.allowFilter', 'true');
+
+        const apkTarget = path.join(workDir, 'sparse-apk-install');
+        const apkResult = runInstaller(['--repo', `file://${bare}`, '--no-start', '--dir', apkTarget, '--ref', 'release', '--use-node'], {
+            SILLYBUNNY_ANDROID_APP: '1',
+        });
+        expect(apkResult.status).toBe(0);
+        expect(git(apkTarget, 'rev-parse', '--is-shallow-repository')).toBe('true');
+        expect(git(apkTarget, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/release');
+        expect(git(apkTarget, 'branch', '-r')).toContain('origin/staging');
+        expect(git(apkTarget, 'show', 'HEAD:android/min-app-version')).toBe('1');
+        expect(existsSync(path.join(apkTarget, 'package.json'))).toBe(true);
+        expect(existsSync(path.join(apkTarget, 'start.sh'))).toBe(true);
+        expect(existsSync(path.join(apkTarget, 'scripts', 'self-update.sh'))).toBe(true);
+        for (const excluded of ['.github', 'android', 'assets-src', 'docs', 'output', 'screenshots', 'tests']) {
+            expect(existsSync(path.join(apkTarget, excluded))).toBe(false);
+        }
+
+        const desktopTarget = path.join(workDir, 'full-desktop-install');
+        const desktopResult = runInstaller(['--repo', `file://${bare}`, '--no-start', '--dir', desktopTarget, '--ref', 'release', '--use-node']);
+        expect(desktopResult.status).toBe(0);
+        expect(git(desktopTarget, 'rev-parse', '--is-shallow-repository')).toBe('false');
+        expect(existsSync(path.join(desktopTarget, 'docs', 'guide.md'))).toBe(true);
+        expect(existsSync(path.join(desktopTarget, 'tests', 'sample.test.js'))).toBe(true);
+    });
 });
