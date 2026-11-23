@@ -708,7 +708,7 @@ function ensureOverlay() {
     if (overlay.parentElement !== host) {
         host.append(overlay);
     }
-    // The CSS reads whether the overlay is in a dialog from the first frame, so the placement is written now.
+    // The overlay is in its host now, so its place in the window is written before the first frame that it is drawn in: the inset above a sheet, and the insets of a dialog that is its containing block.
     updateToastPlacement();
     observeToastPlacement();
     return overlay;
