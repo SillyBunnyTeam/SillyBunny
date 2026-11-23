@@ -1438,6 +1438,62 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-inline: var(--sb-settings-inset);
 }
 
+/* The page class (data-sb-page-width) picks the maximum of a page. A page with none, such as an extension's, is a
+   preference page. Every page has the same side padding, --sb-settings-inset, at every desktop width, as the margins of an
+   AdwClamp are constant, and so is the top padding: a list or editor frame starts --sb-settings-inset-top under the content
+   bar, as every page does. */
+#sb-settings-page [data-sb-page-width='wide'] {
+    --sb-page-max: var(--sb-measure-wide);
+}
+
+/* The content of a page is libadwaita's AdwClamp: as wide as the page can be up to its tightening threshold, then less than
+   that room as the room grows, and at most the maximum. The threshold is 2/3 of the maximum. The curve is the min() of eight
+   chords, written by scripts/generate-clamp-curve.js; --sb-page-available is the room between the insets. Both are read where
+   the padding is, because the percentage in the first resolves against the box that is padded. */
+#sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail, .scrollableInner) {
+    --sb-page-available: calc(100% - 2 * var(--sb-settings-inset));
+    /* clamp-curve:begin (written by scripts/generate-clamp-curve.js; do not edit by hand) */
+    --sb-page-content: min(
+        var(--sb-page-available),
+        calc(0.05517 * var(--sb-page-max) + 0.917245 * var(--sb-page-available)),
+        calc(0.175022 * var(--sb-page-max) + 0.757833 * var(--sb-page-available)),
+        calc(0.3024 * var(--sb-page-max) + 0.606406 * var(--sb-page-available)),
+        calc(0.435731 * var(--sb-page-max) + 0.463907 * var(--sb-page-available)),
+        calc(0.572873 * var(--sb-page-max) + 0.331622 * var(--sb-page-available)),
+        calc(0.710693 * var(--sb-page-max) + 0.211427 * var(--sb-page-available)),
+        calc(0.844057 * var(--sb-page-max) + 0.106401 * var(--sb-page-available)),
+        calc(0.965278 * var(--sb-page-max) + 0.020833 * var(--sb-page-available)),
+        var(--sb-page-max)
+    );
+    /* clamp-curve:end */
+}
+
+/* Limit Content Width is off: the content has all the room between the page insets. */
+:root[data-sb-content-clamp='off'] #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail, .scrollableInner) {
+    --sb-page-content: var(--sb-page-available);
+}
+
+@media (min-width: 769px) {
+    /* A column is centred by the padding of the element that scrolls it. That element spans the pane, so its scrollbar
+       stays on the pane's end edge. */
+    #sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
+        padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-content)) / 2));
+    }
+
+    /* A scrollbar that takes room from this box makes the percentage padding half a scrollbar off the centre of the pane, so
+       such a page keeps the gutter on both edges. A wide page is a frame that scrolls inside itself, which has no such offset. */
+    :root[data-sb-classic-scrollbars] #sb-settings-page [data-sb-page-width='preference'] :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
+        scrollbar-gutter: stable both-edges;
+    }
+
+    /* A wide page is a visible frame that scrolls inside itself, so the frame is the column and its scrollbars stay in it.
+       The `:not(#sb-specificity)` outweighs the `:has()` rules that pad the box of each list page. */
+    #sb-settings-page #sb-settings-shell-host .sb-shell-panel[data-sb-page-width='wide'] > .sb-shell-panel-scroller,
+    #sb-settings-page #sb-settings-shell-host > #right-nav-panel.openDrawer[data-sb-page-width='wide'] > .scrollableInner:not(#sb-specificity) {
+        padding-inline: max(var(--sb-settings-inset), calc((100% - var(--sb-page-content)) / 2));
+    }
+}
+
 /* A stacked page scrolls in its list and detail pages, which carry the page padding above. The panel scroller around the stack
    and the stack itself add none, or the groups sit twice the inset from the sides, twice the top space down, and the list ends
    a bottom padding above the window's edge. */
@@ -3280,7 +3336,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 #sb-settings-inner {
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: var(--sb-split-sidebar-width) 1fr;
     width: 100%;
     height: 100%;
     overflow: hidden;
@@ -4030,6 +4086,13 @@ body.reduced-motion .sb-search-entry {
     line-height: 1.4;
     color: var(--sb-input-placeholder);
     opacity: 1;
+}
+
+/* An upstream description that became a row subtitle keeps `.toggle-description { width: max-content }`. Its row text is a flex
+   column, so the subtitle would take the width of its longest line and be cut off where that is wider than the row. Inside
+   the Chat Completion drawers a rule with ids sets `width: 100%`, which a row moved out of them no longer meets. */
+.ds-row-subtitle.toggle-description {
+    width: auto;
 }
 
 .ds-row-suffix {

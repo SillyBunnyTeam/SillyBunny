@@ -5,7 +5,7 @@
 
 /* Neutralise the legacy embedded drawer's auto-height/mobile document scrolling. */
 #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(.sb-wi-editor-mounted) {
-    padding: calc(var(--sb-shell-panel-padding-block) - 4px) var(--sb-shell-panel-padding-inline) 9px;
+    padding-block: var(--sb-settings-inset-top) 9px;
     overflow: hidden !important;
     scrollbar-gutter: auto;
 }

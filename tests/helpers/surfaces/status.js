@@ -1278,7 +1278,7 @@ const conversationChooseDm = status({
     },
     close: leaveConversation,
     // A phone shows the Pals page when no DM is chosen; the thread area with this text is the wide layouts'.
-    viewports: ['1440x900', '1024x600', '900x700'],
+    viewports: ['3440x1440', '1920x1080', '1440x900', '1024x600', '900x700'],
     sources: CONVERSATION_SOURCES,
     primaryFlow: true,
 });

@@ -135,6 +135,14 @@ describe('the capture sets', () => {
         expect(variantCells('1440x900', all, MATRIX)).toHaveLength(9);
         expect(variantCells('390x844', all, MATRIX)).toHaveLength(9);
         expect(variantCells('1024x600', all, MATRIX).map(cell => cell.id)).toEqual(['normal-libadwaita', 'normal-libadwaita-light', 'compact-libadwaita', 'compact-libadwaita-light']);
+        for (const wide of ['3440x1440', '1920x1080']) {
+            expect(variantCells(wide, all, MATRIX).map(cell => cell.id)).toEqual(['normal-libadwaita', 'normal-libadwaita-light', 'compact-libadwaita', 'compact-libadwaita-light']);
+        }
+    });
+
+    test('the ultrawide and full HD viewports can be selected one by one', () => {
+        const selection = selectCaptures({ CAPTURE_VIEWPORTS: '3440x1440,1920x1080' });
+        expect(selection).toMatchObject({ viewports: ['3440x1440', '1920x1080'], variants: [BASE_VARIANT_ID], problems: [] });
     });
 
     test('without legacy themes the full set has seven variants', () => {

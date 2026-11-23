@@ -166,8 +166,10 @@ describe('surface registry lookups', () => {
 });
 
 describe('matrix data', () => {
-    test('the ten viewports of the test matrix', () => {
+    test('the twelve viewports of the test matrix', () => {
         expect(MATRIX_VIEWPORTS.map(viewport => `${viewport.id} ${viewport.pointer} ${viewport.appliesTo}`)).toEqual([
+            '3440x1440 fine every',
+            '1920x1080 fine every',
             '1440x900 fine every',
             '1024x600 fine every',
             '900x700 fine every',
@@ -179,13 +181,13 @@ describe('matrix data', () => {
             '360x294 coarse overlays-and-primary-flows',
             '320x568 coarse primary-flows',
         ]);
-        expect(VIEWPORT_IDS).toHaveLength(10);
+        expect(VIEWPORT_IDS).toHaveLength(12);
         expect(EXTRA_AXIS_VIEWPORT_IDS).toEqual(['1440x900', '390x844']);
         expect(EXTRA_AXES.map(axis => axis.id)).toEqual(['forced-colors', 'text-200', 'reduced-motion']);
     });
 
     test('the "applies to" restriction follows the family and the primary flow', () => {
-        expect(viewportsFor({ family: 'list' })).toEqual(['1440x900', '1024x600', '900x700', '768x1024', '844x390', '390x844', '360x640']);
+        expect(viewportsFor({ family: 'list' })).toEqual(['3440x1440', '1920x1080', '1440x900', '1024x600', '900x700', '768x1024', '844x390', '390x844', '360x640']);
         expect(viewportsFor({ family: 'dialog' })).toContain('820x360');
         expect(viewportsFor({ family: 'dialog' })).toContain('360x294');
         expect(viewportsFor({ family: 'dialog' })).not.toContain('320x568');

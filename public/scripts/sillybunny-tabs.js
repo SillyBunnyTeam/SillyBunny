@@ -81,7 +81,9 @@ import {
     SB_DATA_SECURITY_CONTAINER_ID,
     SB_FLAT_SECTION_CLASS,
     SB_FLAT_SECTION_HEADER_CLASS,
+    applyPageWidth,
     applySettingsSectionOrder,
+    syncClassicScrollbars,
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
@@ -693,6 +695,8 @@ const SB_STORAGE_KEYS = Object.freeze({
     // configured before the split keeps its look.
     topbarIconsOnly: 'sb-topbar-icons-only',
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
+    // Limit Content Width: `false` lifts the content columns of the settings page and the ceiling of the Window dialogs.
+    desktopContentClamp: 'sb-desktop-content-clamp',
 
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
     paperTextureEnabled: 'sb-paper-texture-enabled',
@@ -760,9 +764,9 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261120b', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261118zzv', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261122j', id: 'deferred-prompt-editor-css' },
     ],
     // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles. NovelAI's Logit Bias entries are entity rows, which the entity list sheet styles.
     'left:prompting': [
@@ -773,28 +777,28 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/world-info.css?v=20261120a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261120b', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-world-info-editor.css?v=20261118zv', id: 'deferred-world-info-editor-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-world-info-editor.css?v=20261122g', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261120b', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
+        { href: 'css/sillybunny-persona-editor.css?v=20261122g', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261118zv', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves.
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261120b', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261118zza', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261122g', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI.
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261120b', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261118zza', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261122g', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
@@ -1110,6 +1114,7 @@ const SB_SAMPLING_SUBTITLE_HTML = 'Modify model text parameters here - useful fo
 
 const SB_WORLD_INFO_SUBTITLE_HTML = 'Advanced: Modify lorebooks for character cards here. For more information, read the guide found <a class="notes-link" href="https://docs.sillytavern.app/usage/core-concepts/worldinfo/" target="_blank" rel="noopener noreferrer">here</a>.';
 
+// `pageWidth: 'wide'` puts a page in the wide column of the settings page (a list, an editor or a grid); a page with none is a preference page.
 const SB_CHARACTER_PANEL_TABS = Object.freeze([
     {
         id: 'characters',
@@ -1118,6 +1123,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Open and Manage Character Cards',
         description: 'View or create character cards here for your roleplays and chats!',
         searchAliases: ['character card', 'character list', 'avatars', 'cards'],
+        pageWidth: 'wide',
     },
     {
         id: 'groups',
@@ -1126,6 +1132,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Open and Manage Group Conversations',
         description: 'View or create group chats here for your roleplays and chats!',
         searchAliases: ['group chat', 'group chats', 'group members', 'muting'],
+        pageWidth: 'wide',
     },
     {
         id: 'editor',
@@ -1134,6 +1141,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Edit Character Cards and Groups',
         description: 'Edit your character cards or group chats in great detail here!',
         searchAliases: ['character editor', 'group editor', 'edit card', 'first message', 'greetings'],
+        pageWidth: 'wide',
     },
     {
         id: 'world-info',
@@ -1143,6 +1151,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         description: SB_WORLD_INFO_SUBTITLE_HTML,
         descriptionIsHtml: true,
         searchAliases: ['lorebook', 'lorebooks', 'world info book', 'world', 'entries'],
+        pageWidth: 'wide',
     },
     {
         id: 'persona',
@@ -1151,6 +1160,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         tooltip: 'Manage User Persona/Personality',
         description: 'Edit your own persona here for roleplay and chats!',
         searchAliases: ['personas', 'persona description', 'impersonate'],
+        pageWidth: 'wide',
     },
     {
         id: 'import',
@@ -1217,6 +1227,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Edit prompt content, order, and placement',
                 descriptionI18n: 'Edit prompt content, order, and placement',
                 searchAliases: ['Prompt Manager', 'Prompts'],
+                pageWidth: 'wide',
             },
             {
                 id: 'context',
@@ -1235,6 +1246,7 @@ const SB_SHELLS = Object.freeze({
                 icon: 'fa-robot',
                 tooltip: 'Interact with accompanying pre, post, and sidecar agents',
                 description: 'Configure your in-chat agents here. They can be configured for pre-gen, post-gen, or as a side companion.',
+                pageWidth: 'wide',
             },
         ],
     },
@@ -1445,6 +1457,7 @@ const sbState = {
     paperTextureEnabled: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.paperTextureEnabled), false),
     paperTextureOpacity: normalizePaperTextureOpacity(safeGetItem(SB_STORAGE_KEYS.paperTextureOpacity)),
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
+    contentClamp: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopContentClamp), true),
     topbarIconsOnly: {
         desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),
     },
@@ -1556,6 +1569,12 @@ const sbState = {
         report: null,
     },
 };
+
+// The attribute is written when the module loads, before the shell exists, so a Window or a settings page that opens first is already laid out the user's way.
+applyContentClampPreference();
+// SillyBunny: the scrollbars of the browser can change while the page is open (a mouse that is plugged in), so a window that is focused again measures them once more.
+syncClassicScrollbars();
+window.addEventListener('focus', () => syncClassicScrollbars(), { passive: true });
 
 function normalizeTopbarLabelPart(value, fallback = '') {
     const fallbackValue = SB_TOPBAR_LABEL_PART_IDS.has(fallback) ? fallback : '';
@@ -1742,6 +1761,7 @@ function restorePersistedTopbarState() {
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
+    sbState.contentClamp = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopContentClamp), sbState.contentClamp);
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
 }
@@ -1986,6 +2006,37 @@ function setCompactMode(enabled, { persist = true } = {}) {
 
     queueComposerControlPlacement();
     updateThemePickerUi();
+}
+
+// SillyBunny: Limit Content Width is a desktop setting. The clamp is the default and has no attribute; the unclamped view is one
+// attribute on the root, so turning it on or off restyles no more than that write does.
+function applyContentClampPreference() {
+    const root = document.documentElement;
+    if (sbState.contentClamp) {
+        root.removeAttribute('data-sb-content-clamp');
+    } else if (root.getAttribute('data-sb-content-clamp') !== 'off') {
+        root.setAttribute('data-sb-content-clamp', 'off');
+    }
+}
+
+function syncContentClampInput() {
+    const input = document.getElementById('sb-desktop-content-clamp-input');
+
+    if (input instanceof HTMLInputElement) {
+        input.checked = sbState.contentClamp;
+    }
+}
+
+// The full sync of the Interface page rewrites attributes of its sliders, so this setter syncs its own switch only.
+function setContentClamp(enabled, { persist = true } = {}) {
+    sbState.contentClamp = Boolean(enabled);
+    applyContentClampPreference();
+
+    if (persist) {
+        safeSetItem(SB_STORAGE_KEYS.desktopContentClamp, String(sbState.contentClamp));
+    }
+
+    syncContentClampInput();
 }
 
 // SillyBunny: the icons-only top bar (the labelled bar without its labels) is a desktop setting. The phone bar
@@ -6611,19 +6662,22 @@ async function openCharacterEditorTab() {
     return false;
 }
 
+/** The tab of the Characters window that a page of its one panel belongs to; the panel's `data-menu-type` names the page. */
+function getCharacterTabIdForMenuType(menuType) {
+    if (menuType === 'persona' || menuType === 'import' || menuType === 'world-info' || menuType === 'groups') {
+        return menuType;
+    }
+
+    return ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters';
+}
+
 function syncCharacterShellTabs(activeTab = null) {
     const panel = getCharacterPanel();
     const menuType = panel?.dataset.menuType;
-    const normalizedTab = activeTab
-        ?? (menuType === 'persona'
-            ? 'persona'
-            : menuType === 'import'
-                ? 'import'
-                : menuType === 'world-info'
-                    ? 'world-info'
-                    : menuType === 'groups'
-                        ? 'groups'
-                        : ['character_edit', 'group_edit', 'create', 'group_create', 'editor_empty'].includes(menuType) ? 'editor' : 'characters');
+    const normalizedTab = activeTab ?? getCharacterTabIdForMenuType(menuType);
+
+    // The Characters window shows its pages in one panel, so the page class follows the page that is shown.
+    applyPageWidth(panel, getCharacterPanelTabConfig(normalizedTab));
 
     if (normalizedTab !== 'characters' && normalizedTab !== 'groups') characterListViewRevision++;
 
@@ -6778,6 +6832,7 @@ function bindCharacterDrawerStateObserver() {
         attributes: true,
         attributeFilter: ['class', 'data-menu-type'],
     });
+    applyPageWidth(panel, getCharacterPanelTabConfig(getCharacterTabIdForMenuType(panel.dataset.menuType)));
     syncCharacterDrawerStateFromDom({ force: true });
 }
 
@@ -9752,6 +9807,17 @@ function createCharactersPinRow() {
     });
 }
 
+// SillyBunny: desktop only, as the group it sits in. The columns and the Window ceiling exist on the desktop layout only, so the phone page has no switch for them.
+function createContentClampRow() {
+    return createInterfaceSwitchRow({
+        id: 'sb-desktop-content-clamp-input',
+        label: t`Limit Content Width`,
+        subtitle: t`Clamps the contents of Settings to a specific viewport for wide monitors`,
+        field: 'content-clamp',
+        onChange: checked => setContentClamp(checked),
+    });
+}
+
 function createPaperTextureBody() {
     const toggleRow = createInterfaceSwitchRow({
         id: 'sb-paper-texture-enabled-input',
@@ -9970,6 +10036,7 @@ function injectThemePicker() {
         createTopbarIconsOnlyRow(),
         desktopButtonSliderGroup,
         createCharactersPinRow(),
+        createContentClampRow(),
     ]);
     const mobileBody = createInterfaceGroupBody('sb-mobile-settings-outlet', [mobileButtonSliderGroup]);
     const bottomBarBody = createInterfaceGroupBody('sb-bottom-bar-settings', [
@@ -10087,6 +10154,8 @@ function updateThemePickerUi() {
     if (topbarIconsOnlyInput instanceof HTMLInputElement) {
         topbarIconsOnlyInput.checked = sbState.topbarIconsOnly.desktop;
     }
+
+    syncContentClampInput();
 
     const charactersPinInput = document.getElementById('sb-desktop-pin-characters-input');
 
@@ -11299,6 +11368,9 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         return;
     }
 
+    // The panel carries its page class for the stylesheet; an extension's own settings page sits in a panel and has the default class.
+    applyPageWidth(panelBundle.panel, tabConfig);
+
     // Tab buttons live in the settings page sidebar; the shell only tracks panel state.
     shellState.tabs.set(tabConfig.id, {
         ...tabConfig,
@@ -12226,6 +12298,26 @@ function scheduleBottomChatBarRefresh(delay = 0) {
     }, delay);
 }
 
+// The entries are written only when they differ from what the picker holds, so a refresh that finds the same chats changes
+// nothing in the page.
+function writeBottomChatOptions(select, entries) {
+    const unchanged = select.options.length === entries.length && entries.every((entry, index) => {
+        const option = select.options[index];
+        return option.value === entry.value && option.textContent === entry.label && option.selected === entry.selected;
+    });
+    if (unchanged) {
+        return;
+    }
+
+    select.replaceChildren(...entries.map(entry => {
+        const option = document.createElement('option');
+        option.value = entry.value;
+        option.textContent = entry.label;
+        option.selected = entry.selected;
+        return option;
+    }));
+}
+
 async function refreshBottomChatSelect() {
     const chatSelect = sbState.bottomChatBar?.chatSelect;
     if (!(chatSelect instanceof HTMLSelectElement)) {
@@ -12247,14 +12339,14 @@ async function refreshBottomChatSelect() {
     }
 
     const currentChatName = chatContext.chatId;
-    chatSelect.replaceChildren();
+    const current = { value: '', label: describeChatName(currentChatName) || 'No chat selected', selected: true };
 
-    // Add placeholder option showing the current chat
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = describeChatName(currentChatName) || 'No chat selected';
-    placeholder.selected = true;
-    chatSelect.appendChild(placeholder);
+    // The picker shows the current chat at once, before its list arrives, unless it already shows it.
+    const showsCurrentChat = [...chatSelect.selectedOptions].some(option => (currentChatName !== '' && option.value === currentChatName)
+        || (option.value === '' && option.textContent === current.label));
+    if (!chatContext.canBrowseChats || !showsCurrentChat) {
+        writeBottomChatOptions(chatSelect, [current]);
+    }
 
     if (!chatContext.canBrowseChats) {
         return;
@@ -12262,27 +12354,17 @@ async function refreshBottomChatSelect() {
 
     try {
         const chats = await getChatFilesForContext(chatContext);
-        const chatNames = chats.map(chat => chat.fileName);
+        const entries = chats.filter(chat => chat.fileName).map(chat => ({
+            value: chat.fileName,
+            label: formatChatSelectorLabel(chat.fileName, chat.tokenEstimate),
+            selected: chat.fileName === currentChatName,
+        }));
 
-        chatSelect.replaceChildren();
-
-        for (const chat of chats) {
-            const chatName = chat.fileName;
-            if (!chatName) continue;
-            const option = document.createElement('option');
-            option.value = chatName;
-            option.textContent = formatChatSelectorLabel(chatName, chat.tokenEstimate);
-            option.selected = chatName === currentChatName;
-            chatSelect.appendChild(option);
+        if (!chats.some(chat => chat.fileName === currentChatName)) {
+            entries.unshift(current);
         }
 
-        if (!chatNames.includes(currentChatName)) {
-            const fallback = document.createElement('option');
-            fallback.value = '';
-            fallback.textContent = describeChatName(currentChatName) || 'No chat selected';
-            fallback.selected = true;
-            chatSelect.prepend(fallback);
-        }
+        writeBottomChatOptions(chatSelect, entries);
 
         if (chatContext.canBrowseChats && chats.length === 0) {
             const attempts = Number(sbState.bottomChatBarRefreshAttempts ?? 0);
@@ -12512,17 +12594,21 @@ function bindBottomChatBarWindowEvents() {
         return;
     }
 
-    const refreshWithContext = () => {
+    // A resize changes the layout of the bar and not the chats it lists, so it does not load the list again.
+    const syncWithWindow = () => {
         syncBottomChatBarSecondaryState();
         syncBottomChatBarSearchState();
-        scheduleBottomChatBarRefresh(0);
         window.requestAnimationFrame(() => updatePersonaBubble(bottomChatBarState.personaBubble));
+    };
+    const refreshWithContext = () => {
+        syncWithWindow();
+        scheduleBottomChatBarRefresh(0);
         bindBottomChatBarEvents();
     };
 
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
     window.addEventListener('focus', refreshWithContext, { passive: true });
-    window.addEventListener('resize', refreshWithContext, { passive: true });
+    window.addEventListener('resize', syncWithWindow, { passive: true });
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             refreshWithContext();
@@ -12993,6 +13079,7 @@ function initAll() {
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
     setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
+    setContentClamp(sbState.contentClamp, { persist: false });
     setBottomBarScale(sbState.bottomBarScale, { persist: false });
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });

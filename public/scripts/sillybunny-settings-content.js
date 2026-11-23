@@ -1115,3 +1115,66 @@ export function splitUserSettingsContent(originalContent) {
         missing,
     };
 }
+
+/**
+ * The page class of the full-screen settings page. A page keeps its content in a centred AdwClamp of one of two maximums,
+ * `preference` (rows of a form) or `wide` (a list, an editor or a grid), which sillybunny-tabs.css reads from the
+ * `data-sb-page-width` attribute of the page's root. A tab definition says `pageWidth: 'wide'` to opt in; a page with no
+ * definition, such as an extension's settings page, is a preference page.
+ */
+export const PAGE_WIDTH_ATTRIBUTE = 'data-sb-page-width';
+
+/**
+ * @param {{ pageWidth?: string } | null | undefined} tabConfig
+ * @returns {'preference' | 'wide'}
+ */
+export function getPageWidth(tabConfig) {
+    return tabConfig?.pageWidth === 'wide' ? 'wide' : 'preference';
+}
+
+/**
+ * Writes the class of a tab to the root of its page. The attribute is written only when it differs, so a page that is
+ * shown again causes no style change.
+ * @param {Element | null | undefined} root
+ * @param {{ pageWidth?: string } | null | undefined} tabConfig
+ */
+export function applyPageWidth(root, tabConfig) {
+    if (!(root instanceof Element)) return;
+    const width = getPageWidth(tabConfig);
+    if (root.getAttribute(PAGE_WIDTH_ATTRIBUTE) !== width) root.setAttribute(PAGE_WIDTH_ATTRIBUTE, width);
+}
+
+/**
+ * A scrollbar that takes room from the box it scrolls (a classic scrollbar, which every desktop Chromium and Safari shows once
+ * the page styles it) makes a column that is centred by padding sit half a scrollbar off the centre of its pane: the padding
+ * is a percentage of the pane, and the scrollbar is inside it. sillybunny-tabs.css keeps a gutter on both edges of such a
+ * box, and only where the root has this attribute, so a browser whose scrollbars take no room (overlay, or hidden in a test
+ * browser) reserves nothing.
+ */
+export const CLASSIC_SCROLLBARS_ATTRIBUTE = 'data-sb-classic-scrollbars';
+
+/**
+ * The width that a scrollbar takes from a box that scrolls, in the style of the page.
+ * @returns {number}
+ */
+export function measureScrollbarWidth() {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:100px;height:100px;overflow:scroll';
+    (document.body ?? document.documentElement).append(probe);
+    const width = probe.offsetWidth - probe.clientWidth;
+    probe.remove();
+    return width;
+}
+
+/**
+ * Writes the attribute of classic scrollbars to the root, only when it differs, so a measure that finds the same causes no style change.
+ * @param {Element} [root]
+ * @returns {boolean} Whether scrollbars take room.
+ */
+export function syncClassicScrollbars(root = document.documentElement) {
+    const classic = measureScrollbarWidth() > 0;
+    if (root.hasAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE) !== classic) {
+        root.toggleAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE, classic);
+    }
+    return classic;
+}

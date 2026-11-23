@@ -837,6 +837,7 @@ test.describe('Customize consistency', () => {
             };
             return {
                 inset: resolve('var(--sb-settings-inset)'),
+                pane: frame.width,
                 insetTop: resolve('var(--sb-settings-inset-top)'),
                 left: Math.round((group.getBoundingClientRect().left - frame.left) * 10) / 10,
                 right: Math.round((frame.right - group.getBoundingClientRect().right) * 10) / 10,
@@ -848,9 +849,12 @@ test.describe('Customize consistency', () => {
 
         // Formatting, Sampling, Prompting and Connections show other groups for each API type, and a group that one type
         // hides can leave space behind, so each pair is measured. The Characters Import page does not depend on the type.
-        const frameRuns = [[1440, 900, 'openai'], [1440, 900, 'textgenerationwebui'], [390, 844, 'openai'], [390, 844, 'textgenerationwebui']];
-        for (const [width, height, backend] of frameRuns) {
+        // The page's content is an AdwClamp above 768px, so its sides sit further in than the inset while Limit Content Width is on, and
+        // the same for every page. With the switch off the sides are the inset again, as they are at every width on a phone.
+        const frameRuns = [[1440, 900, 'openai', 'on'], [1440, 900, 'textgenerationwebui', 'on'], [1440, 900, 'openai', 'off'], [390, 844, 'openai', 'on'], [390, 844, 'textgenerationwebui', 'on']];
+        for (const [width, height, backend, clamp] of frameRuns) {
             await page.setViewportSize({ width, height });
+            await page.evaluate(state => (state === 'off' ? document.documentElement.setAttribute('data-sb-content-clamp', 'off') : document.documentElement.removeAttribute('data-sb-content-clamp')), clamp);
             await switchBackend(page, backend);
             const frames = {};
             for (const { id, shell } of pages) {
@@ -874,10 +878,13 @@ test.describe('Customize consistency', () => {
             const reference = frames.interface;
             expect(reference.error).toBeUndefined();
             expect(reference.inset).toBe(12);
+            // AdwClamp of 1000sp, its threshold at 2/3 of that, over the room between the insets: 950px at 1440px, centred in the pane.
+            const side = clamp === 'on' && width > 768 ? (reference.pane - 950) / 2 : reference.inset;
+            expect(reference.left, `${width} ${backend} ${clamp}: the Interface page's side`).toBeCloseTo(side, 0);
             for (const [id, frame] of Object.entries(frames)) {
                 if (frame.error) { problems.push(`${width} ${backend}: ${frame.error}`); continue; }
-                if (Math.abs(frame.left - reference.inset) > 0.5) problems.push(`${width} ${backend} ${id}: left inset ${frame.left}, not ${reference.inset}`);
-                if (Math.abs(frame.right - reference.inset) > 0.5) problems.push(`${width} ${backend} ${id}: right inset ${frame.right}, not ${reference.inset}`);
+                if (Math.abs(frame.left - reference.left) > 0.5) problems.push(`${width} ${backend} ${clamp} ${id}: left side ${frame.left}, not ${reference.left}`);
+                if (Math.abs(frame.right - reference.left) > 0.5) problems.push(`${width} ${backend} ${clamp} ${id}: right side ${frame.right}, not ${reference.left}`);
                 if (Math.abs(frame.top - reference.insetTop) > 1) problems.push(`${width} ${backend} ${id}: top space ${frame.top}, not ${reference.insetTop}`);
                 if (Math.abs(frame.bottomGap - reference.bottomGap) > 1) problems.push(`${width} ${backend} ${id}: scroller (${frame.scroller}) ends ${frame.bottomGap}px above the page's bottom, Interface ${reference.bottomGap}px`);
             }
@@ -886,7 +893,7 @@ test.describe('Customize consistency', () => {
             // An extension's own page, opened from its row, keeps the frame too, and Back returns to the list where it was.
             const extensions = await openSettingsTab(page, 'extensions', 'right');
             await expect.poll(() => extensions.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
-            for (const label of backend === 'openai' ? ['Character Expressions', 'Quick Reply', 'Regex'] : []) {
+            for (const label of backend === 'openai' && clamp === 'on' ? ['Character Expressions', 'Quick Reply', 'Regex'] : []) {
                 const scrolled = await page.evaluate(() => {
                     const list = document.querySelector('[data-sb-panel="extensions"] .sb-subpage-list');
                     list.scrollTop = 300;
@@ -902,8 +909,8 @@ test.describe('Customize consistency', () => {
                     const settingsPage = document.getElementById('sb-settings-page').getBoundingClientRect();
                     return { left: group.left - panel.left, right: panel.right - group.right, bottomGap: settingsPage.bottom - node.getBoundingClientRect().bottom };
                 });
-                expect(sides.left, `${label} left inset at ${width}`).toBeCloseTo(reference.inset, 0);
-                expect(sides.right, `${label} right inset at ${width}`).toBeCloseTo(reference.inset, 0);
+                expect(sides.left, `${label} left side at ${width} ${clamp}`).toBeCloseTo(reference.left, 0);
+                expect(sides.right, `${label} right side at ${width} ${clamp}`).toBeCloseTo(reference.left, 0);
                 expect(sides.bottomGap, `${label} page bottom at ${width}`).toBeCloseTo(reference.bottomGap, 0);
                 await detail.locator('.sb-subpage-back').click();
                 await expect(extensions.locator('.sb-subpage-detail[aria-hidden="false"]')).toHaveCount(0);

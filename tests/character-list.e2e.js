@@ -12,8 +12,9 @@ import { TOAST_CONTAINERS } from './helpers/toasts.js';
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
 const showMore = page => list(page).locator('.sb-list-show-more__button');
+// At 1440px the list is a wide settings page: its frame is an AdwClamp of the room between the page insets, in a pane that is the window less the sidebar.
 const selectionLayout = {
-    1440: { titleX: 100, descriptionRight: 1116, truncated: false },
+    1440: { titleX: 100, descriptionRight: 1073, truncated: false },
     390: { titleX: 100, descriptionRight: 304, truncated: false },
 };
 
@@ -305,6 +306,37 @@ async function openTagPicker(page) {
     const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
     await expect(picker).toBeVisible();
     return { button, picker, search: picker.locator('.sb-picker__search') };
+}
+
+/**
+ * Adds 65 sorted tags to the list, more than the 50 chips that upstream prints before its expander. Tag 060 sits on
+ * its own character. The rest sit on another. The cleanup in `afterEach` removes both.
+ * @returns {Promise<string[]>} The names of every tag that has an entity, in the sorted order the picker must show.
+ */
+async function seedOverflowTags(page) {
+    return page.evaluate(async () => {
+        const app = await import('/script.js');
+        const tagsApi = await import('/scripts/tags.js');
+        const definitions = Array.from({ length: 65 }, (_, index) => ({
+            id: `qa-overflow-tag-${String(index).padStart(3, '0')}`,
+            name: `QA overflow ${String(index).padStart(3, '0')}`,
+            color: 'rgb(90, 160, 220)',
+            color2: 'white',
+        }));
+        const [crowded, single] = [app.characters[10].avatar, app.characters[11].avatar];
+        const fixtures = window.__sbCharacterListTagFixtures;
+        fixtures.ids.push(...definitions.map(tag => tag.id));
+        fixtures.maps.push([crowded, tagsApi.tag_map[crowded]], [single, tagsApi.tag_map[single]]);
+        tagsApi.tags.push(...definitions);
+        tagsApi.tag_map[crowded] = definitions.filter(tag => !tag.id.endsWith('060')).map(tag => tag.id);
+        tagsApi.tag_map[single] = ['qa-overflow-tag-060'];
+        tagsApi.printTagFilters(tagsApi.tag_filter_type.character);
+        const assigned = new Set(Object.values(tagsApi.tag_map).flat());
+        return tagsApi.tags
+            .filter(tag => assigned.has(tag.id))
+            .map(tag => tag.name)
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    });
 }
 
 /** The search bar closes on a press outside it, so a close that is still playing settles before the bar is read. */
@@ -914,6 +946,95 @@ test.describe('folder headers in list and grid view', () => {
     });
 });
 
+// A card of the grid is 190px wide and the grid is centred in its page, so a column added by a wider window does not resize the cards.
+const GRID_CARD_WIDTH = 190;
+const GRID_WIDTHS = [1100, 1180, 1260, 1340, 1440, 1560, 1700, 1900, 2100, 2300, 2450, 2600];
+
+/** The cards of the grid, read against the content box of the grid, in pixels. */
+function readGrid(page, view) {
+    return page.evaluate(view => {
+        const grid = document.querySelector('.sb-character-list #rm_print_characters_block');
+        const style = getComputedStyle(grid);
+        const box = grid.getBoundingClientRect();
+        const left = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+        const right = box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+        const cards = [...grid.querySelectorAll(view === 'groups' ? '.group_select' : '.character_select')].map(card => card.getBoundingClientRect());
+        const rows = [...new Set(cards.map(card => Math.round(card.top)))];
+        const first = cards.filter(card => Math.round(card.top) === rows[0]);
+        const last = cards.filter(card => Math.round(card.top) === rows.at(-1));
+        return {
+            display: style.display,
+            count: cards.length,
+            columns: first.length,
+            rows: rows.length,
+            widths: cards.map(card => card.width),
+            leftGap: first[0].left - left,
+            rightGap: right - first.at(-1).right,
+            lastRowStart: last[0].left - first[0].left,
+            overflow: grid.scrollWidth - grid.clientWidth,
+            pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+    }, view);
+}
+
+test.describe('grid view of the lists', () => {
+    for (const view of ['characters', 'groups']) {
+        test(`${view} cards keep one width and the grid stays centred from 1100px to 2600px`, async ({ page }) => {
+            await prepareList(page, { width: 1440, height: 900 });
+            await page.evaluate(async () => {
+                const app = await import('/script.js');
+                const state = await import('/scripts/sillybunny-character-list-state.js');
+                const { power_user } = await import('/scripts/power-user.js');
+                for (const name of ['characters', 'groups']) {
+                    state.setListPageSize(name, 28);
+                    await state.setListPage(name, 1);
+                }
+                power_user.charListGrid = true;
+                document.body.classList.add('charListGrid');
+                await app.printCharacters(false);
+            });
+            await showView(page, view);
+            await expect(listRows(page, view)).toHaveCount(28);
+            const problems = [];
+            const columns = new Set();
+            for (const width of GRID_WIDTHS) {
+                await page.setViewportSize({ width, height: 900 });
+                await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+                const read = await readGrid(page, view);
+                columns.add(read.columns);
+                const failures = [
+                    [read.display !== 'grid', `display ${read.display}`],
+                    [read.widths.some(cardWidth => Math.abs(cardWidth - GRID_CARD_WIDTH) > 0.01), `card widths ${[...new Set(read.widths)].join(', ')}`],
+                    [Math.abs(read.leftGap - read.rightGap) > 1, `${read.leftGap} left of the cards and ${read.rightGap} right`],
+                    [Math.abs(read.lastRowStart) > 0.5, `the last row starts ${read.lastRowStart}px from the first`],
+                    [Math.max(read.overflow, read.pageOverflow) > 0, `overflows by ${read.overflow} (grid) and ${read.pageOverflow} (page)`],
+                ];
+                problems.push(...failures.filter(([failed]) => failed).map(([, text]) => `${width}: ${text}`));
+            }
+            expect(problems).toEqual([]);
+            // A sweep that never adds a column would not test the step the cards must not feel.
+            expect(columns.size).toBeGreaterThanOrEqual(4);
+        });
+    }
+
+    test('a phone keeps two stretching columns', async ({ page }) => {
+        await prepareList(page, { width: 390, height: 844 });
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const { power_user } = await import('/scripts/power-user.js');
+            power_user.charListGrid = true;
+            document.body.classList.add('charListGrid');
+            await app.printCharacters(false);
+        });
+        const read = await readGrid(page, 'characters');
+        expect(read.columns).toBe(2);
+        expect(Math.abs(read.leftGap - read.rightGap)).toBeLessThanOrEqual(1);
+        expect(read.widths.every(width => Math.abs(width - read.widths[0]) < 0.01)).toBe(true);
+        expect(read.widths[0]).toBeLessThan(GRID_CARD_WIDTH);
+        expect(read.overflow).toBeLessThanOrEqual(0);
+    });
+});
+
 test.describe('Show More', () => {
     test('loads one batch per press under its label and focuses the first new row at the end', async ({ page }) => {
         await prepareList(page, { width: 1440, height: 900 });
@@ -1303,6 +1424,42 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(groupPicker.search).toBeFocused();
         await page.keyboard.press('Escape');
         await expect(groupPicker.button).toBeFocused();
+    });
+
+    test(`tag filter picker lists every tag past the 50-chip limit in order, and keeps a filter on one at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const names = await seedOverflowTags(page);
+        const chips = list(page).locator('.rm_tag_filter');
+        // The upstream print stops at 50 chips and an expander, before the picker has opened. The fixture user also has the tag "ST Default".
+        expect(names.filter(name => name.startsWith('QA overflow'))).toHaveLength(65);
+        expect(names.indexOf('QA overflow 060')).toBeGreaterThan(50);
+        await expect(chips.locator('.tag:not(.actionable):not(.placeholder-expander)')).toHaveCount(50);
+        await expect(chips.locator('.placeholder-expander')).toHaveCount(1);
+
+        const { button, picker, search } = await openTagPicker(page);
+        await expect(picker.locator('.sb-picker__label')).toHaveText(names);
+        await expect(picker.getByRole('option', { name: '...', exact: true })).toHaveCount(0);
+        await expect(chips.locator('.placeholder-expander')).toHaveCount(0);
+        await expect(chips.locator('.tag:not(.actionable)')).toHaveCount(names.length);
+
+        await search.fill('overflow 060');
+        await expect(picker.getByRole('option')).toHaveCount(1);
+        await picker.getByRole('option', { name: /^QA overflow 060/ }).click();
+        await expect(listRows(page, 'characters')).toHaveCount(1);
+        await expect(listRows(page, 'characters')).toContainText('QA character 11');
+        await expect(button.locator('.sb-tag-filter-menu-count')).toHaveText('1');
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+
+        const reopened = await openTagPicker(page);
+        await expect(reopened.picker.locator('.sb-picker__label')).toHaveText(names);
+        await expect(reopened.picker.getByRole('option', { name: '...', exact: true })).toHaveCount(0);
+        await expect(reopened.picker.getByRole('option', { name: /^QA overflow 060/ })).toHaveAttribute('aria-selected', 'true');
+        await expect(reopened.picker.getByRole('option', { selected: true })).toHaveCount(1);
+        await expect(chips.locator('.placeholder-expander')).toHaveCount(0);
+        await expect(chips.locator('.tag.selected:not(.actionable)')).toHaveCount(1);
+        await page.keyboard.press('Escape');
+        await expect(reopened.picker).toBeHidden();
     });
 
     test(`selection gestures, ranges and all filtered pages preserve the chat at ${viewport.width}px`, async ({ page }) => {
