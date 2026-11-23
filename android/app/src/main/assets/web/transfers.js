@@ -17,6 +17,8 @@
     const API = Symbol.for('sillybunny.transfers');
     const KEEP_REVOKED_MS = 10000;
     const KEEP_HINT_MS = 10000;
+    const MAX_LIVE_BLOBS = 128;
+    const MAX_REVOKED_BLOBS = 128;
     const KEY_CHARS = 64;
     const MAX_NAME_CHARS = 1024;
     const MAX_MIME_CHARS = 256;
@@ -108,13 +110,23 @@
         }
     };
 
+    const putBounded = (map, key, value, limit) => {
+        map.delete(key);
+        map.set(key, value);
+        while (map.size > limit) {
+            const oldest = map.keys().next().value;
+            map.delete(oldest);
+        }
+    };
+
     // Keep each Blob reachable by its URL; after revocation only for a short grace period.
     const nativeCreate = URL.createObjectURL;
     const nativeRevoke = URL.revokeObjectURL;
     URL.createObjectURL = function createObjectURL(...args) {
         const url = nativeCreate.apply(this, args);
         if (args[0] instanceof Blob) {
-            live.set(url, args[0]);
+            // Bound cached blobs so pages that do not revoke preview URLs cannot retain memory.
+            putBounded(live, url, args[0], MAX_LIVE_BLOBS);
         }
         return url;
     };
@@ -123,7 +135,7 @@
         const blob = live.get(key);
         if (blob) {
             live.delete(key);
-            revoked.set(key, { blob, at: now() });
+            putBounded(revoked, key, { blob, at: now() }, MAX_REVOKED_BLOBS);
             scheduleSweep();
         }
         return nativeRevoke.apply(this, args);

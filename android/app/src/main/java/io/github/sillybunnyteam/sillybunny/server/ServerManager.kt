@@ -780,9 +780,10 @@ class ServerManager internal constructor(
     private fun runSetupJob(pending: PendingSetup) {
         val job = pending.job
         val startedEpochMillis = System.currentTimeMillis()
+        val output = SetupOutputPublisher(job)
         setupMarker("setup start script=${job.script.name}")
         val code = try {
-            val onLine = { line: String -> setupLine(job, line) }
+            val onLine = { line: String -> output.onLine(line) }
             scriptRunner.run(job.script, job.args, job.workingDir, onLine, pending.cancel.signal)
         } catch (_: IOException) {
             SETUP_START_FAILED
@@ -791,19 +792,10 @@ class ServerManager internal constructor(
         }
         setupMarker("setup exit code=$code")
         // npm runs on the bundled Node, whose fatal reports go to logcat too.
-        if (code != 0) appendNativeLog(nativeLines(startedEpochMillis), null) { line -> setupLine(job, line) }
+        if (code != 0) appendNativeLog(nativeLines(startedEpochMillis), null) { line -> output.onLine(line) }
+        output.close()
         setupLog.flush()
         execute { finishSetup(job, code, pending.cancel.byUser) }
-    }
-
-    private fun setupLine(job: SetupJob, line: String) {
-        setupLog.append(line)
-        // Flushed per line: if the host dies mid-job, the last lines are the ones that explain it.
-        setupLog.flush()
-        tail.add(line)
-        setupTail.add(line)
-        val current = mutableSetup.value
-        if (current is SetupState.Running && current.job === job) mutableSetup.value = SetupState.Running(job, setupTail.snapshot())
     }
 
     private fun setupMarker(text: String) {
@@ -811,6 +803,90 @@ class ServerManager internal constructor(
         setupLog.append(line)
         setupLog.flush()
         tail.add(line)
+    }
+
+    /** Coalesces setup log flushes and UI snapshots during dense output bursts. */
+    private inner class SetupOutputPublisher(private val job: SetupJob) {
+        private val outputLock = Any()
+        private var lastPublishNanos = 0L
+        private var lastFlushNanos = 0L
+        private var pendingPublish: ScheduledFuture<*>? = null
+        private var dirtyLog = false
+        private var closed = false
+
+        fun onLine(line: String) {
+            val now = System.nanoTime()
+            setupLog.append(line)
+            tail.add(line)
+            setupTail.add(line)
+            var flushNow = false
+            var publishNow = false
+            synchronized(outputLock) {
+                if (closed) return
+                dirtyLog = true
+                if (lastFlushNanos == 0L || now - lastFlushNanos >= SETUP_LOG_FLUSH_NANOS) {
+                    lastFlushNanos = now
+                    dirtyLog = false
+                    flushNow = true
+                }
+                if (lastPublishNanos == 0L || now - lastPublishNanos >= SETUP_UI_PUBLISH_NANOS) {
+                    lastPublishNanos = now
+                    pendingPublish?.cancel(false)
+                    pendingPublish = null
+                    publishNow = true
+                } else if (pendingPublish == null) {
+                    val delayMillis = maxOf(
+                        1L,
+                        TimeUnit.NANOSECONDS.toMillis(SETUP_UI_PUBLISH_NANOS - (now - lastPublishNanos)),
+                    )
+                    pendingPublish = try {
+                        worker.schedule({ flushScheduled() }, delayMillis, TimeUnit.MILLISECONDS)
+                    } catch (_: RejectedExecutionException) {
+                        null
+                    }
+                }
+            }
+            if (flushNow) setupLog.flush()
+            if (publishNow) publishRunning()
+        }
+
+        fun close() {
+            val flushNow: Boolean
+            synchronized(outputLock) {
+                closed = true
+                pendingPublish?.cancel(false)
+                pendingPublish = null
+                flushNow = dirtyLog
+                dirtyLog = false
+            }
+            if (flushNow) setupLog.flush()
+        }
+
+        private fun flushScheduled() {
+            val flushNow: Boolean
+            synchronized(outputLock) {
+                pendingPublish = null
+                if (closed) return
+                val now = System.nanoTime()
+                lastPublishNanos = now
+                flushNow = dirtyLog
+                if (flushNow) {
+                    lastFlushNanos = now
+                    dirtyLog = false
+                }
+            }
+            if (flushNow) setupLog.flush()
+            publishRunning()
+        }
+
+        private fun publishRunning() {
+            synchronized(lock) {
+                val current = mutableSetup.value
+                if (current is SetupState.Running && current.job === job) {
+                    mutableSetup.value = SetupState.Running(job, setupTail.snapshot())
+                }
+            }
+        }
     }
 
     private fun finishSetup(job: SetupJob, code: Int, cancelled: Boolean) {
@@ -1033,6 +1109,8 @@ class ServerManager internal constructor(
         private const val SETUP_LOG_FILES = 2
         private const val EXIT_POLL_MILLIS = 1_000L
         private const val PROMOTION_RETRY_MILLIS = 20L
+        private val SETUP_UI_PUBLISH_NANOS = TimeUnit.MILLISECONDS.toNanos(150L)
+        private val SETUP_LOG_FLUSH_NANOS = TimeUnit.MILLISECONDS.toNanos(500L)
 
         @Volatile
         private var instance: ServerManager? = null

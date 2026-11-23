@@ -89,6 +89,9 @@ class ThirdPartyNoticesTest {
         // A newline that ends a block is the boundary itself, so only a final one can be dropped.
         val joined = chunks.joinToString("\n")
         assertTrue(joined == full || joined + "\n" == full)
+        assertEquals(25, ThirdPartyNotices.CHUNK_LINES)
+        val defaultChunks = ThirdPartyNotices.chunks((1..60).joinToString("\n") { "line $it" })
+        assertEquals(listOf(25, 25, 10), defaultChunks.map { it.lines().size })
     }
 
     @Test

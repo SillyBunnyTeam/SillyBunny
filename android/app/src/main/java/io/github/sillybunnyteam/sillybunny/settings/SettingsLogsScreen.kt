@@ -3,13 +3,15 @@ package io.github.sillybunnyteam.sillybunny.settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -23,7 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -103,34 +105,53 @@ fun SettingsLogsScreen(
     }
 }
 
+/** Lines per lazy text block so large log buffers stay cheap to measure and scroll. */
+private const val LOG_CHUNK_LINES = 10
+
 @Composable
 private fun LogText(lines: List<String>, padding: PaddingValues) {
-    val scroll = rememberScrollState()
-    val slack = with(LocalDensity.current) { 24.dp.roundToPx() }
+    val listState = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
-    LaunchedEffect(scroll, slack) {
+    val chunks = remember(lines) { lines.chunked(LOG_CHUNK_LINES) { it.joinToString("\n") } }
+    LaunchedEffect(listState) {
         // Only user gestures change whether the view follows: scrolling up stops it, back down resumes.
-        snapshotFlow { scroll.isScrollInProgress to (scroll.value >= scroll.maxValue - slack) }
-            .collect { (scrolling, atBottom) -> if (scrolling) follow = atBottom }
+        var wasScrolling = false
+        snapshotFlow { listState.isScrollInProgress to !listState.canScrollForward }
+            .collect { (scrolling, atBottom) ->
+                if (scrolling || wasScrolling) follow = atBottom
+                wasScrolling = scrolling
+            }
     }
-    LaunchedEffect(scroll) {
-        snapshotFlow { scroll.maxValue }.collect { max ->
-            if (follow && max != Int.MAX_VALUE && scroll.value != max) scroll.scrollTo(max)
+    LaunchedEffect(chunks) {
+        if (follow && chunks.isNotEmpty()) {
+            listState.scrollToItem(chunks.lastIndex)
         }
     }
-    val text = remember(lines) { lines.joinToString("\n") }
-    SelectionContainer(modifier = Modifier.fillMaxSize().belowTopBar(padding)) {
-        Text(
-            text = text,
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(scroll)
-                .padding(padding.insideScroll())
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .testTag(SettingsTags.LOGS_TEXT)
-                .semantics { this[SettingsSemantics.LogLines] = lines },
-            fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.bodySmall,
-        )
+    val direction = LocalLayoutDirection.current
+    val contentPadding = PaddingValues(
+        start = padding.calculateStartPadding(direction) + 16.dp,
+        top = 8.dp,
+        end = padding.calculateEndPadding(direction) + 16.dp,
+        bottom = padding.calculateBottomPadding() + 8.dp,
+    )
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .belowTopBar(padding)
+            .testTag(SettingsTags.LOGS_TEXT)
+            .semantics { this[SettingsSemantics.LogLines] = lines },
+        contentPadding = contentPadding,
+    ) {
+        items(count = chunks.size, contentType = { "log_chunk" }) { index ->
+            SelectionContainer {
+                Text(
+                    text = chunks[index],
+                    modifier = Modifier.fillMaxWidth(),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }

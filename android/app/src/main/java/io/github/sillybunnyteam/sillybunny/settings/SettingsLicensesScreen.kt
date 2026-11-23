@@ -1,25 +1,27 @@
 package io.github.sillybunnyteam.sillybunny.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +32,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.collapse
@@ -94,6 +95,39 @@ private const val FULL_TEXT_KEY = "full"
 
 private fun componentKey(id: String) = "c:$id"
 
+private sealed interface LicenseRow {
+    val key: String
+    val contentType: String
+
+    data class FullToggle(val expanded: Boolean) : LicenseRow {
+        override val key: String = FULL_TEXT_KEY
+        override val contentType: String = "toggle"
+    }
+
+    data class ComponentRow(val component: NoticeComponent, val expanded: Boolean) : LicenseRow {
+        override val key: String = componentKey(component.id)
+        override val contentType: String = "component"
+    }
+
+    data class LoadingRow(override val key: String) : LicenseRow {
+        override val contentType: String = "loading"
+    }
+
+    data class NoticeChunkRow(override val key: String, val text: String, val tag: String?) : LicenseRow {
+        override val contentType: String = "notice"
+    }
+}
+
+private fun MutableList<LicenseRow>.addNoticeRows(key: String, chunks: List<String>?, firstTag: String) {
+    if (chunks == null) {
+        add(LicenseRow.LoadingRow("$key#loading"))
+        return
+    }
+    for (index in chunks.indices) {
+        add(LicenseRow.NoticeChunkRow("$key#$index", chunks[index], if (index == 0) firstTag else null))
+    }
+}
+
 @Composable
 private fun NoticesList(notices: ThirdPartyNotices, padding: PaddingValues, ioDispatcher: CoroutineDispatcher) {
     var expanded by rememberSaveable(saver = expandedSaver) { mutableStateOf(emptySet<String>()) }
@@ -101,7 +135,9 @@ private fun NoticesList(notices: ThirdPartyNotices, padding: PaddingValues, ioDi
     val byKey = remember(notices) { notices.components.associateBy { componentKey(it.id) } }
     // Notice texts can be megabytes, so each is decoded and split off the main thread, once, when first shown.
     val decoded = remember(notices) { mutableStateMapOf<String, List<String>>() }
-    val shown = expanded.map(::componentKey).toSet() + if (fullTextShown) setOf(FULL_TEXT_KEY) else emptySet()
+    val shown = remember(expanded, fullTextShown) {
+        expanded.map(::componentKey).toSet() + if (fullTextShown) setOf(FULL_TEXT_KEY) else emptySet()
+    }
     LaunchedEffect(notices, shown) {
         for (key in shown) {
             if (key in decoded) continue
@@ -112,53 +148,64 @@ private fun NoticesList(notices: ThirdPartyNotices, padding: PaddingValues, ioDi
             }
         }
     }
+    // Flatten visible entries into one typed list so Compose reuses item slots across all components.
+    val rows by remember(notices, expanded, fullTextShown) {
+        derivedStateOf {
+            buildList(notices.components.size + 1) {
+                add(LicenseRow.FullToggle(fullTextShown))
+                if (fullTextShown) {
+                    addNoticeRows(FULL_TEXT_KEY, decoded[FULL_TEXT_KEY], SettingsTags.LICENSES_FULL_TEXT)
+                }
+                for (component in notices.components) {
+                    val open = component.id in expanded
+                    add(LicenseRow.ComponentRow(component, open))
+                    if (open) {
+                        addNoticeRows(
+                            componentKey(component.id),
+                            decoded[componentKey(component.id)],
+                            SettingsTags.LICENSE_NOTICE_PREFIX + component.id,
+                        )
+                    }
+                }
+            }
+        }
+    }
+    val fullTextTitle = stringResource(R.string.settings_licenses_full_text)
     val unknownLicense = stringResource(R.string.settings_licenses_unknown_license)
     val loading = stringResource(R.string.settings_licenses_loading)
     LazyColumn(
         modifier = Modifier.fillMaxSize().belowTopBar(padding).testTag(SettingsTags.LICENSES_LIST),
         contentPadding = padding.insideScroll(),
     ) {
-        item(key = FULL_TEXT_KEY) {
-            ExpandableRow(
-                expanded = fullTextShown,
-                onToggle = { fullTextShown = !fullTextShown },
-                tag = SettingsTags.LICENSES_FULL_TEXT_TOGGLE,
-                headline = stringResource(R.string.settings_licenses_full_text),
-            )
-        }
-        if (fullTextShown) noticeItems(FULL_TEXT_KEY, decoded[FULL_TEXT_KEY], SettingsTags.LICENSES_FULL_TEXT, loading)
-        for (component in notices.components) {
-            val key = componentKey(component.id)
-            val open = component.id in expanded
-            item(key = key) {
-                ExpandableRow(
-                    expanded = open,
-                    onToggle = { expanded = if (open) expanded - component.id else expanded + component.id },
-                    tag = SettingsTags.LICENSE_COMPONENT_PREFIX + component.id,
-                    headline = component.name,
+        items(items = rows, key = { it.key }, contentType = { it.contentType }) { row ->
+            when (row) {
+                is LicenseRow.FullToggle -> ExpandableRow(
+                    expanded = row.expanded,
+                    onToggle = { fullTextShown = !fullTextShown },
+                    tag = SettingsTags.LICENSES_FULL_TEXT_TOGGLE,
+                    headline = fullTextTitle,
+                )
+                is LicenseRow.ComponentRow -> ExpandableRow(
+                    expanded = row.expanded,
+                    onToggle = {
+                        expanded = if (row.expanded) expanded - row.component.id else expanded + row.component.id
+                    },
+                    tag = SettingsTags.LICENSE_COMPONENT_PREFIX + row.component.id,
+                    headline = row.component.name,
                     supporting = stringResource(
                         R.string.settings_licenses_component_details,
-                        component.version,
-                        component.spdx ?: unknownLicense,
+                        row.component.version,
+                        row.component.spdx ?: unknownLicense,
                     ),
                 )
+                is LicenseRow.LoadingRow -> Box(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(Modifier.semantics { contentDescription = loading })
+                }
+                is LicenseRow.NoticeChunkRow -> NoticeBlock(row.text, row.tag)
             }
-            if (open) noticeItems(key, decoded[key], SettingsTags.LICENSE_NOTICE_PREFIX + component.id, loading)
-        }
-    }
-}
-
-/** The blocks of one decoded text, or a progress row until it is decoded. The first block carries [firstTag]. */
-private fun LazyListScope.noticeItems(key: String, chunks: List<String>?, firstTag: String, loading: String) {
-    if (chunks == null) {
-        item(key = "$key#loading") {
-            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.semantics { contentDescription = loading })
-            }
-        }
-    } else {
-        items(count = chunks.size, key = { "$key#$it" }) { index ->
-            NoticeBlock(chunks[index], if (index == 0) firstTag else null)
         }
     }
 }
@@ -171,11 +218,10 @@ private fun ExpandableRow(
     headline: String,
     supporting: String? = null,
 ) {
-    ListItem(
-        headlineContent = { Text(headline) },
-        supportingContent = supporting?.let { text -> { Text(text) } },
+    Column(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 56.dp)
             .clickable(onClick = onToggle)
             .semantics {
                 if (expanded) {
@@ -184,9 +230,23 @@ private fun ExpandableRow(
                     expand { onToggle(); true }
                 }
             }
-            .testTag(tag),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-    )
+            .testTag(tag)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = headline,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (supporting != null) {
+            Text(
+                text = supporting,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable

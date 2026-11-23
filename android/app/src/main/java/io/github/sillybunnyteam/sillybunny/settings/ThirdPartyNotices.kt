@@ -97,7 +97,7 @@ class ThirdPartyNotices private constructor(
         const val MAX_NOTICES_BYTES = 64 * 1024 * 1024
 
         /** Lines per displayed text block, so long notices render lazily. */
-        const val CHUNK_LINES = 100
+        const val CHUNK_LINES = 25
 
         private const val MAX_FIELD_LENGTH = 1024
         private val sha256 = Regex("[0-9a-fA-F]{64}")

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -512,21 +513,31 @@ private fun InstallingScreen(stage: FirstRunStage.Installing, actions: FirstRunA
 /** A bounded, scrollable block of log lines that follows the newest line while scrolled to the end. */
 @Composable
 private fun LogBox(lines: List<String>, tag: String) {
-    val scroll = rememberScrollState()
-    LaunchedEffect(scroll) {
-        var previousMax = scroll.maxValue
-        snapshotFlow { scroll.maxValue }.collect { max ->
-            if (scroll.value >= previousMax) scroll.scrollTo(max)
-            previousMax = max
+    val listState = rememberLazyListState()
+    var follow by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        var wasScrolling = false
+        snapshotFlow { listState.isScrollInProgress to !listState.canScrollForward }
+            .collect { (scrolling, atBottom) ->
+                if (scrolling || wasScrolling) follow = atBottom
+                wasScrolling = scrolling
+            }
+    }
+    LaunchedEffect(lines) {
+        if (follow && lines.isNotEmpty()) {
+            listState.scrollToItem(lines.lastIndex)
         }
     }
     OutlinedCard(modifier = Modifier.fillMaxWidth().testTag(tag)) {
-        Text(
-            text = lines.joinToString("\n"),
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(scroll).padding(12.dp),
-        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+            contentPadding = PaddingValues(12.dp),
+        ) {
+            items(count = lines.size, contentType = { "log_line" }) { index ->
+                LogLine(lines[index])
+            }
+        }
     }
 }
 

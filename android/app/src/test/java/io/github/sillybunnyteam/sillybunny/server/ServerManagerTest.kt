@@ -34,6 +34,7 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
@@ -1154,6 +1155,34 @@ class ServerManagerTest {
         assertTrue(scripts.isEmpty())
         assertEquals(SetupState.Idle, manager.setup.value)
         assertEquals(PolicyState(RunIntent.RUN, emptyList()), policy())
+    }
+
+    @Test
+    fun setupOutputBurstPublishesTrailingLinesAndFlushesToDisk() {
+        build()
+        val release = CountDownLatch(1)
+        configureScript = { process ->
+            Thread {
+                for (index in 1..60) process.print("burst $index")
+                release.await(10, TimeUnit.SECONDS)
+                process.exit(0)
+            }.start()
+        }
+
+        assertTrue(manager.runSetup(context, job()))
+        val running = await("trailing burst line") {
+            (manager.setup.value as? SetupState.Running)?.takeIf { it.lines.lastOrNull() == "burst 60" }
+        }
+        assertEquals(60, running.lines.size)
+        val liveLog = File(paths.logsDir, ServerManager.SETUP_LOG).readLines()
+        assertTrue(liveLog.contains("burst 1"))
+        assertTrue(liveLog.contains("burst 60"))
+
+        release.countDown()
+        val finished = await("finished") { manager.setup.value as? SetupState.Finished }
+        assertEquals(0, finished.exitCode)
+        assertEquals(60, finished.lines.size)
+        assertEquals("burst 60", finished.lines.last())
     }
 
     /** Runs [block] on its own thread, as the APK updater's worker does, and waits for it. */
