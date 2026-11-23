@@ -8,6 +8,10 @@ import {
     BAR_END_PROPERTY,
     BAR_SHIFT_PROPERTY,
     BAR_START_PROPERTY,
+    FRAME_RIGHT_PROPERTY,
+    FRAME_LEFT_PROPERTY,
+    FRAME_TOP_PROPERTY,
+    FRAME_BOTTOM_PROPERTY,
     STACK_OFFSET_PROPERTY,
     actionRowTop,
     barEdges,
@@ -16,10 +20,13 @@ import {
     composerCovered,
     composerDocked,
     composerInset,
+    containingBlockInsets,
     dialogSurfaceOf,
     dialogToastBottom,
     edgeOf,
     keyboardInset,
+    makesContainingBlock,
+    movesByTranslationOnly,
     sheetToastInset,
     sheetsAbove,
     stackOffset,
@@ -167,6 +174,85 @@ describe('the place of a toast above a bottom sheet', () => {
 
         test('is still a sheet that the keyboard did not lift', () => {
             expect(sheetToastInset({ ...measures, keyboard: 300, box: sheet, rowTop: null })).toBe(300);
+        });
+    });
+});
+
+describe('a dialog that is the containing block of its fixed descendants', () => {
+    const plain = { transform: 'none', translate: 'none', rotate: 'none', scale: 'none', perspective: 'none', filter: 'none', backdropFilter: 'none', willChange: 'auto', contain: 'none', containerType: 'normal', contentVisibility: 'visible', overflowX: 'visible', overflowY: 'visible' };
+
+    test('is one for each property that makes a fixed descendant lie against it, and not otherwise', () => {
+        expect(makesContainingBlock(plain)).toBe(false);
+        expect(makesContainingBlock({})).toBe(false);
+        for (const change of [
+            { transform: 'matrix(1, 0, 0, 1, -200, -150)' },
+            { translate: '10px 0px' },
+            { rotate: '10deg' },
+            { scale: '0.9' },
+            { perspective: '600px' },
+            { filter: 'blur(2px)' },
+            { backdropFilter: 'blur(4px)' },
+            { willChange: 'transform' },
+            { willChange: 'opacity, filter' },
+            { contain: 'paint' },
+            { contain: 'layout style' },
+            { contain: 'strict' },
+            { containerType: 'inline-size' },
+            { contentVisibility: 'auto' },
+        ]) {
+            expect([change, makesContainingBlock({ ...plain, ...change })]).toEqual([change, true]);
+        }
+        expect(makesContainingBlock({ ...plain, willChange: 'opacity', contain: 'style' })).toBe(false);
+    });
+
+    test('moves by translation only when its transform is a matrix that only moves, and nothing scales, turns or projects it', () => {
+        expect(movesByTranslationOnly(plain)).toBe(true);
+        expect(movesByTranslationOnly({ ...plain, transform: 'matrix(1, 0, 0, 1, -200, -150)' })).toBe(true);
+        expect(movesByTranslationOnly({ ...plain, transform: 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 12, 8, 0, 1)' })).toBe(true);
+        expect(movesByTranslationOnly({ ...plain, translate: '10px 0px' })).toBe(true);
+        expect(movesByTranslationOnly({ ...plain, transform: 'matrix(0.9, 0, 0, 0.9, 0, 0)' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, transform: 'matrix(0, 1, -1, 0, 0, 0)' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, transform: 'matrix(-1, 0, 0, 1, 0, 0)' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, transform: 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.001, 0, 0, 0, 1)' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, transform: 'translate(-50%, -50%)' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, rotate: '5deg' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, scale: '0.8' })).toBe(false);
+        expect(movesByTranslationOnly({ ...plain, perspective: '400px' })).toBe(false);
+    });
+
+    describe('the insets that keep a fixed container at the window', () => {
+        // A 400x300 dialog centred in a 1440x900 window by `translate(-50%, -50%)`, with a 2px border.
+        const centred = {
+            style: { ...plain, transform: 'matrix(1, 0, 0, 1, -200, -150)' },
+            box: { left: 520, top: 300, width: 404, height: 304 },
+            client: { left: 2, top: 2, width: 400, height: 300 },
+            layoutWidth: 1440,
+            layoutHeight: 900,
+        };
+
+        test('are the distances of the window edges from the padding box, so that `left`, `right`, `top` and `bottom` land on the window', () => {
+            expect(containingBlockInsets(centred)).toEqual({ left: -522, right: -518, top: -302, bottom: -298 });
+        });
+
+        test('are all zero for a dialog that covers the window, which is already where the window is', () => {
+            expect(containingBlockInsets({ ...centred, style: { ...plain, willChange: 'transform' }, box: { left: 0, top: 0, width: 1440, height: 900 }, client: { left: 0, top: 0, width: 1440, height: 900 } }))
+                .toEqual({ left: -0, right: 0, top: -0, bottom: 0 });
+        });
+
+        test('are none for a dialog that is no containing block', () => {
+            expect(containingBlockInsets({ ...centred, style: plain })).toBeNull();
+        });
+
+        test('are none for a dialog that is scaled, turned or projected at rest, which keeps the container where the dialog lays it', () => {
+            expect(containingBlockInsets({ ...centred, style: { ...plain, transform: 'matrix(0.9, 0, 0, 0.9, 0, 0)' } })).toBeNull();
+            expect(containingBlockInsets({ ...centred, style: { ...plain, rotate: '3deg' } })).toBeNull();
+            expect(containingBlockInsets({ ...centred, style: { ...plain, perspective: '800px' } })).toBeNull();
+        });
+
+        test('are none for a dialog that clips its overflow, because the window place lies outside its box and the container would be cut off', () => {
+            expect(containingBlockInsets({ ...centred, style: { ...centred.style, overflowX: 'auto', overflowY: 'auto' } })).toBeNull();
+            expect(containingBlockInsets({ ...centred, style: { ...centred.style, overflowX: 'hidden', overflowY: 'hidden' } })).toBeNull();
+            expect(containingBlockInsets({ ...centred, style: { ...centred.style, overflowX: 'visible', overflowY: 'auto' } })).toBeNull();
         });
     });
 });
@@ -683,6 +769,87 @@ describe('writing the placement', () => {
             toastIn(overlay);
             updateToastPlacement();
             expect(overlay.style.getPropertyValue(BOTTOM_INSET_PROPERTY)).toBe('0px');
+        });
+
+        describe('a dialog that centres itself with a transform, so that it is the containing block of the containers', () => {
+            const centred = { transform: 'matrix(1, 0, 0, 1, -200, -150)', translate: 'none', rotate: 'none', scale: 'none', perspective: 'none', filter: 'none', backdropFilter: 'none', willChange: 'auto', contain: 'none', containerType: 'normal', contentVisibility: 'visible', overflowX: 'visible', overflowY: 'visible' };
+            const properties = [FRAME_LEFT_PROPERTY, FRAME_RIGHT_PROPERTY, FRAME_TOP_PROPERTY, FRAME_BOTTOM_PROPERTY];
+            let styleOfDialog;
+
+            beforeEach(() => {
+                Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, value: 900 });
+                Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 1440 });
+                styleOfDialog = { ...centred };
+                const real = window.getComputedStyle.bind(window);
+                // jsdom resolves none of these properties, so the dialog answers with the values that an engine resolves.
+                jest.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => (
+                    element === dialog ? { ...styleOfDialog, visibility: 'visible', getPropertyValue: () => '' } : real(element, pseudo)
+                ));
+            });
+
+            function centredDialog() {
+                openDialog({ rect: { left: 520, top: 300, width: 400, height: 300 } });
+                for (const [name, value] of Object.entries({ clientLeft: 0, clientTop: 0, clientWidth: 400, clientHeight: 300 })) {
+                    Object.defineProperty(dialog, name, { configurable: true, value });
+                }
+                const overlay = overlayWith('toast-bottom-center', dialog);
+                const notifications = notificationsAt('toast-top-center');
+                dialog.append(notifications);
+                return { overlay, notifications };
+            }
+
+            test('writes the insets that put both containers where the window is, which the dialog would otherwise take for its own box', () => {
+                const { overlay, notifications } = centredDialog();
+                toastIn(overlay);
+                updateToastPlacement();
+                for (const container of [overlay, notifications]) {
+                    expect(properties.map(property => container.style.getPropertyValue(property))).toEqual(['-520px', '-520px', '-300px', '-300px']);
+                }
+            });
+
+            test('follows the dialog when it moves, and takes the insets back when it stops being a containing block', () => {
+                const { overlay } = centredDialog();
+                toastIn(overlay);
+                updateToastPlacement();
+                lay(dialog, { rect: { left: 420, top: 250, width: 400, height: 300 } });
+                updateToastPlacement();
+                expect(properties.map(property => overlay.style.getPropertyValue(property))).toEqual(['-420px', '-620px', '-250px', '-350px']);
+                styleOfDialog = { ...centred, transform: 'none' };
+                updateToastPlacement();
+                expect(properties.map(property => overlay.style.getPropertyValue(property))).toEqual(['', '', '', '']);
+            });
+
+            test('follows the dialog when it is moved while a message is on screen, by the same check that watches the bars', async () => {
+                const { overlay } = centredDialog();
+                toastIn(overlay);
+                updateToastPlacement();
+                lay(dialog, { rect: { left: 420, top: 250, width: 400, height: 300 } });
+                dialog.setAttribute('style', 'left: 420px');
+                await new Promise((resolve) => { setTimeout(resolve, 0); });
+                while (frames.length > 0) {
+                    frames.shift()(0);
+                }
+                expect(properties.map(property => overlay.style.getPropertyValue(property))).toEqual(['-420px', '-620px', '-250px', '-350px']);
+            });
+
+            test('writes nothing for a dialog that is scaled at rest, nor for one that clips its overflow, nor for a dialog that is no containing block', () => {
+                const { overlay, notifications } = centredDialog();
+                toastIn(overlay);
+                for (const change of [{ transform: 'matrix(0.9, 0, 0, 0.9, 0, 0)' }, { overflowX: 'auto', overflowY: 'auto' }, { transform: 'none' }]) {
+                    styleOfDialog = { ...centred, ...change };
+                    updateToastPlacement();
+                    for (const container of [overlay, notifications]) {
+                        expect([change, properties.map(property => container.style.getPropertyValue(property))]).toEqual([change, ['', '', '', '']]);
+                    }
+                }
+            });
+
+            test('writes nothing for containers in the body', () => {
+                const overlay = overlayWith('toast-bottom-center');
+                toastIn(overlay);
+                updateToastPlacement();
+                expect(properties.map(property => overlay.style.getPropertyValue(property))).toEqual(['', '', '', '']);
+            });
         });
 
         test('a bottom sheet with room above it carries the toast above its top edge', () => {

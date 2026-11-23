@@ -6985,15 +6985,18 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
 /* The toast overlay (AdwToastOverlay) holds the toast form. It is a strip across the window, flush with the edge that the
    toasts sit at, so that its own edge is the edge that clips a toast while it slides in. While a modal dialog is open the
    strip is a child of the dialog, which draws it above the dialog and keeps it from being inert, and it stays fixed to the
-   window like any other strip, because a dialog at rest has no transform or filter that would make it the containing
-   block. A Popup is the containing block while it opens and closes, and hides the strip then. The
+   window like any other strip while the dialog is not the containing block of its fixed descendants. The Popup and the
+   frames of the shared dialog are not at rest. A dialog that an extension gives a transform (to centre itself), a filter or
+   `contain: paint` is one, and the strip is then laid out against its padding box: the script writes `--sb-toast-cb-*`, the
+   distances of the window's edges from that box, which the four edges below add, when the dialog only moves and shows its
+   overflow. A Popup is the containing block, scaled, while it opens and closes, and hides the strip then. The
    toast carries the margins (libadwaita's toast margins) and is the only part that takes pointer events. toastr's
    position classes only choose the edge and the side. A width, a minimum or maximum width, a position and white-space
    are never important here, so the measure rule below keeps winning. */
 #sb-toast-overlay {
     position: fixed;
     z-index: 999999;
-    inset: auto 0;
+    inset: auto var(--sb-toast-cb-right, 0px) auto var(--sb-toast-cb-left, 0px);
     width: auto;
     pointer-events: none;
     container-type: inline-size;
@@ -7004,13 +7007,13 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
 }
 
 #sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right) {
-    top: 0;
+    top: var(--sb-toast-cb-top, 0px);
     margin-top: var(--sb-topbar-layout-offset, var(--topBarBlockSize));
     clip-path: inset(0 -100vmax -100vmax);
 }
 
 #sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
-    bottom: var(--sb-toast-bottom-inset, 0px);
+    bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px));
     clip-path: inset(-100vmax -100vmax 0);
 }
 
@@ -7337,8 +7340,8 @@ body #toast-container[class] > .sb-form-notification > .toast-close-button:focus
    take the 4px margin of Shell's banner. The strip takes no pointer events; only the cards do. At a bottom position the
    newest card is first in the document and drawn last, so it is nearest the edge. */
 body #toast-container[class] {
-    left: 0;
-    right: 0;
+    left: var(--sb-toast-cb-left, 0px);
+    right: var(--sb-toast-cb-right, 0px);
     width: auto;
     display: flex;
     flex-direction: column;
@@ -7350,7 +7353,7 @@ body #toast-container[class] {
    that edge clips, so the shadow and the ring survive on the other sides and between the cards. A card's overshoot moves
    away from the edge, so the clip does not cut it. */
 body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right) {
-    top: 0;
+    top: var(--sb-toast-cb-top, 0px);
     bottom: auto;
     margin-top: calc(var(--sb-topbar-layout-offset, var(--topBarBlockSize)) + var(--sb-toast-stack-offset, 0px));
     clip-path: inset(0 -100vmax -100vmax);
@@ -7360,7 +7363,7 @@ body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-r
    there it sits above the composer and the keyboard by the bottom inset, as a toast does. */
 body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right) {
     top: auto;
-    bottom: var(--sb-toast-bottom-inset, 0px);
+    bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px));
     margin-bottom: var(--sb-toast-stack-offset, 0px);
     flex-direction: column-reverse;
     clip-path: inset(-100vmax -100vmax 0);

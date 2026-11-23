@@ -36,6 +36,15 @@ export const BAR_START_PROPERTY = '--sb-toast-bar-start';
 /** How far the end (right edge) of that bar is from the right of the window, in px and negative, for a message at the bottom right. */
 export const BAR_END_PROPERTY = '--sb-toast-bar-end';
 /**
+ * Where the window's edges lie from the padding box of the dialog that holds the containers, in px, when that dialog is the
+ * containing block of its fixed descendants (see `containingBlockInsets`). The CSS adds them to the `left`, `right`, `top`
+ * and `bottom` of both containers, so that they stay at the window and not at the dialog.
+ */
+export const FRAME_LEFT_PROPERTY = '--sb-toast-cb-left';
+export const FRAME_RIGHT_PROPERTY = '--sb-toast-cb-right';
+export const FRAME_TOP_PROPERTY = '--sb-toast-cb-top';
+export const FRAME_BOTTOM_PROPERTY = '--sb-toast-cb-bottom';
+/**
  * The rows that hold the actions of a dialog at its foot: the responses of an alert (`openAlert`), the extra responses
  * of a Dialog or Window (`openDialog` and the framed Popups), and the controls of an alert Popup and of an upstream
  * Popup. The controls of a framed Dialog or Window Popup are `display: contents` in its header, so they have no box.
@@ -269,6 +278,75 @@ export function dialogSurfaceOf(host) {
         return host;
     }
     return [...host.children].find(child => child.classList.contains('sb-dialog')) ?? host;
+}
+
+const isSet = value => typeof value === 'string' && value !== '' && value !== 'none';
+
+/**
+ * Whether a computed style makes its element the containing block of the fixed elements inside it, instead of the window:
+ * a transform (also the separate `translate`, `rotate` and `scale`), a perspective, a filter or backdrop filter, a
+ * `will-change` that names one of them, layout or paint containment, a size container, or `content-visibility`.
+ * @param {Record<string, string|undefined>} style
+ */
+export function makesContainingBlock(style) {
+    return ['transform', 'translate', 'rotate', 'scale', 'perspective', 'filter', 'backdropFilter', 'webkitBackdropFilter'].some(name => isSet(style[name]))
+        || /\b(transform|perspective|filter|backdrop-filter|translate|rotate|scale)\b/.test(style.willChange ?? '')
+        || /\b(layout|paint|strict|content)\b/.test(style.contain ?? '')
+        || /size/.test(style.containerType ?? '')
+        || ['auto', 'hidden'].includes(style.contentVisibility);
+}
+
+/** A resolved `transform` that moves an element and does nothing else: a matrix whose linear part is the identity. */
+function isTranslationMatrix(transform) {
+    if (!isSet(transform)) {
+        return true;
+    }
+    const numbers = (text) => text.split(',').map(Number);
+    const flat = /^matrix\(([^)]*)\)$/.exec(transform.trim());
+    if (flat) {
+        const [a, b, c, d] = numbers(flat[1]);
+        return a === 1 && b === 0 && c === 0 && d === 1;
+    }
+    const full = /^matrix3d\(([^)]*)\)$/.exec(transform.trim());
+    if (full) {
+        const values = numbers(full[1]);
+        return values.length === 16 && [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0].every((value, at) => values[at] === value) && values[15] === 1;
+    }
+    return false;
+}
+
+/**
+ * Whether a computed style moves its element by translation only, or not at all. A transform that is not a matrix is not
+ * understood (an engine resolves it to one), and a scale, a rotation or a perspective changes the box that the element's
+ * own rectangle reports, so none of them counts.
+ * @param {Record<string, string|undefined>} style
+ */
+export function movesByTranslationOnly(style) {
+    return isTranslationMatrix(style.transform) && !['rotate', 'scale', 'perspective'].some(name => isSet(style[name]));
+}
+
+/**
+ * How far each window edge lies from the padding box of a dialog that holds the containers, as the offsets that `left`,
+ * `right`, `top` and `bottom` take for a fixed container to land on the window. An engine lays a fixed element out against
+ * the dialog when the dialog has a transform, a filter, `contain: paint` or the like; a dialog that an extension centres with
+ * `transform: translate(-50%, -50%)` is one, and its containers would take its width and sit at its foot.
+ *
+ * Only a dialog that moves by translation and lets its overflow show is compensated. A scaled or turned dialog has no
+ * insets in px that are right for its inside, so the containers keep the place that it lays them at. A dialog that clips its
+ * overflow (the default for a modal dialog is `overflow: auto`) would cut off a container that lies outside its box, which
+ * the window place usually does, so the container stays inside it, where a viewer can read it.
+ * @param {{ style: Record<string, string|undefined>, box: { left: number, top: number }, client: { left: number, top: number, width: number, height: number }, layoutWidth: number, layoutHeight: number }} measures
+ * `box` is the border box of the dialog in the window, `client` its padding box in layout px (`clientLeft`, `clientTop`, `clientWidth`, `clientHeight`).
+ * @returns {{ left: number, right: number, top: number, bottom: number }|null} Null when nothing is to be compensated.
+ */
+export function containingBlockInsets({ style, box, client, layoutWidth, layoutHeight }) {
+    const overflowShows = [style.overflowX ?? style.overflow, style.overflowY ?? style.overflow].every(value => value === 'visible');
+    if (!makesContainingBlock(style) || !movesByTranslationOnly(style) || !overflowShows) {
+        return null;
+    }
+    const left = box.left + client.left;
+    const top = box.top + client.top;
+    return { left: -left, right: left + client.width - layoutWidth, top: -top, bottom: top + client.height - layoutHeight };
 }
 
 /**
@@ -515,6 +593,30 @@ function writeBarSides(element, placement) {
 }
 
 /**
+ * Keeps a container at the window when the dialog that holds it is the containing block of its fixed descendants.
+ * @param {HTMLElement|null} container
+ */
+function placeContainerFrame(container) {
+    if (!container) {
+        return;
+    }
+    const host = container.parentElement;
+    let insets = null;
+    if (host && host !== document.body) {
+        insets = containingBlockInsets({
+            style: getComputedStyle(host),
+            box: host.getBoundingClientRect(),
+            client: { left: host.clientLeft, top: host.clientTop, width: host.clientWidth, height: host.clientHeight },
+            layoutWidth: layoutWidth(),
+            layoutHeight: layoutHeight(),
+        });
+    }
+    for (const [side, property] of [['left', FRAME_LEFT_PROPERTY], ['right', FRAME_RIGHT_PROPERTY], ['top', FRAME_TOP_PROPERTY], ['bottom', FRAME_BOTTOM_PROPERTY]]) {
+        setProperty(container, property, insets && Math.round(insets[side]) !== 0 ? pixels(insets[side]) : null);
+    }
+}
+
+/**
  * @param {HTMLElement} overlay
  * @param {Placement} placement
  */
@@ -612,6 +714,9 @@ function writeToastPlacement(notifications, glide) {
         glideToPlace(overlay);
         glideToPlace(notifications);
     }
+    // The containers sit at the window before they are measured, so that the stack offset is read from where they are.
+    placeContainerFrame(overlay);
+    placeContainerFrame(notifications);
     const placement = readPlacement();
     lastPlacement = placement;
     if (overlay) {
@@ -676,6 +781,9 @@ function checkBars() {
         stopBarWatch();
         return;
     }
+    // A dialog that is the containing block of the containers moves them with it, and nothing else reports that.
+    placeContainerFrame(document.getElementById(TOAST_OVERLAY_ID));
+    placeContainerFrame(document.getElementById(NOTIFICATION_CONTAINER_ID));
     const now = readPlacement();
     if (!samePlacement(now, lastPlacement)) {
         updateToastPlacement({ glide: now.source !== lastPlacement.source || now.note.source !== lastPlacement.note.source });

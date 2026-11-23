@@ -109,6 +109,23 @@ describe('the toast layer', () => {
         expect(themeCss).not.toContain(':is(#toast-container, #sb-toast-overlay) .toast-message a[href]');
     });
 
+    test('both containers take the insets of a dialog that is their containing block on each edge, so they stay at the window', () => {
+        expect(ruleOf(themeCss, '#sb-toast-overlay')).toContain('inset: auto var(--sb-toast-cb-right, 0px) auto var(--sb-toast-cb-left, 0px)');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right)')).toContain('top: var(--sb-toast-cb-top, 0px)');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)'))
+            .toContain('bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px))');
+        const strip = ruleOf(themeCss, 'body #toast-container[class]');
+        expect(strip).toContain('left: var(--sb-toast-cb-left, 0px)');
+        expect(strip).toContain('right: var(--sb-toast-cb-right, 0px)');
+        expect(ruleOf(themeCss, 'body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right)')).toContain('top: var(--sb-toast-cb-top, 0px)');
+        expect(ruleOf(themeCss, 'body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)'))
+            .toContain('bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px))');
+    });
+
+    test('says that a dialog at rest may have a containing block, and does not claim that it has none', () => {
+        expect(themeCss).not.toContain('because a dialog at rest has no transform or filter that would make it the containing');
+    });
+
     test('a label and an anchor with no href in a toast are text in the ink of the toast, and only an anchor with an href takes the link mix', () => {
         expect(ruleOf(themeCss, 'body #sb-toast-overlay .toast-message :is(label, a:not([href]))')).toBe('color: inherit;');
         expect(themeCss).not.toContain('body #sb-toast-overlay .toast-message :is(a, label)');
@@ -282,7 +299,7 @@ describe('the toast overlay', () => {
     test('is a strip across the window, flush with the edge a toast sits at, and clips there only', () => {
         const rule = ruleOf(themeCss, '#sb-toast-overlay');
         expect(rule).toContain('position: fixed');
-        expect(rule).toContain('inset: auto 0');
+        expect(rule).toContain('inset: auto var(--sb-toast-cb-right, 0px) auto var(--sb-toast-cb-left, 0px)');
         expect(rule).toContain('pointer-events: none');
         expect(rule).toContain('container-type: inline-size');
         expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right)')).toContain('clip-path: inset(0 -100vmax -100vmax)');
@@ -291,9 +308,9 @@ describe('the toast overlay', () => {
     });
 
     test('a bottom overlay sits above the composer and the keyboard by the inset that the script writes, and a top one under the top bar', () => {
-        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toContain('bottom: var(--sb-toast-bottom-inset, 0px)');
+        expect(ruleOf(themeCss, '#sb-toast-overlay:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)')).toContain('bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px))');
         const top = ruleOf(themeCss, '#sb-toast-overlay:is(.toast-top-left, .toast-top-center, .toast-top-right)');
-        expect(top).toContain('top: 0');
+        expect(top).toContain('top: var(--sb-toast-cb-top, 0px)');
         // The bottom of the top bar, which is taller than --topBarBlockSize on a phone.
         expect(top).toContain('margin-top: var(--sb-topbar-layout-offset, var(--topBarBlockSize))');
     });
@@ -307,10 +324,10 @@ describe('the toast overlay', () => {
     test('an in-app notification at the position of the toasts sits beyond them by the offset that the script writes, and above the composer and keyboard by the inset otherwise', () => {
         const top = ruleOf(themeCss, 'body #toast-container[class]:is(.toast-top-left, .toast-top-center, .toast-top-right)');
         expect(top).toContain('margin-top: calc(var(--sb-topbar-layout-offset, var(--topBarBlockSize)) + var(--sb-toast-stack-offset, 0px))');
-        expect(top).toContain('top: 0');
+        expect(top).toContain('top: var(--sb-toast-cb-top, 0px)');
         const bottom = ruleOf(themeCss, 'body #toast-container[class]:is(.toast-bottom-left, .toast-bottom-center, .toast-bottom-right)');
         expect(bottom).toContain('margin-bottom: var(--sb-toast-stack-offset, 0px)');
-        expect(bottom).toContain('bottom: var(--sb-toast-bottom-inset, 0px)');
+        expect(bottom).toContain('bottom: calc(var(--sb-toast-bottom-inset, 0px) + var(--sb-toast-cb-bottom, 0px))');
         // The newest is first in the document and drawn nearest the bottom edge.
         expect(bottom).toContain('flex-direction: column-reverse');
     });
@@ -322,8 +339,8 @@ describe('the toast overlay', () => {
 
     test('the notification container is a strip across the window, as the overlay is, and takes no pointer events itself', () => {
         const strip = ruleOf(themeCss, 'body #toast-container[class]');
-        expect(strip).toContain('left: 0');
-        expect(strip).toContain('right: 0');
+        expect(strip).toContain('left: var(--sb-toast-cb-left, 0px)');
+        expect(strip).toContain('right: var(--sb-toast-cb-right, 0px)');
         expect(strip).toContain('display: flex');
         expect(strip).toContain('flex-direction: column');
         expect(themeCss).toContain('body #toast-container[class]:is(.toast-top-right, .toast-bottom-right) {\n    align-items: flex-end;');
