@@ -12,8 +12,9 @@ import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
+// At 1440px the list is a wide settings page: its frame is an AdwClamp of the room between the page insets, in a pane that is the window less the sidebar.
 const selectionLayout = {
-    1440: { titleX: 50, descriptionRight: 1124, truncated: false },
+    1440: { titleX: 50, descriptionRight: 1081, truncated: false },
     390: { titleX: 50, descriptionRight: 304, truncated: false },
 };
 

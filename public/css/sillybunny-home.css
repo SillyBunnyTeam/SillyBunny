@@ -28,10 +28,11 @@
     }
 }
 
-/* Only the way back to the chat width animates. The transition sits on the state without the attribute, so
-   entering Home, which includes every page load, changes the width at once. */
+/* Only the way back from the Home width to the chat width animates, so a window resize never does. The shell has the
+   attribute that this rule reads only for the length of that change. Entering Home, which includes every page load,
+   changes the width at once. */
 @media (min-width: 769px) and (prefers-reduced-motion: no-preference) {
-    body:not(.reduced-motion) #sheld:not([data-sb-home='on']) {
+    body:not(.reduced-motion) #sheld[data-sb-home-leaving] {
         transition: width var(--sb-transition);
     }
 }

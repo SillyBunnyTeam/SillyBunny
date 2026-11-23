@@ -39,8 +39,68 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const activeMotions = new WeakMap();
 
 export function prefersReducedMotion() {
-    return window.matchMedia(REDUCED_MOTION_QUERY).matches
+    return window.matchMedia?.(REDUCED_MOTION_QUERY).matches === true
         || document.body?.classList.contains('reduced-motion') === true;
+}
+
+const TRANSITION_END_MARGIN = 100;
+const transitionMarks = new WeakMap();
+
+function longestTime(list) {
+    return Math.max(0, ...String(list).split(',').map(value => {
+        const time = Number.parseFloat(value);
+        if (!Number.isFinite(time)) return 0;
+        return value.trim().endsWith('ms') ? time : time * 1000;
+    }));
+}
+
+/** Ends the mark that `attribute` makes on `element`, if it has one. */
+export function endTransitionMark(element, attribute) {
+    transitionMarks.get(element)?.get(attribute)?.();
+}
+
+/**
+ * Makes `change` animate, and nothing else on the element. A layout that has a transition all the time animates every window
+ * resize too, so the transition is written for `attribute`, which the element has only from here until the transition ends.
+ * The attribute is set before `change` runs, so the style that `change` makes has the transition. It ends with a
+ * `transitionend` of one of `properties` on the element, or after the duration that the style gives (a transition that
+ * has nothing to change never ends), and it is not set at all when motion is reduced or the style has no transition.
+ * @param {HTMLElement} element
+ * @param {string} attribute
+ * @param {() => void} change Writes the change that animates.
+ * @param {{ properties?: string[] | null }} [options] The properties whose `transitionend` ends the mark; any when omitted.
+ */
+export function transitionChange(element, attribute, change, { properties = null } = {}) {
+    endTransitionMark(element, attribute);
+    if (prefersReducedMotion()) {
+        change();
+        return;
+    }
+
+    element.setAttribute(attribute, '');
+    change();
+    // Reading the style makes the transition start from the style before the change.
+    const style = getComputedStyle(element);
+    const duration = longestTime(style.transitionDuration) + longestTime(style.transitionDelay);
+    if (duration <= 0) {
+        element.removeAttribute(attribute);
+        return;
+    }
+
+    let timer = 0;
+    const end = () => {
+        window.clearTimeout(timer);
+        element.removeEventListener('transitionend', onEnd);
+        element.removeAttribute(attribute);
+        transitionMarks.get(element)?.delete(attribute);
+    };
+    const onEnd = event => {
+        if (event.target === element && (!properties || properties.includes(event.propertyName))) end();
+    };
+    element.addEventListener('transitionend', onEnd);
+    timer = window.setTimeout(end, duration + TRANSITION_END_MARGIN);
+    if (!transitionMarks.has(element)) transitionMarks.set(element, new Map());
+    transitionMarks.get(element).set(attribute, end);
 }
 
 function canAnimate(element) {
