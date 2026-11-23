@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -80,6 +81,17 @@ function underFolder(folder, entries) {
     return Object.fromEntries(Object.entries(entries).map(([name, content]) => [`${folder}/${name}`, content]));
 }
 
+function incompressibleBytes(size) {
+    const blocks = [];
+    let length = 0;
+    for (let index = 0; length < size; index++) {
+        const digest = crypto.createHash('sha256').update(`zip-backpressure-${index}`).digest();
+        blocks.push(digest);
+        length += digest.length;
+    }
+    return Buffer.concat(blocks, size);
+}
+
 function createZip(entries) {
     return new Promise((resolve, reject) => {
         const archive = archiver('zip');
@@ -87,8 +99,12 @@ function createZip(entries) {
         archive.on('data', chunk => chunks.push(chunk));
         archive.on('end', () => resolve(Buffer.concat(chunks)));
         archive.on('error', reject);
-        for (const [name, content] of Object.entries(entries)) {
-            archive.append(content, { name });
+        for (const [name, entry] of Object.entries(entries)) {
+            if (entry && typeof entry === 'object' && !Buffer.isBuffer(entry)) {
+                archive.append(entry.content, { name, store: Boolean(entry.store) });
+            } else {
+                archive.append(entry, { name });
+            }
         }
         archive.finalize();
     });
@@ -374,6 +390,26 @@ describe('POST /api/users/import-sillytavern/zip', () => {
         expect(readTargetFile('characters', 'Ada.png')).toBe('card');
         expect(fs.existsSync(targetFile('settings.json'))).toBe(true);
         expectNoImportedMetadata();
+    });
+
+    test('imports deflated and stored binary entries larger than the stream buffer without stalling', async () => {
+        const deflatedAvatar = incompressibleBytes(65536);
+        const storedCard = incompressibleBytes(65536);
+
+        const response = await importZip({
+            'User Avatars/large-deflated.png': deflatedAvatar,
+            'characters/large-stored.png': { content: storedCard, store: true },
+            'settings.json': '{"imported":true}',
+        });
+
+        const { status, body } = await readReply(response);
+
+        expect(status).toBe(200);
+        expect(body.importedFiles).toBe(3);
+        expect(fs.readFileSync(targetFile('User Avatars', 'large-deflated.png')).equals(deflatedAvatar)).toBe(true);
+        expect(fs.readFileSync(targetFile('characters', 'large-stored.png')).equals(storedCard)).toBe(true);
+        expect(readTargetJson('settings.json')).toEqual({ imported: true });
+        expect(await contentsOnceEmpty(uploads)).toEqual([]);
     });
 
     test('answers 400 without an uploaded file', async () => {
