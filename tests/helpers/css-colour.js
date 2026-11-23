@@ -11,16 +11,21 @@
  */
 
 /**
- * The `@supports` and `@media` conditions that hold in every engine of the support baseline (Safari and iOS 16.4 and
- * later, the current and the previous Chromium and Firefox): all of them read the relative colour syntaxes that the
- * stylesheets guard. A hover is included because a desktop pointer hovers. Safari before 18 reads `calc()` on the
- * channels of a relative colour by an older draft (MDN browser-compat-data), so the hover colour of a link, which
- * scales `s` and `l`, is computed here as the current engines compute it.
+ * The `@supports` and `@media` conditions that hold in the current engines (Chromium, Firefox and Safari), all of which
+ * read the relative colour syntaxes that the stylesheets guard. A hover is included because a desktop pointer hovers.
+ * The guards of the toast and the notification test the shape of the declaration they protect (`min(l, 0.5)`,
+ * `calc(a * ...)`, `max(l, 0.5)`), because Safari 16.4 and 17 read the channel keywords by an older draft, where such
+ * math may be invalid; there an engine takes the declaration outside the guard. That fallback is not computed here, and
+ * it is unverified on a real Safari 16.4 or 17. Safari before 18 also reads `calc()` on the channels of a relative colour
+ * by that draft, so the hover colour of a link, which scales `s` and `l`, is computed here as the current engines compute it.
  */
 export const BASELINE_CONDITIONS = new Set([
     '@supports (color: rgb(from black r g b / 1))',
     '@supports (color: oklab(from red l a b))',
+    '@supports (color: oklab(from red max(l, 0.5) a b))',
+    '@supports (color: oklab(from red min(l, 0.5) calc(a * min(1, 0.5 / l)) calc(b * min(1, 0.5 / l))))',
     '@supports (color: hsl(from red h s l))',
+    '@supports (color: hsl(from red h calc(s * 1.1) calc(l * 1.1)))',
     '@media (hover: hover)',
 ]);
 

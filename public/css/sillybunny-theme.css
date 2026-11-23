@@ -4594,7 +4594,10 @@ body #sb-toast-overlay {
     --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
 }
 
-@supports (color: oklab(from red l a b)) {
+/* Each relative-colour declaration of the toast and the notification is behind an @supports that tests the functions it uses.
+   An engine that implements an older draft of the syntax, where the channel keywords keep a percentage-like type, cannot read
+   `max(l, 0.5)`, and a custom property that it cannot read would turn the background that uses it transparent. */
+@supports (color: oklab(from red max(l, 0.5) a b)) {
     body #sb-toast-overlay {
         --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b);
     }
@@ -7042,19 +7045,26 @@ body #sb-toast-overlay .toast-message :is(label, a:not([href])) {
    work, no lighter than libadwaita's own toast (OKLab lightness 0.433, which keeps #505053 as it is), so that a theme with a
    mid-tone layer still gives white ink 4.5:1 under the fill of a button. The chroma scales with the lightness, so the hue and
    its relative strength stay and the darker colour does not leave the sRGB gamut. A link is Accent mixed with the ink, lifted to
-   the lightness that the focus ring of this layer has, so that it reads on every capped surface. */
+   the lightness that the focus ring of this layer has, so that it reads on every capped surface. The two lifts are guarded
+   apart, each by the shape it uses, because an engine may read one and not the other; where it reads neither, the surface is
+   the layer and a link is the plain mix. */
 #sb-toast-overlay {
     --sb-toast-ink: #ffffff;
+    --sb-toast-lightness-cap: 0.433;
+    --sb-toast-link-floor: 0.85;
     --sb-toast-surface: var(--sb-layer-toast);
     --sb-toast-link: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-toast-ink));
     --sb-toast-link-visited: color-mix(in srgb, var(--sb-accent) 25%, var(--sb-toast-ink));
 }
 
-@supports (color: oklab(from red l a b)) {
+@supports (color: oklab(from red min(l, 0.5) calc(a * min(1, 0.5 / l)) calc(b * min(1, 0.5 / l)))) {
     #sb-toast-overlay {
-        --sb-toast-lightness-cap: 0.433;
-        --sb-toast-link-floor: 0.85;
         --sb-toast-surface: oklab(from var(--sb-layer-toast) min(l, var(--sb-toast-lightness-cap)) calc(a * min(1, var(--sb-toast-lightness-cap) / l)) calc(b * min(1, var(--sb-toast-lightness-cap) / l)));
+    }
+}
+
+@supports (color: oklab(from red max(l, 0.5) a b)) {
+    #sb-toast-overlay {
         --sb-toast-link: oklab(from color-mix(in srgb, var(--sb-accent) 50%, var(--sb-toast-ink)) max(l, var(--sb-toast-link-floor)) a b);
         --sb-toast-link-visited: oklab(from color-mix(in srgb, var(--sb-accent) 25%, var(--sb-toast-ink)) max(l, var(--sb-toast-link-floor)) a b);
     }
@@ -7301,7 +7311,7 @@ body #toast-container[class] > .sb-form-notification > .toast-close-button:focus
     background-image: none !important;
 }
 
-@supports (color: oklab(from red l a b)) {
+@supports (color: oklab(from red max(l, 0.5) a b)) {
     :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-toast):not(.toast-info) {
         --sb-toast-status: oklab(from var(--sb-toast-src) max(l, 0.8) a b);
     }
@@ -7475,7 +7485,7 @@ body #toast-container[class] > .sb-form-notification .toast-message :is(label, a
     }
 }
 
-@supports (color: hsl(from red h s l)) {
+@supports (color: hsl(from red h calc(s * 1.1) calc(l * 1.1))) {
     @media (hover: hover) {
         body #toast-container[class] > .sb-form-notification .toast-message a[href]:hover {
             color: hsl(from var(--sb-accent) h calc(s * 1.1) calc(l * 1.1));

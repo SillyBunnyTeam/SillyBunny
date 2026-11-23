@@ -320,3 +320,49 @@ describe('the rules of the two forms use theme aliases only', () => {
         expect(readFileSync(new URL('../DESIGN.md', import.meta.url), 'utf8')).toMatch(/Toast layer with white ink in both tones/);
     });
 });
+
+/** The colour functions that take a relative colour, and the math functions that a channel expression can use. */
+const RELATIVE_COLOUR = /\b(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)\(\s*from\b/gi;
+const MATH_FUNCTION = /\b(min|max|calc|clamp)\(/g;
+const namesIn = (text, pattern) => new Set([...text.matchAll(pattern)].map(match => match[1].toLowerCase()));
+
+describe('every relative colour of the two forms sits behind a guard that tests the shape it uses', () => {
+    const relative = declarationsOf(FORM_SHEETS)
+        .filter(({ selectors, name }) => FORM_TOKEN.test(name) || selectors.some(selector => FORM_SELECTOR.test(selector)))
+        .filter(({ value }) => new RegExp(RELATIVE_COLOUR.source, 'i').test(value));
+    const describeDeclaration = ({ selectors, name }) => `${selectors.join(', ')} { ${name} }`;
+
+    test('finds the colour functions and the math of a declaration and of a guard', () => {
+        expect(namesIn('oklab(from var(--a) min(l, 0.5) calc(a * min(1, 0.5 / l)) b)', RELATIVE_COLOUR)).toEqual(new Set(['oklab']));
+        expect(namesIn('oklab(from var(--a) min(l, 0.5) calc(a * min(1, 0.5 / l)) b)', MATH_FUNCTION)).toEqual(new Set(['min', 'calc']));
+        expect(namesIn('color-mix(in srgb, red 50%, white)', RELATIVE_COLOUR)).toEqual(new Set());
+        expect(namesIn('rgb(from var(--a) r g b / 1)', MATH_FUNCTION)).toEqual(new Set());
+    });
+
+    test('has relative colours to check', () => {
+        expect(relative.length).toBeGreaterThanOrEqual(8);
+    });
+
+    test('puts each of them in an @supports whose condition uses the same colour function and the same math functions', () => {
+        const unguarded = relative.filter(declaration => {
+            const functions = namesIn(declaration.value, RELATIVE_COLOUR);
+            const math = namesIn(declaration.value, MATH_FUNCTION);
+            return !declaration.path.some((prelude) => {
+                if (!prelude.startsWith('@supports')) return false;
+                const guardMath = namesIn(prelude, MATH_FUNCTION);
+                const guardFunctions = namesIn(prelude, RELATIVE_COLOUR);
+                return [...functions].every(name => guardFunctions.has(name)) && [...math].every(name => guardMath.has(name));
+            });
+        });
+
+        expect(unguarded.map(describeDeclaration)).toEqual([]);
+    });
+
+    test('gives every custom property of them a declaration outside any guard, which an engine that cannot read the shape keeps', () => {
+        const withoutFallback = relative
+            .filter(({ name }) => name.startsWith('--'))
+            .filter(({ selectors, name }) => !declarationsOf(FORM_SHEETS).some(other => other.name === name && other.path.length === 0 && other.selectors.some(selector => selectors.includes(selector))));
+
+        expect(withoutFallback.map(describeDeclaration)).toEqual([]);
+    });
+});
