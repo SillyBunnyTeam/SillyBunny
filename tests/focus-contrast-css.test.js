@@ -270,7 +270,8 @@ describe('the outer ring on solid fills and pictures', () => {
 
 describe('the focus ring inside the toast layer', () => {
     const fallbackStart = themeCss.indexOf('body #sb-toast-overlay {\n    --sb-focus-ring: currentColor;');
-    const supportsStart = themeCss.indexOf('@supports (color: oklab(from red l a b))');
+    // The guard tests the shape that the ring uses, `max(l, ...)`, because an engine with an older draft of relative colours cannot read it.
+    const supportsStart = themeCss.indexOf('@supports (color: oklab(from red max(l, 0.5) a b))', fallbackStart);
 
     test('the toast takes its own ink as the ring, and declares the two tokens that read it again', () => {
         expect(fallbackStart).toBeGreaterThan(-1);
