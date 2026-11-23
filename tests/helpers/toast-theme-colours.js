@@ -70,14 +70,23 @@ export function layersOf(theme) {
     return {
         toast: layer('--sb-layer-toast'),
         toastSource: layer('--sb-layer-toast-source'),
+        toastSurface: colourOf('var(--sb-toast-surface)', elementScope(root, 'info', 'toast')),
         popover: layer('--sb-layer-popover'),
         popoverSource: layer('--sb-layer-popover-source'),
     };
 }
 
-/** An element of a form: the status colours its kind sets, on top of what the root element computes. */
-function elementScope(root, kind) {
+/** The custom properties that the toast overlay declares for the toast form, in the order that they refer to each other. */
+const OVERLAY_PROPERTIES = ['--sb-toast-ink', '--sb-toast-lightness-cap', '--sb-toast-link-floor', '--sb-toast-surface', '--sb-toast-link', '--sb-toast-link-visited'];
+
+/** An element of a form: the status colours its kind sets, and for a toast the overlay's properties, on top of what the root element computes. */
+function elementScope(root, kind, form) {
     const specified = new Map();
+    if (form === 'toast') {
+        for (const property of OVERLAY_PROPERTIES) {
+            specified.set(property, declared('#sb-toast-overlay', property));
+        }
+    }
     if (kind !== 'info') {
         specified.set('--sb-toast-src', declared(`${EITHER_FORM}.toast-${kind}`, '--sb-toast-src'));
         specified.set('--sb-toast-status', declared(`${EITHER_FORM}:not(.toast-info)`, '--sb-toast-status'));
@@ -138,18 +147,18 @@ export function pairsOf(theme) {
 
     // The toast: one pill on the toast layer.
     {
-        const scope = elementScope(root, 'info');
+        const scope = elementScope(root, 'info', 'toast');
         const surface = opaqueSurface(declared(TOAST, 'background-color'), scope, 'toast layer');
         const ink = colourOfRule(TOAST, 'color', scope);
         add('toast', 'label', TEXT_CONTRAST, ink, surface);
         for (const kind of STATUS_KINDS) {
-            const glyph = colourOfRule(`${TOAST}:not(.toast-info)::before`, 'color', elementScope(root, kind));
+            const glyph = colourOfRule(`${TOAST}:not(.toast-info)::before`, 'color', elementScope(root, kind, 'toast'));
             add('toast', `${kind} glyph`, GRAPHIC_CONTRAST, glyph, surface);
         }
         const links = '#sb-toast-overlay .toast-message a[href]';
         add('toast', 'link', TEXT_CONTRAST, colourOfRule(links, 'color', scope), surface);
         add('toast', 'visited link', TEXT_CONTRAST, colourOfRule(`${links}:visited`, 'color', scope), surface);
-        add('toast', 'anchor without href or label', TEXT_CONTRAST, colourOfRule('body #sb-toast-overlay .toast-message :is(a, label)', 'color', scope), surface);
+        add('toast', 'anchor without href or label', TEXT_CONTRAST, colourOfRule('body #sb-toast-overlay .toast-message :is(label, a:not([href]))', 'color', scope, { inherited: ink }), surface);
         const button = `body ${TOAST} .toast-message ${BUTTONS}`;
         const buttonInk = colourOfRule(button, 'color', scope, { inherited: ink });
         const fillOf = (selector, property) => colourOf(declared(selector, property), scope, { currentColour: buttonInk });
@@ -163,7 +172,7 @@ export function pairsOf(theme) {
 
     // The in-app notification: one card on the popover layer.
     {
-        const scope = elementScope(root, 'info');
+        const scope = elementScope(root, 'info', 'notification');
         const surface = opaqueSurface(declared(NOTIFICATION, 'background-color'), scope, 'popover layer');
         const ink = colourOfRule(NOTIFICATION, 'color', scope);
         add('notification', 'title', TEXT_CONTRAST, colourOfRule(`${NOTIFICATION} > .toast-title`, 'color', scope, { inherited: ink }), surface);
@@ -171,7 +180,7 @@ export function pairsOf(theme) {
         const icon = `${NOTIFICATION}:is(.toast-error, .toast-warning, .toast-success)::before`;
         const circle = paint(colourOf(declared(icon, 'background'), scope), surface);
         for (const kind of STATUS_KINDS) {
-            add('notification', `${kind} glyph`, GRAPHIC_CONTRAST, colourOfRule(icon, 'color', elementScope(root, kind)), circle);
+            add('notification', `${kind} glyph`, GRAPHIC_CONTRAST, colourOfRule(icon, 'color', elementScope(root, kind, 'notification')), circle);
         }
         const links = `${NOTIFICATION} .toast-message a[href]`;
         add('notification', 'link', TEXT_CONTRAST, colourOfRule(links, 'color', scope), surface);

@@ -104,8 +104,15 @@ describe('the toast layer', () => {
 
     test('a link in a notification takes the normal link colours, and the overlay\'s link colours are for the toast only', () => {
         expect(ruleOf(themeCss, `${NOTIFICATION} .toast-message a[href]`)).toContain('color: var(--sb-accent)');
-        expect(ruleOf(themeCss, '#sb-toast-overlay .toast-message a[href]')).toContain('color: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-layer-toast-fg))');
+        expect(ruleOf(themeCss, '#sb-toast-overlay .toast-message a[href]')).toContain('color: var(--sb-toast-link)');
+        expect(ruleOf(themeCss, '#sb-toast-overlay .toast-message a[href]:visited')).toBe('color: var(--sb-toast-link-visited);');
         expect(themeCss).not.toContain(':is(#toast-container, #sb-toast-overlay) .toast-message a[href]');
+    });
+
+    test('a label and an anchor with no href in a toast are text in the ink of the toast, and only an anchor with an href takes the link mix', () => {
+        expect(ruleOf(themeCss, 'body #sb-toast-overlay .toast-message :is(label, a:not([href]))')).toBe('color: inherit;');
+        expect(themeCss).not.toContain('body #sb-toast-overlay .toast-message :is(a, label)');
+        expect(themeCss).not.toMatch(/#sb-toast-overlay[^{]*\{[^}]*--toast-link-color/);
     });
 
     test('the focus ring of the toast layer is for the toast layer: a notification keeps the ring of the app', () => {
@@ -144,10 +151,10 @@ describe('the toast layer', () => {
         expect(ruleOf(themeCss, '#sb-toast-overlay > .sb-form-toast > :not(.toast-progress)')).toContain('margin-inline: 6px');
     });
 
-    test('a toast takes the surface of the toast layer: Toast Shadow, no border, the ink of the layer, a pill that a wrapped toast cannot outgrow', () => {
+    test('a toast takes its own surface, the toast layer capped in lightness: Toast Shadow, no border, white ink, a pill that a wrapped toast cannot outgrow', () => {
         const box = ruleOf(themeCss, TOAST);
-        expect(box).toContain('background-color: var(--sb-layer-toast)');
-        expect(box).toContain('color: var(--sb-layer-toast-fg)');
+        expect(box).toContain('background-color: var(--sb-toast-surface)');
+        expect(box).toContain('color: var(--sb-toast-ink)');
         expect(box).toContain('box-shadow: var(--sb-shadow-toast)');
         expect(box).toContain('border: none');
         expect(box).toContain('background-image: none');

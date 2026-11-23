@@ -319,7 +319,7 @@ const toLinear = (channel) => Math.sign(channel) * (Math.abs(channel) <= 0.04045
 const toGamma = (channel) => Math.sign(channel) * (Math.abs(channel) <= 0.0031308 ? Math.abs(channel) * 12.92 : 1.055 * Math.abs(channel) ** (1 / 2.4) - 0.055);
 
 /** @param {number[]} rgb 0 to 255. @returns {number[]} OKLab L, a, b. */
-function rgbToOklab(rgb) {
+export function rgbToOklab(rgb) {
     const [red, green, blue] = rgb.map(channel => toLinear(channel / 255));
     const l = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue);
     const m = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue);

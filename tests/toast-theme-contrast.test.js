@@ -1,8 +1,8 @@
 import { describe, expect, test } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 
-import { declarationsOf, parseStylesheet } from './helpers/css-colour.js';
-import { STATUS_KINDS, layersOf, pairsOf, toneOf } from './helpers/toast-theme-colours.js';
+import { colourOf, declarationsOf, declaredValue, displayed, parseStylesheet, rgbToOklab, toHex } from './helpers/css-colour.js';
+import { APP_SHEETS, STATUS_KINDS, layersOf, pairsOf, rootScopeOf, toneOf } from './helpers/toast-theme-colours.js';
 
 const themesDirectory = new URL('../default/content/themes/', import.meta.url);
 const themeFiles = readdirSync(themesDirectory).filter(file => file.endsWith('.json')).sort();
@@ -14,239 +14,19 @@ const themeNamed = (name) => themes.find(theme => theme.name === name);
  * them. A case that stops failing makes the test of its theme fail until the theme is taken out of its entry, and a new
  * failure makes it fail until it is fixed or added here. The failure message of a theme's test gives the ratio and the
  * colours of each case that is not listed.
+ *
+ * Every case left here is on the in-app notification, where the fill of a button and the colours of a link are GNOME
+ * Shell's and the theme's own, so a fix needs a value that is not either (a deviation of DESIGN.md) and is for the
+ * maintainers to decide. The toast form has none: its ink, surface, status lift and link lift are set to hold every
+ * pair of every bundled theme.
  */
 const KNOWN_FAILURES = [
     {
-        pair: 'toast label',
-        reason: [
-            'On the dark tone the label is the body colour of the theme (`--sb-layer-toast-fg` is `--SmartThemeBodyColor`) on a layer that',
-            'mixes 19% of that colour into the blur tint, so a body colour that is not white leaves less than 4.5:1. DESIGN.md (Toasts,',
-            'Surface) asks for white ink in both tones, and only the light tone has it.',
-        ].join(' '),
-        themes: [
-            'Everforest Dark',
-            'Glacier',
-            'Lime',
-            'Magenta',
-            'Mint',
-            'Nord',
-            'Rose',
-            'Slate',
-            'Solarized Dark',
-            'Sonokai Atlantis',
-        ],
-    },
-    {
-        pair: 'toast error glyph',
-        reason: [
-            'The glyph is the status colour lifted to OKLab lightness 0.76 (`--sb-toast-status`). The light-tone toast layer is the body',
-            'colour mixed 14% toward white, a mid tone in a theme with a lighter body colour, and the lifted colour stays under 3:1 on it.',
-            'Lime is a dark-tone theme whose layer is a mid-tone green.',
-        ].join(' '),
-        themes: [
-            'Catppuccin Latte',
-            'Dracula Light',
-            'Everforest Light',
-            'Gruvbox Light',
-            'Hacker-Terminal-Light',
-            'Libadwaita Light',
-            'Lime',
-            'Nord Light',
-            'Rosé Pine Dawn',
-            'Solarized Light',
-            'Sonokai Andromeda Light',
-            'Sonokai Atlantis Light',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-            'Sonokai Shusia Light',
-            'Tokyo Night Day',
-            'Verdant Light',
-        ],
-    },
-    {
-        pair: 'toast warning glyph',
-        reason: [
-            'The glyph is the status colour lifted to OKLab lightness 0.76 (`--sb-toast-status`). The light-tone toast layer is the body',
-            'colour mixed 14% toward white, a mid tone in a theme with a lighter body colour, and the lifted colour stays under 3:1 on it.',
-        ].join(' '),
-        themes: [
-            'Dracula Light',
-            'Everforest Light',
-            'Gruvbox Light',
-            'Nord Light',
-            'Rosé Pine Dawn',
-            'Solarized Light',
-            'Sonokai Andromeda Light',
-            'Sonokai Atlantis Light',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-            'Sonokai Shusia Light',
-            'Tokyo Night Day',
-        ],
-    },
-    {
-        pair: 'toast success glyph',
-        reason: [
-            'The glyph is the status colour lifted to OKLab lightness 0.76 (`--sb-toast-status`). The light-tone toast layer is the body',
-            'colour mixed 14% toward white, a mid tone in a theme with a lighter body colour, and the lifted colour stays under 3:1 on it.',
-        ].join(' '),
-        themes: [
-            'Dracula Light',
-            'Everforest Light',
-            'Nord Light',
-            'Rosé Pine Dawn',
-            'Solarized Light',
-            'Sonokai Andromeda Light',
-            'Sonokai Atlantis Light',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-        ],
-    },
-    {
-        pair: 'toast link',
-        reason: [
-            'A link on the toast layer is `--sb-accent` (the quote colour 62%, the body colour 38%) mixed 50% with the toast ink',
-            '(`#sb-toast-overlay .toast-message a[href]`), so it takes the lower lightness of the accent. On the light tone the accent is',
-            'dark and the ink is white, which gives a mid tone on a dark layer.',
-        ].join(' '),
-        themes: [
-            'Catppuccin Latte',
-            'Cerulean',
-            'Dracula Light',
-            'Everforest Dark',
-            'Everforest Light',
-            'Glacier',
-            'Gruvbox Light',
-            'Hacker-Terminal-Light',
-            'Libadwaita Light',
-            'Lime',
-            'Magenta',
-            'Mint',
-            'Nord',
-            'Nord Light',
-            'Rose',
-            'Rosé Pine Dawn',
-            'Solarized Dark',
-            'Solarized Light',
-            'Sonokai Andromeda Light',
-            'Sonokai Atlantis Light',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-            'Sonokai Shusia Light',
-            'Tokyo Night Day',
-            'Verdant Light',
-        ],
-    },
-    {
-        pair: 'toast visited link',
-        reason: [
-            'A visited link on the toast layer is `--sb-accent` mixed 25% with the toast ink; the cause is the same as for the link at rest.',
-        ].join(' '),
-        themes: [
-            'Catppuccin Latte',
-            'Dracula Light',
-            'Everforest Dark',
-            'Everforest Light',
-            'Glacier',
-            'Gruvbox Light',
-            'Lime',
-            'Magenta',
-            'Mint',
-            'Nord',
-            'Nord Light',
-            'Rose',
-            'Rosé Pine Dawn',
-            'Solarized Dark',
-            'Solarized Light',
-            'Sonokai Andromeda Light',
-            'Sonokai Atlantis',
-            'Sonokai Atlantis Light',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-            'Sonokai Shusia Light',
-            'Tokyo Night Day',
-        ],
-    },
-    {
-        pair: 'toast anchor without href or label',
-        reason: [
-            '`body #sb-toast-overlay .toast-message :is(a, label)` sets `--toast-link-color`, the body colour mixed 14% toward the quote',
-            'colour, whatever the tone. On the light tone the body colour is dark and the toast layer is dark too, so such text is dark',
-            'on dark (1.3 to 1.5:1); on the dark tone it falls just under 4.5:1 where the body colour is not bright. No bundled call puts a',
-            'label or an anchor without href in a toast, but an extension can.',
-        ].join(' '),
-        themes: [
-            'Catppuccin Latte',
-            'Dracula Light',
-            'Everforest Dark',
-            'Everforest Light',
-            'Glacier',
-            'Gruvbox Light',
-            'Hacker-Terminal-Light',
-            'Libadwaita Light',
-            'Lime',
-            'Magenta',
-            'Mint',
-            'Nord',
-            'Nord Light',
-            'Rose',
-            'Rosé Pine Dawn',
-            'Solarized Dark',
-            'Solarized Light',
-            'Sonokai Andromeda Light',
-            'Sonokai Atlantis',
-            'Sonokai Atlantis Light',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-            'Sonokai Shusia Light',
-            'Tokyo Night Day',
-            'Verdant Light',
-        ],
-    },
-    {
-        pair: 'toast button text',
-        reason: [
-            'The text is the toast ink on a fill that adds 10% of that ink to the layer, so its ratio is lower than that of the label: a',
-            'theme whose label is under about 5.5:1 on the layer falls under 4.5:1, which includes themes whose label alone passes.',
-        ].join(' '),
-        themes: [
-            'Azure',
-            'Cerulean',
-            'Dracula',
-            'Everforest Dark',
-            'Everforest Light',
-            'Glacier',
-            'Gruvbox Dark',
-            'Lime',
-            'Magenta',
-            'Mint',
-            'Nord',
-            'Nord Light',
-            'Plum',
-            'Rose',
-            'Rosé Pine Dawn',
-            'Slate',
-            'Solarized Dark',
-            'Solarized Light',
-            'Sonokai Andromeda',
-            'Sonokai Atlantis',
-            'Sonokai Default',
-            'Sonokai Default Light',
-            'Sonokai Espresso Light',
-            'Sonokai Maia Light',
-            'Tokyo Night',
-        ],
-    },
-    {
         pair: 'notification link',
         reason: [
-            'The link is `--sb-accent`, the quote colour mixed 38% toward the body colour, on the popover layer.',
+            'The link is `--sb-accent`, the quote colour mixed 38% toward the body colour, on the popover layer. The theme\'s own text',
+            'colours on its own popover layer are borderline (4.44:1), and a link that holds 4.5:1 needs a colour that the theme does',
+            'not give it.',
         ].join(' '),
         themes: [
             'Solarized Dark',
@@ -255,7 +35,7 @@ const KNOWN_FAILURES = [
     {
         pair: 'notification visited link',
         reason: [
-            'The visited link is `--sb-accent` mixed 20% toward the body colour, on the popover layer.',
+            'The visited link is `--sb-accent` mixed 20% toward the body colour, on the popover layer; the cause is the same as for the link at rest (4.41:1).',
         ].join(' '),
         themes: [
             'Solarized Dark',
@@ -264,8 +44,9 @@ const KNOWN_FAILURES = [
     {
         pair: 'notification button text',
         reason: [
-            'The text is the ink on a fill of the ink at 10% over the popover layer. The fill lifts the background of the button above the',
-            'layer on the dark tone, which lowers the ratio below that of the body text (4.7 to 5.4:1 in these themes).',
+            'The text is the ink on a fill of the ink at 10% over the popover layer, which is GNOME Shell\'s fill. The fill lifts the',
+            'background of the button above the layer on the dark tone, which lowers the ratio below that of the body text (4.7 to 5.4:1',
+            'in these themes, 4.11 to 4.49:1 on the button). A fill that holds 4.5:1 is not 10% of the ink.',
         ].join(' '),
         themes: [
             'Glacier',
@@ -360,14 +141,15 @@ describe('the surfaces of the two forms are opaque whatever the tints of the the
             // The light-tone toast layer mixes the body colour with white, so only the dark-tone one is made of the tint.
             expect(layers.toastSource.alpha < 1).toBe(toneOf(variant) === 'dark');
             expect(layers.toast.alpha).toBe(1);
+            expect(layers.toastSurface.alpha).toBe(1);
             expect(layers.popover.alpha).toBe(1);
         }
     });
 
     test('keeps both layers opaque for every bundled theme at a blur tint and chat tint of alpha 0.3', () => {
         const translucentLayers = themes.filter((theme) => {
-            const { toast, popover } = layersOf(translucent(theme, 0.3));
-            return toast.alpha !== 1 || popover.alpha !== 1;
+            const { toast, toastSurface, popover } = layersOf(translucent(theme, 0.3));
+            return toast.alpha !== 1 || toastSurface.alpha !== 1 || popover.alpha !== 1;
         });
 
         expect(translucentLayers.map(theme => theme.name)).toEqual([]);
@@ -380,14 +162,101 @@ describe('the surfaces of the two forms are opaque whatever the tints of the the
     });
 });
 
+/** Both 8-bit colours as OKLab: lightness, and the hue in degrees with the chroma. */
+const oklabOf = (rgb) => {
+    const [lightness, a, b] = rgbToOklab(rgb);
+    return { lightness, chroma: Math.hypot(a, b), hue: (Math.atan2(b, a) * 180) / Math.PI };
+};
+const OVERLAY = '#sb-toast-overlay';
+const overlayValue = (property, conditions) => declaredValue(APP_SHEETS, { selector: OVERLAY, property, ...(conditions ? { conditions } : {}) });
+
+describe('the toast form has its own ink and surface, and leaves the layer that the tooltips share as it is', () => {
+    const withoutSupports = new Set();
+    const surfaceOf = (theme) => displayed(layersOf(theme).toastSurface);
+    const layerOf = (theme) => displayed(layersOf(theme).toast);
+    const cap = () => Number(overlayValue('--sb-toast-lightness-cap'));
+
+    test('the ink of a toast is white on every theme, where the layer ink is the body colour on the dark tone and white on the light', () => {
+        for (const theme of themes) {
+            const root = rootScopeOf(theme);
+            const toastInk = pairsOf(theme).find(({ id }) => id === 'toast label').foreground;
+            const expectedLayerInk = toneOf(theme) === 'dark' ? colourOf('var(--SmartThemeBodyColor)', root) : colourOf('#ffffff', root);
+
+            expect(toastInk).toBe('#ffffff');
+            expect(colourOf('var(--sb-layer-toast-fg)', root)).toEqual(expectedLayerInk);
+        }
+    });
+
+    test('the tooltips and the press-and-hold label still paint with the toast layer and its own ink, and the tokens of the toast form are declared on the overlay only', () => {
+        const messageActions = [parseStylesheet(readFileSync(new URL('../public/css/sillybunny-message-actions.css', import.meta.url), 'utf8'))];
+
+        for (const [sheets, selector] of [[APP_SHEETS, '.tooltip-inner'], [messageActions, '.sb-press-tooltip']]) {
+            expect(declaredValue(sheets, { selector, property: 'background', conditions: withoutSupports })).toBe('var(--sb-layer-toast)');
+            expect(declaredValue(sheets, { selector, property: 'color', conditions: withoutSupports })).toBe('var(--sb-layer-toast-fg)');
+        }
+        const declaredAt = (name) => declarationsOf(FORM_SHEETS).filter(declaration => declaration.name === name).flatMap(({ selectors }) => selectors);
+        for (const name of ['--sb-toast-ink', '--sb-toast-surface', '--sb-toast-link', '--sb-toast-link-visited', '--sb-toast-lightness-cap', '--sb-toast-link-floor']) {
+            expect([name, [...new Set(declaredAt(name))]]).toEqual([name, [OVERLAY]]);
+        }
+    });
+
+    test('the surface is the toast layer with its lightness capped at the lightness of libadwaita\'s toast, so #505053 is not changed', () => {
+        const hex = (theme) => toHex(surfaceOf(theme));
+
+        expect(cap()).toBeGreaterThanOrEqual(oklabOf([0x50, 0x50, 0x54]).lightness);
+        expect(cap()).toBeLessThan(0.44);
+        expect(hex(themeNamed('Libadwaita Dark'))).toBe(toHex(layerOf(themeNamed('Libadwaita Dark'))));
+        expect(hex(themeNamed('Libadwaita Dark'))).toBe('#505053');
+        expect(hex(themeNamed('Libadwaita Light'))).toBe(toHex(layerOf(themeNamed('Libadwaita Light'))));
+    });
+
+    test('a layer under the cap is the surface as it is, and a layer over it keeps its hue at the cap', () => {
+        const problems = [];
+        const capped = [];
+        for (const theme of themes) {
+            const layer = layerOf(theme);
+            const surface = surfaceOf(theme);
+            const layerLab = oklabOf(layer);
+            const surfaceLab = oklabOf(surface);
+            const channelShift = Math.max(...layer.map((channel, at) => Math.abs(channel - surface[at])));
+
+            if (surfaceLab.lightness > cap() + 0.004) problems.push(`${theme.name}: the surface is lighter than the cap`);
+            if (layerLab.lightness <= cap()) {
+                if (channelShift > 1) problems.push(`${theme.name}: a layer under the cap changed by ${channelShift}`);
+                continue;
+            }
+            capped.push(theme.name);
+            if (Math.abs(surfaceLab.lightness - cap()) > 0.004) problems.push(`${theme.name}: a layer over the cap is not at it`);
+            const hueShift = Math.abs(((surfaceLab.hue - layerLab.hue + 540) % 360) - 180);
+            if (layerLab.chroma > 0.04 && hueShift > 4) problems.push(`${theme.name}: the hue moved by ${hueShift.toFixed(1)} degrees`);
+        }
+
+        expect(problems).toEqual([]);
+        expect(capped.length).toBeGreaterThan(10);
+        expect(capped).toEqual(expect.arrayContaining(['Solarized Light', 'Lime']));
+    });
+
+    test('where relative colours do not work, the surface is the layer and a link is the plain mix, so the bundled Libadwaita themes keep libadwaita\'s toast', () => {
+        expect(overlayValue('--sb-toast-surface', withoutSupports)).toBe('var(--sb-layer-toast)');
+        expect(overlayValue('--sb-toast-link', withoutSupports)).toBe('color-mix(in srgb, var(--sb-accent) 50%, var(--sb-toast-ink))');
+        expect(overlayValue('--sb-toast-link-visited', withoutSupports)).toBe('color-mix(in srgb, var(--sb-accent) 25%, var(--sb-toast-ink))');
+    });
+});
+
 /** Where the colours of the two forms are declared: every rule that names a part of them, and the tokens they paint with. */
 const FORM_SHEETS = ['public/style.css', 'public/css/popup.css', 'public/css/sillybunny-theme.css', 'public/css/sillybunny-tabs.css', 'public/css/sillybunny-home.css']
     .map(path => parseStylesheet(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')));
 const FORM_SELECTOR = /#sb-toast-overlay|#toast-container|\.sb-form-toast|\.sb-form-notification|\.sb-toast-actions|\.toast-close-button|\.toast-message|\.toast-title/;
 const FORM_TOKEN = /^--(sb-layer-(toast|popover)(-source|-fg)?|sb-shadow-(toast|popover)|sb-popover-ring|sb-toast-[\w-]+|toast-[\w-]+)$/;
 
-/** The one hard-coded colour of the forms: DESIGN.md (Toasts, Surface) gives the toast white ink in both tones. */
-const ALLOWED_LITERALS = [{ name: '--sb-layer-toast-fg', literal: '#ffffff' }];
+/**
+ * The hard-coded colour of the forms: DESIGN.md (Toasts, Surface) gives the toast white ink in both tones. It is written
+ * twice: as the ink of the toast layer in the light tone, which the tooltips share, and as the ink of the toast form.
+ */
+const ALLOWED_LITERALS = [
+    { name: '--sb-layer-toast-fg', literal: '#ffffff' },
+    { name: '--sb-toast-ink', literal: '#ffffff' },
+];
 
 const NAMED_COLOURS = new Set(`aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood
 cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki
@@ -447,7 +316,7 @@ describe('the rules of the two forms use theme aliases only', () => {
     test('keeps the allowed literal where DESIGN.md asks for it, and nowhere else', () => {
         const uses = declarationsOf(FORM_SHEETS).filter(({ value }) => ALLOWED_LITERALS.some(({ literal }) => value.includes(literal)));
 
-        expect(uses.map(({ name }) => name)).toEqual(['--sb-layer-toast-fg']);
+        expect(uses.map(({ name }) => name)).toEqual(['--sb-layer-toast-fg', '--sb-toast-ink']);
         expect(readFileSync(new URL('../DESIGN.md', import.meta.url), 'utf8')).toMatch(/Toast layer with white ink in both tones/);
     });
 });
