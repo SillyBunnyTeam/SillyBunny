@@ -205,6 +205,20 @@ test.describe('the card', () => {
     });
 });
 
+test.describe('links and labels', () => {
+    test('a link with an href is in the link colour, and an anchor without one and a label are text in the ink', async ({ page }) => {
+        await show(page, 'info', '<div><a id="plain">Not a link</a> <a id="link" href="#target">A link</a> <label id="label">A label</label></div>', 'Links', HTML);
+        const colours = await page.evaluate(() => {
+            const card = document.querySelector('#toast-container > .sb-form-notification');
+            const colour = selector => getComputedStyle(card.querySelector(selector)).color;
+            return { ink: getComputedStyle(card).color, accent: getComputedStyle(document.documentElement).getPropertyValue('--sb-accent').trim(), plain: colour('#plain'), label: colour('#label'), link: colour('#link') };
+        });
+        expect(colours.plain, 'an anchor with no href is not a link').toBe(colours.ink);
+        expect(colours.label).toBe(colours.ink);
+        expect(colours.link, 'a link is not the ink').not.toBe(colours.ink);
+    });
+});
+
 test.describe('a message whose toastClass is not toast', () => {
     // `/echo cssClass=foo` sets toastClass to `foo`, so the element has no `toast` class. Both forms are told by their own marker.
     /** The computed styles of the parts of a message that its rules draw. */
@@ -280,6 +294,16 @@ test.describe('Dismiss', () => {
         expect(geometry.right, '6px of padding and 6px of margin').toBeCloseTo(12, 0);
         expect(Math.abs(geometry.centre), 'it shares the centre of the first line').toBeLessThan(2);
         expect(geometry.height, 'title, 4px, body, and 12px above and below').toBeCloseTo(12 + 2 * geometry.lineHeight + 4 + 12, 0);
+    });
+
+    test('keeps its full strength while it has focus: upstream\'s sheet dims a focused close button of a toast container to 70%', async ({ page }) => {
+        const card = await show(page, 'info', 'Message', 'Title');
+        const close = card.getByRole('button', { name: 'Dismiss', exact: true });
+        await close.focus();
+        await expect(close).toBeFocused();
+        const look = await close.evaluate(node => ({ opacity: getComputedStyle(node).opacity, colour: getComputedStyle(node).color, ink: getComputedStyle(node.parentElement).color }));
+        expect(look.opacity, 'not dimmed, which would also lower the contrast of the glyph').toBe('1');
+        expect(look.colour, 'in the ink of the card').toBe(look.ink);
     });
 
     test('dismisses on a click, and for /echo awaitDismissal without a timeout an error stays until it does', async ({ page }) => {

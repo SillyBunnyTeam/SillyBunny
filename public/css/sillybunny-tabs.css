@@ -475,10 +475,6 @@ body.sb-topbar-compact #sb-topbar-stack {
     max-height: calc(100dvh - var(--sb-topbar-layout-offset) - 1px);
 }
 
-body :is(#toast-container, #sb-toast-overlay) {
-    margin-top: var(--sb-topbar-layout-offset);
-}
-
 #select_chat_popup {
     max-height: calc(100vh - var(--sb-topbar-layout-offset));
     max-height: calc(100dvh - var(--sb-topbar-layout-offset));

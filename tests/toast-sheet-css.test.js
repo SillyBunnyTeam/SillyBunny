@@ -119,9 +119,14 @@ describe('the toast layer', () => {
         expect(themeCss).not.toContain('#toast-container > div.sb-toast-leaving');
     });
 
-    test('no surface styles a button inside a toast: the notification\'s row and the toast form own every button', () => {
+    test('a notification overrides the two rules of upstream\'s sheet that its design does not follow: a focused close button is not dimmed, and an anchor with no href is not a link', () => {
+        expect(ruleOf(themeCss, `${NOTIFICATION} > .toast-close-button:focus`)).toBe('color: inherit; opacity: 1;');
+        expect(ruleOf(themeCss, `${NOTIFICATION} .toast-message :is(label, a:not([href]))`)).toBe('color: inherit;');
+    });
+
+    test('no surface styles a toast or a button inside one: the two forms own every container and button', () => {
         expect(read('public', 'css', 'sillybunny-home.css')).not.toMatch(/sbHomeToast/);
-        expect(read('public', 'css', 'sillybunny-tabs.css')).not.toMatch(/sb-draft-toast/);
+        expect(read('public', 'css', 'sillybunny-tabs.css')).not.toMatch(/sb-draft-toast|#toast-container|#sb-toast-overlay/);
         const scripts = ['sillybunny-toast-motion.js', 'sillybunny-toast-form.js', 'sillybunny-toast-notification.js'];
         expect(scripts.filter(script => read('public', 'scripts', script).includes('sb-toast--action'))).toEqual([]);
     });

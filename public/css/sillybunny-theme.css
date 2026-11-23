@@ -7228,6 +7228,13 @@ body :is(#toast-container > .sb-form-notification, #sb-toast-overlay > .sb-form-
     background: color-mix(in srgb, currentColor 16%, transparent);
 }
 
+/* Upstream's sheet dims a focused close button of #toast-container to 70%, which also lowers the contrast of its glyph. The ring
+   marks the focus, so the button keeps its full strength. The toast overlay is not under that rule. */
+body #toast-container[class] > .sb-form-notification > .toast-close-button:focus {
+    color: inherit;
+    opacity: 1;
+}
+
 /* A hidden clone of a toast, laid out on one line at its natural width so that the toast form can read how wide the
    message is. The id in the selector list gives the rule the specificity of an id, so a toast rule that does not use
    !important cannot change the measurement; the script removes the inline style of the clone. Display stays as the
@@ -7431,7 +7438,8 @@ body #toast-container[class] > .sb-form-notification .toast-message a[href]:visi
     color: color-mix(in srgb, var(--sb-accent) 80%, var(--SmartThemeBodyColor));
 }
 
-body #toast-container[class] > .sb-form-notification .toast-message label {
+/* Upstream's sheet gives every anchor of #toast-container the link colour, and an anchor with no href is text. */
+body #toast-container[class] > .sb-form-notification .toast-message :is(label, a:not([href])) {
     color: inherit;
 }
 
