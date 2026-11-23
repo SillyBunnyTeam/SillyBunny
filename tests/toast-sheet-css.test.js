@@ -406,3 +406,43 @@ describe('the edge that a side position aligns to', () => {
     });
 });
 
+
+describe('the toast rules and the specificity of shared lists', () => {
+    /** The top-level arguments of every :is() and :not() in the sheet, read with their nested parentheses. */
+    function pseudoClassArguments(css) {
+        const lists = [];
+        for (const match of css.matchAll(/:(?:is|not)\(/g)) {
+            let depth = 1;
+            let current = '';
+            const argumentsOfList = [];
+            for (let index = match.index + match[0].length; index < css.length && depth > 0; index += 1) {
+                const character = css[index];
+                if (character === '(') depth += 1;
+                if (character === ')') depth -= 1;
+                if (depth === 0 || (character === ',' && depth === 1)) {
+                    argumentsOfList.push(current.trim());
+                    current = '';
+                } else {
+                    current += character;
+                }
+            }
+            lists.push(argumentsOfList);
+        }
+        return lists;
+    }
+
+    // A toast container is an id. Inside :is() or :not() it gives every other argument of the list id specificity, and a
+    // shared rule then beats the rules of unrelated controls, such as the wider ring of a pressed accent preset under forced
+    // colours.
+    test('no :is() or :not() list names a toast container beside a selector that is not inside one', () => {
+        const container = /#(?:toast-container|sb-toast-overlay)\b/;
+        // The measure rule raises its own specificity on purpose, so that it wins over the toast rules, and its selector ends
+        // in `> .sb-toast-measure`, which matches only the hidden clone that measures a toast.
+        const measureHost = '#sb-toast-overlay, body';
+        const mixed = pseudoClassArguments(themeCss)
+            .filter(list => list.some(argument => container.test(argument)) && list.some(argument => !container.test(argument)))
+            .map(list => list.join(', '))
+            .filter(list => list !== measureHost);
+        expect(mixed).toEqual([]);
+    });
+});
