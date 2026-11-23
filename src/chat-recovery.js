@@ -138,42 +138,60 @@ function toBuffer(data) {
     throw new TypeError('Chat JSONL data must be a string, Buffer, or Uint8Array.');
 }
 
-export function parseChatJsonl(data) {
-    let serialized;
-    try {
-        serialized = utf8Decoder.decode(toBuffer(data));
-    } catch {
-        return corruptResult('invalid-utf8', data);
+export function parseChatJsonl(data, { collectRecords = true } = {}) {
+    const buffer = toBuffer(data);
+    const records = collectRecords ? [] : null;
+    let recordCount = 0;
+    let lineNumber = 0;
+    let offset = 0;
+
+    // Scan line slices directly from the raw Buffer so large chats do not duplicate into a full-file string and split array.
+    while (offset <= buffer.length) {
+        const newlineIndex = buffer.indexOf(0x0a, offset);
+        const end = newlineIndex === -1 ? buffer.length : newlineIndex;
+        lineNumber++;
+
+        if (end > offset) {
+            let line;
+            try {
+                line = utf8Decoder.decode(buffer.subarray(offset, end));
+            } catch {
+                return corruptResult('invalid-utf8', data);
+            }
+
+            if (line.trim() !== '') {
+                let record;
+                try {
+                    record = JSON.parse(line);
+                } catch {
+                    return corruptResult('invalid-json', data, { line: lineNumber });
+                }
+                if (!isPlainObject(record)) {
+                    return corruptResult('non-object', data, { line: lineNumber });
+                }
+                if (recordCount === 0) {
+                    if (!isRecognizedChatHeader(record)) {
+                        return corruptResult('missing-chat-metadata', data);
+                    }
+                    if (collectRecords && !isPlainObject(record.chat_metadata)) {
+                        record = { ...record, chat_metadata: {} };
+                    }
+                }
+                recordCount++;
+                if (collectRecords) {
+                    records.push(record);
+                }
+            }
+        }
+
+        if (newlineIndex === -1) {
+            break;
+        }
+        offset = newlineIndex + 1;
     }
 
-    const records = [];
-    const lines = serialized.split('\n');
-    for (let index = 0; index < lines.length; index++) {
-        const line = lines[index];
-        if (line.trim() === '') {
-            continue;
-        }
-
-        let record;
-        try {
-            record = JSON.parse(line);
-        } catch {
-            return corruptResult('invalid-json', data, { line: index + 1 });
-        }
-        if (!isPlainObject(record)) {
-            return corruptResult('non-object', data, { line: index + 1 });
-        }
-        records.push(record);
-    }
-
-    if (records.length === 0) {
+    if (recordCount === 0) {
         return corruptResult('empty', data);
-    }
-    if (!isRecognizedChatHeader(records[0])) {
-        return corruptResult('missing-chat-metadata', data);
-    }
-    if (!isPlainObject(records[0].chat_metadata)) {
-        records[0] = { ...records[0], chat_metadata: {} };
     }
 
     return {
@@ -183,7 +201,7 @@ export function parseChatJsonl(data) {
     };
 }
 
-export function readChatJsonlStrict(filePath) {
+export function readChatJsonlStrict(filePath, options = {}) {
     recoverFileWriteSync(filePath);
     const rawResult = readRegularFile(filePath);
     if (rawResult.status !== 'ok') {
@@ -192,7 +210,7 @@ export function readChatJsonlStrict(filePath) {
             records: null,
         };
     }
-    return parseChatJsonl(rawResult.data);
+    return parseChatJsonl(rawResult.data, options);
 }
 
 function normalizeDirectory(directory, label) {
@@ -456,8 +474,17 @@ function isTombstoned(target) {
 }
 
 function isStoredSnapshotCurrent(latestPath, data) {
+    const targetBuffer = toBuffer(data);
+    try {
+        const stats = fs.lstatSync(latestPath);
+        if (stats.isSymbolicLink() || !stats.isFile() || stats.size !== targetBuffer.length) {
+            return false;
+        }
+    } catch {
+        return false;
+    }
     const existing = readRegularFile(latestPath);
-    return existing.status === 'ok' && toBuffer(existing.data).equals(toBuffer(data));
+    return existing.status === 'ok' && toBuffer(existing.data).equals(targetBuffer);
 }
 
 function storeValidSnapshot(target, parsed) {
@@ -529,7 +556,7 @@ export function isChatRecoverable(target) {
         }
 
         const { latestPath } = getChatRecoveryPaths(normalizedTarget);
-        return readChatJsonlStrict(latestPath).status === 'ok';
+        return readChatJsonlStrict(latestPath, { collectRecords: false }).status === 'ok';
     }, 'Failed to inspect chat recoverability; treating recovery as unavailable.');
     return inspection.ok ? inspection.value : false;
 }
@@ -668,7 +695,8 @@ export function loadActiveChatWithRecovery(target) {
 
 export function markChatDeleted(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
-    const active = readChatJsonlStrict(normalizedTarget.activePath);
+    // Validate without retaining parsed message objects so deleting large chats stays bounded in memory.
+    const active = readChatJsonlStrict(normalizedTarget.activePath, { collectRecords: false });
     let snapshotUpdated = false;
 
     if (active.status === 'ok') {

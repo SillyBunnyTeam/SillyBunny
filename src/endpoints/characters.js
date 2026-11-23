@@ -1900,7 +1900,24 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
         }
 
         if (request.body.simple) {
-            return response.send(jsonFiles.map(file => ({ file_name: file, file_id: path.parse(file).name })));
+            // SillyBunny: include mtime and recoverable target so chat lookup and delete skip parsing every chat file.
+            const simpleFiles = jsonFiles.map(file => {
+                let lastMes = 0;
+                try {
+                    lastMes = fs.statSync(path.join(chatsDirectory, file)).mtimeMs;
+                } catch {
+                    lastMes = 0;
+                }
+                return { file_name: file, file_id: path.parse(file).name, last_mes: lastMes };
+            });
+            if (recoveryTarget && !simpleFiles.some(file => file.file_name === requestedFileName)) {
+                const requestedChat = readChatJsonlStrict(recoveryTarget.activePath, { collectRecords: false });
+                const hasRecoverableSnapshot = isChatBackupEnabled && isChatRecoverable(recoveryTarget);
+                if ((requestedChat.status === 'corrupt' && requestedChat.data !== null) || hasRecoverableSnapshot) {
+                    simpleFiles.push({ file_name: requestedFileName, file_id: path.parse(requestedFileName).name, last_mes: 0 });
+                }
+            }
+            return response.send(simpleFiles);
         }
 
         const jsonFilesPromise = jsonFiles.map((file) => {

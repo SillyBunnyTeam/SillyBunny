@@ -351,7 +351,7 @@ import { extractReasoningFromData, extractReasoningSignatureFromData, initReason
 import { accountStorage } from './scripts/util/AccountStorage.js';
 import { initWelcomeScreen, openPermanentAssistantChat, openPermanentAssistantCard, getPermanentAssistantAvatar } from './scripts/welcome-screen.js';
 import { initDataMaid } from './scripts/data-maid.js';
-import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPrompts, findItemizedPromptSet, initItemizedPrompts, itemizedParams, itemizedPrompts, loadItemizedPrompts, promptItemize, replaceItemizedPromptText, saveItemizedPrompts, swapItemizedPrompts } from './scripts/itemized-prompts.js';
+import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPrompts, findItemizedPromptSet, initItemizedPrompts, itemizedParams, itemizedPrompts, loadItemizedPrompts, promptItemize, replaceItemizedPromptText, saveItemizedPrompts, swapItemizedPrompts, trimItemizedPrompts } from './scripts/itemized-prompts.js';
 import { getSystemMessageByType, initSystemMessages, SAFETY_CHAT, sendSystemMessage, system_message_types, system_messages } from './scripts/system-messages.js';
 import { event_types, eventSource } from './scripts/events.js';
 import { initAccessibility } from './scripts/a11y.js';
@@ -2090,10 +2090,11 @@ async function getExistingCharacterChats(characterId, fileName = '') {
         return [];
     }
 
+    // SillyBunny: request simple metadata so chat selection does not read and parse every chat file on the server.
     const response = await fetch('/api/characters/chats', {
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ avatar_url: character.avatar, file_name: fileName }),
+        body: JSON.stringify({ avatar_url: character.avatar, file_name: fileName, simple: true }),
     });
 
     if (!response.ok) {
@@ -2199,10 +2200,11 @@ export async function deleteCharacterChatByName(characterId, fileName) {
     }
 
     if (fileName === character.chat) {
+        // SillyBunny: use simple listing so deleting one chat does not trigger parallel full-file reads of all remaining chats.
         const chatsResponse = await fetch('/api/characters/chats', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ avatar_url: character.avatar }),
+            body: JSON.stringify({ avatar_url: character.avatar, simple: true }),
         });
         const chats = Object.values(await chatsResponse.json());
         chats.sort((a, b) => sortMoments(timestampToMoment(a.last_mes), timestampToMoment(b.last_mes)));
@@ -5877,6 +5879,9 @@ export function substituteParamsExtended(content, additionalMacro = {}, postProc
  * @param {(x: string) => string} [postProcessFn] - Post-processing function for each substituted macro.
  * @returns {string} The string with substituted parameters.
  */
+// SillyBunny: fast check for legacy angle-bracket macros so plain strings skip environment construction and regex loops.
+const LEGACY_ANGLE_MACRO_PATTERN = /<(?:USER|BOT|CHAR|GROUP|CHARIFNOTGROUP)>/i;
+
 export function substituteParamsLegacy(content, _name1, _name2, _original, _group, _replaceCharacterCard = true, additionalMacro = {}, postProcessFn = (x) => x) {
     if (!content) {
         return '';
@@ -5893,6 +5898,11 @@ export function substituteParamsLegacy(content, _name1, _name2, _original, _grou
             dynamicMacros: additionalMacro ?? {},
             postProcessFn: postProcessFn ?? ((x) => x),
         });
+    }
+
+    // SillyBunny: plain strings with no curly or legacy angle-bracket macros cannot change during evaluation.
+    if (typeof content === 'string' && !content.includes('{{') && !(content.includes('<') && LEGACY_ANGLE_MACRO_PATTERN.test(content))) {
+        return content;
     }
 
     // Try to roughly detect experimental macro features to show the onboarding if needed.
@@ -6045,6 +6055,11 @@ export function substituteParams(content, options = {}) {
     // Keep the new macro engine behind a feature switch for now
     if (!power_user?.experimental_macro_engine) {
         return substituteParamsLegacy(content, options.name1Override, options.name2Override, options.original, options.groupOverride, options.replaceCharacterCard, options.dynamicMacros, options.postProcessFn);
+    }
+
+    // SillyBunny: skip building the macro environment and lexing plain text when no macro syntax or custom processor applies.
+    if (MacroEngine.canFastReturnPlainText(content)) {
+        return content;
     }
 
     const ctx = /** @type {import('./scripts/macros/engine/MacroEnvBuilder.js').MacroEnvRawContext} */ ({
@@ -9258,6 +9273,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 itemizedPrompts[itemizedIndex] = additionalPromptStuff;
             } else {
                 itemizedPrompts.push(additionalPromptStuff);
+                // SillyBunny: keep only the latest prompt snapshots so long sessions stay bounded in memory.
+                trimItemizedPrompts(itemizedPrompts);
             }
 
             console.debug(`pushed prompt bits to itemizedPrompts array. Length is now: ${itemizedPrompts.length}`);
@@ -18909,8 +18926,13 @@ jQuery(async function () {
             for (let i = (chat.length - 1); i >= this_del_mes; i--) {
                 deleteItemizedPromptForMessage(i);
             }
-            chatElement.find(`.mes[mesid="${this_del_mes}"]`).nextAll('div').remove();
-            chatElement.find(`.mes[mesid="${this_del_mes}"]`).remove();
+            const firstDeleted = chatElement.find(`.mes[mesid="${this_del_mes}"]`);
+            const followingDeleted = firstDeleted.nextAll('div');
+            // SillyBunny: detach resize observers before bulk message removal so detached DOM nodes are not retained.
+            unobserveChatMessageResize(firstDeleted);
+            unobserveChatMessageResize(followingDeleted);
+            followingDeleted.remove();
+            firstDeleted.remove();
             chat.length = this_del_mes;
             chat_metadata.tainted = true;
             // SillyBunny: this shrink is the user's own deletion, not an accidental overwrite.

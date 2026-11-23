@@ -13,7 +13,21 @@ let PromptArrayItemForRawPromptDisplay;
 let priorPromptArrayItemForRawPromptDisplay;
 
 const promptStorage = localforage.createInstance({ name: 'SillyTavern_Prompts' });
+// SillyBunny: bound retained prompt snapshots per chat so long sessions do not pin hundreds of megabytes in memory and IndexedDB.
+export const MAX_ITEMIZED_PROMPTS = 50;
 export let itemizedPrompts = [];
+
+/**
+ * Keeps only the most recent itemized prompt snapshots in place.
+ * @param {Array<object>} [list=itemizedPrompts] Prompt snapshot array
+ * @returns {Array<object>} Trimmed array
+ */
+export function trimItemizedPrompts(list = itemizedPrompts) {
+    if (Array.isArray(list) && list.length > MAX_ITEMIZED_PROMPTS) {
+        list.splice(0, list.length - MAX_ITEMIZED_PROMPTS);
+    }
+    return list;
+}
 
 /**
  * Gets the itemized prompts for a chat.
@@ -28,8 +42,10 @@ export async function loadItemizedPrompts(chatId) {
 
         itemizedPrompts = await promptStorage.getItem(chatId);
 
-        if (!itemizedPrompts) {
+        if (!Array.isArray(itemizedPrompts)) {
             itemizedPrompts = [];
+        } else {
+            trimItemizedPrompts(itemizedPrompts);
         }
 
         await eventSource.emit(event_types.ITEMIZED_PROMPTS_LOADED, { chatId: chatId });
@@ -49,6 +65,7 @@ export async function saveItemizedPrompts(chatId) {
             return;
         }
 
+        trimItemizedPrompts(itemizedPrompts);
         await promptStorage.setItem(chatId, itemizedPrompts);
         await eventSource.emit(event_types.ITEMIZED_PROMPTS_SAVED, { chatId: chatId });
     } catch {

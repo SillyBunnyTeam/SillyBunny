@@ -158,7 +158,45 @@ const TOKENIZER_URLS = {
 const textEncoder = new TextEncoder();
 const objectStore = localforage.createInstance({ name: 'SillyTavern_ChatCompletions' });
 
+// SillyBunny: cap cached chats and entries per chat so tokenCache does not grow unbounded across long sessions.
+const MAX_TOKEN_CACHE_CHATS = 20;
+const MAX_TOKEN_CACHE_ENTRIES_PER_CHAT = 500;
+
 let tokenCache = {};
+
+function pruneTokenCache() {
+    const chatIds = Object.keys(tokenCache);
+    if (chatIds.length > MAX_TOKEN_CACHE_CHATS) {
+        for (const staleChatId of chatIds.slice(0, chatIds.length - MAX_TOKEN_CACHE_CHATS)) {
+            delete tokenCache[staleChatId];
+        }
+    }
+    for (const chatId of Object.keys(tokenCache)) {
+        const bucket = tokenCache[chatId];
+        if (!bucket || typeof bucket !== 'object') {
+            delete tokenCache[chatId];
+            continue;
+        }
+        const entryKeys = Object.keys(bucket);
+        if (entryKeys.length > MAX_TOKEN_CACHE_ENTRIES_PER_CHAT) {
+            for (const staleKey of entryKeys.slice(0, entryKeys.length - MAX_TOKEN_CACHE_ENTRIES_PER_CHAT)) {
+                delete bucket[staleKey];
+            }
+        }
+    }
+}
+
+export function evictTokenCacheForChat(chatId) {
+    if (!chatId) {
+        return false;
+    }
+    const key = String(chatId);
+    if (!Object.hasOwn(tokenCache, key)) {
+        return false;
+    }
+    delete tokenCache[key];
+    return true;
+}
 
 /**
  * Guesstimates the token count for a string.
@@ -174,6 +212,7 @@ async function loadTokenCache() {
     try {
         console.debug('Chat Completions: loading token cache');
         tokenCache = await objectStore.getItem('tokenCache') || {};
+        pruneTokenCache();
     } catch (e) {
         console.log('Chat Completions: unable to load token cache, using default value', e);
         tokenCache = {};
@@ -183,6 +222,7 @@ async function loadTokenCache() {
 export async function saveTokenCache() {
     try {
         console.debug('Chat Completions: saving token cache');
+        pruneTokenCache();
         await objectStore.setItem('tokenCache', tokenCache);
     } catch (e) {
         console.log('Chat Completions: unable to save token cache', e);
@@ -1035,11 +1075,18 @@ function getTokenCacheObject() {
         console.log('No character / group selected. Using default cache item');
     }
 
-    if (typeof tokenCache[chatId] !== 'object') {
-        tokenCache[chatId] = {};
+    const key = String(chatId);
+    if (typeof tokenCache[key] !== 'object' || tokenCache[key] === null) {
+        tokenCache[key] = {};
+    } else {
+        // SillyBunny: refresh insertion order so pruneTokenCache evicts least recently used chats first.
+        const existing = tokenCache[key];
+        delete tokenCache[key];
+        tokenCache[key] = existing;
     }
+    pruneTokenCache();
 
-    return tokenCache[String(chatId)];
+    return tokenCache[key];
 }
 
 /**
@@ -1355,6 +1402,12 @@ export async function initTokenizers() {
         // Clear tokenizer warning when (re)connecting to an LLM backend that supports tokenization
         if (main_api === 'textgenerationwebui' && TEXTGEN_TOKENIZERS.includes(textgen_settings.type)) {
             sessionStorage.removeItem(TOKENIZER_WARNING_KEY);
+        }
+    });
+    // SillyBunny: drop deleted chat token buckets immediately instead of leaving orphan cache entries in IndexedDB.
+    eventSource.on(event_types.CHAT_DELETED, (chatName) => {
+        if (evictTokenCacheForChat(chatName)) {
+            void saveTokenCache();
         }
     });
     await loadTokenCache();

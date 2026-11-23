@@ -4,7 +4,10 @@ import { MacroRegistry, MacroValueType } from './MacroRegistry.js';
 import { logMacroGeneralError, logMacroInternalError, logMacroRuntimeWarning, logMacroSyntaxWarning } from './MacroDiagnostics.js';
 import { ELSE_MARKER } from '../definitions/core-macros.js';
 // SillyBunny: explicit whitespace macro output carries markers until the engine has done its trims.
-import { applyLegacyTrim, stripWhitespaceMarkers } from '../sillybunny-whitespace-markers.js';
+import { applyLegacyTrim, STOP_MARKER, stripWhitespaceMarkers, WHITESPACE_MARKER } from '../sillybunny-whitespace-markers.js';
+
+// SillyBunny: matches legacy angle-bracket macros rewritten by core:legacy-markers.
+const LEGACY_ANGLE_MARKER_RE = /<(?:USER|BOT|CHAR|GROUP|CHARIFNOTGROUP)>/i;
 
 /** @typedef {import('./MacroCstWalker.js').MacroCall} MacroCall */
 /** @typedef {import('./MacroEnv.types.js').MacroEnv} MacroEnv */
@@ -43,6 +46,8 @@ class MacroEngine {
     #preProcessors = [];
     /** @type {RegisteredProcessor[]} */
     #postProcessors = [];
+    // SillyBunny: tracks non-core processors so plain strings can skip lexing when only core processors exist.
+    #customProcessorCount = 0;
 
     constructor() {
         this.#registerCorePreProcessors();
@@ -55,11 +60,14 @@ class MacroEngine {
      * @param {MacroProcessor} handler - The processor function.
      * @param {Object} [options] - Configuration options.
      * @param {number} [options.priority=100] - Execution priority (lower = earlier).
-     * @param {string} [options.source='unknown'] - Identifier for debugging.
+     * @param {string} [options.source='unknown'] - Identifier for debugging/tracking.
      */
     addPreProcessor(handler, { priority = 100, source = 'unknown' } = {}) {
         this.#preProcessors.push({ handler, priority, source });
         this.#preProcessors.sort((a, b) => a.priority - b.priority);
+        if (!source.startsWith('core:')) {
+            this.#customProcessorCount++;
+        }
     }
 
     /**
@@ -71,7 +79,10 @@ class MacroEngine {
     removePreProcessor(handler) {
         const index = this.#preProcessors.findIndex(p => p.handler === handler);
         if (index !== -1) {
-            this.#preProcessors.splice(index, 1);
+            const [removed] = this.#preProcessors.splice(index, 1);
+            if (!removed.source.startsWith('core:')) {
+                this.#customProcessorCount = Math.max(0, this.#customProcessorCount - 1);
+            }
             return true;
         }
         return false;
@@ -83,11 +94,14 @@ class MacroEngine {
      * @param {MacroProcessor} handler - The processor function.
      * @param {Object} [options] - Configuration options.
      * @param {number} [options.priority=100] - Execution priority (lower = earlier).
-     * @param {string} [options.source='unknown'] - Identifier for debugging.
+     * @param {string} [options.source='unknown'] - Identifier for debugging/tracking.
      */
     addPostProcessor(handler, { priority = 100, source = 'unknown' } = {}) {
         this.#postProcessors.push({ handler, priority, source });
         this.#postProcessors.sort((a, b) => a.priority - b.priority);
+        if (!source.startsWith('core:')) {
+            this.#customProcessorCount++;
+        }
     }
 
     /**
@@ -99,10 +113,37 @@ class MacroEngine {
     removePostProcessor(handler) {
         const index = this.#postProcessors.findIndex(p => p.handler === handler);
         if (index !== -1) {
-            this.#postProcessors.splice(index, 1);
+            const [removed] = this.#postProcessors.splice(index, 1);
+            if (!removed.source.startsWith('core:')) {
+                this.#customProcessorCount = Math.max(0, this.#customProcessorCount - 1);
+            }
             return true;
         }
         return false;
+    }
+
+    /**
+     * SillyBunny: true when input contains no macro syntax, escape sequences, or engine markers and no custom processors exist.
+     * @param {string} input
+     * @returns {boolean}
+     */
+    canFastReturnPlainText(input) {
+        if (this.#customProcessorCount > 0 || typeof input !== 'string') {
+            return false;
+        }
+        if (input.length === 0) {
+            return true;
+        }
+        if (input.includes('{{') || input.includes('\\{') || input.includes('\\}')) {
+            return false;
+        }
+        if (input.includes(ELSE_MARKER) || input.includes(WHITESPACE_MARKER) || input.includes(STOP_MARKER)) {
+            return false;
+        }
+        if (input.includes('<') && LEGACY_ANGLE_MARKER_RE.test(input)) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -121,6 +162,10 @@ class MacroEngine {
     evaluate(input, env, { contextOffset = 0, keepWhitespaceMarkers = false } = {}) {
         if (!input) {
             return '';
+        }
+        // SillyBunny: skip lexing and CST walking for plain strings that cannot change.
+        if (this.canFastReturnPlainText(input)) {
+            return input;
         }
         const safeEnv = Object.freeze({ ...env });
 
