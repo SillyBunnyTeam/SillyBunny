@@ -2798,6 +2798,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-24, conversation mode rework, task 1T. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/data-maid.js` - uploads that conversation chats name
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/data-maid.js`. |
+| Area | The images and files that Data Maid takes as in use (`#parseAllChats()`, read by `#collectImages()` and `#collectFiles()`). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `src/conversation-media-references.js` (`readConversationChatMessages()`). |
+| Adapter shape | One import and one marked line at the end of `#parseAllChats()`, which adds the messages of every `conversations/<conversationId>/chats/<chatId>.jsonl` to the messages that the two roleplay chat folders gave. The reader checks each id with `isConversationId()` and `isChatId()` and each path with `getChatFilePath()`, and returns a generated image (`extra.image_url`) as an `extra.media` entry on its copy. It never throws, because `#parseAllChats()` answers an empty list on any error. The group avatar is `conversations/<conversationId>/avatar.<ext>`, a folder that Data Maid does not list, so it has no entry. `tests/sillybunny-chats-archive.test.js` mocks `src/util.js` by name, so its mock lists the two writers that `src/chat-recovery.js` imports. |
+| Protecting tests | `tests/data-maid-conversations.test.js`, `tests/data-maid-external-media.test.js`, `tests/data-maid-fonts.test.js`, `tests/sillybunny-chats-archive.test.js`. |
+| Validation | 2026-11-24: root and `tests/` lint; `npm run test:unit` in `tests/`; `e2e-related --run`; `bun server.js` and `node server.js` on throwaway data roots, with a conversation whose chat names an upload, a generated image and a file, and `POST /api/data-maid/report` listing only the two loose files. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-24, conversation mode rework, task 2B. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

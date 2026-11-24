@@ -50,9 +50,13 @@ import {
 jest.unstable_mockModule('../src/endpoints/chats.js', () => ({ CHAT_BACKUPS_PREFIX: 'chat_' }));
 jest.unstable_mockModule('../src/endpoints/settings.js', () => ({ getSettingsBackupFilePrefix: () => 'settings_' }));
 jest.unstable_mockModule('../src/util.js', () => ({
+    // Data Maid reads conversation chats through `src/conversation-paths.js`, which loads `src/chat-recovery.js`, and that
+    // module imports the two writers.
+    fsyncDirectorySync: () => {},
     isPathUnderParent: () => true,
     recoverFileWriteSync: () => {},
     tryParse: value => JSON.parse(value),
+    tryWriteFileSync: () => {},
 }));
 jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
