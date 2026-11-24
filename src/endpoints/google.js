@@ -1,7 +1,6 @@
 import { Buffer } from 'node:buffer';
 import fetch from 'node-fetch';
 import express from 'express';
-import { speak, languages } from 'google-translate-api-x';
 import crypto from 'node:crypto';
 import util from 'node:util';
 import urlJoin from 'url-join';
@@ -328,7 +327,9 @@ router.post('/caption-image', async (request, response) => {
     }
 });
 
-router.post('/list-voices', (_, response) => {
+// SillyBunny: google-translate-api-x is imported only by the Google Translate TTS routes, not at server boot.
+router.post('/list-voices', async (_, response) => {
+    const { languages } = await import('google-translate-api-x');
     return response.json(languages);
 });
 
@@ -337,6 +338,7 @@ router.post('/generate-voice', async (request, response) => {
         const text = request.body.text;
         const voice = request.body.voice ?? 'en';
 
+        const { speak } = await import('google-translate-api-x');
         const result = await speak(text, { to: voice, forceBatch: false });
         const buffer = Array.isArray(result)
             ? Buffer.concat(result.map(x => new Uint8Array(Buffer.from(x.toString(), 'base64'))))

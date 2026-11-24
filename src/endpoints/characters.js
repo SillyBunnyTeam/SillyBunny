@@ -8,14 +8,14 @@ import sanitize from 'sanitize-filename';
 import yaml from 'yaml';
 import _ from 'lodash';
 import mime from 'mime-types';
-import { Jimp, JimpMime } from '../jimp.js';
-import { safeCrop, safeCover } from '../jimp-safe.js';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
 import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, recoverFileWritesInDirectorySync, recoverFileWriteSync, sanitizeSafeCharacterReplacements, getArrayBufferSlice, tryWriteFileSync } from '../util.js';
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
 import { parse, read, write } from '../character-card-parser.js';
+// SillyBunny: fast header-only PNG tEXt extraction for bulk directory reads skips copying and CRC-verifying multi-MB IDAT chunks.
+import { extractCharacterCardText } from '../png/extract.js';
 import { readWorldInfoFile } from './worldinfo.js';
 import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
@@ -115,31 +115,54 @@ export const characterIndex = new CharacterIndex({ enabled: useDiskCache });
  */
 function getCacheKey(inputFile, fileStat) {
     // SillyBunny: the caller passes the metadata that it already read, so the key and the index lookup use one stat call.
-    return fileStat ? `${inputFile}-${fileStat.mtimeMs}` : inputFile;
+    return fileStat ? `${inputFile}-${fileStat.mtimeMs}-${fileStat.size}` : inputFile;
 }
 
 /**
  * Reads the character card from the specified image file.
  * @param {string} inputFile - Path to the image file
  * @param {string} inputFormat - 'png'
+ * @param {object} [options] - SillyBunny: options for callers that read a whole characters directory
+ * @param {fs.Stats} [options.fileStat] - Card file metadata that the caller read after it recovered interrupted writes in the card's directory
+ * @param {Map<string, { size: number, mtimeMs: number, data: string }>} [options.indexedEntries] - Index entries of the card's directory from characterIndex.getDirectoryEntries()
+ * @param {{ filePath: string, fileStat: fs.Stats, data: string }[]} [options.pendingIndexWrites] - Collects parsed cards for one characterIndex.setMany() call instead of storing each card
  * @returns {Promise<string | undefined>} - Character card data
  */
-async function readCharacterData(inputFile, inputFormat = 'png') {
-    recoverFileWriteSync(inputFile);
+async function readCharacterData(inputFile, inputFormat = 'png', { fileStat: knownFileStat, indexedEntries, pendingIndexWrites } = {}) {
+    // SillyBunny: POST /all recovers the whole directory and reads every card's metadata first, so it passes that metadata instead of doing both again per card.
+    if (!knownFileStat) {
+        recoverFileWriteSync(inputFile);
+    }
     // SillyBunny: read the metadata before the card is parsed, because the index keeps the card under this metadata and a later read can belong to a newer version of the file.
-    const fileStat = fs.statSync(inputFile, { throwIfNoEntry: false });
+    const fileStat = knownFileStat ?? fs.statSync(inputFile, { throwIfNoEntry: false });
     const cacheKey = getCacheKey(inputFile, fileStat);
     if (memoryCache.has(cacheKey)) {
         return memoryCache.get(cacheKey);
     }
-    const indexedData = fileStat && characterIndex.get(inputFile, fileStat);
+    // SillyBunny: a caller that read the directory's entries with one query looks the card up there instead of querying the index per card.
+    let indexedData;
+    if (indexedEntries) {
+        const entry = fileStat && indexedEntries.get(path.basename(inputFile));
+        indexedData = entry && entry.size === fileStat.size && entry.mtimeMs === fileStat.mtimeMs ? entry.data : undefined;
+    } else {
+        indexedData = fileStat && characterIndex.get(inputFile, fileStat);
+    }
     if (indexedData) {
+        // SillyBunny: keep a card read from the index in memory too, so the next read skips the index.
+        !isAndroid && memoryCache.set(cacheKey, indexedData);
         return indexedData;
     }
 
-    const result = await parse(inputFile, inputFormat);
+    // SillyBunny: during bulk directory reads, walk PNG chunk headers directly for tEXt without copying or CRC-verifying multi-MB IDAT chunks.
+    const result = inputFormat === 'png' && indexedEntries
+        ? extractCharacterCardText(await fsPromises.readFile(inputFile))
+        : await parse(inputFile, inputFormat);
     !isAndroid && memoryCache.set(cacheKey, result);
-    fileStat && characterIndex.set(inputFile, fileStat, result);
+    if (fileStat && pendingIndexWrites) {
+        pendingIndexWrites.push({ filePath: inputFile, fileStat, data: result });
+    } else if (fileStat) {
+        characterIndex.set(inputFile, fileStat, result);
+    }
     return result;
 }
 
@@ -223,13 +246,16 @@ async function writeCharacterData(inputFile, data, outputFile, request, crop = u
         }
 
         // Reset the cache only when the card actually changed.
+        // SillyBunny: also evict outputImagePath when inputFile is a Buffer or an upload path, so memoryCache hits cannot serve stale data on coarse-mtime filesystems.
+        const outputKeyPrefix = `${outputImagePath}-`;
+        const inputKeyPrefix = typeof inputFile === 'string' ? `${inputFile}-` : null;
         for (const key of memoryCache.keys()) {
-            if (Buffer.isBuffer(inputFile)) {
-                break;
-            }
-            if (key.startsWith(inputFile)) {
+            if (
+                key === outputImagePath ||
+                key.startsWith(outputKeyPrefix) ||
+                (inputKeyPrefix && (key === inputFile || key.startsWith(inputKeyPrefix)))
+            ) {
                 memoryCache.delete(key);
-                break;
             }
         }
         // SillyBunny: a file system with coarse timestamps can give the edited card the same size and mtime, so the index cannot detect the change.
@@ -342,6 +368,26 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
  * @property {boolean} want_resize Resize the image to the standard avatar size
  */
 
+// SillyBunny: Jimp and its WASM codecs load only when cropping or writing an avatar image, not at server boot.
+/** @type {Promise<{Jimp: typeof import('../jimp.js').Jimp, JimpMime: typeof import('../jimp.js').JimpMime, safeCrop: typeof import('../jimp-safe.js').safeCrop, safeCover: typeof import('../jimp-safe.js').safeCover}>|null} */
+let characterJimpPromise = null;
+function loadCharacterJimp() {
+    characterJimpPromise ??= (async () => {
+        const jimp = await import('../jimp.js');
+        const safe = await import('../jimp-safe.js');
+        return {
+            Jimp: jimp.Jimp,
+            JimpMime: jimp.JimpMime,
+            safeCrop: safe.safeCrop,
+            safeCover: safe.safeCover,
+        };
+    })().catch((error) => {
+        characterJimpPromise = null;
+        throw error;
+    });
+    return characterJimpPromise;
+}
+
 /**
  * Applies avatar crop and resize operations to an image.
  * I couldn't fix the type issue, so the first argument has {any} type.
@@ -350,6 +396,7 @@ async function mergeCharacterUpdate(avatarPath, avatar, updateData, request, sho
  * @returns {Promise<Buffer>} Processed image buffer
  */
 export async function applyAvatarCropResize(jimp, crop) {
+    const { Jimp, JimpMime, safeCrop, safeCover } = await loadCharacterJimp();
     if (!(jimp instanceof Jimp)) {
         throw new TypeError('Expected a Jimp instance');
     }
@@ -381,6 +428,7 @@ export async function applyAvatarCropResize(jimp, crop) {
  * @returns {Promise<Buffer>} Image buffer
  */
 async function parseImageBuffer(buffer, crop) {
+    const { Jimp } = await loadCharacterJimp();
     const image = await Jimp.fromBuffer(buffer);
     return await applyAvatarCropResize(image, crop);
 }
@@ -393,6 +441,7 @@ async function parseImageBuffer(buffer, crop) {
  */
 async function tryReadImage(imgPath, crop) {
     try {
+        const { Jimp } = await loadCharacterJimp();
         const rawImg = await Jimp.read(imgPath);
         return await applyAvatarCropResize(rawImg, crop);
     } catch (error) {
@@ -402,26 +451,106 @@ async function tryReadImage(imgPath, crop) {
     }
 }
 
+// SillyBunny: cache per-character chat size totals keyed by every chat file's (size, mtimeMs),
+// never by the parent directory's mtime alone because appending to a chat file leaves directory mtime unchanged.
+const CHAT_SIZE_CACHE_MAX_ENTRIES = 5000;
+/** @type {Map<string, { files: Map<string, { size: number, mtimeMs: number }>, chatSize: number, dateLastChat: number }>} */
+const chatSizeCache = new Map();
+const CHARACTER_LIST_CONCURRENCY = 32;
+const normalizeChatDirKey = name => (process.platform === 'win32' || process.platform === 'darwin') ? name.toLowerCase() : name;
+
 /**
- * calculateChatSize - Calculates the total chat size for a given character.
+ * Maps an array with bounded concurrency while preserving output order.
+ * @template T, R
+ * @param {T[]} items Items to process
+ * @param {number} concurrency Maximum concurrent workers
+ * @param {(item: T, index: number) => Promise<R>} mapper Async mapper
+ * @returns {Promise<R[]>} Mapped results in input order
+ */
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    const workerCount = Math.min(concurrency, items.length);
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+        while (nextIndex < items.length) {
+            const index = nextIndex++;
+            results[index] = await mapper(items[index], index);
+        }
+    }));
+    return results;
+}
+
+/**
+ * calculateChatSize - Calculates the total chat size for a given character, using a bounded cache validated
+ * against every chat file's (size, mtimeMs).
  *
  * @param  {string} charDir The directory where the chats are stored.
- * @return { {chatSize: number, dateLastChat: number} }         The total chat size.
+ * @return {Promise<{chatSize: number, dateLastChat: number}>} The total chat size and latest chat mtimeMs.
  */
-const calculateChatSize = (charDir) => {
-    let chatSize = 0;
-    let dateLastChat = 0;
+export const calculateChatSize = async (charDir) => {
+    let chats;
+    try {
+        chats = await fsPromises.readdir(charDir);
+    } catch (error) {
+        if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
+            chatSizeCache.delete(charDir);
+            return { chatSize: 0, dateLastChat: 0 };
+        }
+        throw error;
+    }
 
-    if (fs.existsSync(charDir)) {
-        const chats = fs.readdirSync(charDir);
-        if (Array.isArray(chats) && chats.length) {
-            for (const chat of chats) {
-                const chatStat = fs.statSync(path.join(charDir, chat));
-                chatSize += chatStat.size;
-                dateLastChat = Math.max(dateLastChat, chatStat.mtimeMs);
+    if (!Array.isArray(chats) || chats.length === 0) {
+        chatSizeCache.delete(charDir);
+        return { chatSize: 0, dateLastChat: 0 };
+    }
+
+    const cached = chatSizeCache.get(charDir);
+    const stats = await Promise.all(chats.map(async (chat) => {
+        try {
+            const chatStat = await fsPromises.stat(path.join(charDir, chat));
+            return { chat, size: chatStat.size, mtimeMs: chatStat.mtimeMs };
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                return null;
+            }
+            throw error;
+        }
+    }));
+
+    const validStats = stats.filter(Boolean);
+    if (cached && cached.files.size === validStats.length) {
+        let unchanged = true;
+        for (const { chat, size, mtimeMs } of validStats) {
+            const prev = cached.files.get(chat);
+            if (!prev || prev.size !== size || prev.mtimeMs !== mtimeMs) {
+                unchanged = false;
+                break;
             }
         }
+        if (unchanged) {
+            chatSizeCache.delete(charDir);
+            chatSizeCache.set(charDir, cached);
+            return { chatSize: cached.chatSize, dateLastChat: cached.dateLastChat };
+        }
     }
+
+    let chatSize = 0;
+    let dateLastChat = 0;
+    const files = new Map();
+    for (const { chat, size, mtimeMs } of validStats) {
+        chatSize += size;
+        dateLastChat = Math.max(dateLastChat, mtimeMs);
+        files.set(chat, { size, mtimeMs });
+    }
+
+    chatSizeCache.delete(charDir);
+    if (chatSizeCache.size >= CHAT_SIZE_CACHE_MAX_ENTRIES) {
+        const oldestKey = chatSizeCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            chatSizeCache.delete(oldestKey);
+        }
+    }
+    chatSizeCache.set(charDir, { files, chatSize, dateLastChat });
 
     return { chatSize, dateLastChat };
 };
@@ -471,12 +600,16 @@ const toShallow = (character) => {
  * @param  {object} options Options for the character processing
  * @param  {boolean} options.shallow If true, only return the core character's metadata
  * @param  {fs.Stats} [options.fileStat] Preloaded character file metadata
+ * @param  {Map<string, { size: number, mtimeMs: number, data: string }>} [options.indexedEntries] Index entries of the characters directory
+ * @param  {{ filePath: string, fileStat: fs.Stats, data: string }[]} [options.pendingIndexWrites] Collects parsed cards for one batched index write
+ * @param  {Set<string>} [options.existingChatDirs] Preloaded set of existing character chat directory names
  * @return {Promise<object>}     A Promise that resolves when the character processing is done.
  */
-const processCharacter = async (item, directories, { shallow, fileStat }) => {
+const processCharacter = async (item, directories, { shallow, fileStat, indexedEntries, pendingIndexWrites, existingChatDirs }) => {
     try {
         const imgFile = path.join(directories.characters, item);
-        const imgData = await readCharacterData(imgFile);
+        // SillyBunny: pass the metadata and index entries that POST /all already read, so the card is not recovered, stat'ed and queried again.
+        const imgData = await readCharacterData(imgFile, 'png', { fileStat, indexedEntries, pendingIndexWrites });
         if (imgData === undefined) throw new Error('Failed to read character file');
 
         let jsonObject = getCharaCardV2(JSON.parse(imgData), directories, false);
@@ -486,9 +619,17 @@ const processCharacter = async (item, directories, { shallow, fileStat }) => {
         const charStat = fileStat ?? fs.statSync(path.join(directories.characters, item));
         character.date_added = getCharacterDateAddedFallback(charStat);
         character.create_date = jsonObject.create_date || new Date(Math.round(charStat.ctimeMs)).toISOString();
-        const chatsDirectory = path.join(directories.chats, item.replace('.png', ''));
+        const chatDirName = item.replace('.png', '');
+        const chatsDirectory = path.join(directories.chats, chatDirName);
 
-        const { chatSize, dateLastChat } = calculateChatSize(chatsDirectory);
+        // SillyBunny: skip probing missing chat directories when POST /all already listed the chats root, and use the async per-file cached calculator.
+        let chatSize = 0;
+        let dateLastChat = 0;
+        if (!existingChatDirs || existingChatDirs.has(normalizeChatDirKey(chatDirName))) {
+            ({ chatSize, dateLastChat } = await calculateChatSize(chatsDirectory));
+        } else {
+            chatSizeCache.delete(chatsDirectory);
+        }
         character.chat_size = chatSize;
         character.date_last_chat = dateLastChat;
         character.data_size = calculateDataSize(jsonObject?.data);
@@ -1790,25 +1931,39 @@ router.post('/all', async function (request, response) {
         // SillyBunny: this listing is where the index finds cards that were deleted or renamed, also outside the app.
         characterIndex.pruneDirectory(request.user.directories.characters, pngFiles);
         const fileStats = new Map();
-        const dateAddedEntries = pngFiles.map(file => {
-            try {
-                const fileStat = fs.statSync(path.join(request.user.directories.characters, file));
-                fileStats.set(file, fileStat);
-                return { id: file, fallback: getCharacterDateAddedFallback(fileStat) };
-            } catch {
-                return null;
-            }
-        }).filter(Boolean);
+        // SillyBunny: stat character files asynchronously with bounded concurrency and list existing chat directories once.
+        const [statResults, existingChatDirs] = await Promise.all([
+            mapWithConcurrency(pngFiles, CHARACTER_LIST_CONCURRENCY, async (file) => {
+                try {
+                    const fileStat = await fsPromises.stat(path.join(request.user.directories.characters, file));
+                    fileStats.set(file, fileStat);
+                    return { id: file, fallback: getCharacterDateAddedFallback(fileStat) };
+                } catch {
+                    return null;
+                }
+            }),
+            fsPromises.readdir(request.user.directories.chats)
+                .then(entries => new Set(entries.map(normalizeChatDirKey)))
+                .catch(error => (error?.code === 'ENOENT' ? new Set() : undefined)),
+        ]);
+        const dateAddedEntries = statResults.filter(Boolean);
         const dateAddedByFile = reconcileEntityDateAdded(
             getEntityDateAddedRoot(request.user.directories),
             'characters',
             dateAddedEntries,
         );
-        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, {
+        // SillyBunny: one index query for the whole directory and one batched index write for the cards parsed in this request, instead of one query and one commit per card.
+        const indexedEntries = characterIndex.getDirectoryEntries(request.user.directories.characters);
+        const pendingIndexWrites = [];
+        const processedCharacters = await mapWithConcurrency(pngFiles, CHARACTER_LIST_CONCURRENCY, file => processCharacter(file, request.user.directories, {
             shallow: useShallowCharacters,
             fileStat: fileStats.get(file),
+            indexedEntries,
+            pendingIndexWrites,
+            existingChatDirs,
         }));
-        const data = (await Promise.all(processingPromises)).filter(c => c.name);
+        const data = processedCharacters.filter(c => c.name);
+        characterIndex.setMany(pendingIndexWrites);
         // SillyBunny: the sidecar owns the last opened chat; the card's own value is
         // only a fallback for installs that predate it.
         const lastChatByFile = readEntityLastChats(getEntityDateAddedRoot(request.user.directories));

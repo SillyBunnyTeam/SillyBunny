@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { Jimp, JimpMime } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { imageSize as sizeOf } from 'image-size';
 
@@ -16,8 +15,28 @@ import {
     thumbnailDimensions as dimensions,
     thumbnailMobileDimensions as mobileDimensions,
 } from './image-metadata.js';
-import { ResizeStrategy } from '@jimp/plugin-resize';
-import { safeCover } from '../jimp-safe.js';
+
+// SillyBunny: Jimp and its WASM codecs load on the first thumbnail write, not at server start.
+/** @type {Promise<{Jimp: typeof import('../jimp.js').Jimp, JimpMime: typeof import('../jimp.js').JimpMime, ResizeStrategy: typeof import('@jimp/plugin-resize').ResizeStrategy, safeCover: typeof import('../jimp-safe.js').safeCover}>|null} */
+let jimpToolsPromise = null;
+function loadJimpTools() {
+    jimpToolsPromise ??= (async () => {
+        // Sequential imports avoid a Node --experimental-vm-modules race when multiple modules link @jimp/plugin-resize.
+        const jimp = await import('../jimp.js');
+        const resize = await import('@jimp/plugin-resize');
+        const safe = await import('../jimp-safe.js');
+        return {
+            Jimp: jimp.Jimp,
+            JimpMime: jimp.JimpMime,
+            ResizeStrategy: resize.ResizeStrategy,
+            safeCover: safe.safeCover,
+        };
+    })().catch(error => {
+        jimpToolsPromise = null;
+        throw error;
+    });
+    return jimpToolsPromise;
+}
 
 export const publicRouter = express.Router();
 export const apiRouter = express.Router();
@@ -37,24 +56,100 @@ const thumbnailMobileRuntimeSettings = {
     format: String(getConfigValue('thumbnails.mobile.format', 'jpg')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
 };
 
-async function setCachedThumbnailContentType(response, filePath) {
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const THUMBNAIL_CONTENT_TYPE_CACHE_LIMIT = 1024;
+export const THUMBNAIL_CACHE_CONTROL = 'public, max-age=86400';
+
+// SillyBunny: a thumbnail's format only changes when the file is rewritten, so the sniffed type is
+// remembered per (path, ctime, size) instead of opening the file on every request.
+/** @type {Map<string, {ctimeMs: number, size: number, type: string|null}>} */
+const thumbnailContentTypeCache = new Map();
+
+/** @type {Map<string, Promise<{success: boolean, skipped?: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}>>} */
+const thumbnailGenerationsInFlight = new Map();
+
+async function sniffThumbnailContentType(filePath) {
     let fileHandle = null;
     try {
         fileHandle = await fs.promises.open(filePath, 'r');
         const header = Buffer.alloc(12);
         await fileHandle.read(header, 0, header.length, 0);
 
-        if (header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
-            response.type('jpg');
-        } else if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-            response.type('png');
+        if (header.subarray(0, 3).equals(JPEG_SIGNATURE)) {
+            return 'jpg';
         }
-    } catch {
-        // Fall back to Express' extension-based content type.
+        if (header.subarray(0, 8).equals(PNG_SIGNATURE)) {
+            return 'png';
+        }
+        return null;
     } finally {
         if (fileHandle !== null) {
             await fileHandle.close();
         }
+    }
+}
+
+/**
+ * Gets the sniffed content type of a cached thumbnail, reading its header only when the file changed.
+ * @param {string} filePath Path to the cached thumbnail
+ * @param {fs.Stats} stat Current stats of the cached thumbnail
+ * @returns {Promise<string|null>} 'jpg', 'png', or null to keep Express' extension-based type
+ */
+export async function getCachedThumbnailContentType(filePath, stat) {
+    const cached = thumbnailContentTypeCache.get(filePath);
+    if (cached && cached.ctimeMs === stat.ctimeMs && cached.size === stat.size) {
+        thumbnailContentTypeCache.delete(filePath);
+        thumbnailContentTypeCache.set(filePath, cached);
+        return cached.type;
+    }
+
+    let type;
+    try {
+        type = await sniffThumbnailContentType(filePath);
+    } catch {
+        // Fall back to Express' extension-based content type.
+        thumbnailContentTypeCache.delete(filePath);
+        return null;
+    }
+
+    thumbnailContentTypeCache.delete(filePath);
+    thumbnailContentTypeCache.set(filePath, { ctimeMs: stat.ctimeMs, size: stat.size, type });
+    if (thumbnailContentTypeCache.size > THUMBNAIL_CONTENT_TYPE_CACHE_LIMIT) {
+        thumbnailContentTypeCache.delete(thumbnailContentTypeCache.keys().next().value);
+    }
+    return type;
+}
+
+export function getThumbnailContentTypeCacheSize() {
+    return thumbnailContentTypeCache.size;
+}
+
+/**
+ * Sets the response type from the cached thumbnail's encoded bytes rather than the original's extension.
+ * @param {express.Response} response Express response; `response.locals.thumbnailStat` holds the file's current stats
+ * @param {string} filePath Path to the cached thumbnail
+ */
+async function setCachedThumbnailContentType(response, filePath) {
+    const stat = response.locals.thumbnailStat ?? await statIfExists(filePath);
+    if (!stat) {
+        return;
+    }
+
+    const type = await getCachedThumbnailContentType(filePath, stat);
+    if (type === 'jpg') {
+        response.type('jpg');
+    } else if (type === 'png') {
+        response.type('png');
+    }
+}
+
+async function statIfExists(filePath) {
+    try {
+        const stat = await fs.promises.stat(filePath);
+        return stat.isFile() ? stat : null;
+    } catch {
+        return null;
     }
 }
 
@@ -177,6 +272,7 @@ export function invalidateThumbnail(directories, type, file) {
 
         const pathToThumbnail = resolveDirectChildPath(folder, file);
         if (!pathToThumbnail) continue;
+        thumbnailContentTypeCache.delete(pathToThumbnail);
         if (fs.existsSync(pathToThumbnail)) {
             fs.unlinkSync(pathToThumbnail);
         }
@@ -272,34 +368,45 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
         }
 
         const fileExtension = path.extname(file).toLowerCase();
-
-        // For WebP files, we must check if they are animated, as Jimp cannot process them.
-        // If isKnownAnimated is false, we assume the caller knows it is static and skip this check.
-        if (fileExtension === '.webp' && isKnownAnimated !== false) {
-            const buffer = fs.readFileSync(pathToOriginalFile);
-            const isAnimated = isAnimatedWebP(buffer);
-            if (isAnimated) {
-                // The client is expected to handle it.
-                return { path: null, aspectRatio: null, resolution: null };
-            }
-        }
-
-        // For PNG files, check if they are actually APNGs.
-        if (fileExtension === '.png' && isKnownAnimated !== false) {
-            const buffer = fs.readFileSync(pathToOriginalFile);
-            const isAnimated = isAnimatedApng(buffer);
-            if (isAnimated) {
-                // The client is expected to handle it.
-                return { path: null, aspectRatio: null, resolution: null };
-            }
-        }
-
         if (SKIPPED_EXTENSIONS.has(fileExtension)) {
             return { path: null, aspectRatio: null, resolution: null };
         }
 
-        // Process the image to generate thumbnail
-        const result = await processSingleImage(file, originalFolder, thumbnailFolder, type, preset);
+        // SillyBunny: deduplicate concurrent generation before the first await so parallel requests
+        // for the same uncached thumbnail share one file read, animation check, decode, and write.
+        let generation = thumbnailGenerationsInFlight.get(pathToCachedFile);
+        if (!generation) {
+            generation = (async () => {
+                /** @type {Buffer|null} */
+                let originalBuffer = null;
+
+                // For WebP files, we must check if they are animated, as Jimp cannot process them.
+                // If isKnownAnimated is false, we assume the caller knows it is static and skip this check.
+                if (fileExtension === '.webp' && isKnownAnimated !== false) {
+                    originalBuffer = await fs.promises.readFile(pathToOriginalFile);
+                    if (isAnimatedWebP(originalBuffer)) {
+                        return { skipped: true, success: false };
+                    }
+                }
+
+                // For PNG files, check if they are actually APNGs.
+                if (fileExtension === '.png' && isKnownAnimated !== false) {
+                    originalBuffer = await fs.promises.readFile(pathToOriginalFile);
+                    if (isAnimatedApng(originalBuffer)) {
+                        return { skipped: true, success: false };
+                    }
+                }
+
+                return processSingleImage(file, originalFolder, thumbnailFolder, type, preset, originalBuffer);
+            })().finally(() => thumbnailGenerationsInFlight.delete(pathToCachedFile));
+            thumbnailGenerationsInFlight.set(pathToCachedFile, generation);
+        }
+
+        const result = await generation;
+        if (result.skipped) {
+            // The client is expected to handle animated formats.
+            return { path: null, aspectRatio: null, resolution: null };
+        }
         if (result.success) {
             return { path: pathToCachedFile, aspectRatio: result.aspectRatio ?? null, resolution: result.resolution ?? null };
         } else {
@@ -319,15 +426,17 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
  * @param {string} thumbnailFolder - Path to the thumbnail output folder.
  * @param {ThumbnailType} type - The type of thumbnail to generate.
  * @param {ThumbnailPreset} [preset='desktop'] - Thumbnail preset to generate.
+ * @param {Buffer|null} [originalBuffer=null] - Contents of the original file, when the caller already read it.
  * @returns {Promise<{success: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}>} Result of the processing.
  */
-async function processSingleImage(file, originalFolder, thumbnailFolder, type, preset = 'desktop') {
+async function processSingleImage(file, originalFolder, thumbnailFolder, type, preset = 'desktop', originalBuffer = null) {
     const pathToOriginalFile = path.join(originalFolder, file);
     const pathToCachedFile = path.join(thumbnailFolder, file);
 
     try {
         const isMobile = preset === 'mobile';
-        const fileBuffer = fs.readFileSync(pathToOriginalFile);
+        const fileBuffer = originalBuffer ?? await fs.promises.readFile(pathToOriginalFile);
+        const { Jimp, JimpMime, ResizeStrategy, safeCover } = await loadJimpTools();
         const image = await Jimp.read(fileBuffer);
 
         // Calculate aspect ratio from original image dimensions
@@ -335,7 +444,8 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type, p
         const originalHeight = image.bitmap.height;
         const aspectRatio = (originalHeight > 0) ? (originalWidth / originalHeight) : 1.0;
 
-        const thumbImage = image.clone();
+        // SillyBunny: the decoded image is not reused, so it is resized in place instead of cloned.
+        const thumbImage = image;
         const thumbnailResolution = isMobile ? getThumbnailMobileResolution(type) : getThumbnailResolution(type);
         const dimensionSource = isMobile ? mobileDimensions : dimensions;
         const settings = isMobile ? thumbnailMobileRuntimeSettings : thumbnailRuntimeSettings;
@@ -422,17 +532,27 @@ publicRouter.get('/', async function (request, response) {
         const pathToCachedFile = resolveDirectChildPath(thumbnailFolder, file);
         if (!pathToCachedFile) return response.sendStatus(403);
 
+        // SillyBunny: one stat per request replaces the double existsSync, and feeds the content-type cache.
+        let cachedStat = await statIfExists(pathToCachedFile);
+
         // Try to generate thumbnail if it doesn't exist
-        if (!fs.existsSync(pathToCachedFile)) {
+        if (!cachedStat) {
             const thumbResult = await generateThumbnail(request.user.directories, type, file, false, null, effectivePreset);
             // If generation failed (path is null), serve the original file
             if (!thumbResult.path) {
                 return serveOriginal();
             }
+            cachedStat = await statIfExists(pathToCachedFile);
         }
 
-        if (fs.existsSync(pathToCachedFile)) {
+        if (cachedStat) {
             invalidateFirefoxCache(pathToCachedFile, request, response);
+            // SillyBunny: cache thumbnails for 24h when cache-busted (?t=) or on non-Firefox clients;
+            // unversioned Firefox requests keep invalidateFirefoxCache's no-store header.
+            if (request.query.t !== undefined || !response.getHeader('Cache-Control')) {
+                response.setHeader('Cache-Control', THUMBNAIL_CACHE_CONTROL);
+            }
+            response.locals.thumbnailStat = cachedStat;
             await setCachedThumbnailContentType(response, pathToCachedFile);
             return response.sendFile(file, { root: thumbnailFolder, dotfiles: 'allow' });
         }

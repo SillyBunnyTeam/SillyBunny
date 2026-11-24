@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
@@ -10,27 +11,169 @@ import express from 'express';
 import fetch from 'node-fetch';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
-import { Tokenizer } from '@agnai/web-tokenizers';
-import { SentencePieceProcessor } from '@agnai/sentencepiece-js';
-import tiktoken from 'tiktoken';
-
 import { convertClaudePrompt } from '../prompt-converters.js';
 import { TEXTGEN_TYPES } from '../constants.js';
 import { setAdditionalHeaders } from '../additional-headers.js';
 import { getConfigValue, isValidUrl, trimV1 } from '../util.js';
 
 const require = createRequire(import.meta.url);
-const { getTokenizer: getClaudeTokenizer } = require('@anthropic-ai/tokenizer');
-const WEB_TOKENIZERS_MODULE_URL = pathToFileURL(require.resolve('@agnai/web-tokenizers')).href;
+
+// SillyBunny: lazy-load heavy tokenizer packages (WASM/BPE tables) on first use so importing
+// tokenizers.js at server boot does not pay ~35 MB RSS before tokenization is requested.
+let webTokenizersModuleUrl = null;
+let tiktokenModule = null;
+let tiktokenModulePromise = null;
+let webTokenizersModulePromise = null;
+let sentencePieceModulePromise = null;
+let claudeTokenizerModulePromise = null;
+
+function getWebTokenizersModuleUrl() {
+    if (!webTokenizersModuleUrl) {
+        webTokenizersModuleUrl = pathToFileURL(require.resolve('@agnai/web-tokenizers')).href;
+    }
+    return webTokenizersModuleUrl;
+}
+
+async function loadTiktokenModule() {
+    if (tiktokenModule) {
+        return tiktokenModule;
+    }
+    if (!tiktokenModulePromise) {
+        tiktokenModulePromise = import('tiktoken')
+            .then(mod => {
+                tiktokenModule = mod.encoding_for_model ? mod : (mod.default ?? mod);
+                return tiktokenModule;
+            })
+            .catch(error => {
+                tiktokenModulePromise = null;
+                throw error;
+            });
+    }
+    return tiktokenModulePromise;
+}
+
+function loadTiktokenModuleSync() {
+    if (!tiktokenModule) {
+        tiktokenModule = require('tiktoken');
+    }
+    return tiktokenModule;
+}
+
+async function loadWebTokenizersModule() {
+    if (!webTokenizersModulePromise) {
+        webTokenizersModulePromise = import('@agnai/web-tokenizers')
+            .then(mod => (mod.Tokenizer ? mod : (mod.default ?? mod)))
+            .catch(error => {
+                webTokenizersModulePromise = null;
+                throw error;
+            });
+    }
+    return webTokenizersModulePromise;
+}
+
+async function loadSentencePieceModule() {
+    if (!sentencePieceModulePromise) {
+        sentencePieceModulePromise = import('@agnai/sentencepiece-js')
+            .then(mod => (mod.SentencePieceProcessor ? mod : (mod.default ?? mod)))
+            .catch(error => {
+                sentencePieceModulePromise = null;
+                throw error;
+            });
+    }
+    return sentencePieceModulePromise;
+}
+
+async function loadClaudeTokenizerModule() {
+    if (!claudeTokenizerModulePromise) {
+        claudeTokenizerModulePromise = import('@anthropic-ai/tokenizer')
+            .then(mod => (mod.getTokenizer ? mod : (mod.default ?? mod)))
+            .catch(error => {
+                claudeTokenizerModulePromise = null;
+                throw error;
+            });
+    }
+    return claudeTokenizerModulePromise;
+}
 
 /**
  * @typedef { (req: import('express').Request, res: import('express').Response) => Promise<any> } TokenizationHandler
  */
 
 /**
- * @type {{[key: string]: import('tiktoken').Tiktoken}} Tokenizers cache
+ * @type {{[key: string]: import('tiktoken').Tiktoken}} Tokenizers cache keyed by Tiktoken encoding name
  */
 const tokenizersCache = {};
+
+// SillyBunny: bounded LRU token-count cache keyed by (encoding/model, sha1(text)) plus in-flight dedupe.
+const TOKEN_COUNT_CACHE_MAX = 4096;
+const SENTENCEPIECE_PIECE_CACHE_MAX = 65536;
+const COUNT_BATCH_MAX_TEXTS = 500;
+const COUNT_BATCH_MAX_TEXT_LENGTH = 500_000;
+const COUNT_BATCH_MAX_TOTAL_CHARS = 2_000_000;
+
+/** @type {Map<string, number>} */
+const tokenCountCache = new Map();
+/** @type {Map<string, Promise<number>>} */
+const inFlightTokenCounts = new Map();
+
+/**
+ * Builds a cache key from a canonical tokenizer namespace and SHA-1 digest of the text.
+ * @param {string} namespace Canonical encoding or tokenizer namespace
+ * @param {string} text Text to hash
+ * @returns {string}
+ */
+function getTokenCountCacheKey(namespace, text) {
+    const hash = crypto.createHash('sha1').update(text).digest('hex');
+    return `${namespace}\0${hash}`;
+}
+
+/**
+ * Stores a token count in the bounded LRU cache.
+ * @param {string} key Cache key
+ * @param {number} count Token count
+ */
+function setTokenCountCache(key, count) {
+    tokenCountCache.delete(key);
+    tokenCountCache.set(key, count);
+    if (tokenCountCache.size > TOKEN_COUNT_CACHE_MAX) {
+        tokenCountCache.delete(tokenCountCache.keys().next().value);
+    }
+}
+
+/**
+ * Returns a cached token count or computes it once with in-flight deduplication.
+ * @param {string} namespace Canonical encoding or tokenizer namespace
+ * @param {string} text Text to count
+ * @param {() => Promise<number>} compute Async token-count computation
+ * @returns {Promise<number>}
+ */
+async function getCachedTokenCount(namespace, text, compute) {
+    const key = getTokenCountCacheKey(namespace, text);
+    const cached = tokenCountCache.get(key);
+    if (cached !== undefined) {
+        tokenCountCache.delete(key);
+        tokenCountCache.set(key, cached);
+        return cached;
+    }
+
+    const inFlight = inFlightTokenCounts.get(key);
+    if (inFlight) {
+        return inFlight;
+    }
+
+    const promise = Promise.resolve()
+        .then(compute)
+        .then(count => {
+            setTokenCountCache(key, count);
+            return count;
+        })
+        .finally(() => {
+            inFlightTokenCounts.delete(key);
+        });
+
+    inFlightTokenCounts.set(key, promise);
+    return promise;
+}
 
 /**
  * @type {string[]}
@@ -162,9 +305,17 @@ async function getPathToTokenizer(model, fallbackModel) {
  */
 class SentencePieceTokenizer {
     /**
-     * @type {import('@agnai/sentencepiece-js').SentencePieceProcessor} Sentencepiece tokenizer instance
+     * @type {import('@agnai/sentencepiece-js').SentencePieceProcessor|undefined} Sentencepiece tokenizer instance
      */
     #instance;
+    /**
+     * @type {Promise<import('@agnai/sentencepiece-js').SentencePieceProcessor|null>|null} In-flight load promise
+     */
+    #loadPromise = null;
+    /**
+     * @type {Map<string, number>} Cached piece-string -> token-id lookup for single-pass encode
+     */
+    #pieceIdCache = new Map();
     /**
      * @type {string} Path to the tokenizer model
      */
@@ -193,16 +344,66 @@ class SentencePieceTokenizer {
             return this.#instance;
         }
 
-        try {
-            const pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
-            this.#instance = new SentencePieceProcessor();
-            await this.#instance.load(pathToModel);
-            console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
-            return this.#instance;
-        } catch (error) {
-            console.error('Sentencepiece tokenizer failed to load: ' + this.#model, error);
-            return null;
+        // SillyBunny: coalesce concurrent loads so only one SentencePiece WASM instance is allocated.
+        if (this.#loadPromise) {
+            return this.#loadPromise;
         }
+
+        this.#loadPromise = (async () => {
+            try {
+                const [{ SentencePieceProcessor }, pathToModel] = await Promise.all([
+                    loadSentencePieceModule(),
+                    getPathToTokenizer(this.#model, this.#fallbackModel),
+                ]);
+                const instance = new SentencePieceProcessor();
+                await instance.load(pathToModel);
+                this.#instance = instance;
+                console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
+                return this.#instance;
+            } catch (error) {
+                console.error('Sentencepiece tokenizer failed to load: ' + this.#model, error);
+                return null;
+            } finally {
+                this.#loadPromise = null;
+            }
+        })();
+
+        return this.#loadPromise;
+    }
+
+    /**
+     * Encodes text to both token IDs and piece strings in a single SentencePiece pass.
+     * @param {import('@agnai/sentencepiece-js').SentencePieceProcessor} instance Loaded processor
+     * @param {string} text Text to encode
+     * @returns {{ ids: number[], count: number, chunks: string[] }}
+     */
+    encodeWithChunks(instance, text) {
+        // SillyBunny: run SentencePiece segmentation once (encodePieces) and resolve token IDs
+        // via cached PieceToId instead of running full Viterbi/BPE encoding twice.
+        const chunks = instance.encodePieces(text);
+        if (instance.processor && typeof instance.processor.PieceToId === 'function' && instance.sentencepiece?.StringView) {
+            const sp = instance.sentencepiece;
+            const ids = new Array(chunks.length);
+            for (let i = 0; i < chunks.length; i++) {
+                const piece = chunks[i];
+                let id = this.#pieceIdCache.get(piece);
+                if (id === undefined) {
+                    const stringView = new sp.StringView(piece);
+                    const abslView = stringView.getView();
+                    id = instance.processor.PieceToId(abslView);
+                    abslView.delete();
+                    stringView.delete();
+                    if (this.#pieceIdCache.size < SENTENCEPIECE_PIECE_CACHE_MAX) {
+                        this.#pieceIdCache.set(piece, id);
+                    }
+                }
+                ids[i] = id;
+            }
+            return { ids, count: ids.length, chunks };
+        }
+
+        const ids = instance.encodeIds(text);
+        return { ids, count: ids.length, chunks };
     }
 }
 
@@ -227,37 +428,53 @@ function shouldPatchWebTokenizerRuntimeLocation() {
     }
 }
 
+let webTokenizerLocationPatchDepth = 0;
+let webTokenizerOriginalLocationDescriptor = undefined;
+
 /**
  * @template T
  * @param {() => Promise<T>} callback Initializer that may load the tokenizer WASM module
  * @returns {Promise<T>}
  */
 async function withWebTokenizerRuntimeLocation(callback) {
-    if (!shouldPatchWebTokenizerRuntimeLocation()) {
+    if (webTokenizerLocationPatchDepth === 0 && !shouldPatchWebTokenizerRuntimeLocation()) {
         return callback();
     }
 
-    const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'location');
-
-    try {
-        // SillyBunny: some Bun/ARM server surfaces expose an empty location.href,
-        // which makes @agnai/web-tokenizers pass '' to createRequire during WASM bootstrap.
-        Object.defineProperty(globalThis, 'location', {
-            value: { href: WEB_TOKENIZERS_MODULE_URL },
-            configurable: true,
-            writable: true,
-        });
-    } catch {
-        return callback();
+    let patched = false;
+    if (webTokenizerLocationPatchDepth === 0) {
+        webTokenizerOriginalLocationDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'location');
+        try {
+            // SillyBunny: some Bun/ARM server surfaces expose an empty location.href,
+            // which makes @agnai/web-tokenizers pass '' to createRequire during WASM bootstrap.
+            Object.defineProperty(globalThis, 'location', {
+                value: { href: getWebTokenizersModuleUrl() },
+                configurable: true,
+                writable: true,
+            });
+            webTokenizerLocationPatchDepth = 1;
+            patched = true;
+        } catch {
+            return callback();
+        }
+    } else {
+        webTokenizerLocationPatchDepth++;
+        patched = true;
     }
 
     try {
         return await callback();
     } finally {
-        if (originalDescriptor) {
-            Object.defineProperty(globalThis, 'location', originalDescriptor);
-        } else {
-            delete globalThis.location;
+        if (patched) {
+            webTokenizerLocationPatchDepth--;
+            if (webTokenizerLocationPatchDepth === 0) {
+                if (webTokenizerOriginalLocationDescriptor) {
+                    Object.defineProperty(globalThis, 'location', webTokenizerOriginalLocationDescriptor);
+                } else {
+                    delete globalThis.location;
+                }
+                webTokenizerOriginalLocationDescriptor = undefined;
+            }
         }
     }
 }
@@ -267,9 +484,13 @@ async function withWebTokenizerRuntimeLocation(callback) {
  */
 class WebTokenizer {
     /**
-     * @type {Tokenizer} Web tokenizer instance
+     * @type {import('@agnai/web-tokenizers').Tokenizer|undefined} Web tokenizer instance
      */
     #instance;
+    /**
+     * @type {Promise<import('@agnai/web-tokenizers').Tokenizer|null>|null} In-flight load promise
+     */
+    #loadPromise = null;
     /**
      * @type {string} Path to the tokenizer model
      */
@@ -291,24 +512,40 @@ class WebTokenizer {
 
     /**
      * Gets the Web tokenizer instance.
-     * @returns {Promise<Tokenizer|null>} Web tokenizer instance
+     * @returns {Promise<import('@agnai/web-tokenizers').Tokenizer|null>} Web tokenizer instance
      */
     async get() {
         if (this.#instance) {
             return this.#instance;
         }
 
-        let pathToModel = '';
-        try {
-            pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
-            const fileBuffer = await fs.promises.readFile(pathToModel);
-            this.#instance = await withWebTokenizerRuntimeLocation(() => Tokenizer.fromJSON(fileBuffer.toString('utf-8')));
-            console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
-            return this.#instance;
-        } catch (error) {
-            console.error(`Web tokenizer failed to load model '${this.#model}' from path '${pathToModel}':`, error);
-            return null;
+        // SillyBunny: coalesce concurrent loads so only one WebTokenizer WASM instance is allocated.
+        if (this.#loadPromise) {
+            return this.#loadPromise;
         }
+
+        this.#loadPromise = (async () => {
+            let pathToModel = '';
+            try {
+                const [{ Tokenizer }, resolvedPath] = await Promise.all([
+                    loadWebTokenizersModule(),
+                    getPathToTokenizer(this.#model, this.#fallbackModel),
+                ]);
+                pathToModel = resolvedPath;
+                const fileBuffer = await fs.promises.readFile(pathToModel);
+                const instance = await withWebTokenizerRuntimeLocation(() => Tokenizer.fromJSON(fileBuffer.toString('utf-8')));
+                this.#instance = instance;
+                console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
+                return this.#instance;
+            } catch (error) {
+                console.error(`Web tokenizer failed to load model '${this.#model}' from path '${pathToModel}':`, error);
+                return null;
+            } finally {
+                this.#loadPromise = null;
+            }
+        })();
+
+        return this.#loadPromise;
     }
 }
 
@@ -330,7 +567,7 @@ function toUint32Array(ids) {
  */
 class ClaudeTokenizerInstance {
     /**
-     * @param {ReturnType<typeof getClaudeTokenizer>} tokenizer
+     * @param {any} tokenizer
      */
     constructor(tokenizer) {
         this.tokenizer = tokenizer;
@@ -360,9 +597,13 @@ class ClaudeTokenizerInstance {
  */
 class ClaudeTokenizer {
     /**
-     * @type {ClaudeTokenizerInstance | null}
+     * @type {ClaudeTokenizerInstance | null | undefined}
      */
     #instance;
+    /**
+     * @type {Promise<ClaudeTokenizerInstance | null> | null}
+     */
+    #loadPromise = null;
 
     /**
      * Gets the Claude tokenizer instance.
@@ -373,14 +614,26 @@ class ClaudeTokenizer {
             return this.#instance;
         }
 
-        try {
-            this.#instance = new ClaudeTokenizerInstance(getClaudeTokenizer());
-            console.info('Instantiated the tokenizer for claude');
-            return this.#instance;
-        } catch (error) {
-            console.error('Claude tokenizer failed to load', error);
-            return null;
+        // SillyBunny: lazy-load @anthropic-ai/tokenizer and coalesce concurrent loads.
+        if (this.#loadPromise) {
+            return this.#loadPromise;
         }
+
+        this.#loadPromise = (async () => {
+            try {
+                const { getTokenizer: getClaudeTokenizer } = await loadClaudeTokenizerModule();
+                this.#instance = new ClaudeTokenizerInstance(getClaudeTokenizer());
+                console.info('Instantiated the tokenizer for claude');
+                return this.#instance;
+            } catch (error) {
+                console.error('Claude tokenizer failed to load', error);
+                return null;
+            } finally {
+                this.#loadPromise = null;
+            }
+        })();
+
+        return this.#loadPromise;
     }
 }
 
@@ -520,30 +773,58 @@ async function countSentencepieceTokens(tokenizer, text) {
 }
 
 /**
+ * Counts tokens for a text string using a Sentencepiece tokenizer with LRU caching and in-flight dedupe.
+ * Falls back to uncached guesstimate when the tokenizer cannot be loaded.
+ * @param {string} namespace Cache namespace for this tokenizer
+ * @param {SentencePieceTokenizer} tokenizer Sentencepiece tokenizer
+ * @param {string} text Text to count
+ * @returns {Promise<number>} Token count
+ */
+async function countCachedSentencepieceText(namespace, tokenizer, text) {
+    const instance = await tokenizer?.get();
+    if (!instance) {
+        return guesstimate(text);
+    }
+
+    return getCachedTokenCount(namespace, text, async () => instance.encodeIds(text).length);
+}
+
+/**
  * Counts the tokens in the given array of objects using the Sentencepiece tokenizer.
  * @param {SentencePieceTokenizer} tokenizer
  * @param {object[]} array Array of objects to tokenize
+ * @param {string} [namespace] Optional cache namespace for LRU token-count caching
  * @returns {Promise<number>} Number of tokens
  */
-async function countSentencepieceArrayTokens(tokenizer, array) {
+async function countSentencepieceArrayTokens(tokenizer, array, namespace = undefined) {
     // SillyBunny: Use convertClaudePrompt for consistent token counting across all tokenizers.
     // The previous implementation using Object.values().join('\n\n') overcounted tokens by
     // including metadata (role, name, tool_calls) and adding separators between every value.
     // This caused false "Pre-generation intercepts exceed context" errors at large context sizes.
     const convertedPrompt = convertClaudePrompt(array, false, '', false, false, '', false);
+    if (namespace) {
+        return await countCachedSentencepieceText(namespace, tokenizer, convertedPrompt);
+    }
     const result = await countSentencepieceTokens(tokenizer, convertedPrompt);
     return result.count;
 }
 
-async function getTiktokenChunks(tokenizer, ids) {
+/**
+ * Decodes each Tiktoken token ID into its display chunk synchronously.
+ * @param {import('tiktoken').Tiktoken} tokenizer Tiktoken instance
+ * @param {ArrayLike<number>} ids Token IDs
+ * @returns {string[]} Token chunks
+ */
+function getTiktokenChunks(tokenizer, ids) {
+    // SillyBunny: tokenizer.decode is synchronous; drop per-token await and reuse one Uint32Array(1).
     const decoder = new TextDecoder();
-    const chunks = [];
+    const chunks = new Array(ids.length);
+    const singleId = new Uint32Array(1);
 
     for (let i = 0; i < ids.length; i++) {
-        const id = ids[i];
-        const chunkTextBytes = await tokenizer.decode(new Uint32Array([id]));
-        const chunkText = decoder.decode(chunkTextBytes);
-        chunks.push(chunkText);
+        singleId[0] = ids[i];
+        const chunkTextBytes = tokenizer.decode(singleId);
+        chunks[i] = decoder.decode(chunkTextBytes);
     }
 
     return chunks;
@@ -665,20 +946,66 @@ export function getTokenizerModel(requestModel) {
     return 'gpt-3.5-turbo';
 }
 
-export function getTiktokenTokenizer(model) {
-    if (tokenizersCache[model]) {
-        return tokenizersCache[model];
+/**
+ * Resolves the canonical Tiktoken encoding name for a model when known.
+ * @param {any} tiktokenMod Loaded tiktoken module
+ * @param {string} model Model name
+ * @returns {string|null} Encoding name or null if unknown
+ */
+function resolveTiktokenEncoding(tiktokenMod, model) {
+    if (typeof tiktokenMod.get_encoding_name_for_model === 'function') {
+        try {
+            return tiktokenMod.get_encoding_name_for_model(model);
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+/**
+ * Gets or instantiates a Tiktoken tokenizer keyed by its canonical encoding name.
+ * @param {any} tiktokenMod Loaded tiktoken module
+ * @param {string} model Model name
+ * @returns {{ tokenizer: import('tiktoken').Tiktoken, encoding: string }}
+ */
+function getTiktokenTokenizerWithEncoding(tiktokenMod, model) {
+    // SillyBunny: key Tiktoken cache by encoding (o200k_base, cl100k_base, ...) so models
+    // sharing an encoding reuse one instance instead of duplicating ~10 MB BPE tables per model name.
+    const encoding = resolveTiktokenEncoding(tiktokenMod, model);
+    if (encoding) {
+        if (!tokenizersCache[encoding]) {
+            tokenizersCache[encoding] = tiktokenMod.get_encoding(encoding);
+            console.info('Instantiated the tokenizer for', encoding);
+        }
+        return { tokenizer: tokenizersCache[encoding], encoding };
     }
 
-    const tokenizer = tiktoken.encoding_for_model(model);
-    console.info('Instantiated the tokenizer for', model);
-    tokenizersCache[model] = tokenizer;
-    return tokenizer;
+    if (!tokenizersCache[model]) {
+        tokenizersCache[model] = tiktokenMod.encoding_for_model(model);
+        console.info('Instantiated the tokenizer for', model);
+    }
+    return { tokenizer: tokenizersCache[model], encoding: model };
+}
+
+/**
+ * Lazily loads tiktoken via dynamic import and returns the encoding-cached tokenizer.
+ * @param {string} model Model name
+ * @returns {Promise<{ tokenizer: import('tiktoken').Tiktoken, encoding: string }>}
+ */
+async function getTiktokenTokenizerAsync(model) {
+    const tiktokenMod = await loadTiktokenModule();
+    return getTiktokenTokenizerWithEncoding(tiktokenMod, model);
+}
+
+export function getTiktokenTokenizer(model) {
+    const tiktokenMod = loadTiktokenModuleSync();
+    return getTiktokenTokenizerWithEncoding(tiktokenMod, model).tokenizer;
 }
 
 /**
  * Counts the tokens for the given messages using the WebTokenizer and Claude prompt conversion.
- * @param {Tokenizer} tokenizer Web tokenizer
+ * @param {import('@agnai/web-tokenizers').Tokenizer|ClaudeTokenizerInstance} tokenizer Web tokenizer
  * @param {object[]} messages Array of messages
  * @returns {number} Number of tokens
  */
@@ -692,6 +1019,22 @@ export function countWebTokenizerTokens(tokenizer, messages) {
 
     const count = tokenizer.encode(jsonBody).length;
     return count;
+}
+
+/**
+ * Counts tokens for messages with a WebTokenizer using the bounded LRU cache and in-flight dedupe.
+ * @param {string} namespace Cache namespace for this web tokenizer
+ * @param {import('@agnai/web-tokenizers').Tokenizer|ClaudeTokenizerInstance} tokenizer Loaded web tokenizer
+ * @param {object[]} messages Array of messages
+ * @returns {Promise<number>}
+ */
+async function countCachedWebTokenizerTokens(namespace, tokenizer, messages) {
+    const jsonBody = messages.flatMap(x => Object.values(x)).join('\n\n');
+    if (!tokenizer) {
+        return guesstimate(jsonBody);
+    }
+
+    return getCachedTokenCount(namespace, jsonBody, async () => tokenizer.encode(jsonBody).length);
 }
 
 /**
@@ -713,8 +1056,11 @@ function createSentencepieceEncodingHandler(tokenizer) {
 
             const text = request.body.text || '';
             const instance = await tokenizer?.get();
-            const { ids, count } = await countSentencepieceTokens(tokenizer, text);
-            const chunks = instance?.encodePieces(text);
+            if (!instance) {
+                return response.send({ ids: [], count: guesstimate(text), chunks: undefined });
+            }
+
+            const { ids, count, chunks } = tokenizer.encodeWithChunks(instance, text);
             return response.send({ ids, count, chunks });
         } catch (error) {
             console.error(error);
@@ -743,8 +1089,8 @@ function createSentencepieceDecodingHandler(tokenizer) {
             const ids = request.body.ids || [];
             const instance = await tokenizer?.get();
             if (!instance) throw new Error('Failed to load the Sentencepiece tokenizer');
-            const ops = ids.map(id => instance.decodeIds([id]));
-            const chunks = await Promise.all(ops);
+            // SillyBunny: decodeIds is synchronous; skip allocating per-token Promises for Promise.all.
+            const chunks = ids.map(id => instance.decodeIds([id]));
             const text = chunks.join('');
             return response.send({ text, chunks });
         } catch (error) {
@@ -772,9 +1118,11 @@ function createTiktokenEncodingHandler(modelId) {
             }
 
             const text = request.body.text || '';
-            const tokenizer = getTiktokenTokenizer(modelId);
-            const tokens = Object.values(tokenizer.encode(text));
-            const chunks = await getTiktokenChunks(tokenizer, tokens);
+            const { tokenizer } = await getTiktokenTokenizerAsync(modelId);
+            // SillyBunny: use Array.from instead of Object.values on Uint32Array and call sync getTiktokenChunks.
+            const encoded = tokenizer.encode(text);
+            const tokens = Array.from(encoded);
+            const chunks = getTiktokenChunks(tokenizer, encoded);
             return response.send({ ids: tokens, count: tokens.length, chunks });
         } catch (error) {
             console.error(error);
@@ -801,7 +1149,7 @@ function createTiktokenDecodingHandler(modelId) {
             }
 
             const ids = request.body.ids || [];
-            const tokenizer = getTiktokenTokenizer(modelId);
+            const { tokenizer } = await getTiktokenTokenizerAsync(modelId);
             const textBytes = tokenizer.decode(new Uint32Array(ids));
             const text = new TextDecoder().decode(textBytes);
             return response.send({ text });
@@ -1064,70 +1412,71 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
     if (model === 'claude') {
         const instance = await claude_tokenizer.get();
         if (!instance) throw new Error('Failed to load the Claude tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:claude', instance, messages);
     }
 
     if (model === 'llama3' || model === 'llama-3') {
         const instance = await llama3_tokenizer.get();
         if (!instance) throw new Error('Failed to load the Llama3 tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:llama3', instance, messages);
     }
 
     if (model === 'llama') {
-        return await countSentencepieceArrayTokens(spp_llama, messages);
+        return await countSentencepieceArrayTokens(spp_llama, messages, 'sp:llama');
     }
 
     if (model === 'mistral') {
-        return await countSentencepieceArrayTokens(spp_mistral, messages);
+        return await countSentencepieceArrayTokens(spp_mistral, messages, 'sp:mistral');
     }
 
     if (model === 'yi') {
-        return await countSentencepieceArrayTokens(spp_yi, messages);
+        return await countSentencepieceArrayTokens(spp_yi, messages, 'sp:yi');
     }
 
     if (model === 'gemma' || model === 'gemini') {
-        return await countSentencepieceArrayTokens(spp_gemma, messages);
+        return await countSentencepieceArrayTokens(spp_gemma, messages, 'sp:gemma');
     }
 
     if (model === 'jamba') {
-        return await countSentencepieceArrayTokens(spp_jamba, messages);
+        return await countSentencepieceArrayTokens(spp_jamba, messages, 'sp:jamba');
     }
 
     if (model === 'qwen2') {
         const instance = await qwen2Tokenizer.get();
         if (!instance) throw new Error('Failed to load the Qwen2 tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:qwen2', instance, messages);
     }
 
     if (model === 'command-r') {
         const instance = await commandRTokenizer.get();
         if (!instance) throw new Error('Failed to load the Command-R tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:command-r', instance, messages);
     }
 
     if (model === 'command-a') {
         const instance = await commandATokenizer.get();
         if (!instance) throw new Error('Failed to load the Command-A tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:command-a', instance, messages);
     }
 
     if (model === 'nemo') {
         const instance = await nemoTokenizer.get();
         if (!instance) throw new Error('Failed to load the Nemo tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:nemo', instance, messages);
     }
 
     if (model === 'deepseek') {
         const instance = await deepseekTokenizer.get();
         if (!instance) throw new Error('Failed to load the DeepSeek tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return countCachedWebTokenizerTokens('web:deepseek', instance, messages);
     }
 
     const tokensPerName = queryModel.includes('gpt-3.5-turbo-0301') ? -1 : 1;
     const tokensPerMessage = queryModel.includes('gpt-3.5-turbo-0301') ? 4 : 3;
     const tokensPadding = 3;
 
-    const tokenizer = getTiktokenTokenizer(model);
+    const { tokenizer, encoding } = await getTiktokenTokenizerAsync(model);
+    const cacheNamespace = `tiktoken:${encoding}`;
 
     let num_tokens = 0;
 
@@ -1135,7 +1484,11 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
         try {
             num_tokens += tokensPerMessage;
             for (const [key, value] of Object.entries(msg)) {
-                num_tokens += tokenizer.encode(value).length;
+                if (typeof value === 'string') {
+                    num_tokens += await getCachedTokenCount(cacheNamespace, value, async () => tokenizer.encode(value).length);
+                } else {
+                    num_tokens += tokenizer.encode(value).length;
+                }
                 if (key == 'name') {
                     num_tokens += tokensPerName;
                 }
@@ -1156,6 +1509,83 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
     //tokenizer.free();
 
     return num_tokens;
+}
+
+/**
+ * Counts tokens for a batch of plain text strings for a requested model using the bounded LRU cache.
+ * @param {string} rawModel Requested model string
+ * @param {string[]} texts Texts to count
+ * @returns {Promise<number[]>} Token counts in input order
+ */
+async function countBatchTexts(rawModel, texts) {
+    if (texts.length === 0) {
+        return [];
+    }
+
+    const normalizedRaw = String(rawModel || '').trim();
+    if (normalizedRaw === 'nerdstash_v2') {
+        const instance = await spp_nerd_v2.get();
+        if (!instance) return texts.map(t => guesstimate(t));
+        return Promise.all(texts.map(text => getCachedTokenCount('sp:nerdstash_v2', text, async () => instance.encodeIds(text).length)));
+    }
+    if (normalizedRaw === 'nerdstash') {
+        const instance = await spp_nerd.get();
+        if (!instance) return texts.map(t => guesstimate(t));
+        return Promise.all(texts.map(text => getCachedTokenCount('sp:nerdstash', text, async () => instance.encodeIds(text).length)));
+    }
+    if (normalizedRaw === 'gpt2') {
+        const { tokenizer, encoding } = await getTiktokenTokenizerAsync('gpt2');
+        const namespace = `tiktoken:${encoding}`;
+        return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => tokenizer.encode(text).length)));
+    }
+
+    const model = getTokenizerModel(normalizedRaw);
+
+    /** @type {Record<string, SentencePieceTokenizer>} */
+    const spMap = {
+        llama: spp_llama,
+        mistral: spp_mistral,
+        yi: spp_yi,
+        gemma: spp_gemma,
+        gemini: spp_gemma,
+        jamba: spp_jamba,
+    };
+    if (Object.hasOwn(spMap, model)) {
+        const spTokenizer = spMap[model];
+        const canonical = model === 'gemini' ? 'gemma' : model;
+        const instance = await spTokenizer.get();
+        if (!instance) {
+            return texts.map(t => guesstimate(t));
+        }
+        const namespace = `sp:${canonical}`;
+        return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => instance.encodeIds(text).length)));
+    }
+
+    /** @type {Record<string, WebTokenizer|ClaudeTokenizer>} */
+    const webMap = {
+        claude: claude_tokenizer,
+        llama3: llama3_tokenizer,
+        'llama-3': llama3_tokenizer,
+        qwen2: qwen2Tokenizer,
+        'command-r': commandRTokenizer,
+        'command-a': commandATokenizer,
+        nemo: nemoTokenizer,
+        deepseek: deepseekTokenizer,
+    };
+    if (Object.hasOwn(webMap, model)) {
+        const webTokenizer = webMap[model];
+        const canonical = model === 'llama-3' ? 'llama3' : model;
+        const instance = await webTokenizer.get();
+        if (!instance) {
+            return texts.map(t => guesstimate(t));
+        }
+        const namespace = `web:${canonical}`;
+        return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => instance.encode(text).length)));
+    }
+
+    const { tokenizer, encoding } = await getTiktokenTokenizerAsync(model);
+    const namespace = `tiktoken:${encoding}`;
+    return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => tokenizer.encode(text).length)));
 }
 
 router.post('/openai/count', async function (req, res) {
@@ -1189,6 +1619,50 @@ router.post('/openai/count', async function (req, res) {
         const jsonBody = JSON.stringify(req.body);
         const num_tokens = guesstimate(jsonBody);
         res.send({ 'token_count': num_tokens });
+    }
+});
+
+// SillyBunny: batch plain-text token counting endpoint backed by the encoding-keyed LRU cache
+// and in-flight deduplication so callers can count many strings in a single round trip.
+router.post('/count-batch', async function (req, res) {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).send({ error: 'Invalid request body' });
+    }
+
+    const { model, texts } = req.body;
+    if (model !== undefined && typeof model !== 'string') {
+        return res.status(400).send({ error: 'model must be a string' });
+    }
+
+    if (!Array.isArray(texts)) {
+        return res.status(400).send({ error: 'texts must be an array of strings' });
+    }
+
+    if (texts.length > COUNT_BATCH_MAX_TEXTS) {
+        return res.status(400).send({ error: `texts exceeds maximum batch size of ${COUNT_BATCH_MAX_TEXTS}` });
+    }
+
+    let totalChars = 0;
+    for (let i = 0; i < texts.length; i++) {
+        const text = texts[i];
+        if (typeof text !== 'string') {
+            return res.status(400).send({ error: 'Each entry in texts must be a string' });
+        }
+        if (text.length > COUNT_BATCH_MAX_TEXT_LENGTH) {
+            return res.status(400).send({ error: `Text entry exceeds maximum length of ${COUNT_BATCH_MAX_TEXT_LENGTH}` });
+        }
+        totalChars += text.length;
+        if (totalChars > COUNT_BATCH_MAX_TOTAL_CHARS) {
+            return res.status(400).send({ error: `Batch exceeds maximum total size of ${COUNT_BATCH_MAX_TOTAL_CHARS} characters` });
+        }
+    }
+
+    try {
+        const counts = await countBatchTexts(model || '', texts);
+        return res.send({ counts });
+    } catch (error) {
+        console.error('An error counting batch tokens, using fallback estimation method', error);
+        return res.send({ counts: texts.map(text => guesstimate(text)) });
     }
 });
 

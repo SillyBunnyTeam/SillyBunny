@@ -212,12 +212,16 @@ export function rejectBundledThirdPartyExtension(extensionName, response, action
 /**
  * This function checks if the local repository is up-to-date with the remote repository.
  * @param {string} extensionPath - The path of the extension folder
- * @returns {Promise<Object>} - Returns the extension information as an object
+ * @param {object} [options] - Optional pre-created git client and branch summary to avoid duplicate git calls
+ * @param {import('simple-git').SimpleGit} [options.git] - Existing simple-git instance for extensionPath
+ * @param {import('simple-git').BranchSummary} [options.currentBranch] - Existing branch summary
+ * @returns {Promise<{isUpToDate: boolean, remoteUrl: string, currentBranch: import('simple-git').BranchSummary}>} - Returns the extension information as an object
  */
-async function checkIfRepoIsUpToDate(extensionPath) {
-    const git = simpleGit({ baseDir: extensionPath, ...OPTIONS });
+// SillyBunny: accepts an existing git instance and branch summary so callers do not fetch or query branches twice.
+async function checkIfRepoIsUpToDate(extensionPath, { git: existingGit, currentBranch: existingBranch } = {}) {
+    const git = existingGit ?? simpleGit({ baseDir: extensionPath, ...OPTIONS });
     await git.fetch('origin');
-    const currentBranch = await git.branch();
+    const currentBranch = existingBranch ?? await git.branch();
 
     // Fetch remote repository information
     const remotes = await git.getRemotes(true);
@@ -225,6 +229,7 @@ async function checkIfRepoIsUpToDate(extensionPath) {
         return {
             isUpToDate: true,
             remoteUrl: '',
+            currentBranch,
         };
     }
 
@@ -233,6 +238,7 @@ async function checkIfRepoIsUpToDate(extensionPath) {
         return {
             isUpToDate: true,
             remoteUrl: remotes[0].refs.fetch,
+            currentBranch,
         };
     }
 
@@ -247,6 +253,7 @@ async function checkIfRepoIsUpToDate(extensionPath) {
     return {
         isUpToDate,
         remoteUrl: remotes[0].refs.fetch, // URL of the remote repository
+        currentBranch,
     };
 }
 
@@ -382,12 +389,14 @@ router.post('/update', async (request, response) => {
 
         await ensureExtensionRepo(extensionPath, global);
 
-        const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath);
+        // SillyBunny: reuse one git client and avoid a duplicate fetch after update.
         const git = simpleGit({ baseDir: extensionPath, ...OPTIONS });
         const isRepo = await git.checkIsRepo(CheckRepoActions.IS_REPO_ROOT);
         if (!isRepo) {
             throw new Error(`Directory is not a Git repository at ${extensionPath}`);
         }
+
+        const { isUpToDate, remoteUrl, currentBranch } = await checkIfRepoIsUpToDate(extensionPath, { git });
 
         const autoStash = getConfigValue('autoStashBeforePull', false, 'boolean');
         const gitStatus = await git.status();
@@ -404,7 +413,6 @@ router.post('/update', async (request, response) => {
             }
         }
 
-        const currentBranch = await git.branch();
         if (!isUpToDate) {
             await git.pull('origin', currentBranch.current);
             console.info(`Extension has been updated at ${extensionPath}`);
@@ -422,7 +430,6 @@ router.post('/update', async (request, response) => {
             }
         }
 
-        await git.fetch('origin');
         const fullCommitHash = await git.revparse(['HEAD']);
         const shortCommitHash = fullCommitHash.slice(0, 7);
 
@@ -657,9 +664,9 @@ router.post('/version', async (request, response) => {
         const currentBranch = await git.branch();
         // get only the working branch
         const currentBranchName = currentBranch.current;
-        await git.fetch('origin');
         console.debug(extensionNameSanitized, currentBranchName, currentCommitHash);
-        const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath);
+        // SillyBunny: checkIfRepoIsUpToDate fetches origin once; drop the duplicate fetch and branch call here.
+        const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath, { git, currentBranch });
 
         return response.send({ currentBranchName, currentCommitHash, isUpToDate, remoteUrl });
     } catch (error) {
@@ -766,18 +773,89 @@ router.post('/delete', async (request, response) => {
     }
 });
 
+// SillyBunny: cache parsed manifests by (mtimeMs, size) so repeated discover?manifests=1 calls skip JSON.parse.
+/** @type {Map<string, {mtimeMs: number, size: number, manifest: Record<string, unknown>}>} */
+const extensionManifestCache = new Map();
+const EXTENSION_MANIFEST_CACHE_LIMIT = 512;
+
+export function clearExtensionManifestCache() {
+    extensionManifestCache.clear();
+}
+
+// SillyBunny: readdirSync({ withFileTypes: true }) avoids a per-entry statSync for regular folders/files.
+function isDirectoryEntry(parentDirectory, entry) {
+    if (entry.isDirectory()) {
+        return true;
+    }
+    if (!entry.isSymbolicLink()) {
+        return false;
+    }
+    try {
+        return fs.statSync(path.join(parentDirectory, entry.name)).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+function readCachedManifestSync(parentDirectory, folder) {
+    const manifestPath = path.join(parentDirectory, folder, 'manifest.json');
+    let stats;
+    try {
+        stats = fs.statSync(manifestPath);
+    } catch {
+        extensionManifestCache.delete(manifestPath);
+        console.warn(color.yellow(`Extension folder "${path.join(parentDirectory, folder)}" has no manifest.json and was skipped. Remove the folder to get rid of this warning.`));
+        return null;
+    }
+
+    if (!stats.isFile()) {
+        extensionManifestCache.delete(manifestPath);
+        console.warn(color.yellow(`Extension folder "${path.join(parentDirectory, folder)}" has no manifest.json and was skipped. Remove the folder to get rid of this warning.`));
+        return null;
+    }
+
+    const cached = extensionManifestCache.get(manifestPath);
+    if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+        return cached.manifest;
+    }
+
+    try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+            extensionManifestCache.delete(manifestPath);
+            console.warn(color.yellow(`Extension folder "${path.join(parentDirectory, folder)}" has an invalid manifest.json and was skipped.`));
+            return null;
+        }
+        extensionManifestCache.delete(manifestPath);
+        extensionManifestCache.set(manifestPath, { mtimeMs: stats.mtimeMs, size: stats.size, manifest });
+        if (extensionManifestCache.size > EXTENSION_MANIFEST_CACHE_LIMIT) {
+            extensionManifestCache.delete(extensionManifestCache.keys().next().value);
+        }
+        return manifest;
+    } catch (error) {
+        extensionManifestCache.delete(manifestPath);
+        console.warn(color.yellow(`Extension folder "${path.join(parentDirectory, folder)}" has an unreadable manifest.json and was skipped:`), error.message);
+        return null;
+    }
+}
+
 /**
  * Discover the extension folders
  * If the folder is called third-party, search for subfolders instead
  */
 router.get('/discover', function (request, response) {
-    if (!fs.existsSync(path.join(request.user.directories.extensions))) {
-        fs.mkdirSync(path.join(request.user.directories.extensions));
+    const userExtensionsDir = path.join(request.user.directories.extensions);
+    if (!fs.existsSync(userExtensionsDir)) {
+        fs.mkdirSync(userExtensionsDir);
     }
 
     if (!fs.existsSync(PUBLIC_DIRECTORIES.globalExtensions)) {
         fs.mkdirSync(PUBLIC_DIRECTORIES.globalExtensions);
     }
+
+    // SillyBunny: optional ?manifests=1 (or =true) returns parsed manifests inline so clients avoid N manifest fetches.
+    const rawManifestsFlag = request.query?.manifests;
+    const includeManifests = rawManifestsFlag === '1' || rawManifestsFlag === 'true' || rawManifestsFlag === true;
 
     /**
      * A directory without a manifest.json is not a usable extension: typically a leftover
@@ -795,34 +873,56 @@ router.get('/discover', function (request, response) {
         return manifestExists;
     };
 
+    const listExtensions = (parentDirectory, { exclude, mapEntry }) => {
+        const entries = [];
+        for (const dirent of fs.readdirSync(parentDirectory, { withFileTypes: true })) {
+            if (!isDirectoryEntry(parentDirectory, dirent)) {
+                continue;
+            }
+            const folder = dirent.name;
+            if (exclude?.(folder)) {
+                continue;
+            }
+            if (includeManifests) {
+                const manifest = readCachedManifestSync(parentDirectory, folder);
+                if (!manifest) {
+                    continue;
+                }
+                entries.push({ ...mapEntry(folder), manifest });
+            } else if (hasManifest(parentDirectory, folder)) {
+                entries.push(mapEntry(folder));
+            }
+        }
+        return entries;
+    };
+
     // Get all folders in system extensions folder, excluding third-party
-    const builtInExtensions = fs
-        .readdirSync(PUBLIC_DIRECTORIES.extensions)
-        .filter(f => fs.statSync(path.join(PUBLIC_DIRECTORIES.extensions, f)).isDirectory())
-        .filter(f => f !== 'third-party')
-        .filter(f => hasManifest(PUBLIC_DIRECTORIES.extensions, f))
-        .map(f => ({ type: getBuiltInExtensionType(f), name: f }));
+    const builtInExtensions = listExtensions(PUBLIC_DIRECTORIES.extensions, {
+        exclude: f => f === 'third-party',
+        mapEntry: f => ({ type: getBuiltInExtensionType(f), name: f }),
+    });
 
     // Get all folders in local extensions folder
-    const userExtensions = fs
-        .readdirSync(path.join(request.user.directories.extensions))
-        .filter(f => fs.statSync(path.join(request.user.directories.extensions, f)).isDirectory())
-        .filter(f => !isBundledThirdPartyExtension(f))
-        .filter(f => hasManifest(request.user.directories.extensions, f))
-        .map(f => ({ type: 'local', name: `third-party/${f}` }));
+    const userExtensions = listExtensions(userExtensionsDir, {
+        exclude: f => isBundledThirdPartyExtension(f),
+        mapEntry: f => ({ type: 'local', name: `third-party/${f}` }),
+    });
 
     // Get all folders in global extensions folder
     // In case of a conflict, the extension will be loaded from the user folder
-    const globalExtensions = fs
-        .readdirSync(PUBLIC_DIRECTORIES.globalExtensions)
-        .filter(f => fs.statSync(path.join(PUBLIC_DIRECTORIES.globalExtensions, f)).isDirectory())
-        .filter(f => hasManifest(PUBLIC_DIRECTORIES.globalExtensions, f))
-        .map(f => ({ type: isBundledThirdPartyExtension(f) ? 'bundled' : 'global', name: `third-party/${f}` }))
-        .filter(f => !userExtensions.some(e => e.name === f.name));
+    const userExtensionNames = new Set(userExtensions.map(e => e.name));
+    const globalExtensions = listExtensions(PUBLIC_DIRECTORIES.globalExtensions, {
+        exclude: f => userExtensionNames.has(`third-party/${f}`),
+        mapEntry: f => ({ type: isBundledThirdPartyExtension(f) ? 'bundled' : 'global', name: `third-party/${f}` }),
+    });
 
     // Combine all extensions
     const allExtensions = [...builtInExtensions, ...userExtensions, ...globalExtensions];
-    console.debug('Extensions available for', request.user.profile.handle, allExtensions);
+    console.debug(
+        'Extensions available for',
+        request.user.profile.handle,
+        includeManifests ? allExtensions.map(({ type, name }) => ({ type, name })) : allExtensions,
+    );
 
     return response.send(allExtensions);
 });

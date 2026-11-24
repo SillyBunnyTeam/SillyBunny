@@ -21,7 +21,6 @@ import { router as tokenizersRouter } from './endpoints/tokenizers.js';
 import { router as presetsRouter } from './endpoints/presets.js';
 import { router as secretsRouter } from './endpoints/secrets.js';
 import { router as thumbnailRouter } from './endpoints/thumbnails.js';
-import { router as novelAiRouter } from './endpoints/novelai.js';
 import { router as extensionsRouter } from './endpoints/extensions.js';
 import { router as assetsRouter } from './endpoints/assets.js';
 import { router as filesRouter } from './endpoints/files.js';
@@ -36,25 +35,13 @@ import { router as contentManagerRouter } from './endpoints/content-manager.js';
 import { router as settingsRouter } from './endpoints/settings.js';
 import { router as backgroundsRouter } from './endpoints/backgrounds.js';
 import { router as spritesRouter } from './endpoints/sprites.js';
-import { router as stableDiffusionRouter } from './endpoints/stable-diffusion.js';
-import { router as hordeRouter } from './endpoints/horde.js';
-import { router as vectorsRouter } from './endpoints/vectors.js';
-import { router as translateRouter } from './endpoints/translate.js';
-import { router as classifyRouter } from './endpoints/classify.js';
-import { router as captionRouter } from './endpoints/caption.js';
-import { router as searchRouter } from './endpoints/search.js';
 import { router as openRouterRouter } from './endpoints/openrouter.js';
 import { router as nanogptRouter } from './endpoints/nanogpt.js';
 import { router as chatCompletionsRouter } from './endpoints/backends/chat-completions.js';
 import { router as koboldRouter } from './endpoints/backends/kobold.js';
 import { router as textCompletionsRouter } from './endpoints/backends/text-completions.js';
-import { router as speechRouter } from './endpoints/speech.js';
-import { router as azureRouter } from './endpoints/azure.js';
-import { router as minimaxRouter } from './endpoints/minimax.js';
-import { router as dataMaidRouter } from './endpoints/data-maid.js';
 import { router as backupsRouter } from './endpoints/backups.js';
 import { router as imageMetadataRouter } from './endpoints/image-metadata.js';
-import { router as volcengineRouter } from './endpoints/volcengine.js';
 import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
 // SillyBunny: storage routes of conversation mode; the router and everything behind it are fork-owned.
@@ -76,10 +63,45 @@ import { resumableGenerationMiddleware, router as resumableGenerationsRouter } f
  */
 
 /**
+ * Mounts a router whose module is imported on its first request instead of at boot.
+ * The handler takes the router's place in the stack, so mount order and the
+ * middleware that runs before it are unchanged.
+ * @param {() => Promise<{ router: import('express').Router }>} loader Dynamic import of the router module
+ * @returns {import('express').RequestHandler} Handler that forwards to the loaded router
+ */
+export function lazyRouter(loader) {
+    /** @type {import('express').Router|null} */
+    let router = null;
+    /** @type {Promise<import('express').Router>|null} */
+    let pending = null;
+
+    return function lazyRouterHandler(req, res, next) {
+        if (router) {
+            return router(req, res, next);
+        }
+
+        if (!pending) {
+            pending = loader().then((module) => {
+                router = module.router;
+                return router;
+            }).catch((error) => {
+                // A failed import is retried on the next request instead of being cached.
+                pending = null;
+                throw error;
+            });
+        }
+
+        pending.then(loaded => loaded(req, res, next), next);
+    };
+}
+
+/**
  * Setup the routers for the endpoints.
  * @param {import('express').Express} app The Express app to use
  */
 export function setupPrivateEndpoints(app) {
+    // SillyBunny: routers for optional integrations (vectors, transformers.js, TTS, translation,
+    // image generation, Data Maid) load on first use through lazyRouter to cut boot time and memory.
     app.use('/', userDataRouter);
     // SillyBunny: resumable generations. The router is mounted first so its own requests never register as generations.
     app.use('/api/resumable-generations', resumableGenerationsRouter);
@@ -98,7 +120,7 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/presets', presetsRouter);
     app.use('/api/secrets', secretsRouter);
     app.use('/thumbnail', thumbnailRouter);
-    app.use('/api/novelai', novelAiRouter);
+    app.use('/api/novelai', lazyRouter(() => import('./endpoints/novelai.js')));
     app.use('/api/extensions', extensionsRouter);
     app.use('/api/assets', assetsRouter);
     app.use('/api/files', filesRouter);
@@ -112,23 +134,23 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/sprites', spritesRouter);
     app.use('/api/content', contentManagerRouter);
     app.use('/api/settings', settingsRouter);
-    app.use('/api/sd', stableDiffusionRouter);
-    app.use('/api/horde', hordeRouter);
-    app.use('/api/vector', vectorsRouter);
-    app.use('/api/translate', translateRouter);
-    app.use('/api/extra/classify', classifyRouter);
-    app.use('/api/extra/caption', captionRouter);
-    app.use('/api/search', searchRouter);
+    app.use('/api/sd', lazyRouter(() => import('./endpoints/stable-diffusion.js')));
+    app.use('/api/horde', lazyRouter(() => import('./endpoints/horde.js')));
+    app.use('/api/vector', lazyRouter(() => import('./endpoints/vectors.js')));
+    app.use('/api/translate', lazyRouter(() => import('./endpoints/translate.js')));
+    app.use('/api/extra/classify', lazyRouter(() => import('./endpoints/classify.js')));
+    app.use('/api/extra/caption', lazyRouter(() => import('./endpoints/caption.js')));
+    app.use('/api/search', lazyRouter(() => import('./endpoints/search.js')));
     app.use('/api/backends/text-completions', textCompletionsRouter);
     app.use('/api/openrouter', openRouterRouter);
     app.use('/api/nanogpt', nanogptRouter);
     app.use('/api/backends/kobold', koboldRouter);
     app.use('/api/backends/chat-completions', chatCompletionsRouter);
-    app.use('/api/speech', speechRouter);
-    app.use('/api/azure', azureRouter);
-    app.use('/api/volcengine', volcengineRouter);
-    app.use('/api/minimax', minimaxRouter);
-    app.use('/api/data-maid', dataMaidRouter);
+    app.use('/api/speech', lazyRouter(() => import('./endpoints/speech.js')));
+    app.use('/api/azure', lazyRouter(() => import('./endpoints/azure.js')));
+    app.use('/api/volcengine', lazyRouter(() => import('./endpoints/volcengine.js')));
+    app.use('/api/minimax', lazyRouter(() => import('./endpoints/minimax.js')));
+    app.use('/api/data-maid', lazyRouter(() => import('./endpoints/data-maid.js')));
     app.use('/api/backups', backupsRouter);
     app.use('/api/image-metadata', imageMetadataRouter);
     app.use('/api/server-admin', serverAdminRouter);
