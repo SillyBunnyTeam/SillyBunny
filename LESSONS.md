@@ -1407,6 +1407,19 @@ This is the largest class by a wide margin.
   - The mute listener was bound once to the pre-built drawer and lost when the drawer was rebuilt on open, so muting stopped disabling Priority. The Mute row's `onChange` (`updateConversationNotificationSettingsVisibility`) does it now.
 - **Tests:** `tests/foundation/conversation-mode.e2e.js` (overlay at 1440 with the name left of the pane, `split` at 2400, `role=switch`); `tests/sillybunny-conversation-mobile-controls.test.js` (overlay width, coarse header avatar); `tests/conversation-lorebook-hint.e2e.js`; `tests/libadwaita-states-css.test.js` (no local switch rule).
 
+### Conversation groups keep talking after the history is deleted (pinned, not fixed)
+
+- **Breaks:** after "Delete Conversation History…" on a group, the members post again although the user wrote nothing. Reproduced in a running app with a fake model and Playwright's fake clock (a `fastForward` of 30 s is one worker tick).
+  - The delete resets only the open thread's chats (`resetCharacterConversationBranches`). The group record, its settings (`multi_char` and `auto_character_chat` are on by default for a group), its reminders, the send queue and replies in flight stay. Deleting the history of the only conversation closes the workspace (`delete-dm` in `chrome.js`), so the user meets the messages as toasts ("New DM from …") and badges.
+  - `conversationModeAutoMessageWorker` visits every group in the list and never looks for a user message. `checkMultiCharacterChime` fires once the chat has been idle for `max(0.75, idle_limit / 4)` minutes (3.75 at the default), then `checkAutoCharacterChat` every `auto_chat_cooldown` minutes (10). A new group that never got a user message does the same.
+  - Two controls stop it and both must be off: "Add Additional Members in the Chat" (`multi_char`, the chimes) and "Allow Characters to Talk to Each Other" (`auto_character_chat`). With only the second off the chimes still come, and turning the first off hides the second's row.
+  - Header menu, "Add Member to Group…" creates a second group (`createAndOpenConversationGroup` with `copySourceGroupId: null`) and copies no history. The first group stays in the list and keeps its chatter.
+  - `triggerAutoMessage`, `triggerConversationPartnerChime` and `triggerAutoCharacterChat` pass no `validateTarget`, so a reply that was being generated at the delete lands in the recreated `main` chat.
+  - A reminder survives the delete and fires into the emptied chat. In a group whose `enabled` is off (no message was ever sent there) `checkConversationReminders` marks it fired and skipped without a word.
+  - A forced reply queued when the chat has no user message survives a delete: `resolveConversationQueueTriggerMessages` returns `[]` for an item with no message ids, and the item carries no other identity of the chat, so a helper-level check cannot tell a delete happened. One queued behind a user message is dropped, because its message revision no longer matches.
+- **Open:** pinned, not fixed. Each `test.fail` in the spec below turns red when its defect is fixed; delete the mark then.
+- **Tests:** `tests/conversation-chatter-after-delete.e2e.js` (six pinned specs, three controls). Run it against a server that is not on port 4444: `SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test conversation-chatter-after-delete.e2e.js` from `tests/`. A `test.fail` also passes when its setup breaks, so the controls ("the members answer a message from the user", "a reminder fires into its chat when the chat is left alone", "a forced reply queued behind a user message is dropped by a deletion") must stay green, and a change to the spec is checked once with the marks removed to see that each fails on its own assertion.
+
 ### Target size, accessible names and roles (cross-cutting)
 
 - **Breaks:**
