@@ -775,13 +775,25 @@ function toPreview(text) {
     return String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PREVIEW_LENGTH);
 }
 
+function getLineRole(record) {
+    if (isUserLine(record)) {
+        return 'user';
+    }
+    if (isSystemLine(record)) {
+        return 'system';
+    }
+    return record.role === 'member' ? 'member' : 'character';
+}
+
 /**
  * What the list shows for one chat. The unread count is the messages after the one that `readThrough` names, from
  * anyone but the user and not system notes. An empty marker means that nothing was read; a marker that names no
- * message counts nothing, so that a deleted message never makes a phantom badge.
+ * message counts nothing, so that a deleted message never makes a phantom badge. `lastMessageRole` is `user`,
+ * `system`, `member` or `character` (empty for an empty chat), and `hasUserMessage` is whether the user wrote any
+ * message; the automatic worker decides from them without reading the chat.
  * @param {object[]} records `[header, ...messages]`.
  * @param {string} readThrough The id of the last message that the user has seen.
- * @returns {{ messageCount: number, lastMessageAt: number, preview: string, unread: number }}
+ * @returns {{ messageCount: number, lastMessageAt: number, preview: string, unread: number, lastMessageRole: string, hasUserMessage: boolean }}
  */
 export function summarizeChatRecords(records, readThrough) {
     const messages = records.slice(1);
@@ -796,5 +808,7 @@ export function summarizeChatRecords(records, readThrough) {
         lastMessageAt: last ? getLineTime(last) : 0,
         preview: last ? toPreview(last.mes) : '',
         unread: messages.slice(firstUnread).filter(record => !isUserLine(record) && !isSystemLine(record)).length,
+        lastMessageRole: last ? getLineRole(last) : '',
+        hasUserMessage: messages.some(isUserLine),
     };
 }

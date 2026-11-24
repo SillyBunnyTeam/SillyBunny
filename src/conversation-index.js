@@ -5,7 +5,7 @@ import { SqliteCache, getFileKey, getFileStamp, hasNulCharacter } from './sqlite
 
 // Raise the version when the stored summary of an unchanged chat file changes, for example after a change to how a
 // preview or the last message time is worked out. An index file with another version is deleted and built again.
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 // A row describes one chat file. `read_through` is part of the key because the unread count comes from the chat's
 // read marker in conversation.json, not from the file, so a row is only good for the marker it was worked out with.
@@ -19,14 +19,17 @@ const SCHEMA = `CREATE TABLE chats (
     last_message_at INTEGER NOT NULL,
     preview TEXT NOT NULL,
     unread INTEGER NOT NULL,
+    last_message_role TEXT NOT NULL,
+    has_user_message INTEGER NOT NULL,
     PRIMARY KEY (directory, file_name)
 )`;
 
 const STATEMENTS = {
-    get: `SELECT message_count AS messageCount, last_message_at AS lastMessageAt, preview, unread FROM chats
+    get: `SELECT message_count AS messageCount, last_message_at AS lastMessageAt, preview, unread,
+        last_message_role AS lastMessageRole, has_user_message AS hasUserMessage FROM chats
         WHERE directory = ? AND file_name = ? AND size = ? AND mtime = ? AND read_through = ?`,
-    set: `INSERT OR REPLACE INTO chats (directory, file_name, size, mtime, read_through, message_count, last_message_at, preview, unread)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    set: `INSERT OR REPLACE INTO chats (directory, file_name, size, mtime, read_through, message_count, last_message_at, preview, unread,
+        last_message_role, has_user_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     delete: 'DELETE FROM chats WHERE directory = ? AND file_name = ?',
     deleteFolder: 'DELETE FROM chats WHERE directory = ?',
     listAll: 'SELECT directory, file_name FROM chats',
@@ -44,10 +47,12 @@ const MESSAGES = {
  * @property {number} lastMessageAt
  * @property {string} preview
  * @property {number} unread
+ * @property {string} lastMessageRole
+ * @property {boolean} hasUserMessage
  */
 
 /**
- * Keeps what the conversation list shows for each chat (message count, last message time, preview, unread count) in a
+ * Keeps what the conversation list shows for each chat (message count, last message time, preview, unread count, role of the last message, whether the user wrote) in a
  * SQLite file, so that the list does not read every chat file.
  * The chat files stay the source of truth: a row is used only while its file has the same size and modification time as
  * when the row was worked out, and the chat has the same read marker. The database file can be deleted at any time,
@@ -87,7 +92,7 @@ export class ConversationIndex {
     get(chatFilePath, fileStat, readThrough) {
         return this.#cache.use((statements) => {
             const row = statements.get.get(...getFileKey(chatFilePath), ...getFileStamp(fileStat), readThrough);
-            return row ? { ...row } : undefined;
+            return row ? { ...row, hasUserMessage: row.hasUserMessage === 1 } : undefined;
         });
     }
 
@@ -115,6 +120,8 @@ export class ConversationIndex {
                 summary.lastMessageAt,
                 summary.preview,
                 summary.unread,
+                summary.lastMessageRole,
+                summary.hasUserMessage ? 1 : 0,
             );
         });
     }

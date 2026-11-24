@@ -177,7 +177,7 @@ export function readConversation(user, id) {
     return normalizeStoredConversation(result.value, id);
 }
 
-const EMPTY_SUMMARY = Object.freeze({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0 });
+const EMPTY_SUMMARY = Object.freeze({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0, lastMessageRole: '', hasUserMessage: false });
 
 /**
  * What the list shows for one chat. The index answers while the chat file has the size and modification time it had
@@ -211,7 +211,7 @@ function summarizeChatFile(user, conversationId, entry, index, existingFiles) {
 
 function summarizeConversation(user, conversation, index, existingFiles) {
     const chats = conversation.chats.map(entry => ({ ...entry, ...summarizeChatFile(user, conversation.id, entry, index, existingFiles) }));
-    const latest = chats.reduce((best, entry) => (entry.lastMessageAt > best.lastMessageAt ? entry : best), { lastMessageAt: 0, preview: '' });
+    const latest = chats.reduce((best, entry) => (entry.lastMessageAt > best.lastMessageAt ? entry : best), { lastMessageAt: 0, preview: '', lastMessageRole: '' });
     return {
         ...conversation,
         chats,
@@ -219,6 +219,8 @@ function summarizeConversation(user, conversation, index, existingFiles) {
         unread: chats.reduce((sum, entry) => sum + entry.unread, 0),
         lastMessageAt: latest.lastMessageAt,
         preview: latest.preview,
+        lastMessageRole: latest.lastMessageRole,
+        hasUserMessage: chats.some(entry => entry.hasUserMessage),
     };
 }
 

@@ -300,7 +300,26 @@ describe('summarizeChatRecords', () => {
             lastMessageAt: Date.UTC(2026, 0, 1, 0, 5),
             preview: 'reply two',
             unread: 2,
+            lastMessageRole: 'character',
+            hasUserMessage: true,
         });
+    });
+
+    test('names the role of the last message, whatever it is', () => {
+        const role = list => summarizeChatRecords([header(), ...list], '').lastMessageRole;
+        expect(role([line('a', 'hi', { user: true })])).toBe('user');
+        expect(role([line('a', 'hi', { system: true })])).toBe('system');
+        expect(role([line('a', 'hi')])).toBe('character');
+        expect(role([{ ...line('a', 'hi'), role: 'member' }])).toBe('member');
+        expect(role([line('a', 'hi', { user: true }), line('b', 'hello')])).toBe('character');
+        expect(role([{ name: 'A', mes: 'x', role: 'user' }])).toBe('user');
+    });
+
+    test('says whether the user wrote anything, apart from system notes', () => {
+        const has = list => summarizeChatRecords([header(), ...list], '').hasUserMessage;
+        expect(has([line('a', 'x'), line('b', 'y', { system: true })])).toBe(false);
+        expect(has([line('a', 'x'), line('b', 'y', { user: true })])).toBe(true);
+        expect(has([{ name: 'A', mes: 'x', role: 'user' }])).toBe(true);
     });
 
     test('an empty read-through marker means that nothing was read yet', () => {
@@ -321,7 +340,7 @@ describe('summarizeChatRecords', () => {
     });
 
     test('a chat with only its header is empty', () => {
-        expect(summarizeChatRecords([header()], '')).toEqual({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0 });
+        expect(summarizeChatRecords([header()], '')).toEqual({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0, lastMessageRole: '', hasUserMessage: false });
     });
 
     test('takes the time from send_date when a message has no created_at', () => {
@@ -360,10 +379,12 @@ describe('listConversations', () => {
             lastMessageAt: Date.UTC(2026, 0, 1, 0, 31),
             preview: 'again',
             unread: 3,
+            lastMessageRole: 'character',
+            hasUserMessage: false,
         });
         expect(conversations[0].chats.map(item => [item.id, item.messageCount, item.unread])).toEqual([['main', 1, 1], ['second', 2, 2]]);
         expect(conversations[1]).toMatchObject({ messageCount: 2, preview: 'older reply', unread: 1 });
-        expect(conversations[2]).toMatchObject({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0 });
+        expect(conversations[2]).toMatchObject({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0, lastMessageRole: '', hasUserMessage: false });
     });
 
     test('a chat that is listed but has no file counts as empty', () => {

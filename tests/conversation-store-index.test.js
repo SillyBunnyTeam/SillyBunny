@@ -51,7 +51,7 @@ describe('saveChat and the index', () => {
     test('writes the row of the saved chat, so that the list needs no read of the file', async () => {
         await saveChat(user, conversationId, 'main', chat(4));
 
-        expect(cachedSummary()).toEqual({ messageCount: 4, lastMessageAt: Date.UTC(2026, 0, 1, 0, 3), preview: 'm text 3', unread: 2 });
+        expect(cachedSummary()).toEqual({ messageCount: 4, lastMessageAt: Date.UTC(2026, 0, 1, 0, 3), preview: 'm text 3', unread: 2, lastMessageRole: expect.any(String), hasUserMessage: expect.any(Boolean) });
     });
 
     test('writes a row that matches the read marker of the chat', async () => {
@@ -110,7 +110,7 @@ describe('listConversations with the index', () => {
     test('answers from a row while the file is unchanged, without reading the chat', () => {
         const file = chatFile();
         fs.writeFileSync(file, chat(3).map(record => JSON.stringify(record)).join('\n'));
-        conversationIndex.set(file, fs.statSync(file), '', { messageCount: 99, lastMessageAt: 5, preview: 'from the index', unread: 7 });
+        conversationIndex.set(file, fs.statSync(file), '', { messageCount: 99, lastMessageAt: 5, preview: 'from the index', unread: 7, lastMessageRole: 'user', hasUserMessage: true });
 
         const list = listConversations(user);
 
@@ -121,7 +121,7 @@ describe('listConversations with the index', () => {
     test('reads the file again when it changed after the row was written', () => {
         const file = chatFile();
         fs.writeFileSync(file, chat(3).map(record => JSON.stringify(record)).join('\n'));
-        conversationIndex.set(file, fs.statSync(file), '', { messageCount: 99, lastMessageAt: 5, preview: 'from the index', unread: 7 });
+        conversationIndex.set(file, fs.statSync(file), '', { messageCount: 99, lastMessageAt: 5, preview: 'from the index', unread: 7, lastMessageRole: 'user', hasUserMessage: true });
 
         fs.writeFileSync(file, chat(5).map(record => JSON.stringify(record)).join('\n'));
 

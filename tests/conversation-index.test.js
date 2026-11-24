@@ -5,10 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ConversationIndex } from '../src/conversation-index.js';
+import { SqliteCache, getFileKey, getFileStamp } from '../src/sqlite-cache.js';
 
 const originalDataRoot = globalThis.DATA_ROOT;
 
-const SUMMARY = Object.freeze({ messageCount: 3, lastMessageAt: 1700000000123, preview: 'see you soon', unread: 2 });
+const SUMMARY = Object.freeze({ messageCount: 3, lastMessageAt: 1700000000123, preview: 'see you soon', unread: 2, lastMessageRole: 'member', hasUserMessage: true });
 
 afterAll(() => {
     globalThis.DATA_ROOT = originalDataRoot;
@@ -159,6 +160,26 @@ describe('conversation index', () => {
         expect(index.get(gone.filePath, gone.stat, '')).toBeUndefined();
         expect(index.get(goneConversation.filePath, goneConversation.stat, '')).toBeUndefined();
         expect(index.get(otherUser.filePath, otherUser.stat, '')).toEqual(SUMMARY);
+    });
+
+    test('builds the index again when the file has the first schema, which has no role or user columns', () => {
+        const { filePath, stat } = chatFile('conv_1_aaaa', 'main');
+        const old = new SqliteCache({
+            fileName: 'conversations.sqlite',
+            enabled: true,
+            schemaVersion: 1,
+            schema: `CREATE TABLE chats (directory TEXT NOT NULL, file_name TEXT NOT NULL, size INTEGER NOT NULL, mtime REAL NOT NULL,
+                read_through TEXT NOT NULL, message_count INTEGER NOT NULL, last_message_at INTEGER NOT NULL, preview TEXT NOT NULL,
+                unread INTEGER NOT NULL, PRIMARY KEY (directory, file_name))`,
+            statements: { set: 'INSERT INTO chats VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)' },
+            messages: { nodeTooOld: 'old', failed: 'old', closeFailed: 'old' },
+        });
+        old.use(statements => statements.set.run(...getFileKey(filePath), ...getFileStamp(stat), 'm1', 3, 5, 'old row', 2));
+        old.close();
+
+        expect(index.get(filePath, stat, 'm1')).toBeUndefined();
+        index.set(filePath, stat, 'm1', SUMMARY);
+        expect(index.get(filePath, stat, 'm1')).toEqual(SUMMARY);
     });
 
     test('does not create a file while it is off', () => {
