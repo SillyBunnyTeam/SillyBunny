@@ -1,7 +1,8 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import process from 'node:process';
-import { createRequire } from 'node:module';
+import nodeModule from 'node:module';
+import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { promises as dnsPromise } from 'node:dns';
 import os from 'node:os';
@@ -9,12 +10,9 @@ import crypto from 'node:crypto';
 
 import yaml from 'yaml';
 import util from 'node:util';
-import { sync as commandExistsSync } from 'command-exists';
 import _ from 'lodash';
 import yauzl from 'yauzl';
 import mime from 'mime-types';
-// SillyBunny: simple-git 4 has no default export.
-import { simpleGit } from 'simple-git';
 import chalk from 'chalk';
 import bytes from 'bytes';
 import { LOG_LEVELS, CHAT_COMPLETION_SOURCES, MEDIA_REQUEST_TYPE } from './constants.js';
@@ -27,12 +25,68 @@ import { getResumableGeneration } from './resumable-generations.js';
 import { isBunRuntime } from './runtime.js';
 
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
+const VERSION_CACHE_TTL_MS = 30_000;
+const GIT_VERSION_TIMEOUT_MS = 5_000;
+
+/** @type {{ path: string, mtimeMs: number, ctimeMs: number, size: number, config: any } | null} */
+let CACHED_CONFIG_ENTRY = null;
+let CONFIG_PATH = null;
 
 /**
- * Parsed config object.
+ * @typedef {{ agent: string, pkgVersion: string, gitRevision: string | null, gitBranch: string | null, commitDate: string | null, isLatest: boolean }} VersionInfo
  */
-let CACHED_CONFIG = null;
-let CONFIG_PATH = null;
+
+/** @type {Map<string, { fingerprint: string, expiresAt: number, value: VersionInfo }>} */
+const VERSION_CACHE = new Map();
+/** @type {Map<string, Promise<VersionInfo>>} */
+const VERSION_IN_FLIGHT = new Map();
+
+/**
+ * Enables Node's V8 bytecode compile cache outside git-tracked paths when supported by the runtime.
+ * @param {{ moduleApi?: typeof nodeModule, env?: NodeJS.ProcessEnv, versions?: NodeJS.ProcessVersions, repoDir?: string }} [options]
+ * @returns {string | null} Active cache directory when enabled, or null when skipped or unsupported.
+ */
+export function enableNodeCompileCache({
+    moduleApi = nodeModule,
+    env = process.env,
+    versions = process.versions,
+    repoDir = serverDirectory,
+} = {}) {
+    if (versions?.bun || typeof moduleApi?.enableCompileCache !== 'function') {
+        return null;
+    }
+
+    const cacheDir = env?.NODE_COMPILE_CACHE?.trim()
+        || path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8');
+
+    try {
+        moduleApi.enableCompileCache(cacheDir);
+        return cacheDir;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Flushes pending V8 compile cache entries to disk so abrupt termination retains startup bytecode.
+ * @param {{ moduleApi?: typeof nodeModule, versions?: NodeJS.ProcessVersions }} [options]
+ * @returns {boolean} True when flush ran without throwing.
+ */
+export function flushNodeCompileCache({
+    moduleApi = nodeModule,
+    versions = process.versions,
+} = {}) {
+    if (versions?.bun || typeof moduleApi?.flushCompileCache !== 'function') {
+        return false;
+    }
+
+    try {
+        moduleApi.flushCompileCache();
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Converts a configuration key to an environment variable key.
@@ -47,10 +101,12 @@ export const keyToEnv = (key) => 'SILLYTAVERN_' + String(key).toUpperCase().repl
  * @param {string} configFilePath Path to the config file
  */
 export function setConfigFilePath(configFilePath) {
-    if (CONFIG_PATH !== null) {
+    const nextPath = path.resolve(configFilePath);
+    if (CONFIG_PATH !== null && CONFIG_PATH !== nextPath) {
         console.error(color.red('Config file path already set. Please restart the server to change the config file path.'));
+        CACHED_CONFIG_ENTRY = null;
     }
-    CONFIG_PATH = path.resolve(configFilePath);
+    CONFIG_PATH = nextPath;
 }
 
 /**
@@ -63,18 +119,41 @@ export function getConfig() {
         console.error(color.red('No config file path set. Please set the config file path using setConfigFilePath().'));
         process.exit(1);
     }
-    if (CACHED_CONFIG) {
-        return CACHED_CONFIG;
-    }
-    if (!fs.existsSync(CONFIG_PATH)) {
-        console.error(color.red('No config file found. Please create a config.yaml file. The default config file can be found in the /default folder.'));
-        console.error(color.red('The program will now exit.'));
+
+    let stat;
+    try {
+        stat = fs.statSync(CONFIG_PATH);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            console.error(color.red('No config file found. Please create a config.yaml file. The default config file can be found in the /default folder.'));
+            console.error(color.red('The program will now exit.'));
+            process.exit(1);
+        }
+        console.error(color.red('FATAL: Failed to read config.yaml. Please check the file for syntax errors.'));
+        console.error(error.message);
         process.exit(1);
+    }
+
+    // SillyBunny: invalidate cached config automatically when config.yaml changes on disk or in tests.
+    if (
+        CACHED_CONFIG_ENTRY !== null
+        && CACHED_CONFIG_ENTRY.path === CONFIG_PATH
+        && CACHED_CONFIG_ENTRY.mtimeMs === stat.mtimeMs
+        && CACHED_CONFIG_ENTRY.ctimeMs === stat.ctimeMs
+        && CACHED_CONFIG_ENTRY.size === stat.size
+    ) {
+        return CACHED_CONFIG_ENTRY.config;
     }
 
     try {
         const config = yaml.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-        CACHED_CONFIG = config;
+        CACHED_CONFIG_ENTRY = {
+            path: CONFIG_PATH,
+            mtimeMs: stat.mtimeMs,
+            ctimeMs: stat.ctimeMs,
+            size: stat.size,
+            config,
+        };
         return config;
     } catch (error) {
         console.error(color.red('FATAL: Failed to read config.yaml. Please check the file for syntax errors.'));
@@ -123,41 +202,219 @@ export function getBasicAuthHeader(auth) {
     return `Basic ${encoded}`;
 }
 
+function statSignature(filePath) {
+    try {
+        const stat = fs.statSync(filePath);
+        return `${stat.mtimeMs}:${stat.size}`;
+    } catch {
+        return 'missing';
+    }
+}
+
+function resolveGitDirectories(baseDir) {
+    const dotGitPath = path.join(baseDir, '.git');
+    try {
+        const stat = fs.statSync(dotGitPath);
+        let gitDir = null;
+        if (stat.isDirectory()) {
+            gitDir = dotGitPath;
+        } else if (stat.isFile()) {
+            const pointer = fs.readFileSync(dotGitPath, 'utf8').trim();
+            const match = /^gitdir:\s*(.+)$/i.exec(pointer);
+            if (match) {
+                gitDir = path.resolve(baseDir, match[1].trim());
+            }
+        }
+        if (!gitDir) {
+            return null;
+        }
+
+        let commonDir = gitDir;
+        const commonDirFile = path.join(gitDir, 'commondir');
+        if (fs.existsSync(commonDirFile)) {
+            const relCommon = fs.readFileSync(commonDirFile, 'utf8').trim();
+            if (relCommon) {
+                commonDir = path.resolve(gitDir, relCommon);
+            }
+        }
+
+        return { gitDir, commonDir };
+    } catch {
+        return null;
+    }
+}
+
+function readGitStateSnapshot(baseDir) {
+    const pkgPath = path.join(baseDir, 'package.json');
+    const pkgSig = statSignature(pkgPath);
+    const dirs = resolveGitDirectories(baseDir);
+    if (!dirs) {
+        return {
+            hasGit: false,
+            headBranch: null,
+            fingerprint: `nogit|pkg:${pkgSig}`,
+        };
+    }
+
+    let headRaw = '';
+    try {
+        headRaw = fs.readFileSync(path.join(dirs.gitDir, 'HEAD'), 'utf8').trim();
+    } catch {
+        return {
+            hasGit: true,
+            headBranch: null,
+            fingerprint: `git-nohead|pkg:${pkgSig}`,
+        };
+    }
+
+    let headBranch = 'HEAD';
+    let refSig = 'detached';
+    if (headRaw.startsWith('ref:')) {
+        const refTarget = headRaw.slice(4).trim();
+        headBranch = refTarget.startsWith('refs/heads/')
+            ? refTarget.slice('refs/heads/'.length)
+            : (refTarget.replace(/^refs\/(?:remotes|tags)\//, '') || 'HEAD');
+        const gitRefPath = path.join(dirs.gitDir, refTarget);
+        const commonRefPath = path.join(dirs.commonDir, refTarget);
+        refSig = `${statSignature(gitRefPath)}|${commonRefPath === gitRefPath ? 'same' : statSignature(commonRefPath)}`;
+    }
+
+    const packedRefsSig = statSignature(path.join(dirs.commonDir, 'packed-refs'));
+    const fetchHeadSig = `${statSignature(path.join(dirs.gitDir, 'FETCH_HEAD'))}|${dirs.commonDir === dirs.gitDir ? 'same' : statSignature(path.join(dirs.commonDir, 'FETCH_HEAD'))}`;
+
+    return {
+        hasGit: true,
+        headBranch,
+        fingerprint: `git|pkg:${pkgSig}|head:${headRaw}|ref:${refSig}|packed:${packedRefsSig}|fetch:${fetchHeadSig}`,
+    };
+}
+
+function runGitCommand(baseDir, args) {
+    return new Promise((resolve, reject) => {
+        execFile('git', args, {
+            cwd: baseDir,
+            windowsHide: true,
+            timeout: GIT_VERSION_TIMEOUT_MS,
+        }, (error, stdout) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve(String(stdout ?? ''));
+        });
+    });
+}
+
+export function invalidateVersionCache() {
+    VERSION_CACHE.clear();
+}
+
 /**
  * Returns the version of the running instance. Get the version from the package.json file and the git revision.
  * Also returns the agent string for the Horde API.
- * @returns {Promise<{agent: string, pkgVersion: string, gitRevision: string | null, gitBranch: string | null, commitDate: string | null, isLatest: boolean}>} Version info object
+ * @param {{ baseDir?: string, execGit?: (baseDir: string, args: string[]) => Promise<string> }} [options]
+ * @returns {Promise<VersionInfo>} Version info object
  */
-export async function getVersion() {
-    let pkgVersion = 'UNKNOWN';
-    let gitRevision = null;
-    let gitBranch = null;
-    let commitDate = null;
-    let isLatest = true;
+export async function getVersion(options = undefined) {
+    const baseDir = typeof options?.baseDir === 'string' ? path.resolve(options.baseDir) : serverDirectory;
+    const execGit = typeof options?.execGit === 'function' ? options.execGit : runGitCommand;
+    const useMemo = execGit === runGitCommand;
+    const snapshot = readGitStateSnapshot(baseDir);
+    const now = Date.now();
 
-    try {
-        const require = createRequire(import.meta.url);
-        const pkgJson = require(path.join(serverDirectory, './package.json'));
-        pkgVersion = pkgJson.version;
-        if (commandExistsSync('git')) {
-            const git = simpleGit({ baseDir: serverDirectory });
-            gitRevision = await git.revparse(['--short', 'HEAD']);
-            gitBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
-            commitDate = await git.show(['-s', '--format=%ci', gitRevision]);
-
-            const trackingBranch = await git.revparse(['--abbrev-ref', '@{u}']);
-
-            // Might fail, but exception is caught. Just don't run anything relevant after in this block...
-            const localLatest = await git.revparse(['HEAD']);
-            const remoteLatest = await git.revparse([trackingBranch]);
-            isLatest = localLatest === remoteLatest;
+    if (useMemo) {
+        const cached = VERSION_CACHE.get(baseDir);
+        if (cached && cached.fingerprint === snapshot.fingerprint && cached.expiresAt > now) {
+            return { ...cached.value };
         }
-    } catch {
-        // suppress exception
+
+        const inFlight = VERSION_IN_FLIGHT.get(baseDir);
+        if (inFlight) {
+            const shared = await inFlight;
+            return { ...shared };
+        }
     }
 
-    const agent = `SillyBunny:${pkgVersion}:fork`;
-    return { agent, pkgVersion, gitRevision, gitBranch, commitDate: commitDate?.trim() ?? null, isLatest };
+    const computePromise = (async () => {
+        let pkgVersion = 'UNKNOWN';
+        let gitRevision = null;
+        let gitBranch = null;
+        let commitDate = null;
+        let isLatest = true;
+
+        try {
+            const pkgJson = JSON.parse(fs.readFileSync(path.join(baseDir, 'package.json'), 'utf8'));
+            if (typeof pkgJson?.version === 'string' && pkgJson.version) {
+                pkgVersion = pkgJson.version;
+            }
+
+            // SillyBunny: run at most two parallel git calls and catch ENOENT directly instead of probing PATH synchronously.
+            if (snapshot.hasGit) {
+                const [headShowResult, upstreamResult] = await Promise.allSettled([
+                    execGit(baseDir, ['show', '-s', '--format=%h%n%ci%n%H', 'HEAD']),
+                    execGit(baseDir, ['rev-parse', '@{u}']),
+                ]);
+
+                if (headShowResult.status === 'fulfilled') {
+                    const lines = headShowResult.value.split(/\r?\n/);
+                    gitRevision = lines[0]?.trim() || null;
+                    commitDate = lines[1]?.trim() || null;
+                    const localLatest = lines[2]?.trim() || null;
+                    gitBranch = snapshot.headBranch;
+
+                    if (!gitBranch && gitRevision) {
+                        gitBranch = (await execGit(baseDir, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || null;
+                    }
+
+                    if (upstreamResult.status === 'fulfilled') {
+                        const remoteLatest = upstreamResult.value.trim();
+                        if (localLatest && remoteLatest) {
+                            isLatest = localLatest === remoteLatest;
+                        }
+                    }
+                }
+            }
+        } catch {
+            // suppress exception
+        }
+
+        const agent = `SillyBunny:${pkgVersion}:fork`;
+        /** @type {VersionInfo} */
+        const result = {
+            agent,
+            pkgVersion,
+            gitRevision,
+            gitBranch,
+            commitDate: commitDate?.trim() ?? null,
+            isLatest,
+        };
+
+        if (useMemo) {
+            const postSnapshot = readGitStateSnapshot(baseDir);
+            VERSION_CACHE.set(baseDir, {
+                fingerprint: postSnapshot.fingerprint,
+                expiresAt: Date.now() + VERSION_CACHE_TTL_MS,
+                value: result,
+            });
+        }
+
+        return result;
+    })();
+
+    if (!useMemo) {
+        const value = await computePromise;
+        return { ...value };
+    }
+
+    VERSION_IN_FLIGHT.set(baseDir, computePromise);
+    try {
+        const value = await computePromise;
+        return { ...value };
+    } finally {
+        if (VERSION_IN_FLIGHT.get(baseDir) === computePromise) {
+            VERSION_IN_FLIGHT.delete(baseDir);
+        }
+    }
 }
 
 /**
@@ -1810,8 +2067,8 @@ export class MemoryLimitedMap {
     constructor(cacheCapacity) {
         this.maxMemory = bytes.parse(cacheCapacity) ?? 0;
         this.currentMemory = 0;
+        // SillyBunny: rely on JS Map insertion order for O(1) LRU promotion and eviction instead of splicing a shadow queue array.
         this.map = new Map();
-        this.queue = [];
     }
 
     /**
@@ -1846,21 +2103,16 @@ export class MemoryLimitedMap {
             return;
         }
 
-        // Check if the key already exists to adjust memory accordingly
+        // Delete before re-inserting so updated keys move to most-recently-used order in O(1).
         if (this.map.has(key)) {
             const oldValue = this.map.get(key);
             const oldValueSize = MemoryLimitedMap.estimateStringSize(oldValue);
+            this.map.delete(key);
             this.currentMemory -= oldValueSize;
-            // Remove the key from its current position in the queue
-            const index = this.queue.indexOf(key);
-            if (index > -1) {
-                this.queue.splice(index, 1);
-            }
         }
 
-        // Evict oldest entries until there's enough space
-        while (this.currentMemory + newValueSize > this.maxMemory && this.queue.length > 0) {
-            const oldestKey = this.queue.shift();
+        while (this.currentMemory + newValueSize > this.maxMemory && this.map.size > 0) {
+            const oldestKey = this.map.keys().next().value;
             const oldestValue = this.map.get(oldestKey);
             const oldestValueSize = MemoryLimitedMap.estimateStringSize(oldestValue);
             this.map.delete(oldestKey);
@@ -1872,19 +2124,23 @@ export class MemoryLimitedMap {
             return;
         }
 
-        // Add the new key-value pair
         this.map.set(key, value);
-        this.queue.push(key);
         this.currentMemory += newValueSize;
     }
 
     /**
-     * Retrieves the value associated with the given key.
+     * Retrieves the value associated with the given key and promotes it to most-recently-used.
      * @param {string} key
      * @returns {string | undefined}
      */
     get(key) {
-        return this.map.get(key);
+        if (!this.map.has(key)) {
+            return undefined;
+        }
+        const value = this.map.get(key);
+        this.map.delete(key);
+        this.map.set(key, value);
+        return value;
     }
 
     /**
@@ -1909,13 +2165,6 @@ export class MemoryLimitedMap {
         const valueSize = MemoryLimitedMap.estimateStringSize(value);
         this.map.delete(key);
         this.currentMemory -= valueSize;
-
-        // Remove the key from the queue
-        const index = this.queue.indexOf(key);
-        if (index > -1) {
-            this.queue.splice(index, 1);
-        }
-
         return true;
     }
 
@@ -1924,7 +2173,6 @@ export class MemoryLimitedMap {
      */
     clear() {
         this.map.clear();
-        this.queue = [];
         this.currentMemory = 0;
     }
 
@@ -2809,7 +3057,7 @@ export function readFirstLine(filePath) {
 }
 
 /**
- * If the file is an image, and the request's user agent matches Firefox, then the response's headers are set to invalidate the cache.
+ * If the file is an image, and the request's user agent matches Firefox, force ETag/Last-Modified revalidation.
  * Without this, Firefox ignores updated images even after a refresh.
  * https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control
  * @param {string} file File path
@@ -2819,6 +3067,7 @@ export function readFirstLine(filePath) {
 export function invalidateFirefoxCache(file, request, response) {
     const mimeType = isFirefox(request) && mime.lookup(file);
     if (mimeType && mimeType.startsWith('image/')) {
-        response.setHeader('Cache-Control', 'must-understand, no-store');
+        // SillyBunny: use no-cache so Firefox revalidates via ETag instead of re-downloading unchanged images on every view.
+        response.setHeader('Cache-Control', 'no-cache');
     }
 }

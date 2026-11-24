@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import webpack from 'webpack';
 import getPublicLibConfig, {
     getPublicLibCacheInfo,
     prunePublicLibCache,
@@ -62,15 +61,12 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
      * @type {import('express').RequestHandler}
      */
     function devMiddleware(req, res, next) {
-        const publicLibConfig = activePublicLibConfig ?? resolvePublicLibConfig();
-        const outputFile = publicLibConfig.output?.filename;
-        const parsedPath = path.parse(req.path);
-
-        if (req.method === 'GET' && parsedPath.dir === '/' && parsedPath.base === outputFile) {
-            return sendPublicLib(publicLibConfig, res, next);
+        if (req.method !== 'GET' || req.path !== '/lib.js') {
+            return next();
         }
 
-        next();
+        const publicLibConfig = activePublicLibConfig ?? resolvePublicLibConfig();
+        return sendPublicLib(publicLibConfig, res, next);
     }
 
     /**
@@ -80,7 +76,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
      * @param {boolean} [param.pruneCache=false] Whether to prune old cache directories before compiling.
      * @returns {Promise<void>}
      */
-    function compilePublicLib({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) {
+    async function compilePublicLib({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) {
         const cacheInfo = getPublicLibCacheInfo({ forceDist: overrideForceDist });
         const publicLibConfig = resolvePublicLibConfig({ forceDist: overrideForceDist });
         const compiledOutputPath = getCompiledOutputPath(publicLibConfig);
@@ -92,7 +88,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
             if (pruneCache) {
                 prunePublicLibCache({ forceDist: overrideForceDist, currentCacheVersion: cacheInfo.cacheVersion });
             }
-            return Promise.resolve();
+            return;
         }
 
         const temporaryOutputPath = path.join(cacheInfo.webpackRoot, cacheInfo.cacheVersion, 'output.tmp');
@@ -105,6 +101,8 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
         console.log();
         console.log('Compiling frontend libraries...');
 
+        // SillyBunny: load webpack only on a bundle cache miss so cached startups skip CJS module evaluation.
+        const { default: webpack } = await import('webpack');
         const compiler = webpack(temporaryPublicLibConfig);
 
         return new Promise((resolve, reject) => {

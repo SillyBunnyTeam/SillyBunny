@@ -200,6 +200,8 @@ if "!_bun_smol!"=="1" if "!_server_runtime!"=="node" (
     echo [SillyBunny] For Bun with --smol, use Start-Bun.bat.
 )
 
+if not defined NODE_COMPILE_CACHE set "NODE_COMPILE_CACHE=%~dp0node_modules\.cache\sillybunny-v8"
+
 :server_loop
 if "!_server_runtime!"=="node" (
     node --no-warnings server.js %*

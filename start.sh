@@ -328,6 +328,9 @@ fi
 echo "Entering SillyBunny..."
 export NODE_NO_WARNINGS=1
 export SILLYBUNNY_LAUNCHER=1
+if [[ -z "${NODE_COMPILE_CACHE:-}" ]]; then
+    export NODE_COMPILE_CACHE="$SCRIPT_DIR/node_modules/.cache/sillybunny-v8"
+fi
 
 restart_exit_code=75
 server_restart_count=0
