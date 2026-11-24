@@ -4764,7 +4764,9 @@ async function loadSettings() {
     }
     if (synchronizedFromServer > 0) log(`Synchronized ${synchronizedFromServer} setting store(s) from SillyTavern`);
     if (serverStoresSeeded > 0) log(`Seeded ${serverStoresSeeded} setting store(s) into SillyTavern`);
-    localStoresHydrated = true;
+    if (typeof localStoresHydrated !== "undefined") {
+        localStoresHydrated = true;
+    }
     let contextMediaSupported = false;
     try {
         contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
@@ -5979,7 +5981,9 @@ function shouldReviewPrompt(settings) {
 }
 
 function getGenerationSettingsForRun(context = null) {
-    ensureLocalStoresHydrated();
+    if (typeof ensureLocalStoresHydrated === "function") {
+        ensureLocalStoresHydrated();
+    }
     const baseSettings = getSettings();
     const transientValues = transientGenerationSettingsState.current?.value;
     const merged = transientValues && typeof transientValues === "object"
@@ -14132,7 +14136,9 @@ async function executeExternalImageGeneration(prompt, negative, settings, contex
 }
 
 function getCapabilitySettingsSnapshot({ avatar = "", character = null, characterName = "" } = {}) {
-    ensureLocalStoresHydrated();
+    if (typeof ensureLocalStoresHydrated === "function") {
+        ensureLocalStoresHydrated();
+    }
     const context = avatar || character || characterName
         ? createScopedCharacterGenerationContext({ avatar, character, characterName })
         : null;
@@ -21394,10 +21400,16 @@ function cleanupMessageGenerateActionBindings() {
     qigMessageActionRefreshCancel?.();
     qigMessageActionRefreshCancel = null;
     qigMessageActionRefreshQueued = false;
-    qigMessageActionAddedCancel?.();
-    qigMessageActionAddedCancel = null;
-    qigMessageActionAddedQueued = false;
-    qigPendingAddedMessageNodes.clear();
+    if (typeof qigMessageActionAddedCancel !== "undefined") {
+        qigMessageActionAddedCancel?.();
+        qigMessageActionAddedCancel = null;
+    }
+    if (typeof qigMessageActionAddedQueued !== "undefined") {
+        qigMessageActionAddedQueued = false;
+    }
+    if (typeof qigPendingAddedMessageNodes !== "undefined") {
+        qigPendingAddedMessageNodes.clear();
+    }
     if (qigMessageActionClicksBound) {
         $(document).off("click.qigMessageGenerate", `.${QIG_MESSAGE_ACTION_CLASS}`);
         qigMessageActionClicksBound = false;
