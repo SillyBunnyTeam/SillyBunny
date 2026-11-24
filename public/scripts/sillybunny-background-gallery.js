@@ -57,6 +57,23 @@ let suppressClickUntil = 0;
 let bulkBusy = false;
 let selectionShown = false;
 let requestQueue = Promise.resolve();
+/** Keyed `.bg_example` nodes reused across flat-grid re-renders (search, sort, refresh). */
+const flatCells = new Map();
+
+/**
+ * Indexes background image entries by filename for O(1) lookup during gallery renders.
+ * Preserves first-match semantics when duplicate filenames exist.
+ * @param {Array<{ filename: string }>} images
+ * @returns {Map<string, object>}
+ */
+export function indexBackgroundImages(images) {
+    const byFilename = new Map();
+    if (!Array.isArray(images)) return byFilename;
+    for (const image of images) {
+        if (image && !byFilename.has(image.filename)) byFilename.set(image.filename, image);
+    }
+    return byFilename;
+}
 
 function el(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -219,6 +236,8 @@ export function createBackgroundFolderAdapter() {
         getName: file => friendlyName(String(file)),
         getAvatar: file => {
             const image = document.createElement('img');
+            image.setAttribute('loading', 'lazy');
+            image.setAttribute('decoding', 'async');
             image.src = hooks.getThumbnailUrl(file);
             image.alt = '';
             return image;
@@ -230,12 +249,23 @@ export function createBackgroundFolderAdapter() {
 // ---------------------------------------------------------------------------------------------------------------------
 // Sections
 
-function makeCell(file) {
-    const image = hooks.getImages().find(candidate => candidate.filename === file) ?? { filename: file };
-    const cell = hooks.createThumbnail({
+function cellSpec(file, imagesByFilename) {
+    const image = imagesByFilename?.get(file) ?? { filename: file };
+    const isAnimated = Boolean(image.isAnimated);
+    const mediaType = image.mediaType ?? (hooks.isVideo(file) ? 'video' : 'image');
+    return {
         filename: file,
-        isAnimated: image.isAnimated ?? false,
-        mediaType: image.mediaType ?? (hooks.isVideo(file) ? 'video' : 'image'),
+        isAnimated,
+        mediaType,
+        signature: `${isAnimated ? 1 : 0}|${mediaType}`,
+    };
+}
+
+function makeCell(file, imagesByFilename, spec = cellSpec(file, imagesByFilename)) {
+    const cell = hooks.createThumbnail({
+        filename: spec.filename,
+        isAnimated: spec.isAnimated,
+        mediaType: spec.mediaType,
     });
     const more = el('button', 'sb-bg-cell-menu');
     more.type = 'button';
@@ -253,9 +283,11 @@ function makeCell(file) {
     return cell;
 }
 
-function buildGrid(files) {
+function buildGrid(files, imagesByFilename) {
     const grid = el('div', 'bg_list sb-bg-grid');
-    for (const file of files) grid.append(makeCell(file));
+    const fragment = document.createDocumentFragment();
+    for (const file of files) fragment.append(makeCell(file, imagesByFilename));
+    grid.append(fragment);
     return grid;
 }
 
@@ -269,7 +301,7 @@ function setSectionExpanded(section, expanded, { persist, files, emptyFolder }) 
     row.setAttribute('aria-expanded', String(expanded));
     if (expanded && !body.firstElementChild) {
         if (files.length) {
-            body.append(buildGrid(files));
+            body.append(buildGrid(files, indexBackgroundImages(hooks.getImages())));
             hooks.activateLazyLoader();
             hooks.refreshHighlights();
         } else if (emptyFolder) {
@@ -291,7 +323,7 @@ function setSectionExpanded(section, expanded, { persist, files, emptyFolder }) 
     animateFolderBody(body, expanded, { onEnd: expanded ? null : close });
 }
 
-function buildSection({ folder, files, total, expanded }, searching) {
+function buildSection({ folder, files, total, expanded }, searching, imagesByFilename) {
     const section = el('section', 'sb-bg-section');
     section.dataset.folderId = folder.id;
     const { row } = createFolderRow({
@@ -308,7 +340,7 @@ function buildSection({ folder, files, total, expanded }, searching) {
     head.append(rows);
     const body = el('div', 'sb-bg-section__body');
     // A closed folder builds no thumbnails: they appear on the first open.
-    if (expanded && files.length) body.append(buildGrid(files));
+    if (expanded && files.length) body.append(buildGrid(files, imagesByFilename));
     const emptyFolder = !total && !searching;
     if (expanded && emptyFolder) body.append(createEmptyNote());
     body.hidden = !expanded;
@@ -358,16 +390,17 @@ function syncFolderRows() {
 }
 
 function draw() {
+    const images = hooks.getImages();
+    const imagesByFilename = indexBackgroundImages(images);
     const folders = getFolders(SCOPE);
     const model = buildBackgroundSections({
-        images: hooks.getImages(),
+        images,
         folders,
         getMembers: id => getFolderMembers(SCOPE, id),
         query,
         sortFiles: hooks.sortFiles,
     });
     const searching = Boolean(query.trim());
-    container.replaceChildren();
     container.classList.toggle('sb-bg-sections', folders.length > 0);
     // The shared accessibility pass makes every `.bg_list` a list of items. With sections the children are sections, not items, so the
     // container leaves that class (the pass watches it) and only groups them.
@@ -375,24 +408,38 @@ function draw() {
     container.setAttribute('role', folders.length ? 'group' : 'list');
     if (folders.length) container.setAttribute('aria-label', t`Background`);
     else container.removeAttribute('aria-label');
+    const fragment = document.createDocumentFragment();
     if (!folders.length) {
-        // Without folders the gallery is a flat grid.
-        for (const file of model.unfiled) container.append(makeCell(file));
+        for (const cachedFile of flatCells.keys()) {
+            if (!imagesByFilename.has(cachedFile)) flatCells.delete(cachedFile);
+        }
+        // Without folders the gallery is a flat grid: reuse keyed nodes across search/sort renders and batch appends.
+        for (const file of model.unfiled) {
+            const spec = cellSpec(file, imagesByFilename);
+            let cached = flatCells.get(file);
+            if (!cached || cached.signature !== spec.signature) {
+                cached = { cell: makeCell(file, imagesByFilename, spec), signature: spec.signature };
+                flatCells.set(file, cached);
+            }
+            fragment.append(cached.cell);
+        }
     } else {
-        for (const section of model.sections) container.append(buildSection(section, searching));
+        flatCells.clear();
+        for (const section of model.sections) fragment.append(buildSection(section, searching, imagesByFilename));
         if (model.unfiled.length) {
             const group = el('div', 'sb-bg-unfiled');
             if (model.showUnfiledHeading) {
                 const heading = el('h3', 'sb-bg-unfiled__heading', t`No Folder`);
                 group.append(heading);
             }
-            group.append(buildGrid(model.unfiled));
-            container.append(group);
+            group.append(buildGrid(model.unfiled, imagesByFilename));
+            fragment.append(group);
         }
     }
     if (searching && !model.hasMatches) {
-        container.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results Found`, description: t`Try a different search`, compact: true }).element);
+        fragment.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results Found`, description: t`Try a different search`, compact: true }).element);
     }
+    container.replaceChildren(fragment);
     hooks.activateLazyLoader();
     hooks.refreshHighlights();
     selection?.decorate({ prune: true });
@@ -573,6 +620,7 @@ export function initBackgroundGallery() {
 async function start() {
     container = document.getElementById('bg_menu_content');
     if (!container || !document.getElementById('bg-header-fixed')) return;
+    query = String(document.getElementById('bg-filter')?.value ?? '').trim().toLowerCase();
     stylesReady = loadStyles();
     const host = {
         render,
@@ -583,7 +631,12 @@ async function start() {
             render();
         },
         setIndex: index => hydrateBackgroundIndex({ folders: index.folders, imageFolderMap: index.imageFolderMap }),
-        filesRemoved: files => { for (const file of files) removeEntityKey(SCOPE, file); },
+        filesRemoved: files => {
+            for (const file of files) {
+                flatCells.delete(file);
+                removeEntityKey(SCOPE, file);
+            }
+        },
     };
     hooks = attachBackgroundGallery(host);
     hydrateBackgroundIndex({ folders: hooks.getFolderIndex().folders, imageFolderMap: hooks.getFolderIndex().imageFolderMap });
@@ -646,15 +699,17 @@ async function start() {
         }
         tabs.style.setProperty('--sb-bg-grid-inset', `${Math.max(0, Math.round(gap * 100) / 100)}px`);
     };
-    const scrollbarObserver = new ResizeObserver(syncScrollbar);
-    for (const panel of panels) scrollbarObserver.observe(panel);
-    scrollbarObserver.observe(container);
+    if (typeof ResizeObserver === 'function') {
+        const scrollbarObserver = new ResizeObserver(syncScrollbar);
+        for (const panel of panels) scrollbarObserver.observe(panel);
+        scrollbarObserver.observe(container);
+    }
     const syncTab = () => {
         if (selection.isActive) selection.exit();
         menu.hidden = !isGlobalTab();
         syncScrollbar();
     };
-    $('#bg_tabs').on('tabsactivate', syncTab);
+    if (typeof globalThis.$ === 'function') globalThis.$('#bg_tabs').on('tabsactivate', syncTab);
     syncTab();
     syncSortState();
     await stylesReady;

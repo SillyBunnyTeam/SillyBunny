@@ -673,6 +673,12 @@ body::before {
     }
 }
 
+/* Prefer static blur on #sheld::before and avoid double-blurring the scrolling #chat viewport. */
+body.sb-sheld-blur #chat {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
 /* libadwaita header bar: one opaque layer with a 1px bottom shade; no glow, blur, or pseudo-element surface. */
 #top-bar {
     position: relative;

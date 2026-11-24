@@ -244,6 +244,12 @@
     }
 }
 
+.sb-persona-row {
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 64px;
+}
+
 .sb-persona-row-badges {
     display: inline-flex;
     align-items: center;

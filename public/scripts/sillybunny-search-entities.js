@@ -7,6 +7,8 @@ const WORLD_INFO_SEARCH_TEXT_LIMIT = 64000;
 const WORLD_INFO_SELECT_RETRY_MS = 40;
 const WORLD_INFO_SELECT_ATTEMPTS = 50;
 const worldInfoSearchCache = new Map();
+/** WeakMap<object, { fingerprint: string, searchText: string, notes?: unknown }> cache for normalized entity search text. */
+const entitySearchTextCache = new WeakMap();
 
 function defaultSearchContextAccessor() {
     try {
@@ -212,6 +214,48 @@ async function openWorld(name) {
     }
 }
 
+function getCharacterDisplayName(character) {
+    return String(character.name ?? '').trim()
+        || getAvatarSearchValue(character.avatar)
+        || String(character.avatar ?? '').trim();
+}
+
+/**
+ * Returns cached normalized search text for an entity object (`character`, `group`, or `persona`),
+ * recomputing only when its fingerprint (or raw notes reference) changes.
+ * @param {object} entity
+ * @param {string} fingerprint
+ * @param {() => string} computeRaw
+ * @param {unknown} [notes]
+ * @returns {string}
+ */
+export function getCachedEntitySearchText(entity, fingerprint, computeRaw, notes = undefined) {
+    if (!entity || typeof entity !== 'object') return normalizeText(computeRaw());
+    const cached = entitySearchTextCache.get(entity);
+    if (cached && cached.fingerprint === fingerprint && cached.notes === notes) return cached.searchText;
+    const searchText = normalizeText(computeRaw());
+    entitySearchTextCache.set(entity, { fingerprint, searchText, notes });
+    return searchText;
+}
+
+function getCharacterSearchText(character, name, scanLimit) {
+    const avatar = character.avatar ?? '';
+    const creator = character.data?.creator ?? '';
+    const tags = character.data?.tags;
+    const tagsKey = Array.isArray(tags)
+        ? (tags.length ? `${tags.length}:${tags.slice(0, scanLimit).join('\u001e')}` : '')
+        : String(tags ?? '');
+    const notes = character.data?.creator_notes ?? '';
+    const fingerprint = `char\u001f${name}\u001f${avatar}\u001f${creator}\u001f${tagsKey}\u001f${typeof notes === 'string' ? notes.length : ''}`;
+    return getCachedEntitySearchText(character, fingerprint, () => [
+        name,
+        getAvatarSearchValue(avatar),
+        creator,
+        getSearchValue(tags, scanLimit),
+        notes,
+    ].join(' '), notes);
+}
+
 // Only the explicit priming pass populates this metadata snapshot. Neither this lookup
 // nor collection calls loadWorldInfo(), so a cache miss never starts a network request.
 export function getWorldInfoEntrySearchText(bookName) {
@@ -233,25 +277,15 @@ export function collectEntitySearchEntries(normalizedQuery, { limit = DEFAULT_EN
     for (let index = 0; index < characters.length && index < scanLimit; index++) {
         const character = characters[index];
         if (!isCharacter(character)) continue;
-        const name = String(character.name ?? '').trim()
-            || getAvatarSearchValue(character.avatar)
-            || String(character.avatar ?? '').trim();
+        const name = getCharacterDisplayName(character);
         if (character.avatar) memberNames.set(character.avatar, name);
     }
 
     for (let index = 0; index < characters.length && index < scanLimit && entries.length < scanLimit; index++) {
         const character = characters[index];
         if (!isCharacter(character)) continue;
-        const name = String(character.name ?? '').trim()
-            || getAvatarSearchValue(character.avatar)
-            || String(character.avatar ?? '').trim();
-        const searchText = normalizeText([
-            name,
-            getAvatarSearchValue(character.avatar),
-            character.data?.creator,
-            getSearchValue(character.data?.tags, scanLimit),
-            character.data?.creator_notes,
-        ].join(' '));
+        const name = (character.avatar && memberNames.get(character.avatar)) || getCharacterDisplayName(character);
+        const searchText = getCharacterSearchText(character, name, scanLimit);
         if (!matches(searchText)) continue;
         const characterIdentity = String(character.avatar ?? '').trim() || name || index;
         entries.push(createEntry(searchText, name, 'characters', 'Characters',
@@ -276,7 +310,8 @@ export function collectEntitySearchEntries(normalizedQuery, { limit = DEFAULT_EN
             const avatar = typeof member === 'object' ? member?.avatar ?? member?.id ?? member?.name : member;
             parts.push(avatar, member?.name ?? memberNames.get(avatar) ?? '');
         }
-        const searchText = normalizeText(parts.join(' '));
+        const fingerprint = `group\u001f${parts.join('\u001f')}`;
+        const searchText = getCachedEntitySearchText(group, fingerprint, () => parts.join(' '));
         if (!matches(searchText)) continue;
         entries.push(createEntry(searchText, name, 'groups', 'Groups',
             `grpentity::${group.id}`, async () => openGroup(group)));

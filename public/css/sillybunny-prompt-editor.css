@@ -177,6 +177,18 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-row {
     min-height: max(var(--sb-density-floor), calc(52px - 6px * var(--sb-density-t)));
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 52px;
+}
+
+.sb-prompt-row.ui-sortable-helper,
+.sb-prompt-row.ui-sortable-placeholder,
+.ui-sortable-helper .sb-prompt-row,
+.ui-sortable-dragging .sb-prompt-row,
+.is-dragging .sb-prompt-row {
+    contain: none;
+    content-visibility: visible;
 }
 
 .sb-prompt-row > .ds-entity-row__avatar {

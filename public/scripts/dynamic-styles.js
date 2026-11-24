@@ -1,7 +1,7 @@
-/** @type {CSSStyleSheet} */
-let dynamicStyleSheet = null;
-/** @type {CSSStyleSheet} */
-let dynamicExtensionStyleSheet = null;
+/** @type {HTMLStyleElement|null} */
+let dynamicStyleElement = null;
+/** @type {HTMLStyleElement|null} */
+let dynamicExtensionStyleElement = null;
 /** @type {Map<string, Promise<HTMLLinkElement>>} */
 const asyncStylesheetPromises = new Map();
 /** @type {Set<string>} */
@@ -207,6 +207,109 @@ window.SillyBunnyAssets = Object.assign(window.SillyBunnyAssets ?? {}, {
     prefetchAsset,
 });
 
+const DYNAMIC_STYLE_ELEMENT_IDS = new Set(['dynamic-styles', 'dynamic-extension-styles']);
+// SillyBunny: icon and webfont sheets carry thousands of rules and no :hover, so walking them only costs startup time.
+const HOVER_FREE_STYLESHEET_PATTERN = /\/webfonts\/|fontawesome|\/(?:solid|brands|regular)(?:\.min)?\.css/i;
+
+/** @type {Set<CSSStyleSheet>} */
+const pendingStyleSheets = new Set();
+/** @type {WeakSet<CSSStyleSheet>} */
+const processedStyleSheets = new WeakSet();
+/** @type {{ main: string[], extension: string[] }} */
+const generatedFocusRules = { main: [], extension: [] };
+let flushHandle = null;
+let flushHandleIsIdle = false;
+let initialScanPending = false;
+
+function isHoverFreeStyleSheet(styleSheet) {
+    return Boolean(styleSheet?.href) && HOVER_FREE_STYLESHEET_PATTERN.test(styleSheet.href);
+}
+
+function isOwnDynamicStyleNode(node) {
+    return node instanceof HTMLStyleElement && DYNAMIC_STYLE_ELEMENT_IDS.has(node.id);
+}
+
+function cancelScheduledFlush() {
+    if (flushHandle === null) return;
+    if (flushHandleIsIdle && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(flushHandle);
+    } else {
+        clearTimeout(flushHandle);
+    }
+    flushHandle = null;
+}
+
+/**
+ * Coalesces stylesheet scans into one idle-time pass, so a burst of lazily loaded sheets
+ * (e.g. while switching Settings tabs) costs one style write instead of one per sheet.
+ */
+function scheduleFlush() {
+    if (flushHandle !== null) return;
+    if (typeof window.requestIdleCallback === 'function') {
+        flushHandleIsIdle = true;
+        flushHandle = window.requestIdleCallback(() => {
+            flushHandle = null;
+            flushPendingStyleSheets();
+        }, { timeout: 2000 });
+    } else {
+        flushHandleIsIdle = false;
+        flushHandle = setTimeout(() => {
+            flushHandle = null;
+            flushPendingStyleSheets();
+        }, 200);
+    }
+}
+
+function queueStyleSheet(styleSheet) {
+    if (!styleSheet || processedStyleSheets.has(styleSheet)) return;
+    pendingStyleSheets.add(styleSheet);
+    scheduleFlush();
+}
+
+function isExtensionStyleSheet(styleSheet) {
+    return styleSheet?.href?.toLowerCase().includes('scripts/extensions') === true;
+}
+
+function flushPendingStyleSheets() {
+    cancelScheduledFlush();
+
+    if (initialScanPending) {
+        initialScanPending = false;
+        document.removeEventListener('keydown', onFirstKeyboardNavigation, true);
+        for (const sheet of Array.from(document.styleSheets)) {
+            if (sheet.ownerNode && isOwnDynamicStyleNode(sheet.ownerNode)) continue;
+            if (!processedStyleSheets.has(sheet)) pendingStyleSheets.add(sheet);
+        }
+    }
+
+    if (pendingStyleSheets.size === 0) return;
+
+    const sheets = Array.from(pendingStyleSheets);
+    pendingStyleSheets.clear();
+    let mainChanged = false;
+    let extensionChanged = false;
+
+    for (const sheet of sheets) {
+        if (processedStyleSheets.has(sheet)) continue;
+        processedStyleSheets.add(sheet);
+        if (isHoverFreeStyleSheet(sheet)) continue;
+
+        const fromExtension = isExtensionStyleSheet(sheet);
+        try {
+            const rules = applyDynamicFocusStyles(sheet);
+            if (rules.length === 0) continue;
+            generatedFocusRules[fromExtension ? 'extension' : 'main'].push(...rules);
+            if (fromExtension) extensionChanged = true;
+            else mainChanged = true;
+        } catch (e) {
+            console.warn('Failed to process stylesheet:', e);
+        }
+    }
+
+    if (mainChanged) writeDynamicStyleSheet({ fromExtension: false });
+    if (extensionChanged) writeDynamicStyleSheet({ fromExtension: true });
+}
+
 /**
  * An observer that will check if any new stylesheets are added to the head
  * @type {MutationObserver}
@@ -214,16 +317,17 @@ window.SillyBunnyAssets = Object.assign(window.SillyBunnyAssets ?? {}, {
 const observer = new MutationObserver(mutations => {
     mutations.forEach(mutation => {
         if (mutation.type !== 'childList') return;
+        // Our own generated <style> rewrites must never trigger another scan.
+        if (isOwnDynamicStyleNode(mutation.target)) return;
 
         mutation.addedNodes.forEach(node => {
+            if (isOwnDynamicStyleNode(node)) return;
             if (node instanceof HTMLLinkElement && node.tagName === 'LINK' && node.rel === 'stylesheet') {
-                node.addEventListener('load', () => {
-                    try {
-                        applyDynamicFocusStyles(node.sheet);
-                    } catch (e) {
-                        console.warn('Failed to process new stylesheet:', e);
-                    }
-                });
+                node.addEventListener('load', () => queueStyleSheet(node.sheet), { once: true });
+                // Cached sheets can already have parsed rules; the processed-set dedupes any later load event.
+                if (node.sheet && (node.dataset.loaded === 'true' || (getReadableCssRules(node.sheet)?.length ?? 0) > 0)) {
+                    queueStyleSheet(node.sheet);
+                }
             }
         });
     });
@@ -269,10 +373,9 @@ function canGenerateDynamicFocusSelector(selector) {
  * Generates dynamic focus styles based on the given stylesheet, taking its hover styles as reference
  *
  * @param {CSSStyleSheet} styleSheet - The stylesheet to process
- * @param {object} [options] - Optional configuration options
- * @param {boolean} [options.fromExtension=false] - Indicates if the styles are from an extension
+ * @returns {string[]} Generated `:focus-visible` rule texts, for the caller to write in one batch
  */
-function applyDynamicFocusStyles(styleSheet, { fromExtension = false } = {}) {
+function applyDynamicFocusStyles(styleSheet) {
     /** @typedef {{ type: 'media'|'supports'|'container', conditionText: string }} WrapperCond */
     /** @type {{baseSelector: string, selector: string, styleText: string, wrappers: WrapperCond[]}[]} */
     const hoverRules = [];
@@ -355,20 +458,17 @@ function applyDynamicFocusStyles(styleSheet, { fromExtension = false } = {}) {
 
     const rules = getReadableCssRules(styleSheet);
     if (!rules) {
-        return;
+        return [];
     }
 
     processRules(rules, []);
 
-    /** @type {CSSStyleSheet} */
-    let targetStyleSheet = null;
+    /** @type {string[]} */
+    const generated = [];
 
     // Now finally create the dynamic focus rules
     hoverRules.forEach(({ baseSelector, selector, styleText, wrappers }) => {
         if (!focusRules.has(`${baseSelector}|${wrapperSignature(wrappers)}`)) {
-            // Only initialize the dynamic stylesheet if needed
-            targetStyleSheet ??= getDynamicStyleSheet({ fromExtension });
-
             // The closest keyboard-equivalent to :hover styling is utilizing the :focus-visible rule from modern browsers.
             // It let's the browser decide whether a focus highlighting is expected and makes sense.
             // So we take all :hover rules that don't have a manually defined focus rule yet, and create their
@@ -396,59 +496,58 @@ function applyDynamicFocusStyles(styleSheet, { fromExtension = false } = {}) {
                 }, focusRule);
             }
 
-            try {
-                targetStyleSheet.insertRule(focusRule, targetStyleSheet.cssRules.length);
-            } catch {
-                // insertRule rejects :has() and other complex selectors — these are
-                // cosmetic :focus-visible mirrors of :hover rules, safe to skip
-            }
+            // Written as one stylesheet text later; the CSS parser drops a rule it cannot
+            // parse on its own, as insertRule used to reject it, without affecting the rest.
+            generated.push(focusRule);
         }
     });
+
+    return generated;
 }
 
 /**
- * Retrieves the stylesheet that should be used for dynamic rules
+ * Writes every generated rule for one target in a single text update, so the browser
+ * parses and invalidates styles once per flush instead of once per inserted rule.
  *
  * @param {object} options - The options object
  * @param {boolean} [options.fromExtension=false] - Indicates whether the rules are coming from extensions
- * @return {CSSStyleSheet} The dynamic stylesheet
  */
-function getDynamicStyleSheet({ fromExtension = false } = {}) {
-    if (fromExtension) {
-        if (!dynamicExtensionStyleSheet) {
-            const styleSheetElement = document.createElement('style');
-            styleSheetElement.setAttribute('id', 'dynamic-extension-styles');
-            document.head.appendChild(styleSheetElement);
-            dynamicExtensionStyleSheet = styleSheetElement.sheet;
-        }
-        return dynamicExtensionStyleSheet;
-    } else {
-        if (!dynamicStyleSheet) {
-            const styleSheetElement = document.createElement('style');
-            styleSheetElement.setAttribute('id', 'dynamic-styles');
-            document.head.appendChild(styleSheetElement);
-            dynamicStyleSheet = styleSheetElement.sheet;
-        }
-        return dynamicStyleSheet;
+function writeDynamicStyleSheet({ fromExtension = false } = {}) {
+    const id = fromExtension ? 'dynamic-extension-styles' : 'dynamic-styles';
+    let styleSheetElement = fromExtension ? dynamicExtensionStyleElement : dynamicStyleElement;
+
+    if (!styleSheetElement || !styleSheetElement.isConnected) {
+        styleSheetElement = document.createElement('style');
+        styleSheetElement.setAttribute('id', id);
+        document.head.appendChild(styleSheetElement);
+        if (fromExtension) dynamicExtensionStyleElement = styleSheetElement;
+        else dynamicStyleElement = styleSheetElement;
     }
+
+    styleSheetElement.textContent = generatedFocusRules[fromExtension ? 'extension' : 'main'].join('\n');
+}
+
+function onFirstKeyboardNavigation(event) {
+    if (event.key !== 'Tab') return;
+    document.removeEventListener('keydown', onFirstKeyboardNavigation, true);
+    // Keyboard users need the focus mirrors now, not at the next idle period.
+    flushPendingStyleSheets();
 }
 
 /**
  * Initializes dynamic styles for ST
  */
 export function initDynamicStyles() {
-    // Start observing the head for any new added stylesheets
+    // Only observe direct children of <head>: stylesheet <link> elements live there, and subtree: false
+    // avoids waking the observer whenever any <style> element updates its textContent.
     observer.observe(document.head, {
         childList: true,
-        subtree: true,
+        subtree: false,
     });
 
-    // Process all stylesheets on initial load
-    Array.from(document.styleSheets).forEach(sheet => {
-        try {
-            applyDynamicFocusStyles(sheet, { fromExtension: sheet.href?.toLowerCase().includes('scripts/extensions') == true });
-        } catch (e) {
-            console.warn('Failed to process stylesheet on initial load:', e);
-        }
-    });
+    // SillyBunny: the initial scan walks every loaded rule, so it waits for idle time
+    // (or the first Tab press) instead of blocking startup.
+    initialScanPending = true;
+    document.addEventListener('keydown', onFirstKeyboardNavigation, true);
+    scheduleFlush();
 }

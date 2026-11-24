@@ -129,6 +129,65 @@ function isAppearancePending(tabId) {
     return tabId === 'appearance' && appearanceModule === null;
 }
 
+let backgroundGalleryMountPromise = null;
+let backgroundGalleryIdleHandle = 0;
+let backgroundGalleryObserver = null;
+
+function cancelScheduledBackgroundGalleryMount() {
+    if (!backgroundGalleryIdleHandle) return;
+    if (typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(backgroundGalleryIdleHandle);
+    } else {
+        window.clearTimeout(backgroundGalleryIdleHandle);
+    }
+    backgroundGalleryIdleHandle = 0;
+}
+
+function ensureBackgroundGalleryMounted() {
+    cancelScheduledBackgroundGalleryMount();
+    backgroundGalleryObserver?.disconnect();
+    backgroundGalleryObserver = null;
+    backgroundGalleryMountPromise ??= loadBackgroundGalleryModule()
+        .then(gallery => gallery.initBackgroundGallery())
+        .catch(error => {
+            backgroundGalleryMountPromise = null;
+            console.error('[Backgrounds] The folder gallery did not load:', error);
+        });
+    return backgroundGalleryMountPromise;
+}
+
+function isAppearanceContentVisible() {
+    if (!isSettingsPageHosting('right')) return false;
+    if (getShellState('right')?.activeTabId !== 'appearance') return false;
+    return !isMobileViewport() || Boolean(sbSettingsState.mobileContentView);
+}
+
+function scheduleBackgroundGalleryMount() {
+    if (backgroundGalleryMountPromise || backgroundGalleryIdleHandle || !isAppearanceContentVisible()) {
+        return;
+    }
+
+    const gallery = document.getElementById('backgrounds-button');
+    if (gallery instanceof HTMLElement && typeof IntersectionObserver === 'function' && !backgroundGalleryObserver) {
+        backgroundGalleryObserver = new IntersectionObserver(entries => {
+            if (entries.some(entry => entry.isIntersecting)) {
+                void ensureBackgroundGalleryMounted();
+            }
+        }, { rootMargin: '250px' });
+        backgroundGalleryObserver.observe(gallery);
+    }
+
+    const runWhenVisible = () => {
+        backgroundGalleryIdleHandle = 0;
+        if (isAppearanceContentVisible()) {
+            void ensureBackgroundGalleryMounted();
+        }
+    };
+    backgroundGalleryIdleHandle = typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(runWhenVisible, { timeout: 200 })
+        : window.setTimeout(runWhenVisible, 48);
+}
+
 async function presentAppearancePage() {
     const container = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
     try {
@@ -136,8 +195,6 @@ async function presentAppearancePage() {
         module.presentAppearance(container);
         appearanceModule = module;
         setAnimatedBackgroundPresenter(module.presentAnimatedBackgrounds);
-        // The folder gallery loads with the Appearance page, which stays busy until it has taken over the Global tab, so the header does not change under a reader.
-        await loadBackgroundGalleryModule().then(gallery => gallery.initBackgroundGallery()).catch(error => console.error('[Backgrounds] The folder gallery did not load:', error));
     } finally {
         container?.removeAttribute('aria-busy');
     }
@@ -666,11 +723,13 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
     }
 }
 
-async function prepareShellSearch() {
-    // Search also discovers controls in unopened panels, without starting their polling.
-    await Promise.allSettled(Object.values(sbState.shells).flatMap(shell =>
-        Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
-    ));
+async function prepareShellSearch(shellKeys = Object.keys(sbState.shells)) {
+    // Search also discovers controls in unopened panels of the requested shells, without starting their polling.
+    const keys = Array.isArray(shellKeys) ? shellKeys : Object.keys(sbState.shells);
+    await Promise.allSettled(keys.flatMap(shellKey => {
+        const shell = sbState.shells[shellKey];
+        return shell ? Array.from(shell.tabs.values(), tab => tab.ensureReady?.()) : [];
+    }));
 }
 
 const SB_STORAGE_KEYS = Object.freeze({
@@ -1813,8 +1872,12 @@ function setBottomBarScale(value, { persist = true } = {}) {
     const nextScale = normalizeTopbarScale(value);
     const scaleFactor = Number((nextScale / 100).toFixed(2)).toString();
 
+    const prevScale = sbState.bottomBarScale;
     sbState.bottomBarScale = nextScale;
     document.documentElement.style.setProperty('--sb-bottom-bar-scale', scaleFactor);
+    if (prevScale !== nextScale) {
+        invalidateBottomChatBarFitCache();
+    }
 
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.bottomBarScale, String(nextScale));
@@ -1827,8 +1890,12 @@ function setDesktopButtonScale(value, { persist = true } = {}) {
     const nextScale = normalizeTopbarScale(value);
     const scaleFactor = Number((nextScale / 100).toFixed(2)).toString();
 
+    const prevScale = sbState.desktopButtonScale;
     sbState.desktopButtonScale = nextScale;
     document.documentElement.style.setProperty('--sb-desktop-button-scale', scaleFactor);
+    if (prevScale !== nextScale) {
+        invalidateBottomChatBarFitCache();
+    }
 
     if (persist) {
         safeSetItem(SB_STORAGE_KEYS.desktopButtonScale, String(nextScale));
@@ -2011,6 +2078,7 @@ function setCompactMode(enabled, { persist = true } = {}) {
     }
 
     queueComposerControlPlacement();
+    invalidateBottomChatBarFitCache();
     updateThemePickerUi();
 }
 
@@ -3787,9 +3855,12 @@ function bindTopBarBrandWindowEvents() {
     }
 
     const refreshWithContext = () => {
-        window.requestAnimationFrame(updateTopBarBrand);
-        scheduleTopbarContextRefresh(0);
-        bindTopBarBrand();
+        if (sbState.topbarLabel.boundEventSource) {
+            window.requestAnimationFrame(updateTopBarBrand);
+            scheduleTopbarContextRefresh(0);
+        } else {
+            bindTopBarBrand();
+        }
     };
 
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
@@ -4151,6 +4222,10 @@ function updateTopbarUtilityButtons() {
             : 'Drag to move the chat info bar. Double-click to reset.';
         setTopbarUtilityButtonIcon(dragHandleButton, 'fa-grip-lines', dragTitle);
         setButtonDisabled(dragHandleButton, false);
+        if (dragHandleButton.dataset.sbDragBound !== 'true') {
+            dragHandleButton.dataset.sbDragBound = 'true';
+            dragHandleButton.addEventListener('pointerdown', startTopbarDrag);
+        }
     }
 }
 
@@ -4234,6 +4309,53 @@ function getTopbarDragPoint(event) {
     }
 
     return null;
+}
+
+function startTopbarDrag(event) {
+    if (!(event?.currentTarget instanceof HTMLElement)) {
+        return;
+    }
+
+    if ((event.type?.startsWith?.('mouse') || event.pointerType === 'mouse') && event.button !== 0) {
+        return;
+    }
+
+    const dragKey = getTopbarDragKey(event);
+    const point = getTopbarDragPoint(event);
+    if (!dragKey || !point) {
+        return;
+    }
+
+    const state = getChatbarState();
+    if (state.dragging?.key === dragKey) {
+        event.preventDefault();
+        return;
+    }
+
+    const startOffset = getRenderedTopbarOffset();
+    state.dragging = {
+        key: dragKey,
+        pointerId: event.pointerId,
+        originX: point.clientX,
+        originY: point.clientY,
+        startX: startOffset.x,
+        startY: startOffset.y,
+    };
+
+    document.body.classList.add('sb-topbar-dragging');
+    bindTopbarDragEvents();
+
+    if (Number.isFinite(event.pointerId)) {
+        try {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+        } catch {
+            // Touch fallback events may not have an active pointer capture target.
+        }
+    }
+
+    if (event.cancelable) {
+        event.preventDefault();
+    }
 }
 
 function updateTopbarDrag(event) {
@@ -4492,6 +4614,7 @@ function sortChatFiles(files) {
     });
 }
 
+// The fetchers return null for a failed request and an array for an answer, so a character with no chats is not retried.
 async function fetchCharacterChatFiles(chatContext) {
     const avatarUrl = chatContext.character?.avatar;
 
@@ -4502,7 +4625,7 @@ async function fetchCharacterChatFiles(chatContext) {
     try {
         const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
         if (!headers) {
-            return [];
+            return null;
         }
 
         const response = await fetch('/api/characters/chats', {
@@ -4512,19 +4635,19 @@ async function fetchCharacterChatFiles(chatContext) {
         });
 
         if (!response.ok) {
-            return [];
+            return null;
         }
 
         const data = await response.json();
         if (typeof data === 'object' && data?.error === true) {
-            return [];
+            return null;
         }
 
         const chats = Array.isArray(data) ? data : Object.values(data ?? {});
         return sortChatFiles(chats.map(normalizeChatInfo).filter(chat => chat.fileName));
     } catch (error) {
         console.error('Failed to fetch character chats', error);
-        return [];
+        return null;
     }
 }
 
@@ -4538,7 +4661,7 @@ async function fetchGroupChatFiles(chatContext) {
     try {
         const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
         if (!headers) {
-            return [];
+            return null;
         }
 
         const chats = await Promise.all(groupChats.map(async chatId => {
@@ -4567,18 +4690,134 @@ async function fetchGroupChatFiles(chatContext) {
         return sortChatFiles(chats.filter(chat => chat?.fileName));
     } catch (error) {
         console.error('Failed to fetch group chats', error);
-        return [];
+        return null;
     }
 }
 
-async function getChatFilesForContext(chatContext = getChatUiContext()) {
+// SillyBunny: the chat sidebar, the bottom picker and mass delete read one shared list per character or group. It is
+// fetched once however many of them ask at the same time, and fetched again only after an event that changes which chats
+// exist. A message changes only the current chat's preview and size, so it marks the list stale for the next reader that
+// opens it instead of fetching it for every reply.
+const SB_CHAT_FILES_FOCUS_STALE_MS = 30_000;
+const sbChatFilesCache = {
+    key: '',
+    files: null,
+    fetchedAt: 0,
+    promise: null,
+    promiseKey: '',
+    generation: 0,
+    stale: false,
+    boundEventSource: null,
+};
+
+function getChatFilesCacheKey(chatContext) {
+    if (chatContext.group) {
+        const chats = Array.isArray(chatContext.group.chats) ? chatContext.group.chats : [];
+        return `group:${chatContext.group.id}:${chats.length}`;
+    }
+    return `character:${chatContext.character?.avatar ?? ''}`;
+}
+
+function invalidateChatFilesCache() {
+    sbChatFilesCache.generation += 1;
+    sbChatFilesCache.key = '';
+    sbChatFilesCache.files = null;
+    sbChatFilesCache.fetchedAt = 0;
+    sbChatFilesCache.promise = null;
+    sbChatFilesCache.promiseKey = '';
+    sbChatFilesCache.stale = false;
+}
+
+function markChatFilesCacheStale() {
+    sbChatFilesCache.stale = sbChatFilesCache.files !== null;
+}
+
+function invalidateChatFilesCacheIfOlderThan(ageMs) {
+    if (sbChatFilesCache.files !== null && Date.now() - sbChatFilesCache.fetchedAt > ageMs) {
+        invalidateChatFilesCache();
+    }
+}
+
+/**
+ * @param {ReturnType<typeof getChatUiContext>} chatContext
+ * @param {{ force?: boolean, refreshStale?: boolean }} [options] `refreshStale` fetches a list a message marked stale
+ * @returns {Promise<{ ok: boolean, files: ReturnType<typeof normalizeChatInfo>[] }>}
+ */
+async function loadChatFilesForContext(chatContext, { force = false, refreshStale = false } = {}) {
     if (!chatContext.canBrowseChats) {
-        return [];
+        return { ok: true, files: [] };
     }
 
-    return chatContext.group
-        ? fetchGroupChatFiles(chatContext)
-        : fetchCharacterChatFiles(chatContext);
+    const key = getChatFilesCacheKey(chatContext);
+    if (force || (refreshStale && sbChatFilesCache.stale)) {
+        invalidateChatFilesCache();
+    }
+
+    if (sbChatFilesCache.key === key && sbChatFilesCache.files !== null) {
+        return { ok: true, files: [...sbChatFilesCache.files] };
+    }
+
+    if (!sbChatFilesCache.promise || sbChatFilesCache.promiseKey !== key) {
+        const generation = sbChatFilesCache.generation;
+        const request = (chatContext.group ? fetchGroupChatFiles(chatContext) : fetchCharacterChatFiles(chatContext))
+            .then(files => {
+                if (sbChatFilesCache.generation === generation && Array.isArray(files)) {
+                    sbChatFilesCache.key = key;
+                    sbChatFilesCache.files = files;
+                    sbChatFilesCache.fetchedAt = Date.now();
+                    sbChatFilesCache.stale = false;
+                }
+                return files;
+            })
+            .finally(() => {
+                if (sbChatFilesCache.promise === request) {
+                    sbChatFilesCache.promise = null;
+                    sbChatFilesCache.promiseKey = '';
+                }
+            });
+        sbChatFilesCache.promise = request;
+        sbChatFilesCache.promiseKey = key;
+    }
+
+    const files = await sbChatFilesCache.promise;
+    return Array.isArray(files) ? { ok: true, files: [...files] } : { ok: false, files: [] };
+}
+
+async function getChatFilesForContext(chatContext = getChatUiContext(), options = {}) {
+    return (await loadChatFilesForContext(chatContext, options)).files;
+}
+
+function bindChatFilesCacheInvalidation(eventSource, eventTypes) {
+    if (sbChatFilesCache.boundEventSource === eventSource) {
+        return;
+    }
+    sbChatFilesCache.boundEventSource = eventSource;
+
+    const listEvents = [
+        eventTypes.CHAT_CREATED,
+        eventTypes.CHAT_DELETED,
+        eventTypes.CHAT_RENAMED,
+        eventTypes.GROUP_CHAT_CREATED,
+        eventTypes.GROUP_CHAT_DELETED,
+        eventTypes.CHAT_CHANGED,
+        eventTypes.CHAT_LOADED,
+    ].filter(Boolean);
+    const messageEvents = [
+        eventTypes.MESSAGE_RECEIVED,
+        eventTypes.MESSAGE_UPDATED,
+        eventTypes.MESSAGE_EDITED,
+        eventTypes.MESSAGE_DELETED,
+        eventTypes.MESSAGE_SWIPED,
+        eventTypes.MESSAGE_SWIPE_DELETED,
+    ].filter(Boolean);
+
+    // Registered before the refresh listeners, so a refresh that the same event schedules reads the new list.
+    for (const eventName of new Set(listEvents)) {
+        eventSource.on(eventName, invalidateChatFilesCache);
+    }
+    for (const eventName of new Set(messageEvents)) {
+        eventSource.on(eventName, markChatFilesCacheStale);
+    }
 }
 
 async function openChatById(chatId) {
@@ -4623,6 +4862,7 @@ async function handleRenameChat() {
     } catch {
         return;
     }
+    invalidateChatFilesCache();
     scheduleChatbarRefresh(120);
 }
 
@@ -4646,6 +4886,7 @@ async function handleDeleteChat() {
     }
 
     await chatContext.context?.executeSlashCommandsWithOptions?.('/delchat');
+    invalidateChatFilesCache();
     scheduleChatbarRefresh(150);
 }
 
@@ -4674,6 +4915,7 @@ async function handleAutoNameChat() {
         }
 
         await autoLabelCurrentChat();
+        invalidateChatFilesCache();
         scheduleBottomChatBarRefresh(160);
     } catch (error) {
         console.error('[SillyBunny] Failed to auto-name current chat.', error);
@@ -4724,7 +4966,7 @@ async function handleMassDeleteChats() {
 
     setBottomChatActionBusy(button, true);
     try {
-        const files = await getChatFilesForContext(chatContext);
+        const files = await getChatFilesForContext(chatContext, { force: true });
         const deletableFiles = files.filter(chatFile => chatFile.fileName !== chatContext.chatId);
         if (!deletableFiles.length) {
             globalThis.toastr?.info?.('No saved chats can be deleted for this character or group', 'Mass delete chats');
@@ -4762,6 +5004,7 @@ async function handleMassDeleteChats() {
         }
 
         globalThis.toastr?.success?.(`Deleted ${names.length} chat(s)`, 'Mass delete chats');
+        invalidateChatFilesCache();
         scheduleBottomChatBarRefresh(160);
         scheduleChatbarRefresh(160);
         await chatModule.displayPastChats?.();
@@ -4985,7 +5228,7 @@ function setChatSidebarOpenState(shouldOpen, { opener = document.activeElement, 
 
     if (isOpen) {
         void refs.controller.open({ opener });
-        scheduleChatbarRefresh(0);
+        scheduleChatbarRefresh(0, { refreshStale: true });
     } else {
         refs.controller.close({ restoreFocus });
     }
@@ -5500,6 +5743,7 @@ function syncBottomChatBarSearchState({ focusInput = false } = {}) {
     const isMobileHidden = !isOpen && isMobileViewport();
 
     container?.classList.toggle('sb-bottom-chat-search-open', isOpen);
+    bottomChatBarState.scheduleFit?.();
 
     if (bottomChatBarState.searchField instanceof HTMLElement) {
         bottomChatBarState.searchField.hidden = isMobileHidden;
@@ -5583,29 +5827,35 @@ function initChatSearchObserver() {
     getChatbarState().chatObserver = observer;
 }
 
-async function refreshChatbarState() {
+async function refreshChatbarState({ refreshStale = false } = {}) {
     const chatbarState = getChatbarState();
     const refreshToken = ++chatbarState.refreshToken;
 
     const chatContext = getChatUiContext();
-    const files = await getChatFilesForContext(chatContext);
 
-    if (refreshToken !== chatbarState.refreshToken) {
-        return;
-    }
-
-    const chatNames = files.map(chat => chat.fileName);
-
-    if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
-        files.unshift(normalizeChatInfo(chatContext.chatId));
-    }
-
-    renderChatFiles(getChatSidebarRefs()?.list, files, chatContext.chatId, {
-        onSelect: chatId => openChatById(chatId),
-    });
-
-    if (!chatContext.canBrowseChats) {
+    if (!chatContext.canBrowseChats && isChatSidebarOpen()) {
         setChatSidebarOpenState(false);
+    }
+
+    // The list is rendered into the Recent Chats panel only, so a closed panel neither fetches nor renders it; opening
+    // the panel schedules this refresh again.
+    const listRoot = getChatSidebarRefs()?.list;
+    if (isChatSidebarOpen() && listRoot instanceof HTMLElement) {
+        const files = await getChatFilesForContext(chatContext, { refreshStale });
+
+        if (refreshToken !== chatbarState.refreshToken) {
+            return;
+        }
+
+        const chatNames = files.map(chat => chat.fileName);
+
+        if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
+            files.unshift(normalizeChatInfo(chatContext.chatId));
+        }
+
+        renderChatFiles(listRoot, files, chatContext.chatId, {
+            onSelect: chatId => openChatById(chatId),
+        });
     }
 
     if (!chatContext.hasChat) {
@@ -5615,14 +5865,17 @@ async function refreshChatbarState() {
     }
 }
 
-function scheduleChatbarRefresh(delay = 0) {
+function scheduleChatbarRefresh(delay = 0, { refreshStale = false } = {}) {
     const chatbarState = getChatbarState();
     const safeDelay = Math.max(0, Number(delay) || 0);
 
+    chatbarState.refreshStale = Boolean(chatbarState.refreshStale || refreshStale);
     window.clearTimeout(chatbarState.refreshTimer);
     chatbarState.refreshTimer = window.setTimeout(() => {
         chatbarState.refreshTimer = 0;
-        void refreshChatbarState().catch(error => {
+        const shouldRefreshStale = Boolean(chatbarState.refreshStale);
+        chatbarState.refreshStale = false;
+        void refreshChatbarState({ refreshStale: shouldRefreshStale }).catch(error => {
             console.warn('[SillyBunny] Failed to refresh chat tools state.', error);
         });
     }, safeDelay);
@@ -5637,6 +5890,12 @@ function scheduleChatbarBindingRetry(delay = 240) {
     }, delay);
 }
 
+// Returning to the tab may follow chats made or removed in another tab, so a list older than a short window is fetched
+// again; the chat bar and the bottom picker share that one fetch.
+function handleChatListWindowReturn() {
+    invalidateChatFilesCacheIfOlderThan(SB_CHAT_FILES_FOCUS_STALE_MS);
+}
+
 function bindChatbarWindowEvents() {
     const chatbarState = getChatbarState();
 
@@ -5644,9 +5903,15 @@ function bindChatbarWindowEvents() {
         return;
     }
 
+    // One refresh per return: binding is only retried while the event source is missing, and a bound source would
+    // schedule the same refresh a second time.
     const refreshWithContext = () => {
-        window.requestAnimationFrame(() => scheduleChatbarRefresh(0));
-        bindChatbarEvents();
+        handleChatListWindowReturn();
+        if (chatbarState.boundEventSource) {
+            scheduleChatbarRefresh(0);
+        } else {
+            bindChatbarEvents();
+        }
     };
 
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
@@ -5682,28 +5947,18 @@ function bindChatbarEvents() {
         return;
     }
 
+    bindChatFilesCacheInvalidation(eventSource, eventTypes);
+
     const refresh = () => scheduleChatbarRefresh(0);
     const events = [
         eventTypes.APP_READY,
         eventTypes.CHAT_CHANGED,
         eventTypes.CHAT_LOADED,
         eventTypes.CHAT_CREATED,
+        eventTypes.CHAT_RENAMED,
         eventTypes.GROUP_CHAT_CREATED,
         eventTypes.CHAT_DELETED,
         eventTypes.GROUP_CHAT_DELETED,
-        eventTypes.MESSAGE_RECEIVED,
-        eventTypes.MESSAGE_UPDATED,
-        eventTypes.MESSAGE_EDITED,
-        eventTypes.MESSAGE_DELETED,
-        eventTypes.MESSAGE_SWIPED,
-        eventTypes.MESSAGE_SWIPE_DELETED,
-        eventTypes.CONNECTION_PROFILE_LOADED,
-        eventTypes.CONNECTION_PROFILE_CREATED,
-        eventTypes.CONNECTION_PROFILE_UPDATED,
-        eventTypes.CONNECTION_PROFILE_DELETED,
-        eventTypes.MAIN_API_CHANGED,
-        eventTypes.ONLINE_STATUS_CHANGED,
-        eventTypes.SETTINGS_UPDATED,
     ].filter(Boolean);
 
     for (const eventName of new Set(events)) {
@@ -8580,15 +8835,29 @@ function buildInChatAgentsPanel() {
         className: 'sb-shell-column ica-agents-column',
         attrs: { 'data-sb-presentation': 'manual' },
     });
-    const controller = mountAgentsPanel(column);
     scroller.appendChild(column);
+
+    let controller = null;
+    const ensureMounted = () => {
+        if (!controller) {
+            controller = mountAgentsPanel(column);
+        }
+        return controller;
+    };
 
     return {
         id: 'agents',
         panel,
         button: null,
         searchRoot: column,
-        onActivate: () => { controller.prepareReveal(); controller.onReveal(); },
+        ensureReady: async () => {
+            await ensureMounted().ready;
+        },
+        onActivate: () => {
+            const active = ensureMounted();
+            active.prepareReveal();
+            active.onReveal();
+        },
     };
 }
 
@@ -8625,12 +8894,40 @@ function buildEditorPanel() {
     const { panel, scroller } = createShellPanel({ id: 'editor' });
     const column = createElement('div', { className: 'sb-shell-column' });
     prepareEditorPanel(column);
-    initializePromptEditor(column, { openPresets: () => openShell('left', 'prompting') });
     scroller.append(column);
-    return { panel, scroller, searchRoot: column, onActivate: () => {
+
+    let mounted = false;
+    const ensureMounted = () => {
+        if (mounted) return;
+        mounted = true;
         groupAdvancedFormattingIntoDrawers();
         updateEditorPanel(panel);
-    } };
+        initializePromptEditor(column, { openPresets: () => openShell('left', 'prompting') });
+        $(document).on('change.sbEditorPanel input.sbEditorPanel', '#settings_preset_openai, #sysprompt_select, #instruct_presets, #context_presets, #sysprompt_enabled', () => {
+            window.requestAnimationFrame(() => updateEditorPanel(panel));
+        });
+        const systemBlock = document.getElementById('SystemPromptBlock');
+        if (systemBlock instanceof HTMLElement) {
+            new MutationObserver(() => updateEditorPanel(panel)).observe(systemBlock, { attributes: true, attributeFilter: ['class'] });
+        }
+    };
+
+    return {
+        panel,
+        scroller,
+        searchRoot: column,
+        ensureReady: async () => {
+            ensureMounted();
+        },
+        onActivate: () => {
+            if (!mounted) {
+                ensureMounted();
+                return;
+            }
+            groupAdvancedFormattingIntoDrawers();
+            updateEditorPanel(panel);
+        },
+    };
 }
 
 function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.panel) {
@@ -10501,7 +10798,7 @@ function getSearchMatchKey(shellKey, entry) {
     ].filter(Boolean).join('::');
 }
 
-function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true } = {}) {
+function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true, shellKeys = null } = {}) {
     const normalizedQuery = normalizeText(query);
 
     if (!normalizedQuery) {
@@ -10511,8 +10808,11 @@ function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities =
     const searchTerms = normalizedQuery.split(' ').filter(Boolean);
     const matches = new Map();
     const availableByEntry = new WeakMap();
+    const targetShells = Array.isArray(shellKeys)
+        ? shellKeys.flatMap(key => sbState.shells[key] ? [[key, sbState.shells[key]]] : [])
+        : Object.entries(sbState.shells);
 
-    for (const [shellKey, shellState] of Object.entries(sbState.shells)) {
+    for (const [shellKey, shellState] of targetShells) {
         const shellLabel = getShellConfig(shellKey)?.title || shellKey;
 
         for (const tabState of shellState.tabs.values()) {
@@ -11149,13 +11449,25 @@ function buildShell(shellKey) {
             createElement,
             getActiveApi: getCurrentMainApiValue,
             applyPanelApiVisibility: changePanelApiVisibility,
+            deferMount: true,
         });
         basePanel.scroller.appendChild(connectionsPanel.column);
         basePanel.searchRoot = connectionsPanel.column;
-        basePanel.onActivate = () => {
+        let select2Reinited = false;
+        const activateConnections = () => {
             connectionsPanel.onActivate();
+            if (!select2Reinited) {
+                select2Reinited = true;
+                reinitSelect2AfterShell();
+            }
             normalizeBackendSettingsRows(connectionsPanel.column, { fields: false });
+            const tab = getShellState('left')?.tabs.get('connections');
+            if (tab) tab.searchIndex = null;
         };
+        basePanel.ensureReady = async () => {
+            activateConnections();
+        };
+        basePanel.onActivate = activateConnections;
         basePanel.connectionsPanel = connectionsPanel;
     } else if (shellKey === 'right') {
         // The toggle row replaces the raw select before any settings pass can turn the select into a drop-down row.
@@ -11187,10 +11499,13 @@ function buildShell(shellKey) {
         }
 
         basePanel.ensureReady = initializeSettingsPanel;
-        basePanel.onActivate = () => initializeSettingsPanel().catch(error => {
-            console.error('[SillyBunny] Could not initialize settings:', error);
-            toastr.error(String(error.message || error));
-        });
+        basePanel.onActivate = () => initializeSettingsPanel()
+            .then(() => scheduleBackgroundGalleryMount())
+            .catch(error => {
+                console.error('[SillyBunny] Could not initialize settings:', error);
+                toastr.error(String(error.message || error));
+            });
+        basePanel.onDeactivate = cancelScheduledBackgroundGalleryMount;
     }
 
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);
@@ -11240,16 +11555,9 @@ function buildShell(shellKey) {
         }
 
         if (shellKey === 'left' && customTab.id === 'editor') {
-            // Build eagerly so template adoption never parks text bodies in an unmounted workspace.
+            // Keep the four empty group bodies mounted for template adoption while deferring PromptEditor setup.
             const editorPanel = buildEditorPanel();
             registerShellTab(shellKey, customTab, editorPanel, editorPanel.searchRoot);
-            $(document).on('change.sbEditorPanel input.sbEditorPanel', '#settings_preset_openai, #sysprompt_select, #instruct_presets, #context_presets, #sysprompt_enabled', () => {
-                window.requestAnimationFrame(() => updateEditorPanel(editorPanel.panel));
-            });
-            const systemBlock = document.getElementById('SystemPromptBlock');
-            if (systemBlock instanceof HTMLElement) {
-                new MutationObserver(() => updateEditorPanel(editorPanel.panel)).observe(systemBlock, { attributes: true, attributeFilter: ['class'] });
-            }
             continue;
         }
 
@@ -11809,17 +12117,15 @@ function getInlineDrawers(root = document) {
 
 function bindInlineDrawerPersistence(root = document) {
     for (const drawer of getInlineDrawers(root)) {
-        if (!(drawer instanceof HTMLElement) || !shouldPersistInlineDrawer(drawer)) {
+        if (!(drawer instanceof HTMLElement)
+            || drawer.dataset.sbDrawerPersistenceBound === 'true'
+            || !shouldPersistInlineDrawer(drawer)) {
             continue;
         }
 
         const storedExpanded = getStoredInlineDrawerExpanded(drawer);
         if (storedExpanded !== null) {
             setInlineDrawerExpanded(drawer, storedExpanded);
-        }
-
-        if (drawer.dataset.sbDrawerPersistenceBound === 'true') {
-            continue;
         }
 
         drawer.addEventListener('inline-drawer-toggle', () => {
@@ -12124,6 +12430,13 @@ function buildBottomChatBar() {
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value);
     });
+    const refreshStaleChatSelect = () => {
+        if (sbChatFilesCache.stale) {
+            scheduleBottomChatBarRefresh(0, { refreshStale: true });
+        }
+    };
+    chatSelect.addEventListener('pointerdown', refreshStaleChatSelect, { passive: true });
+    chatSelect.addEventListener('focus', refreshStaleChatSelect, { passive: true });
 
     const collapseToggleBtn = createBottomChatButton({ icon: 'fa-chevron-up', title: 'Hide Chat Actions', className: 'sb-bottom-chat-collapse-toggle' }, () => {
         setBottomChatSecondaryOpen(!getBottomChatBarState().secondaryOpen);
@@ -12222,13 +12535,91 @@ function getBottomChatFoldableButtons() {
     return [...document.querySelectorAll('.sb-bottom-chat-nav-actions > .sb-bottom-chat-btn, .sb-bottom-chat-management-actions > .sb-bottom-chat-btn')];
 }
 
+function invalidateBottomChatBarFitCache() {
+    const fitState = getBottomChatBarState();
+    fitState.widthCache = null;
+    fitState.scheduleFit?.();
+}
+
+function measureBottomChatBarThresholds(bar, buttons, overflow, cacheKey) {
+    const fitState = getBottomChatBarState();
+    bar.classList.remove('sb-bottom-chat-search-folded');
+    for (const button of buttons) {
+        button.hidden = false;
+    }
+    overflow.hidden = true;
+
+    const barStyle = getComputedStyle(bar);
+    const barGap = Number.parseFloat(barStyle.columnGap) || 0;
+    const barPad = (Number.parseFloat(barStyle.paddingInlineStart) || 0)
+        + (Number.parseFloat(barStyle.paddingInlineEnd) || 0);
+    const personaW = fitState.personaBubble?.getBoundingClientRect().width || 0;
+    const selectMinW = fitState.chatSelect instanceof HTMLElement
+        ? (Number.parseFloat(getComputedStyle(fitState.chatSelect).minWidth) || 160)
+        : 160;
+    const searchMinW = fitState.searchField instanceof HTMLElement
+        ? (Number.parseFloat(getComputedStyle(fitState.searchField).minWidth) || 140)
+        : 140;
+    const navCluster = bar.querySelector('.sb-bottom-chat-nav-actions');
+    const navCount = navCluster ? navCluster.querySelectorAll(':scope > .sb-bottom-chat-btn').length : 0;
+    const navStyle = navCluster ? getComputedStyle(navCluster) : null;
+    const clusterGap = navStyle ? (Number.parseFloat(navStyle.columnGap) || 0) : 0;
+    const navRule = navStyle
+        ? ((Number.parseFloat(navStyle.paddingInlineEnd) || 0) + (Number.parseFloat(navStyle.borderInlineEndWidth) || 0))
+        : 0;
+    const sampleBtn = buttons.find(button => !button.classList.contains('sb-bottom-chat-search-toggle'));
+    const defaultBtnW = sampleBtn?.getBoundingClientRect().width || sampleBtn?.offsetWidth || 28;
+    const buttonWidths = buttons.map(button => (
+        button.classList.contains('sb-bottom-chat-search-toggle')
+            ? defaultBtnW
+            : (button.getBoundingClientRect().width || button.offsetWidth || defaultBtnW)
+    ));
+    const searchToggleIdx = buttons.findIndex(button => button.classList.contains('sb-bottom-chat-search-toggle'));
+    const overflowW = defaultBtnW;
+
+    const widthFor = (folded, keep) => {
+        const items = [];
+        if (personaW > 0) items.push(personaW);
+        if (!folded) {
+            items.push(selectMinW, searchMinW);
+        } else {
+            items.push(fitState.searchOpen ? searchMinW : selectMinW);
+        }
+        const navKept = Math.min(keep, navCount);
+        if (navKept > 0) {
+            let navW = (navKept - 1) * clusterGap + (folded ? 0 : navRule);
+            for (let i = 0; i < navKept; i += 1) navW += buttonWidths[i];
+            items.push(navW);
+        }
+        let mgmtCount = 0;
+        let mgmtW = 0;
+        for (let i = navCount; i < keep; i += 1) {
+            if (!folded && i === searchToggleIdx) continue;
+            mgmtW += buttonWidths[i];
+            mgmtCount += 1;
+        }
+        if (mgmtCount > 1) mgmtW += (mgmtCount - 1) * clusterGap;
+        items.push(mgmtW);
+        if (keep < buttons.length) items.push(overflowW);
+        return Math.ceil(barPad + items.reduce((sum, width) => sum + width, 0) + Math.max(0, items.length - 1) * barGap);
+    };
+
+    const cache = {
+        key: cacheKey,
+        unfolded: widthFor(false, buttons.length),
+        folded: Array.from({ length: buttons.length + 1 }, (_, keep) => widthFor(true, keep)),
+    };
+    fitState.widthCache = cache;
+    return cache;
+}
+
 // SillyBunny: the bottom bar keeps one row (DESIGN.md, Header Bars and Toolbars). CSS shrinks the picker to its floor; this
 // decides the next two steps from what overflows: first the search field folds into its icon, then the trailing buttons
-// move into the overflow menu one at a time. Every pass starts from the unfolded form and ends within the same task, so a
-// verdict never depends on the last one and a wider bar gets its controls back.
+// move into the overflow menu one at a time. Thresholds are measured in one read pass per scale and reused across resizes.
 function fitBottomChatBar() {
     const bar = document.getElementById('sb-bottom-chat-bar');
-    const overflow = getBottomChatBarState().overflowButton;
+    const fitState = getBottomChatBarState();
+    const overflow = fitState.overflowButton;
     if (!(bar instanceof HTMLElement) || !(overflow instanceof HTMLElement)) {
         return;
     }
@@ -12239,30 +12630,35 @@ function fitBottomChatBar() {
     const apply = () => {
         bar.classList.toggle('sb-bottom-chat-search-folded', searchFolded);
         buttons.forEach((button, index) => {
-            button.hidden = index >= keep;
+            const nextHidden = index >= keep;
+            if (button.hidden !== nextHidden) button.hidden = nextHidden;
         });
-        overflow.hidden = keep >= buttons.length;
+        const nextOverflowHidden = keep >= buttons.length;
+        if (overflow.hidden !== nextOverflowHidden) overflow.hidden = nextOverflowHidden;
     };
-    const overflows = () => bar.scrollWidth > bar.clientWidth;
 
     if (document.documentElement.dataset.sbMobileUiMode === 'mobile') {
         apply();
         return;
     }
 
-    if (bar.clientWidth <= 0) {
+    const clientWidth = bar.clientWidth;
+    if (clientWidth <= 0) {
         return;
     }
 
-    apply();
-    if (overflows()) {
+    const cacheKey = `${sbState.bottomBarScale}:${sbState.desktopButtonScale}:${sbState.compactMode}:${Boolean(fitState.searchOpen)}:${buttons.length}`;
+    const cache = fitState.widthCache?.key === cacheKey
+        ? fitState.widthCache
+        : measureBottomChatBarThresholds(bar, buttons, overflow, cacheKey);
+
+    if (clientWidth < cache.unfolded) {
         searchFolded = true;
-        apply();
+        while (keep > 0 && cache.folded[keep] > clientWidth) {
+            keep -= 1;
+        }
     }
-    while (overflows() && keep > 0) {
-        keep -= 1;
-        apply();
-    }
+    apply();
 }
 
 function observeBottomChatBarFit(bar) {
@@ -12280,9 +12676,10 @@ function observeBottomChatBarFit(bar) {
             fitBottomChatBar();
         });
     };
+    fitState.scheduleFit = schedule;
     fitState.fitObserver = new ResizeObserver(schedule);
     fitState.fitObserver.observe(bar);
-    new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-mobile-ui-mode', 'style'] });
+    new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-mobile-ui-mode'] });
     schedule();
 }
 
@@ -12297,11 +12694,14 @@ function openBottomChatOverflowMenu(trigger, keyboard) {
     openActionMenu({ trigger, title: getBottomChatOverflowLabel(), keyboard, alignment: 'end', sections: [{ items }] });
 }
 
-function scheduleBottomChatBarRefresh(delay = 0) {
+function scheduleBottomChatBarRefresh(delay = 0, { refreshStale = false } = {}) {
+    sbState.bottomChatBarRefreshStale = Boolean(sbState.bottomChatBarRefreshStale || refreshStale);
     window.clearTimeout(sbState.bottomChatBarRefreshTimer || 0);
     sbState.bottomChatBarRefreshTimer = window.setTimeout(() => {
         sbState.bottomChatBarRefreshTimer = 0;
-        void refreshBottomChatSelect();
+        const shouldRefreshStale = Boolean(sbState.bottomChatBarRefreshStale);
+        sbState.bottomChatBarRefreshStale = false;
+        void refreshBottomChatSelect({ refreshStale: shouldRefreshStale });
     }, delay);
 }
 
@@ -12325,7 +12725,7 @@ function writeBottomChatOptions(select, entries) {
     }));
 }
 
-async function refreshBottomChatSelect() {
+async function refreshBottomChatSelect({ refreshStale = false } = {}) {
     const chatSelect = sbState.bottomChatBar?.chatSelect;
     if (!(chatSelect instanceof HTMLSelectElement)) {
         return;
@@ -12356,11 +12756,26 @@ async function refreshBottomChatSelect() {
     }
 
     if (!chatContext.canBrowseChats) {
+        sbState.bottomChatBarRefreshAttempts = 0;
+        return;
+    }
+
+    if (!getBottomChatBarState().visible && !isMobileViewport()) {
         return;
     }
 
     try {
-        const chats = await getChatFilesForContext(chatContext);
+        const result = await loadChatFilesForContext(chatContext, { refreshStale });
+        if (!result.ok) {
+            const attempts = Number(sbState.bottomChatBarRefreshAttempts ?? 0);
+            if (attempts < 30) {
+                sbState.bottomChatBarRefreshAttempts = attempts + 1;
+                scheduleBottomChatBarRefresh(250 + Math.random() * 50);
+            }
+            return;
+        }
+
+        const chats = result.files;
         const entries = chats.filter(chat => chat.fileName).map(chat => ({
             value: chat.fileName,
             label: formatChatSelectorLabel(chat.fileName, chat.tokenEstimate),
@@ -12372,16 +12787,7 @@ async function refreshBottomChatSelect() {
         }
 
         writeBottomChatOptions(chatSelect, entries);
-
-        if (chatContext.canBrowseChats && chats.length === 0) {
-            const attempts = Number(sbState.bottomChatBarRefreshAttempts ?? 0);
-            if (attempts < 30) {
-                sbState.bottomChatBarRefreshAttempts = attempts + 1;
-                scheduleBottomChatBarRefresh(200 + Math.random() * 50);
-            }
-        } else {
-            sbState.bottomChatBarRefreshAttempts = 0;
-        }
+        sbState.bottomChatBarRefreshAttempts = 0;
     } catch {
         const attempts = Number(sbState.bottomChatBarRefreshAttempts ?? 0);
         if (attempts < 30) {
@@ -12579,6 +12985,10 @@ function setBottomChatBarVisible(shouldShow, { persist = true } = {}) {
         optionSpan.textContent = nextVisible ? 'Hide Bottom Bar' : 'Show Bottom Bar';
         optionSpan.setAttribute('data-i18n', nextVisible ? 'Hide Bottom Bar' : 'Show Bottom Bar');
     }
+
+    if (nextVisible) {
+        scheduleBottomChatBarRefresh(0);
+    }
 }
 
 function toggleBottomChatBarVisibility() {
@@ -12609,8 +13019,12 @@ function bindBottomChatBarWindowEvents() {
     };
     const refreshWithContext = () => {
         syncWithWindow();
-        scheduleBottomChatBarRefresh(0);
-        bindBottomChatBarEvents();
+        handleChatListWindowReturn();
+        if (bottomChatBarState.boundEventSource) {
+            scheduleBottomChatBarRefresh(0);
+        } else {
+            bindBottomChatBarEvents();
+        }
     };
 
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
@@ -12658,6 +13072,8 @@ function bindBottomChatBarEvents() {
         return;
     }
 
+    bindChatFilesCacheInvalidation(eventSource, eventTypes);
+
     const refresh = () => scheduleBottomChatBarRefresh(0);
     const refreshPersona = () => {
         window.requestAnimationFrame(() => {
@@ -12670,13 +13086,10 @@ function bindBottomChatBarEvents() {
         eventTypes.CHAT_CHANGED,
         eventTypes.CHAT_LOADED,
         eventTypes.CHAT_CREATED,
+        eventTypes.CHAT_RENAMED,
         eventTypes.GROUP_CHAT_CREATED,
         eventTypes.CHAT_DELETED,
         eventTypes.GROUP_CHAT_DELETED,
-        eventTypes.MESSAGE_RECEIVED,
-        eventTypes.MESSAGE_UPDATED,
-        eventTypes.MESSAGE_EDITED,
-        eventTypes.MESSAGE_DELETED,
     ].filter(Boolean);
     const personaEvents = [
         eventTypes.PERSONA_CHANGED,
@@ -13026,6 +13439,66 @@ function nameChatActionsButton() {
     button.title = label;
 }
 
+function syncBodyStateClasses() {
+    const body = document.body;
+    if (!(body instanceof HTMLElement)) return;
+
+    const topHolder = document.getElementById('top-settings-holder');
+    const hasOpenFloatingDrawer = Boolean(topHolder?.querySelector('.drawer-content.openDrawer:not(.fillLeft):not(.fillRight)'));
+    const hasMaximized = hasOpenFloatingDrawer && Boolean(document.querySelector('.drawer-content.maximized'));
+    const hasOpen = hasOpenFloatingDrawer && Boolean(document.querySelector('.drawer-content.open'));
+    const hasSlideToggle = Boolean(document.querySelector('[data-slide-toggle="shown"]'));
+
+    body.classList.toggle('sb-drawer-maximized', hasMaximized);
+    body.classList.toggle('sb-drawer-open', hasOpen);
+    body.classList.toggle('sb-slide-toggle-shown', hasSlideToggle);
+}
+
+function bindBodyStateClassObservers() {
+    if (sbState.bodyStateClassObserversBound || !(document.body instanceof HTMLElement)) {
+        return;
+    }
+    sbState.bodyStateClassObserversBound = true;
+
+    let frame = 0;
+    const schedule = () => {
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => {
+            frame = 0;
+            syncBodyStateClasses();
+        });
+    };
+
+    const topHolder = document.getElementById('top-settings-holder');
+    if (topHolder instanceof HTMLElement) {
+        new MutationObserver(mutations => {
+            if (mutations.some(mutation => mutation.type === 'childList'
+                || (mutation.target instanceof HTMLElement && mutation.target.classList.contains('drawer-content')))) {
+                schedule();
+            }
+        }).observe(topHolder, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+    }
+
+    // `attributeFilter: ['data-slide-toggle']` wakes only when an extension toggles that attribute, never during chat streaming.
+    new MutationObserver(schedule).observe(document.body, {
+        attributes: true,
+        attributeFilter: ['data-slide-toggle'],
+        childList: true,
+        subtree: false,
+    });
+    const formSheld = document.getElementById('form_sheld');
+    if (formSheld instanceof HTMLElement) {
+        new MutationObserver(schedule).observe(formSheld, { childList: true, subtree: false });
+    }
+
+    syncBodyStateClasses();
+}
+
+function getActiveChatScrollKey() {
+    const chatContext = getChatUiContext();
+    return `${chatContext.group?.id ?? ''}:${chatContext.character?.avatar ?? ''}:${chatContext.chatId}`;
+}
+
 function initAll() {
     if (sbState.initialized) {
         return;
@@ -13095,9 +13568,9 @@ function initAll() {
     adoptComposerMenus();
     adoptLegacyPopup();
     initChatAvatarVariables();
+    document.documentElement.dataset.sbTopbarIconsOnly = String(isTopbarIconsOnlyActive());
     buildTopBar();
-    // Must follow buildTopBar(): it rearranges the buttons that call creates.
-    applyTopbarIconsOnlyPreference();
+    queueTopbarSectionStateSync();
     initChatModeMemory();
     getSplashPreferences();
     initRetiredKeys({ eventSource, eventTypes: event_types, accountStorage, storage: window.localStorage });
@@ -13111,8 +13584,8 @@ function initAll() {
     // fired before this listener was registered, so the initial call in
     // buildBottomChatBar() may have found no active chat yet.
     scheduleBottomChatBarRefresh(0);
-    bindTopbarDragEvents();
     bindChatbarEvents();
+    bindBodyStateClassObservers();
     bindClearCookiesAndCacheButton();
     bindMessageActionExtensionEvents();
     syncMessageActionExtensionVisibility();
@@ -13164,13 +13637,6 @@ function initAll() {
         document.addEventListener('focusin', handleComposerKeyboardFocusIn);
         document.addEventListener('focusout', handleMobileKeyboardFocusOut);
     }
-
-    // Reinitialize Select2 widgets after shell reparents DOM elements.
-    // Select2 bindings break when elements are moved in the DOM.
-    reinitSelect2AfterShell();
-
-    // Group Advanced Formatting sections into collapsible drawers
-    groupAdvancedFormattingIntoDrawers();
 
     initializeMobileShellUi();
     initializeMessageActions();
@@ -13432,6 +13898,13 @@ function openSettingsPage(shellKey, tabId = null) {
     const wasOpen = sbSettingsState.open;
     const previousShell = sbSettingsState.activeShell;
 
+    if (!wasOpen) {
+        const chatEl = getChatScrollElement();
+        sbSettingsState.savedChatScrollTop = chatEl ? chatEl.scrollTop : null;
+        sbSettingsState.savedChatScrollKey = getActiveChatScrollKey();
+        document.body?.classList.add('sb-settings-page-open');
+    }
+
     sbSettingsState.open = true;
     sbSettingsState.activeShell = shellKey;
     sbSettingsState.closeGen++;
@@ -13462,6 +13935,7 @@ function openSettingsPage(shellKey, tabId = null) {
     }
 
     document.documentElement.dataset.sbSettingsOpen = 'true';
+    scheduleBackgroundGalleryMount();
 
     if (wasOpen) {
         // Switching sections while open: no page-level animation, just swap content.
@@ -13504,6 +13978,21 @@ function closeSettingsPage() {
     const openerId = SB_TOPBAR_SECTIONS.find(section => section.shellKey === closingShell)?.leadId;
     sbSettingsState.activeTabId = null;
     delete document.documentElement.dataset.sbSettingsOpen;
+    document.body?.classList.remove('sb-settings-page-open');
+    cancelScheduledBackgroundGalleryMount();
+
+    if (sbSettingsState.savedChatScrollTop !== null && sbSettingsState.savedChatScrollTop !== undefined) {
+        const savedScrollTop = sbSettingsState.savedChatScrollTop;
+        const savedKey = sbSettingsState.savedChatScrollKey;
+        sbSettingsState.savedChatScrollTop = null;
+        sbSettingsState.savedChatScrollKey = '';
+        if (savedKey === getActiveChatScrollKey()) {
+            const chatEl = getChatScrollElement();
+            if (chatEl) {
+                chatEl.scrollTop = savedScrollTop;
+            }
+        }
+    }
 
     const closeGen = ++sbSettingsState.closeGen;
     clearSettingsAnimationState();
@@ -13798,6 +14287,11 @@ function setSettingsMobileContentView(showContent) {
     sbSettingsState.mobileContentView = showContent;
     page.classList.toggle('sb-settings-page--content', showContent);
     syncSettingsPaneInert();
+    if (showContent) {
+        scheduleBackgroundGalleryMount();
+    } else {
+        cancelScheduledBackgroundGalleryMount();
+    }
 
     if (showContent) {
         document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
@@ -14007,8 +14501,12 @@ function getSettingsSearchRoots(tabId) {
 
 function getSettingsSearchContentMatches(rawQuery) {
     const shellKey = sbSettingsState.activeShell;
+    if (!shellKey) return [];
     const matches = [];
-    for (const match of collectGlobalSearchMatches(rawQuery, { limit: Infinity })) {
+    const searchOptions = shellKey === 'characters'
+        ? { limit: Infinity, shellKeys: [], includeEntities: true }
+        : { limit: Infinity, shellKeys: [shellKey], includeEntities: false };
+    for (const match of collectGlobalSearchMatches(rawQuery, searchOptions)) {
         const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
         if (matchShell !== shellKey || !match.tabId) continue;
         // A page's own name and aliases are matched by the sidebar itself.
@@ -14041,7 +14539,7 @@ function createSettingsSearchAdapter() {
         // The Characters pages are marked, not filtered, except the two settings pages that open in them.
         canHideRows: body => sbSettingsState.activeShell !== 'characters' || Boolean(body.closest('.sb-wi-settings, .sb-persona-settings')),
         getContentMatches: getSettingsSearchContentMatches,
-        ensureReady: prepareShellSearch,
+        ensureReady: () => prepareShellSearch(sbSettingsState.activeShell ? [sbSettingsState.activeShell] : []),
         whenTabReady: whenSettingsTabReady,
         changeSelector: '#main_api, #chat_completion_source, #textgen_type',
         pulse: pulseSearchTarget,

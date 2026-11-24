@@ -206,16 +206,10 @@ async function createHiddenEntry(count, script) {
     };
 }
 
-function normalizeEntry(entity, view, dataModules) {
+function normalizeEntry(entity, view, dataModules, characterIndex = null) {
     const item = entity.item ?? entity;
     if (entity.type === 'group' || view === 'groups') {
-        const data = dataModules.script.getGroupRowData?.(item) ?? item;
-        const avatar = dataModules.groups.getGroupAvatarElement(item);
-        avatar?.querySelectorAll('img').forEach(image => {
-            image.setAttribute('loading', 'lazy');
-            image.setAttribute('decoding', 'async');
-            if (!image.hasAttribute('alt')) image.alt = '';
-        });
+        const data = groupRowData(dataModules.script, item, characterIndex);
         return {
             kind: 'group',
             key: entityKey('group', data.id ?? entity.id),
@@ -223,10 +217,10 @@ function normalizeEntry(entity, view, dataModules) {
             item,
             data,
             label: textValue(data.name ?? item.name),
-            subtitle: groupSubtitle(data, item),
             favorite: isFavorite(valueFrom(data, item, 'favorite', 'fav')),
             active: Boolean(valueFrom(data, item, 'active', 'isActive')),
-            avatar,
+            // The collage is built only when the row's presentation changes (see updateRow).
+            avatar: () => groupAvatar(dataModules.groups, item),
         };
     }
     const data = dataModules.script.getCharacterRowData?.(item, entity.id) ?? item;
@@ -237,7 +231,6 @@ function normalizeEntry(entity, view, dataModules) {
         item,
         data,
         label: textValue(data.name ?? item.name),
-        subtitle: buildSubtitle(data, item),
         favorite: isFavorite(valueFrom(data, item, 'favorite', 'fav')),
         active: Boolean(valueFrom(data, item, 'active', 'isActive')),
         avatar: {
@@ -245,6 +238,151 @@ function normalizeEntry(entity, view, dataModules) {
             alt: textValue(data.name ?? item.name),
         },
     };
+}
+
+function groupAvatar(groups, group) {
+    const avatar = groups.getGroupAvatarElement(group);
+    avatar?.querySelectorAll('img').forEach(image => {
+        image.setAttribute('loading', 'lazy');
+        image.setAttribute('decoding', 'async');
+        if (!image.hasAttribute('alt')) image.alt = '';
+    });
+    return avatar;
+}
+
+/**
+ * First index of each avatar and name, so group members resolve in O(1) instead of scanning every character.
+ * @param {object[]} characters
+ */
+export function indexCharacters(characters) {
+    if (!Array.isArray(characters)) return null;
+    const byAvatar = new Map();
+    const byName = new Map();
+    characters.forEach((character, index) => {
+        if (!character) return;
+        if (!byAvatar.has(character.avatar)) byAvatar.set(character.avatar, index);
+        if (!byName.has(character.name)) byName.set(character.name, index);
+    });
+    return { characters, byAvatar, byName };
+}
+
+/**
+ * `getGroupRowData` resolves each member with `characters.find`, which is O(C) per member. With an index, the
+ * member-derived fields are filled here using the same first-match rules (avatar or name for names, avatar only
+ * for the collage) and the rest still comes from `getGroupRowData`.
+ */
+export function groupRowData(script, group, characterIndex = null) {
+    const members = Array.isArray(group?.members) ? group.members : [];
+    if (!characterIndex || !members.length || typeof script.getGroupRowData !== 'function') return script.getGroupRowData?.(group) ?? group;
+    const data = script.getGroupRowData({ ...group, members: [] });
+    const { characters, byAvatar, byName } = characterIndex;
+    const memberNames = members.map(member => {
+        const avatarIndex = byAvatar.get(member);
+        const nameIndex = byName.get(member);
+        const index = avatarIndex === undefined ? nameIndex : nameIndex === undefined ? avatarIndex : Math.min(avatarIndex, nameIndex);
+        return index === undefined ? undefined : characters[index];
+    }).filter(Boolean).map(character => character.name);
+    const memberCount = memberNames.length;
+    return {
+        ...data,
+        memberNames,
+        memberNamesText: memberNames.join(', '),
+        memberCount,
+        memberCountText: `${memberCount} ` + (memberCount !== 1 ? t`characters` : t`character`),
+        avatarInfo: {
+            ...data?.avatarInfo,
+            memberAvatars: members
+                .map(member => byAvatar.has(member) ? characters[byAvatar.get(member)] : undefined)
+                .filter(character => character && character.avatar !== 'none')
+                .map(character => character.avatar)
+                .slice(0, 4),
+        },
+    };
+}
+
+const rowExtras = new WeakMap();
+
+/** Compact fingerprint for potentially multi-kilobyte text (e.g. creator notes) without copying or escaping it. */
+function textStamp(value) {
+    const text = textValue(value);
+    if (text.length <= 96) return text;
+    let h1 = 0x811c9dc5;
+    let h2 = 0x01000193;
+    for (let index = 0; index < text.length; index++) {
+        const ch = text.charCodeAt(index);
+        h1 = Math.imul(h1 ^ ch, 0x01000193);
+        h2 = Math.imul(h2 ^ ch, 0x85ebca6b);
+    }
+    return `${text.length}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
+}
+
+function tagListStamp(tags) {
+    if (!Array.isArray(tags) || !tags.length) return '';
+    return tags.map(tag => typeof tag === 'string'
+        ? tag
+        : `${tag?.id ?? ''}\u001d${tag?.name ?? ''}\u001d${tag?.color ?? ''}\u001d${tag?.color2 ?? ''}\u001d${tag?.is_hidden_on_character_card ? 1 : 0}`).join('\u001e');
+}
+
+/**
+ * Compact primitive presentation signature for a character/group/folder/hidden row.
+ * Excludes transient active state (handled unconditionally in `updateRow`) and avoids `JSON.stringify`.
+ */
+export function characterRowPresentationKey(entry, tags = [], actionLabels = null) {
+    if (entry.kind === 'folder') {
+        return [
+            'folder',
+            entry.folder?.id ?? '',
+            entry.folder?.name ?? '',
+            entry.folder?.color ?? '',
+            entry.scope ?? entry.folder?.scope ?? '',
+            entry.countLabel ?? '',
+            entry.expanded ? 1 : 0,
+            entry.temporaryExpansion ? 1 : 0,
+            entry.inert ? 1 : 0,
+        ].join('\u001f');
+    }
+    if (entry.kind === 'hidden') return `hidden\u001f${entry.item?.name ?? ''}`;
+    const data = entry.data ?? {};
+    const item = entry.item ?? {};
+    const labels = actionLabels ? `${actionLabels[0]}\u001d${actionLabels[1]}` : '';
+    const tagStamp = tagListStamp(tags);
+    if (entry.kind === 'group') {
+        const memberAvatars = Array.isArray(data.avatarInfo?.memberAvatars)
+            ? data.avatarInfo.memberAvatars.join('\u001d')
+            : Array.isArray(item.members) ? item.members.slice(0, 4).join('\u001d') : '';
+        return [
+            'group',
+            entry.label ?? item.name ?? '',
+            entry.favorite ? 1 : 0,
+            textValue(data.id ?? item.id),
+            textValue(data.avatarTitle),
+            textValue(data.nameTitle),
+            textValue(data.memberCountText ?? data.memberCount),
+            textValue(valueFrom(data, item, 'memberNamesText')),
+            textValue(data.avatarUrl ?? item.avatar_url),
+            data.avatarInfo?.custom ? 1 : 0,
+            memberAvatars,
+            labels,
+            tagStamp,
+        ].join('\u001f');
+    }
+    const showAvatar = Boolean(valueFrom(data, item, 'showCardAvatarUrls'));
+    return [
+        'character',
+        entry.label ?? item.name ?? '',
+        entry.favorite ? 1 : 0,
+        valueFrom(data, item, 'assistant', 'isAssistant') ? 1 : 0,
+        textValue(data.chid ?? data.id ?? entry.entity?.id),
+        textValue(entry.avatar?.src),
+        textValue(entry.avatar?.alt),
+        textValue(data.avatarTitle),
+        textValue(data.nameTitle),
+        textValue(valueFrom(data, item, 'auxFieldValue', 'characterVersion')),
+        textStamp(valueFrom(data, item, 'creatorNotes', 'description')),
+        showAvatar ? textValue(valueFrom(data, item, 'avatarFileName', 'avatar')) : '',
+        labels,
+        tagStamp,
+    ].join('\u001f');
 }
 
 function rowOptions(entry) {
@@ -274,8 +412,8 @@ function rowOptions(entry) {
         key: entry.key,
         label: entry.label,
         title: entry.label,
-        subtitle: entry.subtitle,
-        avatar: entry.avatar,
+        subtitle: entry.kind === 'group' ? groupSubtitle(data, item) : buildSubtitle(data, item),
+        avatar: typeof entry.avatar === 'function' ? entry.avatar() : entry.avatar,
         tags: true,
         badges,
         activation: 'activate',
@@ -302,43 +440,52 @@ function createRowEntry(entry, actionHandlers) {
         rowFactories.set(factory.row, factory);
         return factory.row;
     }
-    const factory = createEntityRow(rowOptions(entry));
-    const { row } = factory;
+    if (entry.kind !== 'character' && entry.kind !== 'group') {
+        const factory = createEntityRow(rowOptions(entry));
+        rowFactories.set(factory.row, factory);
+        return factory.row;
+    }
+    let row;
+    const factory = createEntityRow({
+        key: entry.key,
+        label: entry.label,
+        activation: 'activate',
+        suffix: [
+            actionButton(t`Edit`, 'pen', () => actionHandlers.edit(rowEntry(row))),
+            actionButton(t`Actions for ${entry.label}`, 'ellipsis-vertical', trigger => actionHandlers.menu(trigger, rowEntry(row))),
+        ],
+    });
+    ({ row } = factory);
     rowFactories.set(row, factory);
-    if (entry.kind !== 'character' && entry.kind !== 'group') return row;
-    factory.update({ suffix: [
-        actionButton(t`Edit`, 'pen', () => actionHandlers.edit(rowEntry(row))),
-        actionButton(t`Actions for ${entry.label}`, 'ellipsis-vertical', trigger => actionHandlers.menu(trigger, rowEntry(row))),
-    ] });
     const favoriteInput = node('input', 'ch_fav');
     favoriteInput.type = 'hidden';
     row.append(favoriteInput);
     const indicator = node('span', 'sb-character-list__active-dot');
     indicator.setAttribute('aria-hidden', 'true');
     row.append(indicator);
+    rowExtras.set(row, { favoriteInput, indicator });
     return row;
 }
 
 function updateRow(row, entry, dependencies, visible) {
     const factory = rowFactories.get(row);
     if (entry.kind === 'folder') {
-        factory.update(entry);
-        rowPresentations.set(row, JSON.stringify([entry.folder, entry.countLabel, entry.expanded, entry.temporaryExpansion, entry.inert]));
+        const signature = characterRowPresentationKey(entry);
+        if (rowPresentations.get(row) !== signature) {
+            factory.update(entry);
+            rowPresentations.set(row, signature);
+        }
         return;
     }
     const tagKey = entry.kind === 'group' ? entry.data?.id ?? entry.item.id : entry.data?.avatar ?? entry.item.avatar;
     const tags = dependencies.tags.getTagsList?.(tagKey) ?? entry.data?.tags ?? [];
-    const presentation = Object.fromEntries(Object.entries(entry.data ?? {}).filter(([key]) => key !== 'active' && key !== 'isActive'));
-    const tagPresentation = tags.map(tag => typeof tag === 'string' ? tag : Object.fromEntries(Object.entries(tag).filter(([key]) => key !== 'filter_state')));
     const actionLabels = entry.kind === 'character' || entry.kind === 'group'
         ? [t`Edit`, t`Actions for ${entry.label}`] : null;
-    const signature = JSON.stringify([
-        entry.kind, entry.label ?? entry.item.name, presentation, tagPresentation, actionLabels,
-        entry.kind === 'group' ? [...(entry.avatar?.querySelectorAll('img') ?? [])].map(image => image.getAttribute('src')) : null,
-    ]);
+    const signature = characterRowPresentationKey(entry, tags, actionLabels);
     const changed = rowPresentations.get(row) !== signature;
+    const extras = rowExtras.get(row);
     if (changed) {
-        const indicator = row.querySelector('.sb-character-list__active-dot');
+        const indicator = extras?.indicator ?? row.querySelector('.sb-character-list__active-dot');
         factory.update(rowOptions(entry));
         if (indicator) factory.slots.title.prepend(indicator);
         if (actionLabels) {
@@ -356,7 +503,7 @@ function updateRow(row, entry, dependencies, visible) {
     if (entry.kind === 'character' || entry.kind === 'group') {
         if (visible) setActiveState(row, entry.active);
         row.classList.toggle('is_fav', entry.favorite);
-        const favoriteInput = row.querySelector('.ch_fav');
+        const favoriteInput = extras?.favoriteInput ?? row.querySelector('.ch_fav');
         if (favoriteInput instanceof HTMLInputElement) favoriteInput.value = textValue(valueFrom(entry.data, entry.item, 'fav', 'favorite'));
         if (changed) rowTags(row, tagKey, entry.data, dependencies.tags);
     }
@@ -619,11 +766,13 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     function syncActiveRows() {
         if (destroyed || !listVisible) return;
+        let characterIndex = null;
         for (const { row } of state.rows.values()) {
             const entry = rowEntry(row);
             if (entry.kind !== 'character' && entry.kind !== 'group') continue;
+            if (entry.kind === 'group' && !characterIndex) characterIndex = indexCharacters(dataModules.script.characters);
             const data = entry.kind === 'group'
-                ? dataModules.script.getGroupRowData(entry.item)
+                ? groupRowData(dataModules.script, entry.item, characterIndex)
                 : dataModules.script.getCharacterRowData(entry.item, entry.entity.id);
             entry.active = Boolean(data.active ?? data.isActive);
             setActiveState(row, entry.active);
@@ -1083,11 +1232,13 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         state.visibleRows = visibleRows;
         const batchSize = batchSizeOf(state.view);
         let batches = Number(dataModules.state.getListPage?.(state.view)) || 1;
+        let characterIndex = null;
+        const getCharacterIndex = () => (characterIndex ??= indexCharacters(dataModules.script.characters));
         if (revealActiveOnRender && !selection.isActive) {
             const activeEntity = model.entities.find(entity => {
                 if (entity.type !== 'character' && entity.type !== 'group') return false;
                 const data = entity.type === 'group'
-                    ? dataModules.script.getGroupRowData(entity.item)
+                    ? groupRowData(dataModules.script, entity.item, getCharacterIndex())
                     : dataModules.script.getCharacterRowData(entity.item, entity.id);
                 return Boolean(data.active ?? data.isActive);
             });
@@ -1102,7 +1253,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         footer.hidden = showMore.isComplete;
         const pageEntries = pageRows.map(entry => entry.kind === 'folder'
             ? { ...entry, inert: selection.isActive }
-            : { ...normalizeEntry(entry.entity, view, dataModules), folderId: entry.folderId });
+            : { ...normalizeEntry(entry.entity, view, dataModules, entry.entity.type === 'group' || view === 'groups' ? getCharacterIndex() : null), folderId: entry.folderId });
         const hidden = getHiddenCount(model);
         if (model.hasAnyFilter && hidden > 0) pageEntries.push(await createHiddenEntry(hidden, dataModules.script));
         if (revision !== renderRevision) return;

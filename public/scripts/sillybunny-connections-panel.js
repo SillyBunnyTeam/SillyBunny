@@ -71,13 +71,15 @@ function createHelpButton() {
  * @param {(apiId: string) => void} deps.applyPanelApiVisibility
  * @returns {object}
  */
-export function createConnectionsPanel({ createElement, getActiveApi, applyPanelApiVisibility }) {
+export function createConnectionsPanel({ createElement, getActiveApi, applyPanelApiVisibility, deferMount = false }) {
     const column = createElement('div', {
         className: `sb-shell-column ${SB_CONNECTIONS_PANEL_CLASS}`,
         attrs: { 'data-sb-presentation': 'manual', 'data-sb-connections-panel': '' },
     });
     const state = {
         backend: backendForApi(getActiveApi()),
+        scaffolded: false,
+        eventsBound: false,
         mounted: false,
         profileMounted: false,
         generalMounted: false,
@@ -94,48 +96,58 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         providerGroups: [],
     };
 
-    const profileGroup = createPrefGroup({
-        title: t`Connection Profile`,
-        subtitle: t`Setup all-in-one profiles that save all your settings in one go`,
-        field: 'profile',
-        headerSuffix: createHelpButton(),
-    });
-    profileGroup.section.classList.add('sb-connections-profile');
+    let profileGroup = null;
+    let backendGroup = null;
+    let generalGroup = null;
+    let backendToggle = null;
 
-    const backendGroup = createPrefGroup({
-        title: t`Backend`,
-        subtitle: t`Change the backend source and type here. Chat Completions is recommended by default`,
-        field: 'backend',
-    });
-    backendGroup.section.classList.add('sb-connections-backend');
-    const generalGroup = createPrefGroup({ title: t`General`, subtitle: t`Settings that affect all connection types`, field: 'general' });
-
-    const providerSlots = [];
-    for (const provider of SB_PROVIDER_BLOCKS) {
-        const slot = createElement('section', {
-            className: 'sb-connections-provider',
-            attrs: { 'data-sb-provider': provider.api },
+    function ensureScaffold() {
+        if (state.scaffolded) return;
+        state.backend = backendForApi(getActiveApi());
+        profileGroup = createPrefGroup({
+            title: t`Connection Profile`,
+            subtitle: t`Setup all-in-one profiles that save all your settings in one go`,
+            field: 'profile',
+            headerSuffix: createHelpButton(),
         });
-        slot.hidden = true;
-        providerSlots.push(slot);
-        state.providerSlots.set(provider.api, slot);
-    }
-    column.append(profileGroup.section, backendGroup.section, ...providerSlots, generalGroup.section);
+        profileGroup.section.classList.add('sb-connections-profile');
 
-    const backendToggle = createToggleRow({
-        label: t`Backend Type`,
-        field: 'backend-type',
-        fill: true,
-        choices: [
-            ['chat', t`Chat Completions`],
-            ['text', t`Text Completions`],
-            ['other', t`Other`],
-        ],
-        value: state.backend,
-        onChange: next => selectBackend(next, { byHand: true }),
-    });
-    backendGroup.append(backendToggle);
-    state.controllers.push(backendToggle);
+        backendGroup = createPrefGroup({
+            title: t`Backend`,
+            subtitle: t`Change the backend source and type here. Chat Completions is recommended by default`,
+            field: 'backend',
+        });
+        backendGroup.section.classList.add('sb-connections-backend');
+        generalGroup = createPrefGroup({ title: t`General`, subtitle: t`Settings that affect all connection types`, field: 'general' });
+
+        const providerSlots = [];
+        for (const provider of SB_PROVIDER_BLOCKS) {
+            const slot = createElement('section', {
+                className: 'sb-connections-provider',
+                attrs: { 'data-sb-provider': provider.api },
+            });
+            slot.hidden = true;
+            providerSlots.push(slot);
+            state.providerSlots.set(provider.api, slot);
+        }
+        column.append(profileGroup.section, backendGroup.section, ...providerSlots, generalGroup.section);
+
+        backendToggle = createToggleRow({
+            label: t`Backend Type`,
+            field: 'backend-type',
+            fill: true,
+            choices: [
+                ['chat', t`Chat Completions`],
+                ['text', t`Text Completions`],
+                ['other', t`Other`],
+            ],
+            value: state.backend,
+            onChange: next => selectBackend(next, { byHand: true }),
+        });
+        backendGroup.append(backendToggle);
+        state.controllers.push(backendToggle);
+        state.scaffolded = true;
+    }
 
     function moveNode(node, destination) {
         if (!(node instanceof Node) || !(destination instanceof Node)) return;
@@ -549,24 +561,34 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         state.generalMounted = true;
     }
 
-    function mount() {
+    function mount({ syncSlots = true } = {}) {
         const root = document.getElementById('rm_api_block');
-        if (!(root instanceof HTMLElement)) return;
+        if (!(root instanceof HTMLElement)) return false;
+        ensureScaffold();
         loadListEditorStyles();
         mountProfile(root);
         mountProviders(root);
         mountSourceRows();
         mountGeneralControls(root);
         state.mounted = true;
-        updateProviderSlots();
-        updateSourceRows();
+        if (syncSlots) {
+            updateProviderSlots();
+            updateSourceRows();
+        }
+        observeUpstreamMarkup();
+        if (!state.eventsBound) {
+            state.eventsBound = true;
+            bindEvents();
+        }
+        return true;
     }
 
     function syncFromApi() {
-        mount();
+        ensureScaffold();
+        mount({ syncSlots: false });
         const active = getActiveApi();
         state.backend = backendForApi(active);
-        backendToggle.setValue(state.backend);
+        backendToggle?.setValue(state.backend);
         updateProviderSlots();
         updateSourceRows();
         applyPanelApiVisibility(active);
@@ -604,10 +626,9 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         state.unlisten.push(() => eventSource.off?.(name, handler));
     }
 
-    mount();
-    observeUpstreamMarkup();
-    bindEvents();
-    syncFromApi();
+    if (!deferMount) {
+        syncFromApi();
+    }
 
     return {
         column,
@@ -626,11 +647,22 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
             for (const restore of state.restorePresentation.splice(0).reverse()) restore();
             for (const node of state.generated.splice(0).reverse()) node.remove();
             for (const { node, className } of state.legacyClasses.splice(0).reverse()) node.classList.remove(className);
+            state.sourceRows.clear();
+            state.providerSlots.clear();
+            state.providerGroups.length = 0;
+            state.otherSelect = null;
+            column.replaceChildren();
+            profileGroup = null;
+            backendGroup = null;
+            generalGroup = null;
+            backendToggle = null;
+            state.scaffolded = false;
+            state.eventsBound = false;
             state.mounted = false;
             state.profileMounted = false;
             state.generalMounted = false;
         },
-        getBackend: () => state.backend,
+        getBackend: () => state.mounted ? state.backend : backendForApi(getActiveApi()),
         isMounted: () => state.mounted,
     };
 }

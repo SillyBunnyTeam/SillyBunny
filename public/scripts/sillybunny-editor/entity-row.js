@@ -4,8 +4,11 @@ const rowSlotOrder = ['grip', 'avatar', 'text', 'badge', 'suffix', 'chevron'];
 const textSlotOrder = ['title', 'subtitle', 'preview', 'tags'];
 const tagStrips = new WeakMap();
 const observedStrips = new Set();
+/** "+N" chip widths keyed by root font size, strip classes and N; cleared when web fonts finish loading. */
+const overflowWidthCache = new Map();
 let tagStripObserver = null;
 let fontRefitFrame = 0;
+let stripPruneFrame = 0;
 let fontListenerBound = false;
 const slotClasses = {
     row: ['ds-entity-row'],
@@ -120,12 +123,13 @@ function applyTagLimit(container, { chips, names, overflow }, visibleCount) {
 
 function fitTagStrips(entries) {
     const pending = [];
+    // One probe per distinct "+N" label per pass; later rows reuse the cached width instead of appending probes.
+    const probes = new Map();
+    const rootFontSize = getComputedStyle(document.documentElement).fontSize;
     for (const { target: container, contentRect } of entries) {
         const strip = tagStrips.get(container);
         if (!strip || !container.isConnected) {
-            tagStripObserver.unobserve(container);
-            tagStrips.delete(container);
-            observedStrips.delete(container);
+            forgetStrip(container);
             continue;
         }
         const width = contentRect.width;
@@ -133,38 +137,62 @@ function fitTagStrips(entries) {
         strip.width = width;
         const candidates = strip.chips.slice(0, strip.max);
         for (const chip of candidates) chip.hidden = false;
-        const probes = new Map();
-        // Measure every possible count together, including digit-boundary changes (+10 → +9).
+        const overflowKeys = new Map();
+        // Measure every possible count, including digit-boundary changes (+10 → +9).
         for (let visible = 0; visible <= candidates.length; visible++) {
             const hidden = strip.names.length - visible;
             if (!hidden) continue;
+            const key = `${rootFontSize}|${container.className}|${hidden}`;
+            overflowKeys.set(visible, key);
+            if (overflowWidthCache.has(key) || probes.has(key)) continue;
             const probe = createTagOverflow(hidden);
             probe.classList.add('sb-tag-overflow--measure');
             probe.setAttribute('aria-hidden', 'true');
-            probes.set(visible, probe);
+            probes.set(key, probe);
             container.append(probe);
         }
-        pending.push({ container, strip, width, candidates, probes });
+        pending.push({ container, strip, width, candidates, overflowKeys });
     }
 
     // All strips are prepared before any layout reads, and all reads precede final hiding.
+    for (const [key, probe] of probes) overflowWidthCache.set(key, probe.getBoundingClientRect().width);
     const measured = pending.map(work => ({
         ...work,
         gap: parseFloat(getComputedStyle(work.container).columnGap) || 0,
         chipWidths: work.candidates.map(chip => chip.getBoundingClientRect().width),
-        overflowWidths: new Map([...work.probes].map(([visible, probe]) => [visible, probe.getBoundingClientRect().width])),
     }));
-    for (const { container, strip, width, gap, chipWidths, overflowWidths, probes } of measured) {
+    for (const probe of probes.values()) probe.remove();
+    for (const { container, strip, width, gap, chipWidths, overflowKeys } of measured) {
         let visibleCount = 0;
         let usedWidth = 0;
         for (let visible = 1; visible <= chipWidths.length; visible++) {
             usedWidth += chipWidths[visible - 1] + (visible > 1 ? gap : 0);
-            const requiredWidth = usedWidth + (overflowWidths.has(visible) ? gap + overflowWidths.get(visible) : 0);
+            const overflowWidth = overflowKeys.has(visible) ? overflowWidthCache.get(overflowKeys.get(visible)) ?? 0 : null;
+            const requiredWidth = usedWidth + (overflowWidth === null ? 0 : gap + overflowWidth);
             if (requiredWidth <= width) visibleCount = visible;
         }
         applyTagLimit(container, strip, visibleCount);
-        for (const probe of probes.values()) probe.remove();
     }
+}
+
+function forgetStrip(container) {
+    tagStripObserver?.unobserve(container);
+    tagStrips.delete(container);
+    observedStrips.delete(container);
+}
+
+/**
+ * Rows replaced by a re-render leave their strips detached; ResizeObserver does not always report that, so the
+ * strong `observedStrips` set is swept once per frame after strips are registered.
+ */
+function scheduleStripPrune() {
+    if (stripPruneFrame || typeof requestAnimationFrame !== 'function') return;
+    stripPruneFrame = requestAnimationFrame(() => {
+        stripPruneFrame = 0;
+        for (const container of observedStrips) {
+            if (!container.isConnected) forgetStrip(container);
+        }
+    });
 }
 
 /**
@@ -173,12 +201,13 @@ function fitTagStrips(entries) {
  */
 function refitStripsAfterFontLoad() {
     if (fontRefitFrame) return;
+    overflowWidthCache.clear();
     fontRefitFrame = requestAnimationFrame(() => {
         fontRefitFrame = 0;
         for (const container of observedStrips) {
             const strip = tagStrips.get(container);
             if (!strip || !container.isConnected) {
-                observedStrips.delete(container);
+                forgetStrip(container);
                 continue;
             }
             strip.width = null;
@@ -203,11 +232,7 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
         throw new TypeError('Full tag names must be an array of strings.');
     }
 
-    if (tagStrips.has(container)) {
-        tagStripObserver.unobserve(container);
-        tagStrips.delete(container);
-        observedStrips.delete(container);
-    }
+    if (tagStrips.has(container)) forgetStrip(container);
     const chips = [];
     for (const child of [...container.children]) {
         if (child.matches('.sb-tag-overflow')) child.remove();
@@ -226,6 +251,7 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
     tagStrips.set(container, strip);
     observedStrips.add(container);
     tagStripObserver.observe(container);
+    scheduleStripPrune();
 }
 
 /**

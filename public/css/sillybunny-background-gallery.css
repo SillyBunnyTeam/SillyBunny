@@ -172,9 +172,13 @@
     color: var(--sb-osd-ink);
     opacity: 0;
     cursor: pointer;
-    -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
     transition: opacity var(--sb-transition-fast);
+}
+
+.bg_example {
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
 }
 
 .sb-bg-cell-menu:focus {

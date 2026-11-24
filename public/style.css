@@ -21,7 +21,6 @@
 @import url(css/streaming-display.css);
 
 :root {
-    interpolate-size: allow-keywords;
     --doc-height: 100%;
     --transparent: rgba(0, 0, 0, 0);
 
@@ -5881,8 +5880,8 @@ body:not(.caption) .mes_img_caption {
 
 }
 
-body:has(.drawer-content.maximized) #top-settings-holder:has(.drawer-content.openDrawer:not(.fillLeft):not(.fillRight)),
-body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDrawer:not(.fillLeft):not(.fillRight)),
+body.sb-drawer-maximized #top-settings-holder,
+body.sb-drawer-open #top-settings-holder,
 .drawer {
     align-items: center;
     justify-content: center;

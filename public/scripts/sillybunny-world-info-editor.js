@@ -39,6 +39,16 @@ const STYLESHEETS = [
 ];
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
+/** Controls `update()` touches on every pass, captured once when the row is built. */
+const entryRowRefs = new WeakMap();
+
+/**
+ * Row signature from exactly what `makeEntryRow` renders. `content` never reaches the row and
+ * `disable` is applied by `update()`, so editing either reuses the row instead of rebuilding it.
+ */
+export function worldInfoRowSignature(entry, reorderable, fallbackTitle = 'Untitled entry') {
+    return [entryTitle(entry, fallbackTitle), entryStrategy(entry), entryKeyPreview(entry), entryBadge(entry), reorderable ? 1 : 0].join('\u001f');
+}
 
 /** Collects stable, deduplicated character/persona links for a book without changing saved data. */
 export function collectWorldInfoUsers(name, characterList, charLore, personas, descriptions) {
@@ -638,6 +648,7 @@ export function mountWorldInfoEditor(container) {
             slots.grip.setAttribute('aria-disabled', 'false');
             slots.grip.title = t`Drag to Reorder ${title}`;
         }
+        entryRowRefs.set(row, { enableInput: enabled, inertTargets: [enableTarget, more, slots.grip].filter(Boolean) });
         return row;
     }
 
@@ -690,15 +701,21 @@ export function mountWorldInfoEditor(container) {
                 actions: total ? [] : [{ label: t`New Entry`, primary: true, onActivate: () => run(() => clickTransport('world_popup_new')) }],
             });
         }
+        const reorderable = customSort() && !searchControl.query;
+        const untitled = t`Untitled entry`;
+        const selecting = Boolean(selection?.isActive);
+        const selected = String(selectedUid());
         reconcileRows({
             container: entryBox, cache: rows, entries: pagination.slice(entries), key: entry => `entry:${entry.uid}`,
-            signature: entry => JSON.stringify([entry, customSort(), Boolean(searchControl.query)]),
+            signature: entry => worldInfoRowSignature(entry, reorderable, untitled),
             create: makeEntryRow,
             update: (row, entry) => {
-                row.classList.toggle('is-selected', !selection?.isActive && String(selectedUid()) === String(entry.uid));
+                row.classList.toggle('is-selected', !selecting && selected === String(entry.uid));
                 row.classList.toggle('is-disabled', Boolean(entry.disable));
-                row.querySelector('.sb-wi-row-enable input').checked = !entry.disable;
-                for (const control of row.querySelectorAll('.sb-wi-row-enable, .sb-wi-row-menu, .sb-wi-grip')) control.inert = Boolean(selection?.isActive);
+                const refs = entryRowRefs.get(row);
+                if (!refs) return;
+                refs.enableInput.checked = !entry.disable;
+                for (const control of refs.inertTargets) control.inert = selecting;
             },
         });
         searchControl.report(entries.length, total);
