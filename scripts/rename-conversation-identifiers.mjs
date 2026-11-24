@@ -383,7 +383,7 @@ const NAME_OVERRIDES = {
 
 // The line of an upstream-origin file that the rename changes gets this marker, which the
 // upstream-sync rules need on every divergence.
-const UPSTREAM_MARKER_WHY = 'this is the Conversation module\'s export for its chat term.';
+const UPSTREAM_MARKER_WHY = 'Home renames and deletes Conversation mode chats through that module\'s exports.';
 
 /**
  * A bare local name takes the second name in a file that already holds the first. The roleplay
