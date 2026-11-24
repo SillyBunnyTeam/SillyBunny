@@ -10,7 +10,7 @@
 //              moves the files with `git mv` and rewrites the names. It never commits.
 //
 //   node scripts/rename-conversation-identifiers.mjs inventory --out <dir>
-//   node scripts/rename-conversation-identifiers.mjs apply --map <dir>/rename-map.json [--include-stored]
+//   node scripts/rename-conversation-identifiers.mjs apply --map <dir>/rename-map.json [--include-stored] [--exclude <path>]...
 //
 // A name in the stored table is a property or a value in stored data. It keeps its name in the
 // commit that applies this map, because the storage switch writes the new name together with the
@@ -53,6 +53,17 @@ const OUT_OF_SCOPE_PATTERNS = [
 ];
 
 const BINARY_EXTENSION = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|zip|7z|mp3|ogg|wav|mp4|webm|pdf|gz|bin|jar|apk|wasm|model)$/i;
+
+// Files that keep the old names on purpose when `--include-stored` renames the stored names: they read or write the
+// shape of the old store (the legacy reader's tests and fixture, the key compatibility test, and the browser's one-time
+// import of its old localStorage data, whose wire format is that shape). `*` matches any characters except `/`.
+// `--exclude <path>` adds more; the list applies only to `--include-stored`.
+const STORED_RENAME_EXCLUDES = Object.freeze([
+    'public/scripts/sillybunny-conversation/legacy-import.js',
+    'tests/conversation-legacy*',
+    'tests/util/conversation-legacy-fixture.js',
+    'tests/sillybunny-conversation-key-compatibility.test.js',
+]);
 
 // Task 1T rewrites or deletes these. They import names from renamed client modules, so only the
 // imported names and the module paths change in them, and only so that the server still starts.
@@ -457,11 +468,16 @@ function isPrimaryFile(file) {
  * @param {RegExp|null} surfacePattern Names of the module's surface (exports, ids, classes, action ids): a file that holds one is in scope
  * @returns {{files: {file: string, text: string, role: FileRole}[], skipped: {file: string, reason: string}[]}} Scope
  */
-function collectScope(surfacePattern = null) {
+function collectScope(surfacePattern = null, excludes = []) {
     const files = [];
     const skipped = [];
+    const excluded = excludes.map(pathPatternOf);
     for (const file of git(['ls-files', '-z']).split('\0').filter(Boolean)) {
         if (BINARY_EXTENSION.test(file) || file === SCRIPT_PATH || !fs.existsSync(path.join(repoRoot, file))) {
+            continue;
+        }
+        if (excluded.some(pattern => pattern.test(file))) {
+            skipped.push({ file, reason: 'excluded: it keeps the old names on purpose' });
             continue;
         }
         const primary = isPrimaryFile(file);
@@ -502,6 +518,15 @@ function collectScope(surfacePattern = null) {
         files.push({ file, text, role: mentionsServer ? 'mixed' : 'secondary' });
     }
     return { files, skipped };
+}
+
+/**
+ * @param {string} entry A repository path, where `*` matches any characters except `/`
+ * @returns {RegExp} Matches that path and nothing else
+ */
+function pathPatternOf(entry) {
+    const body = entry.split('*').map(part => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*');
+    return new RegExp(`^${body}$`);
 }
 
 function loadUpstreamOriginFiles() {
@@ -930,11 +955,13 @@ function surfacePatternOf(scope) {
 }
 
 /**
- * @param {{includeStored?: boolean}} options Options
+ * @param {{includeStored?: boolean, excludes?: string[]}} options Options. `excludes` are paths that are added to the
+ * default exclusions of `--include-stored`.
  * @returns {object} The plan: moves, entries, edits of every file and the reports that the map needs
  */
-function buildPlan({ includeStored = false } = {}) {
-    const scope = collectScope(surfacePatternOf(collectScope()));
+function buildPlan({ includeStored = false, excludes = [] } = {}) {
+    const stillExcluded = includeStored ? [...STORED_RENAME_EXCLUDES, ...excludes] : [];
+    const scope = collectScope(surfacePatternOf(collectScope(null, stillExcluded)), stillExcluded);
     const upstreamOrigin = loadUpstreamOriginFiles();
     const scanned = new Map();
     const records = new Map();
@@ -1471,7 +1498,7 @@ async function formatFixtures(plan) {
 }
 
 function parseArguments(argv) {
-    const options = { includeStored: false, out: process.cwd(), map: null, allowDirty: false };
+    const options = { includeStored: false, out: process.cwd(), map: null, allowDirty: false, excludes: [] };
     for (let index = 0; index < argv.length; index++) {
         const argument = argv[index];
         if (argument === '--include-stored') {
@@ -1482,6 +1509,11 @@ function parseArguments(argv) {
             options.out = path.resolve(argv[++index]);
         } else if (argument === '--map') {
             options.map = path.resolve(argv[++index]);
+        } else if (argument === '--exclude') {
+            if (!argv[index + 1]) {
+                throw new Error('--exclude needs a path');
+            }
+            options.excludes.push(argv[++index]);
         } else {
             throw new Error(`unknown argument ${argument}`);
         }
@@ -1492,7 +1524,7 @@ function parseArguments(argv) {
 async function main() {
     const [command = 'inventory', ...rest] = process.argv.slice(2);
     const options = parseArguments(rest);
-    const plan = buildPlan({ includeStored: options.includeStored });
+    const plan = buildPlan({ includeStored: options.includeStored, excludes: options.excludes });
     plan.includeStored = options.includeStored;
     const rows = groupRows(plan);
     if (command === 'inventory') {
@@ -1524,7 +1556,7 @@ async function main() {
     throw new Error(`unknown command ${command}`);
 }
 
-export { buildPlan, findCollisions, groupRows, hasStem, mechanicalName, shapeOf, lineOf, repoRoot };
+export { buildPlan, findCollisions, groupRows, hasStem, mechanicalName, parseArguments, pathPatternOf, shapeOf, lineOf, repoRoot, STORED_RENAME_EXCLUDES };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
     main().catch((error) => {
