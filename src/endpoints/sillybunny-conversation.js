@@ -13,12 +13,17 @@
  * | `not_found` | 404 |
  * | `corrupt` | 422 |
  * | `exists`, `integrity`, `destructive` | 409 (`destructive` also carries a `reason`) |
+ * | `migration_failed` | 503, from every route but `/migration/status`, which says why |
+ *
+ * The first request of a user to any route here moves that user's conversations out of `settings.json` (see
+ * `conversation-migration.js`), so every route reads the new layout. The server never does it at startup.
  */
 
 import path from 'node:path';
 
 import express from 'express';
 
+import { ensureMigrated, importLegacyThreads } from '../conversation-migration.js';
 import {
     ConversationStoreError,
     createChat,
@@ -51,6 +56,7 @@ const STATUS_BY_CODE = Object.freeze({
     integrity: 409,
     destructive: 409,
     unavailable: 500,
+    migration_failed: 503,
 });
 const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description'];
 const CREATE_CHAT_FIELDS = ['id', 'name', 'activate'];
@@ -91,16 +97,27 @@ function answerError(response, error) {
     response.status(500).send({ error: 'internal' });
 }
 
+/** Moves the user's old conversations to the new layout on the first call, and refuses while that has failed. */
+function requireNewLayout(user) {
+    if (ensureMigrated(user).state === 'failed') {
+        throw new ConversationStoreError('migration_failed', 'The conversations could not be moved to their new storage. /migration/status says why.');
+    }
+}
+
 /**
  * Runs a handler with the request's body as a plain object, and answers its errors. The handler's return value is
  * the JSON answer, unless it answers on its own and returns undefined.
  * @param {(user: any, body: Record<string, any>, request: import('express').Request, response: import('express').Response) => unknown} handler
+ * @param {{ needsNewLayout?: boolean }} [options] False for the one route that reports the migration instead of needing it.
  */
-function route(handler) {
+function route(handler, { needsNewLayout = true } = {}) {
     return async (request, response) => {
         try {
             if (!isPlainObject(request.body)) {
                 throw invalidInput('The request body must be a JSON object.');
+            }
+            if (needsNewLayout) {
+                requireNewLayout(request.user);
             }
             const answer = await handler(request.user, request.body, request, response);
             if (answer !== undefined && !response.headersSent) {
@@ -159,6 +176,7 @@ router.post('/avatar/remove', route((user, body) => ({ conversation: removeConve
 
 router.get('/avatar', (request, response) => {
     try {
+        requireNewLayout(request.user);
         if (typeof request.query.id !== 'string') {
             throw invalidInput('id must be a conversation id.');
         }
@@ -220,10 +238,26 @@ router.post('/characters/update', route((user, body) => ({
 })));
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Migration of the old store in settings.json. The migration itself is not written yet.
+// Migration of the old store in settings.json
 
-router.post('/migration/status', route(() => ({ state: 'not_migrated' })));
+/**
+ * The state of the move from `settings.json`, after running it if this is the first request of the user:
+ * `nothing_to_migrate`, `migrated` (with a `report` of counts when this server run did it), or `failed` (with `error`,
+ * and `retryAfterMs`, the time before another request tries again). `settings.json` is unchanged while it is `failed`.
+ */
+router.post('/migration/status', route(user => {
+    const state = ensureMigrated(user);
+    if (state.state === 'failed') {
+        return { state: 'failed', error: { code: state.code, message: state.message }, retryAfterMs: Math.max(0, state.retryAt - Date.now()) };
+    }
+    return state;
+}, { needsNewLayout: false }));
 
-router.post('/import-legacy', route((_user, _body, _request, response) => {
-    response.status(501).send({ error: 'not_implemented' });
+/**
+ * The browser's one-time move of the very old `localStorage` data: `{ personaId, characters: { <avatar>: <thread> } }`.
+ * Answers `{ state: 'imported', conversations, chats, messages }`, or `{ state: 'already_imported' }` after the first time.
+ */
+router.post('/import-legacy', route((user, body) => {
+    onlyFields(body, ['personaId', 'characters'], 'import-legacy');
+    return importLegacyThreads(user, body);
 }));

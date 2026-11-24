@@ -214,7 +214,7 @@ function parseMarkers(value, field) {
 }
 
 const REMINDER_TIME_FIELDS = ['triggerAt', 'createdAt', 'firedAt', 'retryAfter', 'lastAttemptAt', 'invalidAt', 'skippedAt'];
-const REMINDER_FIELDS = ['id', 'avatar', 'chatId', 'text', 'fired', 'attempts', ...REMINDER_TIME_FIELDS];
+export const REMINDER_FIELDS = ['id', 'avatar', 'chatId', 'text', 'fired', 'attempts', ...REMINDER_TIME_FIELDS];
 
 function parseReminder(value, field) {
     parseKnownKeys(value, REMINDER_FIELDS, field);
@@ -535,7 +535,7 @@ function readNames(value, { max = MAX_GROUP_MEMBERS } = {}) {
     return [...new Set(value.filter(isSafeName))].slice(0, max);
 }
 
-function readSettings(value) {
+export function readSettings(value) {
     if (!isPlainObject(value)) {
         return {};
     }
@@ -550,7 +550,7 @@ function readSettings(value) {
     return settings;
 }
 
-function readMarkers(value) {
+export function readMarkers(value) {
     if (!isPlainObject(value)) {
         return {};
     }
@@ -581,7 +581,7 @@ function readChatEntry(value, createdAtFallback) {
     return entry;
 }
 
-function readReminders(value) {
+export function readReminders(value) {
     if (!Array.isArray(value)) {
         return [];
     }

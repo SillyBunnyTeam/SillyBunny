@@ -410,19 +410,6 @@ describe('the state of characters', () => {
     });
 });
 
-describe('the migration routes', () => {
-    test('the status says that nothing has been migrated', async () => {
-        expect(await post('/migration/status', {})).toMatchObject({ status: 200, json: { state: 'not_migrated' } });
-    });
-
-    test('the legacy import is not there yet', async () => {
-        const before = snapshotTree();
-
-        expect(await post('/import-legacy', { store: {} })).toMatchObject({ status: 501, json: { error: 'not_implemented' } });
-        expect(snapshotTree()).toEqual(before);
-    });
-});
-
 describe('what the routes refuse', () => {
     let conversation;
 
