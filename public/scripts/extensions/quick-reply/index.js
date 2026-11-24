@@ -52,15 +52,28 @@ let autoExec;
 export let quickReplyApi;
 
 
-const loadSets = async () => {
-    const response = await fetch('/api/settings/get', {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({}),
-    });
+let consumedInitialSettingsSnapshot = false;
 
-    if (response.ok) {
-        const setList = (await response.json()).quickReplyPresets ?? [];
+const loadSets = async () => {
+    // SillyBunny: reuse the startup /api/settings/get payload exposed by extensions.js instead of firing a duplicate POST at boot.
+    const initialSnapshot = !consumedInitialSettingsSnapshot ? globalThis.__sbGetInitialSettingsSnapshot?.() : null;
+    consumedInitialSettingsSnapshot = true;
+
+    let settingsData = initialSnapshot;
+    if (!settingsData) {
+        const response = await fetch('/api/settings/get', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({}),
+        });
+        if (!response.ok) {
+            return;
+        }
+        settingsData = await response.json();
+    }
+
+    {
+        const setList = settingsData.quickReplyPresets ?? [];
         const migratedSets = [];
         for (const set of setList) {
             if (set.version !== 2) {

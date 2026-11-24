@@ -2,7 +2,7 @@ import { main_api } from '../../../script.js';
 import { getContext } from '../../extensions.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
-import { getFriendlyTokenizerName, getTextTokens, getTokenCountAsync, tokenizers } from '../../tokenizers.js';
+import { getFriendlyTokenizerName, getTextTokensAsync, getTokenCountAsync, tokenizers } from '../../tokenizers.js';
 import { resetScrollHeight, debounce } from '../../utils.js';
 import { debounce_timeout } from '../../constants.js';
 import { POPUP_TYPE, callGenericPopup } from '../../popup.js';
@@ -14,9 +14,16 @@ async function doTokenCounter() {
     const html = await renderExtensionTemplateAsync('token-counter', 'window', { tokenizerName });
 
     const dialog = $(html);
+    let activeCountSeq = 0;
     const countDebounced = debounce(async () => {
+        const seq = ++activeCountSeq;
         const text = String($('#token_counter_textarea').val());
-        const ids = main_api == 'openai' ? getTextTokens(tokenizers.OPENAI, text) : getTextTokens(tokenizerId, text);
+        // SillyBunny: use async token encoding so live typing never blocks the main thread on sync XHR.
+        const targetTokenizer = main_api == 'openai' ? tokenizers.OPENAI : tokenizerId;
+        const ids = text.length > 0 ? await getTextTokensAsync(targetTokenizer, text) : [];
+        if (seq !== activeCountSeq) {
+            return;
+        }
 
         if (Array.isArray(ids) && ids.length > 0) {
             $('#token_counter_ids').text(`[${ids.join(', ')}]`);
@@ -27,12 +34,15 @@ async function doTokenCounter() {
             }
         } else {
             const count = await getTokenCountAsync(text);
+            if (seq !== activeCountSeq) {
+                return;
+            }
             $('#token_counter_ids').text('—');
             $('#token_counter_result').text(count);
             $('#tokenized_chunks_display').text('—');
         }
 
-        if (!CSS.supports('field-sizing', 'content')) {
+        if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && !CSS.supports('field-sizing', 'content')) {
             await resetScrollHeight($('#token_counter_textarea'));
             await resetScrollHeight($('#token_counter_ids'));
         }
@@ -48,8 +58,9 @@ async function doTokenCounter() {
  * Draws the tokenized chunks in the UI
  * @param {string[]} chunks
  * @param {number[]} ids
+ * @param {HTMLElement | null} [container]
  */
-function drawChunks(chunks, ids) {
+export function drawChunks(chunks, ids, container = null) {
     const pastelRainbow = [
         //main_text_color,
         //italics_text_color,
@@ -61,7 +72,13 @@ function drawChunks(chunks, ids) {
         '#BAE1FF',
         '#FFBAF3',
     ];
-    $('#tokenized_chunks_display').empty();
+    const displayEl = container ?? $('#tokenized_chunks_display').get(0);
+    if (!displayEl) {
+        return;
+    }
+
+    // SillyBunny: batch all chunk elements into a single DocumentFragment and replaceChildren once.
+    const fragment = document.createDocumentFragment();
 
     for (let i = 0; i < chunks.length; i++) {
         let chunk = chunks[i].replace(/[▁Ġ]/g, ' '); // This is a leading space in sentencepiece. More info: Lower one eighth block (U+2581)
@@ -74,16 +91,23 @@ function drawChunks(chunks, ids) {
 
         // If newline - insert a line break
         if (chunk === '\n') {
-            $('#tokenized_chunks_display').append('<br>');
+            fragment.appendChild(document.createElement('br'));
             continue;
         }
 
         const color = pastelRainbow[i % pastelRainbow.length];
-        const chunkHtml = $('<code></code>');
-        chunkHtml.css('background-color', color);
-        chunkHtml.text(chunk);
-        chunkHtml.attr('title', ids[i]);
-        $('#tokenized_chunks_display').append(chunkHtml);
+        const chunkEl = document.createElement('code');
+        chunkEl.style.backgroundColor = color;
+        chunkEl.textContent = chunk;
+        chunkEl.setAttribute('title', String(ids[i]));
+        fragment.appendChild(chunkEl);
+    }
+
+    if (typeof displayEl.replaceChildren === 'function') {
+        displayEl.replaceChildren(fragment);
+    } else {
+        displayEl.textContent = '';
+        displayEl.appendChild(fragment);
     }
 }
 

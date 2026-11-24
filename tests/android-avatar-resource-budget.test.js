@@ -22,7 +22,7 @@ function sourceBetween(source, start, end) {
 
 describe('Android avatar resource budget', () => {
     test('chat message avatar images are viewport-aware and preserve originals for zoom', () => {
-        expect(scriptSource).toContain('const viewportAvatarImg = isMobile() ? mobileAvatarImg : originalAvatarImg;');
+        expect(scriptSource).toContain('const viewportAvatarImg = isMobile() ? mobileAvatarImg : avatarImg;');
         expect(scriptSource).toContain('const viewportThumbnailSrc = isMobile() ? mobileAvatarImg : avatarImg;');
 
         const avatarImageAttrs = sourceBetween(

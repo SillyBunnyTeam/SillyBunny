@@ -114,7 +114,16 @@ const genericExtensionSettingsClasses = new Set([
 
 let extensionSettingsDedupeObserver = null;
 let extensionSettingsDedupeScheduled = false;
+const observedExtensionSettingsContainers = new WeakSet();
 let bundledOptInSettingsLoaded = false;
+/** @type {object|null} */
+let initialSettingsSnapshot = null;
+
+// SillyBunny: expose the boot /api/settings/get payload to bundled extensions during activation so they do not re-fetch it.
+export function getInitialSettingsSnapshot() {
+    return initialSettingsSnapshot;
+}
+globalThis.__sbGetInitialSettingsSnapshot = getInitialSettingsSnapshot;
 
 const getApiUrl = () => extension_settings.apiUrl;
 const sortManifestsByOrder = (a, b) => parseInt(a.loading_order) - parseInt(b.loading_order) || String(a.display_name).localeCompare(String(b.display_name));
@@ -133,10 +142,6 @@ let manifests = {};
  */
 const defaultUrl = 'http://localhost:5100';
 const extensionSecondaryPrefetchAssets = Object.freeze({
-    gallery: [
-        { path: 'nanogallery2.woff.min.css', as: 'style' },
-        { path: 'jquery.nanogallery2.min.js', as: 'script' },
-    ],
     tts: [
         { path: 'kokoro-worker.js', as: 'script' },
         { path: 'lib/kokoro.web.js', as: 'script' },
@@ -225,17 +230,15 @@ function scheduleExtensionAssetPrefetch() {
             return;
         }
 
-        for (const [name, manifest] of Object.entries(manifests)) {
-            if (isExtensionDisabled(name)) {
-                continue;
-            }
-
-            prefetchExtensionAsset(name, manifest.js, 'script');
-            prefetchExtensionAsset(name, manifest.css, 'style');
-
-            const secondaryAssets = extensionSecondaryPrefetchAssets[name] ?? [];
-            for (const asset of secondaryAssets) {
-                prefetchExtensionAsset(name, asset.path, asset.as);
+        // SillyBunny: do not prefetch already-activating extension entry JS/CSS or unused Gallery/Kokoro bundles;
+        // only warm Kokoro's 2 MiB runtime when TTS is enabled and Kokoro is the active provider.
+        const shouldPrefetchKokoro = Object.hasOwn(manifests, 'tts')
+            && !isExtensionDisabled('tts')
+            && Boolean(extension_settings.tts?.enabled)
+            && extension_settings.tts?.currentProvider === 'Kokoro';
+        if (shouldPrefetchKokoro) {
+            for (const asset of extensionSecondaryPrefetchAssets.tts) {
+                prefetchExtensionAsset('tts', asset.path, asset.as);
             }
         }
     });
@@ -608,11 +611,24 @@ export async function doExtrasFetch(endpoint, args = {}) {
 
 /**
  * Discovers extensions from the API.
- * @returns {Promise<{name: string, type: string}[]>}
+ * @returns {Promise<{name: string, type: string, manifest?: object}[]>}
  */
 async function discoverExtensions() {
     try {
-        const response = await fetch('/api/extensions/discover');
+        // SillyBunny: consume early <head> prefetch when available and request inline manifests (?manifests=1).
+        const prefetched = globalThis.__sbBootPrefetch?.extensionsDiscover;
+        if (prefetched && typeof prefetched.then === 'function') {
+            delete globalThis.__sbBootPrefetch.extensionsDiscover;
+            const prefetchedResponse = await prefetched.catch(() => null);
+            if (prefetchedResponse?.ok && !prefetchedResponse.bodyUsed) {
+                return await prefetchedResponse.json();
+            }
+        }
+
+        let response = await fetch('/api/extensions/discover?manifests=1');
+        if (!response.ok) {
+            response = await fetch('/api/extensions/discover');
+        }
 
         if (response.ok) {
             const extensions = await response.json();
@@ -951,6 +967,14 @@ function scheduleExtensionSettingsDedupe() {
     });
 }
 
+function observeExtensionSettingsContainer(container) {
+    if (!(container instanceof HTMLElement) || !extensionSettingsDedupeObserver || observedExtensionSettingsContainers.has(container)) {
+        return;
+    }
+    observedExtensionSettingsContainers.add(container);
+    extensionSettingsDedupeObserver.observe(container, { childList: true, subtree: false });
+}
+
 function observeExtensionSettingsDrawers() {
     if (extensionSettingsDedupeObserver) {
         extensionSettingsDedupeObserver.disconnect();
@@ -964,18 +988,46 @@ function observeExtensionSettingsDrawers() {
         return;
     }
 
-    extensionSettingsDedupeObserver = new MutationObserver(scheduleExtensionSettingsDedupe);
-    hosts.forEach(host => extensionSettingsDedupeObserver.observe(host, { childList: true, subtree: true }));
+    // SillyBunny: watch only top-level host and .extension_container childList changes (subtree: false)
+    // so inner settings control mutations never trigger full drawer scans.
+    extensionSettingsDedupeObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const added of mutation.addedNodes) {
+                if (added instanceof HTMLElement && added.classList.contains('extension_container')) {
+                    observeExtensionSettingsContainer(added);
+                }
+            }
+        }
+        scheduleExtensionSettingsDedupe();
+    });
+    for (const host of hosts) {
+        extensionSettingsDedupeObserver.observe(host, { childList: true, subtree: false });
+        for (const child of host.children) {
+            if (child instanceof HTMLElement && child.classList.contains('extension_container')) {
+                observeExtensionSettingsContainer(child);
+            }
+        }
+    }
     scheduleExtensionSettingsDedupe();
 }
 
 /**
- * Loads manifest.json files for extensions.
+ * Loads manifest.json files for extensions, reusing inline manifests from /api/extensions/discover?manifests=1 when available.
  * @param {string[]} names Array of extension names
+ * @param {Map<string, object>|null} [inlineManifests=null] Optional map of inline manifests keyed by extension name
  * @returns {Promise<Record<string, object>>} Object with extension names as keys and their manifests as values
  */
-async function getManifests(names) {
+export async function getManifests(names, inlineManifests = null) {
     const results = await Promise.all(names.map(async name => {
+        const inlineManifest = inlineManifests?.get?.(name);
+        if (inlineManifest && typeof inlineManifest === 'object') {
+            return {
+                name,
+                ok: true,
+                manifest: inlineManifest,
+            };
+        }
+
         try {
             const response = await fetch(getExtensionAssetUrl(name, 'manifest.json'));
             if (!response.ok) {
@@ -1158,8 +1210,11 @@ async function addExtensionsButtonAndMenu() {
         return;
     }
 
-    const buttonHTML = await renderTemplateAsync('wandButton');
-    const extensionsMenuHTML = await renderTemplateAsync('wandMenu');
+    // SillyBunny: fetch both wand templates concurrently.
+    const [buttonHTML, extensionsMenuHTML] = await Promise.all([
+        renderTemplateAsync('wandButton'),
+        renderTemplateAsync('wandMenu'),
+    ]);
 
     $(document.body).append(extensionsMenuHTML);
     $('#leftSendForm').append(buttonHTML);
@@ -2277,8 +2332,9 @@ export async function installExtension(url, global, branch = '') {
  * @param {object} settings App Settings
  * @param {boolean} versionChanged Is this a version change?
  * @param {boolean} enableAutoUpdate Enable auto-update
+ * @param {object|null} [initialSettingsPayload=null] Raw /api/settings/get payload from startup
  */
-export async function loadExtensionSettings(settings, versionChanged, enableAutoUpdate) {
+export async function loadExtensionSettings(settings, versionChanged, enableAutoUpdate, initialSettingsPayload = null) {
     const persistedExtensionSettings = settings.extension_settings;
     const hasPersistedProcessedIds = Array.isArray(persistedExtensionSettings?.bundledOptInProcessedExtensions);
     const shouldInitializeProcessedIds = !bundledOptInSettingsLoaded && !hasPersistedProcessedIds;
@@ -2297,7 +2353,13 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     const extensions = await discoverExtensions();
     extensionNames = extensions.map(x => x.name);
     extensionTypes = Object.fromEntries(extensions.map(x => [x.name, x.type]));
-    manifests = await getManifests(extensionNames);
+    const inlineManifests = new Map();
+    for (const ext of extensions) {
+        if (ext?.name && ext.manifest && typeof ext.manifest === 'object') {
+            inlineManifests.set(ext.name, ext.manifest);
+        }
+    }
+    manifests = await getManifests(extensionNames, inlineManifests);
 
     // An extension without a loadable manifest cannot be used: drop it so state queries
     // and the extensions list do not report a ghost entry (e.g. leftover folder on disk)
@@ -2340,7 +2402,14 @@ export async function loadExtensionSettings(settings, versionChanged, enableAuto
     // SillyBunny: extension settings are injected by many independent modules,
     // so guard the shared settings columns against duplicate top-level drawers.
     observeExtensionSettingsDrawers();
-    await activateExtensions();
+    initialSettingsSnapshot = initialSettingsPayload && typeof initialSettingsPayload === 'object'
+        ? initialSettingsPayload
+        : null;
+    try {
+        await activateExtensions();
+    } finally {
+        initialSettingsSnapshot = null;
+    }
     if (extension_settings.autoConnect && extension_settings.apiUrl) {
         connectToApi(extension_settings.apiUrl);
     }

@@ -317,7 +317,7 @@ import {
     updatePersonaConnectionsAvatarList,
     isPersonaPanelOpen,
 } from './scripts/personas.js';
-import { getBackgrounds, initBackgrounds, loadBackgroundSettings, background_settings } from './scripts/backgrounds.js';
+import { ensureBackgroundsLoaded, initBackgrounds, loadBackgroundSettings, background_settings } from './scripts/backgrounds.js';
 import { dismissPreloader, loader } from './scripts/action-loader.js';
 import { BulkEditOverlay } from './scripts/BulkEditOverlay.js';
 import { initTextGenModels } from './scripts/textgen-models.js';
@@ -499,15 +499,14 @@ export {
 };
 
 /**
- * Wait for page to load before continuing the app initialization.
+ * Wait for DOM and deferred classic scripts before continuing app initialization.
  */
-await new Promise((resolve) => {
-    if (document.readyState === 'complete') {
-        resolve();
-    } else {
-        window.addEventListener('load', resolve);
-    }
-});
+// SillyBunny: start boot on DOMContentLoaded readiness instead of stalling on window.load (fonts, stylesheets, and splash frames).
+if (document.readyState === 'loading') {
+    await new Promise((resolve) => {
+        document.addEventListener('DOMContentLoaded', resolve, { once: true });
+    });
+}
 
 // Configure toast library:
 toastr.options = {
@@ -891,9 +890,24 @@ export const extension_prompt_roles = {
 
 export const MAX_INJECTION_DEPTH = 10000;
 
+// SillyBunny: consume one-shot early <head> boot prefetches once so runtime retries always hit the server.
+function consumeBootPrefetchResponse(key) {
+    const prefetch = globalThis.__sbBootPrefetch;
+    if (!prefetch || typeof prefetch !== 'object' || !(key in prefetch)) {
+        return null;
+    }
+    const pending = prefetch[key];
+    delete prefetch[key];
+    return pending && typeof pending.then === 'function' ? pending : null;
+}
+
 async function getClientVersion() {
     try {
-        const response = await fetch('/version');
+        const prefetched = consumeBootPrefetchResponse('version');
+        const prefetchedResponse = prefetched ? await prefetched.catch(() => null) : null;
+        const response = (prefetchedResponse?.ok && !prefetchedResponse.bodyUsed)
+            ? prefetchedResponse
+            : await fetch('/version');
         const data = await response.json();
         CLIENT_VERSION = data.agent;
         currentVersion = data.pkgVersion;
@@ -1073,8 +1087,21 @@ export function getRequestHeaders({ omitContentType = false } = {}) {
  */
 export async function refreshCsrfToken() {
     if (!csrfTokenRefreshPromise) {
-        // SillyBunny: recover from server restarts that rotate the CSRF secret without a full page reload.
+        // SillyBunny: recover from server restarts that rotate the CSRF secret without a full page reload,
+        // while consuming the one-shot <head> CSRF prefetch on initial startup when available.
         csrfTokenRefreshPromise = (async () => {
+            const prefetched = consumeBootPrefetchResponse('csrf');
+            if (prefetched) {
+                const prefetchedResponse = await prefetched.catch(() => null);
+                if (prefetchedResponse?.ok && !prefetchedResponse.bodyUsed) {
+                    const prefetchedData = await prefetchedResponse.json().catch(() => null);
+                    if (prefetchedData?.token) {
+                        token = prefetchedData.token;
+                        return token;
+                    }
+                }
+            }
+
             const tokenResponse = await fetch('/csrf-token', {
                 cache: 'no-store',
                 credentials: 'same-origin',
@@ -1132,8 +1159,59 @@ export async function pingServer() {
     }
 }
 
+function isLoopbackOrAndroidWebView(hostname = window.location?.hostname, userAgent = navigator.userAgent) {
+    const host = String(hostname || '').trim().toLowerCase();
+    if (
+        host === '127.0.0.1'
+        || host === 'localhost'
+        || host === '::1'
+        || host === '[::1]'
+        || host.endsWith('.localhost')
+    ) {
+        return true;
+    }
+
+    const ua = String(userAgent || '');
+    return /Android/i.test(ua) && (/\bwv\b/i.test(ua) || /Version\/\d+\.\d+/i.test(ua) || /SillyBunnyAndroid/i.test(ua));
+}
+
+async function retireLoopbackServiceWorkerAndCaches() {
+    try {
+        if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(registration => registration.unregister().catch(() => false)));
+        }
+    } catch (error) {
+        console.debug('Could not unregister loopback service worker.', error);
+    }
+
+    if ('caches' in globalThis) {
+        try {
+            const cacheNames = await caches.keys();
+            const sillyBunnyCaches = cacheNames.filter(name => String(name).startsWith('sillybunny-cache-'));
+            await Promise.all(sillyBunnyCaches.map(name => caches.delete(name).catch(() => false)));
+        } catch (error) {
+            console.debug('Could not purge loopback SillyBunny Cache Storage.', error);
+        }
+    }
+}
+
 function registerSillyBunnyServiceWorker() {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) {
+        return;
+    }
+
+    // SillyBunny: skip SW registration on loopback and Android WebView to avoid Cache Storage disk thrash
+    // and renderer memory overhead; silently retire any legacy SW and sillybunny-cache-* entries during idle.
+    if (isLoopbackOrAndroidWebView()) {
+        const cleanup = () => {
+            void retireLoopbackServiceWorkerAndCaches();
+        };
+        if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(cleanup, { timeout: 5000 });
+        } else {
+            window.setTimeout(cleanup, 1500);
+        }
         return;
     }
 
@@ -1186,6 +1264,101 @@ function rememberBootSurface() {
     }
 }
 
+let clearActiveBootApiPrefetch = null;
+
+function beginBootApiPrefetch() {
+    if (typeof globalThis.fetch !== 'function') {
+        return () => {};
+    }
+
+    const baseFetch = globalThis.fetch.bind(globalThis);
+    const pendingByRoute = new Map();
+    const registerPrefetch = (key, promise) => {
+        pendingByRoute.set(key, Promise.resolve(promise).catch(() => null));
+    };
+
+    // SillyBunny: kick off independent startup reads in parallel once CSRF resolves,
+    // while keeping exact application and event order when each subsystem awaits them.
+    const prefetchedLang = consumeBootPrefetchResponse('lang');
+    registerPrefetch('GET:/locales/lang.json', prefetchedLang ?? baseFetch('/locales/lang.json'));
+    registerPrefetch('POST:/api/secrets/read', baseFetch('/api/secrets/read', {
+        method: 'POST',
+        headers: getRequestHeaders({ omitContentType: true }),
+    }));
+    registerPrefetch('POST:/api/settings/get', baseFetch('/api/settings/get', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({}),
+        cache: 'no-cache',
+    }));
+    registerPrefetch('POST:/api/avatars/get', baseFetch('/api/avatars/get', {
+        method: 'POST',
+        headers: getRequestHeaders({ omitContentType: true }),
+    }));
+    registerPrefetch('POST:/api/characters/all', baseFetch('/api/characters/all', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({}),
+    }));
+    registerPrefetch('POST:/api/groups/all', baseFetch('/api/groups/all', {
+        method: 'POST',
+        headers: getRequestHeaders({ omitContentType: true }),
+    }));
+
+    const domainInvalidators = [
+        ['/api/secrets/', '/api/secrets/read', 'POST:/api/secrets/read'],
+        ['/api/settings/', '/api/settings/get', 'POST:/api/settings/get'],
+        ['/api/avatars/', '/api/avatars/get', 'POST:/api/avatars/get'],
+        ['/api/characters/', '/api/characters/all', 'POST:/api/characters/all'],
+        ['/api/groups/', '/api/groups/all', 'POST:/api/groups/all'],
+    ];
+
+    const wrappedFetch = async (input, init) => {
+        if (pendingByRoute.size > 0 && (typeof input === 'string' || input instanceof URL)) {
+            let pathname = '';
+            try {
+                pathname = new URL(String(input), window.location?.origin || 'http://localhost').pathname;
+            } catch {
+                pathname = '';
+            }
+            const method = String(init?.method || 'GET').toUpperCase();
+            const key = `${method}:${pathname}`;
+
+            if (pendingByRoute.has(key)) {
+                const pending = pendingByRoute.get(key);
+                pendingByRoute.delete(key);
+                const prefetchedResponse = await pending;
+                if (prefetchedResponse?.ok && !prefetchedResponse.bodyUsed) {
+                    return prefetchedResponse;
+                }
+            } else if (method !== 'GET' && pathname) {
+                for (const [prefix, readPath, cacheKey] of domainInvalidators) {
+                    if (pathname.startsWith(prefix) && pathname !== readPath) {
+                        pendingByRoute.delete(cacheKey);
+                    }
+                }
+            }
+        }
+
+        return baseFetch(input, init);
+    };
+
+    globalThis.fetch = wrappedFetch;
+    clearActiveBootApiPrefetch = () => {
+        pendingByRoute.clear();
+    };
+
+    return () => {
+        pendingByRoute.clear();
+        if (clearActiveBootApiPrefetch) {
+            clearActiveBootApiPrefetch = null;
+        }
+        if (globalThis.fetch === wrappedFetch) {
+            globalThis.fetch = baseFetch;
+        }
+    };
+}
+
 //MARK: firstLoadInit
 async function firstLoadInit() {
     // SillyBunny: boot timing mark; the other three live in sillybunny-boot-marks.js, sillybunny-splash.js and sillybunny-boot-guard.js.
@@ -1193,8 +1366,12 @@ async function firstLoadInit() {
     // SillyBunny: `.splash-screen` is the boot guard's "the app is booting" marker. It is added here
     // rather than in index.html so a bundle that never runs still surfaces the 25s boot failure.
     document.querySelector('#preloader .sb-boot-splash')?.classList.add('splash-screen');
+    let restoreBootFetch = null;
     try {
+        // SillyBunny: kick off /version alongside /csrf-token before authenticated startup fetches begin.
+        const clientVersionPromise = getClientVersion();
         await refreshCsrfToken();
+        restoreBootFetch = beginBootApiPrefetch();
 
         registerPromptManagerMigration();
         initDomHandlers();
@@ -1217,7 +1394,7 @@ async function firstLoadInit() {
         applyBrowserFixes();
         // SillyBunny: version data and localized secret controls are independent startup reads.
         await Promise.all([
-            getClientVersion(),
+            clientVersionPromise,
             (async () => {
                 await initSecrets();
                 await readSecretState();
@@ -1244,7 +1421,8 @@ async function firstLoadInit() {
         initTags();
         initBookmarks();
         scheduleDeferredStartupStylesheets();
-        await dismissPreloader();
+        // SillyBunny: start the splash fade-out without stalling getCharacters() or APP_READY on CSS transitionend.
+        void dismissPreloader();
         await getUserAvatars(true, user_avatar);
         await getCharacters();
         // SillyBunny: convert opt-in legacy tag folders once, after characters and groups exist to classify tag_map keys.
@@ -1259,7 +1437,6 @@ async function firstLoadInit() {
             tagFilterType: FILTER_TYPES.TAG,
             notify: () => globalThis.toastr?.info?.(t`Your tag folders are now folders. Manage them from Manage Folders in the Characters menu.`),
         });
-        await getBackgrounds();
         await initTokenizers();
         initBackgrounds();
         initAuthorsNote();
@@ -1288,9 +1465,17 @@ async function firstLoadInit() {
         initSwipePicker();
         addDebugFunctions();
         doDailyExtensionUpdatesCheck();
+        restoreBootFetch?.();
+        restoreBootFetch = null;
         await eventSource.emit(event_types.APP_INITIALIZED);
         await fixViewport();
         await eventSource.emit(event_types.APP_READY);
+        // SillyBunny: active background CSS is already applied by loadBackgroundSettings(); hydrate gallery list off the critical APP_READY path.
+        if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(() => { void ensureBackgroundsLoaded(); }, { timeout: 2500 });
+        } else {
+            window.setTimeout(() => { void ensureBackgroundsLoaded(); }, 250);
+        }
         rememberBootSurface();
         window.addEventListener('pagehide', rememberBootSurface);
     } catch (error) {
@@ -1298,7 +1483,8 @@ async function firstLoadInit() {
         toastr.error(t`SillyBunny couldn't finish starting. Please refresh the page.`, t`Startup error`, { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true }); // SillyBunny: capitalisation by DESIGN.md
         throw error;
     } finally {
-        await dismissPreloader();
+        restoreBootFetch?.();
+        void dismissPreloader();
     }
 }
 
@@ -2673,29 +2859,78 @@ function waitForNextFrame() {
     return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
-function getChatRenderLifecycleRolloutQueryValue() {
-    try {
-        return new URLSearchParams(globalThis.location?.search ?? '').get(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY);
-    } catch {
-        return null;
-    }
+let cachedLifecycleRolloutSearch = null;
+let cachedLifecycleRolloutQueryValue = null;
+let cachedLifecycleRolloutStorageLoaded = false;
+let cachedLifecycleRolloutStorageValue = null;
+const cachedLifecycleRolloutByRoute = new Map();
+
+function resetChatRenderLifecycleRolloutCache() {
+    cachedLifecycleRolloutSearch = null;
+    cachedLifecycleRolloutQueryValue = null;
+    cachedLifecycleRolloutStorageLoaded = false;
+    cachedLifecycleRolloutStorageValue = null;
+    cachedLifecycleRolloutByRoute.clear();
 }
 
-function getChatRenderLifecycleRolloutStorage() {
-    try {
-        return globalThis.localStorage ?? null;
-    } catch {
-        return null;
-    }
+globalThis.__sbResetChatRenderLifecycleRolloutCache = resetChatRenderLifecycleRolloutCache;
+if (typeof globalThis.addEventListener === 'function') {
+    globalThis.addEventListener('storage', (event) => {
+        if (!event || !event.key || event.key === CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY) {
+            resetChatRenderLifecycleRolloutCache();
+        }
+    });
 }
+
+function getChatRenderLifecycleRolloutQueryValue() {
+    const search = String(globalThis.location?.search ?? '');
+    if (search === cachedLifecycleRolloutSearch) {
+        return cachedLifecycleRolloutQueryValue;
+    }
+
+    cachedLifecycleRolloutSearch = search;
+    try {
+        cachedLifecycleRolloutQueryValue = search
+            ? new URLSearchParams(search).get(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY)
+            : null;
+    } catch {
+        cachedLifecycleRolloutQueryValue = null;
+    }
+    cachedLifecycleRolloutByRoute.clear();
+    return cachedLifecycleRolloutQueryValue;
+}
+
+function getChatRenderLifecycleRolloutStorageValue() {
+    if (!cachedLifecycleRolloutStorageLoaded) {
+        cachedLifecycleRolloutStorageLoaded = true;
+        try {
+            cachedLifecycleRolloutStorageValue = globalThis.localStorage?.getItem(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY) ?? null;
+        } catch {
+            cachedLifecycleRolloutStorageValue = null;
+        }
+    }
+    return cachedLifecycleRolloutStorageValue;
+}
+
+const cachedLifecycleRolloutStorageReader = Object.freeze({
+    getItem: (key) => (key === CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY ? getChatRenderLifecycleRolloutStorageValue() : null),
+});
 
 function isChatRenderLifecycleRolloutEnabled(route = null) {
-    // SillyBunny: explicit overrides remain global; defaults are per-route for one-route-at-a-time rollout.
-    return resolveChatRenderLifecycleRollout({
-        queryValue: getChatRenderLifecycleRolloutQueryValue(),
+    // SillyBunny: memoize rollout evaluation per route so scroll, stream, and resize hot paths avoid URLSearchParams and localStorage reads.
+    const queryValue = getChatRenderLifecycleRolloutQueryValue();
+    const cacheKey = route ?? '';
+    if (cachedLifecycleRolloutByRoute.has(cacheKey)) {
+        return cachedLifecycleRolloutByRoute.get(cacheKey);
+    }
+
+    const enabled = resolveChatRenderLifecycleRollout({
+        queryValue,
         route,
-        storage: getChatRenderLifecycleRolloutStorage(),
+        storage: cachedLifecycleRolloutStorageReader,
     }).enabled;
+    cachedLifecycleRolloutByRoute.set(cacheKey, enabled);
+    return enabled;
 }
 
 function captureVisibleChatMessageAnchor() {
@@ -2774,7 +3009,9 @@ function applyStreamingVisibleWrite(messageId, {
 
     if (messageTimerDom instanceof HTMLElement) {
         messageTimerDom.textContent = timePassed.timerValue;
-        messageTimerDom.title = timePassed.timerTitle;
+        if (isFinal || timePassed.timerTitle) {
+            messageTimerDom.title = timePassed.timerTitle;
+        }
     }
 
     onRendered?.(performance.now() - renderStartedAt);
@@ -4510,12 +4747,6 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         mes = mes.replaceAll('\\begin{align*}', '$$');
         mes = mes.replaceAll('\\end{align*}', '$$');
         mes = converter.makeHtml(mes);
-
-        mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
-            // Firefox creates extra newlines from <br>s in code blocks, so we replace them before converting newlines to <br>s.
-            return match.replace(/\n/gm, '\u0000');
-        });
-        mes = mes.replace(/\u0000/g, '\n'); // Restore converted newlines
         mes = mes.trim();
 
         mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
@@ -5253,26 +5484,110 @@ export function appendMediaToMessage(mes, messageElement, scrollBehavior = SCROL
     });
 }
 
+const HLJS_AUTO_LANGUAGE_CANDIDATES = Object.freeze([
+    'javascript', 'typescript', 'python', 'json', 'bash', 'xml', 'html',
+    'css', 'markdown', 'yaml', 'sql', 'c', 'cpp', 'csharp', 'java', 'go', 'rust',
+]);
+const HLJS_LARGE_UNLABELED_BLOCK_CHARS = 2048;
+let cachedHljsAutoSubset = null;
+let codeBlockHighlightObserver = null;
+
+function getHljsAutoLanguageSubset() {
+    if (!cachedHljsAutoSubset) {
+        cachedHljsAutoSubset = typeof hljs?.getLanguage === 'function'
+            ? HLJS_AUTO_LANGUAGE_CANDIDATES.filter(lang => Boolean(hljs.getLanguage(lang)))
+            : [...HLJS_AUTO_LANGUAGE_CANDIDATES];
+    }
+    return cachedHljsAutoSubset;
+}
+
+function highlightCodeElementNow(codeEl) {
+    if (!(codeEl instanceof HTMLElement) || codeEl.dataset.sbHighlighted === 'true') {
+        return;
+    }
+    codeEl.dataset.sbHighlighted = 'true';
+    const existingCopy = codeEl.querySelector(':scope > .code-copy');
+    existingCopy?.remove();
+    try {
+        const hasExplicitLang = /\blang(?:uage)?-[\w-]+/i.test(codeEl.className);
+        const rawCode = codeEl.textContent ?? '';
+        if (!hasExplicitLang && rawCode.length > HLJS_LARGE_UNLABELED_BLOCK_CHARS && typeof hljs?.highlightAuto === 'function') {
+            // SillyBunny: cap auto-detection on >2 KB unlabeled blocks to common languages instead of scanning 192 grammars.
+            const result = hljs.highlightAuto(rawCode, getHljsAutoLanguageSubset());
+            codeEl.innerHTML = result.value;
+            codeEl.classList.add('hljs');
+            if (result.language) {
+                codeEl.classList.add(`language-${result.language}`);
+            }
+        } else {
+            hljs.highlightElement(codeEl);
+        }
+    } finally {
+        if (existingCopy) {
+            codeEl.appendChild(existingCopy);
+        }
+    }
+}
+
+function scheduleCodeElementHighlight(codeEl) {
+    if (!(codeEl instanceof HTMLElement) || codeEl.dataset.sbHighlighted === 'true') {
+        return;
+    }
+    if (typeof IntersectionObserver === 'undefined') {
+        highlightCodeElementNow(codeEl);
+        return;
+    }
+    if (codeEl.isConnected) {
+        const rect = codeEl.getBoundingClientRect();
+        const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 900;
+        if (rect.bottom >= -200 && rect.top <= viewportHeight + 200) {
+            highlightCodeElementNow(codeEl);
+            return;
+        }
+    }
+    if (!codeBlockHighlightObserver) {
+        codeBlockHighlightObserver = new IntersectionObserver((entries, observer) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting && entry.target instanceof HTMLElement) {
+                    observer.unobserve(entry.target);
+                    highlightCodeElementNow(entry.target);
+                }
+            }
+        }, { rootMargin: '300px 0px' });
+    }
+    codeBlockHighlightObserver.observe(codeEl);
+    if (!codeEl.isConnected) {
+        requestAnimationFrame(() => {
+            if (!codeEl.isConnected) {
+                codeBlockHighlightObserver?.unobserve(codeEl);
+                highlightCodeElementNow(codeEl);
+            }
+        });
+    }
+}
+
 export function addCopyToCodeBlocks(messageElement) {
     const codeBlocks = $(messageElement).find('pre code');
     for (let i = 0; i < codeBlocks.length; i++) {
+        const codeEl = codeBlocks.get(i);
         // SillyBunny: metadata-only refreshes keep the code node and its existing copy handler.
-        if (codeBlocks.get(i).querySelector(':scope > .code-copy')) {
+        if (codeEl.querySelector(':scope > .code-copy')) {
             continue;
         }
-        hljs.highlightElement(codeBlocks.get(i));
         const copyButton = document.createElement('i');
         copyButton.classList.add('fa-solid', 'fa-copy', 'code-copy', 'interactable');
         copyButton.title = 'Copy code';
-        codeBlocks.get(i).appendChild(copyButton);
+        codeEl.appendChild(copyButton);
         copyButton.addEventListener('click', function (e) {
             e.stopPropagation();
         });
         copyButton.addEventListener('pointerup', async function () {
-            const text = codeBlocks.get(i).textContent;
+            const text = codeEl.textContent;
             await copyText(text);
             toastr.info(t`Copied!`, '', { timeOut: 2000 });
         });
+        // SillyBunny: defer syntax highlighting for offscreen code blocks via IntersectionObserver.
+        scheduleCodeElementHighlight(codeEl);
     }
 }
 
@@ -5480,17 +5795,16 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         'type': mes.extra?.type ?? '',
     });
 
-    const viewportAvatarImg = isMobile() ? mobileAvatarImg : originalAvatarImg;
+    // SillyBunny: render viewport-sized thumbnails on both mobile and desktop chat rows while preserving originalAvatarImg for click-to-zoom.
+    const viewportAvatarImg = isMobile() ? mobileAvatarImg : avatarImg;
     const viewportThumbnailSrc = isMobile() ? mobileAvatarImg : avatarImg;
 
     if (messageElement[0] instanceof HTMLElement) {
         const avatarCssUrl = `url("${String(viewportAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         const thumbnailAvatarCssUrl = `url("${String(viewportThumbnailSrc).replace(/(["\\])/g, '\\$1')}")`;
-        const originalAvatarCssUrl = `url("${String(originalAvatarImg).replace(/(["\\])/g, '\\$1')}")`;
         messageElement[0].style.setProperty('--sb-message-avatar', avatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-url', avatarCssUrl);
         messageElement[0].style.setProperty('--mes-avatar-thumb-url', thumbnailAvatarCssUrl);
-        messageElement[0].style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
     messageElement.find('.avatar img').attr({
@@ -5498,7 +5812,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
         'data-thumbnail-src': viewportThumbnailSrc,
         'data-original-src': originalAvatarImg,
         decoding: 'async',
-        loading: messageId > 8 ? 'lazy' : 'eager',
+        loading: (chat.length - 1 - messageId) > 8 ? 'lazy' : 'eager',
     });
     messageElement.find('.ch_name .name_text').text(mes.name);
     messageElement.find('.timestamp').text(timestamp).attr('title', `${mes.extra?.api ? mes.extra.api + ' - ' : ''}${mes.extra?.model ?? ''}`);
@@ -5694,17 +6008,39 @@ export function formatCharacterAvatar(characterAvatar) {
  * console.log(timerValue); // 1.2s
  * console.log(timerTitle); // Generation queued: 12:34:56 7 Jan 2021\nReply received: 12:34:57 7 Jan 2021\nTime to generate: 1.2 seconds\nToken rate: 5 t/s
  */
-function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null, reasoningTokens = null) {
+function parseTimerEpochMs(value) {
+    if (value instanceof Date) {
+        return value.getTime();
+    }
+    if (typeof value === 'number') {
+        return value;
+    }
+    const parsed = Date.parse(String(value));
+    return Number.isNaN(parsed) ? moment(value).valueOf() : parsed;
+}
+
+function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningDuration = null, timeToFirstToken = null, reasoningTokens = null, { includeTitle = true } = {}) {
     if (!gen_started || !gen_finished) {
         return {};
     }
 
-    const dateFormat = 'HH:mm:ss D MMM YYYY';
-    const start = moment(gen_started);
-    const finish = moment(gen_finished);
-    const seconds = finish.diff(start, 'seconds', true);
-    const totalCompletionTokens = getPositiveTokenCount(tokenCount) + getPositiveTokenCount(reasoningTokens);
+    // SillyBunny: use lightweight numeric diff during live streaming and defer moment() tooltip formatting until finalization.
+    const startMs = parseTimerEpochMs(gen_started);
+    const finishMs = parseTimerEpochMs(gen_finished);
+    const seconds = (finishMs - startMs) / 1000;
+    if (isNaN(seconds) || seconds < 0) {
+        return { timerValue: '', timerTitle: '' };
+    }
+
     const timerValue = `${seconds.toFixed(1)}s`;
+    if (!includeTitle) {
+        return { timerValue, timerTitle: '' };
+    }
+
+    const dateFormat = 'HH:mm:ss D MMM YYYY';
+    const start = moment(startMs);
+    const finish = moment(finishMs);
+    const totalCompletionTokens = getPositiveTokenCount(tokenCount) + getPositiveTokenCount(reasoningTokens);
     const timerTitle = [
         `Generation queued: ${start.format(dateFormat)}`,
         `Reply received: ${finish.format(dateFormat)}`,
@@ -5713,10 +6049,6 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
         reasoningDuration > 0 ? `Time to think: ${reasoningDuration / 1000} seconds` : '',
         totalCompletionTokens > 0 ? `Token rate: ${Number(totalCompletionTokens / seconds).toFixed(3)} t/s` : '',
     ].filter(x => x).join('\n').trim();
-
-    if (isNaN(seconds) || seconds < 0) {
-        return { timerValue: '', timerTitle };
-    }
 
     return { timerValue, timerTitle };
 }
@@ -6985,7 +7317,8 @@ class StreamingProcessor {
                         'send_date': chat[messageId].send_date,
                         'gen_started': chat[messageId].gen_started,
                         'gen_finished': chat[messageId].gen_finished,
-                        'extra': structuredClone(chat[messageId].extra),
+                        // SillyBunny: shallow-copy extra on intermediate streaming ticks; deep-clone once on isFinal.
+                        'extra': isFinal ? structuredClone(chat[messageId].extra) : { ...chat[messageId].extra },
                     };
                 }
             }
@@ -7024,7 +7357,7 @@ class StreamingProcessor {
                     )
                     : messageFormatting(markdownText, name, is_system, is_user, messageId, {}, false);
             };
-            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens);
+            const timePassed = formatGenerationTimer(this.timeStarted, currentTime, currentTokenCount, this.reasoningHandler.getDuration(), this.timeToFirstToken, currentReasoningTokens, { includeTitle: isFinal });
             this.#queueStreamingVisibleWrite({
                 messageId,
                 write: {
@@ -7049,6 +7382,7 @@ class StreamingProcessor {
             });
 
             if (!shouldReduceIntermediateStreamingWork) {
+                this.isFinalStreamingTick = Boolean(isFinal);
                 this.setFirstSwipe(messageId);
             }
         }
@@ -7174,7 +7508,7 @@ class StreamingProcessor {
         }
     }
 
-    setFirstSwipe(messageId) {
+    setFirstSwipe(messageId, { isFinal = Boolean(this.isFinalStreamingTick) } = {}) {
         if (!this.#isCurrent(messageId, true)) return;
         if (this.type !== 'swipe' && this.type !== 'impersonate') {
             if (Array.isArray(chat[messageId].swipes) && chat[messageId].swipes.length === 1 && chat[messageId].swipe_id === 0) {
@@ -7183,7 +7517,7 @@ class StreamingProcessor {
                     'send_date': chat[messageId].send_date,
                     'gen_started': chat[messageId].gen_started,
                     'gen_finished': chat[messageId].gen_finished,
-                    'extra': structuredClone(chat[messageId].extra),
+                    'extra': isFinal ? structuredClone(chat[messageId].extra) : { ...chat[messageId].extra },
                 };
             }
         }
@@ -12342,8 +12676,7 @@ export async function refreshCharacterAvatar(avatarKey) {
         refreshedImages++;
     }
 
-    const viewportAvatarCssUrl = `url("${String(isMobile() ? cacheBustedMobileThumbnailUrl : cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
-    const originalAvatarCssUrl = `url("${String(cacheBustedFullAvatarUrl).replace(/(["\\])/g, '\\$1')}")`;
+    const viewportAvatarCssUrl = `url("${String(isMobile() ? cacheBustedMobileThumbnailUrl : cacheBustedThumbnailUrl).replace(/(["\\])/g, '\\$1')}")`;
 
     for (const messageElement of document.querySelectorAll('.mes')) {
         if (!(messageElement instanceof HTMLElement)) {
@@ -12361,7 +12694,6 @@ export async function refreshCharacterAvatar(avatarKey) {
 
         messageElement.style.setProperty('--sb-message-avatar', viewportAvatarCssUrl);
         messageElement.style.setProperty('--mes-avatar-url', viewportAvatarCssUrl);
-        messageElement.style.setProperty('--mes-avatar-original-url', originalAvatarCssUrl);
     }
 
     console.debug(`Refreshed ${refreshedImages} avatar images for ${avatarKey}`);
@@ -13014,7 +13346,7 @@ export async function getSettings() {
                 return;
             }
             settings.extension_settings = seedQuickImageGenFirstRun(settings.extension_settings); // SillyBunny: keep the Quick Image Gen setup wizard from stacking under the first-run dialog.
-            await loadExtensionSettings(settings, isVersionChanged, enableAutoUpdate);
+            await loadExtensionSettings(settings, isVersionChanged, enableAutoUpdate, data);
             await eventSource.emit(event_types.EXTENSION_SETTINGS_LOADED);
             applyPowerUserSettings();
         } else {
@@ -13031,6 +13363,7 @@ export async function getSettings() {
         firstRun = !!settings.firstRun;
 
         if (firstRun) {
+            clearActiveBootApiPrefetch?.();
             await dismissPreloader();
             await doOnboarding(user_avatar);
             firstRun = false;
@@ -18338,7 +18671,10 @@ jQuery(async function () {
     chatElementScroll.addEventListener('touchcancel', releaseMobileChatTouchScroll, { passive: true });
     chatElementScroll.addEventListener('wheel', markMobileChatWheelScroll, { passive: true });
     chatElementScroll.addEventListener('pointerup', () => { lastChatPointerUpAt = Date.now(); }, { passive: true, capture: true });
-    document.addEventListener('wheel', routeShellWheelToChat, { passive: false, capture: true });
+    // SillyBunny: attach non-passive wheel routing only to flanking shell chrome so #chat stays compositor-scrolled.
+    for (const chromeId of ['top-bar', 'form_sheld']) {
+        document.getElementById(chromeId)?.addEventListener('wheel', routeShellWheelToChat, { passive: false, capture: true });
+    }
     setupMobileChatViewportObserver(markMobileViewportScroll);
 
     const chatScrollHandler = function () {

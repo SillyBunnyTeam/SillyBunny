@@ -179,12 +179,29 @@
         return typed;
     }
 
+    // Mobile, coarse-pointer, low-RAM, and constrained-network boots keep the static mascot still and CSS reveal
+    // instead of competing for sockets and decode memory with the 7-frame animated WebP loop.
+    function shouldSkipLoop() {
+        var nav = window.navigator || (typeof navigator !== 'undefined' ? navigator : null);
+        if (nav) {
+            if (nav.deviceMemory > 0 && nav.deviceMemory <= 4) return true;
+            if (/Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent || '')) return true;
+            var conn = nav.connection;
+            if (conn && (conn.saveData || /^(slow-2g|2g|3g)$/i.test(conn.effectiveType || ''))) return true;
+        }
+        if (typeof window.matchMedia === 'function') {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
+            if (window.matchMedia('(pointer: coarse)').matches) return true;
+        }
+        return false;
+    }
+
     // Starts the loop of the variant, when it has one, after the still is on screen and a frame has passed, so that the first
-    // paint is the still alone. Under Reduced Motion nothing is loaded: the still is what it shows.
+    // paint is the still alone. Under Reduced Motion or constrained mobile/low-memory boots nothing is loaded: the still is what it shows.
     function scheduleLoop(preloader, variant) {
         var mascot = preloader.querySelector('.sb-boot-mascot');
         if (!mascot || !LOOP_FILES[variant] || preloader.classList.contains('sb-boot-reduced')) return;
-        if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        if (shouldSkipLoop()) return;
         function inject() {
             if (!document.documentElement.contains(preloader)) return;
             var script = document.createElement('script');
@@ -244,6 +261,7 @@
         TALLEST_ROWS: TALLEST_ROWS,
         chooseFit: chooseFit,
         resolveVariant: resolveVariant,
+        shouldSkipLoop: shouldSkipLoop,
         render: render,
     };
 
