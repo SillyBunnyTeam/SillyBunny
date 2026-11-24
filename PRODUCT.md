@@ -86,8 +86,6 @@ These are explicit violations of the principles above. Any contribution that int
 
 **Inconsistent patterns across contexts** — Different gestures, placements, or flows for the same action in different parts of the app, mobile and desktop included.
 
-**Modal interruption for non-critical config** — Blocking dialogs that interrupt an active conversation for a settings change that did not need to stop the user. Config must remain explicitly called for.
-
 **Silent breaking changes** — Defaults or migrations that overwrite or invalidate an existing user's SillyTavern-compatible config, extensions, or presets without warning and a clear recovery path.
 
 ## Anti-references

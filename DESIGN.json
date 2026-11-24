@@ -478,7 +478,6 @@
       "Don't add configuration panels, extra toolbars, or utility panes to the main content view unless the user opens them. Navigation sidebars, split views, and utility panes follow the HIG (Navigation): each view keeps one clear subject, and panes collapse or overlay at narrow widths.",
       "Don't create a nested menu spiral: no nested submenus in menus that SillyBunny builds, and hierarchies generally one level deep below a view (HIG Menus, Navigation).",
       "Don't present configuration sprawl, bottom bar bloat, or a dense control wall by default.",
-      "Don't interrupt the user's main task with a modal for non-critical configuration; try inline or progressive alternatives first.",
       "Don't rely on mystery meat navigation, hover-only discovery, desktop-only assumptions, tiny touch targets, or fragile iOS WebKit behavior.",
       "Don't use generic SaaS polish, sterile upstream-clone blandness, or decorative motion without navigational purpose, except an illustration moving in place (Motion).",
       "Don't use gradient text, decorative glassmorphism, backdrop blur on shell layers, ambient accent glows, repeating stripe or grid backgrounds, identical repeated card grids, or sketchy illustrations.",
