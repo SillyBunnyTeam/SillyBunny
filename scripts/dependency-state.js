@@ -86,6 +86,75 @@ function getFirstMajor(rangeOrVersion) {
     return String(rangeOrVersion || '').match(/\d+/)?.[0] || '';
 }
 
+function getPackageDependencyIssue(parent, dependencyName, parentLabel) {
+    const expectedRange = parent.data?.dependencies?.[dependencyName];
+    const expectedMajor = getFirstMajor(expectedRange);
+    if (!expectedMajor) {
+        return '';
+    }
+
+    const parentRequire = createRequire(parent.path);
+    const resolved = readPackageJson(dependencyName, parentRequire);
+    const actualMajor = getFirstMajor(resolved?.data?.version);
+
+    if (actualMajor !== expectedMajor) {
+        return `${parentLabel} resolved ${dependencyName} ${resolved?.data?.version || 'missing'} but requires ${expectedRange}`;
+    }
+
+    return '';
+}
+
+function getRuntimeInstallIssue() {
+    const express = readPackageJson('express');
+
+    if (!express) {
+        return 'runtime dependencies are missing';
+    }
+
+    const checkedSendPaths = new Set();
+    const expressRequire = createRequire(express.path);
+
+    if (express.data?.dependencies?.send) {
+        const send = readPackageJson('send', expressRequire);
+
+        if (!send) {
+            return 'Express dependency send is missing';
+        }
+
+        checkedSendPaths.add(send.path);
+        const sendMimeIssue = getPackageDependencyIssue(send, 'mime', 'send');
+        if (sendMimeIssue) {
+            return sendMimeIssue;
+        }
+    }
+
+    if (express.data?.dependencies?.['serve-static']) {
+        const serveStatic = readPackageJson('serve-static', expressRequire);
+
+        if (!serveStatic) {
+            return 'Express dependency serve-static is missing';
+        }
+
+        if (serveStatic.data?.dependencies?.send) {
+            const serveStaticRequire = createRequire(serveStatic.path);
+            const send = readPackageJson('send', serveStaticRequire);
+
+            if (!send) {
+                return 'serve-static dependency send is missing';
+            }
+
+            if (!checkedSendPaths.has(send.path)) {
+                const sendMimeIssue = getPackageDependencyIssue(send, 'mime', 'send');
+                if (sendMimeIssue) {
+                    return sendMimeIssue;
+                }
+            }
+        }
+    }
+
+    return '';
+}
+
 function getDevelopmentInstallIssue() {
     const eslintrc = readPackageJson('@eslint/eslintrc');
 
@@ -93,20 +162,7 @@ function getDevelopmentInstallIssue() {
         return 'development lint dependencies are missing';
     }
 
-    const expectedAjvMajor = getFirstMajor(eslintrc.data?.dependencies?.ajv);
-    if (!expectedAjvMajor) {
-        return '';
-    }
-
-    const eslintrcRequire = createRequire(eslintrc.path);
-    const ajv = readPackageJson('ajv', eslintrcRequire);
-    const actualAjvMajor = getFirstMajor(ajv?.data?.version);
-
-    if (actualAjvMajor !== expectedAjvMajor) {
-        return `ESLint resolved ajv ${ajv?.data?.version || 'missing'} but requires ${eslintrc.data.dependencies.ajv}`;
-    }
-
-    return '';
+    return getPackageDependencyIssue(eslintrc, 'ajv', 'ESLint');
 }
 
 function needsInstall(profile) {
@@ -116,6 +172,11 @@ function needsInstall(profile) {
 
     if (!fs.existsSync(path.join(process.cwd(), 'config.yaml'))) {
         return 'config.yaml is missing';
+    }
+
+    const runtimeInstallIssue = getRuntimeInstallIssue();
+    if (runtimeInstallIssue) {
+        return runtimeInstallIssue;
     }
 
     if (profile.endsWith('-development')) {
