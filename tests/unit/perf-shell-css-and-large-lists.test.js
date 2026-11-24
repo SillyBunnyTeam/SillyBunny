@@ -152,9 +152,9 @@ describe('PR 10 shell boot diet & topbar layout', () => {
         expect(editorSource).toContain('initializePromptEditor(column');
 
         const agentsSource = extractFunctionSource(tabsSource, 'buildInChatAgentsPanel');
-        expect(agentsSource).toContain('let controller = null;');
+        expect(agentsSource).toContain('let mountedController = null;');
         expect(agentsSource).toContain('ensureReady: async () =>');
-        expect(agentsSource).toContain('mountAgentsPanel(column)');
+        expect(agentsSource).toContain('const controller = mountAgentsPanel(column);');
 
         const appearanceSource = extractFunctionSource(tabsSource, 'presentAppearancePage');
         expect(appearanceSource).not.toContain('initBackgroundGallery');

@@ -8837,12 +8837,13 @@ function buildInChatAgentsPanel() {
     });
     scroller.appendChild(column);
 
-    let controller = null;
+    let mountedController = null;
     const ensureMounted = () => {
-        if (!controller) {
-            controller = mountAgentsPanel(column);
+        if (!mountedController) {
+            const controller = mountAgentsPanel(column);
+            mountedController = controller;
         }
-        return controller;
+        return mountedController;
     };
 
     return {
