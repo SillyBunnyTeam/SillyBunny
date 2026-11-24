@@ -208,7 +208,6 @@ describe('conversation mode scoped connection profile', () => {
     test('lists the conversations of the persona from the data module, and starts again when the persona changes', () => {
         expect(conversationListSource).toContain('conversationData.list({ personaId })');
         expect(settingsStoreSource).toContain('conversationData.list({ personaId: getConversationPersonaId() })');
-        expect(contextSource).toContain('conversationData.list({ personaId })');
         expect(initSource).toContain('event_types.PERSONA_CHANGED');
     });
 

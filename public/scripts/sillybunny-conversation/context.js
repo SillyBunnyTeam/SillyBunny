@@ -84,16 +84,11 @@ function toGroupRecord(view) {
         description: view.description ?? '',
         members: [...view.characters],
         disabled_members: [],
-        conversation_settings: view.settings,
         is_conversation_group: true,
         avatar_url: view.avatar ? `/api/sillybunny-conversation/avatar?id=${encodeURIComponent(view.id)}` : '',
         createdAt: view.createdAt,
         updatedAt: view.updatedAt,
     };
-}
-
-export function getConversationGroups({ personaId = getConversationPersonaId() } = {}) {
-    return conversationData.list({ personaId }).filter(view => view.kind === 'group').map(toGroupRecord);
 }
 
 export function getConversationGroupById(groupId, { personaId } = {}) {
@@ -102,10 +97,6 @@ export function getConversationGroupById(groupId, { personaId } = {}) {
         return null;
     }
     return toGroupRecord(view);
-}
-
-export function isConversationOwnedGroup(groupId) {
-    return Boolean(getConversationGroupById(groupId));
 }
 
 export function isAvatarInConversationGroup(avatar, groupId, { personaId } = {}) {

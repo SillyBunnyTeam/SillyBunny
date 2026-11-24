@@ -37,10 +37,6 @@ const STATUS_VALUES = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 // are a list of their own, and the schedule is the character's routine.
 const NOT_STORED_IN_CONVERSATION = new Set(['enabled', 'availability', 'multi_char', 'multi_char_names', 'auto_chat_names', 'auto_schedule', 'schedule_generated_at']);
 
-export function invalidateConversationUsageCache() {
-    // The answer is worked out from the cache of conversations on every call.
-}
-
 /** Whether the current persona has any conversation, which decides whether the worker and the badges start. */
 export function hasAnyConversationModeUsage() {
     return conversationData.list({ personaId: getConversationPersonaId() }).length > 0;
