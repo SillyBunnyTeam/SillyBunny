@@ -54,9 +54,6 @@ const conversationTtsSource = readConversationSource('tts.js');
 const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
 const pollinationsTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'pollinations.js'), 'utf8'));
 const speechEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'speech.js'), 'utf8'));
-const serverEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'sillybunny-conversation.js'), 'utf8'));
-const conversationGenerationSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'conversation-generation.js'), 'utf8'));
-const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
 describe('conversation mode scoped connection profile', () => {
@@ -152,10 +149,6 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
         expect(promptSource).toContain('from \'./shared-helpers.js\'');
         expect(promptSource).toContain('fields.push(groundedRules)');
-        // Server endpoint now imports from conversation-generation.js which imports from shared-helpers.js
-        expect(serverEndpointSource).toContain('from \'./conversation-generation.js\'');
-        // normalizeConversationSettings is now in conversation-generation.js
-        expect(conversationGenerationSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
     });
 
     test('settings booleans are switch rows and picker menus pass their trigger', () => {
@@ -254,7 +247,6 @@ describe('conversation mode scoped connection profile', () => {
     test('does not inline reply references in the Conversation prompt transcript', () => {
         expect(promptSource).not.toContain('formatConversationReplyReference');
         expect(promptSource).not.toContain('(replying to');
-        expect(serverEndpointSource).not.toContain('formatConversationReplyReference');
     });
 
     test('lets generated character replies use message reply metadata', () => {
@@ -279,11 +271,6 @@ describe('conversation mode scoped connection profile', () => {
         expect(welcomeSource).toContain('clearConversationWelcomeOpeningSuppressionAfterRender');
         expect(welcomeSource).toContain('requestAnimationFrame(() => requestAnimationFrame(clearSuppression))');
         expect(welcomeSource).toContain('setConversationWelcomeOpeningSuppressed(false)');
-    });
-
-    test('exposes Conversation REST discovery on both supported API base paths', () => {
-        expect(serverStartupSource).toContain('app.use(\'/api/sillybunny-conversation\', sillyBunnyConversationRouter)');
-        expect(serverStartupSource).toContain('app.use(\'/api/sillybunny/conversation\', sillyBunnyConversationRouter)');
     });
 
     test('connects Conversation messages to the existing TTS extension', () => {

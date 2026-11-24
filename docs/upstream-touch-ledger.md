@@ -1107,19 +1107,6 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-12 PR #446 companion agents. |
 | Owner | Extension maintainer. |
 
-### `src/server-startup.js` and `src/endpoints/sillybunny-conversation.js` - Conversation REST API routing
-| Field | Value |
-| --- | --- |
-| Area | API routing and Conversation Mode integration. |
-| Divergence reason | SillyBunny exposes a fork-only Conversation Mode REST surface that must stay discoverable on both `/api/sillybunny-conversation` and `/api/sillybunny/conversation` without changing upstream SillyTavern chat/group/settings storage formats. |
-| Target seam | `src/endpoints/sillybunny-conversation.js`. |
-| Adapter shape | Keep `src/server-startup.js` limited to two `app.use(...)` registrations; keep request validation, storage normalization, and endpoint behavior inside `src/endpoints/sillybunny-conversation.js` and its companion modules. |
-| Protecting tests | `tests/sillybunny-conversation-api.test.js`, `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-key-compatibility.test.js`, `tests/sillybunny-conversation-context-migration.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- sillybunny-conversation-api.test.js conversation-mode-scoped-profile.test.js sillybunny-conversation-key-compatibility.test.js sillybunny-conversation-context-migration.test.js`, `node --check src/endpoints/sillybunny-conversation.js`, `node --check src/server-startup.js`. |
-| Rollback path | Remove the router mounts from `src/server-startup.js` and revert the Conversation REST endpoint module without touching persisted `settings.json` data. |
-| Last reviewed | 2026-07-26 PR #638 review follow-up. |
-| Owner | Feature maintainer. |
-
 ### `src/server-main.js` - route errors and crash exit
 | Field | Value |
 | --- | --- |
@@ -1330,19 +1317,6 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-24 the SQLite plumbing moved into `src/sqlite-cache.js` (conversation mode rework); 2026-11-11 PR #938 SQLite character index replaces the node-persist disk cache. |
 | Owner | Server and data compatibility integrator. |
 
-### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
-| Field | Value |
-| --- | --- |
-| Area | Generation lifecycle and backend adapter reuse. |
-| Divergence reason | SillyBunny Conversation REST needs non-streaming access to the existing backend generation handlers without forking prompt assembly or provider-specific request code into a second implementation. |
-| Target seam | `src/endpoints/conversation-generation.js`. |
-| Adapter shape | Keep upstream-origin backend files limited to exported `handleChatCompletionsGenerate()` and `handleTextCompletionsGenerate()` adapters while preserving the existing `/generate` route contract. |
-| Protecting tests | `tests/sillybunny-conversation-api.test.js`, `tests/sillybunny-conversation-generation-utils.test.js`, `tests/conversation-mode-scoped-profile.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- sillybunny-conversation-api.test.js sillybunny-conversation-generation-utils.test.js conversation-mode-scoped-profile.test.js`, `node --check src/endpoints/backends/chat-completions.js`, `node --check src/endpoints/backends/text-completions.js`, focused REST smoke against `/message/send` with chat and text backends. |
-| Rollback path | Revert the exported handler seams and restore Conversation REST generation to a separate adapter only if handler reuse regresses the existing `/generate` routes. |
-| Last reviewed | 2026-07-26 PR #638 review follow-up. |
-| Owner | Feature maintainer. |
-
 ### `public/index.html`, `public/script.js`, `public/scripts/textgen-models.js`, `public/scripts/textgen-settings.js`, and `src/endpoints/backends/text-completions.js` - KoboldCpp model switcher
 | Field | Value |
 | --- | --- |
@@ -1391,8 +1365,8 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. |
 | Target seam | `public/scripts/sillybunny-conversation/media.js`. |
 | Adapter shape | Keep QIG changes limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. |
-| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- conversation-mode-scoped-profile.test.js sillybunny-conversation-image-safety.test.js`, `node --check public/scripts/extensions/quick-image-gen/index.js`. |
+| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- conversation-mode-scoped-profile.test.js`, `node --check public/scripts/extensions/quick-image-gen/index.js`. |
 | Rollback path | Remove the readiness helper export and revert Conversation callers to direct QIG access if boot timing changes upstream. |
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Extension maintainer. |
@@ -1528,9 +1502,9 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Settings: the version check that keeps a stale tab or device from overwriting newer settings. |
 | Divergence reason | SillyBunny refuses a settings save from a page that loaded before another page saved, so that a stale tab or device cannot overwrite newer settings. Upstream has no such check, and every boot saves the settings without a change, so the check refused saves and showed the conflict prompt without a real conflict. |
 | Target seam | `isUnchangedSettingsSave()` in `src/settings-version.js` (server) and `createSettingsSync()` in `public/scripts/sillybunny-settings-sync.js` (page). |
-| Adapter shape | `POST /api/settings/save` answers a save whose content equals the stored settings, apart from `_version`, with `{ result: 'ok', version: <stored>, unchanged: true }` before the version check: no write, no autosave backup, no new version. `saveSettingsInner()` accepts such an answer when its version is not lower than the one it sent; every other answer still needs a higher version. `prepareSettingsSave()`, which the Conversation REST API shares, is unchanged. `public/script.js` also remembers the key-sorted settings text that `getSettings()` loaded and that each confirmed save sent, without `_version`, and `saveSettingsInner()` sends no request when the payload equals it; it still sets `settings` and emits `SETTINGS_UPDATED`. Adapter lines: the import, `const settingsSync = createSettingsSync()`, one `remember()` after the load, the check before the request, and one `remember()` after a confirmed save. |
+| Adapter shape | `POST /api/settings/save` answers a save whose content equals the stored settings, apart from `_version`, with `{ result: 'ok', version: <stored>, unchanged: true }` before the version check: no write, no autosave backup, no new version. `saveSettingsInner()` accepts such an answer when its version is not lower than the one it sent; every other answer still needs a higher version. `prepareSettingsSave()` is unchanged. `public/script.js` also remembers the key-sorted settings text that `getSettings()` loaded and that each confirmed save sent, without `_version`, and `saveSettingsInner()` sends no request when the payload equals it; it still sets `settings` and emits `SETTINGS_UPDATED`. Adapter lines: the import, `const settingsSync = createSettingsSync()`, one `remember()` after the load, the check before the request, and one `remember()` after a confirmed save. |
 | Protecting tests | `tests/settings-version-guard.test.js` (equal and changed content), `tests/settings-save-unchanged.test.js` (route: no write and the same version, a stale page with the stored settings, a stale page with a change still refused), `tests/openai-custom-endpoint-credentials.test.js` (client: same version, newer version, older version refused; no request when nothing changed; a request after each change; nothing remembered from a failed or refused save), `tests/sillybunny-settings-sync.test.js` (key order, nested values, array order, one state per page). |
-| Validation | `npm run lint` in the root and in `tests/`, the protecting tests, `tests/sillybunny-conversation-api.test.js` and `tests/chat-integrity-rotation.test.js`. In Chromium against a Bun server: a second and third boot posted exactly the stored settings (0 differing paths); 8 pages booting at once got 8 `unchanged` answers and no prompt with the server change alone, and sent no save at all with the page change (`staging`: 7 of 8 got 409 and the prompt); a real change in one tab still gave an older tab 409 and the prompt; a page that booted just before another tab saved a real change sent no save and got no prompt. `npm run check:frontend-budgets`; boots with `bun server.js` and `node server.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, the protecting tests and `tests/chat-integrity-rotation.test.js`. In Chromium against a Bun server: a second and third boot posted exactly the stored settings (0 differing paths); 8 pages booting at once got 8 `unchanged` answers and no prompt with the server change alone, and sent no save at all with the page change (`staging`: 7 of 8 got 409 and the prompt); a real change in one tab still gave an older tab 409 and the prompt; a page that booted just before another tab saved a real change sent no save and got no prompt. `npm run check:frontend-budgets`; boots with `bun server.js` and `node server.js`. |
 | Rollback path | Revert the `SillyBunny:` hunks in `src/endpoints/settings.js` and `public/script.js`, and delete `public/scripts/sillybunny-settings-sync.js` and `isUnchangedSettingsSave()`. Every boot then saves and raises the settings version again, and other open tabs and devices show the conflict prompt at their next save. No stored data or settings format changes. |
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | Server and data compatibility integrator. |
@@ -1597,7 +1571,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `public/scripts/chat-backups.js`, `public/css/chat-backups.css`, `src/endpoints/characters.js`, `src/endpoints/thumbnails.js`, `src/endpoints/image-metadata.js`. |
 | Area | Chat recovery, character assets, thumbnails, and media metadata. |
 | Divergence reason | SillyBunny adds backup recovery presentation and mobile-aware character/media handling without changing upstream chat or image formats. |
-| Target seam | `public/scripts/sillybunny-tabs.js`, `src/endpoints/conversation-utils.js`, and the thumbnail/image-metadata helpers. |
+| Target seam | `public/scripts/sillybunny-tabs.js` and the thumbnail/image-metadata helpers. |
 | Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. Treat disconnected backup controls as stale so the browser can recreate them after Chat History restores its legacy tree. Since 2026-11-18 (UI polish sweep, task 14.7a): the cleanup row's age, keep and unit fields take `--sb-control-min-height`, and its buttons keep the shared `.menu_button` floor instead of a fixed `34px`. |
 | Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`, `tests/sillybunny-overlays.e2e.js` (since 2026-11-18 also "Backups cleanup controls reach the target floor of the pointer"). |
 | Validation | Focused unit tests, Chat History overlay E2E, `node --check` on endpoint/client files, `npm run lint`. |

@@ -3502,8 +3502,7 @@ async function sendGeminiInteractionsRequest(request, response) {
     }
 }
 
-// SillyBunny divergence: export the existing handler so Conversation REST can reuse upstream request assembly without forking backend logic.
-export async function handleChatCompletionsGenerate(request, response) {
+async function handleChatCompletionsGenerate(request, response) {
     try {
         if (!request.body) return response.status(400).send({ error: true });
 
@@ -3514,7 +3513,7 @@ export async function handleChatCompletionsGenerate(request, response) {
         applyReasoningEffortNormalization(request.body);
 
         // SillyBunny: enforce upstream Astra constraints before dispatch so profile overrides
-        // and Conversation REST requests follow the same rules as the frontend builder.
+        // follow the same rules as the frontend builder.
         if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES, CHAT_COMPLETION_SOURCES.AZURE_OPENAI, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
             && /gpt-6-astra/.test(request.body.model)) {
             // A profile override can supply max_tokens after a preset set max_completion_tokens.
@@ -4060,8 +4059,7 @@ export async function handleChatCompletionsGenerate(request, response) {
         };
 
         // LinkAPI relays Grok verbatim, so penalty samplers reach a reasoning model and error the
-        // request. Stripped here rather than frontend-side to also cover the Conversation REST API,
-        // which forwards a caller-supplied payload straight into this handler.
+        // request. Stripped here rather than frontend-side to also cover requests that skip the frontend builder.
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.LINKAPI) {
             applyGrokModelParameterConstraints(requestBody);
         }
