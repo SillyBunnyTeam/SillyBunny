@@ -2784,6 +2784,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-24, issue #1025. |
 | Owner | Server and image-generation provider integrator. |
 
+### `src/constants.js`, `src/users.js`, `src/endpoints/chats.js` and `src/server-startup.js` - conversation storage
+| Field | Value |
+| --- | --- |
+| File | `src/constants.js`, `src/users.js`, `src/endpoints/chats.js`, `src/server-startup.js`. |
+| Area | User folders, chat persistence and API routing: where conversation mode stores its conversations on the server. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `src/conversation-paths.js` (ids, paths and the recovery target of a chat), `src/conversation-store.js` and `src/conversation-schema.js` (the store), `src/endpoints/sillybunny-conversation.js` (the routes), `src/chat-recovery.js` (the `conversation` target type, a fork-owned file). |
+| Adapter shape | `src/constants.js`: one `conversations` line in `USER_DIRECTORY_TEMPLATE`, which puts the folder in the startup folder creation, the account backup ZIP, the import whitelist and the account purge. `src/users.js`: its `UserDirectoryList` typedef line. `src/endpoints/chats.js`: `export` on `IntegrityMismatchError`, `InvalidChatDataError` and `DestructiveChatSaveError`; in `updateChatRecords()` one early return for a `conversationChat` target, which hands the location from `resolveConversationChatTarget()` to `updateChatRecordsAt()`, the read, update and save that the function held before; one import. `src/server-startup.js`: one import and one `app.use('/api/sillybunny-conversation', ...)`. The routes under that prefix are new; the old ones and the alias `/api/sillybunny/conversation` are gone. |
+| Protecting tests | `tests/conversation-user-directory.test.js`, `tests/conversation-update-chat-records.test.js`, `tests/conversation-routes.test.js` (also reads `src/server-startup.js` for the one mount), `tests/conversation-store.test.js`, `tests/conversation-store-chats.test.js`, `tests/conversation-paths.test.js`, and for the unchanged roleplay targets `tests/chat-recovery-endpoints.test.js`, `tests/chat-integrity-rotation.test.js` and `tests/server-generation-commit.test.js`. |
+| Validation | 2026-11-24: root and `tests/` lint; `npm run test:unit` in `tests/` (729 suites); boots with `bun server.js` and `node server.js` on a throwaway data root with one request to each route; `e2e-related --run`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-24, conversation mode rework, task 1T. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

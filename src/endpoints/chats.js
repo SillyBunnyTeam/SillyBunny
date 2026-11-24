@@ -13,6 +13,7 @@ import _ from 'lodash';
 import { acquireChatFileLock, acquireChatFileLocks } from '../chat-file-lock.js';
 import validateAvatarUrlMiddleware, { forbiddenRegExp } from '../middleware/validateFileName.js';
 import { renameChatFile } from '../chat-rename.js';
+import { resolveConversationChatTarget } from '../conversation-paths.js';
 import {
     clearChatRecoveryState,
     createCharacterChatTarget,
@@ -1118,7 +1119,8 @@ export function getGroupChatPath(groupChatsDirectory, chatId) {
 export const router = express.Router();
 
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
-class IntegrityMismatchError extends Error {
+// SillyBunny: the three save errors are exported so that the conversation store can tell a refused save from a failed one.
+export class IntegrityMismatchError extends Error {
     constructor(...params) {
         // Pass remaining arguments (including vendor specific ones) to parent constructor
         super(...params);
@@ -1130,7 +1132,7 @@ class IntegrityMismatchError extends Error {
     }
 }
 
-class InvalidChatDataError extends Error {
+export class InvalidChatDataError extends Error {
     constructor(...params) {
         super(...params);
         if (Error.captureStackTrace) {
@@ -1141,7 +1143,7 @@ class InvalidChatDataError extends Error {
 }
 
 // SillyBunny: a save that would destroy an existing chat is rejected unless the client forces it.
-class DestructiveChatSaveError extends Error {
+export class DestructiveChatSaveError extends Error {
     constructor(reason, ...params) {
         super(...params);
         if (Error.captureStackTrace) {
@@ -1447,11 +1449,16 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
  * integrity, backup and recovery handling as a browser save. The save is checked against the slug
  * that was read, so a browser save landing in between turns this into a conflict, not an overwrite.
  * @param {{ profile: { handle: string }, directories: import('../users.js').UserDirectoryList }} user Request user
- * @param {{ avatarUrl?: string|null, groupChatId?: string|null, fileName?: string }} target Character chat (avatar + file name) or group chat id
+ * @param {{ avatarUrl?: string|null, groupChatId?: string|null, fileName?: string, conversationChat?: { conversationId: string, chatId: string }|null }} target Character chat (avatar + file name), group chat id, or a chat of a conversation
  * @param {(records: object[]) => ({ records: object[], integrity?: string, allowShrink?: boolean }|null)} update Receives the parsed file, header first; returns the records to save (when restoring an earlier state, also the slug that state had and whether it may be shorter), or null to leave the file alone
  * @returns {Promise<{ status: 'saved', integrity: string, previousIntegrity: string } | { status: 'unchanged'|'missing'|'conflict', reason?: string }>}
  */
-export async function updateChatRecords(user, { avatarUrl = null, groupChatId = null, fileName = '' }, update) {
+export async function updateChatRecords(user, { avatarUrl = null, groupChatId = null, fileName = '', conversationChat = null }, update) {
+    // SillyBunny: a chat of a conversation lives under conversations/<id>/chats/, so its location and its recovery target come from the conversation paths module.
+    if (conversationChat) {
+        const conversationTarget = resolveConversationChatTarget(user.directories, conversationChat, maxTotalChatBackups);
+        return conversationTarget ? updateChatRecordsAt(user, conversationTarget, update) : { status: 'missing', reason: 'invalid-target' };
+    }
     const isGroup = groupChatId !== null;
     const ownerName = isGroup ? String(groupChatId) : String(avatarUrl ?? '');
     if (!ownerName || (!isGroup && forbiddenRegExp.test(ownerName))) {
@@ -1467,7 +1474,10 @@ export async function updateChatRecords(user, { avatarUrl = null, groupChatId = 
     const recoveryTarget = isGroup
         ? createGroupChatTarget({ groupChatsDirectory: rootDirectory, backupDirectory: user.directories.backups, filename: chatFileName, maxRecoveryStates: maxTotalChatBackups })
         : createCharacterChatTarget({ chatsDirectory: rootDirectory, backupDirectory: user.directories.backups, owner: cardName, filename: chatFileName, maxRecoveryStates: maxTotalChatBackups });
+    return updateChatRecordsAt(user, { cardName, filePath, recoveryTarget }, update);
+}
 
+async function updateChatRecordsAt(user, { cardName, filePath, recoveryTarget }, update) {
     const current = readChatJsonlStrict(filePath);
     if (current.status !== 'ok') {
         return { status: 'missing', reason: current.status };

@@ -11,6 +11,16 @@ export const CHAT_RECOVERY_DIRECTORY = '_chat_recovery';
 export const CHAT_RECOVERY_QUARANTINE_LIMIT = 3;
 
 const GROUP_CHAT_OWNER = 'shared';
+const ROOT_DIRECTORY_LABELS = Object.freeze({
+    character: 'Chats directory',
+    group: 'Group chats directory',
+    conversation: 'Conversations directory',
+});
+const ROOT_DIRECTORY_KEYS = Object.freeze({
+    character: 'chatsDirectory',
+    group: 'groupChatsDirectory',
+    conversation: 'conversationsDirectory',
+});
 const RECOVERY_STATE_FILE_REGEXP = /^([a-f0-9]{64})\.(?:latest\.jsonl|deleted|corrupt-\d+\.jsonl)$/;
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 const rekeyTransactions = new WeakMap();
@@ -225,7 +235,7 @@ function normalizeMaxRecoveryStates(value) {
 function createTarget({ type, owner, filename, activeDirectory, backupDirectory, rootDirectoryKey, rootDirectory, maxRecoveryStates }) {
     const normalizedFilename = normalizeFilename(filename);
     const normalizedBackupDirectory = normalizeDirectory(backupDirectory, 'Backup directory');
-    const normalizedRootDirectory = normalizeDirectory(rootDirectory, type === 'character' ? 'Chats directory' : 'Group chats directory');
+    const normalizedRootDirectory = normalizeDirectory(rootDirectory, ROOT_DIRECTORY_LABELS[type]);
     const normalizedActiveDirectory = path.resolve(activeDirectory);
     const id = crypto.createHash('sha256')
         .update(type)
@@ -278,6 +288,25 @@ export function createGroupChatTarget({ groupChatsDirectory, backupDirectory, fi
     });
 }
 
+/**
+ * The chat of a conversation, which lives in its own folder under `conversations/`. The conversation id is the owner,
+ * so a conversation chat never shares recovery state with a character chat or a group chat of the same file name.
+ */
+export function createConversationChatTarget({ conversationsDirectory, backupDirectory, owner, filename, maxRecoveryStates }) {
+    const normalizedOwner = normalizeOwner(owner);
+    const normalizedConversationsDirectory = normalizeDirectory(conversationsDirectory, ROOT_DIRECTORY_LABELS.conversation);
+    return createTarget({
+        type: 'conversation',
+        owner: normalizedOwner,
+        filename,
+        activeDirectory: path.join(normalizedConversationsDirectory, normalizedOwner, 'chats'),
+        backupDirectory,
+        rootDirectoryKey: ROOT_DIRECTORY_KEYS.conversation,
+        rootDirectory: normalizedConversationsDirectory,
+        maxRecoveryStates,
+    });
+}
+
 export function normalizeChatRecoveryTarget(target) {
     if (target?.type === 'character') {
         return createCharacterChatTarget(target);
@@ -285,7 +314,10 @@ export function normalizeChatRecoveryTarget(target) {
     if (target?.type === 'group') {
         return createGroupChatTarget(target);
     }
-    throw new TypeError('Chat recovery target type must be "character" or "group".');
+    if (target?.type === 'conversation') {
+        return createConversationChatTarget(target);
+    }
+    throw new TypeError('Chat recovery target type must be "character", "group" or "conversation".');
 }
 
 export function getChatRecoveryPaths(target) {
@@ -536,7 +568,7 @@ function quarantineCorruptChat(target, data) {
 }
 
 function ensureActiveDirectory(target) {
-    const rootDirectory = target.type === 'character' ? target.chatsDirectory : target.groupChatsDirectory;
+    const rootDirectory = target[ROOT_DIRECTORY_KEYS[target.type]];
     assertSafeDirectory(rootDirectory, { create: true });
     assertSafeDirectory(target.activeDirectory, { create: true });
 }
