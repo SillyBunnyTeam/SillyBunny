@@ -505,7 +505,18 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
             extra: {},
         });
 
-        const fsyncSpy = jest.spyOn(fs, 'fsyncSync');
+        const realFsyncSync = fs.fsyncSync.bind(fs);
+        let fileFsyncCount = 0;
+        let dirFsyncCount = 0;
+        jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+            const fdStats = fs.fstatSync(fd);
+            if (fdStats.isDirectory()) {
+                dirFsyncCount++;
+            } else if (fdStats.isFile()) {
+                fileFsyncCount++;
+            }
+            return realFsyncSync(fd);
+        });
         const linkSpy = jest.spyOn(fs, 'linkSync');
         const readSyncSpy = jest.spyOn(fs, 'readSync');
 
@@ -514,9 +525,11 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
             deferBackup: false,
         });
 
-        // 1 fsync for .latest.jsonl + 2 fsyncs for active file (Barrier #1 + Barrier #2); 0 for pre-write hard-link & regular backup
-        expect(fsyncSpy.mock.calls.length).toBeLessThanOrEqual(3);
-        expect(fsyncSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+        // 1 file fsync for .latest.jsonl + 2 file fsyncs for active file (Barrier #1 + Barrier #2);
+        // 0 file fsyncs for pre-write hard-link & regular backup; <= 2 POSIX directory fsyncs (pre-write link + latest rename).
+        expect(fileFsyncCount).toBeLessThanOrEqual(3);
+        expect(fileFsyncCount).toBeGreaterThanOrEqual(2);
+        expect(dirFsyncCount).toBeLessThanOrEqual(2);
         // Zero active-file readSync on warm cache hit
         expect(readSyncSpy).not.toHaveBeenCalled();
         // Pre-write hard-link attempted from .latest.jsonl
