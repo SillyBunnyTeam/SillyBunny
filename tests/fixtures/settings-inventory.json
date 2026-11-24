@@ -422,7 +422,6 @@
         {"identity":"#sd_openai_style","kind":"select","where":"hidden"},
         {"identity":"#sd_openai_quality_gpt","kind":"select","where":"hidden"},
         {"identity":"#sd_openai_quality","kind":"select","where":"hidden"},
-        {"identity":"#sd_openai_duration","kind":"select","where":"hidden"},
         {"identity":"#sd_comfy_type","kind":"select","where":"hidden"},
         {"identity":"#sd_comfy_url","kind":"text","where":"hidden"},
         {"identity":"#sd_comfy_validate","kind":"button","where":"hidden"},
