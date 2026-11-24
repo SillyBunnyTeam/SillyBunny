@@ -2796,6 +2796,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-23, #1016 (in-range dependency refresh). |
 | Owner | Server and data compatibility integrator. |
 
+### `src/endpoints/openai.js`, `public/scripts/extensions/stable-diffusion/index.js` and `settings.html` - retired Sora 2 video generation removal
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/openai.js`; `public/scripts/extensions/stable-diffusion/index.js`; `public/scripts/extensions/stable-diffusion/settings.html`. |
+| Area | Image Generation extension: OpenAI provider settings, generation routing, and backend video endpoint. |
+| Divergence reason | OpenAI retired `sora-2`, `sora-2-pro`, and the `/v1/videos` API on 24 September 2026 with no direct replacement, so requests to it always fail. Upstream SillyTavern still retains the `/api/openai/generate-video` route, client routing, and `#sd_openai_duration` control. |
+| Target seam | `public/scripts/image-model-catalogs.js` (`getOpenAIImageModels()` filters out `sora-2` and `sora-2-pro`); none for the route and control removal. |
+| Adapter shape | Marked removals in `src/endpoints/openai.js` (remove `POST /generate-video` and the unused `abortOnRequestClose` and `delay` imports), `public/scripts/extensions/stable-diffusion/index.js` (remove the `isSora2` `/api/openai/generate-video` branch and `openai_duration` default, load, handler, and listener), and `public/scripts/extensions/stable-diffusion/settings.html` (remove the `data-sd-model="sora-2,sora-2-pro"` `#sd_openai_duration` control). Saved `extension_settings.sd.openai_duration` keys are ignored without migration. |
+| Protecting tests | `tests/image-model-catalogs.test.js`; `tests/image-model-discovery.test.js` (`OpenAI video generation route is removed after Sora 2 retirement`); `tests/image-model-selection.test.js` (`OpenAI image generation and settings omit retired Sora 2 video paths`); `tests/unit/settings-inventory.test.js`; `tests/audit/settings-inventory.e2e.js` (`settings.customize.extensions:subpages`). |
+| Validation | 2026-11-24 (fresh install boot, settings save): root and `tests/` ESLint (0 errors), focused Jest suites (7 suites, 152 passed), full Jest suite on Windows (710 passed, 1 skipped, 12 failed from unrelated Windows symlink/git-path environment errors), `npm run check:frontend-budgets`, `npm run build:frontend`, `bun src/server-init.js`, `bun test ./tests/character-index.test.js` (13 pass, 1 skip), Bun 1.4.4 and Node.js 24.22.1 live boot smokes (`GET /` 200, `POST /api/openai/generate-video` 404, `POST /api/openai/generate-image` without key 400), and Chromium `tests/audit/settings-inventory.e2e.js` (`settings.customize.extensions:subpages`, 1 passed). |
+| Rollback path | Restore `POST /generate-video` and the `abortOnRequestClose` and `delay` imports in `src/endpoints/openai.js`; restore `openai_duration`, `onOpenAiDurationSelect()`, the `isSora2` branch in `generateOpenAiImage()`, and the `#sd_openai_duration` binding in `public/scripts/extensions/stable-diffusion/index.js`; restore the `data-sd-model="sora-2,sora-2-pro"` block in `public/scripts/extensions/stable-diffusion/settings.html`; add `#sd_openai_duration` back to `tests/fixtures/settings-inventory.json`; and remove the two regression tests in `tests/image-model-discovery.test.js` and `tests/image-model-selection.test.js`. No stored user settings are modified or deleted. |
+| Last reviewed | 2026-11-24, issue #1025. |
+| Owner | Server and image-generation provider integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
