@@ -23,7 +23,7 @@ function hashFileIfPresent(hasher, filePath) {
     hasher.update(fs.readFileSync(filePath));
 }
 
-function getPublicLibInputsSignature() {
+export function getPublicLibInputsSignature() {
     const hasher = crypto.createHash('sha256');
 
     hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'lib.js'));

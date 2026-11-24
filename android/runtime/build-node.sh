@@ -17,6 +17,8 @@
 #   NODE_BUILD_DIR=DIR         unpacked NDK and source tree (default android/runtime/cache/node-build)
 #   NODE_CACHE_DIR=DIR         download cache shared with sources.py (default android/runtime/cache/sources)
 #   NODE_NDK_DIR=DIR           an unpacked NDK to use instead of the pinned zip
+#   NODE_ICU_MODE=MODE         override runtime.lock's node.icu (`full-icu` or `small-icu`)
+#   NODE_ICU_LOCALES_DIR=DIR   locales directory for build-icu-filter.py under small-icu (default public/locales)
 #   NODE_OFFLINE=1             never download; every pinned file must already be cached
 #   NODE_REQUIRE_SIGNATURE=1   fail unless the SHASUMS256.txt signature was verified (CI sets this)
 #   NODE_KEEP_BUILD=1          keep the source and out/ tree after a successful build
@@ -61,6 +63,12 @@ output=${2:-}
 [[ $cache == /* ]] || cache=$PWD/$cache
 jobs=${NODE_BUILD_JOBS:-4}
 [[ $jobs =~ ^[1-9][0-9]{0,2}$ ]] || fail invalid-jobs
+icu_override=${NODE_ICU_MODE:-${NODE_ICU:-}}
+if [[ -n $icu_override && $icu_override != full-icu && $icu_override != small-icu ]]; then
+    fail invalid-icu-mode
+fi
+locales_dir=${NODE_ICU_LOCALES_DIR:-$here/../../public/locales}
+[[ $locales_dir == /* ]] || locales_dir=$PWD/$locales_dir
 
 step=tools
 needed=(python3 make patch tar xz gcc g++ ar df)
@@ -80,6 +88,8 @@ fetch_arguments=(--build-inputs "$abi" --cache "$cache")
 python3 -B "$here/fetch-node.py" "${fetch_arguments[@]}" > "$inputs"
 # shellcheck source=/dev/null
 . "$inputs"
+[[ -z $icu_override ]] || NODE_ICU=$icu_override
+[[ $NODE_ICU == full-icu || $NODE_ICU == small-icu ]] || fail invalid-icu-mode
 if [[ ${NODE_REQUIRE_SIGNATURE:-} == 1 && $NODE_SIGNATURE != verified ]]; then
     fail node-signature-required
 fi
@@ -155,15 +165,44 @@ export GYP_DEFINES="target_arch=$cpu v8_target_arch=$cpu android_target_arch=$cp
 export CARGO=/dev/null/cargo RUSTC=/dev/null/rustc
 cd -- "$source"
 rm -f config.gypi config.mk config.status icu_config.gypi
-./android-configure "$ndk" "$NODE_API" "$arch" 2>&1 | tee "$work/configure.log"
+if [[ $NODE_ICU == small-icu ]]; then
+    python3 -B "$here/build-icu-filter.py" --locales-dir "$locales_dir" --output "$work/icu-filter.json" > "$work/icu-filter-summary.json"
+    export ICU_DATA_FILTER_FILE="$work/icu-filter.json"
+    python3 -B -I - "$source/android-configure" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+if '--with-intl=' not in text:
+    updated, count = re.subn(r'(\./configure\b)', r'\1 --with-intl=small-icu', text, count=1)
+    if count != 1:
+        raise SystemExit('expected ./configure invocation in android-configure')
+    path.write_text(updated, encoding='utf-8')
+PY
+    ./android-configure "$ndk" "$NODE_API" "$arch" --with-intl=small-icu 2>&1 | tee "$work/configure.log"
+else
+    ./android-configure "$ndk" "$NODE_API" "$arch" 2>&1 | tee "$work/configure.log"
+fi
 # The wrapper ignores configure's exit status: require its success marker, fresh outputs and S2.1's assertions.
 grep -q 'INFO: configure completed successfully' "$work/configure.log" || fail configure-failed
 [[ -f config.gypi && -f out/Makefile ]] || fail configure-output
-python3 -B "$here/fetch-node.py" --check-config "$abi=$source" --ndk "$ndk" > "$work/config.json"
+python3 -B "$here/fetch-node.py" --check-config "$abi=$source" --ndk "$ndk" --icu-mode "$NODE_ICU" > "$work/config.json"
 
 step=make
 make -j"$jobs"
 [[ -f out/Release/node && ! -L out/Release/node ]] || fail node-missing
+if [[ $NODE_ICU == small-icu && -d $source/deps/icu/source/python && -d $source/deps/icu/source/data ]]; then
+    mkdir -p -- "$work/icu-tmp" "$work/icu-out"
+    PYTHONPATH="$source/deps/icu/source/python" python3 -B -m icutools.databuilder \
+        --mode unix-exec \
+        --src_dir "$source/deps/icu/source/data" \
+        --filter_file "$work/icu-filter.json" \
+        --tmp_dir "$work/icu-tmp" \
+        --out_dir "$work/icu-out" \
+        --tool_dir "$source/out/Release"
+fi
 
 step=strip
 mkdir -p -- "$output"
@@ -227,6 +266,18 @@ with open(record_path, 'w', encoding='utf-8') as stream:
     stream.write(json.dumps(record, indent=4, sort_keys=True) + '\n')
 PY
 chmod 0644 -- "$record"
+if [[ $NODE_ICU == small-icu && -f $work/icu-filter.json ]]; then
+    cp -f -- "$work/icu-filter.json" "$output/icu-filter.json"
+    chmod 0644 -- "$output/icu-filter.json"
+    shopt -s nullglob
+    icu_dats=("$work/icu-out"/icudt*.dat "$source/out/Release"/icudt*.dat)
+    shopt -u nullglob
+    if (( ${#icu_dats[@]} > 0 )); then
+        mkdir -p -- "$output/icu"
+        cp -f -- "${icu_dats[0]}" "$output/icu/$(basename -- "${icu_dats[0]}")"
+        chmod 0644 -- "$output/icu/$(basename -- "${icu_dats[0]}")"
+    fi
+fi
 mv -f -- "$library" "$output/libnode.so"
 mv -f -- "$record" "$output/node-build.json"
 

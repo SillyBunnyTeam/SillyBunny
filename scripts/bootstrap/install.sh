@@ -409,8 +409,8 @@ clone_install() {
     log "Downloading SillyBunny ($ref) into $install_dir..."
     mkdir -p "$(dirname "$install_dir")"
     if is_android_app; then
-        # Android only runs the Node server. Exclude non-runtime folders to save storage and download time.
-        git -c advice.detachedHead=false clone --no-single-branch --depth 1 --filter=blob:none --no-checkout --branch "$ref" -- "$repo" "$install_dir"
+        # Android only runs the Node server. Exclude non-runtime folders and historical tags to save storage and download time.
+        git -c advice.detachedHead=false clone --no-single-branch --no-tags --depth 1 --filter=blob:none --no-checkout --branch "$ref" -- "$repo" "$install_dir"
         git -C "$install_dir" sparse-checkout init --no-cone
         git -C "$install_dir" sparse-checkout set --no-cone '/*' '!/.github/' '!/android/' '!/assets-src/' '!/docs/' '!/output/' '!/screenshots/' '!/tests/'
         git -C "$install_dir" checkout --quiet

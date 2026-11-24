@@ -412,8 +412,10 @@ describePosix('Android bootstrap against a bare fixture upstream', () => {
         git(workDir, 'init', '--quiet', '--initial-branch=release', seed);
         git(seed, 'add', '-A');
         git(seed, 'commit', '--quiet', '-m', 'c1');
+        git(seed, 'tag', 'v1.0.0');
         writeFile(path.join(seed, 'package.json'), '{"name":"sillybunny","version":"2.0.0"}\n');
         git(seed, 'commit', '--quiet', '-am', 'c2');
+        git(seed, 'tag', 'v2.0.0');
         git(seed, 'checkout', '--quiet', '-b', 'staging');
         writeFile(path.join(seed, 'package.json'), '{"name":"sillybunny","version":"2.1.0"}\n');
         git(seed, 'commit', '--quiet', '-am', 'staging-head');
@@ -429,6 +431,7 @@ describePosix('Android bootstrap against a bare fixture upstream', () => {
         expect(git(apkTarget, 'rev-parse', '--is-shallow-repository')).toBe('true');
         expect(git(apkTarget, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/release');
         expect(git(apkTarget, 'branch', '-r')).toContain('origin/staging');
+        expect(git(apkTarget, 'tag', '-l')).toBe('');
         expect(git(apkTarget, 'show', 'HEAD:android/min-app-version')).toBe('1');
         expect(existsSync(path.join(apkTarget, 'package.json'))).toBe(true);
         expect(existsSync(path.join(apkTarget, 'start.sh'))).toBe(true);
@@ -441,6 +444,7 @@ describePosix('Android bootstrap against a bare fixture upstream', () => {
         const desktopResult = runInstaller(['--repo', `file://${bare}`, '--no-start', '--dir', desktopTarget, '--ref', 'release', '--use-node']);
         expect(desktopResult.status).toBe(0);
         expect(git(desktopTarget, 'rev-parse', '--is-shallow-repository')).toBe('false');
+        expect(git(desktopTarget, 'tag', '-l')).toContain('v2.0.0');
         expect(existsSync(path.join(desktopTarget, 'docs', 'guide.md'))).toBe(true);
         expect(existsSync(path.join(desktopTarget, 'tests', 'sample.test.js'))).toBe(true);
     });

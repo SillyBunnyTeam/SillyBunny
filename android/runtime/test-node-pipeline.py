@@ -360,7 +360,8 @@ class NodeLockTests(LockFixture):
             ('node-ndk-pin', lambda node_entry: node_entry['ndk'].pop('sha1')),
             ('node-api', lambda node_entry: node_entry.update(api=23)),
             ('node-api', lambda node_entry: node_entry.update(api='29')),
-            ('node-icu', lambda node_entry: node_entry.update(icu='small-icu')),
+            ('node-icu', lambda node_entry: node_entry.update(icu='system-icu')),
+            ('node-icu', lambda node_entry: node_entry.update(icu='none')),
             ('node-source-pin', lambda node_entry: node_entry['source'].update(commit='f14cd3aa')),
             ('node-source-pin', lambda node_entry: node_entry['source'].update(tarballSha256='0' * 64)),
             ('node-patch-set', lambda node_entry: node_entry['patchSet'].update(directory='patches')),
@@ -369,6 +370,13 @@ class NodeLockTests(LockFixture):
             with self.subTest(code=code):
                 self.edit_runtime(lambda runtime: change(runtime['node']))
                 self.assert_code(code, self.pins)
+
+    def test_both_full_icu_and_small_icu_modes_are_valid_while_committed_lock_stays_full_icu(self):
+        self.assertEqual(COMMITTED['node']['icu'], 'full-icu')
+        for mode in ('full-icu', 'small-icu'):
+            with self.subTest(mode=mode):
+                self.edit_runtime(lambda runtime, m=mode: runtime['node'].update(icu=m))
+                self.assertEqual(self.pins().node['icu'], mode)
 
     def test_npm_comes_from_node_and_supports_min_release_age(self):
         for change in (lambda value: value.update(version='11.9.9'), lambda value: value.update(source='registry'),
@@ -470,6 +478,19 @@ class ConfigCheckTests(PipelineTestCase):
             with self.subTest(abi=abi):
                 result = node.check_config(abi, self.configured(abi), '/opt/android-ndk-r30', 29)
                 self.assertEqual(result['driver'], node.ABIS[abi]['triple'] + '29-clang')
+                self.assertEqual(result['variables']['icu_small'], 'false')
+
+    def test_small_icu_configuration_passes_for_every_abi_and_rejects_full_icu_config(self):
+        for abi in node.ABIS:
+            with self.subTest(abi=abi):
+                source = self.configured(abi, icu_small='true')
+                result = node.check_config(abi, source, '/opt/android-ndk-r30', 29, icu='small-icu')
+                self.assertEqual(result['driver'], node.ABIS[abi]['triple'] + '29-clang')
+                self.assertEqual(result['variables']['icu_small'], 'true')
+                self.assert_code('node-config', node.check_config, abi, self.configured(abi, icu_small='false'),
+                                 '/opt/android-ndk-r30', 29, icu='small-icu')
+        self.assert_code('node-icu', node.check_config, 'x86_64', self.configured('x86_64'),
+                         '/opt/android-ndk-r30', 29, icu='system-icu')
 
     def test_wrong_target_host_icu_or_snapshot_settings_fail(self):
         cases = [('x86_64', {'host_arch': 'ia32'}), ('armeabi-v7a', {'host_arch': 'x64'}), ('x86_64', {'icu_small': 'true'}),
@@ -1254,7 +1275,9 @@ class BuildScriptTests(unittest.TestCase):
         subprocess.run(['bash', '-n', str(self.SCRIPT)], check=True)
         for arguments, environment, code in ((['mips'], {}, 'unknown-abi'), ([], {}, 'usage'),
                                              (['x86_64'], {'NODE_BUILD_JOBS': '0'}, 'invalid-jobs'),
-                                             (['x86_64'], {'NODE_BUILD_JOBS': '4; rm -rf /'}, 'invalid-jobs')):
+                                             (['x86_64'], {'NODE_BUILD_JOBS': '4; rm -rf /'}, 'invalid-jobs'),
+                                             (['x86_64'], {'NODE_ICU_MODE': 'system-icu'}, 'invalid-icu-mode'),
+                                             (['x86_64'], {'NODE_ICU': 'none'}, 'invalid-icu-mode')):
             with self.subTest(arguments=arguments, environment=environment):
                 result = subprocess.run(['bash', str(self.SCRIPT), *arguments], stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, text=True, env={**os.environ, **environment})
