@@ -169,4 +169,48 @@ describe('image model selection', () => {
         await runtime.onCustomModelChange();
         expect(runtime.extension_settings.sd.model).toBe('future-image-model');
     });
+
+    test('OpenAI image generation and settings omit retired Sora 2 video paths', async () => {
+        const requests = [];
+        const context = vm.createContext({
+            extension_settings: {
+                sd: {
+                    model: 'gpt-image-2',
+                    width: 1024,
+                    height: 1536,
+                    openai_quality: 'standard',
+                    openai_quality_gpt: 'high',
+                    openai_style: 'vivid',
+                },
+            },
+            getRequestHeaders: () => ({}),
+            fetch: async (url, options) => {
+                requests.push({ url, body: JSON.parse(options.body) });
+                return { ok: true, json: async () => ({ data: [{ b64_json: 'aW1hZ2U=' }] }) };
+            },
+        });
+        const node = declarations.find(node => node.id?.name === 'generateOpenAiImage');
+        vm.runInContext(source.slice(node.start, node.end), context);
+
+        const image = await context.generateOpenAiImage('A lighthouse', undefined);
+        expect(image).toEqual({ format: 'png', data: 'aW1hZ2U=' });
+        expect(requests).toEqual([{
+            url: '/api/openai/generate-image',
+            body: expect.objectContaining({ model: 'gpt-image-2', size: '1024x1536', quality: 'high', moderation: 'low' }),
+        }]);
+
+        const defaultSettingsDecl = declarations
+            .filter(item => item.type === 'VariableDeclaration')
+            .flatMap(item => item.declarations)
+            .find(decl => decl.id?.name === 'defaultSettings');
+        const defaultSettingKeys = defaultSettingsDecl.init.properties.map(prop => prop.key?.name ?? prop.key?.value);
+        expect(defaultSettingKeys).not.toContain('openai_duration');
+        expect(source).not.toContain('/api/openai/generate-video');
+        expect(source).not.toContain('sd_openai_duration');
+        expect(source).not.toContain('isSora2');
+
+        const settingsHtml = readFileSync(new URL('../public/scripts/extensions/stable-diffusion/settings.html', import.meta.url), 'utf8');
+        expect(settingsHtml).not.toContain('sd_openai_duration');
+        expect(settingsHtml).not.toContain('sora-2');
+    });
 });

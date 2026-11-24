@@ -336,7 +336,7 @@ const defaultSettings = {
     openai_style: 'vivid',
     openai_quality: 'standard',
     openai_quality_gpt: 'auto',
-    openai_duration: '8',
+    // SillyBunny: omit openai_duration because OpenAI retired Sora 2 and the Videos API.
 
     style: 'Default',
     styles: defaultStyles,
@@ -547,7 +547,6 @@ async function loadSettings() {
     $('#sd_openai_style').val(extension_settings.sd.openai_style);
     $('#sd_openai_quality').val(extension_settings.sd.openai_quality);
     $('#sd_openai_quality_gpt').val(extension_settings.sd.openai_quality_gpt);
-    $('#sd_openai_duration').val(extension_settings.sd.openai_duration);
     $('#sd_comfy_type').val(extension_settings.sd.comfy_type);
     $('#sd_comfy_url').val(extension_settings.sd.comfy_url);
     $('#sd_comfy_prompt').val(extension_settings.sd.comfy_prompt);
@@ -1178,11 +1177,6 @@ async function onOpenAiStyleSelect() {
 
 async function onOpenAiQualitySelect() {
     extension_settings.sd.openai_quality = String($('#sd_openai_quality').find(':selected').val());
-    saveSettingsDebounced();
-}
-
-async function onOpenAiDurationSelect() {
-    extension_settings.sd.openai_duration = String($('#sd_openai_duration').find(':selected').val());
     saveSettingsDebounced();
 }
 
@@ -4122,7 +4116,6 @@ async function generateOpenAiImage(prompt, signal) {
     const isDalle2 = /dall-e-2/.test(extension_settings.sd.model);
     const isDalle3 = /dall-e-3/.test(extension_settings.sd.model);
     const isGptImg = /^(?:gpt-image-\d|chatgpt-image-latest$)/.test(extension_settings.sd.model);
-    const isSora2 = /sora-2/.test(extension_settings.sd.model);
 
     if (isDalle2 && prompt.length > dalle2PromptLimit) {
         prompt = prompt.substring(0, dalle2PromptLimit);
@@ -4161,29 +4154,7 @@ async function generateOpenAiImage(prompt, signal) {
         height = 512;
     }
 
-    if (isSora2) {
-        width = aspectRatio >= 1 ? 1280 : 720;
-        height = aspectRatio >= 1 ? 720 : 1280;
-
-        const videoResult = await fetch('/api/openai/generate-video', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            signal: signal,
-            body: JSON.stringify({
-                prompt: prompt,
-                model: extension_settings.sd.model,
-                size: `${width}x${height}`,
-                seconds: extension_settings.sd.openai_duration,
-            }),
-        });
-
-        if (!videoResult.ok) {
-            throw new Error(await videoResult.text());
-        }
-
-        const { format, data } = await videoResult.json();
-        return { format, data };
-    }
+    // SillyBunny: remove Sora 2 video generation because OpenAI retired the Videos API.
 
     const result = await fetch('/api/openai/generate-image', {
         method: 'POST',
@@ -5928,7 +5899,6 @@ export async function init() {
     $('#sd_interactive_mode').on('input', onInteractiveModeInput);
     $('#sd_openai_style').on('change', onOpenAiStyleSelect);
     $('#sd_openai_quality').on('change', onOpenAiQualitySelect);
-    $('#sd_openai_duration').on('input', onOpenAiDurationSelect);
     $('#sd_multimodal_captioning').on('input', onMultimodalCaptioningInput);
     $('#sd_snap').on('input', onSnapInput);
     $('#sd_minimal_prompt_processing').on('input', onMinimalPromptProcessing);
