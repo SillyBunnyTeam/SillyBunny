@@ -4,21 +4,31 @@ import { getConfigValue } from './util.js';
 
 export const MAX_ANTHROPIC_CACHE_BREAKPOINTS = 4;
 export const OPENROUTER_MODELS_CACHE_TTL_MS = 15 * 60 * 1000;
+export const OPENROUTER_MODELS_FAILURE_BACKOFF_MS = 30 * 1000;
 
 const API_OPENROUTER = 'https://openrouter.ai/api/v1';
+const CACHEABLE_CLAUDE_BLOCK_TYPES = new Set([
+    'text',
+    'image',
+    'document',
+    'tool_use',
+    'tool_result',
+    'search_result',
+]);
 
 /**
  * @typedef {object} PromptCachingConfig
  * @property {{ enableSystemPromptCache: boolean, cachingAtDepth: number, extendedTTL: boolean, cacheTTL: '1h'|'5m' }} claude
- * @property {{ enableSystemPromptCache: boolean, cachingAtDepth: number }} gemini
+ * @property {{ enableSystemPromptCache: boolean }} gemini
  */
 
-/** @type {{ claude?: { enableSystemPromptCache?: boolean, cachingAtDepth?: number, extendedTTL?: boolean }, gemini?: { enableSystemPromptCache?: boolean, cachingAtDepth?: number } } | null} */
+/** @type {{ claude?: { enableSystemPromptCache?: boolean, cachingAtDepth?: number, extendedTTL?: boolean }, gemini?: { enableSystemPromptCache?: boolean } } | null} */
 let runtimeCachingOverrides = null;
 
 /** @type {Map<string, boolean> | null} */
 let openRouterCacheableMap = null;
 let openRouterCacheableExpiresAt = 0;
+let openRouterCacheableRetryAfter = 0;
 /** @type {Promise<Map<string, boolean> | null> | null} */
 let openRouterCacheableInFlight = null;
 
@@ -33,23 +43,74 @@ export function normalizeCachingDepth(value) {
 }
 
 /**
- * Reads active prompt caching configuration, preferring live runtime overrides saved through server-admin.
+ * Mirrors src/util.js keyToEnv without adding extra imports that break tests mocking only getConfigValue.
+ * @param {string} key
+ * @returns {string}
+ */
+function configKeyToEnv(key) {
+    return 'SILLYTAVERN_' + String(key).toUpperCase().replace(/\./g, '_');
+}
+
+/**
+ * Mirrors src/util.js toBoolean without adding extra imports from ./util.js.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function parseConfigBoolean(value) {
+    if (typeof value === 'string') {
+        const trimmedLower = value.trim().toLowerCase();
+        if (trimmedLower === 'true') return true;
+        if (trimmedLower === 'false') return false;
+    }
+    return Boolean(value);
+}
+
+/**
+ * Resolves a caching config flag while preserving process.env precedence over runtime YAML saves.
+ * @param {string} key
+ * @param {unknown} runtimeValue
+ * @param {any} defaultValue
+ * @param {'boolean'|'number'} type
+ * @returns {any}
+ */
+function resolveConfigFlag(key, runtimeValue, defaultValue, type) {
+    if (configKeyToEnv(key) in process.env) {
+        return getConfigValue(key, defaultValue, type);
+    }
+    if (runtimeValue !== undefined) {
+        return type === 'boolean' ? parseConfigBoolean(runtimeValue) : runtimeValue;
+    }
+    return getConfigValue(key, defaultValue, type);
+}
+
+/**
+ * Reads active prompt caching configuration, preferring process.env, then live runtime overrides, then config.yaml.
  * @returns {PromptCachingConfig}
  */
 export function getPromptCachingConfig() {
-    const claudeSystemPromptCache = runtimeCachingOverrides?.claude?.enableSystemPromptCache
-        ?? getConfigValue('claude.enableSystemPromptCache', false, 'boolean');
-    const claudeCachingAtDepth = normalizeCachingDepth(
-        runtimeCachingOverrides?.claude?.cachingAtDepth
-        ?? getConfigValue('claude.cachingAtDepth', -1, 'number'),
+    const claudeSystemPromptCache = resolveConfigFlag(
+        'claude.enableSystemPromptCache',
+        runtimeCachingOverrides?.claude?.enableSystemPromptCache,
+        false,
+        'boolean',
     );
-    const claudeExtendedTTL = runtimeCachingOverrides?.claude?.extendedTTL
-        ?? getConfigValue('claude.extendedTTL', false, 'boolean');
-    const geminiSystemPromptCache = runtimeCachingOverrides?.gemini?.enableSystemPromptCache
-        ?? getConfigValue('gemini.enableSystemPromptCache', false, 'boolean');
-    const geminiCachingAtDepth = normalizeCachingDepth(
-        runtimeCachingOverrides?.gemini?.cachingAtDepth
-        ?? getConfigValue('gemini.cachingAtDepth', -1, 'number'),
+    const claudeCachingAtDepth = normalizeCachingDepth(resolveConfigFlag(
+        'claude.cachingAtDepth',
+        runtimeCachingOverrides?.claude?.cachingAtDepth,
+        -1,
+        'number',
+    ));
+    const claudeExtendedTTL = resolveConfigFlag(
+        'claude.extendedTTL',
+        runtimeCachingOverrides?.claude?.extendedTTL,
+        false,
+        'boolean',
+    );
+    const geminiSystemPromptCache = resolveConfigFlag(
+        'gemini.enableSystemPromptCache',
+        runtimeCachingOverrides?.gemini?.enableSystemPromptCache,
+        false,
+        'boolean',
     );
 
     return {
@@ -61,7 +122,6 @@ export function getPromptCachingConfig() {
         },
         gemini: {
             enableSystemPromptCache: Boolean(geminiSystemPromptCache),
-            cachingAtDepth: geminiCachingAtDepth,
         },
     };
 }
@@ -78,22 +138,19 @@ export function setPromptCachingRuntimeConfig(settings = {}) {
 
     if (settings?.claude && typeof settings.claude === 'object') {
         if ('enableSystemPromptCache' in settings.claude) {
-            next.claude.enableSystemPromptCache = Boolean(settings.claude.enableSystemPromptCache);
+            next.claude.enableSystemPromptCache = parseConfigBoolean(settings.claude.enableSystemPromptCache);
         }
         if ('cachingAtDepth' in settings.claude) {
             next.claude.cachingAtDepth = normalizeCachingDepth(settings.claude.cachingAtDepth);
         }
         if ('extendedTTL' in settings.claude) {
-            next.claude.extendedTTL = Boolean(settings.claude.extendedTTL);
+            next.claude.extendedTTL = parseConfigBoolean(settings.claude.extendedTTL);
         }
     }
 
     if (settings?.gemini && typeof settings.gemini === 'object') {
         if ('enableSystemPromptCache' in settings.gemini) {
-            next.gemini.enableSystemPromptCache = Boolean(settings.gemini.enableSystemPromptCache);
-        }
-        if ('cachingAtDepth' in settings.gemini) {
-            next.gemini.cachingAtDepth = normalizeCachingDepth(settings.gemini.cachingAtDepth);
+            next.gemini.enableSystemPromptCache = parseConfigBoolean(settings.gemini.enableSystemPromptCache);
         }
     }
 
@@ -108,11 +165,12 @@ export function resetPromptCachingRuntimeConfig() {
 }
 
 /**
- * Resets cached OpenRouter model capability metadata.
+ * Resets cached OpenRouter model capability metadata and failure backoff.
  */
 export function resetOpenRouterCacheableModelsCache() {
     openRouterCacheableMap = null;
     openRouterCacheableExpiresAt = 0;
+    openRouterCacheableRetryAfter = 0;
     openRouterCacheableInFlight = null;
 }
 
@@ -153,29 +211,44 @@ export function isElectronHubClaudeModel(model) {
 }
 
 /**
- * Strips an OpenRouter routing suffix (`:online`, `:nitro`, `:floor`, etc.) from a model ID.
+ * Strips OpenRouter routing suffixes (`:online`, `:nitro`, `:floor`, stacked modifiers) from a model ID.
  * @param {unknown} modelId
  * @returns {string}
  */
 export function stripOpenRouterModelSuffix(modelId) {
-    const normalized = String(modelId ?? '').trim();
+    let normalized = String(modelId ?? '').trim();
     if (!normalized) {
         return '';
     }
-    const colonIndex = normalized.lastIndexOf(':');
     const slashIndex = normalized.lastIndexOf('/');
-    return colonIndex > slashIndex ? normalized.slice(0, colonIndex) : normalized;
+    while (true) {
+        const colonIndex = normalized.lastIndexOf(':');
+        if (colonIndex <= slashIndex) {
+            break;
+        }
+        normalized = normalized.slice(0, colonIndex);
+    }
+    return normalized;
 }
 
 /**
  * Checks whether an OpenRouter model advertises explicit cache-write support.
- * Caches the catalog for 15 minutes and falls back to the base model ID when a routing suffix is used.
+ * Caches the catalog for 15 minutes, peels stacked routing suffixes after exact match,
+ * and applies a short failure backoff during /models outages.
  * @param {string} modelId
- * @param {{ fetchImpl?: typeof fetch, now?: () => number, ttlMs?: number }} [options]
+ * @param {{ fetchImpl?: typeof fetch, now?: () => number, ttlMs?: number, failureBackoffMs?: number }} [options]
  * @returns {Promise<boolean>}
  */
-export async function isOpenRouterModelCacheable(modelId, { fetchImpl = fetch, now = Date.now, ttlMs = OPENROUTER_MODELS_CACHE_TTL_MS } = {}) {
-    const normalized = String(modelId ?? '').trim();
+export async function isOpenRouterModelCacheable(
+    modelId,
+    {
+        fetchImpl = fetch,
+        now = Date.now,
+        ttlMs = OPENROUTER_MODELS_CACHE_TTL_MS,
+        failureBackoffMs = OPENROUTER_MODELS_FAILURE_BACKOFF_MS,
+    } = {},
+) {
+    const normalized = String(modelId ?? '').trim().toLowerCase();
     if (!normalized) {
         return false;
     }
@@ -184,17 +257,27 @@ export async function isOpenRouterModelCacheable(modelId, { fetchImpl = fetch, n
         if (!map) {
             return false;
         }
-        if (map.has(normalized)) {
-            return Boolean(map.get(normalized));
-        }
-        const stripped = stripOpenRouterModelSuffix(normalized);
-        if (stripped && stripped !== normalized && map.has(stripped)) {
-            return Boolean(map.get(stripped));
+        const slashIndex = normalized.lastIndexOf('/');
+        let candidate = normalized;
+        while (candidate) {
+            if (map.has(candidate)) {
+                return Boolean(map.get(candidate));
+            }
+            const colonIndex = candidate.lastIndexOf(':');
+            if (colonIndex <= slashIndex) {
+                break;
+            }
+            candidate = candidate.slice(0, colonIndex);
         }
         return false;
     };
 
-    if (openRouterCacheableMap && now() < openRouterCacheableExpiresAt) {
+    const currentTime = now();
+    if (openRouterCacheableMap && currentTime < openRouterCacheableExpiresAt) {
+        return lookupInMap(openRouterCacheableMap);
+    }
+
+    if (currentTime < openRouterCacheableRetryAfter) {
         return lookupInMap(openRouterCacheableMap);
     }
 
@@ -209,6 +292,9 @@ export async function isOpenRouterModelCacheable(modelId, { fetchImpl = fetch, n
 
                 if (!response.ok) {
                     console.warn(`OpenRouter models API returned ${response.status}: ${response.statusText}`);
+                    if (failureBackoffMs > 0) {
+                        openRouterCacheableRetryAfter = now() + failureBackoffMs;
+                    }
                     return null;
                 }
 
@@ -216,6 +302,9 @@ export async function isOpenRouterModelCacheable(modelId, { fetchImpl = fetch, n
                 const data = await response.json();
                 if (!Array.isArray(data?.data)) {
                     console.warn('OpenRouter API response format unexpected');
+                    if (failureBackoffMs > 0) {
+                        openRouterCacheableRetryAfter = now() + failureBackoffMs;
+                    }
                     return null;
                 }
 
@@ -225,14 +314,18 @@ export async function isOpenRouterModelCacheable(modelId, { fetchImpl = fetch, n
                         continue;
                     }
                     const writePrice = entry?.pricing?.input_cache_write;
-                    nextMap.set(entry.id, writePrice != null && writePrice !== '');
+                    nextMap.set(entry.id.trim().toLowerCase(), writePrice != null && writePrice !== '');
                 }
 
                 openRouterCacheableMap = nextMap;
                 openRouterCacheableExpiresAt = now() + ttlMs;
+                openRouterCacheableRetryAfter = 0;
                 return nextMap;
             } catch (error) {
                 console.warn(`Failed to check OpenRouter cache support for ${normalized}:`, error?.message ?? error);
+                if (failureBackoffMs > 0) {
+                    openRouterCacheableRetryAfter = now() + failureBackoffMs;
+                }
                 return null;
             } finally {
                 openRouterCacheableInFlight = null;
@@ -245,15 +338,31 @@ export async function isOpenRouterModelCacheable(modelId, { fetchImpl = fetch, n
 }
 
 /**
+ * Checks whether a request belongs to the main chat lane (not quiet, auxiliary, or cacheScope 'none').
+ * @param {any} requestBody
+ * @returns {boolean}
+ */
+export function isMainCacheableTurn(requestBody) {
+    if (!requestBody || typeof requestBody !== 'object') {
+        return false;
+    }
+    if (requestBody.type === 'quiet') {
+        return false;
+    }
+    const scope = requestBody.cacheScope;
+    if (scope !== undefined && scope !== null && scope !== '' && scope !== 'main') {
+        return false;
+    }
+    return true;
+}
+
+/**
  * Checks whether the request represents a main chat turn eligible for session-level cache routing.
  * @param {any} requestBody
  * @returns {boolean}
  */
 export function shouldAttachSessionCacheKey(requestBody) {
-    if (!requestBody || typeof requestBody !== 'object') {
-        return false;
-    }
-    if (requestBody.type === 'quiet' || requestBody.cacheScope === 'auxiliary') {
+    if (!isMainCacheableTurn(requestBody)) {
         return false;
     }
     return typeof requestBody.chat_id === 'string' && requestBody.chat_id.trim().length > 0;
@@ -261,18 +370,27 @@ export function shouldAttachSessionCacheKey(requestBody) {
 
 /**
  * Derives an opaque HMAC session key so chat names never leave the server.
+ * Includes userHandle when provided so multi-user instances with identical chat_id values stay isolated.
  * @param {string} chatId
  * @param {string} secret
- * @param {{ namespace?: string, prefix?: string, length?: number }} [options]
+ * @param {{ namespace?: string, userHandle?: string, prefix?: string, length?: number }} [options]
  * @returns {string | null}
  */
-export function deriveSessionCacheKey(chatId, secret, { namespace = '', prefix = 'sb_', length = 32 } = {}) {
+export function deriveSessionCacheKey(chatId, secret, { namespace = '', userHandle = '', prefix = 'sb_', length = 32 } = {}) {
     const normalizedChatId = String(chatId ?? '').trim();
     if (!normalizedChatId || !secret) {
         return null;
     }
-    const input = namespace ? `${namespace}:${normalizedChatId}` : normalizedChatId;
-    const digest = createHmac('sha256', String(secret)).update(input).digest('hex').slice(0, length);
+    const normalizedUser = String(userHandle ?? '').trim();
+    const parts = [];
+    if (namespace) {
+        parts.push(namespace);
+    }
+    if (normalizedUser) {
+        parts.push(`u:${normalizedUser}`);
+    }
+    parts.push(normalizedChatId);
+    const digest = createHmac('sha256', String(secret)).update(parts.join(':')).digest('hex').slice(0, length);
     return `${prefix}${digest}`;
 }
 
@@ -288,21 +406,156 @@ export function buildCacheControl(ttl = undefined) {
 }
 
 /**
+ * Normalizes a cache_control marker into its effective Anthropic TTL ('1h' or '5m').
+ * @param {any} cacheControl
+ * @returns {'1h'|'5m'}
+ */
+function getEffectiveTTL(cacheControl) {
+    return cacheControl?.ttl === '1h' ? '1h' : '5m';
+}
+
+/**
+ * Resolves a legal auto-placed Anthropic TTL obeying monotonic non-increasing ordering (1h -> 5m).
+ * Never silently upgrades a user's 5m preference to 1h; clamps 1h down to 5m after an existing 5m marker.
+ * @param {string | undefined} requestedTTL
+ * @param {{ hasEarlier5m?: boolean, hasLater1h?: boolean }} [bounds]
+ * @returns {string | undefined | null} Allowed TTL, or null if no legal marker can be placed
+ */
+function resolveAllowedAutoTTL(requestedTTL, { hasEarlier5m = false, hasLater1h = false } = {}) {
+    const effective = requestedTTL === '1h' ? '1h' : '5m';
+    if (effective === '1h' && hasEarlier5m) {
+        return hasLater1h ? null : '5m';
+    }
+    if (effective === '5m' && hasLater1h) {
+        return null;
+    }
+    return requestedTTL;
+}
+
+/**
+ * Collects cache_control objects attached to a tools array (Anthropic top-level or OpenAI function-level).
+ * @param {any[] | undefined} tools
+ * @returns {any[]}
+ */
+function getToolCacheControls(tools) {
+    const markers = [];
+    if (!Array.isArray(tools)) {
+        return markers;
+    }
+    for (const tool of tools) {
+        if (!tool || typeof tool !== 'object') {
+            continue;
+        }
+        if (tool.cache_control) {
+            markers.push(tool.cache_control);
+        }
+        if (tool.function && typeof tool.function === 'object' && tool.function.cache_control) {
+            markers.push(tool.function.cache_control);
+        }
+    }
+    return markers;
+}
+
+/**
+ * Collects cache_control objects attached to an Anthropic system prompt array.
+ * @param {any[] | undefined} systemPrompt
+ * @returns {any[]}
+ */
+function getSystemCacheControls(systemPrompt) {
+    const markers = [];
+    if (!Array.isArray(systemPrompt)) {
+        return markers;
+    }
+    for (const block of systemPrompt) {
+        if (block && typeof block === 'object' && block.cache_control) {
+            markers.push(block.cache_control);
+        }
+    }
+    return markers;
+}
+
+/**
+ * Collects cache_control objects attached to a single message.
+ * @param {any} message
+ * @returns {any[]}
+ */
+function getMessageCacheControls(message) {
+    const markers = [];
+    if (!message || typeof message !== 'object') {
+        return markers;
+    }
+    if (message.cache_control) {
+        markers.push(message.cache_control);
+    }
+    if (Array.isArray(message.content)) {
+        for (const part of message.content) {
+            if (part && typeof part === 'object' && part.cache_control) {
+                markers.push(part.cache_control);
+            }
+        }
+    }
+    return markers;
+}
+
+/**
+ * Checks whether any marker in a list has effective TTL '1h'.
+ * @param {any[]} markers
+ * @returns {boolean}
+ */
+function has1hTTL(markers) {
+    return markers.some(marker => getEffectiveTTL(marker) === '1h');
+}
+
+/**
+ * Checks whether any marker in a list has effective TTL '5m' (including omitted ttl).
+ * @param {any[]} markers
+ * @returns {boolean}
+ */
+function has5mTTL(markers) {
+    return markers.some(marker => getEffectiveTTL(marker) === '5m');
+}
+
+/**
+ * Checks whether any message in a slice [start, end) carries a marker matching predicate.
+ * @param {any[] | undefined} messages
+ * @param {number} start
+ * @param {number} end
+ * @param {(marker: any) => boolean} predicate
+ * @returns {boolean}
+ */
+function messagesRangeHasMarker(messages, start, end, predicate) {
+    if (!Array.isArray(messages)) {
+        return false;
+    }
+    const clampedStart = Math.max(0, start);
+    const clampedEnd = Math.min(messages.length, end);
+    for (let i = clampedStart; i < clampedEnd; i++) {
+        if (getMessageCacheControls(messages[i]).some(predicate)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Checks whether any cache_control marker in the payload uses extended 1h TTL.
+ * @param {{ systemPrompt?: any[], tools?: any[], messages?: any[] }} [payload]
+ * @returns {boolean}
+ */
+export function hasExtendedTTLMarker({ systemPrompt, tools, messages } = {}) {
+    if (has1hTTL(getToolCacheControls(tools)) || has1hTTL(getSystemCacheControls(systemPrompt))) {
+        return true;
+    }
+    return messagesRangeHasMarker(messages, 0, Array.isArray(messages) ? messages.length : 0, marker => getEffectiveTTL(marker) === '1h');
+}
+
+/**
  * Checks whether a message already carries a cache_control marker.
  * @param {any} message
  * @returns {boolean}
  */
 function hasCacheControl(message) {
-    if (!message || typeof message !== 'object') {
-        return false;
-    }
-    if (message.cache_control) {
-        return true;
-    }
-    if (Array.isArray(message.content)) {
-        return message.content.some(part => Boolean(part && typeof part === 'object' && part.cache_control));
-    }
-    return false;
+    return getMessageCacheControls(message).length > 0;
 }
 
 /**
@@ -311,39 +564,11 @@ function hasCacheControl(message) {
  * @returns {number}
  */
 export function countCacheControlMarkers({ systemPrompt, tools, messages } = {}) {
-    let count = 0;
-
-    if (Array.isArray(systemPrompt)) {
-        for (const block of systemPrompt) {
-            if (block && typeof block === 'object' && block.cache_control) {
-                count += 1;
-            }
-        }
-    }
-
-    if (Array.isArray(tools)) {
-        for (const tool of tools) {
-            if (tool && typeof tool === 'object' && tool.cache_control) {
-                count += 1;
-            }
-        }
-    }
+    let count = getSystemCacheControls(systemPrompt).length + getToolCacheControls(tools).length;
 
     if (Array.isArray(messages)) {
         for (const message of messages) {
-            if (!message || typeof message !== 'object') {
-                continue;
-            }
-            if (message.cache_control) {
-                count += 1;
-            }
-            if (Array.isArray(message.content)) {
-                for (const part of message.content) {
-                    if (part && typeof part === 'object' && part.cache_control) {
-                        count += 1;
-                    }
-                }
-            }
+            count += getMessageCacheControls(message).length;
         }
     }
 
@@ -352,21 +577,18 @@ export function countCacheControlMarkers({ systemPrompt, tools, messages } = {})
 
 /**
  * Checks whether a native Anthropic content block can hold cache_control.
- * Anthropic rejects cache_control on thinking blocks and empty text blocks.
+ * Uses an explicit allowlist and rejects empty/whitespace text blocks.
  * @param {any} part
  * @returns {boolean}
  */
 function isCacheableClaudeBlock(part) {
-    if (!part || typeof part !== 'object') {
-        return false;
-    }
-    if (part.type === 'thinking' || part.type === 'redacted_thinking') {
+    if (!part || typeof part !== 'object' || typeof part.type !== 'string') {
         return false;
     }
     if (part.type === 'text') {
         return typeof part.text === 'string' && part.text.trim().length > 0;
     }
-    return true;
+    return CACHEABLE_CLAUDE_BLOCK_TYPES.has(part.type);
 }
 
 /**
@@ -463,7 +685,7 @@ export function markClaudeSystemPromptCache(systemPrompt, ttl, { existingBreakpo
     if (!Array.isArray(systemPrompt) || systemPrompt.length === 0) {
         return false;
     }
-    if (systemPrompt.some(block => block && typeof block === 'object' && block.cache_control)) {
+    if (getSystemCacheControls(systemPrompt).length > 0) {
         return false;
     }
     const used = existingBreakpoints ?? countCacheControlMarkers({ systemPrompt });
@@ -491,7 +713,7 @@ export function markClaudeToolsCache(tools, ttl, { existingBreakpoints = null, m
     if (!Array.isArray(tools) || tools.length === 0) {
         return false;
     }
-    if (tools.some(tool => tool && typeof tool === 'object' && tool.cache_control)) {
+    if (getToolCacheControls(tools).length > 0) {
         return false;
     }
     const used = existingBreakpoints ?? countCacheControlMarkers({ tools });
@@ -508,18 +730,11 @@ export function markClaudeToolsCache(tools, ttl, { existingBreakpoints = null, m
 }
 
 /**
- * Adds cache_control to the end of the leading system/developer prompt block for OpenRouter-style messages.
- * Marks the last non-empty leading system/developer message so multi-message system prompts cache as one prefix.
- * @param {object[]} messages
- * @param {string | undefined} [ttl]
- * @param {{ existingBreakpoints?: number, maxBreakpoints?: number }} [options]
- * @returns {boolean}
+ * Finds the end index of the leading contiguous system/developer prompt block.
+ * @param {any[]} messages
+ * @returns {number}
  */
-export function applySystemPromptCacheForOpenRouter(messages, ttl = undefined, { existingBreakpoints = null, maxBreakpoints = Infinity } = {}) {
-    if (!Array.isArray(messages) || messages.length === 0) {
-        return false;
-    }
-
+function findLeadingSystemPrefixEnd(messages) {
     let prefixEnd = -1;
     for (let i = 0; i < messages.length; i++) {
         const role = messages[i]?.role;
@@ -529,7 +744,27 @@ export function applySystemPromptCacheForOpenRouter(messages, ttl = undefined, {
             break;
         }
     }
+    return prefixEnd;
+}
 
+/**
+ * Adds cache_control to the end of the leading system/developer prompt block for OpenRouter-style messages.
+ * Marks the last non-empty leading system/developer message so multi-message system prompts cache as one prefix.
+ * @param {object[]} messages
+ * @param {string | undefined} [ttl]
+ * @param {{ existingBreakpoints?: number, maxBreakpoints?: number, resolveTTLForIndex?: (index: number) => string | undefined | null }} [options]
+ * @returns {boolean}
+ */
+export function applySystemPromptCacheForOpenRouter(
+    messages,
+    ttl = undefined,
+    { existingBreakpoints = null, maxBreakpoints = Infinity, resolveTTLForIndex = null } = {},
+) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return false;
+    }
+
+    const prefixEnd = findLeadingSystemPrefixEnd(messages);
     if (prefixEnd === -1) {
         return false;
     }
@@ -546,7 +781,11 @@ export function applySystemPromptCacheForOpenRouter(messages, ttl = undefined, {
     }
 
     for (let i = prefixEnd; i >= 0; i--) {
-        if (markOpenRouterMessageCacheControl(messages[i], ttl)) {
+        const effectiveTTL = resolveTTLForIndex ? resolveTTLForIndex(i) : ttl;
+        if (effectiveTTL === null) {
+            return false;
+        }
+        if (markOpenRouterMessageCacheControl(messages[i], effectiveTTL)) {
             return true;
         }
     }
@@ -556,18 +795,25 @@ export function applySystemPromptCacheForOpenRouter(messages, ttl = undefined, {
 
 /**
  * Places depth-based cache_control breakpoints walking backwards from the end of the conversation.
- * Skips trailing assistant prefills and uncacheable/empty blocks, and respects breakpoint budgets.
+ * Skips trailing assistant prefills (even when followed by trailing system/developer injections),
+ * skips uncacheable/empty blocks, and respects breakpoint budgets and optional TTL constraints.
  * @param {any[]} messages
  * @param {number} cachingAtDepth
  * @param {string | undefined} [ttl]
- * @param {{ openRouterStyle?: boolean, singleBreakpoint?: boolean, existingBreakpoints?: number | null, maxBreakpoints?: number }} [options]
+ * @param {{ openRouterStyle?: boolean, singleBreakpoint?: boolean, existingBreakpoints?: number | null, maxBreakpoints?: number, resolveTTLForIndex?: ((index: number) => string | undefined | null) | null }} [options]
  * @returns {number} Number of breakpoints added
  */
 export function applyDepthCacheBreakpoints(
     messages,
     cachingAtDepth,
     ttl = undefined,
-    { openRouterStyle = false, singleBreakpoint = false, existingBreakpoints = null, maxBreakpoints = Infinity } = {},
+    {
+        openRouterStyle = false,
+        singleBreakpoint = false,
+        existingBreakpoints = null,
+        maxBreakpoints = Infinity,
+        resolveTTLForIndex = null,
+    } = {},
 ) {
     if (!Array.isArray(messages) || messages.length === 0) {
         return 0;
@@ -601,14 +847,16 @@ export function applyDepthCacheBreakpoints(
             continue;
         }
 
+        // Skip system/developer messages before checking trailing assistant prefill so
+        // Post-History Instructions / depth-0 system injections never unmask an assistant prefill.
+        if (openRouterStyle && (message.role === 'system' || message.role === 'developer')) {
+            continue;
+        }
+
         if (!passedThePrefill && message.role === 'assistant') {
             continue;
         }
         passedThePrefill = true;
-
-        if (openRouterStyle && (message.role === 'system' || message.role === 'developer')) {
-            continue;
-        }
 
         if (message.role !== previousRoleName) {
             if (targetDepthSet.has(depth)) {
@@ -621,10 +869,15 @@ export function applyDepthCacheBreakpoints(
         if (pendingMark) {
             if (hasCacheControl(message)) {
                 pendingMark = false;
-            } else if (usedBreakpoints < maxBreakpoints && markMessage(message, ttl)) {
-                usedBreakpoints += 1;
-                added += 1;
-                pendingMark = false;
+            } else if (usedBreakpoints < maxBreakpoints) {
+                const effectiveTTL = resolveTTLForIndex ? resolveTTLForIndex(i) : ttl;
+                if (effectiveTTL === null) {
+                    pendingMark = false;
+                } else if (markMessage(message, effectiveTTL)) {
+                    usedBreakpoints += 1;
+                    added += 1;
+                    pendingMark = false;
+                }
             }
         }
 
@@ -637,35 +890,77 @@ export function applyDepthCacheBreakpoints(
 }
 
 /**
- * Applies native Anthropic prompt caching to tools, system prompt, messages, and beta headers.
- * @param {{ systemPrompt?: any[], tools?: any[], messages?: any[], useSystemPrompt?: boolean, betaHeaders?: string[], config?: PromptCachingConfig }} params
+ * Builds a monotonic Anthropic TTL resolver for message index `i` given enclosing tools/systemPrompt.
+ * @param {string | undefined} requestedTTL
+ * @param {{ tools?: any[], systemPrompt?: any[], messages?: any[] }} payload
+ * @returns {(index: number) => string | undefined | null}
  */
-export function applyClaudeRequestCaching({ systemPrompt, tools, messages, useSystemPrompt = false, betaHeaders = [], config = getPromptCachingConfig() }) {
-    const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
-    let usedBreakpoints = countCacheControlMarkers({ systemPrompt: useSystemPrompt ? systemPrompt : undefined, tools, messages });
+function createMessageTTLResolver(requestedTTL, { tools, systemPrompt, messages }) {
+    return (index) => {
+        const hasEarlier5m = has5mTTL(getToolCacheControls(tools))
+            || has5mTTL(getSystemCacheControls(systemPrompt))
+            || messagesRangeHasMarker(messages, 0, index, marker => getEffectiveTTL(marker) === '5m');
+        const hasLater1h = messagesRangeHasMarker(messages, index + 1, Array.isArray(messages) ? messages.length : 0, marker => getEffectiveTTL(marker) === '1h');
+        return resolveAllowedAutoTTL(requestedTTL, { hasEarlier5m, hasLater1h });
+    };
+}
 
-    if (enableSystemPromptCache) {
-        if (useSystemPrompt && markClaudeSystemPromptCache(systemPrompt, cacheTTL, { existingBreakpoints: usedBreakpoints, maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS })) {
-            usedBreakpoints += 1;
+/**
+ * Applies native Anthropic prompt caching to tools, system prompt, messages, and beta headers.
+ * Enforces Anthropic's 4-breakpoint cap and monotonic non-increasing TTL ordering (tools -> system -> messages).
+ * @param {{ requestBody?: any, systemPrompt?: any[], tools?: any[], allTools?: any[], messages?: any[], useSystemPrompt?: boolean, betaHeaders?: string[], config?: PromptCachingConfig }} params
+ */
+export function applyClaudeRequestCaching({
+    requestBody = undefined,
+    systemPrompt,
+    tools,
+    allTools = tools,
+    messages,
+    useSystemPrompt = false,
+    betaHeaders = [],
+    config = getPromptCachingConfig(),
+}) {
+    const activeSystemPrompt = useSystemPrompt ? systemPrompt : undefined;
+    let usedBreakpoints = countCacheControlMarkers({ systemPrompt: activeSystemPrompt, tools: allTools, messages });
+
+    if (!requestBody || isMainCacheableTurn(requestBody)) {
+        const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
+
+        // Anthropic evaluates breakpoints in strict order: tools -> system -> messages.
+        if (enableSystemPromptCache) {
+            const toolsHasLater1h = has1hTTL(getSystemCacheControls(activeSystemPrompt))
+                || messagesRangeHasMarker(messages, 0, Array.isArray(messages) ? messages.length : 0, marker => getEffectiveTTL(marker) === '1h');
+            const toolsTTL = resolveAllowedAutoTTL(cacheTTL, { hasEarlier5m: false, hasLater1h: toolsHasLater1h });
+            if (toolsTTL !== null && markClaudeToolsCache(tools, toolsTTL, { existingBreakpoints: usedBreakpoints, maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS })) {
+                usedBreakpoints += 1;
+            }
+
+            if (useSystemPrompt) {
+                const systemHasEarlier5m = has5mTTL(getToolCacheControls(allTools));
+                const systemHasLater1h = messagesRangeHasMarker(messages, 0, Array.isArray(messages) ? messages.length : 0, marker => getEffectiveTTL(marker) === '1h');
+                const systemTTL = resolveAllowedAutoTTL(cacheTTL, { hasEarlier5m: systemHasEarlier5m, hasLater1h: systemHasLater1h });
+                if (systemTTL !== null && markClaudeSystemPromptCache(systemPrompt, systemTTL, { existingBreakpoints: usedBreakpoints, maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS })) {
+                    usedBreakpoints += 1;
+                }
+            }
         }
-        if (markClaudeToolsCache(tools, cacheTTL, { existingBreakpoints: usedBreakpoints, maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS })) {
-            usedBreakpoints += 1;
+
+        if (cachingAtDepth !== -1) {
+            usedBreakpoints += applyDepthCacheBreakpoints(messages, cachingAtDepth, cacheTTL, {
+                openRouterStyle: false,
+                existingBreakpoints: usedBreakpoints,
+                maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+                resolveTTLForIndex: createMessageTTLResolver(cacheTTL, { tools: allTools, systemPrompt: activeSystemPrompt, messages }),
+            });
         }
     }
 
-    if (cachingAtDepth !== -1) {
-        usedBreakpoints += applyDepthCacheBreakpoints(messages, cachingAtDepth, cacheTTL, {
-            openRouterStyle: false,
-            existingBreakpoints: usedBreakpoints,
-            maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
-        });
-    }
-
-    if (enableSystemPromptCache || cachingAtDepth !== -1) {
+    if (usedBreakpoints > 0) {
         if (!betaHeaders.includes('prompt-caching-2024-07-31')) {
             betaHeaders.push('prompt-caching-2024-07-31');
         }
-        if (cacheTTL === '1h' && !betaHeaders.includes('extended-cache-ttl-2025-04-11')) {
+        if (hasExtendedTTLMarker({ systemPrompt: activeSystemPrompt, tools: allTools, messages })
+            && !betaHeaders.includes('extended-cache-ttl-2025-04-11')) {
             betaHeaders.push('extended-cache-ttl-2025-04-11');
         }
     }
@@ -688,22 +983,57 @@ function resolveAffinityKey(affinityKey) {
 }
 
 /**
+ * Applies Anthropic-compatible inline system/depth markers on OpenAI-style messages (OpenRouter Claude, NanoGPT, ElectronHub).
+ * @param {{ messages: any[], tools?: any[], enableSystemPromptCache: boolean, cachingAtDepth: number, cacheTTL: '1h'|'5m' }} params
+ * @returns {number} Final total cache_control breakpoint count
+ */
+function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL }) {
+    let usedBreakpoints = countCacheControlMarkers({ tools, messages });
+    const resolveTTLForIndex = createMessageTTLResolver(cacheTTL, { tools, messages });
+
+    if (enableSystemPromptCache && applySystemPromptCacheForOpenRouter(messages, cacheTTL, {
+        existingBreakpoints: usedBreakpoints,
+        maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+        resolveTTLForIndex,
+    })) {
+        usedBreakpoints += 1;
+    }
+
+    if (cachingAtDepth !== -1) {
+        usedBreakpoints += applyDepthCacheBreakpoints(messages, cachingAtDepth, cacheTTL, {
+            openRouterStyle: true,
+            existingBreakpoints: usedBreakpoints,
+            maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+            resolveTTLForIndex,
+        });
+    }
+
+    return usedBreakpoints;
+}
+
+/**
  * Applies OpenRouter sticky session routing and explicit cache markers for Claude and Gemini models.
- * @param {{ requestBody: any, bodyParams: Record<string, any>, affinityKey?: string | (() => string | undefined), config?: PromptCachingConfig, isModelCacheable?: (modelId: string) => Promise<boolean> }} params
+ * @param {{ requestBody: any, bodyParams: Record<string, any>, tools?: any[], affinityKey?: string | (() => string | undefined), userHandle?: string, config?: PromptCachingConfig, isModelCacheable?: (modelId: string) => Promise<boolean> }} params
  */
 export async function applyOpenRouterRequestCaching({
     requestBody,
     bodyParams,
+    tools = requestBody?.tools,
     affinityKey,
+    userHandle = '',
     config = getPromptCachingConfig(),
     isModelCacheable = isOpenRouterModelCacheable,
 }) {
     if (shouldAttachSessionCacheKey(requestBody) && !bodyParams.session_id) {
         const resolvedKey = resolveAffinityKey(affinityKey);
-        const sessionId = deriveSessionCacheKey(requestBody.chat_id, resolvedKey, { namespace: 'openrouter' });
+        const sessionId = deriveSessionCacheKey(requestBody.chat_id, resolvedKey, { namespace: 'openrouter', userHandle });
         if (sessionId) {
             bodyParams.session_id = sessionId;
         }
+    }
+
+    if (!isMainCacheableTurn(requestBody)) {
+        return;
     }
 
     const messages = requestBody?.messages;
@@ -715,28 +1045,22 @@ export async function applyOpenRouterRequestCaching({
 
     if (isOpenRouterClaudeModel(model)) {
         const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
-        let usedBreakpoints = countCacheControlMarkers({ messages });
-
-        if (enableSystemPromptCache && applySystemPromptCacheForOpenRouter(messages, cacheTTL, {
-            existingBreakpoints: usedBreakpoints,
-            maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
-        })) {
-            usedBreakpoints += 1;
-        }
-
-        if (cachingAtDepth !== -1) {
-            applyDepthCacheBreakpoints(messages, cachingAtDepth, cacheTTL, {
-                openRouterStyle: true,
-                existingBreakpoints: usedBreakpoints,
-                maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
-            });
-        }
+        applyOpenAiStyleClaudeCaching({
+            messages,
+            tools,
+            enableSystemPromptCache,
+            cachingAtDepth,
+            cacheTTL,
+        });
         return;
     }
 
     if (isOpenRouterGeminiModel(model)) {
-        const { enableSystemPromptCache, cachingAtDepth } = config.gemini;
-        if (!enableSystemPromptCache && cachingAtDepth === -1) {
+        // OpenRouter honors only the final explicit cache_control breakpoint on Gemini, so only
+        // static leading system prompts use explicit markers; rolling history uses sticky session_id
+        // plus Gemini's native implicit caching (zero write surcharge).
+        const { enableSystemPromptCache } = config.gemini;
+        if (!enableSystemPromptCache) {
             return;
         }
 
@@ -745,26 +1069,27 @@ export async function applyOpenRouterRequestCaching({
             return;
         }
 
-        if (enableSystemPromptCache) {
-            applySystemPromptCacheForOpenRouter(messages);
-        }
-
-        if (cachingAtDepth !== -1) {
-            // OpenRouter uses only the final cache_control breakpoint for Gemini and drops Anthropic TTLs.
-            applyDepthCacheBreakpoints(messages, cachingAtDepth, undefined, {
-                openRouterStyle: true,
-                singleBreakpoint: true,
-            });
-        }
+        applySystemPromptCacheForOpenRouter(messages);
     }
 }
 
 /**
- * Applies NanoGPT prompt caching for Claude models (top-level toggle plus optional inline depth markers).
- * @param {{ messages?: any[], bodyParams: Record<string, any>, model: unknown, config?: PromptCachingConfig }} params
+ * Applies NanoGPT prompt caching for Claude models using explicit inline markers plus explicitCacheControl.
+ * @param {{ requestBody?: any, messages?: any[], tools?: any[], bodyParams: Record<string, any>, model: unknown, config?: PromptCachingConfig }} params
  */
-export function applyNanoGptRequestCaching({ messages, bodyParams, model, config = getPromptCachingConfig() }) {
+export function applyNanoGptRequestCaching({
+    requestBody = undefined,
+    messages,
+    tools = requestBody?.tools,
+    bodyParams,
+    model,
+    config = getPromptCachingConfig(),
+}) {
     if (!isNanoGptClaudeModel(model)) {
+        return;
+    }
+
+    if (requestBody && !isMainCacheableTurn(requestBody)) {
         return;
     }
 
@@ -773,69 +1098,72 @@ export function applyNanoGptRequestCaching({ messages, bodyParams, model, config
         return;
     }
 
-    if (Array.isArray(messages) && cachingAtDepth !== -1) {
-        let usedBreakpoints = countCacheControlMarkers({ messages });
-        if (enableSystemPromptCache && applySystemPromptCacheForOpenRouter(messages, cacheTTL, {
-            existingBreakpoints: usedBreakpoints,
-            maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
-        })) {
-            usedBreakpoints += 1;
-        }
-        applyDepthCacheBreakpoints(messages, cachingAtDepth, cacheTTL, {
-            openRouterStyle: true,
-            existingBreakpoints: usedBreakpoints,
-            maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+    let usedBreakpoints = countCacheControlMarkers({ tools, messages });
+    if (Array.isArray(messages)) {
+        usedBreakpoints = applyOpenAiStyleClaudeCaching({
+            messages,
+            tools,
+            enableSystemPromptCache,
+            cachingAtDepth,
+            cacheTTL,
         });
     }
 
-    bodyParams.cache_control = {
-        enabled: true,
-        ttl: cacheTTL,
-    };
+    if (usedBreakpoints > 0) {
+        bodyParams.cache_control = {
+            enabled: true,
+            ttl: cacheTTL,
+            explicitCacheControl: true,
+        };
+    }
 }
 
 /**
  * Applies Electron Hub inline prompt caching for Claude models.
- * @param {{ messages?: any[], model: unknown, config?: PromptCachingConfig }} params
+ * @param {{ requestBody?: any, messages?: any[], tools?: any[], model: unknown, config?: PromptCachingConfig }} params
  */
-export function applyElectronHubRequestCaching({ messages, model, config = getPromptCachingConfig() }) {
+export function applyElectronHubRequestCaching({
+    requestBody = undefined,
+    messages,
+    tools = requestBody?.tools,
+    model,
+    config = getPromptCachingConfig(),
+}) {
     if (!Array.isArray(messages) || !isElectronHubClaudeModel(model)) {
         return;
     }
 
+    if (requestBody && !isMainCacheableTurn(requestBody)) {
+        return;
+    }
+
     const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
-    let usedBreakpoints = countCacheControlMarkers({ messages });
-
-    if (enableSystemPromptCache && applySystemPromptCacheForOpenRouter(messages, cacheTTL, {
-        existingBreakpoints: usedBreakpoints,
-        maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
-    })) {
-        usedBreakpoints += 1;
-    }
-
-    if (cachingAtDepth !== -1) {
-        applyDepthCacheBreakpoints(messages, cachingAtDepth, cacheTTL, {
-            openRouterStyle: true,
-            existingBreakpoints: usedBreakpoints,
-            maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
-        });
-    }
+    applyOpenAiStyleClaudeCaching({
+        messages,
+        tools,
+        enableSystemPromptCache,
+        cachingAtDepth,
+        cacheTTL,
+    });
 }
 
 /**
  * Attaches an opaque prompt_cache_key for direct OpenAI Chat Completions and Responses requests.
- * Skipped when a reverse proxy is configured so strict third-party proxies never reject the field.
- * @param {{ requestBody: any, targetBody: Record<string, any>, affinityKey?: string | (() => string | undefined) }} params
+ * Skipped for legacy text completions, behind reverse proxies, and on non-main turns.
+ * @param {{ requestBody: any, targetBody: Record<string, any>, affinityKey?: string | (() => string | undefined), userHandle?: string }} params
  */
-export function applyOpenAiSessionCacheKey({ requestBody, targetBody, affinityKey }) {
+export function applyOpenAiSessionCacheKey({ requestBody, targetBody, affinityKey, userHandle = '' }) {
     if (requestBody?.reverse_proxy || targetBody.prompt_cache_key) {
+        return;
+    }
+    if (!Array.isArray(requestBody?.messages)) {
         return;
     }
     if (!shouldAttachSessionCacheKey(requestBody)) {
         return;
     }
     const resolvedKey = resolveAffinityKey(affinityKey);
-    const cacheKey = deriveSessionCacheKey(requestBody.chat_id, resolvedKey, { namespace: 'openai' });
+    const cacheKey = deriveSessionCacheKey(requestBody.chat_id, resolvedKey, { namespace: 'openai', userHandle });
     if (cacheKey) {
         targetBody.prompt_cache_key = cacheKey;
     }

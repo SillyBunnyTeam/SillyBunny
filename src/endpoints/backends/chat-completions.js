@@ -421,8 +421,10 @@ async function sendClaudeRequest(request, response) {
 
         // SillyBunny: apply system, tool, and depth breakpoints within Anthropic's 4-breakpoint limit and live config.
         applyClaudeRequestCaching({
+            requestBody: request.body,
             systemPrompt: convertedPrompt.systemPrompt,
             tools: claudeFunctionTools,
+            allTools: requestBody.tools,
             messages: convertedPrompt.messages,
             useSystemPrompt,
             betaHeaders,
@@ -1567,7 +1569,9 @@ async function sendElectronHubRequest(request, response) {
 
         // SillyBunny: apply Claude system prompt and depth cache markers with live config and safe block selection.
         applyElectronHubRequestCaching({
+            requestBody: request.body,
             messages: request.body.messages,
+            tools: request.body.tools,
             model: request.body.model,
         });
 
@@ -2500,6 +2504,7 @@ router.post('/bias', async function (request, response) {
  * @param {Array} messages Chat Completions messages array
  * @returns {{ input: Array, instructions: string|undefined }}
  */
+// SillyBunny: lift only leading system/developer messages into instructions so mid-chat depth injections keep the static prefix cache intact.
 function convertMessagesToResponsesFormat(messages) {
     if (!Array.isArray(messages)) {
         return { input: String(messages), instructions: undefined };
@@ -2507,9 +2512,10 @@ function convertMessagesToResponsesFormat(messages) {
 
     const systemParts = [];
     const inputItems = [];
+    let seenConversationMessage = false;
 
     for (const msg of messages) {
-        if (msg.role === 'system') {
+        if (!seenConversationMessage && (msg.role === 'system' || msg.role === 'developer')) {
             if (typeof msg.content === 'string') {
                 systemParts.push(msg.content);
             } else if (Array.isArray(msg.content)) {
@@ -2520,7 +2526,11 @@ function convertMessagesToResponsesFormat(messages) {
                 }
             }
         } else {
-            const inputItem = { role: msg.role === 'assistant' ? 'assistant' : 'user' };
+            seenConversationMessage = true;
+            const role = (msg.role === 'assistant' || msg.role === 'system' || msg.role === 'developer')
+                ? msg.role
+                : 'user';
+            const inputItem = { role };
             if (typeof msg.content === 'string') {
                 inputItem.content = msg.content;
             } else if (Array.isArray(msg.content)) {
@@ -2826,6 +2836,7 @@ async function sendOpenAIResponsesRequest(request, response) {
             requestBody: request.body,
             targetBody: requestBody,
             affinityKey: getAffinityKey,
+            userHandle: request.user?.profile?.handle,
         });
 
         if (request.body.reasoning_effort) {
@@ -3557,12 +3568,15 @@ export async function handleChatCompletionsGenerate(request, response) {
                 bodyParams['user'] = uuidv4();
             }
 
-            // SillyBunny: attach an opaque prompt_cache_key for direct OpenAI requests to improve cache routing.
-            applyOpenAiSessionCacheKey({
-                requestBody: request.body,
-                targetBody: bodyParams,
-                affinityKey: getAffinityKey,
-            });
+            // SillyBunny: attach an opaque prompt_cache_key for direct OpenAI Chat Completions requests to improve cache routing.
+            if (!isTextCompletion) {
+                applyOpenAiSessionCacheKey({
+                    requestBody: request.body,
+                    targetBody: bodyParams,
+                    affinityKey: getAffinityKey,
+                    userHandle: request.user?.profile?.handle,
+                });
+            }
 
             embedOpenRouterMedia(request.body.messages, { audio: true, video: false });
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
@@ -3643,7 +3657,9 @@ export async function handleChatCompletionsGenerate(request, response) {
             await applyOpenRouterRequestCaching({
                 requestBody: request.body,
                 bodyParams,
+                tools: request.body.tools,
                 affinityKey: getAffinityKey,
+                userHandle: request.user?.profile?.handle,
             });
 
             if (isGemini) {
@@ -3787,7 +3803,9 @@ export async function handleChatCompletionsGenerate(request, response) {
 
             // SillyBunny: apply Claude system prompt and depth cache markers on NanoGPT.
             applyNanoGptRequestCaching({
+                requestBody: request.body,
                 messages: request.body.messages,
+                tools: request.body.tools,
                 bodyParams,
                 model: request.body.model,
             });

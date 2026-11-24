@@ -33,6 +33,8 @@ describe('Prompt caching primitives and edge cases', () => {
     afterEach(() => {
         promptCaching.resetPromptCachingRuntimeConfig();
         promptCaching.resetOpenRouterCacheableModelsCache();
+        delete process.env.SILLYTAVERN_CLAUDE_ENABLESYSTEMPROMPTCACHE;
+        delete process.env.SILLYTAVERN_GEMINI_ENABLESYSTEMPROMPTCACHE;
     });
 
     test('applySystemPromptCacheForOpenRouter marks the last non-empty leading system/developer message', () => {
@@ -77,10 +79,10 @@ describe('Prompt caching primitives and edge cases', () => {
         expect(messages[1].content).toBe('Second system block');
     });
 
-    test('cachingAtDepthForClaude skips empty arrays, empty text blocks, and thinking blocks without crashing', () => {
+    test('cachingAtDepthForClaude skips empty arrays, empty text, thinking, and non-allowlisted blocks without crashing', () => {
         const messages = [
             { role: 'user', content: [{ type: 'text', text: 'Turn 1' }] },
-            { role: 'assistant', content: [{ type: 'thinking', thinking: 'internal' }, { type: 'text', text: '' }] },
+            { role: 'assistant', content: [{ type: 'thinking', thinking: 'internal' }, { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: {} }, { type: 'text', text: '' }] },
             { role: 'user', content: [{ type: 'text', text: 'Turn 2' }, { type: 'text', text: '   ' }] },
             { role: 'assistant', content: [] },
             { role: 'user', content: [{ type: 'text', text: '' }] },
@@ -92,9 +94,10 @@ describe('Prompt caching primitives and edge cases', () => {
         expect(messages[4].content[0].cache_control).toBeUndefined();
         expect(messages[2].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
         expect(messages[2].content[1].cache_control).toBeUndefined();
-        // Depth 2 (index 2) was already marked; thinking/empty at index 1 never receive cache_control.
+        // Thinking, non-allowlisted server_tool_use, and empty text at index 1 never receive cache_control.
         expect(messages[1].content[0].cache_control).toBeUndefined();
         expect(messages[1].content[1].cache_control).toBeUndefined();
+        expect(messages[1].content[2].cache_control).toBeUndefined();
     });
 
     test('cachingAtDepthForOpenRouterClaude handles null/empty tool-call turns, developer messages, and trailing images', () => {
@@ -108,18 +111,34 @@ describe('Prompt caching primitives and edge cases', () => {
 
         promptConverters.cachingAtDepthForOpenRouterClaude(messages, 0, '1h');
 
-        // Empty user turn and null tool-call turn must not be corrupted with empty text cache_control blocks.
         expect(messages[4].content).toBe('');
         expect(messages[3].content).toBeNull();
-        // Falls back to index 2's text part (never the image_url part).
         expect(messages[2].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
         expect(messages[2].content[1].cache_control).toBeUndefined();
-        // Leading system and developer messages stay untouched.
         expect(messages[0].content).toBe('System');
         expect(messages[1].content).toBe('Developer rules');
     });
 
-    test('applyClaudeRequestCaching enforces Anthropic 4-breakpoint maximum and skips empty system blocks', () => {
+    test('applyDepthCacheBreakpoints skips trailing assistant prefill even when followed by Post-History Instructions system message', () => {
+        const messages = [
+            { role: 'system', content: 'System' },
+            { role: 'user', content: 'Turn 1' },
+            { role: 'assistant', content: 'Reply 1' },
+            { role: 'user', content: 'Turn 2' },
+            { role: 'assistant', content: 'Prefill start...' },
+            { role: 'system', content: 'Post-History Instructions' },
+        ];
+
+        const added = promptCaching.applyDepthCacheBreakpoints(messages, 0, '5m', { openRouterStyle: true });
+        expect(added).toBe(2);
+        // Trailing PHI system message and trailing assistant prefill are both skipped; Turn 2 is depth 0, Turn 1 is depth 2.
+        expect(messages[5].content).toBe('Post-History Instructions');
+        expect(messages[4].content).toBe('Prefill start...');
+        expect(messages[3].content).toEqual([{ type: 'text', text: 'Turn 2', cache_control: { type: 'ephemeral', ttl: '5m' } }]);
+        expect(messages[1].content).toEqual([{ type: 'text', text: 'Turn 1', cache_control: { type: 'ephemeral', ttl: '5m' } }]);
+    });
+
+    test('applyClaudeRequestCaching enforces Anthropic 4-breakpoint cap and skips empty system blocks', () => {
         const systemPrompt = [
             { type: 'text', text: 'Real system instructions' },
             { type: 'text', text: '' },
@@ -128,7 +147,7 @@ describe('Prompt caching primitives and edge cases', () => {
             { name: 'search', description: 'Search', input_schema: { type: 'object' } },
         ];
         const messages = [
-            { role: 'user', content: [{ type: 'text', text: 'Pre-marked', cache_control: { type: 'ephemeral', ttl: '1h' } }] },
+            { role: 'user', content: [{ type: 'text', text: 'Pre-marked', cache_control: { type: 'ephemeral', ttl: '5m' } }] },
             { role: 'assistant', content: [{ type: 'text', text: 'Reply 1' }] },
             { role: 'user', content: [{ type: 'text', text: 'Turn 2' }] },
             { role: 'assistant', content: [{ type: 'text', text: 'Reply 2' }] },
@@ -149,23 +168,138 @@ describe('Prompt caching primitives and edge cases', () => {
                     extendedTTL: false,
                     cacheTTL: '5m',
                 },
-                gemini: { enableSystemPromptCache: false, cachingAtDepth: -1 },
+                gemini: { enableSystemPromptCache: false },
             },
         });
 
         expect(total).toBe(4);
         expect(promptCaching.countCacheControlMarkers({ systemPrompt, tools, messages })).toBe(4);
+        expect(tools[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
         expect(systemPrompt[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
         expect(systemPrompt[1].cache_control).toBeUndefined();
-        expect(tools[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
-        // Only 1 budget slot remained after pre-marked (1) + system (1) + tool (1) = 3 -> Turn 3 gets marked, Turn 2 skipped.
+        // Only 1 budget slot remained after pre-marked (1) + tool (1) + system (1) = 3 -> Turn 3 gets marked, Turn 2 skipped.
         expect(messages[4].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
         expect(messages[2].content[0].cache_control).toBeUndefined();
-        // 5m TTL should not send the 1h extended-cache-ttl beta header.
         expect(betaHeaders).toEqual(['prompt-caching-2024-07-31']);
     });
 
-    test('model matchers detect tilde latest aliases and routing suffixes', () => {
+    test('applyClaudeRequestCaching enforces monotonic non-increasing TTL (never places 5m before 1h or 1h after 5m)', () => {
+        // Case A: pre-existing 1h marker in messages[0] with 5m config -> never stamps 5m ahead of 1h, stamps 5m after, emits 1h beta header.
+        const systemA = [{ type: 'text', text: 'System A' }];
+        const toolsA = [{ name: 'lookup', description: 'Lookup', input_schema: { type: 'object' } }];
+        const messagesA = [
+            { role: 'user', content: [{ type: 'text', text: 'Pinned 1h doc', cache_control: { type: 'ephemeral', ttl: '1h' } }] },
+            { role: 'assistant', content: [{ type: 'text', text: 'Reply 1' }] },
+            { role: 'user', content: [{ type: 'text', text: 'Turn 2' }] },
+        ];
+        const headersA = [];
+        const totalA = promptCaching.applyClaudeRequestCaching({
+            systemPrompt: systemA,
+            tools: toolsA,
+            messages: messagesA,
+            useSystemPrompt: true,
+            betaHeaders: headersA,
+            config: {
+                claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: false, cacheTTL: '5m' },
+                gemini: { enableSystemPromptCache: false },
+            },
+        });
+        expect(totalA).toBe(2);
+        expect(toolsA[0].cache_control).toBeUndefined();
+        expect(systemA[0].cache_control).toBeUndefined();
+        expect(messagesA[2].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        expect(headersA).toEqual(['prompt-caching-2024-07-31', 'extended-cache-ttl-2025-04-11']);
+
+        // Case B: pre-existing 5m (omitted ttl) marker in system with 1h config -> clamps later depth markers to 5m.
+        const systemB = [{ type: 'text', text: 'System B', cache_control: { type: 'ephemeral' } }];
+        const messagesB = [
+            { role: 'user', content: [{ type: 'text', text: 'Turn 1' }] },
+            { role: 'assistant', content: [{ type: 'text', text: 'Reply 1' }] },
+            { role: 'user', content: [{ type: 'text', text: 'Turn 2' }] },
+        ];
+        const headersB = [];
+        promptCaching.applyClaudeRequestCaching({
+            systemPrompt: systemB,
+            messages: messagesB,
+            useSystemPrompt: true,
+            betaHeaders: headersB,
+            config: {
+                claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true, cacheTTL: '1h' },
+                gemini: { enableSystemPromptCache: false },
+            },
+        });
+        expect(messagesB[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        expect(messagesB[2].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        expect(headersB).toEqual(['prompt-caching-2024-07-31']);
+
+        // Case C: zero breakpoints placed -> emits no prompt-caching beta headers.
+        const headersC = [];
+        const totalC = promptCaching.applyClaudeRequestCaching({
+            systemPrompt: [{ type: 'text', text: '' }],
+            messages: [{ role: 'user', content: [{ type: 'text', text: '' }] }],
+            useSystemPrompt: true,
+            betaHeaders: headersC,
+            config: {
+                claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true, cacheTTL: '1h' },
+                gemini: { enableSystemPromptCache: false },
+            },
+        });
+        expect(totalC).toBe(0);
+        expect(headersC).toEqual([]);
+    });
+
+    test('OpenAI-style Claude caching counts pre-existing tool.function.cache_control markers against the 4-breakpoint cap', async () => {
+        const tools = [
+            { type: 'function', function: { name: 't1', cache_control: { type: 'ephemeral', ttl: '5m' } } },
+            { type: 'function', function: { name: 't2', cache_control: { type: 'ephemeral', ttl: '5m' } } },
+        ];
+        const messages = [
+            { role: 'system', content: 'System' },
+            { role: 'user', content: 'Turn 1' },
+            { role: 'assistant', content: 'Reply 1' },
+            { role: 'user', content: 'Turn 2' },
+        ];
+        const bodyParams = {};
+
+        await promptCaching.applyOpenRouterRequestCaching({
+            requestBody: { model: 'anthropic/claude-sonnet-4-6', messages, tools },
+            bodyParams,
+            config: {
+                claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true, cacheTTL: '1h' },
+                gemini: { enableSystemPromptCache: false },
+            },
+        });
+
+        expect(promptCaching.countCacheControlMarkers({ tools, messages })).toBe(4);
+        // Existing 5m tool markers clamp later message markers to 5m and leave only 2 slots (system + depth 0).
+        expect(messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        expect(messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        expect(messages[1].content).toBe('Turn 1');
+    });
+
+    test('process.env overrides take precedence over runtime YAML config saves', () => {
+        promptCaching.setPromptCachingRuntimeConfig({
+            claude: { enableSystemPromptCache: false, cachingAtDepth: 0, extendedTTL: false },
+            gemini: { enableSystemPromptCache: false },
+        });
+        process.env.SILLYTAVERN_CLAUDE_ENABLESYSTEMPROMPTCACHE = 'true';
+        process.env.SILLYTAVERN_GEMINI_ENABLESYSTEMPROMPTCACHE = 'true';
+
+        const config = promptCaching.getPromptCachingConfig();
+        expect(config.claude.enableSystemPromptCache).toBe(true);
+        expect(config.gemini.enableSystemPromptCache).toBe(true);
+    });
+
+    test('deriveSessionCacheKey isolates distinct user handles with identical chat_id', () => {
+        const keyAlice = promptCaching.deriveSessionCacheKey('Assistant - 2026', 'server-secret', { namespace: 'openrouter', userHandle: 'alice' });
+        const keyBob = promptCaching.deriveSessionCacheKey('Assistant - 2026', 'server-secret', { namespace: 'openrouter', userHandle: 'bob' });
+
+        expect(keyAlice).toMatch(/^sb_[a-f0-9]{32}$/);
+        expect(keyBob).toMatch(/^sb_[a-f0-9]{32}$/);
+        expect(keyAlice).not.toBe(keyBob);
+    });
+
+    test('model matchers detect tilde latest aliases and stacked routing suffixes', () => {
         expect(promptCaching.isOpenRouterClaudeModel('~anthropic/claude-sonnet-latest')).toBe(true);
         expect(promptCaching.isOpenRouterClaudeModel('anthropic/claude-opus-5.5:nitro')).toBe(true);
         expect(promptCaching.isOpenRouterClaudeModel('google/gemini-4-neon')).toBe(false);
@@ -181,19 +315,24 @@ describe('Prompt caching primitives and edge cases', () => {
         expect(promptCaching.isElectronHubClaudeModel('claude-sonnet-4-6')).toBe(true);
 
         expect(promptCaching.stripOpenRouterModelSuffix('google/gemini-4-neon:online')).toBe('google/gemini-4-neon');
+        expect(promptCaching.stripOpenRouterModelSuffix('google/gemini-4-neon:nitro:online')).toBe('google/gemini-4-neon');
         expect(promptCaching.stripOpenRouterModelSuffix('google/gemini-4-neon')).toBe('google/gemini-4-neon');
     });
 
-    test('isOpenRouterModelCacheable caches catalog with TTL, deduplicates parallel calls, handles suffixes, and retries after failure', async () => {
+    test('isOpenRouterModelCacheable handles case-insensitivity, stacked suffixes, deduplication, and outage backoff', async () => {
         let nowMs = 1_000_000;
         const mockFetch = jest.fn();
 
-        // First call fails transiently -> returns false and does not cache the failure.
+        // First call fails transiently -> enters failure backoff so immediate follow-up doesn't hammer /models.
         mockFetch.mockRejectedValueOnce(new Error('network blip'));
         expect(await promptCaching.isOpenRouterModelCacheable('google/gemini-4-neon', { fetchImpl: mockFetch, now: () => nowMs })).toBe(false);
         expect(mockFetch).toHaveBeenCalledTimes(1);
 
-        // Next parallel calls share one fetch and cache both positive and negative results.
+        expect(await promptCaching.isOpenRouterModelCacheable('google/gemini-4-neon', { fetchImpl: mockFetch, now: () => nowMs + 5000 })).toBe(false);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        // After backoff expires, next parallel calls share one fetch and handle mixed case + stacked suffixes.
+        nowMs += promptCaching.OPENROUTER_MODELS_FAILURE_BACKOFF_MS + 1;
         mockFetch.mockImplementationOnce(async () => jsonResponse({
             data: [
                 { id: 'google/gemini-4-neon', pricing: { input_cache_write: '0.0000000833' } },
@@ -204,8 +343,8 @@ describe('Prompt caching primitives and edge cases', () => {
         }));
 
         const results = await Promise.all([
-            promptCaching.isOpenRouterModelCacheable('google/gemini-4-neon', { fetchImpl: mockFetch, now: () => nowMs }),
-            promptCaching.isOpenRouterModelCacheable('google/gemini-4-neon:online', { fetchImpl: mockFetch, now: () => nowMs }),
+            promptCaching.isOpenRouterModelCacheable('Google/Gemini-4-Neon', { fetchImpl: mockFetch, now: () => nowMs }),
+            promptCaching.isOpenRouterModelCacheable('google/gemini-4-neon:nitro:online', { fetchImpl: mockFetch, now: () => nowMs }),
             promptCaching.isOpenRouterModelCacheable('google/gemini-3.5-flash:batch', { fetchImpl: mockFetch, now: () => nowMs }),
             promptCaching.isOpenRouterModelCacheable('google/gemini-nano-banana-2.1', { fetchImpl: mockFetch, now: () => nowMs }),
         ]);
@@ -301,6 +440,9 @@ describe('Chat completions backend prompt caching integration', () => {
                     output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok' }] }],
                 });
             }
+            if (String(url).endsWith('/completions')) {
+                return jsonResponse({ choices: [{ text: 'ok' }] });
+            }
             return jsonResponse({ choices: [{ message: { content: 'ok' } }] });
         });
     });
@@ -355,28 +497,43 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(completionCalls[0][1].body).not.toContain('secret-character-chat-1');
     });
 
-    test('OpenRouter omits session_id on quiet and auxiliary requests', async () => {
-        for (const overrides of [{ type: 'quiet' }, { type: 'normal', cacheScope: 'auxiliary' }]) {
+    test('OpenRouter omits session_id and explicit cache markers on quiet, auxiliary, and cacheScope none requests', async () => {
+        promptCaching.setPromptCachingRuntimeConfig({
+            claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: false },
+            gemini: { enableSystemPromptCache: true },
+        });
+
+        for (const overrides of [
+            { type: 'quiet' },
+            { type: 'normal', cacheScope: 'auxiliary' },
+            { type: 'normal', cacheScope: 'none' },
+        ]) {
             const res = await post('/api/backends/chat-completions/generate', {
                 chat_completion_source: CHAT_COMPLETION_SOURCES.OPENROUTER,
-                model: 'google/gemini-4-neon',
+                model: 'anthropic/claude-sonnet-4-6',
                 chat_id: 'main-chat-id',
                 stream: false,
                 max_tokens: 128,
-                messages: [{ role: 'user', content: 'Summarize' }],
+                messages: [
+                    { role: 'system', content: 'Helper system' },
+                    { role: 'user', content: 'Summarize' },
+                ],
                 ...overrides,
             });
             expect(res.status).toBe(200);
         }
 
         const bodies = nodeFetchMock.mock.calls.map(([, opts]) => JSON.parse(opts.body));
-        expect(bodies[0].session_id).toBeUndefined();
-        expect(bodies[1].session_id).toBeUndefined();
+        for (const body of bodies) {
+            expect(body.session_id).toBeUndefined();
+            expect(body.messages[0].content).toBe('Helper system');
+            expect(body.messages[1].content).toBe('Summarize');
+        }
     });
 
-    test('OpenRouter Gemini 4 with suffix marks last leading system message and single depth breakpoint without TTL', async () => {
+    test('OpenRouter Gemini 4 with suffix marks only the static leading system prefix without TTL', async () => {
         promptCaching.setPromptCachingRuntimeConfig({
-            gemini: { enableSystemPromptCache: true, cachingAtDepth: 0 },
+            gemini: { enableSystemPromptCache: true },
         });
 
         const res = await post('/api/backends/chat-completions/generate', {
@@ -398,16 +555,13 @@ describe('Chat completions backend prompt caching integration', () => {
         const completionCall = nodeFetchMock.mock.calls.find(([url]) => String(url).endsWith('/chat/completions'));
         const body = JSON.parse(completionCall[1].body);
         expect(body.session_id).toMatch(/^sb_[a-f0-9]{32}$/);
-        // System marker lands on last leading system message (index 1) without TTL.
+        // System marker lands on last leading system message (index 1) without TTL; rolling turns rely on implicit caching + session_id.
         expect(body.messages[0].content).toBe('Main Prompt');
         expect(body.messages[1].content).toEqual([
             { type: 'text', text: 'Character Card + Lore', cache_control: { type: 'ephemeral' } },
         ]);
-        // Single depth breakpoint at depth 0 (index 4) without TTL; depth + 2 (index 2) is NOT marked for Gemini.
         expect(body.messages[2].content).toBe('Turn 1');
-        expect(body.messages[4].content).toEqual([
-            { type: 'text', text: 'Turn 2', cache_control: { type: 'ephemeral' } },
-        ]);
+        expect(body.messages[4].content).toBe('Turn 2');
     });
 
     test('OpenRouter ~anthropic/claude-sonnet-latest receives Claude system and depth markers with TTL', async () => {
@@ -437,12 +591,33 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(body.messages[4].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
     });
 
-    test('NanoGPT applies both top-level cache_control and inline Claude depth markers', async () => {
+    test('NanoGPT marks system prompt even when cachingAtDepth is -1 and sets explicitCacheControl: true', async () => {
+        promptCaching.setPromptCachingRuntimeConfig({
+            claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false },
+        });
+
+        const sysOnlyRes = await post('/api/backends/chat-completions/generate', {
+            chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
+            model: 'anthropic/claude-sonnet-4-6',
+            stream: false,
+            max_tokens: 256,
+            messages: [
+                { role: 'system', content: 'System' },
+                { role: 'user', content: 'Turn 1' },
+            ],
+        });
+        expect(sysOnlyRes.status).toBe(200);
+
+        const sysOnlyBody = JSON.parse(nodeFetchMock.mock.calls[0][1].body);
+        expect(sysOnlyBody.cache_control).toEqual({ enabled: true, ttl: '5m', explicitCacheControl: true });
+        expect(sysOnlyBody.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        expect(sysOnlyBody.messages[1].content).toBe('Turn 1');
+
         promptCaching.setPromptCachingRuntimeConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true },
         });
 
-        const res = await post('/api/backends/chat-completions/generate', {
+        const depthRes = await post('/api/backends/chat-completions/generate', {
             chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
             model: 'anthropic/claude-sonnet-4-6',
             stream: false,
@@ -454,13 +629,13 @@ describe('Chat completions backend prompt caching integration', () => {
                 { role: 'user', content: 'Turn 2' },
             ],
         });
-        expect(res.status).toBe(200);
+        expect(depthRes.status).toBe(200);
 
-        const body = JSON.parse(nodeFetchMock.mock.calls[0][1].body);
-        expect(body.cache_control).toEqual({ enabled: true, ttl: '1h' });
-        expect(body.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-        expect(body.messages[1].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-        expect(body.messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+        const depthBody = JSON.parse(nodeFetchMock.mock.calls[1][1].body);
+        expect(depthBody.cache_control).toEqual({ enabled: true, ttl: '1h', explicitCacheControl: true });
+        expect(depthBody.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+        expect(depthBody.messages[1].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+        expect(depthBody.messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
     });
 
     test('Electron Hub applies Claude cache markers for both bare and vendor-prefixed Claude model IDs', async () => {
@@ -517,7 +692,7 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(opts.headers['anthropic-beta']).toContain('extended-cache-ttl-2025-04-11');
     });
 
-    test('Direct OpenAI and OpenAI Responses attach opaque prompt_cache_key and skip it when a reverse proxy is configured', async () => {
+    test('Direct OpenAI and Responses attach opaque prompt_cache_key, skip proxy & legacy /completions, and keep mid-chat system messages in Responses input', async () => {
         const directRes = await post('/api/backends/chat-completions/generate', {
             chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI,
             model: 'gpt-5',
@@ -534,7 +709,12 @@ describe('Chat completions backend prompt caching integration', () => {
             chat_id: 'openai-private-chat',
             stream: false,
             max_tokens: 128,
-            messages: [{ role: 'user', content: 'Hi' }],
+            messages: [
+                { role: 'system', content: 'Static system prefix' },
+                { role: 'user', content: 'Turn 1' },
+                { role: 'system', content: 'Depth-0 Author Note' },
+                { role: 'user', content: 'Turn 2' },
+            ],
         });
         expect(responsesRes.status).toBe(200);
 
@@ -550,19 +730,37 @@ describe('Chat completions backend prompt caching integration', () => {
         });
         expect(proxyRes.status).toBe(200);
 
-        const [directBody, responsesBody, proxyBody] = nodeFetchMock.mock.calls.map(([, opts]) => JSON.parse(opts.body));
+        const legacyCompletionsRes = await post('/api/backends/chat-completions/generate', {
+            chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI,
+            model: 'gpt-3.5-turbo-instruct',
+            chat_id: 'openai-private-chat',
+            stream: false,
+            max_tokens: 64,
+            messages: 'Complete this sentence:',
+        });
+        expect(legacyCompletionsRes.status).toBe(200);
+
+        const [directBody, responsesBody, proxyBody, legacyBody] = nodeFetchMock.mock.calls.map(([, opts]) => JSON.parse(opts.body));
         expect(directBody.prompt_cache_key).toMatch(/^sb_[a-f0-9]{32}$/);
         expect(responsesBody.prompt_cache_key).toBe(directBody.prompt_cache_key);
         expect(directBody.prompt_cache_key.length).toBeLessThanOrEqual(64);
         expect(JSON.stringify(directBody)).not.toContain('openai-private-chat');
         expect(proxyBody.prompt_cache_key).toBeUndefined();
+        expect(legacyBody.prompt_cache_key).toBeUndefined();
+        // Responses keeps only the leading system message in instructions and preserves mid-chat system injection in input.
+        expect(responsesBody.instructions).toBe('Static system prefix');
+        expect(responsesBody.input).toEqual([
+            { role: 'user', content: 'Turn 1' },
+            { role: 'system', content: 'Depth-0 Author Note' },
+            { role: 'user', content: 'Turn 2' },
+        ]);
     });
 
-    test('server-admin /config/chat-completions/save persists gemini.cachingAtDepth and updates runtime caching immediately', async () => {
+    test('server-admin /config/chat-completions/save persists YAML flags, parses quoted YAML booleans, preserves omitted fields, and updates runtime caching', async () => {
         const getRes = await post('/api/server-admin/config/chat-completions/get', {});
         expect(getRes.status).toBe(200);
         const initial = await getRes.json();
-        expect(initial.settings.gemini.cachingAtDepth).toBe(-1);
+        expect(initial.settings.gemini.enableSystemPromptCache).toBe(false);
 
         const saveRes = await post('/api/server-admin/config/chat-completions/save', {
             expectedLastModifiedMs: initial.lastModifiedMs,
@@ -578,7 +776,6 @@ describe('Chat completions backend prompt caching integration', () => {
                     apiVersion: 'v1beta',
                     thoughtSignatures: true,
                     enableSystemPromptCache: true,
-                    cachingAtDepth: 0,
                 },
             },
         });
@@ -594,10 +791,9 @@ describe('Chat completions backend prompt caching integration', () => {
             apiVersion: 'v1beta',
             thoughtSignatures: true,
             enableSystemPromptCache: true,
-            cachingAtDepth: 0,
         });
 
-        // Re-reading from disk returns the persisted YAML values rather than hardcoded defaults.
+        // Re-reading from disk returns persisted YAML values rather than hardcoded defaults.
         const reloadRes = await post('/api/server-admin/config/chat-completions/get', {});
         expect(reloadRes.status).toBe(200);
         const reloaded = await reloadRes.json();
@@ -613,40 +809,57 @@ describe('Chat completions backend prompt caching integration', () => {
             },
             gemini: {
                 enableSystemPromptCache: true,
-                cachingAtDepth: 0,
             },
         });
 
-        // Saving a payload that omits gemini.cachingAtDepth preserves the existing saved value.
-        const preserveRes = await post('/api/server-admin/config/chat-completions/save', {
+        // Partial save omitting claude/gemini booleans preserves existing persisted flags rather than resetting them.
+        const partialRes = await post('/api/server-admin/config/chat-completions/save', {
             expectedLastModifiedMs: saved.lastModifiedMs,
             restart: false,
             settings: {
-                claude: saved.settings.claude,
-                gemini: {
-                    apiVersion: 'v1beta',
-                    thoughtSignatures: true,
-                    enableSystemPromptCache: true,
-                },
+                claude: { cachingAtDepth: 4 },
+                gemini: {},
             },
         });
-        expect(preserveRes.status).toBe(200);
-        const preserved = await preserveRes.json();
-        expect(preserved.settings.gemini.cachingAtDepth).toBe(0);
+        expect(partialRes.status).toBe(200);
+        const partial = await partialRes.json();
+        expect(partial.settings.claude).toEqual({
+            enableSystemPromptCache: true,
+            cachingAtDepth: 4,
+            extendedTTL: true,
+            enableAdaptiveThinking: false,
+        });
+        expect(partial.settings.gemini).toEqual({
+            apiVersion: 'v1beta',
+            thoughtSignatures: true,
+            enableSystemPromptCache: true,
+        });
+
+        // Quoted YAML "false" parses as false (matching util.toBoolean / getConfigValue).
+        const quotedYaml = fs.readFileSync(configPath, 'utf8').replace('enableSystemPromptCache: true', 'enableSystemPromptCache: "false"');
+        fs.writeFileSync(configPath, quotedYaml);
+        const quotedRes = await post('/api/server-admin/config/chat-completions/get', {});
+        expect(quotedRes.status).toBe(200);
+        const quoted = await quotedRes.json();
+        expect(quoted.settings.claude.enableSystemPromptCache).toBe(false);
     });
 });
 
 describe('Frontend prompt caching UI and chat_id wiring', () => {
     const openaiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
 
-    test('exposes Claude & Gemini server config controls for OpenRouter and router sources', () => {
-        expect(openaiSource).toContain('data-source="claude,openrouter,makersuite,vertexai,gemini_interactions,nanogpt,electronhub,linkapi"');
+    test('exposes Claude & Gemini server config controls on router sources with row-level source gating', () => {
+        expect(openaiSource).toContain('data-source="claude,openrouter,makersuite,vertexai,nanogpt,electronhub,linkapi"');
         expect(openaiSource).toContain('data-source="claude,openrouter,nanogpt,electronhub,linkapi"');
-        expect(openaiSource).toContain('data-source="makersuite,vertexai,gemini_interactions,openrouter,linkapi"');
-        expect(openaiSource).toContain('id="sb-config-gemini-caching-depth"');
+        expect(openaiSource).toContain('data-source="makersuite,vertexai,openrouter"');
+        expect(openaiSource).toContain('for="sb-config-claude-adaptive-thinking" data-source="claude,linkapi"');
+        expect(openaiSource).toContain('for="sb-config-gemini-api-version" data-source="makersuite,vertexai"');
+        expect(openaiSource).toContain('for="sb-config-gemini-thought-signatures" data-source="makersuite,vertexai"');
+        expect(openaiSource).toContain('for="sb-config-gemini-system-prompt-cache" data-source="openrouter"');
+        expect(openaiSource).not.toContain('id="sb-config-gemini-caching-depth"');
     });
 
-    test('forwards chat_id for OpenRouter, OpenAI, OpenAI Responses, and Fireworks main turns', () => {
-        expect(openaiSource).toMatch(/chat_completion_sources\.OPENROUTER[\s\S]*?chat_completion_sources\.OPENAI[\s\S]*?chat_completion_sources\.OPENAI_RESPONSES[\s\S]*?generate_data\.chat_id = getCurrentChatId\(\)/);
+    test('forwards chat_id for OpenRouter, OpenAI, OpenAI Responses, and Fireworks only on main cache scope turns', () => {
+        expect(openaiSource).toMatch(/isMainCacheScope[\s\S]*?chat_completion_sources\.OPENROUTER[\s\S]*?chat_completion_sources\.OPENAI[\s\S]*?chat_completion_sources\.OPENAI_RESPONSES[\s\S]*?type !== 'quiet' && isMainCacheScope[\s\S]*?generate_data\.chat_id = getCurrentChatId\(\)/);
     });
 });
