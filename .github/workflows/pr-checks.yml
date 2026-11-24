@@ -185,6 +185,9 @@ jobs:
       - name: Run character index tests
         run: bun test ./tests/character-index.test.js
 
+      - name: Run SQLite cache tests
+        run: bun test ./tests/sqlite-cache.test.js
+
   run-node-checks:
     name: ✅ Check Node Runtime
     runs-on: ubuntu-latest
