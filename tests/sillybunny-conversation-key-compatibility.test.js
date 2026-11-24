@@ -48,8 +48,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({ safeParseMessages: value => value }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 
-const { getConversationKey: getBrowserConversationKey } = await import('../public/scripts/sillybunny-conversation/context.js');
-const { getConversationThreadKey: getBackendThreadKey } = await import('../src/endpoints/conversation-store.js');
+const { getConversationKey: getBrowserConversationKey, parseConversationKey: parseBrowserConversationKey } = await import('../public/scripts/sillybunny-conversation/context.js');
+const { buildLegacyThreadKey: getBackendThreadKey, parseLegacyThreadKey: parseBackendThreadKey } = await import('../src/conversation-legacy.js');
 
 describe('Conversation thread key compatibility', () => {
     test('backend and browser helpers share raw avatar/group syntax and persona encoding', () => {
@@ -58,6 +58,19 @@ describe('Conversation thread key compatibility', () => {
         expect(getBackendThreadKey(avatar, groupId, personaId)).toBe(
             `persona:${encodeURIComponent(personaId)}:group:${groupId}:${avatar}`,
         );
+    });
+
+    test.each([
+        'Nova.png',
+        'group:g1:Nova.png',
+        'persona:user-default.png:Nova.png',
+        'persona:Persona%2025%25%3A%20one.png:group:group 50% alpha:Nova 100% alt.png',
+        'persona:%E0%A4%A:Nova.png',
+        'persona:no-separator',
+        'group:no-separator',
+        '',
+    ])('backend and browser parsers split %p the same way', (key) => {
+        expect(parseBackendThreadKey(key)).toEqual(parseBrowserConversationKey(key));
     });
 
     test('backend rejects raw composite delimiters in API storage components', () => {
