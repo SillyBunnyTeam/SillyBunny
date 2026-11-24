@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,8 +34,90 @@ describe('Android app script sources', () => {
     });
 
     test('APK helper functions remain extractable for shell checks', () => {
-        for (const name of ['is_android_app', 'is_termux', 'prefer_node_runtime']) {
+        for (const name of ['is_android_app', 'is_termux', 'prefer_node_runtime', 'prune_android_node_modules']) {
             expect(extractShellFunction(launcherSource, name)).toMatch(new RegExp(`^${name}\\(\\) \\{`));
+        }
+        // Never exec Node inside start.sh (preserves exit-75/77 restart loop and StopEscalation parent-child tree).
+        const runServerFn = extractShellFunction(launcherSource, 'run_server');
+        expect(runServerFn).not.toMatch(/\bexec\s+"\$RUNTIME_CMD"/);
+        expect(launcherSource).toContain('supervisor_reload_exit_code=77');
+    });
+
+    test('prune_android_node_modules removes only dead files and duplicate ORT WASMs without touching package.json', () => {
+        const pruneFn = extractShellFunction(launcherSource, 'prune_android_node_modules');
+        const scriptMatch = pruneFn.match(/"\$RUNTIME_CMD" -e '([\s\S]*?)' "\$SCRIPT_DIR\/node_modules"/);
+        expect(scriptMatch).not.toBeNull();
+        const inlineScript = scriptMatch[1];
+
+        const runPrune = (nmDir) => spawnSync(process.execPath, ['-e', inlineScript, nmDir], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        const wasms = [
+            'ort-wasm-simd-threaded.wasm',
+            'ort-wasm-simd.wasm',
+            'ort-wasm-threaded.wasm',
+            'ort-wasm.wasm',
+        ];
+        const tempRoot = mkdtempSync(path.join(tmpdir(), 'sb-android-prune-'));
+        try {
+            const nm = path.join(tempRoot, 'node_modules');
+            const write = (rel, content = 'x') => {
+                const target = path.join(nm, rel);
+                mkdirSync(path.dirname(target), { recursive: true });
+                writeFileSync(target, content);
+                return target;
+            };
+
+            const keepPkgJson = write('sample-pkg/package.json', '{"name":"sample-pkg"}\n');
+            const keepIndexJs = write('sample-pkg/index.js', 'export const ok = true;\n');
+            const deadMap = write('sample-pkg/dist/index.js.map', '{}');
+            const deadDts = write('sample-pkg/dist/index.d.ts', 'export {};');
+            const deadDmts = write('sample-pkg/dist/index.d.mts', 'export {};');
+            const deadDcts = write('sample-pkg/dist/index.d.cts', 'export {};');
+            const deadDocs = write('sample-pkg/docs/guide.md', '# guide');
+            const deadTest = write('sample-pkg/test/spec.js', 'test');
+            const keepTestWithPkg = write('pkg-with-test-pkg/test/package.json', '{"type":"module"}\n');
+            const deadScopedTests = write('@scope/lib/tests/a.js', 'test');
+            const keepScopedPkg = write('@scope/lib/package.json', '{"name":"@scope/lib"}\n');
+
+            // Case 1: only 3 of 4 active WASMs exist in sillytavern-transformers -> keep ALL onnxruntime-web WASMs.
+            for (const w of wasms.slice(0, 3)) {
+                write(`sillytavern-transformers/dist/${w}`, 'active-wasm-bytes');
+            }
+            const ortWasmFiles = wasms.map((w) => write(`onnxruntime-web/dist/${w}`, 'dup-wasm-bytes'));
+            const keepOrtJs = write('onnxruntime-web/dist/ort.min.js', 'js');
+
+            let result = runPrune(nm);
+            expect(result.status).toBe(0);
+            expect(existsSync(keepPkgJson)).toBe(true);
+            expect(existsSync(keepIndexJs)).toBe(true);
+            expect(existsSync(keepScopedPkg)).toBe(true);
+            expect(existsSync(keepTestWithPkg)).toBe(true);
+            expect(existsSync(keepOrtJs)).toBe(true);
+            expect(existsSync(deadMap)).toBe(false);
+            expect(existsSync(deadDts)).toBe(false);
+            expect(existsSync(deadDmts)).toBe(false);
+            expect(existsSync(deadDcts)).toBe(false);
+            expect(existsSync(deadDocs)).toBe(false);
+            expect(existsSync(deadTest)).toBe(false);
+            expect(existsSync(deadScopedTests)).toBe(false);
+            for (const ortFile of ortWasmFiles) {
+                expect(existsSync(ortFile)).toBe(true);
+            }
+
+            // Case 2: all 4 active WASMs exist in sillytavern-transformers/dist -> prune duplicate onnxruntime-web WASMs.
+            write(`sillytavern-transformers/dist/${wasms[3]}`, 'active-wasm-bytes');
+            result = runPrune(nm);
+            expect(result.status).toBe(0);
+            for (const w of wasms) {
+                expect(existsSync(path.join(nm, 'sillytavern-transformers', 'dist', w))).toBe(true);
+                expect(existsSync(path.join(nm, 'onnxruntime-web', 'dist', w))).toBe(false);
+            }
+            expect(existsSync(keepOrtJs)).toBe(true);
+        } finally {
+            rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 });

@@ -373,6 +373,97 @@ cleanup_android_npm_cache() {
     fi
 }
 
+# SillyBunny: zero-feature-loss Android node_modules prune (keeps sillytavern-transformers active WASMs and all package.json).
+prune_android_node_modules() {
+    is_android_app || return 0
+    [[ "$runtime_kind" == node ]] || return 0
+    [[ -d "$SCRIPT_DIR/node_modules" ]] || return 0
+    "$RUNTIME_CMD" -e '
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const nmRoot = process.argv[1];
+        if (!nmRoot) process.exit(0);
+        const removableDirs = new Set(["docs", "test", "tests", "__tests__"]);
+        const dupOrtWasms = [
+            "ort-wasm-simd-threaded.wasm",
+            "ort-wasm-simd.wasm",
+            "ort-wasm-threaded.wasm",
+            "ort-wasm.wasm",
+        ];
+        const hasPackageJson = (dir) => {
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return true; }
+            for (const entry of entries) {
+                if (entry.isSymbolicLink()) continue;
+                if (entry.name === "package.json") return true;
+                if (entry.isDirectory() && hasPackageJson(path.join(dir, entry.name))) return true;
+            }
+            return false;
+        };
+        const pruneDir = (dir, atPackageRoot) => {
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                if (entry.isSymbolicLink()) continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name === "node_modules") {
+                        walkNodeModules(full);
+                        continue;
+                    }
+                    if (atPackageRoot && removableDirs.has(entry.name) && !hasPackageJson(full)) {
+                        try { fs.rmSync(full, { recursive: true, force: true }); } catch {}
+                        continue;
+                    }
+                    pruneDir(full, false);
+                } else if (entry.isFile()) {
+                    if (entry.name === "package.json") continue;
+                    if (entry.name.endsWith(".map") || /\.d\.(?:ts|mts|cts)$/.test(entry.name)) {
+                        try { fs.unlinkSync(full); } catch {}
+                    }
+                }
+            }
+        };
+        const walkNodeModules = (root) => {
+            let entries;
+            try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                if (entry.isSymbolicLink() || !entry.isDirectory() || entry.name.startsWith(".")) continue;
+                const full = path.join(root, entry.name);
+                if (entry.name.startsWith("@")) {
+                    let scoped;
+                    try { scoped = fs.readdirSync(full, { withFileTypes: true }); } catch { continue; }
+                    for (const pkg of scoped) {
+                        if (!pkg.isSymbolicLink() && pkg.isDirectory()) pruneDir(path.join(full, pkg.name), true);
+                    }
+                } else {
+                    pruneDir(full, true);
+                }
+            }
+        };
+        walkNodeModules(nmRoot);
+        const transformersDist = path.join(nmRoot, "sillytavern-transformers", "dist");
+        const ortDist = path.join(nmRoot, "onnxruntime-web", "dist");
+        const activeWasmsPresent = dupOrtWasms.every((name) => {
+            try {
+                const st = fs.lstatSync(path.join(transformersDist, name));
+                return !st.isSymbolicLink() && st.isFile() && st.size > 0;
+            } catch {
+                return false;
+            }
+        });
+        if (activeWasmsPresent) {
+            for (const name of dupOrtWasms) {
+                const dup = path.join(ortDist, name);
+                try {
+                    const st = fs.lstatSync(dup);
+                    if (!st.isSymbolicLink() && st.isFile()) fs.unlinkSync(dup);
+                } catch {}
+            }
+        }
+    ' "$SCRIPT_DIR/node_modules" || true
+}
+
 if android_fast_boot_valid; then
     echo "Dependencies are up to date."
 else
@@ -407,6 +498,7 @@ else
 
         run_package_install
         cleanup_android_npm_cache
+        prune_android_node_modules
 
         if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
             echo "Restoring tracked package-lock.json after npm metadata rewrite..."
@@ -437,6 +529,7 @@ export NODE_NO_WARNINGS=1
 export SILLYBUNNY_LAUNCHER=1
 
 restart_exit_code=75
+supervisor_reload_exit_code=77
 server_restart_count=0
 
 run_server() {
@@ -472,7 +565,7 @@ while true; do
         fi
     fi
 
-    if (( server_exit_code == restart_exit_code )); then
+    if (( server_exit_code == restart_exit_code || server_exit_code == supervisor_reload_exit_code )); then
         ((server_restart_count += 1))
         echo "Restarting SillyBunny..."
         continue

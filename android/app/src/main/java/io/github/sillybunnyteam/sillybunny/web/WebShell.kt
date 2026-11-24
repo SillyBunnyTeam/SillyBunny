@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.web
 
 import android.annotation.SuppressLint
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.content.pm.PackageManager
@@ -27,17 +28,24 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.annotation.MainThread
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.VIEW_MODEL_STORE_OWNER_KEY
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.CreationExtras
 import io.github.sillybunnyteam.sillybunny.BuildConfig
 import io.github.sillybunnyteam.sillybunny.R
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import java.util.WeakHashMap
 
 /**
  * Owns the app WebView for [WebScreen] (plan §4.5). All members are main-thread only unless noted.
@@ -69,13 +77,16 @@ import io.github.sillybunnyteam.sillybunny.server.LaunchSession
  * provider page gets no bridge, downloads, file chooser or permissions: those serve the app origin only.
  */
 internal class WebShell(
-    private val appContext: Context,
+    appContext: Context,
     private val platform: WebShellPlatform = AndroidWebShellPlatform,
     private val permissionPolicy: WebPermissionPolicy = WebPermissionPolicy.DEFAULT,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     /** The OpenRouter origin whose sign-in may load in-app; device tests pass a fixture origin. */
     private val openRouter: Uri = WebNavigationPolicy.OPENROUTER_ORIGIN.toUri(),
+    private val staticAssets: StaticAssetInterceptor? = StaticAssetInterceptor.forContext(appContext),
 ) {
+    private val appContext: Context = appContext.applicationContext
+
     /** Increments whenever the shell switches to a different WebView instance. */
     var generation by mutableIntStateOf(0)
         private set
@@ -123,12 +134,14 @@ internal class WebShell(
     private var attachedDownloads: WebDownloads = NoWebDownloads
     private val popups = mutableSetOf<WebView>()
     private val rendererDeaths = ArrayDeque<Long>()
+    private var paused = false
+    private var clearHistoryOnFirstLoad = false
 
     /** Set when the frontend started the OpenRouter sign-in in-app; cleared once the app origin loads again. */
     private var openRouterArmed = false
 
     init {
-        val provider = platform.currentWebViewPackage(appContext)
+        val provider = platform.currentWebViewPackage(this.appContext)
         val major = WebViewVersion.parseMajor(provider?.versionName)
         if (WebViewVersion.isBelowMinimum(major)) {
             versionWarning = VersionWarning(major!!, provider?.packageName)
@@ -147,6 +160,7 @@ internal class WebShell(
         val app = address.appOrigin(session.port)
         appOrigin = app
         LaunchCookieContainment.app = app
+        LaunchCookieContainment.staticAssets = staticAssets
         rendererDeaths.clear()
         startWebView()
     }
@@ -170,6 +184,30 @@ internal class WebShell(
         this.container = null
         webView?.let { if (it.parent === container) container.removeView(it) }
         contextWrapper?.baseContext = appContext
+    }
+
+    /**
+     * Pauses per-view rendering and media without calling `pauseTimers()`, which is process-wide and would
+     * freeze active background chat streams.
+     */
+    @MainThread
+    fun onPause() {
+        paused = true
+        webView?.onPause()
+    }
+
+    @MainThread
+    fun onResume() {
+        paused = false
+        webView?.onResume()
+    }
+
+    /** Drops in-memory decoded resource caches under pressure without evicting disk storage or active pages. */
+    @MainThread
+    fun onTrimMemory(level: Int) {
+        if (shouldTrimActiveCaches(level)) {
+            webView?.clearCache(false)
+        }
     }
 
     /** Back: leaves fullscreen first, then WebView history. False when there was nothing to undo. */
@@ -245,17 +283,28 @@ internal class WebShell(
         val current = checkNotNull(session)
         val app = checkNotNull(appOrigin)
         loadFailed = false
-        val wrapper = MutableContextWrapper(appContext)
-        val view = try {
-            platform.configureProcess(LaunchCookieContainment::blocks)
-            platform.newWebView(wrapper)
-        } catch (e: RuntimeException) {
-            // No usable WebView provider, for example while it is being updated: offer Retry and the browser.
-            if (BuildConfig.DEBUG) Log.w(TAG, "WebView unavailable", e)
-            loadFailed = true
-            return
+        val warm = takePrewarmed(platform)
+        val wrapper: MutableContextWrapper
+        val view: WebView
+        if (warm != null) {
+            wrapper = warm.wrapper
+            view = warm.view
+            clearHistoryOnFirstLoad = true
+        } else {
+            wrapper = MutableContextWrapper(appContext)
+            view = try {
+                platform.configureProcess(LaunchCookieContainment::blocks, LaunchCookieContainment::interceptStatic)
+                platform.newWebView(wrapper)
+            } catch (e: RuntimeException) {
+                // No usable WebView provider, for example while it is being updated: offer Retry and the browser.
+                if (BuildConfig.DEBUG) Log.w(TAG, "WebView unavailable", e)
+                loadFailed = true
+                return
+            }
+            clearHistoryOnFirstLoad = false
         }
         configure(view, app)
+        if (paused) view.onPause()
         contextWrapper = wrapper
         webView = view
         canGoBack = false
@@ -282,24 +331,8 @@ internal class WebShell(
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled") // The frontend is a JavaScript app; only its exact origin loads.
     private fun configure(view: WebView, app: AppOrigin) {
-        view.setBackgroundColor(ContextCompat.getColor(appContext, R.color.libadwaita_view))
-        view.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            allowFileAccess = false
-            allowContentAccess = false
-            @Suppress("DEPRECATION") // Deprecated defaults; set explicitly so no provider can differ.
-            allowFileAccessFromFileURLs = false
-            @Suppress("DEPRECATION")
-            allowUniversalAccessFromFileURLs = false
-            setGeolocationEnabled(false)
-            setSupportMultipleWindows(true)
-            javaScriptCanOpenWindowsAutomatically = false
-            // TTS, previews and notification sounds start after async work, without a fresh gesture.
-            mediaPlaybackRequiresUserGesture = false
-        }
+        configureSettings(view, appContext)
         view.webViewClient = ShellWebViewClient(app)
         view.webChromeClient = ShellChromeClient(app)
     }
@@ -308,6 +341,7 @@ internal class WebShell(
         val view = webView ?: return
         webView = null
         canGoBack = false
+        clearHistoryOnFirstLoad = false
         openRouterArmed = false
         dialog?.let {
             dialog = null
@@ -488,12 +522,13 @@ internal class WebShell(
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
             onNavigation(view, request.url, request.isForMainFrame, request.hasGesture(), newWindow = false)
 
-        // Runs off the main thread; reads only [app] and [openRouter]. The real OpenRouter origin is never a
-        // local name; device tests serve a fixture provider on one.
+        // Runs off the main thread; reads only [app], [openRouter] and [staticAssets]. The real OpenRouter
+        // origin is never a local name; device tests serve a fixture provider on one.
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
             val url = request.url
             val refused = WebNavigationPolicy.refusesRequest(url, app) && !WebNavigationPolicy.isSameOrigin(url, openRouter)
-            return if (refused) blockedResponse() else null
+            if (refused) return blockedResponse()
+            return staticAssets?.intercept(request, app)
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -502,11 +537,15 @@ internal class WebShell(
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
-            if (view === webView) canGoBack = view.canGoBack()
+            if (view !== webView || url == BLANK) return
+            prunePrewarmHistory(view)
+            canGoBack = view.canGoBack()
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            if (view === webView) canGoBack = view.canGoBack()
+            if (view !== webView || url == BLANK) return
+            prunePrewarmHistory(view)
+            canGoBack = view.canGoBack()
         }
 
         @SuppressLint("WebViewClientOnReceivedSslError") // Always cancels; never proceeds.
@@ -518,6 +557,12 @@ internal class WebShell(
             onRendererGone(view)
             return true
         }
+    }
+
+    private fun prunePrewarmHistory(view: WebView) {
+        if (!clearHistoryOnFirstLoad) return
+        clearHistoryOnFirstLoad = false
+        view.clearHistory()
     }
 
     private inner class ShellChromeClient(private val app: AppOrigin) : WebChromeClient() {
@@ -645,6 +690,29 @@ internal class WebShell(
 
     class VersionWarning(val major: Int, val providerPackage: String?)
 
+    private class PrewarmedWebView(
+        val platform: WebShellPlatform,
+        val wrapper: MutableContextWrapper,
+        val view: WebView,
+    )
+
+    @SuppressLint("MissingOnRenderProcessGone")
+    private class PrewarmWebViewClient : WebViewClient() {
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
+
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+            if (request.url.toString() == BLANK) null else blockedResponse()
+
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            if (prewarmed?.view === view) {
+                prewarmed = null
+                view.stopLoading()
+                view.destroy()
+            }
+            return true
+        }
+    }
+
     companion object {
         private const val TAG = "SillyBunnyWeb"
         private const val BLANK = "about:blank"
@@ -653,8 +721,105 @@ internal class WebShell(
         const val RENDERER_DEATH_LIMIT = 3
         const val RENDERER_DEATH_WINDOW_MILLIS = 60_000L
 
+        private var prewarmed: PrewarmedWebView? = null
+
         fun launchCookie(session: LaunchSession): String =
             "${LaunchSession.COOKIE_NAME}=${session.token}; HttpOnly; SameSite=Strict; Path=/"
+
+        /**
+         * Warms the WebView provider, cookie store and a reusable application-scoped [WebView] on the main
+         * thread while the server is still starting, without retaining an Activity or loading an app URL.
+         */
+        @MainThread
+        @JvmOverloads
+        fun prewarm(
+            context: Context,
+            platform: WebShellPlatform = AndroidWebShellPlatform,
+        ) {
+            check(Looper.myLooper() == Looper.getMainLooper()) { "WebShell.prewarm must run on the main thread" }
+            if (prewarmed?.platform === platform) return
+            discardPrewarmed()
+            val app = context.applicationContext
+            val wrapper = (context as? MutableContextWrapper)?.also { it.baseContext = app }
+                ?: MutableContextWrapper(app)
+            val view = try {
+                platform.configureProcess(LaunchCookieContainment::blocks, LaunchCookieContainment::interceptStatic)
+                platform.warmCookieManager()
+                platform.newWebView(wrapper)
+            } catch (e: RuntimeException) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "WebView prewarm unavailable", e)
+                return
+            } catch (e: LinkageError) {
+                if (BuildConfig.DEBUG) Log.w(TAG, "WebView prewarm glue unavailable", e)
+                return
+            }
+            configureSettings(view, app)
+            view.webViewClient = PrewarmWebViewClient()
+            view.webChromeClient = SilentChromeClient
+            prewarmed = PrewarmedWebView(platform, wrapper, view)
+            platform.warmRenderer(view)
+        }
+
+        /** Returns the active [WebShell] for [owner] without instantiating a [WebShellHolder] when absent. */
+        fun existing(owner: ViewModelStoreOwner): WebShell? = WebShellHolder.existing(owner)
+
+        /** Forwards memory pressure to [owner]'s active [WebShell] and evicts any unclaimed prewarmed [WebView]. */
+        @MainThread
+        fun onTrimMemory(owner: ViewModelStoreOwner, level: Int) {
+            if (shouldDiscardPrewarmed(level)) {
+                discardPrewarmed()
+            }
+            existing(owner)?.onTrimMemory(level)
+        }
+
+        @VisibleForTesting
+        internal fun hasPrewarmed(platform: WebShellPlatform = AndroidWebShellPlatform): Boolean =
+            prewarmed?.platform === platform
+
+        @VisibleForTesting
+        internal fun discardPrewarmed() {
+            val current = prewarmed ?: return
+            prewarmed = null
+            current.wrapper.baseContext = current.wrapper.baseContext.applicationContext
+            current.view.stopLoading()
+            current.view.destroy()
+        }
+
+        private fun takePrewarmed(platform: WebShellPlatform): PrewarmedWebView? {
+            val current = prewarmed ?: return null
+            if (current.platform !== platform) return null
+            prewarmed = null
+            return current
+        }
+
+        @Suppress("DEPRECATION")
+        private fun shouldDiscardPrewarmed(level: Int): Boolean =
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+
+        @Suppress("DEPRECATION")
+        private fun shouldTrimActiveCaches(level: Int): Boolean =
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+
+        @SuppressLint("SetJavaScriptEnabled") // The frontend is a JavaScript app; only its exact origin loads.
+        private fun configureSettings(view: WebView, appContext: Context) {
+            view.setBackgroundColor(ContextCompat.getColor(appContext, R.color.libadwaita_view))
+            view.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                allowFileAccess = false
+                allowContentAccess = false
+                @Suppress("DEPRECATION") // Deprecated defaults; set explicitly so no provider can differ.
+                allowFileAccessFromFileURLs = false
+                @Suppress("DEPRECATION")
+                allowUniversalAccessFromFileURLs = false
+                setGeolocationEnabled(false)
+                setSupportMultipleWindows(true)
+                javaScriptCanOpenWindowsAutomatically = false
+                // TTS, previews and notification sounds start after async work, without a fresh gesture.
+                mediaPlaybackRequiresUserGesture = false
+            }
+        }
     }
 }
 
@@ -666,7 +831,15 @@ internal object LaunchCookieContainment {
     @Volatile
     var app: AppOrigin? = null
 
+    @Volatile
+    var staticAssets: StaticAssetInterceptor? = null
+
     fun blocks(url: Uri): Boolean = WebNavigationPolicy.refusesRequest(url, app)
+
+    fun interceptStatic(request: WebResourceRequest): WebResourceResponse? {
+        val currentApp = app ?: return null
+        return staticAssets?.intercept(request, currentApp)
+    }
 }
 
 /** Keeps one [WebShell] per Activity across configuration changes. */
@@ -675,20 +848,47 @@ internal class WebShellHolder(private val create: () -> WebShell) : ViewModel() 
 
     fun shell(): WebShell = shell?.takeUnless { it.isReleased } ?: create().also { shell = it }
 
+    internal fun existingShell(): WebShell? = shell?.takeUnless { it.isReleased }
+
     override fun onCleared() {
+        synchronized(holders) {
+            holders.values.removeIf { it === this }
+        }
         shell?.release()
         shell = null
     }
 
     companion object {
         const val KEY = "io.github.sillybunnyteam.sillybunny.web.WebShell"
+        private val holders = WeakHashMap<ViewModelStore, WebShellHolder>()
+
+        fun get(owner: ViewModelStoreOwner, factory: ViewModelProvider.Factory): WebShellHolder {
+            val holder = ViewModelProvider(owner, factory)[KEY, WebShellHolder::class.java]
+            synchronized(holders) {
+                holders[owner.viewModelStore] = holder
+            }
+            return holder
+        }
+
+        fun existing(owner: ViewModelStoreOwner): WebShell? {
+            val holder = synchronized(holders) { holders[owner.viewModelStore] } ?: return null
+            return holder.existingShell()
+        }
 
         fun factory(create: () -> WebShell): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
                 require(modelClass == WebShellHolder::class.java) { "modelClass" }
+                val holder = WebShellHolder(create)
+                extras[VIEW_MODEL_STORE_OWNER_KEY]?.viewModelStore?.let { store ->
+                    synchronized(holders) {
+                        holders[store] = holder
+                    }
+                }
                 @Suppress("UNCHECKED_CAST")
-                return WebShellHolder(create) as T
+                return holder as T
             }
+
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = create(modelClass, CreationExtras.Empty)
         }
     }
 }

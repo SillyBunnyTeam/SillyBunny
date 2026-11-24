@@ -71,12 +71,9 @@ normalize_android_version() {
 
 # SillyBunny Android app: gate the fetched code before any update decision.
 check_android_app_update() {
-    local installed required=null reason='' part branch temporary
+    local installed required=null reason='' part branch temporary status_file
     local minimum_parts=()
     local LC_ALL=C
-
-    # Pin the app's check and update to one commit even if the tracking ref moves.
-    checked_upstream="$(git rev-parse '@{upstream}' 2>/dev/null)" || finish_early "could not read the upstream commit."
 
     if (( behind > 0 )); then
         installed="$(normalize_android_version "${SILLYBUNNY_ANDROID_APP_VERSION_CODE:-}")" || installed=0
@@ -126,7 +123,10 @@ check_android_app_update() {
     fi
 
     if [[ -n "${SILLYBUNNY_ANDROID_STATUS_DIR:-}" ]]; then
-        rm -f -- "$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json" || finish_early "could not remove the update-blocked.json status file."
+        status_file="$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json"
+        if [[ -e "$status_file" || -L "$status_file" ]]; then
+            rm -f -- "$status_file" || finish_early "could not remove the update-blocked.json status file."
+        fi
     fi
 }
 
@@ -136,13 +136,26 @@ if ! command -v git >/dev/null 2>&1; then
     finish_early "Git is not installed."
 fi
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    finish_early "this checkout is not a Git repository."
+current_branch=""
+if [[ -d .git && -d .git/objects && -d .git/refs && -f .git/HEAD ]]; then
+    IFS= read -r head_contents < .git/HEAD || head_contents=""
+    head_contents="${head_contents%$'\r'}"
+    if [[ "$head_contents" == ref:\ refs/heads/* ]]; then
+        current_branch="${head_contents#ref: refs/heads/}"
+    elif [[ -n "$head_contents" && "$head_contents" != ref:\ * ]]; then
+        finish_early "detached HEAD checkouts cannot be updated automatically."
+    fi
 fi
 
-current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 if [[ -z "$current_branch" ]]; then
-    finish_early "detached HEAD checkouts cannot be updated automatically."
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        finish_early "this checkout is not a Git repository."
+    fi
+
+    current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    if [[ -z "$current_branch" ]]; then
+        finish_early "detached HEAD checkouts cannot be updated automatically."
+    fi
 fi
 
 upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
@@ -174,11 +187,24 @@ elif ! git fetch --quiet "$upstream_remote"; then
     finish_early "could not fetch from '$upstream_remote'."
 fi
 
-read -r ahead behind < <(git rev-list --left-right --count HEAD...@{upstream})
-
 # SillyBunny Android app: other install methods retain their existing update flow.
 if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]; then
+    # Pin the app's check and update to one commit even if the tracking ref moves.
+    checked_upstream="$(git rev-parse '@{upstream}' 2>/dev/null)" || finish_early "could not read the upstream commit."
+    local_head=""
+    if [[ -f ".git/refs/heads/$current_branch" ]]; then
+        IFS= read -r local_head < ".git/refs/heads/$current_branch" || local_head=""
+        local_head="${local_head%$'\r'}"
+    fi
+    if [[ "$local_head" =~ ^[0-9a-fA-F]{40,64}$ && "$local_head" == "$checked_upstream" ]]; then
+        ahead=0
+        behind=0
+    else
+        read -r ahead behind < <(git rev-list --left-right --count "HEAD...$checked_upstream")
+    fi
     check_android_app_update
+else
+    read -r ahead behind < <(git rev-list --left-right --count HEAD...@{upstream})
 fi
 
 if (( ahead > 0 && behind > 0 )); then

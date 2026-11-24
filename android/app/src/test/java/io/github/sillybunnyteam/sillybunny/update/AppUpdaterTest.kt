@@ -434,6 +434,49 @@ class AppUpdaterTest {
         assertFalse(apk.exists())
     }
 
+    @Test
+    fun automaticUpdateCheckIsDeferredWhileBlockedStatusIsImmediate() {
+        UpdateTestServer().use { server ->
+            server.json("/latest/android-update.json", CoreTestFixtures.manifest(version = 2).toString())
+            blockedStatus("""{"required":2,"installed":1,"reason":"newer"}""")
+            withActivity { activity ->
+                val deferred = updaterFor(activity, repository(server))
+                deferred.enabled = true
+                deferred.onLaunch()
+                await { deferred.state.initialized && deferred.state.blocked != null }
+                // Blocked status & FileObserver are immediate for Smoke Step 5, while the remote check stays deferred.
+                assertEquals(UpdatePhase.REQUIRED, deferred.state.phase)
+                assertNull(deferred.lastResult)
+
+                // Advancing the main looper past the 60s deferral window fires the automatic check.
+                shadowOf(Looper.getMainLooper()).idleFor(AppUpdater.AUTO_CHECK_DELAY_MILLIS, TimeUnit.MILLISECONDS)
+                await { deferred.lastResult != null }
+                assertEquals(UpdatePhase.AVAILABLE, deferred.state.phase)
+                assertNotNull(deferred.state.candidate)
+            }
+        }
+    }
+
+    @Test
+    fun disablingAutomaticChecksBeforeDeferralWindowCancelsPendingLaunchCheck() {
+        UpdateTestServer().use { server ->
+            server.json("/latest/android-update.json", CoreTestFixtures.manifest(version = 2).toString())
+            withActivity { activity ->
+                val deferred = updaterFor(activity, repository(server))
+                deferred.enabled = true
+                deferred.onLaunch()
+                await { deferred.state.initialized }
+                assertNull(deferred.lastResult)
+
+                deferred.enabled = false
+                shadowOf(Looper.getMainLooper()).idleFor(AppUpdater.AUTO_CHECK_DELAY_MILLIS, TimeUnit.MILLISECONDS)
+                deferred.awaitWorkerForTest()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertNull(deferred.lastResult)
+            }
+        }
+    }
+
     private fun waitForWorker() {
         await { updater.state.initialized }
         shadowOf(Looper.getMainLooper()).idle()

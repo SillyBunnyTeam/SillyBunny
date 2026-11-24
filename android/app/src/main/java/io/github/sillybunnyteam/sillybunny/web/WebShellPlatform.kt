@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageInfo
 import android.net.Uri
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.webkit.ServiceWorkerClientCompat
@@ -20,6 +21,18 @@ internal interface WebShellPlatform {
 
     /** Applies process-wide WebView policy once: debugging and service worker containment. */
     fun configureProcess(blockRequest: (Uri) -> Boolean)
+
+    /** Applies process-wide WebView policy once, including service worker static asset serving. */
+    fun configureProcess(
+        blockRequest: (Uri) -> Boolean,
+        interceptRequest: (WebResourceRequest) -> WebResourceResponse?,
+    ) = configureProcess(blockRequest)
+
+    /** Initializes the cookie store during prewarm before a session port or token exists. */
+    fun warmCookieManager() {}
+
+    /** Spins up the renderer process on a prewarmed [webView] without loading an app URL. */
+    fun warmRenderer(webView: WebView) {}
 
     fun currentWebViewPackage(context: Context): PackageInfo?
 
@@ -39,30 +52,51 @@ internal object AndroidWebShellPlatform : WebShellPlatform {
         cookies.setCookie(url, value) { accepted -> done(accepted == true) }
     }
 
-    override fun configureProcess(blockRequest: (Uri) -> Boolean) {
+    override fun warmCookieManager() {
+        CookieManager.getInstance().setAcceptCookie(true)
+    }
+
+    override fun warmRenderer(webView: WebView) {
+        webView.loadUrl("about:blank")
+    }
+
+    override fun configureProcess(blockRequest: (Uri) -> Boolean) =
+        configureProcess(blockRequest) { null }
+
+    override fun configureProcess(
+        blockRequest: (Uri) -> Boolean,
+        interceptRequest: (WebResourceRequest) -> WebResourceResponse?,
+    ) {
         if (processConfigured) return
         // Recent providers turn debugging on for debuggable apps by themselves, so set it either way.
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         // Set only once the provider answered, so a provider that is missing now is configured later.
         processConfigured = true
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE)) return
-        val controller = ServiceWorkerControllerCompat.getInstance()
-        val settings = controller.serviceWorkerWebSettings
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_CONTENT_ACCESS)) {
-            settings.allowContentAccess = false
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_FILE_ACCESS)) {
-            settings.allowFileAccess = false
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) {
-            // Service worker fetches bypass WebViewClient, so they get the same cookie containment here.
-            controller.setServiceWorkerClient(
-                object : ServiceWorkerClientCompat() {
-                    override fun shouldInterceptRequest(
-                        request: android.webkit.WebResourceRequest,
-                    ): WebResourceResponse? = if (blockRequest(request.url)) blockedResponse() else null
-                },
-            )
+        try {
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE)) return
+            val controller = ServiceWorkerControllerCompat.getInstance()
+            val settings = controller.serviceWorkerWebSettings
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_CONTENT_ACCESS)) {
+                settings.allowContentAccess = false
+            }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_FILE_ACCESS)) {
+                settings.allowFileAccess = false
+            }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) {
+                // Service worker fetches bypass WebViewClient, so they get the same containment and static serving here.
+                controller.setServiceWorkerClient(
+                    object : ServiceWorkerClientCompat() {
+                        override fun shouldInterceptRequest(
+                            request: WebResourceRequest,
+                        ): WebResourceResponse? =
+                            if (blockRequest(request.url)) blockedResponse() else interceptRequest(request)
+                    },
+                )
+            }
+        } catch (_: UnsupportedOperationException) {
+            // Provider without WebView support-library glue, such as Robolectric's shadow provider.
+        } catch (_: LinkageError) {
+            // WebViewGlueCommunicator.<clinit> wraps missing provider glue in ExceptionInInitializerError.
         }
     }
 

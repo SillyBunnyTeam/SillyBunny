@@ -1,5 +1,22 @@
 #!/usr/bin/env bun
-import { runSupervisor, shouldSupervise } from './src/server-supervisor.js';
+import module from 'node:module';
+import process from 'node:process';
+
+// Enable Node's persistent V8 bytecode compile cache before loading the rest of the module graph.
+if (typeof module.enableCompileCache === 'function' && !process.versions?.bun) {
+    try {
+        const cacheDir = process.env.NODE_COMPILE_CACHE;
+        if (typeof cacheDir === 'string' && cacheDir.trim().length > 0) {
+            module.enableCompileCache(cacheDir.trim());
+        } else {
+            module.enableCompileCache();
+        }
+    } catch {
+        // Compile cache is opportunistic; ignore unsupported or unwritable paths.
+    }
+}
+
+const { runSupervisor, shouldSupervise } = await import('./src/server-supervisor.js');
 
 // Supervise a child copy so restarts and transactional plugin replacement are
 // owned by one process. Launcher scripts may wrap this supervisor so host-code

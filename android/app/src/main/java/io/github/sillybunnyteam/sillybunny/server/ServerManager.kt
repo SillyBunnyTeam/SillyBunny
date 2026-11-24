@@ -24,6 +24,9 @@ import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.lang.ref.WeakReference
+import java.net.HttpURLConnection
+import java.net.Proxy
+import java.net.URL
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.concurrent.CountDownLatch
@@ -66,6 +69,8 @@ internal data class ServerDependencies(
     val nativeLog: NativeLog = LogcatNativeLog(),
     val crashDir: File = File(logsDir.parentFile ?: logsDir, CrashRecords.DIRECTORY),
     val nodeMaxOldSpaceSizeMb: () -> Int? = { null },
+    val ensureInstallScript: () -> Unit = {},
+    val trimMemory: (Int, String) -> Boolean = ServerManager::sendTrimMemoryRequest,
 ) {
     companion object {
         val PLATFORM_STARTER = ServiceStarter { context, action ->
@@ -95,6 +100,11 @@ internal data class ServerDependencies(
                 lastExitUserRequested = { ExitHistory.lastExitUserRequested(app) },
                 crashDir = CrashRecords.directory(app),
                 nodeMaxOldSpaceSizeMb = { maxOldSpaceSizeMb },
+                ensureInstallScript = {
+                    if (RuntimeLayout.ensureInstallScript(app) !is RuntimeLayoutResult.Ready) {
+                        throw LaunchUnavailableException("install-script")
+                    }
+                },
             )
         }
 
@@ -155,6 +165,10 @@ class ServerManager internal constructor(
     private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "server-host").apply { isDaemon = true }
     }
+    private val trimExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "server-trim").apply { isDaemon = true }
+    }
+    private val trimInFlight = AtomicBoolean(false)
 
     @Volatile
     private var workerThread: Thread? = null
@@ -221,6 +235,7 @@ class ServerManager internal constructor(
         dependencies.scriptStop,
     ) {
         val paths = dependencies.paths()
+        dependencies.ensureInstallScript()
         prepareDirectories(paths)
         removeStaleGitLock(paths, ::setupMarker)
         ScriptLaunch(
@@ -375,6 +390,32 @@ class ServerManager internal constructor(
     /** Call from every activity's `onStop`. */
     fun onActivityStopped() {
         synchronized(lock) { if (visibleActivities > 0) visibleActivities-- }
+    }
+
+    /**
+     * Advises the running Node server to release reclaimable caches under Android memory pressure.
+     * Safe to invoke from the main thread (`Activity.onTrimMemory`): sends `POST /__sillybunny/trim`
+     * with the launch cookie off-thread, only to the verified announcing listener of the active run.
+     */
+    fun requestTrimMemory() {
+        val current = run ?: return
+        if (current.stopRequested || mutableState.value !is ServerState.Running) return
+        if (!trimInFlight.compareAndSet(false, true)) return
+        try {
+            trimExecutor.execute {
+                try {
+                    if (run === current && !current.stopRequested && current.listenerReady()) {
+                        dependencies.trimMemory(current.session.port, current.session.token)
+                    }
+                } catch (_: RuntimeException) {
+                    // Best-effort hint only; memory trim must never surface errors.
+                } finally {
+                    trimInFlight.set(false)
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            trimInFlight.set(false)
+        }
     }
 
     private fun restoreAfterUpdate(context: Context) {
@@ -618,7 +659,10 @@ class ServerManager internal constructor(
         } catch (_: RuntimeException) {
             null
         }
-        if (server != null) target.listener.set(server)
+        if (server != null) {
+            target.listener.set(server)
+            target.wakeMonitor()
+        }
     }
 
     private fun onStartupTimeout(target: ServerRun) {
@@ -741,29 +785,99 @@ class ServerManager internal constructor(
     private fun monitor(target: ServerRun) {
         var healthy = false
         var timedOut = false
+        var probeFailures = 0
         val deadline = target.startedNanos + TimeUnit.MILLISECONDS.toNanos(dependencies.startupTimeoutMillis)
         try {
             while (true) {
                 val probing = !healthy && !timedOut && !target.stopRequested
-                if (target.process.waitForExit(if (probing) dependencies.healthPollMillis else EXIT_POLL_MILLIS)) {
+                if (!probing) {
+                    if (target.process.waitForExit(EXIT_POLL_MILLIS)) {
+                        execute { onExited(target) }
+                        return
+                    }
+                    continue
+                }
+                val listenerUp = target.listenerReady()
+                val waitMillis = if (listenerUp) {
+                    if (probeFailures == 0) {
+                        target.clearPendingWake()
+                        0L
+                    } else {
+                        probeBackoffMillis(probeFailures).coerceAtMost(dependencies.healthPollMillis)
+                    }
+                } else {
+                    probeFailures = 0
+                    dependencies.healthPollMillis
+                }
+                val exited = if (waitMillis <= 0L) {
+                    target.process.waitForExit(0)
+                } else {
+                    awaitExitOrWake(target, waitMillis)
+                }
+                if (exited) {
                     execute { onExited(target) }
                     return
                 }
-                if (!probing) continue
                 // The token goes only to a listener the server announced, while that same server child runs:
                 // before the announcement, or after its child is gone, the port may belong to another app.
-                if (target.listenerReady() &&
-                    dependencies.health.status(target.session.port, target.session.token) == HealthProbe.HEALTHY
-                ) {
-                    healthy = true
-                    execute { onHealthy(target) }
-                } else if (System.nanoTime() - deadline >= 0) {
-                    timedOut = true
-                    execute { onStartupTimeout(target) }
+                if (target.listenerReady()) {
+                    if (dependencies.health.status(target.session.port, target.session.token) == HealthProbe.HEALTHY) {
+                        healthy = true
+                        execute { onHealthy(target) }
+                    } else {
+                        probeFailures++
+                        if (System.nanoTime() - deadline >= 0) {
+                            timedOut = true
+                            execute { onStartupTimeout(target) }
+                        }
+                    }
+                } else {
+                    probeFailures = 0
+                    if (System.nanoTime() - deadline >= 0) {
+                        timedOut = true
+                        execute { onStartupTimeout(target) }
+                    }
                 }
             }
         } catch (_: InterruptedException) {
             // Only a test shutdown interrupts the monitor.
+        }
+    }
+
+    /**
+     * Waits up to [timeoutMillis] for [target]'s process to exit, returning immediately if [onListenerAnnounced]
+     * signals [ServerRun.wakeMonitor] while waiting. External thread interrupts still propagate cleanly.
+     */
+    private fun awaitExitOrWake(target: ServerRun, timeoutMillis: Long): Boolean {
+        synchronized(target.wakeLock) {
+            if (target.wakeRequested) {
+                target.wakeRequested = false
+                return target.process.waitForExit(0)
+            }
+            target.waitingInExit = true
+        }
+        return try {
+            target.process.waitForExit(timeoutMillis)
+        } catch (interrupted: InterruptedException) {
+            val wokeForListener = synchronized(target.wakeLock) {
+                target.waitingInExit = false
+                val requested = target.wakeRequested
+                target.wakeRequested = false
+                requested
+            }
+            if (wokeForListener) {
+                target.process.waitForExit(0)
+            } else {
+                throw interrupted
+            }
+        } finally {
+            synchronized(target.wakeLock) {
+                target.waitingInExit = false
+                if (target.wakeRequested) {
+                    Thread.interrupted()
+                    target.wakeRequested = false
+                }
+            }
         }
     }
 
@@ -925,8 +1039,15 @@ class ServerManager internal constructor(
     }
 
     private fun prepareDirectories(paths: RuntimePaths) {
-        for (directory in listOf(paths.homeDir, paths.tmpDir, paths.statusDir, paths.logsDir)) {
-            if (!directory.isDirectory && !directory.mkdirs()) throw IOException("directories")
+        val directories = listOf(
+            paths.homeDir,
+            paths.tmpDir,
+            paths.statusDir,
+            paths.logsDir,
+            ProcessEnvironment.compileCacheDir(paths),
+        )
+        for (directory in directories) {
+            if (!directory.isDirectory && !directory.mkdirs() && !directory.isDirectory) throw IOException("directories")
         }
     }
 
@@ -1007,6 +1128,7 @@ class ServerManager internal constructor(
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         while (mutableSetup.value is SetupState.Running && System.nanoTime() - deadline < 0) Thread.sleep(50)
         stop(20_000)
+        trimExecutor.shutdownNow()
         worker.shutdownNow()
         serverLog.close()
         setupLog.close()
@@ -1024,6 +1146,9 @@ class ServerManager internal constructor(
 
         /** The server child that announced its listener on the session port ([ListenerAnnouncement]). */
         val listener = AtomicReference<ProcStat?>(null)
+        val wakeLock = Any()
+        var waitingInExit = false
+        var wakeRequested = false
         val pump = Thread({
             val splitter = RedactingLineSplitter(session.token) { line ->
                 appendServerLine(line)
@@ -1032,6 +1157,19 @@ class ServerManager internal constructor(
             pumpLines(process.output, splitter) { serverLog.flush() }
         }, "server-output").apply { isDaemon = true }
         val monitor = Thread({ monitor(this) }, "server-monitor").apply { isDaemon = true }
+
+        fun wakeMonitor() {
+            synchronized(wakeLock) {
+                wakeRequested = true
+                if (waitingInExit) monitor.interrupt()
+            }
+        }
+
+        fun clearPendingWake() {
+            synchronized(wakeLock) {
+                wakeRequested = false
+            }
+        }
 
         /** True while the server child that announced the listener still runs; forgets it once it is gone. */
         fun listenerReady(): Boolean {
@@ -1109,8 +1247,43 @@ class ServerManager internal constructor(
         private const val SETUP_LOG_FILES = 2
         private const val EXIT_POLL_MILLIS = 1_000L
         private const val PROMOTION_RETRY_MILLIS = 20L
+        internal const val TRIM_MEMORY_PATH = "/__sillybunny/trim"
+        private val PROBE_BACKOFF_MILLIS = longArrayOf(10L, 25L, 50L)
         private val SETUP_UI_PUBLISH_NANOS = TimeUnit.MILLISECONDS.toNanos(150L)
         private val SETUP_LOG_FLUSH_NANOS = TimeUnit.MILLISECONDS.toNanos(500L)
+
+        internal fun probeBackoffMillis(failures: Int): Long =
+            PROBE_BACKOFF_MILLIS[(failures - 1).coerceIn(0, PROBE_BACKOFF_MILLIS.lastIndex)]
+
+        internal fun sendTrimMemoryRequest(
+            port: Int,
+            token: String,
+            connectTimeoutMillis: Int = 1_000,
+            readTimeoutMillis: Int = 2_000,
+        ): Boolean {
+            val connection = try {
+                URL("http", HealthProbe.HOST, port, TRIM_MEMORY_PATH).openConnection(Proxy.NO_PROXY) as HttpURLConnection
+            } catch (_: IOException) {
+                return false
+            }
+            return try {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(0)
+                connection.instanceFollowRedirects = false
+                connection.useCaches = false
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.setRequestProperty("Connection", "close")
+                connection.setRequestProperty("Cookie", "${LaunchSession.COOKIE_NAME}=$token")
+                connection.outputStream.close()
+                connection.responseCode in 200..299
+            } catch (_: IOException) {
+                false
+            } finally {
+                connection.disconnect()
+            }
+        }
 
         @Volatile
         private var instance: ServerManager? = null

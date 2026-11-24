@@ -182,13 +182,14 @@ internal class SessionProcess private constructor(
 ) : ServerProcess {
     private val uid = leader.uid
     private val pgid = leader.pid
+    private val startedNanos = System.nanoTime()
 
     // Replaced as a whole under the monitor, read without it. Dead members are pruned, the leader is kept.
     @Volatile
     private var members: List<ProcStat> = listOfNotNull(leader, command)
 
     @Volatile
-    private var nextTrackNanos = 0L
+    private var nextTrackNanos = startedNanos
 
     @Volatile
     private var supervisor: ProcStat? = null
@@ -222,9 +223,9 @@ internal class SessionProcess private constructor(
             val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
             if (remaining <= 0) return false
             if (alive) {
-                // The shell's own exit wakes this at once. The slice bounds how stale the member list gets and,
-                // because the shell waits for the acknowledgement, how late the command's exit is noticed.
-                process.waitFor(remaining.coerceAtMost(TRACK_INTERVAL_MILLIS), TimeUnit.MILLISECONDS)
+                // The shell's own exit wakes this at once. The slice bounds how late the command's exit is noticed
+                // while the shell waits for the acknowledgement, independently of Procfs snapshot backoff.
+                process.waitFor(remaining.coerceAtMost(EXIT_CHECK_SLICE_MILLIS), TimeUnit.MILLISECONDS)
             } else {
                 Thread.sleep(remaining.coerceAtMost(50))
             }
@@ -359,11 +360,12 @@ internal class SessionProcess private constructor(
         null
     }
 
-    /** Remembers new group members at most every [TRACK_INTERVAL_NANOS]; called while waiting for the exit. */
+    /** Remembers new group members every 1s during startup and backs off to 10s after 30s steady state. */
     private fun trackMembers() {
         val now = System.nanoTime()
         if (now - nextTrackNanos < 0) return
-        nextTrackNanos = now + TRACK_INTERVAL_NANOS
+        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(now - startedNanos)
+        nextTrackNanos = now + TimeUnit.MILLISECONDS.toNanos(trackIntervalMillis(elapsedMillis))
         snapshotOrNull()?.let(::remember)
     }
 
@@ -466,8 +468,13 @@ internal class SessionProcess private constructor(
         private const val SHELL = "/system/bin/sh"
         private const val HANDSHAKE_MILLIS = 10_000L
         private const val MAX_TRACKED = 4096
-        private const val TRACK_INTERVAL_MILLIS = 1_000L
-        private val TRACK_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(TRACK_INTERVAL_MILLIS)
+        private const val EXIT_CHECK_SLICE_MILLIS = 1_000L
+        internal const val INITIAL_TRACK_INTERVAL_MILLIS = 1_000L
+        internal const val STEADY_TRACK_INTERVAL_MILLIS = 10_000L
+        internal const val STEADY_TRACK_AFTER_MILLIS = 30_000L
+
+        internal fun trackIntervalMillis(elapsedMillis: Long): Long =
+            if (elapsedMillis >= STEADY_TRACK_AFTER_MILLIS) STEADY_TRACK_INTERVAL_MILLIS else INITIAL_TRACK_INTERVAL_MILLIS
 
         /**
          * The session shell, adapted from S2.5: `$1` PID file, `$2` gate, `$3` exit file, `$4` command PID file,

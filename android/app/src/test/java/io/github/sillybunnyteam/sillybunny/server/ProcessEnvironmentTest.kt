@@ -34,6 +34,7 @@ class ProcessEnvironmentTest {
         "SILLYBUNNY_USE_BUN" to "1",
         "SILLYBUNNY_BUN_SMOL" to "1",
         "NODE_OPTIONS" to "--require /sdcard/evil.js",
+        "NODE_COMPILE_CACHE" to "/sdcard/evil-v8-cache",
         "GIT_CONFIG_GLOBAL" to "/sdcard/gitconfig",
         "npm_config_prefix" to "/sdcard/npm",
         "CLASSPATH" to "/system/framework/framework.jar",
@@ -77,6 +78,7 @@ class ProcessEnvironmentTest {
             "SILLYTAVERN_LISTEN" to "false",
             "SILLYBUNNY_ANDROID_NPM_CLI" to "$runtime/lib/node_modules/npm/bin/npm-cli.js",
             "SILLYBUNNY_ANDROID_NPX_CLI" to "$runtime/lib/node_modules/npm/bin/npx-cli.js",
+            "NODE_COMPILE_CACHE" to "$cache/v8",
         )
         if (launchToken != null) values["SILLYBUNNY_LAUNCH_TOKEN"] = launchToken
         return values
@@ -232,6 +234,15 @@ class ProcessEnvironmentTest {
             server.getValue(ProcessEnvironment.NODE_OPTIONS),
         )
         assertEquals("--max-old-space-size=384", setup.getValue(ProcessEnvironment.NODE_OPTIONS))
+    }
+
+    @Test
+    fun compileCacheLivesInsideCacheDirOutsideTrackedCheckout() {
+        val environment = ProcessEnvironment.build(paths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = token)
+        val cacheDir = File(environment.getValue(ProcessEnvironment.NODE_COMPILE_CACHE))
+
+        assertEquals(File(paths.cacheDir, "v8"), cacheDir)
+        assertFalse(cacheDir.path.startsWith(paths.checkoutDir.path))
     }
 
     @Test

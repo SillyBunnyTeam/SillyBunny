@@ -28,18 +28,118 @@ object RuntimeLayout {
 
     private val lock = Any()
 
-    fun ensure(context: Context): RuntimeLayoutResult {
+    @Volatile
+    private var cached: CachedLayout? = null
+
+    private data class CacheKey(
+        val versionCode: Long,
+        val lastUpdateTime: Long,
+        val nativeLibraryDir: String,
+        val filesDir: String,
+        val cacheDir: String,
+    )
+
+    private data class CachedLayout(
+        val key: CacheKey,
+        val result: RuntimeLayoutResult.Ready,
+        val manifest: RuntimeManifest,
+    )
+
+    fun ensure(context: Context): RuntimeLayoutResult = ensureInternal(context, verifyInstallScript = false)
+
+    /**
+     * Ensures the runtime layout and verifies `install.sh` permissions and SHA-256 against the APK's manifest.
+     * Called lazily before FirstRun / Repair run `install.sh` so normal server cold starts skip re-hashing it.
+     */
+    fun ensureInstallScript(context: Context): RuntimeLayoutResult = ensureInternal(context, verifyInstallScript = true)
+
+    /** Drops the process-wide memoized layout (called on repair/reset or tests). */
+    fun invalidateCache() {
+        synchronized(lock) {
+            cached = null
+        }
+    }
+
+    private fun ensureInternal(context: Context, verifyInstallScript: Boolean): RuntimeLayoutResult {
         check(Looper.myLooper() != Looper.getMainLooper())
         if (!BuildConfig.HAS_RUNTIME) return RuntimeLayoutResult.Unavailable
         val app = context.applicationContext
+        return ensureWithSource(RuntimePaths(app), AndroidRuntimeSource(app), verifyInstallScript)
+    }
+
+    internal fun ensureWithSource(
+        paths: RuntimePaths,
+        source: RuntimeSource,
+        verifyInstallScript: Boolean = false,
+    ): RuntimeLayoutResult {
+        val started = System.nanoTime()
+        val key = CacheKey(
+            versionCode = source.versionCode,
+            lastUpdateTime = source.lastUpdateTime,
+            nativeLibraryDir = paths.nativeLibraryDir.path,
+            filesDir = paths.filesDir.path,
+            cacheDir = paths.cacheDir.path,
+        )
+        if (!verifyInstallScript) {
+            val fastHit = cached
+            if (fastHit != null && isCacheValid(fastHit, key, paths)) {
+                return fastHit.result.copy(
+                    paths = paths,
+                    refreshReasons = emptySet(),
+                    elapsedMillis = elapsedMillis(started),
+                )
+            }
+        }
         return synchronized(lock) {
-            val source = AndroidRuntimeSource(app)
-            when (val result = RuntimeLayoutInstaller(RuntimePaths(app), source, npmSyncMode).ensure()) {
-                is RuntimeLayoutResult.Ready -> InstallScriptLayout.ensure(result, source)
-                else -> result
+            val hit = cached
+            if (hit != null && isCacheValid(hit, key, paths)) {
+                if (!verifyInstallScript) {
+                    return@synchronized hit.result.copy(
+                        paths = paths,
+                        refreshReasons = emptySet(),
+                        elapsedMillis = elapsedMillis(started),
+                    )
+                }
+                val verified = InstallScriptLayout.ensure(hit.result.copy(paths = paths), source, hit.manifest)
+                if (verified is RuntimeLayoutResult.Ready) {
+                    return@synchronized verified.copy(refreshReasons = emptySet(), elapsedMillis = elapsedMillis(started))
+                }
+                cached = null
+                return@synchronized verified
+            }
+            val outcome = RuntimeLayoutInstaller(paths, source, npmSyncMode).ensureWithManifest()
+            when (val result = outcome.result) {
+                is RuntimeLayoutResult.Ready -> {
+                    val manifest = outcome.manifest
+                    val needInstallScript = verifyInstallScript ||
+                        result.refreshed ||
+                        !Files.isRegularFile(result.paths.installScript.toPath(), LinkOption.NOFOLLOW_LINKS)
+                    val finalResult = if (needInstallScript) {
+                        InstallScriptLayout.ensure(result, source, manifest)
+                    } else {
+                        result
+                    }
+                    cached = if (finalResult is RuntimeLayoutResult.Ready && manifest != null) {
+                        CachedLayout(key, finalResult, manifest)
+                    } else {
+                        null
+                    }
+                    finalResult
+                }
+                else -> {
+                    cached = null
+                    result
+                }
             }
         }
     }
+
+    private fun isCacheValid(hit: CachedLayout, key: CacheKey, paths: RuntimePaths): Boolean =
+        hit.key == key &&
+            Files.isSymbolicLink(paths.runtimeDir.toPath()) &&
+            Files.isRegularFile(paths.installedRuntime.toPath(), LinkOption.NOFOLLOW_LINKS)
+
+    private fun elapsedMillis(started: Long): Long = (System.nanoTime() - started) / 1_000_000
 }
 
 /**
@@ -56,15 +156,21 @@ internal object InstallScriptLayout {
     private const val PARTIAL = ".install.sh.partial"
     private val READ_ONLY = setOf(PosixFilePermission.OWNER_READ)
 
-    fun ensure(ready: RuntimeLayoutResult.Ready, source: RuntimeSource): RuntimeLayoutResult = try {
-        val bytes = try {
-            LayoutFiles.readBounded(source.open(RuntimeManifest.ASSET), RuntimeManifest.MAX_BYTES, Reason.MANIFEST)
-        } catch (error: RuntimeLayoutException) {
-            throw error
-        } catch (error: IOException) {
-            throw RuntimeLayoutException(Reason.MANIFEST, error)
+    fun ensure(
+        ready: RuntimeLayoutResult.Ready,
+        source: RuntimeSource,
+        parsedManifest: RuntimeManifest? = null,
+    ): RuntimeLayoutResult = try {
+        val manifest = parsedManifest ?: run {
+            val bytes = try {
+                LayoutFiles.readBounded(source.open(RuntimeManifest.ASSET), RuntimeManifest.MAX_BYTES, Reason.MANIFEST)
+            } catch (error: RuntimeLayoutException) {
+                throw error
+            } catch (error: IOException) {
+                throw RuntimeLayoutException(Reason.MANIFEST, error)
+            }
+            RuntimeManifest.parse(bytes)
         }
-        val manifest = RuntimeManifest.parse(bytes)
         // The installer accepted the layout for exactly this manifest; any other would describe another APK.
         if (manifest.sha256 != ready.installed.fingerprint.manifestSha256) throw RuntimeLayoutException(Reason.MANIFEST)
         val record = manifest.assets[ASSET] ?: throw RuntimeLayoutException(Reason.ASSET)

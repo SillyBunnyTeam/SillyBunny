@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -100,6 +103,36 @@ describe('server supervisor', () => {
         expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' })).toBe(true);
         expect(shouldSupervise({ SILLYBUNNY_SUPERVISED: '1' })).toBe(false);
         expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '', SILLYBUNNY_SUPERVISED: '' })).toBe(true);
+    });
+
+    test('shouldSupervise bypasses the supervisor on Android launcher when server plugins are disabled', () => {
+        const androidEnv = { SILLYBUNNY_ANDROID_APP: '1', SILLYBUNNY_LAUNCHER: '1' };
+        expect(shouldSupervise(androidEnv, { enableServerPlugins: false })).toBe(false);
+        expect(shouldSupervise(androidEnv, { enableServerPlugins: true })).toBe(true);
+        expect(shouldSupervise({ ...androidEnv, SILLYTAVERN_ENABLESERVERPLUGINS: 'true' })).toBe(true);
+        expect(shouldSupervise({ ...androidEnv, SILLYTAVERN_ENABLESERVERPLUGINS: 'false' })).toBe(false);
+        // Without SILLYBUNNY_LAUNCHER, Android still supervises directly invoked server.js.
+        expect(shouldSupervise({ SILLYBUNNY_ANDROID_APP: '1' }, { enableServerPlugins: false })).toBe(true);
+
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-supervisor-cfg-'));
+        try {
+            const disabledCfg = path.join(tempDir, 'disabled.yaml');
+            fs.writeFileSync(disabledCfg, '# enableServerPlugins: true\nenableServerPlugins: false # default\n', 'utf8');
+            expect(shouldSupervise(androidEnv, { configPath: disabledCfg })).toBe(false);
+
+            const enabledCfg = path.join(tempDir, 'enabled.yaml');
+            fs.writeFileSync(enabledCfg, 'port: 8000\nenableServerPlugins: true\n', 'utf8');
+            expect(shouldSupervise(androidEnv, { configPath: enabledCfg })).toBe(true);
+
+            const ambiguousCfg = path.join(tempDir, 'ambiguous.yaml');
+            fs.writeFileSync(ambiguousCfg, 'enableServerPlugins: *anchor\n', 'utf8');
+            expect(shouldSupervise(androidEnv, { configPath: ambiguousCfg })).toBe(true);
+
+            const missingCfg = path.join(tempDir, 'missing.yaml');
+            expect(shouldSupervise(androidEnv, { configPath: missingCfg })).toBe(false);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
     });
 
     test('marks the child as supervised and forwards runtime flags', async () => {

@@ -19,6 +19,8 @@
     const KEEP_HINT_MS = 10000;
     const MAX_LIVE_BLOBS = 128;
     const MAX_REVOKED_BLOBS = 128;
+    const MAX_LIVE_BYTES = 32 * 1024 * 1024;
+    const MAX_REVOKED_BYTES = 16 * 1024 * 1024;
     const KEY_CHARS = 64;
     const MAX_NAME_CHARS = 1024;
     const MAX_MIME_CHARS = 256;
@@ -80,8 +82,54 @@
         return;
     }
 
-    const live = new Map();
-    const revoked = new Map();
+    const blobSizeOf = (blob) => (blob && typeof blob.size === 'number' && blob.size > 0 ? blob.size : 0);
+
+    // Bounded Map enforcing both entry-count and cumulative byte caps by evicting oldest entries first.
+    const createBoundedBlobMap = (maxEntries, maxBytes) => {
+        const entries = new Map();
+        let totalBytes = 0;
+
+        const remove = (key) => {
+            const existing = entries.get(key);
+            if (!existing) {
+                return undefined;
+            }
+            entries.delete(key);
+            totalBytes = Math.max(0, totalBytes - existing.size);
+            return existing;
+        };
+
+        return {
+            get size() {
+                return entries.size;
+            },
+            get(key) {
+                return entries.get(key);
+            },
+            delete(key) {
+                return remove(key) !== undefined;
+            },
+            take(key) {
+                return remove(key);
+            },
+            set(key, record, size) {
+                remove(key);
+                const bytes = Math.max(0, size);
+                entries.set(key, { ...record, size: bytes });
+                totalBytes += bytes;
+                while (entries.size > maxEntries || (totalBytes > maxBytes && entries.size > 1)) {
+                    const oldest = entries.keys().next().value;
+                    remove(oldest);
+                }
+            },
+            entries() {
+                return entries.entries();
+            },
+        };
+    };
+
+    const live = createBoundedBlobMap(MAX_LIVE_BLOBS, MAX_LIVE_BYTES);
+    const revoked = createBoundedBlobMap(MAX_REVOKED_BLOBS, MAX_REVOKED_BYTES);
     const hints = new Map();
     const exportsById = new Map();
     let sweeping = false;
@@ -89,7 +137,7 @@
     const sweep = () => {
         sweeping = false;
         const time = now();
-        for (const [url, entry] of revoked) {
+        for (const [url, entry] of Array.from(revoked.entries())) {
             if (time - entry.at > KEEP_REVOKED_MS) {
                 revoked.delete(url);
             }
@@ -110,32 +158,22 @@
         }
     };
 
-    const putBounded = (map, key, value, limit) => {
-        map.delete(key);
-        map.set(key, value);
-        while (map.size > limit) {
-            const oldest = map.keys().next().value;
-            map.delete(oldest);
-        }
-    };
-
     // Keep each Blob reachable by its URL; after revocation only for a short grace period.
     const nativeCreate = URL.createObjectURL;
     const nativeRevoke = URL.revokeObjectURL;
     URL.createObjectURL = function createObjectURL(...args) {
         const url = nativeCreate.apply(this, args);
         if (args[0] instanceof Blob) {
-            // Bound cached blobs so pages that do not revoke preview URLs cannot retain memory.
-            putBounded(live, url, args[0], MAX_LIVE_BLOBS);
+            // Bound cached blobs by count and bytes so pages that do not revoke preview URLs cannot retain memory.
+            live.set(url, { blob: args[0] }, blobSizeOf(args[0]));
         }
         return url;
     };
     URL.revokeObjectURL = function revokeObjectURL(...args) {
         const key = String(args[0]);
-        const blob = live.get(key);
-        if (blob) {
-            live.delete(key);
-            putBounded(revoked, key, { blob, at: now() }, MAX_REVOKED_BLOBS);
+        const entry = live.take(key);
+        if (entry && entry.blob) {
+            revoked.set(key, { blob: entry.blob, at: now() }, entry.size);
             scheduleSweep();
         }
         return nativeRevoke.apply(this, args);
@@ -143,7 +181,7 @@
 
     const blobFor = (url) => {
         const kept = live.get(url) || revoked.get(url);
-        return kept instanceof Blob ? kept : (kept && kept.blob) || null;
+        return (kept && kept.blob) || null;
     };
     const keyOf = (url) => (url.startsWith('data:') && url.length > KEY_CHARS
         ? `${url.slice(0, KEY_CHARS)}#${url.length}`

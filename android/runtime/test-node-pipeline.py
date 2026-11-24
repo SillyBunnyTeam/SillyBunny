@@ -596,9 +596,10 @@ class NpmArchiveTests(LockFixture):
         record = json.loads((output / 'npm.json').read_text(encoding='utf-8'))
         source = self.lock['node']['source']
         self.assertEqual(record, {
-            'schema': 1, 'version': NPM_VERSION, 'sha256': sha256(archive), 'size': len(archive), 'files': 8,
+            'schema': 1, 'version': NPM_VERSION, 'sha256': sha256(archive), 'size': len(archive), 'files': 7,
             'contentBytes': sum(len(contents) for name, kind, contents, mode in npm_tree()
-                                if kind == 'file' and '/deps/npm/' in name),
+                                if kind == 'file' and '/deps/npm/' in name
+                                and not name.split('/deps/npm/', 1)[1].startswith(npm.STRIPPED_PREFIXES)),
             'source': {'kind': 'node-source-tarball', 'node': NODE_VERSION, 'path': 'deps/npm',
                        'tarball': {'filename': source['filename'], 'sha256': source['sha256'], 'url': source['url']}},
         })

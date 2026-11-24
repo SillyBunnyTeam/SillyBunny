@@ -50,6 +50,7 @@ data class UpdateUiState(
 class AppUpdater internal constructor(
     application: Application,
     private val repository: UpdateRepository,
+    private val autoCheckDelayMillis: Long = AUTO_CHECK_DELAY_MILLIS,
 ) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, UpdateRepository(application))
 
@@ -64,6 +65,7 @@ class AppUpdater internal constructor(
         post { refreshInstallResult() }
     }
     private var observer: FileObserver? = null
+    private var pendingAutoCheck: Runnable? = null
     private var launched = false
     private var busy = false
     private var manualCheckRequested = false
@@ -95,6 +97,7 @@ class AppUpdater internal constructor(
         set(value) {
             store.enabled = value
             state = state.copy(enabled = value)
+            if (!value) cancelPendingAutoCheck()
         }
 
     val lastResult: UpdateCheckResult?
@@ -147,9 +150,30 @@ class AppUpdater internal constructor(
                 val approved = sourceApprovalBeforeLaunch
                 sourceApprovalBeforeLaunch = false
                 val resumed = verified != null && resumeVerifiedDownload(verified, approved)
-                if (enabled && !resumed) check(automatic = true)
+                if (enabled && !resumed) scheduleAutomaticCheck()
             }
         }
+    }
+
+    private fun scheduleAutomaticCheck() {
+        cancelPendingAutoCheck()
+        val task = Runnable {
+            pendingAutoCheck = null
+            if (!closed && enabled && !manualCheckRequested && state.lastResult == null && state.phase !in installingPhases) {
+                check(automatic = true)
+            }
+        }
+        pendingAutoCheck = task
+        if (autoCheckDelayMillis <= 0L) {
+            task.run()
+        } else {
+            main.postDelayed(task, autoCheckDelayMillis)
+        }
+    }
+
+    private fun cancelPendingAutoCheck() {
+        pendingAutoCheck?.let(main::removeCallbacks)
+        pendingAutoCheck = null
     }
 
     fun checkNow() = check(automatic = false)
@@ -266,6 +290,7 @@ class AppUpdater internal constructor(
 
     private fun check(automatic: Boolean) {
         if (closed || state.phase in installingPhases) return
+        cancelPendingAutoCheck()
         if (!automatic) {
             manualCheckRequested = true
             state = state.copy(visible = true, phase = UpdatePhase.CHECKING)
@@ -394,6 +419,7 @@ class AppUpdater internal constructor(
     }
 
     override fun onCleared() {
+        cancelPendingAutoCheck()
         synchronized(this) {
             closed = true
             observer?.stopWatching()
@@ -424,6 +450,9 @@ class AppUpdater internal constructor(
     }
 
     companion object {
+        /** Defer automatic GitHub Releases checks off the cold-start critical path while keeping blocked-status immediate. */
+        internal const val AUTO_CHECK_DELAY_MILLIS = 60_000L
+
         private val installingPhases = setOf(
             UpdatePhase.DOWNLOADING,
             UpdatePhase.AWAITING_SOURCE_PERMISSION,

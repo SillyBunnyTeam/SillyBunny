@@ -49,6 +49,8 @@ MAX_PATH = 1024
 MAX_DEPTH = 64
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 CLI_PATHS = ('bin/npm-cli.js', 'bin/npx-cli.js')
+# Strip offline help and manpages from npm.zip; notices.py reads the Node source tarball directly.
+STRIPPED_PREFIXES = ('docs/', 'man/')
 
 
 def safe_relative(path):
@@ -100,7 +102,11 @@ def tarball_entries(tarball, node_version):
             with archive.extractfile(member) as stream:
                 return stream.read()
 
-        return npm_entries(((member, read) for member in archive), prefix)
+        entries = npm_entries(((member, read) for member in archive), prefix)
+    filtered = {path: value for path, value in entries.items() if not path.startswith(STRIPPED_PREFIXES)}
+    if not filtered:
+        fail('npm-missing')
+    return filtered
 
 
 def check_metadata(entries, version):

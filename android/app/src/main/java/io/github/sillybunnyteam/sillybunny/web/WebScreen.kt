@@ -48,7 +48,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import io.github.sillybunnyteam.sillybunny.BuildConfig
@@ -110,7 +109,7 @@ private fun openInBrowserAction(session: LaunchSession, address: WebAddress): ()
 internal fun retainedWebShell(owner: ViewModelStoreOwner, context: Context): WebShell {
     val appContext = context.applicationContext
     val factory = WebShellHolder.factory { WebShell(appContext) }
-    return ViewModelProvider(owner, factory)[WebShellHolder.KEY, WebShellHolder::class.java].shell()
+    return WebShellHolder.get(owner, factory).shell()
 }
 
 /** Test tags of the screen's own UI; debug builds expose them as resource IDs for UiAutomator. */

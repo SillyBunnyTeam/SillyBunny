@@ -106,11 +106,13 @@ class ServerManagerTest {
     private fun build(
         launchSpecs: LaunchSpecFactory = testSpecs,
         startupTimeoutMillis: Long = 30_000,
+        healthPollMillis: Long = 10,
         stop: StopConfig = StopConfig(supervisorGraceMillis = 300, groupTermGraceMillis = 300, killGraceMillis = 300, pollMillis = 5),
         health: HealthCheck = HealthCheck { port, token ->
             probes += port to token
             if (healthy) HealthProbe.HEALTHY else HealthProbe.UNREACHABLE
         },
+        trimMemory: (Int, String) -> Boolean = ServerManager::sendTrimMemoryRequest,
     ): ServerManager {
         val dependencies = ServerDependencies(
             paths = { paths },
@@ -127,7 +129,7 @@ class ServerManagerTest {
             restart = RestartConfig(firstBackoffMillis = 10, maxBackoffMillis = 40),
             stop = stop,
             scriptStop = StopConfig(supervisorGraceMillis = 0, groupTermGraceMillis = 300, killGraceMillis = 300, pollMillis = 5),
-            healthPollMillis = 10,
+            healthPollMillis = healthPollMillis,
             startupTimeoutMillis = startupTimeoutMillis,
             inheritedEnvironment = { mapOf("ANDROID_ROOT" to "/system", "LD_PRELOAD" to "/data/local/tmp/preload.so") },
             portFree = { portFree(it) },
@@ -141,6 +143,7 @@ class ServerManagerTest {
                 nativeQueries += since
                 nativeLines
             },
+            trimMemory = trimMemory,
         )
         return ServerManager(context, dependencies).also {
             ServerManager.replaceForTest(it)
@@ -223,7 +226,9 @@ class ServerManagerTest {
         assertEquals("/system", environment["ANDROID_ROOT"])
         assertFalse(environment.containsKey("LD_PRELOAD"))
         assertTrue(probes.all { it == session.port to session.token })
-        for (directory in listOf(paths.homeDir, paths.tmpDir, paths.statusDir, paths.logsDir)) assertTrue(directory.isDirectory)
+        for (directory in listOf(paths.homeDir, paths.tmpDir, paths.statusDir, paths.logsDir, ProcessEnvironment.compileCacheDir(paths))) {
+            assertTrue(directory.isDirectory)
+        }
         assertEquals(session.port, ServerStateStore(context).port)
         assertEquals(RunIntent.RUN, policy().intent)
         assertEquals(ProcessIds(4100, 4100, 4106, 4200, 4207), manager.currentProcessIds())
@@ -1183,6 +1188,90 @@ class ServerManagerTest {
         assertEquals(0, finished.exitCode)
         assertEquals(60, finished.lines.size)
         assertEquals("burst 60", finished.lines.last())
+    }
+
+    @Test
+    fun listenerAnnouncementWakesMonitorImmediatelyInsteadOfWaitingForHealthPoll() {
+        configureServer = {}
+        build(healthPollMillis = 5_000).start(context)
+        val process = await("launch") { servers.firstOrNull() }
+        // Give monitor time to enter its 5-second waitForExit sleep before announcing.
+        Thread.sleep(50)
+        val announcedAt = System.nanoTime()
+        process.announceListening()
+        awaitRunning(1)
+        val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - announcedAt)
+        assertTrue("expected immediate wake (<1500ms) instead of 5000ms poll, got ${elapsedMillis}ms", elapsedMillis < 1_500)
+        assertEquals(10L, ServerManager.probeBackoffMillis(1))
+        assertEquals(25L, ServerManager.probeBackoffMillis(2))
+        assertEquals(50L, ServerManager.probeBackoffMillis(3))
+        assertEquals(50L, ServerManager.probeBackoffMillis(4))
+    }
+
+    @Test
+    fun sessionProcessTracksAtOneSecondInitiallyAndTenSecondsAfterThirtySeconds() {
+        assertEquals(1_000L, SessionProcess.trackIntervalMillis(0L))
+        assertEquals(1_000L, SessionProcess.trackIntervalMillis(29_999L))
+        assertEquals(10_000L, SessionProcess.trackIntervalMillis(30_000L))
+        assertEquals(10_000L, SessionProcess.trackIntervalMillis(120_000L))
+    }
+
+    @Test
+    fun requestTrimMemoryPostsToTrimEndpointWithLaunchCookieOnlyWhileRunning() {
+        val trims = CopyOnWriteArrayList<Pair<Int, String>>()
+        configureServer = {}
+        build(trimMemory = { port, token ->
+            trims += port to token
+            true
+        })
+        // Stopped: no trim sent.
+        manager.requestTrimMemory()
+        Thread.sleep(50)
+        assertTrue(trims.isEmpty())
+
+        // Starting before healthy: no trim sent.
+        manager.start(context)
+        val process = await("launch") { servers.firstOrNull() }
+        manager.requestTrimMemory()
+        Thread.sleep(50)
+        assertTrue(trims.isEmpty())
+
+        // Running with verified listener: sends port + launch token.
+        process.announceListening()
+        val running = awaitRunning(1)
+        manager.requestTrimMemory()
+        await("trim request") { trims.firstOrNull() }
+        assertEquals(listOf(running.session.port to running.session.token), trims.toList())
+    }
+
+    @Test
+    fun sendTrimMemoryRequestUsesPostWithLaunchCookieAndNoOriginHeader() {
+        val methods = CopyOnWriteArrayList<String>()
+        val pathsSeen = CopyOnWriteArrayList<String>()
+        val cookies = CopyOnWriteArrayList<String?>()
+        val origins = CopyOnWriteArrayList<String?>()
+        val port = TestPorts.bindLoopback(SESSION_TEST_PORTS).use { it.localPort }
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", port), 0).apply {
+            createContext("/") { exchange ->
+                methods += exchange.requestMethod
+                pathsSeen += exchange.requestURI.path
+                cookies += exchange.requestHeaders.getFirst("Cookie")
+                origins += exchange.requestHeaders.getFirst("Origin")
+                exchange.sendResponseHeaders(204, -1)
+                exchange.close()
+            }
+            start()
+        }
+        try {
+            val token = "0123456789abcdef".repeat(4)
+            assertTrue(ServerManager.sendTrimMemoryRequest(port, token))
+            assertEquals(listOf("POST"), methods.toList())
+            assertEquals(listOf(ServerManager.TRIM_MEMORY_PATH), pathsSeen.toList())
+            assertEquals(listOf("${LaunchSession.COOKIE_NAME}=$token"), cookies.toList())
+            assertEquals(listOf<String?>(null), origins.toList())
+        } finally {
+            server.stop(0)
+        }
     }
 
     /** Runs [block] on its own thread, as the APK updater's worker does, and waits for it. */

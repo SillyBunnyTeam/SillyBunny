@@ -1,6 +1,7 @@
 package io.github.sillybunnyteam.sillybunny.app
 
 import android.Manifest
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.os.Looper
 import androidx.compose.runtime.remember
@@ -324,6 +325,26 @@ class MainActivityTest {
         assertFalse(fixture.repairStartDeferred.get())
         assertTrue((fixture.repair.state.value as RepairState.Succeeded).serverStarted)
         assertTrue(fixture.host.starts >= 1)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun trimMemoryThresholdCoversUiHiddenRunningLowAndBackgroundWithoutOverTrimmingModerate() {
+        assertFalse(MainActivity.shouldTrimServerMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE))
+        assertTrue(MainActivity.shouldTrimServerMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW))
+        assertTrue(MainActivity.shouldTrimServerMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL))
+        assertTrue(MainActivity.shouldTrimServerMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN))
+        assertTrue(MainActivity.shouldTrimServerMemory(ComponentCallbacks2.TRIM_MEMORY_BACKGROUND))
+        assertTrue(MainActivity.shouldTrimServerMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE))
+
+        showWeb()
+        // Calling onTrimMemory on an active MainActivity forwards cleanly without crashing or replacing the WebView.
+        checkNotNull(scenario).onActivity {
+            it.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
+            it.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+        }
+        compose.waitForIdle()
+        assertEquals(1, platform.views.size)
     }
 
     private companion object {

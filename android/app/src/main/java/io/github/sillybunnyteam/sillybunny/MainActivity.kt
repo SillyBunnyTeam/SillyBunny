@@ -1,8 +1,11 @@
 package io.github.sillybunnyteam.sillybunny
 
+import android.content.ComponentCallbacks2
+import android.content.MutableContextWrapper
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -21,10 +24,12 @@ import io.github.sillybunnyteam.sillybunny.app.LaunchCoordinator
 import io.github.sillybunnyteam.sillybunny.app.LaunchPreferences
 import io.github.sillybunnyteam.sillybunny.firstrun.AndroidNotificationPermission
 import io.github.sillybunnyteam.sillybunny.server.LaunchSession
+import io.github.sillybunnyteam.sillybunny.server.ServerManager
 import io.github.sillybunnyteam.sillybunny.settings.LeftoverFolderCounter
 import io.github.sillybunnyteam.sillybunny.settings.SettingsDependencies
 import io.github.sillybunnyteam.sillybunny.update.AppUpdater
 import io.github.sillybunnyteam.sillybunny.update.UpdateActivityHook
+import io.github.sillybunnyteam.sillybunny.web.WebShell
 import io.github.sillybunnyteam.sillybunny.web.openInBrowser
 import kotlinx.coroutines.launch
 
@@ -81,6 +86,13 @@ class MainActivity : ComponentActivity() {
                 updates.Dialog()
             }
         }
+        // Pre-warm Chromium WebView once the main looper goes idle so it initializes in parallel with Node startup.
+        Looper.myQueue().addIdleHandler {
+            if (!isFinishing && !isDestroyed) {
+                WebShell.prewarm(MutableContextWrapper(applicationContext))
+            }
+            false
+        }
     }
 
     override fun onStart() {
@@ -89,9 +101,27 @@ class MainActivity : ComponentActivity() {
         if (components.repairStartDeferred.getAndSet(false)) components.repair.startServer()
     }
 
+    override fun onResume() {
+        super.onResume()
+        WebShell.existing(this)?.onResume()
+    }
+
+    override fun onPause() {
+        WebShell.existing(this)?.onPause()
+        super.onPause()
+    }
+
     override fun onStop() {
         components.onActivityStopped()
         super.onStop()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        WebShell.onTrimMemory(this, level)
+        if (::components.isInitialized && shouldTrimServerMemory(level)) {
+            (components.server as? ServerManager)?.requestTrimMemory()
+        }
     }
 
     private fun startServer() {
@@ -116,5 +146,13 @@ class MainActivity : ComponentActivity() {
 
     private fun openSessionInBrowser(session: LaunchSession) {
         if (!openInBrowser(this, session)) Toast.makeText(this, R.string.web_no_browser, Toast.LENGTH_SHORT).show()
+    }
+
+    internal companion object {
+        @Suppress("DEPRECATION") // Older TRIM_MEMORY_* levels are still delivered on API 29-33.
+        internal fun shouldTrimServerMemory(level: Int): Boolean =
+            level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN ||
+                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
     }
 }

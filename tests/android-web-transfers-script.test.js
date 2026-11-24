@@ -154,4 +154,58 @@ describe('Android WebView transfers.js bounded Blob cache', () => {
         expect(fetched).toEqual([urls[0]]);
         expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'oldest.txt', size: 'fetched-fallback'.length });
     });
+
+    test('evicts oldest unrevoked Blobs when cumulative size exceeds the 32 MiB live byte budget', async () => {
+        const { sandbox, messages, fetched, clickDownload } = createHarness();
+        const chunkBytes = 10 * 1024 * 1024; // 10 MiB each
+        const chunk = new Uint8Array(chunkBytes);
+        const urls = [];
+        for (let index = 0; index < 4; index++) {
+            urls.push(sandbox.URL.createObjectURL(new Blob([chunk], { type: 'application/octet-stream' })));
+        }
+
+        // Total is 40 MiB > 32 MiB, so url[0] is evicted while urls[1..3] (30 MiB) stay cached.
+        clickDownload(urls[3], 'newest.bin');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fetched).toEqual([]);
+        expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'newest.bin', size: chunkBytes });
+
+        clickDownload(urls[1], 'second.bin');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fetched).toEqual([]);
+        expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'second.bin', size: chunkBytes });
+
+        clickDownload(urls[0], 'evicted.bin');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fetched).toEqual([urls[0]]);
+        expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'evicted.bin', size: 'fetched-fallback'.length });
+    });
+
+    test('evicts oldest revoked Blobs when cumulative size exceeds the 16 MiB revoked byte budget', async () => {
+        const { sandbox, messages, fetched, clickDownload } = createHarness();
+        const chunkBytes = 6 * 1024 * 1024; // 6 MiB each
+        const chunk = new Uint8Array(chunkBytes);
+        const urls = [];
+        for (let index = 0; index < 3; index++) {
+            const url = sandbox.URL.createObjectURL(new Blob([chunk], { type: 'application/octet-stream' }));
+            urls.push(url);
+            sandbox.URL.revokeObjectURL(url);
+        }
+
+        // Revoked total was 18 MiB > 16 MiB, so url[0] is evicted while urls[1..2] (12 MiB) stay cached.
+        clickDownload(urls[2], 'revoked-newest.bin');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fetched).toEqual([]);
+        expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'revoked-newest.bin', size: chunkBytes });
+
+        clickDownload(urls[1], 'revoked-second.bin');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fetched).toEqual([]);
+        expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'revoked-second.bin', size: chunkBytes });
+
+        clickDownload(urls[0], 'revoked-evicted.bin');
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(fetched).toEqual([urls[0]]);
+        expect(messages.at(-1)).toMatchObject({ t: 'begin', name: 'revoked-evicted.bin', size: 'fetched-fallback'.length });
+    });
 });

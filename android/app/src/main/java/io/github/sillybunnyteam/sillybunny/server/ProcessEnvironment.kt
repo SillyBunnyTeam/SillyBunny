@@ -22,8 +22,12 @@ internal class ProcessEnvironment(
     companion object {
         const val LAUNCH_TOKEN = "SILLYBUNNY_LAUNCH_TOKEN"
         const val NODE_OPTIONS = "NODE_OPTIONS"
+        const val NODE_COMPILE_CACHE = "NODE_COMPILE_CACHE"
         const val GIT_IDENTITY_NAME = "SillyBunny"
         const val GIT_IDENTITY_EMAIL = "sillybunny@localhost.invalid"
+
+        /** V8 bytecode compile cache outside the git-tracked checkout directory. */
+        fun compileCacheDir(paths: RuntimePaths): File = File(paths.cacheDir, "v8")
 
         /** Passed on from the app process when present; API 36+ also has the ART and i18n roots (S2.5). */
         val FRAMEWORK_ROOTS = listOf(
@@ -86,6 +90,7 @@ internal class ProcessEnvironment(
             environment["SILLYTAVERN_LISTEN"] = "false"
             environment["SILLYBUNNY_ANDROID_NPM_CLI"] = paths.npmCli.absolutePath
             environment["SILLYBUNNY_ANDROID_NPX_CLI"] = paths.npxCli.absolutePath
+            environment[NODE_COMPILE_CACHE] = compileCacheDir(paths).absolutePath
             if (launchToken != null) {
                 require(LaunchTokens.isValid(launchToken)) { "token" }
                 environment[LAUNCH_TOKEN] = launchToken

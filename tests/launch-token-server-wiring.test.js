@@ -34,4 +34,19 @@ describe('launch-token server wiring', () => {
         expect(clearRoute).toContain('response.cookie(name, \'\', options);');
         expect(clearRoute.match(/cookieNames\.delete\(/g)).toHaveLength(1);
     });
+
+    test('mounts POST /__sillybunny/trim only under the launch-token gate before CSRF and flushes compile cache', () => {
+        const trimIndex = source.indexOf('app.post(\'/__sillybunny/trim\'');
+        const mountIndex = source.indexOf('app.use(launchTokenMiddleware);');
+        const csrfIndex = source.indexOf('// CSRF Protection //');
+        expect(trimIndex).toBeGreaterThan(mountIndex);
+        expect(trimIndex).toBeLessThan(csrfIndex);
+        expect(source).toMatch(/if \(launchTokenMiddleware\) \{\s*\/\/[^\n]*\n\s*app\.post\('\/__sillybunny\/trim'/);
+        expect(source).toContain('if (request.headers.origin) {');
+        expect(source).toContain('module.flushCompileCache');
+
+        const serverEntry = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+        expect(serverEntry).toContain('module.enableCompileCache');
+        expect(serverEntry.indexOf('module.enableCompileCache')).toBeLessThan(serverEntry.indexOf('./src/server-supervisor.js'));
+    });
 });

@@ -29,7 +29,14 @@ internal class RuntimeLayoutInstaller(
     /** Points where a test can interrupt a refresh: the new tree is complete; its link exists. */
     enum class Step { STAGED, LINKED }
 
-    fun ensure(): RuntimeLayoutResult {
+    internal data class EnsureOutcome(
+        val result: RuntimeLayoutResult,
+        val manifest: RuntimeManifest?,
+    )
+
+    fun ensure(): RuntimeLayoutResult = ensureWithManifest().result
+
+    fun ensureWithManifest(): EnsureOutcome {
         val started = System.nanoTime()
         return try {
             createDataDirectories()
@@ -45,7 +52,7 @@ internal class RuntimeLayoutInstaller(
             val installed = current?.let(::readInstalled)
             removeLeftovers(keep = current)
             val reasons = installed?.refreshReasons(fingerprint) ?: setOf(RefreshReason.MISSING)
-            if (installed != null && reasons.isEmpty()) {
+            val ready = if (installed != null && reasons.isEmpty()) {
                 RuntimeLayoutResult.Ready(paths, installed, reasons, elapsedMillis(started))
             } else {
                 val (generation, record) = build(manifest, fingerprint)
@@ -53,10 +60,11 @@ internal class RuntimeLayoutInstaller(
                 removeLeftovers(keep = generation)
                 RuntimeLayoutResult.Ready(paths, record, reasons, elapsedMillis(started))
             }
+            EnsureOutcome(ready, manifest)
         } catch (error: RuntimeLayoutException) {
-            RuntimeLayoutResult.Failed(error)
+            EnsureOutcome(RuntimeLayoutResult.Failed(error), null)
         } catch (error: IOException) {
-            RuntimeLayoutResult.Failed(RuntimeLayoutException(Reason.STORAGE, error))
+            EnsureOutcome(RuntimeLayoutResult.Failed(RuntimeLayoutException(Reason.STORAGE, error)), null)
         }
     }
 
