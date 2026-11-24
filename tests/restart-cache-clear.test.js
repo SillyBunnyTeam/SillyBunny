@@ -21,11 +21,11 @@ const pageScriptSource = readFileSync(path.join(repoRoot, 'public', 'scripts', '
  * runs the middleware, applies its Set-Cookie, then runs the page script.
  */
 class FakeBrowser {
-    constructor({ acceptsPageCookies = true } = {}) {
+    constructor({ acceptsPageCookies = true, registrations = 1 } = {}) {
         this.jar = new Map();
         this.acceptsPageCookies = acceptsPageCookies;
         this.cacheStorage = new Set(['sillybunny-cache-v1-static', 'sillybunny-cache-v1-shell']);
-        this.registrations = 1;
+        this.registrations = registrations;
         this.serviceWorkerPurges = 0;
         this.stoppedLoads = 0;
     }
@@ -162,13 +162,33 @@ describe('restart cache clear', () => {
         expect(browser.stoppedLoads).toBe(2);
     });
 
-    test('a new server boot clears twice again', async () => {
+    test('a new server boot clears twice again when a service worker controls the page', async () => {
         const browser = new FakeBrowser();
         await browser.open(createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-a' }));
+        browser.registrations = 1;
 
         const restarted = await browser.open(createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-b' }));
         expect(restarted).toEqual({ clearSiteDataLoads: 2, loads: 3 });
         expect(browser.jar.get(RESTART_CACHE_CLEAR_BOOT_COOKIE)).toBe('boot-b');
+    });
+
+    test('skips the second reload pass when no service worker controls the page', async () => {
+        const browser = new FakeBrowser({ registrations: 0 });
+        const result = await browser.open(createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-no-sw' }));
+
+        expect(result).toEqual({ clearSiteDataLoads: 1, loads: 2 });
+        expect(browser.stoppedLoads).toBe(1);
+        expect(browser.cacheStorage.size).toBe(0);
+    });
+
+    test('skips forced reloads across unchanged restarts in content mode', async () => {
+        const browser = new FakeBrowser({ registrations: 0 });
+        const firstStart = createRestartCacheClearMiddleware({ enabled: true, mode: 'content' });
+        await browser.open(firstStart);
+
+        const unchangedRestart = createRestartCacheClearMiddleware({ enabled: true, mode: 'content' });
+        const result = await browser.open(unchangedRestart);
+        expect(result).toEqual({ clearSiteDataLoads: 0, loads: 1 });
     });
 
     test('does nothing when disabled', async () => {

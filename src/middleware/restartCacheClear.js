@@ -1,4 +1,4 @@
-import { getServerBootId } from '../server-boot-marker.js';
+import { getRestartCacheBootId } from '../server-boot-marker.js';
 import { getConfigValue } from '../util.js';
 
 /**
@@ -60,30 +60,34 @@ function getCompletedPasses(cookieHeader, bootId) {
 }
 
 /**
- * Creates the middleware that clears each browser's cache twice after every
- * server start. While a browser has passes left, its index responses carry
- * `Clear-Site-Data: "cache"` and the boot cookie; the page script then purges
- * Cache Storage and service workers, records the pass and reloads.
+ * Creates the middleware that clears each browser's cache when the active boot
+ * fingerprint changes (`mode: content`) or on every server start (`mode: always`).
+ * While a browser has passes left, its index responses carry `Clear-Site-Data: "cache"`
+ * and the boot cookie; the page script then purges Cache Storage and service workers,
+ * records the pass and reloads.
  * @param {object} [options]
  * @param {boolean} [options.enabled] Whether the feature is enabled
- * @param {string} [options.bootId] Current server boot ID
+ * @param {'content' | 'always'} [options.mode] Cache clear mode
+ * @param {string} [options.bootId] Explicit boot ID override
  * @returns {import('express').RequestHandler}
  */
 export function createRestartCacheClearMiddleware({
     enabled = getConfigValue('restartCacheClear.enabled', true, 'boolean'),
-    bootId = getServerBootId(),
+    mode = getConfigValue('restartCacheClear.mode', 'content'),
+    bootId,
 } = {}) {
     return function restartCacheClear(request, response, next) {
         if (!enabled || response.headersSent) {
             return next();
         }
 
-        if (getCompletedPasses(request.headers.cookie, bootId) >= RESTART_CACHE_CLEAR_PASSES) {
+        const activeBootId = bootId ?? getRestartCacheBootId({ mode });
+        if (getCompletedPasses(request.headers.cookie, activeBootId) >= RESTART_CACHE_CLEAR_PASSES) {
             return next();
         }
 
         response.setHeader('Clear-Site-Data', '"cache"');
-        response.cookie(RESTART_CACHE_CLEAR_BOOT_COOKIE, bootId, {
+        response.cookie(RESTART_CACHE_CLEAR_BOOT_COOKIE, activeBootId, {
             path: '/',
             sameSite: 'lax',
             httpOnly: false,

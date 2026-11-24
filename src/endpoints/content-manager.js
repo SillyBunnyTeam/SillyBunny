@@ -15,7 +15,14 @@ import { serverDirectory } from '../server-directory.js';
 import { Jimp, JimpMime } from '../jimp.js';
 import { DEFAULT_AVATAR_PATH } from '../constants.js';
 // SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass, and a replaced card loses its cached thumbnails.
-import { reconcileManagedContent } from '../sillybunny-managed-content.js';
+import {
+    createManagedContent,
+    describePathSignature,
+    readAppVersionSignature,
+    readReconcileMarker,
+    reconcileManagedContent,
+    writeReconcileMarker,
+} from '../sillybunny-managed-content.js';
 import { invalidateThumbnail } from './thumbnails.js';
 
 const contentDirectory = path.join(serverDirectory, 'default/content');
@@ -531,11 +538,12 @@ function getScopeByType(type) {
 export function getDefaultPresets(directories, { includeDeleted = true } = {}) {
     try {
         const contentIndex = getContentIndex(CONTENT_SCOPE.USER);
+        const presetDeletions = includeDeleted ? null : getDefaultPresetDeletions(directories);
         const presets = [];
 
         for (const contentItem of contentIndex) {
             if (isPresetContentType(contentItem.type)) {
-                if (!includeDeleted && isDefaultPresetDeleted(directories, contentItem)) {
+                if (!includeDeleted && Object.hasOwn(presetDeletions.deleted, getDefaultPresetDeletionKey(contentItem))) {
                     continue;
                 }
 
@@ -644,19 +652,33 @@ export function getDefaultPresetFile(filename) {
 }
 
 /**
+ * @param {string} contentLogPath
+ * @returns {{ exists: boolean, rawText: string, entries: string[] }}
+ */
+function readContentLogState(contentLogPath) {
+    if (!fs.existsSync(contentLogPath)) {
+        return { exists: false, rawText: '', entries: [] };
+    }
+    const rawText = fs.readFileSync(contentLogPath, 'utf8');
+    return { exists: true, rawText, entries: rawText.split('\n') };
+}
+
+/**
  * Seeds content from a content index into a target location.
  * @param {ContentItem[]} contentIndex Content index
  * @param {string} contentLogPath Path to the content log file
  * @param {(type: string) => string | null} resolveTarget Function to resolve the target directory for a content type
  * @param {string[]} [forceCategories] List of categories to force check (even if content check is skipped)
+ * @param {{ exists: boolean, rawText: string, entries: string[] }} [logState] Pre-loaded content log state
  * @returns {boolean} Whether any content was added
  */
-function seedContent(contentIndex, contentLogPath, resolveTarget, forceCategories) {
+function seedContent(contentIndex, contentLogPath, resolveTarget, forceCategories, logState = readContentLogState(contentLogPath)) {
     let anyContentAdded = false;
-    const contentLog = getContentLog(contentLogPath);
+    const contentLog = logState.entries;
+    const loggedSet = new Set(contentLog);
 
     for (const contentItem of contentIndex) {
-        const hasLoggedContent = contentLog.includes(contentItem.filename);
+        const hasLoggedContent = loggedSet.has(contentItem.filename);
 
         // If the content item is already in the log, skip it
         if (hasLoggedContent && !forceCategories?.includes(contentItem.type)) {
@@ -687,6 +709,7 @@ function seedContent(contentIndex, contentLogPath, resolveTarget, forceCategorie
 
         if (!hasLoggedContent) {
             contentLog.push(contentItem.filename);
+            loggedSet.add(contentItem.filename);
         }
 
         if (fs.existsSync(targetPath)) {
@@ -703,7 +726,11 @@ function seedContent(contentIndex, contentLogPath, resolveTarget, forceCategorie
         anyContentAdded = true;
     }
 
-    writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
+    // SillyBunny: rewrite content.log only when absent or when entries actually changed.
+    const nextContentLogText = contentLog.join('\n');
+    if (!logState.exists || nextContentLogText !== logState.rawText) {
+        writeFileAtomicSync(contentLogPath, nextContentLogText);
+    }
     return anyContentAdded;
 }
 
@@ -896,6 +923,42 @@ export function reconcileManagedBundledThemes(directories) {
     }
 }
 
+function computeBundledContentReconcileSignature(directories) {
+    const parts = [];
+    const quickRepliesDirectory = getUserTargetByType(CONTENT_TYPES.QUICK_REPLIES, directories);
+    for (const managedQuickReply of MANAGED_BUNDLED_QUICK_REPLIES) {
+        parts.push(describePathSignature(path.join(contentDirectory, managedQuickReply.bundledPath)));
+    }
+    if (quickRepliesDirectory && fs.existsSync(quickRepliesDirectory)) {
+        const qrFiles = getJsonFilesRecursive(quickRepliesDirectory).sort();
+        for (const filePath of qrFiles) {
+            const rel = path.relative(quickRepliesDirectory, filePath).split(path.sep).join('/');
+            parts.push(`qr:${rel}=${describePathSignature(filePath)}`);
+        }
+    } else {
+        parts.push('qr:absent');
+    }
+
+    const themesDirectory = getUserTargetByType(CONTENT_TYPES.THEME, directories);
+    if (themesDirectory && fs.existsSync(themesDirectory)) {
+        for (const retiredTheme of RETIRED_BUNDLED_THEMES) {
+            parts.push(`rt:${retiredTheme.filename}=${describePathSignature(path.join(themesDirectory, retiredTheme.filename))}`);
+        }
+        for (const managedTheme of MANAGED_BUNDLED_THEMES) {
+            const baseName = path.parse(managedTheme.bundledPath).base;
+            const userSig = describePathSignature(path.join(themesDirectory, baseName));
+            const bundledSig = userSig === 'absent'
+                ? 'skip'
+                : describePathSignature(path.join(contentDirectory, managedTheme.bundledPath));
+            parts.push(`mt:${baseName}=${userSig}:${bundledSig}`);
+        }
+    } else {
+        parts.push('themes:absent');
+    }
+
+    return parts.join('|');
+}
+
 // SillyBunny: exported, with a managed content directory, so seeding is testable against fixtures.
 /**
  * Seeds content for a user.
@@ -904,36 +967,72 @@ export function reconcileManagedBundledThemes(directories) {
  * @param {string[]} forceCategories List of categories to force check (even if content check is skipped)
  * @param {object} [options]
  * @param {string} [options.managedDirectory] Where the managed content manifest is; tests point it at fixtures.
+ * @param {string} [options.appVersion] Explicit app version override for reconciliation marker checks.
  * @returns {Promise<boolean>} Whether any content was added
  */
-export async function seedContentForUser(contentIndex, directories, forceCategories, { managedDirectory = contentDirectory } = {}) {
+export async function seedContentForUser(contentIndex, directories, forceCategories, {
+    managedDirectory = contentDirectory,
+    appVersion = readAppVersionSignature(),
+} = {}) {
     if (!fs.existsSync(directories.root)) {
         fs.mkdirSync(directories.root, { recursive: true });
     }
 
     const contentLogPath = path.join(directories.root, 'content.log');
-    const contentLog = getContentLog(contentLogPath);
-    removeObsoleteContent(contentLog, directories);
-    writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
-    reconcileManagedBundledQuickReplies(directories);
-    reconcileManagedBundledThemes(directories);
+    const logState = readContentLogState(contentLogPath);
+    removeObsoleteContent(logState.entries, directories);
+
+    const marker = readReconcileMarker(directories.root);
+    const beforeContentSig = computeBundledContentReconcileSignature(directories);
+    if (!marker || marker.contentAppVersion !== appVersion || marker.contentSignature !== beforeContentSig) {
+        reconcileManagedBundledQuickReplies(directories);
+        reconcileManagedBundledThemes(directories);
+        const afterContentSig = computeBundledContentReconcileSignature(directories);
+        writeReconcileMarker(directories.root, {
+            appVersion,
+            contentAppVersion: appVersion,
+            contentSignature: afterContentSig,
+        }, setPermissionsSync);
+    }
+
     // SillyBunny: managed content is reconciled per user; a content directory without a manifest manages nothing. A card
     // it replaces loses its cached thumbnails, which the thumbnail route would otherwise keep serving.
     reconcileManagedContent({
         bundledDirectory: managedDirectory,
         directories,
+        appVersion,
         setPermissions: setPermissionsSync,
         invalidateThumbnail: file => invalidateThumbnail(directories, 'avatar', file),
     });
+
+    // SillyBunny: read default-preset-deletions.json once per user pass instead of re-reading per preset.
+    const presetDeletions = getDefaultPresetDeletions(directories);
     const filteredContentIndex = contentIndex.filter(contentItem => {
         if (!isPresetContentType(contentItem.type)) {
             return true;
         }
 
-        return !isDefaultPresetDeleted(directories, contentItem);
+        return !Object.hasOwn(presetDeletions.deleted, getDefaultPresetDeletionKey(contentItem));
     });
 
-    return seedContent(filteredContentIndex, contentLogPath, (type) => getUserTargetByType(type, directories), forceCategories);
+    const anyAdded = seedContent(filteredContentIndex, contentLogPath, (type) => getUserTargetByType(type, directories), forceCategories, logState);
+    if (anyAdded) {
+        // Refresh the marker after first-boot seeding copies files into place so the second boot hits the fast path immediately.
+        const postSeedManagedSignature = createManagedContent({
+            bundledDirectory: managedDirectory,
+            directories,
+            setPermissions: setPermissionsSync,
+            invalidateThumbnail: file => invalidateThumbnail(directories, 'avatar', file),
+        }).reconcileSignature();
+        writeReconcileMarker(directories.root, {
+            appVersion,
+            contentAppVersion: appVersion,
+            managedAppVersion: appVersion,
+            contentSignature: computeBundledContentReconcileSignature(directories),
+            managedSignature: postSeedManagedSignature,
+        }, setPermissionsSync);
+    }
+    return anyAdded;
 }
 
 /**
@@ -986,39 +1085,52 @@ export async function checkForNewContent(directoriesList, forceCategories = []) 
     }
 }
 
+let cachedContentIndexSignature = null;
+/** @type {ContentItem[]} */
+let cachedCombinedContentIndex = [];
+
 /**
  * Gets combined content index from the content and scaffold directories.
  * @param {CONTENT_SCOPE} scope Scope of content to get
  * @returns {ContentItem[]} Array of content index
  */
 function getContentIndex(scope = CONTENT_SCOPE.USER) {
-    const result = [];
+    // SillyBunny: cache parsed index.json entries keyed by file stat signature.
+    const indexSignature = `${describePathSignature(scaffoldIndexPath)}|${describePathSignature(contentIndexPath)}`;
+    if (cachedContentIndexSignature !== indexSignature) {
+        const combined = [];
 
-    if (fs.existsSync(scaffoldIndexPath)) {
-        const scaffoldIndexText = fs.readFileSync(scaffoldIndexPath, 'utf8');
-        const scaffoldIndex = JSON.parse(scaffoldIndexText);
-        if (Array.isArray(scaffoldIndex)) {
-            scaffoldIndex.forEach((item) => {
-                item.folder = scaffoldDirectory;
-                item.scope = getScopeByType(item.type);
-            });
-            result.push(...scaffoldIndex);
+        if (fs.existsSync(scaffoldIndexPath)) {
+            const scaffoldIndexText = fs.readFileSync(scaffoldIndexPath, 'utf8');
+            const scaffoldIndex = JSON.parse(scaffoldIndexText);
+            if (Array.isArray(scaffoldIndex)) {
+                scaffoldIndex.forEach((item) => {
+                    item.folder = scaffoldDirectory;
+                    item.scope = getScopeByType(item.type);
+                });
+                combined.push(...scaffoldIndex);
+            }
         }
+
+        if (fs.existsSync(contentIndexPath)) {
+            const contentIndexText = fs.readFileSync(contentIndexPath, 'utf8');
+            const contentIndex = JSON.parse(contentIndexText);
+            if (Array.isArray(contentIndex)) {
+                contentIndex.forEach((item) => {
+                    item.folder = contentDirectory;
+                    item.scope = getScopeByType(item.type);
+                });
+                combined.push(...contentIndex);
+            }
+        }
+
+        cachedCombinedContentIndex = combined;
+        cachedContentIndexSignature = indexSignature;
     }
 
-    if (fs.existsSync(contentIndexPath)) {
-        const contentIndexText = fs.readFileSync(contentIndexPath, 'utf8');
-        const contentIndex = JSON.parse(contentIndexText);
-        if (Array.isArray(contentIndex)) {
-            contentIndex.forEach((item) => {
-                item.folder = contentDirectory;
-                item.scope = getScopeByType(item.type);
-            });
-            result.push(...contentIndex);
-        }
-    }
-
-    return result.filter((item) => item.scope === scope);
+    return cachedCombinedContentIndex
+        .filter(item => item.scope === scope)
+        .map(item => ({ ...item }));
 }
 
 /**
@@ -1123,20 +1235,6 @@ export function getGlobalTargetByType(type) {
         default:
             return null;
     }
-}
-
-/**
- * Gets the content log from the content log file.
- * @param {string} contentLogPath Path to the content log file
- * @returns {string[]} Array of content log lines
- */
-function getContentLog(contentLogPath) {
-    if (!fs.existsSync(contentLogPath)) {
-        return [];
-    }
-
-    const contentLogText = fs.readFileSync(contentLogPath, 'utf8');
-    return contentLogText.split('\n');
 }
 
 async function downloadChubLorebook(id) {

@@ -124,9 +124,20 @@ describe('response compression middleware', () => {
             }
         });
 
-        test('compresses large JSON with gzip and updates representation headers', async () => {
+        test('bypasses dynamic compression on direct loopback requests without proxy headers', async () => {
             const response = await getRawResponse(`${baseUrl}/json`, {
                 'Accept-Encoding': 'gzip',
+            });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.headers['content-encoding']).toBeUndefined();
+            expect(JSON.parse(response.body.toString('utf8'))).toEqual(LARGE_JSON);
+        });
+
+        test('compresses large JSON with gzip behind a proxy header and updates representation headers', async () => {
+            const response = await getRawResponse(`${baseUrl}/json`, {
+                'Accept-Encoding': 'gzip',
+                'X-Forwarded-For': '203.0.113.10',
             });
             const decodedBody = gunzipSync(response.body);
 

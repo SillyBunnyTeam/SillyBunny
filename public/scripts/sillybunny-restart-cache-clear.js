@@ -94,9 +94,15 @@
         return;
     }
 
+    // Without a controlling service worker nothing can re-populate Cache Storage
+    // during the reload navigation, so one pass suffices and records PASSES immediately.
+    var hasController = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+    var nextCompleted = hasController ? completed + 1 : PASSES;
+    var totalPasses = hasController ? PASSES : 1;
+
     // Record the pass before purging so a failing purge cannot loop, and
     // never reload when the browser refuses the progress cookie.
-    if (!writeProgress(bootId, completed + 1)) {
+    if (!writeProgress(bootId, nextCompleted)) {
         return;
     }
 
@@ -106,13 +112,13 @@
         window.stop();
     }
 
-    var pass = completed + 1;
+    var pass = hasController ? completed + 1 : 1;
     clearBrowserCaches()
         .catch(function (error) {
             console.warn('[Cache] Restart cache clear pass ' + pass + ' failed.', error);
         })
         .then(function () {
-            console.info('[Cache] Restart cache clear pass ' + pass + ' of ' + PASSES + ' complete. Reloading.');
+            console.info('[Cache] Restart cache clear pass ' + pass + ' of ' + totalPasses + ' complete. Reloading.');
             window.location.reload();
         });
 })();
