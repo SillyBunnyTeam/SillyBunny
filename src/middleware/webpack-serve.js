@@ -5,6 +5,10 @@ import getPublicLibConfig, {
     getPublicLibCacheInfo,
     prunePublicLibCache,
 } from '../../webpack.config.js';
+import {
+    computePublicLibInputsHash,
+    trySeedPrebuiltPublicLib,
+} from '../prebuilt-lib.js';
 
 export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
     const resolvePublicLibConfig = ({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) =>
@@ -84,6 +88,14 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
         const cacheInfo = getPublicLibCacheInfo({ forceDist: overrideForceDist });
         const publicLibConfig = resolvePublicLibConfig({ forceDist: overrideForceDist });
         const compiledOutputPath = getCompiledOutputPath(publicLibConfig);
+
+        if (compiledOutputPath && !fs.existsSync(compiledOutputPath)) {
+            trySeedPrebuiltPublicLib({
+                cacheVersion: cacheInfo.cacheVersion,
+                inputsHash: computePublicLibInputsHash(),
+                outputPath: compiledOutputPath,
+            });
+        }
 
         if (compiledOutputPath && fs.existsSync(compiledOutputPath)) {
             console.log();

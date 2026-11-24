@@ -10,7 +10,6 @@ import { Buffer } from 'node:buffer';
 import storage from 'node-persist';
 import express from 'express';
 import mime from 'mime-types';
-import archiver from 'archiver';
 import _ from 'lodash';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import sanitize from 'sanitize-filename';
@@ -1189,6 +1188,198 @@ export function requireAdminMiddleware(request, response, next) {
     return response.sendStatus(403);
 }
 
+const ZIP_STORE_EXTENSIONS = new Set([
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+    '.gif',
+    '.avif',
+    '.zip',
+    '.gz',
+    '.gzip',
+    '.bz2',
+    '.xz',
+    '.7z',
+    '.zst',
+    '.woff2',
+    '.mp3',
+    '.mp4',
+    '.m4a',
+    '.ogg',
+    '.opus',
+    '.webm',
+    '.flac',
+]);
+const EMPTY_ZIP_CHUNK = new Uint8Array(0);
+const BACKUP_STREAM_HIGH_WATER_MARK = 64 * 1024;
+const SECRETS_MIGRATION_BACKUP_RE = /^backups\/secrets_migration_[^/]*\.json$/;
+
+/** @type {Promise<typeof import('fflate')> | null} */
+let fflateModulePromise = null;
+
+/**
+ * Lazy-loads `fflate` only when a backup archive is requested.
+ * @returns {Promise<typeof import('fflate')>} Loaded fflate module
+ */
+function loadFflate() {
+    if (!fflateModulePromise) {
+        fflateModulePromise = import('fflate');
+    }
+    return fflateModulePromise;
+}
+
+/**
+ * Checks whether a relative POSIX path inside a user folder should be omitted from backups.
+ * @param {string} relativePosixPath Relative POSIX path under the user's root directory
+ * @returns {boolean} True when the file should be excluded
+ */
+function shouldIgnoreBackupEntry(relativePosixPath) {
+    if (allowKeysExposure) {
+        return false;
+    }
+
+    return relativePosixPath === SECRETS_FILE || SECRETS_MIGRATION_BACKUP_RE.test(relativePosixPath);
+}
+
+/**
+ * Walks a user root directory safely without following symlinks and returns regular files to archive.
+ * @param {string} rootDir Absolute user root directory
+ * @returns {Promise<Array<{ absolutePath: string, entryName: string }>>} Ordered list of files to archive
+ */
+async function collectBackupFiles(rootDir) {
+    const resolvedRoot = path.resolve(rootDir);
+    const rootStat = await fs.promises.lstat(resolvedRoot);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+        throw new Error('User backup root is not a valid directory.');
+    }
+
+    /** @type {Array<{ absolutePath: string, entryName: string }>} */
+    const files = [];
+
+    /**
+     * @param {string} currentDir
+     * @param {string} relativePrefix
+     */
+    async function walk(currentDir, relativePrefix) {
+        const dirents = await fs.promises.readdir(currentDir, { withFileTypes: true });
+        dirents.sort((a, b) => a.name.localeCompare(b.name));
+
+        for (const dirent of dirents) {
+            if (dirent.isSymbolicLink()) {
+                continue;
+            }
+
+            const absolutePath = path.resolve(currentDir, dirent.name);
+            if (!isPathUnderParent(resolvedRoot, absolutePath)) {
+                continue;
+            }
+
+            const entryName = relativePrefix ? `${relativePrefix}/${dirent.name}` : dirent.name;
+            if (shouldIgnoreBackupEntry(entryName)) {
+                continue;
+            }
+
+            if (dirent.isDirectory()) {
+                await walk(absolutePath, entryName);
+            } else if (dirent.isFile()) {
+                files.push({ absolutePath, entryName });
+            }
+        }
+    }
+
+    await walk(resolvedRoot, '');
+    return files;
+}
+
+/**
+ * Waits for a writable stream to drain, resolving early on close/abort and rejecting on stream error.
+ * @param {import('node:stream').Writable} writable Target writable stream
+ * @param {() => boolean} isAborted Returns true when archiving has been aborted
+ * @returns {Promise<void>}
+ */
+function waitForWritableDrain(writable, isAborted) {
+    if (isAborted() || writable.destroyed || writable.writableEnded) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+        const cleanup = () => {
+            writable.off('drain', onDrain);
+            writable.off('close', onClose);
+            writable.off('error', onError);
+        };
+        const onDrain = () => {
+            cleanup();
+            resolve();
+        };
+        const onClose = () => {
+            cleanup();
+            resolve();
+        };
+        const onError = (err) => {
+            cleanup();
+            reject(err);
+        };
+
+        writable.once('drain', onDrain);
+        writable.once('close', onClose);
+        writable.once('error', onError);
+    });
+}
+
+/**
+ * Streams a single file from disk into an fflate ZIP entry while honoring downstream backpressure.
+ * @param {object} options Stream options
+ * @param {string} options.filePath Absolute path on disk
+ * @param {import('fflate').ZipDeflate | import('fflate').ZipPassThrough} options.entry Target fflate ZIP entry
+ * @param {import('node:stream').Writable} options.writable Target HTTP response or writable stream
+ * @param {() => boolean} options.isAborted Returns true when aborted
+ * @param {() => boolean} options.consumeDrainFlag Consumes and returns whether downstream asked for backpressure
+ * @param {(stream: fs.ReadStream | null) => void} options.setActiveStream Tracks active read stream for abort cleanup
+ * @returns {Promise<void>}
+ */
+async function streamFileIntoZipEntry({ filePath, entry, writable, isAborted, consumeDrainFlag, setActiveStream }) {
+    const readStream = fs.createReadStream(filePath, { highWaterMark: BACKUP_STREAM_HIGH_WATER_MARK });
+    setActiveStream(readStream);
+
+    try {
+        for await (const chunk of readStream) {
+            if (isAborted()) {
+                return;
+            }
+
+            const bytes = chunk instanceof Uint8Array
+                ? new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+                : Buffer.from(chunk);
+            entry.push(bytes, false);
+
+            if (consumeDrainFlag()) {
+                await waitForWritableDrain(writable, isAborted);
+            }
+        }
+
+        if (isAborted()) {
+            return;
+        }
+
+        entry.push(EMPTY_ZIP_CHUNK, true);
+        if (consumeDrainFlag()) {
+            await waitForWritableDrain(writable, isAborted);
+        }
+    } catch (error) {
+        if (isAborted() && error?.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+            return;
+        }
+        throw error;
+    } finally {
+        setActiveStream(null);
+        if (!readStream.destroyed) {
+            readStream.destroy();
+        }
+    }
+}
+
 /**
  * Creates an archive of the user's data root directory.
  * @param {string} handle User handle
@@ -1199,37 +1390,168 @@ export async function createBackupArchive(handle, response) {
     const directories = getUserDirectories(handle);
 
     console.info('Backup requested for', handle);
-    const archive = archiver('zip');
 
-    archive.on('error', function (err) {
-        response.status(500).send({ error: err.message });
-    });
-
-    // On stream closed we can end the request
-    archive.on('end', function () {
-        console.info('Archive wrote %d bytes', archive.pointer());
-        response.end(); // End the Express response
-    });
+    const files = await collectBackupFiles(directories.root);
+    const { Zip, ZipDeflate, ZipPassThrough } = await loadFflate();
 
     const timestamp = generateTimestamp();
+    if (typeof response.attachment === 'function') {
+        response.attachment(`${handle}-${timestamp}.zip`);
+    }
 
-    // Set the archive name
-    response.attachment(`${handle}-${timestamp}.zip`);
+    let totalBytes = 0;
+    let needsDrain = false;
+    let aborted = false;
+    let zipEnded = false;
+    /** @type {Error | null} */
+    let streamError = null;
+    /** @type {fs.ReadStream | null} */
+    let activeReadStream = null;
 
-    // This is the streaming magic
-    // @ts-ignore
-    archive.pipe(response);
+    const zip = new Zip((err, chunk, final) => {
+        if (err) {
+            streamError = err;
+            aborted = true;
+            return;
+        }
 
-    // Append files from a sub-directory, putting its contents at the root of archive
-    const ignore = allowKeysExposure ? [] : [SECRETS_FILE, 'backups/secrets_migration_*.json'];
-    archive.glob('**/*', {
-        cwd: directories.root,
-        follow: false,
-        stat: true,
-        dot: true,
-        ignore,
+        if (aborted || response.destroyed) {
+            return;
+        }
+
+        if (chunk && chunk.byteLength > 0) {
+            totalBytes += chunk.byteLength;
+            if (!response.write(chunk)) {
+                needsDrain = true;
+            }
+        }
+
+        if (final) {
+            zipEnded = true;
+        }
     });
-    archive.finalize();
+
+    const onResponseClose = () => {
+        if (!response.writableFinished && !zipEnded) {
+            aborted = true;
+            activeReadStream?.destroy();
+            zip.terminate();
+        }
+    };
+
+    const onResponseError = (err) => {
+        streamError = err;
+        aborted = true;
+        activeReadStream?.destroy();
+        zip.terminate();
+    };
+
+    response.on('close', onResponseClose);
+    response.on('error', onResponseError);
+
+    const isAborted = () => aborted || streamError !== null || response.destroyed;
+    const consumeDrainFlag = () => {
+        const flag = needsDrain;
+        needsDrain = false;
+        return flag;
+    };
+
+    try {
+        for (const file of files) {
+            if (isAborted()) {
+                break;
+            }
+
+            const stat = await fs.promises.lstat(file.absolutePath);
+            if (stat.isSymbolicLink() || !stat.isFile()) {
+                continue;
+            }
+
+            const ext = path.extname(file.entryName).toLowerCase();
+            const entry = ZIP_STORE_EXTENSIONS.has(ext)
+                ? new ZipPassThrough(file.entryName)
+                : new ZipDeflate(file.entryName, { level: 6 });
+            entry.mtime = stat.mtime;
+
+            zip.add(entry);
+            if (consumeDrainFlag()) {
+                await waitForWritableDrain(response, isAborted);
+            }
+
+            await streamFileIntoZipEntry({
+                filePath: file.absolutePath,
+                entry,
+                writable: response,
+                isAborted,
+                consumeDrainFlag,
+                setActiveStream: (stream) => {
+                    activeReadStream = stream;
+                },
+            });
+
+            if (streamError) {
+                throw streamError;
+            }
+        }
+
+        if (streamError) {
+            throw streamError;
+        }
+
+        if (aborted || response.destroyed) {
+            return;
+        }
+
+        zip.end();
+        if (streamError) {
+            throw streamError;
+        }
+
+        console.info('Archive wrote %d bytes', totalBytes);
+
+        await new Promise((resolve, reject) => {
+            if (response.writableFinished || response.destroyed) {
+                resolve();
+                return;
+            }
+
+            const cleanup = () => {
+                response.off('finish', onDone);
+                response.off('close', onDone);
+                response.off('error', onErr);
+            };
+            const onDone = () => {
+                cleanup();
+                resolve();
+            };
+            const onErr = (err) => {
+                cleanup();
+                reject(err);
+            };
+
+            response.once('finish', onDone);
+            response.once('close', onDone);
+            response.once('error', onErr);
+            response.end();
+        });
+    } catch (error) {
+        aborted = true;
+        activeReadStream?.destroy();
+        zip.terminate();
+
+        if (typeof response.headersSent === 'boolean' && response.headersSent) {
+            console.error('Backup stream failed after headers were sent:', error);
+            if (!response.destroyed) {
+                response.destroy(error);
+            }
+            return;
+        }
+
+        throw error;
+    } finally {
+        response.off('close', onResponseClose);
+        response.off('error', onResponseError);
+    }
 }
 
 /**
