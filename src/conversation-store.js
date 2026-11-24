@@ -537,6 +537,7 @@ function requireListedChat(conversation, chatId) {
  * @param {object} [input] `name`, and for a branch or the migration `id`, `records`, `createdAt`, `readThrough` and
  * the other state of a chat. `activate` also makes the new chat the active one.
  * @returns {{ conversation: Record<string, any>, chat: Record<string, any> }}
+ * @throws {ConversationStoreError} `exists` when the chat is listed already or its file is there.
  */
 export function createChat(user, conversationId, input = {}) {
     if (input === null || typeof input !== 'object' || Array.isArray(input)) {

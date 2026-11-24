@@ -59,7 +59,7 @@ const STATUS_BY_CODE = Object.freeze({
     migration_failed: 503,
 });
 const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description'];
-const CREATE_CHAT_FIELDS = ['id', 'name', 'activate'];
+const CREATE_CHAT_FIELDS = ['id', 'chatId', 'name', 'activate'];
 const MAX_IMAGE_TEXT_LENGTH = Math.ceil(MAX_AVATAR_IMAGE_BYTES / 3) * 4;
 const IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpeg|gif|webp);base64,/i;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -201,8 +201,10 @@ router.get('/avatar', (request, response) => {
 
 router.post('/chat/create', route((user, body) => {
     onlyFields(body, CREATE_CHAT_FIELDS, 'chat/create');
-    const { id, ...input } = body;
-    return createChat(user, id, input);
+    // `id` names the conversation. A chat id from the client lets the browser list a new chat before the server answers;
+    // the store checks it like every other id and refuses one that exists. A conversation id is never taken from the client.
+    const { id, chatId, ...input } = body;
+    return createChat(user, id, chatId === undefined ? input : { ...input, id: chatId });
 }));
 
 router.post('/chat/get', route((user, body) => ({ chat: loadChat(user, body.id, body.chatId) })));

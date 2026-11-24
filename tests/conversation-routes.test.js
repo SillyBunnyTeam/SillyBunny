@@ -243,11 +243,54 @@ describe('the chats of a conversation', () => {
         expect((await post('/chat/get', { id: conversation.id, chatId: json.chat.id })).json.chat).toEqual([header()]);
     });
 
-    test('create does not take an id or records from the client', async () => {
+    test('create takes a chat id from the client, so that the browser can show the chat before the server answers', async () => {
+        const { status, json } = await post('/chat/create', { id: conversation.id, chatId: 'chat_1700000000000_abc123', name: 'Trip' });
+
+        expect(status).toBe(200);
+        expect(json.chat).toMatchObject({ id: 'chat_1700000000000_abc123', name: 'Trip' });
+        expect(json.conversation.chats.map(item => item.id)).toEqual(['main', 'chat_1700000000000_abc123']);
+        expect((await post('/chat/get', { id: conversation.id, chatId: 'chat_1700000000000_abc123' })).json.chat).toEqual([header()]);
+    });
+
+    test('create answers 409 exists for a chat id that is listed, and leaves the chat alone', async () => {
+        await post('/chat/save', { id: conversation.id, chatId: 'main', chat: chat(2) });
+
+        const { status, json } = await post('/chat/create', { id: conversation.id, chatId: 'main' });
+
+        expect(status).toBe(409);
+        expect(json.error).toBe('exists');
+        expect(loadChat(user, conversation.id, 'main')).toHaveLength(3);
+    });
+
+    test('create answers 409 exists for a chat id whose file is there but not listed, and keeps the file', async () => {
+        const stray = path.join(user.directories.conversations, conversation.id, 'chats', 'stray.jsonl');
+        fs.writeFileSync(stray, JSON.stringify(header()));
+        const before = fs.readFileSync(stray, 'utf8');
+
+        const { status, json } = await post('/chat/create', { id: conversation.id, chatId: 'stray' });
+
+        expect(status).toBe(409);
+        expect(json.error).toBe('exists');
+        expect(fs.readFileSync(stray, 'utf8')).toBe(before);
+        expect((await post('/get', { id: conversation.id })).json.conversation.chats.map(item => item.id)).toEqual(['main']);
+    });
+
+    test('create does not take records from the client', async () => {
         const { status } = await post('/chat/create', { id: conversation.id, chatId: 'mine', records: [header(), line('a', 'x')] });
 
         expect(status).toBe(400);
         expect(loadChat(user, conversation.id, 'main')).toEqual([header()]);
+        expect(fs.existsSync(path.join(user.directories.conversations, conversation.id, 'chats', 'mine.jsonl'))).toBe(false);
+    });
+
+    test('/create still refuses an id of the conversation from the client', async () => {
+        const before = snapshotTree();
+
+        const { status, json } = await post('/create', { id: 'conv_9_abcdef', kind: 'direct', personaId: 'User.png', characters: ['Nova.png'] });
+
+        expect(status).toBe(400);
+        expect(json.error).toBe('invalid_input');
+        expect(snapshotTree()).toEqual(before);
     });
 
     test('get returns the records of a chat', async () => {
@@ -431,6 +474,8 @@ describe('what the routes refuse', () => {
         ['an array', ['conv_1_abcdef']],
         ['an object', { toString: 'conv_1_abcdef', valueOf: 'x' }],
         ['a boolean', true],
+        ['a Windows device name', 'nul'],
+        ['a chat id with a dot', 'chat.one'],
     ];
 
     test.each(HOSTILE_IDS.flatMap(([name, id]) => [
@@ -456,6 +501,7 @@ describe('what the routes refuse', () => {
     });
 
     test.each(HOSTILE_IDS.flatMap(([name, chatId]) => [
+        [`/chat/create with the chat id ${name}`, '/chat/create', { chatId }],
         [`/chat/get with the chat id ${name}`, '/chat/get', { chatId }],
         [`/chat/save with the chat id ${name}`, '/chat/save', { chatId, chat: chat(2) }],
         [`/chat/rename with the chat id ${name}`, '/chat/rename', { chatId, name: 'x' }],
