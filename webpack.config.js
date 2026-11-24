@@ -29,17 +29,56 @@ function readJsonVersion(filePath, fallback) {
     }
 }
 
+function findPackageJsonFromEntry(entryPath) {
+    let dir = path.dirname(entryPath);
+    for (let depth = 0; depth < 6; depth++) {
+        const candidate = path.join(dir, 'package.json');
+        if (fs.existsSync(candidate)) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+                if (parsed?.name === 'webpack') {
+                    return candidate;
+                }
+            } catch {
+                // Continue walking upward when a package.json cannot be parsed.
+            }
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            break;
+        }
+        dir = parent;
+    }
+    return null;
+}
+
+function resolveWebpackPackageJsonFile(baseRequire = moduleRequire) {
+    try {
+        return baseRequire.resolve('webpack/package.json');
+    } catch {
+        // Fall back to resolving webpack's main entry if exports restrict ./package.json.
+    }
+
+    try {
+        const mainEntry = baseRequire.resolve('webpack');
+        const found = findPackageJsonFromEntry(mainEntry);
+        if (found) {
+            return found;
+        }
+    } catch {
+        // Fall back to serverDirectory lookup below.
+    }
+
+    return null;
+}
+
 function resolveWebpackPackageJsonPath() {
     const directPath = path.join(serverDirectory, 'node_modules', 'webpack', 'package.json');
     if (fs.existsSync(directPath)) {
         return directPath;
     }
 
-    try {
-        return moduleRequire.resolve('webpack/package.json');
-    } catch {
-        return null;
-    }
+    return resolveWebpackPackageJsonFile();
 }
 
 // SillyBunny: read package versions directly from JSON so importing webpack.config.js never loads webpack or spawns git.
@@ -49,81 +88,105 @@ const webpackVersion = webpackPackageJsonPath ? readJsonVersion(webpackPackageJs
 
 /** @type {{ runtimeKey: string, value: string } | null} */
 let cachedWebpackVersionEntry = null;
-/** @type {string | null | undefined} */
-let cachedTerserPluginPath;
+/** @type {{ kind: 'minimizer-webpack-plugin' | 'terser-webpack-plugin', pluginPath: string } | null | undefined} */
+let cachedMinimizerSpec;
 /** @type {Map<string, { webpackRoot: string, cacheVersion: string, cacheDirectory: string, outputDirectory: string, outputFile: string, outputFilePath: string }>} */
 const publicLibCacheInfoMemo = new Map();
 
-// SillyBunny: resolve terser-webpack-plugin from webpack's real package location first so isolated Bun/pnpm stores and nested npm trees work without hoisting.
-export function resolveTerserPluginPath({
+const WEBPACK_MINIMIZER_PACKAGES = /** @type {const} */ ([
+    'minimizer-webpack-plugin',
+    'terser-webpack-plugin',
+]);
+
+// SillyBunny: webpack 5.106+ replaced terser-webpack-plugin with minimizer-webpack-plugin; resolve either from webpack's real package root first.
+export function resolveWebpackMinimizerSpec({
     baseRequire = moduleRequire,
     createRequireFromPath = createRequire,
     realpathSync = fs.realpathSync,
     fallbackWebpackPkgPath = webpackPackageJsonPath,
 } = {}) {
     const candidateAnchors = [];
-
-    try {
-        const resolvedPkg = baseRequire.resolve('webpack/package.json');
-        try {
-            candidateAnchors.push(realpathSync(resolvedPkg));
-        } catch {
-            // Keep the resolved path when realpath fails.
+    const addAnchor = (anchor) => {
+        if (!anchor) {
+            return;
         }
-        if (!candidateAnchors.includes(resolvedPkg)) {
-            candidateAnchors.push(resolvedPkg);
-        }
-    } catch {
-        // Fall through to direct path and root lookup.
-    }
-
-    if (fallbackWebpackPkgPath) {
         try {
-            const realFallback = realpathSync(fallbackWebpackPkgPath);
-            if (!candidateAnchors.includes(realFallback)) {
-                candidateAnchors.push(realFallback);
+            const real = realpathSync(anchor);
+            if (!candidateAnchors.includes(real)) {
+                candidateAnchors.push(real);
             }
         } catch {
-            // Keep the direct path when realpath fails.
+            // Keep the unresolved path when realpath fails.
         }
-        if (!candidateAnchors.includes(fallbackWebpackPkgPath)) {
-            candidateAnchors.push(fallbackWebpackPkgPath);
+        if (!candidateAnchors.includes(anchor)) {
+            candidateAnchors.push(anchor);
         }
-    }
+    };
+
+    addAnchor(resolveWebpackPackageJsonFile(baseRequire));
+    addAnchor(fallbackWebpackPkgPath);
 
     for (const anchorPath of candidateAnchors) {
+        let anchoredRequire;
         try {
-            return createRequireFromPath(anchorPath).resolve('terser-webpack-plugin');
+            anchoredRequire = createRequireFromPath(anchorPath);
         } catch {
-            // Try the next resolution anchor.
+            continue;
+        }
+        for (const pkgName of WEBPACK_MINIMIZER_PACKAGES) {
+            try {
+                return {
+                    kind: pkgName,
+                    pluginPath: anchoredRequire.resolve(pkgName),
+                };
+            } catch {
+                // Try the next package or anchor.
+            }
         }
     }
 
-    try {
-        return baseRequire.resolve('terser-webpack-plugin');
-    } catch {
-        return null;
+    for (const pkgName of WEBPACK_MINIMIZER_PACKAGES) {
+        try {
+            return {
+                kind: pkgName,
+                pluginPath: baseRequire.resolve(pkgName),
+            };
+        } catch {
+            // Try the next package.
+        }
     }
+
+    return null;
+}
+
+export function resolveTerserPluginPath(options = {}) {
+    return resolveWebpackMinimizerSpec(options)?.pluginPath ?? null;
 }
 
 export function buildPublicLibMinimizer({
     env = process.env,
-    resolvePluginPath = () => {
-        if (cachedTerserPluginPath === undefined) {
-            cachedTerserPluginPath = resolveTerserPluginPath();
+    resolveMinimizerSpec = () => {
+        if (cachedMinimizerSpec === undefined) {
+            cachedMinimizerSpec = resolveWebpackMinimizerSpec();
         }
-        return cachedTerserPluginPath;
+        return cachedMinimizerSpec;
     },
+    resolvePluginPath = undefined,
     loadPlugin = (pluginPath) => moduleRequire(pluginPath),
 } = {}) {
-    let pluginPath = null;
+    let spec = null;
     try {
-        pluginPath = resolvePluginPath();
+        if (typeof resolvePluginPath === 'function') {
+            const legacyPath = resolvePluginPath();
+            spec = legacyPath ? { kind: 'terser-webpack-plugin', pluginPath: legacyPath } : null;
+        } else {
+            spec = resolveMinimizerSpec();
+        }
     } catch {
-        pluginPath = null;
+        spec = null;
     }
 
-    if (!pluginPath) {
+    if (!spec?.pluginPath) {
         return ['...'];
     }
 
@@ -131,21 +194,36 @@ export function buildPublicLibMinimizer({
     return [
         {
             apply(compiler) {
-                let TerserPlugin;
+                let MinimizerPlugin;
                 try {
-                    TerserPlugin = loadPlugin(pluginPath);
+                    MinimizerPlugin = loadPlugin(spec.pluginPath);
                 } catch {
                     return;
                 }
-                new TerserPlugin({
-                    // SillyBunny: cap worker fan-out on desktop and run in-process on Android to prevent memory spikes.
-                    parallel,
-                    terserOptions: {
-                        compress: {
-                            passes: 2,
+                // SillyBunny: cap worker fan-out on desktop and run in-process on Android to prevent memory spikes.
+                const pluginOptions = spec.kind === 'minimizer-webpack-plugin'
+                    ? {
+                        parallel,
+                        test: /^[^?#]*\.[cm]?js(?:[?#].*)?$/i,
+                        minify: {
+                            path: spec.pluginPath,
+                            export: 'terserMinify',
                         },
-                    },
-                }).apply(compiler);
+                        minimizerOptions: {
+                            compress: {
+                                passes: 2,
+                            },
+                        },
+                    }
+                    : {
+                        parallel,
+                        terserOptions: {
+                            compress: {
+                                passes: 2,
+                            },
+                        },
+                    };
+                new MinimizerPlugin(pluginOptions).apply(compiler);
             },
         },
     ];
@@ -225,7 +303,7 @@ function getWebpackCacheVersion() {
 
 export function invalidatePublicLibCacheInfo() {
     cachedWebpackVersionEntry = null;
-    cachedTerserPluginPath = undefined;
+    cachedMinimizerSpec = undefined;
     publicLibCacheInfoMemo.clear();
 }
 

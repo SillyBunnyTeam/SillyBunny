@@ -10,6 +10,7 @@ import getPublicLibConfig, {
     getPublicLibCacheInfo,
     invalidatePublicLibCacheInfo,
     resolveTerserPluginPath,
+    resolveWebpackMinimizerSpec,
 } from '../webpack.config.js';
 import getWebpackServeMiddleware from '../src/middleware/webpack-serve.js';
 import {
@@ -91,43 +92,41 @@ describe('lazy webpack configuration and middleware', () => {
         expect(readSpy).not.toHaveBeenCalled();
     });
 
-    test('disables filesystem pack cache and caps Terser parallelism with Android override', () => {
+    test('disables filesystem pack cache and caps Terser parallelism with Android override', async () => {
+        const { default: webpack } = await import('webpack');
+        const entryFile = path.join(tempDir, 'noop-entry.js');
+        fs.writeFileSync(entryFile, 'export const value = 1;\n', 'utf8');
+
         const previousAndroid = process.env.SILLYBUNNY_ANDROID_APP;
         try {
             delete process.env.SILLYBUNNY_ANDROID_APP;
-            const desktopConfig = getPublicLibConfig();
+            const desktopConfig = getPublicLibConfig({ outputPath: path.join(tempDir, 'desktop-out') });
             expect(desktopConfig.cache).toBe(false);
             expect(desktopConfig.optimization.minimize).toBe(true);
             expect(desktopConfig.optimization.minimizer).toHaveLength(1);
+            expect(typeof desktopConfig.optimization.minimizer[0].apply).toBe('function');
 
-            const capturedOptions = [];
-            let appliedPluginInstance = null;
-            const originalTap = desktopConfig.optimization.minimizer[0].apply;
-            expect(typeof originalTap).toBe('function');
+            const desktopCompiler = webpack({ ...desktopConfig, entry: entryFile });
+            await new Promise((resolve, reject) => desktopCompiler.close(err => err ? reject(err) : resolve()));
 
             process.env.SILLYBUNNY_ANDROID_APP = '1';
-            const androidConfig = getPublicLibConfig();
+            const androidConfig = getPublicLibConfig({ outputPath: path.join(tempDir, 'android-out') });
             expect(androidConfig.optimization.minimizer).toHaveLength(1);
+            expect(typeof androidConfig.optimization.minimizer[0].apply).toBe('function');
 
-            const makeMockCompiler = () => ({
-                options: {},
-                hooks: {
-                    compilation: {
-                        tap: (name, fn) => {
-                            appliedPluginInstance = name;
-                            capturedOptions.push(fn);
-                        },
-                    },
-                },
-                webpack: {
-                    javascript: { JavascriptModulesPlugin: { getCompilationHooks: () => ({ chunkHash: { tap: () => {} } }) } },
-                    Compilation: { PROCESS_ASSETS_STAGE_OPTIMIZE_SIZE: 400 },
-                    util: { MinimizerModuleConcatenationPlugin: class {} },
-                },
-            });
-            desktopConfig.optimization.minimizer[0].apply(makeMockCompiler());
-            expect(appliedPluginInstance).toBe('TerserPlugin');
-            expect(capturedOptions).toHaveLength(1);
+            const androidCompiler = webpack({ ...androidConfig, entry: entryFile });
+            await new Promise((resolve, reject) => androidCompiler.close(err => err ? reject(err) : resolve()));
+
+            const seenParallel = [];
+            const captureLoader = () => class CapturingMinimizer {
+                constructor(opts) {
+                    seenParallel.push(opts.parallel);
+                }
+                apply() {}
+            };
+            buildPublicLibMinimizer({ env: {}, loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: { SILLYBUNNY_ANDROID_APP: '1' }, loadPlugin: captureLoader })[0].apply({});
+            expect(seenParallel).toEqual([2, false]);
         } finally {
             if (previousAndroid === undefined) {
                 delete process.env.SILLYBUNNY_ANDROID_APP;
@@ -137,8 +136,46 @@ describe('lazy webpack configuration and middleware', () => {
         }
     });
 
-    test('resolves nested or isolated terser-webpack-plugin from webpack and falls back to default minimizer when absent', async () => {
+    test('resolves webpack 5.112 minimizer-webpack-plugin and webpack 5.105 terser-webpack-plugin across nested and isolated layouts', async () => {
         const { createRequire } = await import('node:module');
+
+        const modernRoot = path.join(tempDir, 'modern-webpack-layout');
+        const modernWebpackDir = path.join(modernRoot, 'node_modules', 'webpack');
+        const modernMinimizerDir = path.join(modernWebpackDir, 'node_modules', 'minimizer-webpack-plugin');
+        fs.mkdirSync(modernMinimizerDir, { recursive: true });
+        fs.writeFileSync(path.join(modernRoot, 'package.json'), JSON.stringify({ name: 'modern-fixture', version: '1.0.0' }), 'utf8');
+        fs.writeFileSync(path.join(modernWebpackDir, 'package.json'), JSON.stringify({
+            name: 'webpack',
+            version: '5.112.2',
+            main: 'index.js',
+            exports: { '.': './index.js' },
+        }), 'utf8');
+        fs.writeFileSync(path.join(modernWebpackDir, 'index.js'), 'module.exports = {};\n', 'utf8');
+        fs.writeFileSync(path.join(modernMinimizerDir, 'package.json'), JSON.stringify({ name: 'minimizer-webpack-plugin', version: '5.14.0', main: 'index.js' }), 'utf8');
+        fs.writeFileSync(path.join(modernMinimizerDir, 'index.js'), 'module.exports = class ModernMinimizerPlugin { constructor(opts) { this.opts = opts; } apply(c) { c.applied = this.opts; } };\n', 'utf8');
+
+        const modernRequire = createRequire(path.join(modernRoot, 'package.json'));
+        const modernSpec = resolveWebpackMinimizerSpec({
+            baseRequire: modernRequire,
+            fallbackWebpackPkgPath: null,
+        });
+        expect(modernSpec?.kind).toBe('minimizer-webpack-plugin');
+        expect(fs.realpathSync.native(modernSpec.pluginPath)).toBe(fs.realpathSync.native(path.join(modernMinimizerDir, 'index.js')));
+
+        const modernMinimizer = buildPublicLibMinimizer({
+            env: {},
+            resolveMinimizerSpec: () => modernSpec,
+        });
+        const modernStubCompiler = {};
+        modernMinimizer[0].apply(modernStubCompiler);
+        expect(modernStubCompiler.applied).toMatchObject({
+            parallel: 2,
+            minify: {
+                path: modernSpec.pluginPath,
+                export: 'terserMinify',
+            },
+            minimizerOptions: { compress: { passes: 2 } },
+        });
 
         const nestedRoot = path.join(tempDir, 'nested-layout');
         const nestedWebpackDir = path.join(nestedRoot, 'node_modules', 'webpack');
