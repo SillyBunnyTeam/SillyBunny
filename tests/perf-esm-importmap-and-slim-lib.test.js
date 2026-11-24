@@ -528,17 +528,31 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         await libVmModule.evaluate();
         const libModule = libVmModule.namespace;
 
-        const expectedExportNames = [
+        const nonNamespaceExportNames = [
             'lodash', 'Fuse', 'DOMPurify', 'hljs', 'localforage', 'Handlebars',
             'css', 'Bowser', 'DiffMatchPatch', 'Readability', 'isProbablyReaderable',
             'SVGInject', 'showdown', 'markdownit', 'markdownItEmoji', 'markdownItCjkFriendly',
-            'moment', 'seedrandom', 'Popper', 'droll', 'morphdom', 'slideToggle',
-            'chalk', 'yaml', 'chevrotain', 'gzipSync', 'gzip', 'sha256',
+            'moment', 'seedrandom', 'droll', 'morphdom', 'slideToggle',
+            'chalk', 'yaml', 'gzipSync', 'gzip', 'sha256',
         ];
+        const namespaceExportNames = ['Popper', 'chevrotain'];
+        const expectSameNamespace = (actual, expected) => {
+            const actualKeys = Object.keys(actual).sort();
+            const expectedKeys = Object.keys(expected).sort();
+            expect(actualKeys.length).toBeGreaterThan(0);
+            expect(actualKeys).toEqual(expectedKeys);
+            for (const key of expectedKeys) {
+                expect(actual[key]).toBe(expected[key]);
+            }
+        };
 
-        for (const name of expectedExportNames) {
+        for (const name of nonNamespaceExportNames) {
             expect(libModule[name]).toBeDefined();
             expect(libModule.default[name]).toBe(libModule[name]);
+        }
+        for (const name of namespaceExportNames) {
+            expect(libModule[name]).toBeDefined();
+            expectSameNamespace(libModule.default[name], libModule[name]);
         }
         expect(typeof libModule.initLibraryShims).toBe('function');
 
@@ -553,7 +567,7 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(mockWindow.SVGInject).toBe(libModule.SVGInject);
         expect(mockWindow.showdown).toBe(libModule.showdown);
         expect(mockWindow.moment).toBe(libModule.moment);
-        expect(mockWindow.Popper).toBe(libModule.Popper);
+        expectSameNamespace(mockWindow.Popper, libModule.Popper);
         expect(mockWindow.droll).toBe(libModule.droll);
 
         // Verify highlight.js uses core + ~31 languages (not 194) and all standard aliases work.
