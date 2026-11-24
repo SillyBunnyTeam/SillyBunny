@@ -36,6 +36,7 @@ import { requireAdminMiddleware } from '../users.js';
 import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
 import { getThumbnailDimensions, getThumbnailMobileDimensions, setThumbnailDimensions, setThumbnailMobileDimensions } from './image-metadata.js';
 import { getThumbnailMobileRuntimeSettings, getThumbnailRuntimeSettings, setThumbnailMobileRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
+import { normalizeCachingDepth, setPromptCachingRuntimeConfig } from '../prompt-caching.js';
 import { requestGracefulExit } from '../shutdown.js';
 import { getServerBootId } from '../server-boot-marker.js';
 import {
@@ -67,6 +68,7 @@ const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
         apiVersion: 'v1beta',
         thoughtSignatures: true,
         enableSystemPromptCache: false,
+        cachingAtDepth: -1,
     }),
 });
 const THUMBNAIL_CONFIG_DEFAULTS = Object.freeze({
@@ -207,22 +209,23 @@ function writeConfigDocument(configPath, document) {
 }
 
 function getChatCompletionConfigState(document) {
-    const claudeNode = document.getIn(['claude']) ?? {};
-    const geminiNode = document.getIn(['gemini']) ?? {};
+    const getConfig = (pathParts, fallback) => document.getIn(pathParts) ?? fallback;
 
-    const cachingAtDepth = Number.parseInt(String(claudeNode?.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+    const cachingAtDepth = normalizeCachingDepth(getConfig(['claude', 'cachingAtDepth'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth));
+    const geminiCachingAtDepth = normalizeCachingDepth(getConfig(['gemini', 'cachingAtDepth'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.cachingAtDepth));
 
     return {
         claude: {
-            enableSystemPromptCache: Boolean(claudeNode?.enableSystemPromptCache ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableSystemPromptCache),
-            cachingAtDepth: Number.isFinite(cachingAtDepth) ? cachingAtDepth : CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth,
-            extendedTTL: Boolean(claudeNode?.extendedTTL ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.extendedTTL),
-            enableAdaptiveThinking: Boolean(claudeNode?.enableAdaptiveThinking ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking),
+            enableSystemPromptCache: Boolean(getConfig(['claude', 'enableSystemPromptCache'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableSystemPromptCache)),
+            cachingAtDepth,
+            extendedTTL: Boolean(getConfig(['claude', 'extendedTTL'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.extendedTTL)),
+            enableAdaptiveThinking: Boolean(getConfig(['claude', 'enableAdaptiveThinking'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking)),
         },
         gemini: {
-            apiVersion: toTrimmedString(geminiNode?.apiVersion || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
-            thoughtSignatures: Boolean(geminiNode?.thoughtSignatures ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures),
-            enableSystemPromptCache: Boolean(geminiNode?.enableSystemPromptCache ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache),
+            apiVersion: toTrimmedString(getConfig(['gemini', 'apiVersion'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion)) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
+            thoughtSignatures: Boolean(getConfig(['gemini', 'thoughtSignatures'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures)),
+            enableSystemPromptCache: Boolean(getConfig(['gemini', 'enableSystemPromptCache'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache)),
+            cachingAtDepth: geminiCachingAtDepth,
         },
     };
 }
@@ -342,13 +345,14 @@ function clearThumbnailCacheForUser(directories) {
     };
 }
 
-function normalizeChatCompletionConfigInput(settings) {
-    const cachingAtDepth = Number.parseInt(String(settings?.claude?.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+function normalizeChatCompletionConfigInput(settings, existingSettings = CHAT_COMPLETION_CONFIG_DEFAULTS) {
+    const cachingAtDepth = normalizeCachingDepth(settings?.claude?.cachingAtDepth ?? existingSettings?.claude?.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth);
+    const geminiCachingAtDepth = normalizeCachingDepth(settings?.gemini?.cachingAtDepth ?? existingSettings?.gemini?.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.cachingAtDepth);
 
     return {
         claude: {
             enableSystemPromptCache: Boolean(settings?.claude?.enableSystemPromptCache),
-            cachingAtDepth: Number.isFinite(cachingAtDepth) ? cachingAtDepth : CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth,
+            cachingAtDepth,
             extendedTTL: Boolean(settings?.claude?.extendedTTL),
             enableAdaptiveThinking: Boolean(settings?.claude?.enableAdaptiveThinking ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking),
         },
@@ -356,6 +360,7 @@ function normalizeChatCompletionConfigInput(settings) {
             apiVersion: toTrimmedString(settings?.gemini?.apiVersion || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
             thoughtSignatures: Boolean(settings?.gemini?.thoughtSignatures ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures),
             enableSystemPromptCache: Boolean(settings?.gemini?.enableSystemPromptCache),
+            cachingAtDepth: geminiCachingAtDepth,
         },
     };
 }
@@ -368,6 +373,7 @@ function applyChatCompletionConfigState(document, settings) {
     document.setIn(['gemini', 'apiVersion'], settings.gemini.apiVersion);
     document.setIn(['gemini', 'thoughtSignatures'], settings.gemini.thoughtSignatures);
     document.setIn(['gemini', 'enableSystemPromptCache'], settings.gemini.enableSystemPromptCache);
+    document.setIn(['gemini', 'cachingAtDepth'], settings.gemini.cachingAtDepth);
 }
 
 function getServerPluginUpdatePayload(stagedUpdate) {
@@ -775,6 +781,7 @@ router.post('/config/save', requireAdminMiddleware, async (request, response) =>
         const nextContent = content.endsWith('\n') ? content : `${content}\n`;
         tryWriteFileSync(configPath, nextContent);
         const nextStat = fs.statSync(configPath);
+        setPromptCachingRuntimeConfig(getChatCompletionConfigState(parsed));
 
         if (restart) {
             scheduleRestart(response);
@@ -819,14 +826,16 @@ router.post('/config/chat-completions/save', requireAdminMiddleware, async (requ
     try {
         const restart = Boolean(request.body?.restart);
         const expectedLastModifiedMs = Number(request.body?.expectedLastModifiedMs);
-        const normalizedSettings = normalizeChatCompletionConfigInput(request.body?.settings);
         const { configPath, stat, document } = readConfigDocument();
+        const existingSettings = getChatCompletionConfigState(document);
+        const normalizedSettings = normalizeChatCompletionConfigInput(request.body?.settings, existingSettings);
 
         ensureExpectedConfigMtime(stat, expectedLastModifiedMs);
         applyChatCompletionConfigState(document, normalizedSettings);
 
         const nextStat = writeConfigDocument(configPath, document);
         const nextSettings = getChatCompletionConfigState(document);
+        setPromptCachingRuntimeConfig(nextSettings);
 
         if (restart) {
             scheduleRestart(response);

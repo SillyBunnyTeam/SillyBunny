@@ -5417,6 +5417,35 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-height: 0;
 }
 
+/* SillyBunny: the Server Config drawer sits inside the Request Options preference group, so its
+   provider sections stack in one full-width column without nested card chrome, and adopted text
+   fields keep .ds-row's horizontal flow instead of style.css's column flex direction. */
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-chat-completion-server-config .sb-chat-completion-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-chat-completion-config-section {
+    gap: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-chat-completion-config-header,
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-chat-completion-config-actions {
+    padding-inline: var(--sb-density-row-padding-inline);
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-chat-completion-config-title {
+    padding: 12px var(--sb-density-row-padding-inline) 6px;
+}
+
+.sb-chat-completion-config-field.ds-row {
+    flex-direction: row;
+}
+
 /* SillyBunny: Formatting groups use the same heading + one preference-pill anatomy as Presets.
    Without it the Advanced Formatting card wraps each body in a second tinted box with its own shadow,
    so fields look nested and heavier than every other settings group. */

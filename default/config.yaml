@@ -438,6 +438,8 @@ gemini:
   # (e.g {{random}} macro or lorebooks not as in-chat injections).
   # Otherwise, you'll just waste money on cache misses.
   enableSystemPromptCache: false
+  # SillyBunny: optional depth-based cache_control breakpoint for Gemini models on OpenRouter (-1 disables).
+  cachingAtDepth: -1
   # https://ai.google.dev/gemini-api/docs/imagen#imagen-configuration
   image:
     # Leave empty to use the API-default value.

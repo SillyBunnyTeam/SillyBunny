@@ -3,6 +3,12 @@ import crypto from 'node:crypto';
 // chat-completions backend can normalize incoming values against the same source of truth.
 import { REASONING_EFFORT, toWireReasoningEffort } from './reasoning-effort.js';
 import { getConfigValue, tryParse } from './util.js';
+// SillyBunny: hardened prompt cache marker placement lives in its own module.
+import {
+    applyDepthCacheBreakpoints,
+    applySystemPromptCacheForOpenRouter,
+    MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+} from './prompt-caching.js';
 
 const PROMPT_PLACEHOLDER = getConfigValue('promptPlaceholder', 'Let\'s get started.');
 
@@ -1028,31 +1034,11 @@ export function convertTextCompletionPrompt(messages) {
  * @param {string} ttl TTL value
  */
 export function cachingAtDepthForClaude(messages, cachingAtDepth, ttl) {
-    let passedThePrefill = false;
-    let depth = 0;
-    let previousRoleName = '';
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (!passedThePrefill && messages[i].role === 'assistant') {
-            continue;
-        }
-
-        passedThePrefill = true;
-
-        if (messages[i].role !== previousRoleName) {
-            if (depth === cachingAtDepth || depth === cachingAtDepth + 2) {
-                const content = messages[i].content;
-                content[content.length - 1].cache_control = { type: 'ephemeral', ttl: ttl };
-            }
-
-            if (depth === cachingAtDepth + 2) {
-                break;
-            }
-
-            depth += 1;
-            previousRoleName = messages[i].role;
-        }
-    }
+    // SillyBunny: skip empty or thinking blocks and keep breakpoints within Anthropic's limit.
+    applyDepthCacheBreakpoints(messages, cachingAtDepth, ttl, {
+        openRouterStyle: false,
+        maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+    });
 }
 
 /**
@@ -1063,49 +1049,11 @@ export function cachingAtDepthForClaude(messages, cachingAtDepth, ttl) {
  * @param {string} ttl TTL value
  */
 export function cachingAtDepthForOpenRouterClaude(messages, cachingAtDepth, ttl) {
-    //caching the prefill is a terrible idea in general
-    let passedThePrefill = false;
-    //depth here is the number of message role switches
-    let depth = 0;
-    let previousRoleName = '';
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (!passedThePrefill && messages[i].role === 'assistant') {
-            continue;
-        }
-
-        passedThePrefill = true;
-
-        // Skip system messages so they don't affect depth counting or receive cache breakpoints
-        if (messages[i].role === 'system') {
-            continue;
-        }
-
-        if (messages[i].role !== previousRoleName) {
-            if (depth === cachingAtDepth || depth === cachingAtDepth + 2) {
-                const content = messages[i].content;
-                if (typeof content === 'string') {
-                    messages[i].content = [{
-                        type: 'text',
-                        text: content,
-                        cache_control: { type: 'ephemeral', ttl: ttl },
-                    }];
-                } else if (content?.length > 0) {
-                    const contentPartCount = content.length;
-                    content[contentPartCount - 1].cache_control = {
-                        type: 'ephemeral',
-                        ttl: ttl,
-                    };
-                }
-            }
-
-            if (depth === cachingAtDepth + 2) {
-                break;
-            }
-
-            depth += 1;
-            previousRoleName = messages[i].role;
-        }
-    }
+    // SillyBunny: skip empty, non-text, developer, and system blocks when placing OpenRouter depth markers.
+    applyDepthCacheBreakpoints(messages, cachingAtDepth, ttl, {
+        openRouterStyle: true,
+        maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+    });
 }
 
 /**
@@ -1115,46 +1063,8 @@ export function cachingAtDepthForOpenRouterClaude(messages, cachingAtDepth, ttl)
  * @param {string} [ttl] TTL value (optional)
  */
 export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
-    if (!Array.isArray(messages) || messages.length === 0) {
-        return;
-    }
-
-    // Find the first system message
-    const systemMessage = messages.find(msg => msg.role === 'system');
-    if (!systemMessage) {
-        return;
-    }
-
-    // Check if it already has cache_control (at message level)
-    if (systemMessage.cache_control) {
-        return;
-    }
-
-    const cacheControl = ttl
-        ? { type: 'ephemeral', ttl }
-        : { type: 'ephemeral' };
-
-    if (Array.isArray(systemMessage.content)) {
-        const hasExistingCacheControl = systemMessage.content.some(part => part?.cache_control);
-        if (hasExistingCacheControl) {
-            return;
-        }
-
-        for (let i = systemMessage.content.length - 1; i >= 0; i--) {
-            if (systemMessage.content[i]?.type === 'text') {
-                systemMessage.content[i].cache_control = cacheControl;
-                return;
-            }
-        }
-    } else if (typeof systemMessage.content === 'string') {
-        systemMessage.content = [
-            {
-                type: 'text',
-                text: systemMessage.content,
-                cache_control: cacheControl,
-            },
-        ];
-    }
+    // SillyBunny: mark the last non-empty leading system/developer message instead of only messages[0].
+    applySystemPromptCacheForOpenRouter(messages, ttl);
 }
 
 /**

@@ -192,6 +192,7 @@ const SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
         apiVersion: 'v1beta',
         thoughtSignatures: true,
         enableSystemPromptCache: false,
+        cachingAtDepth: -1,
     }),
 });
 const OPENAI_SETTINGS_DRAWER_STATE_KEY_PREFIX = 'OpenAIDrawerState:';
@@ -4067,6 +4068,7 @@ function cloneServerChatCompletionConfig(settings) {
 
 function normalizeServerChatCompletionConfig(settings) {
     const normalizedClaudeCachingDepth = Number.parseInt(String(settings?.claude?.cachingAtDepth ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+    const normalizedGeminiCachingDepth = Number.parseInt(String(settings?.gemini?.cachingAtDepth ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.cachingAtDepth), 10);
 
     return {
         claude: {
@@ -4079,6 +4081,7 @@ function normalizeServerChatCompletionConfig(settings) {
             apiVersion: String(settings?.gemini?.apiVersion || SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion).trim() || SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
             thoughtSignatures: Boolean(settings?.gemini?.thoughtSignatures ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures),
             enableSystemPromptCache: Boolean(settings?.gemini?.enableSystemPromptCache ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache),
+            cachingAtDepth: Number.isFinite(normalizedGeminiCachingDepth) ? normalizedGeminiCachingDepth : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.cachingAtDepth,
         },
     };
 }
@@ -4098,6 +4101,7 @@ function getServerChatCompletionConfigRefs() {
         geminiApiVersion: document.getElementById('sb-config-gemini-api-version'),
         geminiThoughtSignatures: document.getElementById('sb-config-gemini-thought-signatures'),
         geminiSystemPromptCache: document.getElementById('sb-config-gemini-system-prompt-cache'),
+        geminiCachingDepth: document.getElementById('sb-config-gemini-caching-depth'),
     };
 }
 
@@ -4149,6 +4153,7 @@ function collectServerChatCompletionConfigForm() {
             apiVersion: refs.geminiApiVersion instanceof HTMLInputElement ? refs.geminiApiVersion.value : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
             thoughtSignatures: refs.geminiThoughtSignatures instanceof HTMLInputElement ? refs.geminiThoughtSignatures.checked : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures,
             enableSystemPromptCache: refs.geminiSystemPromptCache instanceof HTMLInputElement ? refs.geminiSystemPromptCache.checked : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache,
+            cachingAtDepth: refs.geminiCachingDepth instanceof HTMLInputElement ? refs.geminiCachingDepth.value : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.cachingAtDepth,
         },
     });
 }
@@ -4185,6 +4190,10 @@ function fillServerChatCompletionConfigForm(settings) {
         refs.geminiSystemPromptCache.checked = normalizedSettings.gemini.enableSystemPromptCache;
     }
 
+    if (refs.geminiCachingDepth instanceof HTMLInputElement) {
+        refs.geminiCachingDepth.value = String(normalizedSettings.gemini.cachingAtDepth);
+    }
+
     serverChatCompletionConfigState.originalSettings = cloneServerChatCompletionConfig(normalizedSettings);
     updateServerChatCompletionConfigDirtyState();
 }
@@ -4214,6 +4223,7 @@ function updateServerChatCompletionConfigInteractivity() {
         refs.geminiApiVersion,
         refs.geminiThoughtSignatures,
         refs.geminiSystemPromptCache,
+        refs.geminiCachingDepth,
         refs.reloadButton,
         refs.saveButton,
         refs.saveRestartButton,
@@ -4344,8 +4354,9 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
         `
         : '<div class="range-block-title">Server Config (config.yaml)</div>';
 
+    // SillyBunny: expose Claude and Gemini cache flags on router/proxy sources that consume them (OpenRouter, NanoGPT, ElectronHub, LinkAPI, Interactions).
     return $(`
-        <div id="sb-chat-completion-server-config" class="range-block sb-chat-completion-server-config${nested ? ' is-nested' : ''}" data-source="claude,makersuite,vertexai">
+        <div id="sb-chat-completion-server-config" class="range-block sb-chat-completion-server-config${nested ? ' is-nested' : ''}" data-source="claude,openrouter,makersuite,vertexai,gemini_interactions,nanogpt,electronhub,linkapi">
             <div class="sb-chat-completion-config-header">
                 ${headerLead}
                 <span id="sb-chat-completion-config-state" class="sb-chat-completion-config-state">Loading…</span>
@@ -4354,7 +4365,7 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                 Mirror the Claude and Gemini <code>config.yaml</code> flags here so you can tweak them from Presets. These are server-side settings, so a restart is required after saving.
             </div>
             <div class="sb-chat-completion-config-grid">
-                <section class="sb-chat-completion-config-section" data-source="claude">
+                <section class="sb-chat-completion-config-section" data-source="claude,openrouter,nanogpt,electronhub,linkapi">
                     <strong class="sb-chat-completion-config-title">Claude</strong>
                     <label class="checkbox_label widthFreeExpand" for="sb-config-claude-system-prompt-cache">
                         <input id="sb-config-claude-system-prompt-cache" type="checkbox">
@@ -4380,7 +4391,7 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                         Use <code>-1</code> to disable depth-based cache insertion.
                     </div>
                 </section>
-                <section class="sb-chat-completion-config-section" data-source="makersuite,vertexai">
+                <section class="sb-chat-completion-config-section" data-source="makersuite,vertexai,gemini_interactions,openrouter,linkapi">
                     <strong class="sb-chat-completion-config-title">Gemini</strong>
                     <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version">
                         <span>API Version</span>
@@ -4396,6 +4407,11 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                         <input id="sb-config-gemini-system-prompt-cache" type="checkbox">
                         <span>System prompt cache</span>
                         <small class="ds-row-subtitle" data-i18n="Let supported Gemini models cache system instructions through OpenRouter.">Let supported Gemini models cache system instructions through OpenRouter.</small>
+                    </label>
+                    <label class="sb-chat-completion-config-field" for="sb-config-gemini-caching-depth">
+                        <span>Caching at Depth</span>
+                        <small class="ds-row-subtitle" data-i18n="Higher values place cache markers earlier in the chat. Set to -1 to disable.">Higher values place cache markers earlier in the chat. Set to -1 to disable.</small>
+                        <input id="sb-config-gemini-caching-depth" class="text_pole" type="number" step="1" min="-1">
                     </label>
                 </section>
             </div>
@@ -4426,7 +4442,7 @@ function buildServerChatCompletionConfigDrawer() {
     );
 
     $drawer
-        .attr('data-source', 'claude,makersuite,vertexai')
+        .attr('data-source', 'claude,openrouter,makersuite,vertexai,gemini_interactions,nanogpt,electronhub,linkapi')
         .addClass('sb-settings-subdrawer sb-openai-settings-subdrawer');
 
     $drawer.children('.inline-drawer-content')
@@ -4471,6 +4487,7 @@ function injectServerChatCompletionConfigCard() {
         'sb-config-gemini-api-version',
         'sb-config-gemini-thought-signatures',
         'sb-config-gemini-system-prompt-cache',
+        'sb-config-gemini-caching-depth',
     ].forEach(id => {
         document.getElementById(id)?.addEventListener('input', () => {
             updateServerChatCompletionConfigDirtyState();
@@ -5762,7 +5779,13 @@ export async function createGenerationParameters(settings, model, type, messages
         generate_data.middleout = settings.openrouter_middleout;
     }
 
-    if (settings.chat_completion_source === chat_completion_sources.FIREWORKS && type !== 'quiet') {
+    // SillyBunny: forward chat_id on main turns so the backend can derive opaque session cache routing keys.
+    if ([
+        chat_completion_sources.FIREWORKS,
+        chat_completion_sources.OPENROUTER,
+        chat_completion_sources.OPENAI,
+        chat_completion_sources.OPENAI_RESPONSES,
+    ].includes(settings.chat_completion_source) && type !== 'quiet' && generate_data.cacheScope !== 'auxiliary') {
         generate_data.chat_id = getCurrentChatId();
     }
 

@@ -51,8 +51,6 @@ import {
     convertMistralMessages,
     convertAI21Messages,
     convertXAIMessages,
-    cachingAtDepthForOpenRouterClaude,
-    cachingAtDepthForClaude,
     getPromptNames,
     calculateClaudeBudgetTokens,
     calculateGoogleBudgetTokens,
@@ -62,9 +60,17 @@ import {
     seedKimiK3PartialReasoning,
     embedOpenRouterMedia,
     addReasoningContentToToolCalls,
-    cachingSystemPromptForOpenRouter,
     addOpenRouterSignatures,
 } from '../../prompt-converters.js';
+// SillyBunny: hardened prompt cache marker placement, sticky session keys, and OpenRouter cache capability caching live in their own module.
+import {
+    applyClaudeRequestCaching,
+    applyElectronHubRequestCaching,
+    applyNanoGptRequestCaching,
+    applyOpenAiSessionCacheKey,
+    applyOpenRouterRequestCaching,
+    isOpenRouterGeminiModel,
+} from '../../prompt-caching.js';
 import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
 import { isBunRuntime } from '../../runtime.js';
 import {
@@ -127,15 +133,7 @@ const API_MINIMAX_CN = 'https://api.minimaxi.com/v1';
 const API_WORKERS_AI = 'https://api.cloudflare.com/client/v4/accounts';
 const API_OPENROUTER = 'https://openrouter.ai/api/v1';
 
-/**
- * Module-scoped Claude caching configuration values.
- */
-const cacheTTL = getConfigValue('claude.extendedTTL', false, 'boolean') ? '1h' : '5m';
-const enableSystemPromptCache = getConfigValue('claude.enableSystemPromptCache', false, 'boolean');
-const cachingAtDepth = (() => {
-    const value = getConfigValue('claude.cachingAtDepth', -1, 'number');
-    return Number.isInteger(value) && value >= 0 ? value : -1;
-})();
+// SillyBunny: prompt caching flags and OpenRouter cache capability lookup are read dynamically in src/prompt-caching.js.
 const enableAdaptiveThinking = getConfigValue('claude.enableAdaptiveThinking', true, 'boolean');
 
 /**
@@ -148,57 +146,6 @@ function getAffinityKey() {
         affinityKey = getCookieSecret(globalThis.DATA_ROOT);
     }
     return affinityKey;
-}
-
-/**
- * Cache for cacheable (writing) OpenRouter model IDs.
- * @type {string[]}
- */
-const openRouterCacheableModels = [];
-
-/**
- * Checks if an OpenRouter model supports prompt cache writing.
- * Uses a cache to avoid repeated API calls.
- * @param {string} modelId - The OpenRouter model ID
- * @returns {Promise<boolean>} `true` if the model supports writing cache
- */
-async function isOpenRouterModelCacheable(modelId) {
-    if (openRouterCacheableModels.includes(modelId)) {
-        return true;
-    }
-
-    try {
-        const response = await fetch(`${API_OPENROUTER}/models`, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(5000),
-        });
-
-        if (!response.ok) {
-            console.warn(`OpenRouter models API returned ${response.status}: ${response.statusText}`);
-            return false;
-        }
-
-        /** @type {any} */
-        const data = await response.json();
-
-        if (!Array.isArray(data?.data)) {
-            console.warn('OpenRouter API response format unexpected');
-            return false;
-        }
-
-        const model = data.data.find(m => m.id === modelId);
-        const supportsCache = model?.pricing?.input_cache_write != null;
-
-        if (supportsCache) {
-            openRouterCacheableModels.push(modelId);
-        }
-
-        return supportsCache;
-    } catch (error) {
-        console.warn(`Failed to check OpenRouter cache support for ${modelId}:`, error.message);
-        return false;
-    }
 }
 
 /**
@@ -429,25 +376,19 @@ async function sendClaudeRequest(request, response) {
             stream: request.body.stream,
         };
         if (useSystemPrompt) {
-            if (enableSystemPromptCache && Array.isArray(convertedPrompt.systemPrompt) && convertedPrompt.systemPrompt.length) {
-                convertedPrompt.systemPrompt[convertedPrompt.systemPrompt.length - 1].cache_control = { type: 'ephemeral', ttl: cacheTTL };
-            }
-
             requestBody.system = convertedPrompt.systemPrompt;
         } else {
             delete requestBody.system;
         }
+        let claudeFunctionTools;
         if (useTools) {
             betaHeaders.push('tools-2024-05-16');
             requestBody.tool_choice = { type: request.body.tool_choice };
-            requestBody.tools = request.body.tools
+            claudeFunctionTools = request.body.tools
                 .filter(tool => tool.type === 'function')
                 .map(tool => tool.function)
                 .map(fn => ({ name: fn.name, description: fn.description, input_schema: flattenSchema(fn.parameters, request.body.chat_completion_source) }));
-
-            if (enableSystemPromptCache && requestBody.tools.length) {
-                requestBody.tools[requestBody.tools.length - 1].cache_control = { type: 'ephemeral', ttl: cacheTTL };
-            }
+            requestBody.tools = claudeFunctionTools;
         }
 
         // Fable 5.1 and Opus 5.5 reject forced tools, but support native JSON outputs.
@@ -478,14 +419,14 @@ async function sendClaudeRequest(request, response) {
             requestBody.tools = [...webSearchTool, ...(requestBody.tools || [])];
         }
 
-        if (cachingAtDepth !== -1) {
-            cachingAtDepthForClaude(convertedPrompt.messages, cachingAtDepth, cacheTTL);
-        }
-
-        if (enableSystemPromptCache || cachingAtDepth !== -1) {
-            betaHeaders.push('prompt-caching-2024-07-31');
-            betaHeaders.push('extended-cache-ttl-2025-04-11');
-        }
+        // SillyBunny: apply system, tool, and depth breakpoints within Anthropic's 4-breakpoint limit and live config.
+        applyClaudeRequestCaching({
+            systemPrompt: convertedPrompt.systemPrompt,
+            tools: claudeFunctionTools,
+            messages: convertedPrompt.messages,
+            useSystemPrompt,
+            betaHeaders,
+        });
 
         if (isLimitedSampling) {
             if (requestBody.top_p < 1) {
@@ -1624,17 +1565,11 @@ async function sendElectronHubRequest(request, response) {
             };
         }
 
-        const isClaude = /^claude-/.test(request.body.model);
-
-        if (Array.isArray(request.body.messages) && isClaude) {
-            if (enableSystemPromptCache) {
-                cachingSystemPromptForOpenRouter(request.body.messages, cacheTTL);
-            }
-
-            if (cachingAtDepth !== -1) {
-                cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth, cacheTTL);
-            }
-        }
+        // SillyBunny: apply Claude system prompt and depth cache markers with live config and safe block selection.
+        applyElectronHubRequestCaching({
+            messages: request.body.messages,
+            model: request.body.model,
+        });
 
         const requestBody = {
             'messages': request.body.messages,
@@ -2014,7 +1949,7 @@ router.post('/status', async function (request, statusResponse) {
                 return statusResponse.send({ error: true, bypass: true, data: [] });
             }
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
-            apiUrl = 'https://openrouter.ai/api/v1';
+            apiUrl = API_OPENROUTER;
             apiKey = readSecret(request.user.directories, SECRET_KEYS.OPENROUTER, request.body.secret_id);
             // OpenRouter needs to pass the Referer and X-Title: https://openrouter.ai/docs#requests
             headers = { ...OPENROUTER_HEADERS };
@@ -2886,6 +2821,13 @@ async function sendOpenAIResponsesRequest(request, response) {
             store: false,
         };
 
+        // SillyBunny: attach an opaque prompt_cache_key for direct OpenAI Responses requests to improve cache routing.
+        applyOpenAiSessionCacheKey({
+            requestBody: request.body,
+            targetBody: requestBody,
+            affinityKey: getAffinityKey,
+        });
+
         if (request.body.reasoning_effort) {
             requestBody.reasoning = {
                 effort: toWireReasoningEffort(request.body.reasoning_effort),
@@ -3615,9 +3557,16 @@ export async function handleChatCompletionsGenerate(request, response) {
                 bodyParams['user'] = uuidv4();
             }
 
+            // SillyBunny: attach an opaque prompt_cache_key for direct OpenAI requests to improve cache routing.
+            applyOpenAiSessionCacheKey({
+                requestBody: request.body,
+                targetBody: bodyParams,
+                affinityKey: getAffinityKey,
+            });
+
             embedOpenRouterMedia(request.body.messages, { audio: true, video: false });
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
-            apiUrl = 'https://openrouter.ai/api/v1';
+            apiUrl = API_OPENROUTER;
             apiKey = readSecret(request.user.directories, SECRET_KEYS.OPENROUTER, request.body.secret_id);
             // OpenRouter needs to pass the Referer and X-Title: https://openrouter.ai/docs#requests
             headers = { ...OPENROUTER_HEADERS };
@@ -3683,29 +3632,19 @@ export async function handleChatCompletionsGenerate(request, response) {
                 };
             }
 
-            const isClaude = /^anthropic\/claude/.test(request.body.model);
-            const isGemini = /google\/gemini/.test(request.body.model);
-            const isCacheableGemini = isGemini && await isOpenRouterModelCacheable(request.body.model);
-            const enableGeminiSystemPromptCache = getConfigValue('gemini.enableSystemPromptCache', false, 'boolean');
+            const isGemini = isOpenRouterGeminiModel(request.body.model);
 
             if (Array.isArray(request.body.messages)) {
                 embedOpenRouterMedia(request.body.messages, { audio: true, video: true });
                 addOpenRouterSignatures(request.body.messages, request.body.model);
-
-                if (isClaude) {
-                    if (enableSystemPromptCache) {
-                        cachingSystemPromptForOpenRouter(request.body.messages, cacheTTL);
-                    }
-
-                    if (cachingAtDepth !== -1) {
-                        cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth, cacheTTL);
-                    }
-                }
-
-                if (isCacheableGemini && enableGeminiSystemPromptCache) {
-                    cachingSystemPromptForOpenRouter(request.body.messages);
-                }
             }
+
+            // SillyBunny: attach opaque sticky session_id and robust Claude/Gemini cache breakpoints.
+            await applyOpenRouterRequestCaching({
+                requestBody: request.body,
+                bodyParams,
+                affinityKey: getAffinityKey,
+            });
 
             if (isGemini) {
                 bodyParams['safety_settings'] = GEMINI_SAFETY;
@@ -3846,13 +3785,12 @@ export async function handleChatCompletionsGenerate(request, response) {
                 bodyParams['reasoning'] = { effort: toWireReasoningEffort(request.body.reasoning_effort) };
             }
 
-            const isClaude = /(?:^|\/)claude[-_]/.test(request.body.model);
-            if (enableSystemPromptCache && isClaude) {
-                bodyParams['cache_control'] = {
-                    'enabled': true,
-                    'ttl': cacheTTL,
-                };
-            }
+            // SillyBunny: apply Claude system prompt and depth cache markers on NanoGPT.
+            applyNanoGptRequestCaching({
+                messages: request.body.messages,
+                bodyParams,
+                model: request.body.model,
+            });
         } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS) {
             const isAnonymous = request.body.pollinations_endpoint === POLLINATIONS_ENDPOINT.ANONYMOUS;
             apiUrl = isAnonymous ? API_POLLINATIONS_ANON : API_POLLINATIONS;
