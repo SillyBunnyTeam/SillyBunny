@@ -1,0 +1,1132 @@
+/**
+ * The conversations of one user, as the browser holds them: a cache of the list, the chats that are loaded, and the
+ * queues that write both back to `/api/sillybunny-conversation/`.
+ *
+ * Readers get the cache synchronously. A chat is loaded once, when it is opened (`loadChat`), and stays until the
+ * cache needs room. Writers change the cache first and the server after: `patchConversation` merges what changes
+ * often into one request, and `commitChat` saves the whole chat at once, one request at a time per chat. The module
+ * imports nothing from the page; everything it needs from the browser comes in through the adapter, so that tests
+ * run it on a fake clock and the real routes.
+ *
+ * @typedef {{ conversationId: string, chatId: string }} ChatAddress
+ * @typedef {{ address: ChatAddress, header: Record<string, any>, messages: Record<string, any>[] }} LoadedChat
+ * @typedef {object} DataAdapter
+ * @property {(path: string, body: object, options?: { keepalive?: boolean }) => Promise<{ status: number, json: any }>} fetchJson
+ * POST to a route under `/api/sillybunny-conversation`. Resolves for every HTTP status; rejects for a network failure.
+ * @property {() => number} now
+ * @property {(callback: () => void, delay: number) => any} setTimer
+ * @property {(handle: any) => void} clearTimer
+ * @property {() => string} random Six characters of `[a-z0-9]` for a new chat id.
+ * @property {() => boolean} isSettingsStale Whether the settings that the page loaded still hold the old store.
+ * @property {() => void} reloadPage Reloads the page, at most once for this cause.
+ */
+
+import { rebaseChat, describeSyncedMessages } from './conversation-data-merge.js';
+import { createSerialQueue } from './conversation-data-queue.js';
+import { summarizeChat } from './conversation-summary.js';
+
+export const CHAT_STATE_FIELDS = Object.freeze(['readThrough', 'lastActivity', 'followupCount', 'lastAutoMessageAt', 'sessionMarkers']);
+const SUMMARY_FIELDS = Object.freeze(['messageCount', 'lastMessageAt', 'preview', 'unread', 'lastMessageRole', 'hasUserMessage']);
+const EMPTY_SUMMARY = Object.freeze({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0, lastMessageRole: '', hasUserMessage: false });
+
+export const FREQUENT_DELAY_MS = 400;
+export const FREQUENT_MAX_WAIT_MS = 3000;
+export const RETRY_DELAYS_MS = Object.freeze([2000, 5000, 15000]);
+export const MAX_LOADED_CHATS = 8;
+const MIGRATION_RETRY_FALLBACK_MS = 60_000;
+
+export class ChatNotLoadedError extends Error {
+    constructor(address) {
+        super(`The chat ${address?.conversationId}/${address?.chatId} is not loaded.`);
+        this.name = 'ChatNotLoadedError';
+        this.address = address;
+    }
+}
+
+/** `code` is the error code of the route (`not_found`, `integrity`, `destructive`, `migration_failed`...), or `network`. */
+export class ConversationDataError extends Error {
+    constructor(code, message, { status = 0, details = null } = {}) {
+        super(message || code);
+        this.name = 'ConversationDataError';
+        this.code = code;
+        this.status = status;
+        this.details = details;
+    }
+}
+
+const keyOf = address => `${address.conversationId}/${address.chatId}`;
+
+function isObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function replaceContents(target, source) {
+    for (const key of Object.keys(target)) {
+        if (!Object.hasOwn(source, key)) {
+            delete target[key];
+        }
+    }
+    Object.assign(target, source);
+    return target;
+}
+
+function pickSummary(entry) {
+    return Object.fromEntries(SUMMARY_FIELDS.map(field => [field, entry?.[field] ?? EMPTY_SUMMARY[field]]));
+}
+
+function blankHeader() {
+    return { chat_metadata: {}, user_name: 'unused', character_name: 'unused' };
+}
+
+/**
+ * Merges a newer patch into an older one that was not sent yet. A scalar or an array of the newer patch replaces; the
+ * settings and the chat states merge field by field.
+ */
+export function mergePatches(older, newer) {
+    const merged = { ...older };
+    for (const [key, value] of Object.entries(newer)) {
+        if (key === 'settings' && isObject(value)) {
+            merged.settings = { ...older.settings, ...value };
+        } else if (key === 'chats' && isObject(value)) {
+            merged.chats = { ...older.chats };
+            for (const [chatId, state] of Object.entries(value)) {
+                merged.chats[chatId] = { ...merged.chats[chatId], ...state };
+            }
+        } else {
+            merged[key] = value;
+        }
+    }
+    return merged;
+}
+
+function isFrequentOnly(patch) {
+    return Object.keys(patch).every(key => key === 'chats')
+        && Object.values(patch.chats ?? {}).every(state => Object.keys(state).every(field => CHAT_STATE_FIELDS.includes(field)));
+}
+
+/**
+ * @param {DataAdapter} adapter
+ */
+export function createConversationData(adapter) {
+    /** @type {Map<string, Record<string, any>>} */
+    const views = new Map();
+    /** @type {Map<string, any>} */
+    const sessions = new Map();
+    /** @type {Map<string, { patch: object, firstAt: number, timer: any }>} */
+    const pendingPatches = new Map();
+    /** @type {Map<string, ReturnType<typeof createSerialQueue>>} */
+    const conversationQueues = new Map();
+    const characterQueue = createSerialQueue();
+    /** @type {Map<string, { patch: object, scheduled: boolean }>} */
+    const pendingCharacters = new Map();
+    let characterState = { version: 1, characters: {} };
+    const listeners = new Set();
+    const queuedEvents = new Map();
+    let eventScheduled = false;
+    let status = { state: 'idle', code: '', retryAt: 0 };
+    let startPromise = null;
+    let readyPromise = null;
+    let resolveReady = null;
+    let retryTimer = null;
+    let openKey = '';
+    let useCounter = 0;
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Events
+
+    function emit(type, detail = {}) {
+        queuedEvents.set(type === 'error' || type === 'conflict' ? `${type}:${queuedEvents.size}` : type, { type, ...detail });
+        if (eventScheduled) {
+            return;
+        }
+        eventScheduled = true;
+        queueMicrotask(() => {
+            eventScheduled = false;
+            const events = [...queuedEvents.values()];
+            queuedEvents.clear();
+            for (const event of events) {
+                for (const listener of [...listeners]) {
+                    try {
+                        listener(event);
+                    } catch (error) {
+                        console.error('Conversation data listener failed:', error);
+                    }
+                }
+            }
+        });
+    }
+
+    function subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+    }
+
+    function reportError(code, message, detail = {}) {
+        emit('error', { code, message, ...detail });
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Requests
+
+    async function request(path, body, options) {
+        let answer;
+        try {
+            answer = await adapter.fetchJson(path, body, options);
+        } catch (error) {
+            throw new ConversationDataError('network', error?.message ?? 'The request failed.', { details: error });
+        }
+        return answer;
+    }
+
+    function failureOf(answer) {
+        return new ConversationDataError(answer.json?.error ?? `http_${answer.status}`, answer.json?.message ?? answer.json?.error ?? `HTTP ${answer.status}`, { status: answer.status, details: answer.json });
+    }
+
+    async function requestOk(path, body, options) {
+        const answer = await request(path, body, options);
+        if (answer.status !== 200) {
+            throw failureOf(answer);
+        }
+        return answer.json;
+    }
+
+    function queueOf(conversationId) {
+        let queue = conversationQueues.get(conversationId);
+        if (!queue) {
+            queue = createSerialQueue();
+            conversationQueues.set(conversationId, queue);
+        }
+        return queue;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // The cache of conversations
+
+    function recomputeAggregates(view) {
+        const chats = view.chats ?? [];
+        const latest = chats.reduce((best, entry) => ((entry.lastMessageAt ?? 0) > (best.lastMessageAt ?? 0) ? entry : best), { lastMessageAt: 0, preview: '', lastMessageRole: '' });
+        view.messageCount = chats.reduce((sum, entry) => sum + (entry.messageCount ?? 0), 0);
+        view.unread = chats.reduce((sum, entry) => sum + (entry.unread ?? 0), 0);
+        view.lastMessageAt = latest.lastMessageAt ?? 0;
+        view.preview = latest.preview ?? '';
+        view.lastMessageRole = latest.lastMessageRole ?? '';
+        view.hasUserMessage = chats.some(entry => entry.hasUserMessage);
+    }
+
+    function refreshEntrySummary(view, entry) {
+        const session = sessions.get(keyOf({ conversationId: view.id, chatId: entry.id }));
+        if (session?.chat) {
+            Object.assign(entry, summarizeChat(session.chat.messages, entry.readThrough ?? ''));
+        }
+    }
+
+    /**
+     * Takes a conversation as the server sends it into the cache, keeping the view object that readers hold. The list
+     * carries the summary of every chat; the other routes answer without one, and the chat then keeps the summary it had.
+     */
+    function ingestConversation(conversation, { withSummaries = false } = {}) {
+        const existing = views.get(conversation.id);
+        const chats = (conversation.chats ?? []).map((entry) => {
+            const previous = existing?.chats?.find(item => item.id === entry.id);
+            return { ...entry, ...pickSummary(withSummaries ? entry : previous) };
+        });
+        const next = { ...conversation, chats, reminders: conversation.reminders ?? [], settings: conversation.settings ?? {} };
+        const view = existing ? replaceContents(existing, next) : next;
+        if (!existing) {
+            views.set(view.id, view);
+        }
+        for (const entry of view.chats) {
+            refreshEntrySummary(view, entry);
+        }
+        recomputeAggregates(view);
+        const pending = pendingPatches.get(view.id);
+        if (pending) {
+            applyPatchLocal(view, pending.patch);
+        }
+        return view;
+    }
+
+    function ingestList(conversations) {
+        const seen = new Set();
+        for (const conversation of conversations) {
+            seen.add(conversation.id);
+            ingestConversation(conversation, { withSummaries: true });
+        }
+        for (const id of [...views.keys()]) {
+            if (!seen.has(id)) {
+                dropConversation(id);
+            }
+        }
+    }
+
+    function dropConversation(id) {
+        const view = views.get(id);
+        for (const chat of view?.chats ?? []) {
+            const key = keyOf({ conversationId: id, chatId: chat.id });
+            const session = sessions.get(key);
+            if (session) {
+                session.dropped = true;
+                adapter.clearTimer(session.retryTimer);
+                sessions.delete(key);
+            }
+        }
+        for (const [key, session] of [...sessions]) {
+            if (session.address.conversationId === id) {
+                session.dropped = true;
+                sessions.delete(key);
+            }
+        }
+        const pending = pendingPatches.get(id);
+        if (pending) {
+            adapter.clearTimer(pending.timer);
+            pendingPatches.delete(id);
+        }
+        conversationQueues.delete(id);
+        views.delete(id);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Reads
+
+    /** The conversations, newest message first. The objects are the cache's own: read them, change them through the module. */
+    function list({ personaId } = {}) {
+        return [...views.values()]
+            .filter(view => personaId === undefined || view.personaId === personaId)
+            .sort((left, right) => right.lastMessageAt - left.lastMessageAt || right.createdAt - left.createdAt || String(left.id).localeCompare(String(right.id)));
+    }
+
+    function get(id) {
+        return views.get(id) ?? null;
+    }
+
+    function findDirect(personaId, avatar) {
+        for (const view of views.values()) {
+            if (view.kind === 'direct' && view.personaId === personaId && view.characters[0] === avatar) {
+                return view;
+            }
+        }
+        return null;
+    }
+
+    /** Names the chat that a call in the old form (an avatar, a group id and a persona) means. */
+    function resolve({ avatar = '', groupId = '', personaId = '', chatId = '' } = {}) {
+        const view = groupId
+            ? [...views.values()].find(item => item.id === groupId && item.kind === 'group') ?? null
+            : findDirect(personaId, avatar);
+        if (!view) {
+            return null;
+        }
+        const resolvedChat = chatId && view.chats.some(entry => entry.id === chatId) ? chatId : view.activeChatId;
+        return resolvedChat ? { conversationId: view.id, chatId: resolvedChat } : null;
+    }
+
+    function chat(address) {
+        const session = address ? sessions.get(keyOf(address)) : null;
+        if (!session?.chat) {
+            return null;
+        }
+        session.lastUsed = ++useCounter;
+        return session.chat;
+    }
+
+    function totalUnread(personaId, include = () => true) {
+        let total = 0;
+        for (const view of views.values()) {
+            if (view.personaId === personaId && include(view)) {
+                total += view.unread ?? 0;
+            }
+        }
+        return total;
+    }
+
+    function getCharacterState(avatar) {
+        return characterState.characters[avatar] ?? {};
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Metadata: patches of a conversation
+
+    function applyPatchLocal(view, patch) {
+        if (patch.name !== undefined) {
+            view.name = patch.name;
+        }
+        if (patch.description !== undefined) {
+            view.description = patch.description;
+        }
+        if (patch.favorite !== undefined) {
+            view.favorite = patch.favorite;
+        }
+        if (patch.activeChatId !== undefined && view.chats.some(entry => entry.id === patch.activeChatId)) {
+            view.activeChatId = patch.activeChatId;
+        }
+        if (patch.characters !== undefined) {
+            view.characters = [...patch.characters];
+        }
+        if (patch.extras !== undefined) {
+            view.extras = [...patch.extras];
+        }
+        if (patch.reminders !== undefined) {
+            view.reminders = structuredClone(patch.reminders);
+        }
+        if (patch.settings !== undefined) {
+            const settings = { ...view.settings };
+            for (const [key, value] of Object.entries(patch.settings)) {
+                if (value === null) {
+                    delete settings[key];
+                } else {
+                    settings[key] = value;
+                }
+            }
+            view.settings = settings;
+        }
+        if (patch.chats !== undefined) {
+            for (const [chatId, state] of Object.entries(patch.chats)) {
+                const entry = view.chats.find(item => item.id === chatId);
+                if (!entry) {
+                    continue;
+                }
+                Object.assign(entry, structuredClone(state));
+                if (state.readThrough !== undefined) {
+                    refreshEntrySummary(view, entry);
+                }
+            }
+            recomputeAggregates(view);
+        }
+    }
+
+    function sameValue(left, right) {
+        return JSON.stringify(left) === JSON.stringify(right);
+    }
+
+    /** Drops the parts of a patch that the view already has, so that a repeated call sends nothing. */
+    function withoutNoOps(view, patch) {
+        const result = {};
+        for (const [key, value] of Object.entries(patch)) {
+            if (key === 'settings') {
+                const changed = Object.fromEntries(Object.entries(value).filter(([name, item]) => (item === null ? Object.hasOwn(view.settings, name) : !sameValue(view.settings[name], item))));
+                if (Object.keys(changed).length) {
+                    result.settings = changed;
+                }
+            } else if (key === 'chats') {
+                const chats = {};
+                for (const [chatId, state] of Object.entries(value)) {
+                    const entry = view.chats.find(item => item.id === chatId);
+                    const changed = Object.fromEntries(Object.entries(state).filter(([field, item]) => !entry || !sameValue(entry[field], item)));
+                    if (Object.keys(changed).length) {
+                        chats[chatId] = changed;
+                    }
+                }
+                if (Object.keys(chats).length) {
+                    result.chats = chats;
+                }
+            } else if (!sameValue(view[key], value)) {
+                result[key] = value;
+            }
+        }
+        return result;
+    }
+
+    function patchConversation(id, patch) {
+        const view = views.get(id);
+        if (!view || !isObject(patch)) {
+            return false;
+        }
+        const effective = withoutNoOps(view, patch);
+        if (!Object.keys(effective).length) {
+            return true;
+        }
+        applyPatchLocal(view, effective);
+        const pending = pendingPatches.get(id);
+        const merged = pending ? mergePatches(pending.patch, effective) : effective;
+        const firstAt = pending?.firstAt ?? adapter.now();
+        if (pending) {
+            adapter.clearTimer(pending.timer);
+        }
+        const delay = isFrequentOnly(merged)
+            ? Math.max(0, Math.min(FREQUENT_DELAY_MS, firstAt + FREQUENT_MAX_WAIT_MS - adapter.now()))
+            : 0;
+        const timer = adapter.setTimer(() => {
+            void flushConversation(id);
+        }, delay);
+        pendingPatches.set(id, { patch: merged, firstAt, timer });
+        emit('list', { id });
+        return true;
+    }
+
+    async function flushConversation(id, options) {
+        const pending = pendingPatches.get(id);
+        if (!pending) {
+            return;
+        }
+        adapter.clearTimer(pending.timer);
+        pendingPatches.delete(id);
+        await queueOf(id).run(() => sendPatch(id, pending.patch, options));
+    }
+
+    async function sendPatch(id, patch, options, attempt = 0) {
+        const view = views.get(id);
+        if (!view) {
+            return;
+        }
+        // A patch for a chat that is still being created waits for its creation, which runs in this queue before it.
+        let answer;
+        try {
+            answer = await request('/update', { id, patch }, options);
+        } catch (error) {
+            return retryPatch(id, patch, attempt, error);
+        }
+        if (answer.status === 200) {
+            const server = answer.json.conversation;
+            if (views.has(id) && server) {
+                ingestConversation(server);
+                emit('list', { id });
+            }
+            return;
+        }
+        if (answer.status >= 500) {
+            return retryPatch(id, patch, attempt, failureOf(answer));
+        }
+        if (answer.status === 404) {
+            dropConversation(id);
+            emit('list', { id });
+            reportError('not_found', 'The conversation no longer exists.', { id });
+            return;
+        }
+        reportError(answer.json?.error ?? 'update_rejected', 'A change to a conversation was refused.', { id, status: answer.status });
+        await refresh();
+    }
+
+    function retryPatch(id, patch, attempt, error) {
+        const delay = RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || !views.has(id)) {
+            reportError(error.code ?? 'network', 'A change to a conversation could not be saved.', { id });
+            return undefined;
+        }
+        return new Promise((resolve) => {
+            adapter.setTimer(() => {
+                resolve(queueOf(id).run(() => sendPatch(id, patch, undefined, attempt + 1)));
+            }, delay);
+        });
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Characters (routine and status override)
+
+    function applyCharacterPatchLocal(avatar, patch) {
+        const current = characterState.characters[avatar] ?? {};
+        const next = { ...current };
+        if (patch.routine === null) {
+            delete next.routine;
+        } else if (patch.routine !== undefined) {
+            next.routine = { ...current.routine, ...patch.routine };
+        }
+        if (patch.statusOverride === null) {
+            delete next.statusOverride;
+        } else if (patch.statusOverride !== undefined) {
+            next.statusOverride = patch.statusOverride;
+        }
+        characterState = { ...characterState, characters: { ...characterState.characters, [avatar]: next } };
+        if (!Object.keys(next).length) {
+            delete characterState.characters[avatar];
+        }
+    }
+
+    function patchCharacter(avatar, patch) {
+        if (!avatar || !isObject(patch)) {
+            return false;
+        }
+        applyCharacterPatchLocal(avatar, patch);
+        const pending = pendingCharacters.get(avatar);
+        pendingCharacters.set(avatar, { patch: pending ? { ...pending.patch, ...patch, ...(patch.routine && pending.patch.routine ? { routine: { ...pending.patch.routine, ...patch.routine } } : {}) } : patch, scheduled: pending?.scheduled ?? false });
+        if (!pendingCharacters.get(avatar).scheduled) {
+            pendingCharacters.get(avatar).scheduled = true;
+            adapter.setTimer(() => {
+                void flushCharacter(avatar);
+            }, 0);
+        }
+        emit('characters', { avatar });
+        return true;
+    }
+
+    async function flushCharacter(avatar, options) {
+        const pending = pendingCharacters.get(avatar);
+        if (!pending) {
+            return;
+        }
+        pendingCharacters.delete(avatar);
+        await characterQueue.run(async () => {
+            try {
+                await requestOk('/characters/update', { avatar, patch: pending.patch }, options);
+            } catch (error) {
+                reportError(error.code, 'The state of a character could not be saved.', { avatar });
+                await refresh();
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Chats: load, commit, save
+
+    function newSession(address, records) {
+        const [chatHeader, ...messages] = records;
+        return {
+            address,
+            chat: { address, header: chatHeader ?? blankHeader(), messages },
+            synced: describeSyncedMessages(messages),
+            dirty: false,
+            shrink: false,
+            saving: false,
+            dropped: false,
+            failed: '',
+            lastUsed: ++useCounter,
+            created: null,
+            retryTimer: null,
+            retries: 0,
+        };
+    }
+
+    function attachSession(session) {
+        sessions.set(keyOf(session.address), session);
+        const view = views.get(session.address.conversationId);
+        const entry = view?.chats.find(item => item.id === session.address.chatId);
+        if (view && entry) {
+            refreshEntrySummary(view, entry);
+            recomputeAggregates(view);
+        }
+        evict();
+    }
+
+    function evict() {
+        const loaded = [...sessions.values()].filter(session => session.chat && !session.dirty && !session.saving && !session.created && !session.failed && keyOf(session.address) !== openKey);
+        const overflow = loaded.length - MAX_LOADED_CHATS;
+        if (overflow <= 0) {
+            return;
+        }
+        for (const session of loaded.sort((left, right) => left.lastUsed - right.lastUsed).slice(0, overflow)) {
+            sessions.delete(keyOf(session.address));
+        }
+    }
+
+    async function loadChat(address) {
+        const key = keyOf(address);
+        const existing = sessions.get(key);
+        if (existing?.chat) {
+            existing.lastUsed = ++useCounter;
+            return existing.chat;
+        }
+        if (existing?.loading) {
+            return existing.loading;
+        }
+        const loading = (async () => {
+            const json = await requestOk('/chat/get', { id: address.conversationId, chatId: address.chatId });
+            const session = newSession(address, json.chat);
+            sessions.delete(key);
+            attachSession(session);
+            emit('chat', { address });
+            emit('list', { id: address.conversationId });
+            return session.chat;
+        })();
+        sessions.set(key, { address, loading, chat: null });
+        try {
+            return await loading;
+        } catch (error) {
+            sessions.delete(key);
+            throw error;
+        }
+    }
+
+    function setOpen(address) {
+        openKey = address ? keyOf(address) : '';
+    }
+
+    function commitChat(address, edit, { shrink = false } = {}) {
+        const session = sessions.get(keyOf(address));
+        if (!session?.chat) {
+            throw new ChatNotLoadedError(address);
+        }
+        session.lastUsed = ++useCounter;
+        try {
+            edit(session.chat);
+        } finally {
+            markDirty(session, { shrink });
+        }
+        return session.chat;
+    }
+
+    function markDirty(session, { shrink = false } = {}) {
+        session.dirty = true;
+        session.failed = '';
+        session.shrink = session.shrink || shrink;
+        const view = views.get(session.address.conversationId);
+        const entry = view?.chats.find(item => item.id === session.address.chatId);
+        if (view && entry) {
+            refreshEntrySummary(view, entry);
+            recomputeAggregates(view);
+        }
+        emit('chat', { address: session.address });
+        emit('list', { id: session.address.conversationId });
+        queueMicrotask(() => {
+            void saveSession(session);
+        });
+    }
+
+    function saveSession(session, options) {
+        if (session.saving || !session.dirty || session.dropped || session.failed) {
+            return session.savePromise ?? Promise.resolve();
+        }
+        session.saving = true;
+        session.savePromise = (async () => {
+            try {
+                if (session.created) {
+                    await session.created;
+                }
+                while (session.dirty && !session.dropped) {
+                    const outcome = await saveOnce(session, options);
+                    if (outcome !== 'saved') {
+                        break;
+                    }
+                }
+            } finally {
+                session.saving = false;
+            }
+        })();
+        return session.savePromise;
+    }
+
+    async function saveOnce(session, options) {
+        const { conversationId, chatId } = session.address;
+        session.dirty = false;
+        const allowShrink = session.shrink;
+        session.shrink = false;
+        const sent = session.chat.messages.slice();
+        options ??= session.pendingOptions;
+        session.pendingOptions = undefined;
+        const body = { id: conversationId, chatId, chat: [session.chat.header, ...sent] };
+        if (allowShrink) {
+            body.allowShrink = true;
+        }
+        let answer;
+        try {
+            answer = await request('/chat/save', body, options);
+        } catch (error) {
+            return scheduleRetry(session, allowShrink, error);
+        }
+        if (session.dropped) {
+            return 'dropped';
+        }
+        if (answer.status === 200) {
+            session.chat.header.chat_metadata ??= {};
+            session.chat.header.chat_metadata.integrity = answer.json.integrity;
+            session.synced = describeSyncedMessages(sent);
+            session.retries = 0;
+            emit('saved', { address: session.address });
+            return 'saved';
+        }
+        if (answer.status === 409 && answer.json?.error === 'integrity') {
+            return rebaseSession(session, allowShrink);
+        }
+        if (answer.status === 409 && answer.json?.error === 'destructive') {
+            session.failed = 'destructive';
+            reportError('destructive', 'The save would have removed most of the chat, so the file was left unchanged.', { address: session.address });
+            await discardLocalChat(session);
+            return 'failed';
+        }
+        if (answer.status === 404) {
+            session.failed = 'not_found';
+            reportError('not_found', 'The chat no longer exists.', { address: session.address });
+            await refresh();
+            return 'failed';
+        }
+        if (answer.status >= 500) {
+            return scheduleRetry(session, allowShrink, failureOf(answer));
+        }
+        // The server refused the chat itself. It stays here, unsaved, until the next change tries again.
+        session.failed = answer.json?.error ?? `http_${answer.status}`;
+        session.dirty = true;
+        session.shrink = session.shrink || allowShrink;
+        reportError(session.failed, 'The chat could not be saved.', { address: session.address, status: answer.status });
+        return 'failed';
+    }
+
+    function scheduleRetry(session, allowShrink, error) {
+        session.dirty = true;
+        session.shrink = session.shrink || allowShrink;
+        const delay = RETRY_DELAYS_MS[session.retries];
+        if (delay === undefined) {
+            reportError(error.code ?? 'network', 'The chat could not be saved. It stays on this page until the next change.', { address: session.address });
+            return 'failed';
+        }
+        session.retries++;
+        session.retryTimer = adapter.setTimer(() => {
+            session.retryTimer = null;
+            void saveSession(session);
+        }, delay);
+        return 'retry';
+    }
+
+    async function rebaseSession(session, allowShrink) {
+        const { conversationId, chatId } = session.address;
+        session.rebases = (session.rebases ?? 0) + 1;
+        if (session.rebases > 2) {
+            session.rebases = 0;
+            session.failed = 'integrity';
+            reportError('integrity', 'The chat changed elsewhere again and could not be merged.', { address: session.address });
+            return 'failed';
+        }
+        let answer;
+        try {
+            answer = await request('/chat/get', { id: conversationId, chatId });
+        } catch (error) {
+            return scheduleRetry(session, allowShrink, error);
+        }
+        if (answer.status !== 200) {
+            session.failed = answer.json?.error ?? `http_${answer.status}`;
+            reportError(session.failed, 'The chat could not be reloaded after it changed elsewhere.', { address: session.address });
+            return 'failed';
+        }
+        const result = rebaseChat({ localMessages: session.chat.messages, localHeader: session.chat.header, synced: session.synced, serverRecords: answer.json.chat });
+        session.chat.messages.splice(0, session.chat.messages.length, ...result.messages);
+        replaceContents(session.chat.header, result.header);
+        session.synced = describeSyncedMessages(answer.json.chat.slice(1));
+        session.dirty = result.appended > 0;
+        session.shrink = false;
+        const view = views.get(conversationId);
+        const entry = view?.chats.find(item => item.id === chatId);
+        if (view && entry) {
+            refreshEntrySummary(view, entry);
+            recomputeAggregates(view);
+        }
+        emit('chat', { address: session.address });
+        emit('list', { id: conversationId });
+        emit('conflict', { address: session.address, appended: result.appended, lostEdits: result.lostEdits, lostDeletes: result.lostDeletes });
+        if (!session.dirty) {
+            session.rebases = 0;
+        }
+        return session.dirty ? 'saved' : 'merged';
+    }
+
+    async function discardLocalChat(session) {
+        const { conversationId, chatId } = session.address;
+        try {
+            const json = await requestOk('/chat/get', { id: conversationId, chatId });
+            const [chatHeader, ...messages] = json.chat;
+            session.chat.messages.splice(0, session.chat.messages.length, ...messages);
+            replaceContents(session.chat.header, chatHeader);
+            session.synced = describeSyncedMessages(messages);
+            session.dirty = false;
+            session.failed = '';
+            const view = views.get(conversationId);
+            const entry = view?.chats.find(item => item.id === chatId);
+            if (view && entry) {
+                refreshEntrySummary(view, entry);
+                recomputeAggregates(view);
+            }
+            emit('chat', { address: session.address });
+            emit('list', { id: conversationId });
+        } catch {
+            sessions.delete(keyOf(session.address));
+        }
+    }
+
+    /** Sets the read marker of a chat to its last message, loading the chat first when it is not loaded. */
+    async function markRead(address) {
+        const loaded = chat(address) ?? await loadChat(address);
+        const last = loaded.messages.at(-1);
+        if (!last?.id) {
+            return;
+        }
+        patchConversation(address.conversationId, { chats: { [address.chatId]: { readThrough: last.id } } });
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Lifecycle of conversations and chats
+
+    function decorateNew(conversation) {
+        return { ...conversation, chats: (conversation.chats ?? []).map(entry => ({ ...entry, ...EMPTY_SUMMARY })) };
+    }
+
+    async function createConversation(input) {
+        const json = await requestOk('/create', input);
+        const existing = views.get(json.conversation.id);
+        const view = existing ?? ingestConversation(decorateNew(json.conversation));
+        emit('list', { id: view.id });
+        return { conversation: view, created: json.created === true };
+    }
+
+    async function deleteConversation(id) {
+        const pending = pendingPatches.get(id);
+        if (pending) {
+            adapter.clearTimer(pending.timer);
+            pendingPatches.delete(id);
+        }
+        await queueOf(id).idle();
+        await requestOk('/delete', { id });
+        dropConversation(id);
+        emit('list', { id });
+    }
+
+    /**
+     * Adds a chat. The chat is listed and loaded at once with a chat id that the browser chose; the request that makes
+     * it on the server runs before anything else that names the chat.
+     */
+    function createChat(conversationId, { name = '', activate = false } = {}) {
+        const view = views.get(conversationId);
+        if (!view) {
+            return null;
+        }
+        const chatId = `chat_${adapter.now()}_${adapter.random()}`;
+        const address = { conversationId, chatId };
+        const entry = {
+            id: chatId,
+            name,
+            createdAt: adapter.now(),
+            readThrough: '',
+            followupCount: 0,
+            lastAutoMessageAt: 0,
+            lastActivity: 0,
+            sessionMarkers: {},
+            ...EMPTY_SUMMARY,
+        };
+        view.chats.push(entry);
+        if (activate) {
+            view.activeChatId = chatId;
+        }
+        const session = newSession(address, [blankHeader()]);
+        session.created = queueOf(conversationId).run(async () => {
+            try {
+                const json = await requestOk('/chat/create', { id: conversationId, chatId, ...(name ? { name } : {}), ...(activate ? { activate: true } : {}) });
+                if (views.has(conversationId) && json.conversation) {
+                    ingestConversation(json.conversation);
+                }
+            } catch (error) {
+                session.dropped = true;
+                sessions.delete(keyOf(address));
+                const current = views.get(conversationId);
+                if (current) {
+                    current.chats = current.chats.filter(item => item.id !== chatId);
+                    if (current.activeChatId === chatId) {
+                        current.activeChatId = current.chats[0]?.id ?? '';
+                    }
+                    recomputeAggregates(current);
+                }
+                emit('list', { id: conversationId });
+                reportError(error.code, 'A chat could not be created.', { id: conversationId });
+            } finally {
+                session.created = null;
+            }
+        });
+        attachSession(session);
+        recomputeAggregates(view);
+        emit('list', { id: conversationId });
+        emit('chat', { address });
+        return { address, entry };
+    }
+
+    async function deleteChat(address) {
+        const view = views.get(address.conversationId);
+        if (!view) {
+            return null;
+        }
+        const pending = pendingPatches.get(address.conversationId);
+        if (pending) {
+            await flushConversation(address.conversationId);
+        }
+        await queueOf(address.conversationId).idle();
+        const json = await requestOk('/chat/delete', { id: address.conversationId, chatId: address.chatId });
+        const key = keyOf(address);
+        const session = sessions.get(key);
+        if (session) {
+            session.dropped = true;
+            adapter.clearTimer(session.retryTimer);
+            sessions.delete(key);
+        }
+        ingestConversation(json.conversation);
+        emit('list', { id: address.conversationId });
+        return views.get(address.conversationId);
+    }
+
+    async function importLegacy(payload) {
+        const json = await requestOk('/import-legacy', payload);
+        if (json.state === 'imported') {
+            await refresh();
+        }
+        return json;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Start, refresh, flush
+
+    function ensureReadyPromise() {
+        readyPromise ??= new Promise((resolve) => {
+            resolveReady = resolve;
+        });
+        return readyPromise;
+    }
+
+    async function load() {
+        const [listAnswer, charactersAnswer] = await Promise.all([request('/list', {}), request('/characters/get', {})]);
+        if (listAnswer.status !== 200) {
+            throw failureOf(listAnswer);
+        }
+        ingestList(listAnswer.json.conversations ?? []);
+        if (charactersAnswer.status === 200) {
+            characterState = { version: charactersAnswer.json.version ?? 1, characters: charactersAnswer.json.characters ?? {} };
+        }
+        return listAnswer.json;
+    }
+
+    async function waitForMigration(error) {
+        const answer = await request('/migration/status', {});
+        const state = answer.json ?? {};
+        if (state.state === 'failed') {
+            status = { state: 'failed', code: state.error?.code ?? error.code, retryAt: adapter.now() + (state.retryAfterMs ?? MIGRATION_RETRY_FALLBACK_MS), message: state.error?.message ?? '' };
+            emit('status', { status: getStatus() });
+            retryTimer = adapter.setTimer(() => {
+                retryTimer = null;
+                startPromise = null;
+                void start();
+            }, Math.max(0, status.retryAt - adapter.now()));
+            return false;
+        }
+        // The migration ran after this page read its settings: the settings it holds are older than the server's.
+        if (state.state === 'migrated' && adapter.isSettingsStale()) {
+            adapter.reloadPage();
+            return false;
+        }
+        return true;
+    }
+
+    function start() {
+        ensureReadyPromise();
+        if (startPromise) {
+            return startPromise;
+        }
+        status = { state: 'loading', code: '', retryAt: 0 };
+        emit('status', { status: getStatus() });
+        startPromise = (async () => {
+            try {
+                await load();
+            } catch (error) {
+                if (error.code === 'migration_failed') {
+                    const retry = await waitForMigration(error);
+                    if (!retry) {
+                        return;
+                    }
+                    await load();
+                } else {
+                    status = { state: 'failed', code: error.code ?? 'network', retryAt: adapter.now() + RETRY_DELAYS_MS[1], message: '' };
+                    emit('status', { status: getStatus() });
+                    retryTimer = adapter.setTimer(() => {
+                        retryTimer = null;
+                        startPromise = null;
+                        void start();
+                    }, RETRY_DELAYS_MS[1]);
+                    return;
+                }
+            }
+            status = { state: 'ready', code: '', retryAt: 0 };
+            emit('status', { status: getStatus() });
+            emit('list', {});
+            resolveReady?.();
+        })();
+        return startPromise;
+    }
+
+    function whenReady() {
+        return ensureReadyPromise();
+    }
+
+    function getStatus() {
+        return { ...status };
+    }
+
+    /** Reads the list and the characters again. Loaded chats stay; patches that are not sent yet stay applied. */
+    async function refresh() {
+        try {
+            await load();
+            emit('list', {});
+            emit('characters', {});
+        } catch (error) {
+            reportError(error.code ?? 'network', 'The conversations could not be read again.');
+        }
+    }
+
+    function hasPendingWrites() {
+        if (pendingPatches.size || pendingCharacters.size || characterQueue.size) {
+            return true;
+        }
+        for (const queue of conversationQueues.values()) {
+            if (queue.size) {
+                return true;
+            }
+        }
+        return [...sessions.values()].some(session => session.dirty || session.saving || session.created);
+    }
+
+    /** Sends everything that waits, now, and resolves when the server has answered all of it. */
+    async function flush({ keepalive = false } = {}) {
+        const options = keepalive ? { keepalive: true } : undefined;
+        for (const session of sessions.values()) {
+            if (session.chat && session.dirty && !session.saving) {
+                // The save of a change that was just made starts in a microtask, after this call has returned.
+                session.pendingOptions = options;
+            }
+        }
+        await Promise.all([
+            ...[...pendingPatches.keys()].map(id => flushConversation(id, options)),
+            ...[...pendingCharacters.keys()].map(avatar => flushCharacter(avatar, options)),
+        ]);
+        await Promise.all([...conversationQueues.values()].map(queue => queue.idle()));
+        await characterQueue.idle();
+        for (const session of [...sessions.values()]) {
+            if (!session.chat) {
+                continue;
+            }
+            if (session.saving) {
+                await session.savePromise;
+            }
+            if (session.dirty && !session.failed) {
+                adapter.clearTimer(session.retryTimer);
+                session.retries = 0;
+                await saveSession(session, options);
+            }
+        }
+    }
+
+    function destroy() {
+        adapter.clearTimer(retryTimer);
+        for (const pending of pendingPatches.values()) {
+            adapter.clearTimer(pending.timer);
+        }
+        listeners.clear();
+    }
+
+    return Object.freeze({
+        start,
+        whenReady,
+        status: getStatus,
+        refresh,
+        list,
+        get,
+        findDirect,
+        chat,
+        totalUnread,
+        characterState: getCharacterState,
+        resolve,
+        loadChat,
+        setOpen,
+        patchConversation,
+        patchCharacter,
+        commitChat,
+        createChat,
+        createConversation,
+        deleteConversation,
+        deleteChat,
+        markRead,
+        importLegacy,
+        flush,
+        hasPendingWrites,
+        subscribe,
+        destroy,
+    });
+}
