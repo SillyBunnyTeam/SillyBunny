@@ -6,8 +6,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import getPublicLibConfig, {
+    buildPublicLibMinimizer,
     getPublicLibCacheInfo,
     invalidatePublicLibCacheInfo,
+    resolveTerserPluginPath,
 } from '../webpack.config.js';
 import getWebpackServeMiddleware from '../src/middleware/webpack-serve.js';
 import {
@@ -133,6 +135,72 @@ describe('lazy webpack configuration and middleware', () => {
                 process.env.SILLYBUNNY_ANDROID_APP = previousAndroid;
             }
         }
+    });
+
+    test('resolves nested or isolated terser-webpack-plugin from webpack and falls back to default minimizer when absent', async () => {
+        const { createRequire } = await import('node:module');
+
+        const nestedRoot = path.join(tempDir, 'nested-layout');
+        const nestedWebpackDir = path.join(nestedRoot, 'node_modules', 'webpack');
+        const nestedTerserDir = path.join(nestedWebpackDir, 'node_modules', 'terser-webpack-plugin');
+        fs.mkdirSync(nestedTerserDir, { recursive: true });
+        fs.writeFileSync(path.join(nestedRoot, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }), 'utf8');
+        fs.writeFileSync(path.join(nestedWebpackDir, 'package.json'), JSON.stringify({ name: 'webpack', version: '5.105.4' }), 'utf8');
+        fs.writeFileSync(path.join(nestedTerserDir, 'package.json'), JSON.stringify({ name: 'terser-webpack-plugin', version: '5.3.17', main: 'index.js' }), 'utf8');
+        fs.writeFileSync(path.join(nestedTerserDir, 'index.js'), 'module.exports = class NestedTerserPlugin { constructor(opts) { this.opts = opts; } apply(c) { c.applied = this.opts; } };\n', 'utf8');
+
+        const nestedRequire = createRequire(path.join(nestedRoot, 'package.json'));
+        const resolvedNested = resolveTerserPluginPath({
+            baseRequire: nestedRequire,
+            fallbackWebpackPkgPath: null,
+        });
+        expect(fs.realpathSync.native(resolvedNested)).toBe(fs.realpathSync.native(path.join(nestedTerserDir, 'index.js')));
+
+        const minimizer = buildPublicLibMinimizer({
+            env: { SILLYBUNNY_ANDROID_APP: '1' },
+            resolvePluginPath: () => resolvedNested,
+        });
+        const stubCompiler = {};
+        minimizer[0].apply(stubCompiler);
+        expect(stubCompiler.applied).toEqual({
+            parallel: false,
+            terserOptions: { compress: { passes: 2 } },
+        });
+
+        const isolatedRoot = path.join(tempDir, 'isolated-layout');
+        const storeNodeModules = path.join(isolatedRoot, 'node_modules', '.bun', 'webpack@5.105.4', 'node_modules');
+        const storeWebpackDir = path.join(storeNodeModules, 'webpack');
+        const storeTerserDir = path.join(storeNodeModules, 'terser-webpack-plugin');
+        fs.mkdirSync(storeWebpackDir, { recursive: true });
+        fs.mkdirSync(storeTerserDir, { recursive: true });
+        fs.writeFileSync(path.join(isolatedRoot, 'package.json'), JSON.stringify({ name: 'isolated-fixture', version: '1.0.0' }), 'utf8');
+        fs.writeFileSync(path.join(storeWebpackDir, 'package.json'), JSON.stringify({ name: 'webpack', version: '5.105.4' }), 'utf8');
+        fs.writeFileSync(path.join(storeTerserDir, 'package.json'), JSON.stringify({ name: 'terser-webpack-plugin', version: '5.3.17', main: 'index.js' }), 'utf8');
+        fs.writeFileSync(path.join(storeTerserDir, 'index.js'), 'module.exports = class IsolatedTerserPlugin {};\n', 'utf8');
+        const symlinkWebpackDir = path.join(isolatedRoot, 'node_modules', 'webpack');
+        fs.symlinkSync(storeWebpackDir, symlinkWebpackDir, process.platform === 'win32' ? 'junction' : 'dir');
+
+        const isolatedRequire = createRequire(path.join(isolatedRoot, 'package.json'));
+        const resolvedIsolated = resolveTerserPluginPath({
+            baseRequire: isolatedRequire,
+            fallbackWebpackPkgPath: path.join(symlinkWebpackDir, 'package.json'),
+        });
+        expect(fs.realpathSync.native(resolvedIsolated)).toBe(fs.realpathSync.native(path.join(storeTerserDir, 'index.js')));
+
+        const emptyRoot = path.join(tempDir, 'empty-layout');
+        fs.mkdirSync(emptyRoot, { recursive: true });
+        fs.writeFileSync(path.join(emptyRoot, 'package.json'), JSON.stringify({ name: 'empty-fixture', version: '1.0.0' }), 'utf8');
+        const emptyRequire = createRequire(path.join(emptyRoot, 'package.json'));
+
+        const missingPath = resolveTerserPluginPath({
+            baseRequire: emptyRequire,
+            fallbackWebpackPkgPath: null,
+        });
+        expect(missingPath).toBeNull();
+        expect(buildPublicLibMinimizer({ resolvePluginPath: () => missingPath })).toEqual(['...']);
+        expect(buildPublicLibMinimizer({
+            resolvePluginPath: () => { throw new Error('MODULE_NOT_FOUND'); },
+        })).toEqual(['...']);
     });
 
     test('strips unused moment locales while keeping supported UI locales from lang.json', async () => {

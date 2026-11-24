@@ -49,19 +49,106 @@ const webpackVersion = webpackPackageJsonPath ? readJsonVersion(webpackPackageJs
 
 /** @type {{ runtimeKey: string, value: string } | null} */
 let cachedWebpackVersionEntry = null;
+/** @type {string | null | undefined} */
+let cachedTerserPluginPath;
 /** @type {Map<string, { webpackRoot: string, cacheVersion: string, cacheDirectory: string, outputDirectory: string, outputFile: string, outputFilePath: string }>} */
 const publicLibCacheInfoMemo = new Map();
 
-function loadTerserPlugin() {
-    if (webpackPackageJsonPath) {
+// SillyBunny: resolve terser-webpack-plugin from webpack's real package location first so isolated Bun/pnpm stores and nested npm trees work without hoisting.
+export function resolveTerserPluginPath({
+    baseRequire = moduleRequire,
+    createRequireFromPath = createRequire,
+    realpathSync = fs.realpathSync,
+    fallbackWebpackPkgPath = webpackPackageJsonPath,
+} = {}) {
+    const candidateAnchors = [];
+
+    try {
+        const resolvedPkg = baseRequire.resolve('webpack/package.json');
         try {
-            return createRequire(webpackPackageJsonPath)('terser-webpack-plugin');
+            candidateAnchors.push(realpathSync(resolvedPkg));
         } catch {
-            // Fall through to root resolution when webpack's nested lookup is unavailable.
+            // Keep the resolved path when realpath fails.
+        }
+        if (!candidateAnchors.includes(resolvedPkg)) {
+            candidateAnchors.push(resolvedPkg);
+        }
+    } catch {
+        // Fall through to direct path and root lookup.
+    }
+
+    if (fallbackWebpackPkgPath) {
+        try {
+            const realFallback = realpathSync(fallbackWebpackPkgPath);
+            if (!candidateAnchors.includes(realFallback)) {
+                candidateAnchors.push(realFallback);
+            }
+        } catch {
+            // Keep the direct path when realpath fails.
+        }
+        if (!candidateAnchors.includes(fallbackWebpackPkgPath)) {
+            candidateAnchors.push(fallbackWebpackPkgPath);
         }
     }
 
-    return moduleRequire('terser-webpack-plugin');
+    for (const anchorPath of candidateAnchors) {
+        try {
+            return createRequireFromPath(anchorPath).resolve('terser-webpack-plugin');
+        } catch {
+            // Try the next resolution anchor.
+        }
+    }
+
+    try {
+        return baseRequire.resolve('terser-webpack-plugin');
+    } catch {
+        return null;
+    }
+}
+
+export function buildPublicLibMinimizer({
+    env = process.env,
+    resolvePluginPath = () => {
+        if (cachedTerserPluginPath === undefined) {
+            cachedTerserPluginPath = resolveTerserPluginPath();
+        }
+        return cachedTerserPluginPath;
+    },
+    loadPlugin = (pluginPath) => moduleRequire(pluginPath),
+} = {}) {
+    let pluginPath = null;
+    try {
+        pluginPath = resolvePluginPath();
+    } catch {
+        pluginPath = null;
+    }
+
+    if (!pluginPath) {
+        return ['...'];
+    }
+
+    const parallel = env.SILLYBUNNY_ANDROID_APP === '1' ? false : 2;
+    return [
+        {
+            apply(compiler) {
+                let TerserPlugin;
+                try {
+                    TerserPlugin = loadPlugin(pluginPath);
+                } catch {
+                    return;
+                }
+                new TerserPlugin({
+                    // SillyBunny: cap worker fan-out on desktop and run in-process on Android to prevent memory spikes.
+                    parallel,
+                    terserOptions: {
+                        compress: {
+                            passes: 2,
+                        },
+                    },
+                }).apply(compiler);
+            },
+        },
+    ];
 }
 
 // SillyBunny: public/scripts/utils.js and reasoning.js pass getCurrentLocale() to moment.locale(), so retain UI locales from lang.json and strip the rest.
@@ -138,6 +225,7 @@ function getWebpackCacheVersion() {
 
 export function invalidatePublicLibCacheInfo() {
     cachedWebpackVersionEntry = null;
+    cachedTerserPluginPath = undefined;
     publicLibCacheInfoMemo.clear();
 }
 
@@ -322,22 +410,7 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
         optimization: {
             minimize,
             ...(minimize ? {
-                minimizer: [
-                    {
-                        apply(compiler) {
-                            const TerserPlugin = loadTerserPlugin();
-                            new TerserPlugin({
-                                // SillyBunny: cap worker fan-out on desktop and run in-process on Android to prevent memory spikes.
-                                parallel: process.env.SILLYBUNNY_ANDROID_APP === '1' ? false : 2,
-                                terserOptions: {
-                                    compress: {
-                                        passes: 2,
-                                    },
-                                },
-                            }).apply(compiler);
-                        },
-                    },
-                ],
+                minimizer: buildPublicLibMinimizer(),
             } : {}),
         },
         output: {
