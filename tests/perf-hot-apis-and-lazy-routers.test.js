@@ -212,6 +212,16 @@ describe('lazyRouter', () => {
     let failNextLoad = false;
     /** @type {(value?: unknown) => void} */
     let releaseLoad = () => { };
+    /** @type {(value?: unknown) => void} */
+    let signalLoaderEntered = () => { };
+    /** @type {Promise<unknown>} */
+    let loaderEntered = Promise.resolve();
+
+    function armLoaderBarrier() {
+        loaderEntered = new Promise(resolve => {
+            signalLoaderEntered = resolve;
+        });
+    }
 
     beforeAll(async () => {
         const app = express();
@@ -221,7 +231,9 @@ describe('lazyRouter', () => {
         });
         app.use('/lazy', lazyRouter(async () => {
             loads++;
-            await new Promise(resolve => { releaseLoad = resolve; });
+            const gate = new Promise(resolve => { releaseLoad = resolve; });
+            signalLoaderEntered();
+            await gate;
             if (failNextLoad) {
                 failNextLoad = false;
                 throw new Error('load failed');
@@ -245,6 +257,8 @@ describe('lazyRouter', () => {
     });
 
     afterAll(async () => {
+        releaseLoad();
+        server?.closeAllConnections?.();
         await new Promise(resolve => server.close(resolve));
     });
 
@@ -252,16 +266,18 @@ describe('lazyRouter', () => {
         expect(loads).toBe(0);
 
         failNextLoad = true;
+        armLoaderBarrier();
         const failed = fetch(`${baseUrl}/lazy/hello`);
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await loaderEntered;
         releaseLoad();
         const failedResponse = await failed;
         expect(failedResponse.status).toBe(500);
         expect(await failedResponse.json()).toEqual({ error: 'load failed' });
         expect(loads).toBe(1);
 
+        armLoaderBarrier();
         const concurrent = [fetch(`${baseUrl}/lazy/hello`), fetch(`${baseUrl}/lazy/hello`), fetch(`${baseUrl}/lazy/hello`)];
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await loaderEntered;
         releaseLoad();
         const bodies = await Promise.all((await Promise.all(concurrent)).map(response => response.json()));
         expect(loads).toBe(2);
@@ -746,6 +762,7 @@ describe('/api/characters/all fileStat passthrough, bulk index query, and memory
 
     afterAll(async () => {
         if (server) {
+            server.closeAllConnections?.();
             await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         }
         characterIndex.close();
@@ -885,6 +902,7 @@ describe('PR 6 hot APIs: settings cache, ETag, and backup comparison', () => {
 
     afterAll(async () => {
         if (server) {
+            server.closeAllConnections?.();
             await new Promise(resolve => server.close(resolve));
         }
         if (tempRoot) {
@@ -1028,6 +1046,7 @@ describe('PR 6 hot APIs: tokenizers lazy loading, coalescing, encoding cache, LR
 
     afterAll(async () => {
         if (server) {
+            server.closeAllConnections?.();
             await new Promise(resolve => server.close(resolve));
         }
     });
@@ -1303,6 +1322,7 @@ describe('PR6 hot APIs media & extension optimizations', () => {
 
     afterAll(async () => {
         if (server) {
+            server.closeAllConnections?.();
             await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         }
     });
