@@ -7,10 +7,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-e
     handleAvailabilityAutoResponder: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    ensureDirectConversation: jest.fn(),
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: () => 'persona-a.png',
-    getConversationKey: () => 'persona:persona-a.png:char.png',
+    getConversationKey: () => 'conv_1_direct',
     getConversationRecord: () => null,
     getCurrentCharAvatar: () => 'char.png',
     getCurrentCharName: () => 'Aster',
@@ -39,7 +40,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-utils.js', () => ({ escapeHtmlText: value => String(value || '') }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getSettings: () => ({ enabled: true }),
-    saveSettings: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
     beginConversationGenerationOperation: jest.fn(),
@@ -57,6 +57,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeli
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     appendConversationChatMessage: jest.fn(),
     buildConversationMessageReplyReference: jest.fn(),
+    ensureConversationChatLoaded: jest.fn(async () => ({ conversationId: 'conv_1_direct', chatId: 'main' })),
     getConversationAttachmentSummary: () => '',
     getConversationFileAttachments: () => [],
     getConversationMediaAttachments: () => [],

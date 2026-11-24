@@ -46,9 +46,9 @@ export function hasConversationMessageContent(message) {
 }
 
 export function resolveConversationReminderChatId(reminder, conversationRecord) {
-    const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? conversationRecord.branches : {};
-    const chatId = String(reminder?.branchId || conversationRecord?.activeBranchId || '').trim();
-    return chatId && branches[chatId] ? chatId : '';
+    const chats = Array.isArray(conversationRecord?.chats) ? conversationRecord.chats : [];
+    const chatId = String(reminder?.chatId || conversationRecord?.activeChatId || '').trim();
+    return chatId && chats.some(chat => chat.id === chatId) ? chatId : '';
 }
 
 export function normalizeConversationStoredMessage(message, index = 0, now = Date.now()) {

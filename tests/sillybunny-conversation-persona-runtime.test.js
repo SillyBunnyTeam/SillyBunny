@@ -48,6 +48,12 @@ await jest.unstable_mockModule('../public/scripts/events.js', () => ({
     },
 }));
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
+await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+    conversationData: { subscribe: jest.fn(), whenReady: () => Promise.resolve() },
+    installConversationDataHooks: jest.fn(),
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/legacy-import.js', () => ({ importLegacyLocalStorage: jest.fn(async () => 'none') }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-engine.js', () => ({
     captureGroupAsideRequest: jest.fn(),
     captureRoleplayAsideRequest: options => ({ ...options, chatId: 'branch-a', roleplayContext: 'captured roleplay' }),
@@ -71,18 +77,17 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getConversationPersonaId: () => 'persona-b.png',
     getRoleplayCurrentCharacter: () => ({ avatar: 'roleplay.png', name: 'Roleplay' }),
     getRoleplayGroupById: () => null,
-    migrateConversationLocalStorage: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/interface.js', () => ({ loadCurrentPanelSettings }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
-    sanitizeConversationUnreadCounts: jest.fn(),
+    getActiveConversationKey: () => '',
     updateConversationNotificationIndicators: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     getCharacterForGroupChatMessage: () => null,
     getCurrentGroupConversationMembers: () => [],
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleInterfaceRefresh }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleConversationListRender: jest.fn(), scheduleInterfaceRefresh }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-panel.js', () => ({
     closeConversationSettings: () => personaChangeOrder.push('close'),
 }));

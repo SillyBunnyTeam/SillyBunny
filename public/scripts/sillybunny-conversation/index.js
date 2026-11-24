@@ -3,6 +3,7 @@ import './init.js';
 export {
     isConversationModeEnabled,
     getConversationWelcomeChats,
+    loadConversationWelcomeChats,
 } from './settings-store.js';
 export {
     deleteConversationWelcomeChat,

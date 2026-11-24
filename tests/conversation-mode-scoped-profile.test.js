@@ -112,7 +112,7 @@ describe('conversation mode scoped connection profile', () => {
     test('routes explicitly prefixed group replies to the named participant', () => {
         expect(generationSource).toContain('getSpeakerPrefixMatch');
         expect(generationSource).toContain('resolveConversationReplySpeaker');
-        expect(generationSource).toContain('resolvedExtra.partner_avatar = speakerAvatar');
+        expect(generationSource).toContain('resolvedExtra.member_avatar = speakerAvatar');
     });
 
     test('adds context-aware implicit references for group DMs', () => {
@@ -183,7 +183,9 @@ describe('conversation mode scoped connection profile', () => {
         expect(chromeSource).toContain('togglePersonaPicker(target)');
         expect(pickersSource).toContain('preferBelow: true');
         expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
-        expect(conversationListSource).toContain('Messaging-app order: newest message first');
+        // The rail keeps the order of the list that the server sends, newest message first, and does not move the open row.
+        expect(conversationListSource).toContain('conversationData.list({ personaId })');
+        expect(conversationListSource).not.toContain('.sort(');
         expect(conversationListSource).not.toContain('first.key === activeKey');
         // The menu keeps the settings entry whenever the pages layout hides the header gear, whatever the viewport width.
         expect(chromeSource).toContain('...(isConversationPagesLayout()');
@@ -200,37 +202,20 @@ describe('conversation mode scoped connection profile', () => {
         expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261118zzj');
     });
 
-    test('keeps saved Conversation-owned group DMs visible without messages', () => {
-        expect(settingsStoreSource).toContain('const hasConversationGroups');
-        expect(settingsStoreSource).toContain('getConversationGroups().forEach');
-        expect(settingsStoreSource).toContain('!group.is_conversation_group');
-        expect(conversationListSource).toContain('getConversationGroups({ personaId }).forEach');
-        expect(conversationListSource).toContain('isEmptyConversation && !group?.is_conversation_group');
-        expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeGreaterThanOrEqual(0);
-        expect(conversationListSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeGreaterThanOrEqual(0);
-        expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeLessThan(settingsStoreSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
-        expect(conversationListSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeLessThan(conversationListSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
-        expect(contextSource).toContain('group.updatedAt = Date.now();');
-        expect(timelineSource).toContain('group.updatedAt = Date.now();');
-    });
-
-    test('defaults group DM cross-talk settings on without global solo overrides hiding them', () => {
-        const groupSettingsIndex = settingsStoreSource.indexOf('if (groupId) {');
-        expect(groupSettingsIndex).toBeGreaterThanOrEqual(0);
-        expect(settingsStoreSource.indexOf('globalSettings', groupSettingsIndex)).toBeLessThan(settingsStoreSource.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS', groupSettingsIndex));
-        expect(settingsStoreSource.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS', groupSettingsIndex)).toBeLessThan(settingsStoreSource.indexOf('getGroupConversationSettings(groupId)', groupSettingsIndex));
-    });
-
-    test('scopes Conversation storage by active persona to prevent bleedthrough', () => {
-        expect(contextSource).toContain('PERSONA_CONVERSATION_STORE_PREFIX');
-        expect(contextSource).toContain('getConversationPersonaId');
-        expect(contextSource).toContain('scopeConversationStorageKey');
-        expect(contextSource).toContain('isConversationKeyForPersona');
-        expect(contextSource).toContain('migrateLegacyConversationStoreToPersona');
-        expect(contextSource).toContain('personaId: getConversationPersonaId(personaId)');
-        expect(settingsStoreSource).toContain('isConversationKeyForPersona(storeKey)');
-        expect(conversationListSource).toContain('isConversationKeyForPersona(storeKey, personaId)');
+    // Behaviour that these three tests used to pin in the source (a group without messages, the forced group settings,
+    // the persona scoping) is tested on the real data module in sillybunny-conversation-settings-store.test.js and
+    // sillybunny-conversation-core-data-regressions.test.js.
+    test('lists the conversations of the persona from the data module, and starts again when the persona changes', () => {
+        expect(conversationListSource).toContain('conversationData.list({ personaId })');
+        expect(settingsStoreSource).toContain('conversationData.list({ personaId: getConversationPersonaId() })');
+        expect(contextSource).toContain('conversationData.list({ personaId })');
         expect(initSource).toContain('event_types.PERSONA_CHANGED');
+    });
+
+    test('the settings of a group are layered with what the group forces on top', () => {
+        const layers = settingsStoreSource.slice(settingsStoreSource.indexOf('const settings = mergeConversationSettingsLayers('));
+        expect(layers.indexOf('globalSettings')).toBeGreaterThanOrEqual(0);
+        expect(layers.indexOf('globalSettings')).toBeLessThan(layers.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS'));
     });
 
     test('uses reply metadata instead of copying quoted text into the composer', () => {

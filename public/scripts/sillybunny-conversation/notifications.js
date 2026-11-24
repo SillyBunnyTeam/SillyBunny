@@ -3,131 +3,71 @@ import { selectConversation } from './chrome.js';
 import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
-    getActiveConversationChat,
-    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationStore,
     getConversationRecord,
     getConversationKey,
     getCurrentCharAvatar,
-    isConversationKeyForPersona,
-    parseConversationKey,
-    parsePositiveInt,
-    persistConversationStore,
     shouldSurfaceConversationNotification,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';
-import {
-    clearConversationUnreadStore,
-    getConversationUnreadCount,
-    sanitizeConversationUnreadStore,
-    setConversationUnreadCount,
-} from './notification-utils.js';
-import { getSettings, isConversationModeEnabled } from './settings-store.js';
+import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { stripPreviewText } from './typing.js';
 
+/** The messages after the read marker that the user has not seen, in one chat or in the whole conversation. */
 export function getUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (chatId) {
-        return parsePositiveInt(getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId })?.unread, 0, 0);
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
+        return 0;
     }
-
-    return getConversationUnreadCount(getConversationRecord(avatar, { create: false, groupId, personaId }));
+    return chatId ? view.chats.find(chat => chat.id === chatId)?.unread ?? 0 : view.unread ?? 0;
 }
 
-export function setUnreadCount(avatar, count, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-    if (!conversationRecord) {
+/**
+ * Sets the read marker of a chat, or of every chat of the conversation, to its last message. A chat that is not loaded
+ * is loaded first, because its last message is not in the list.
+ * @returns {Promise<void>}
+ */
+export async function markConversationRead(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
         return;
     }
-
-    if (!setConversationUnreadCount(conversationRecord, count, { chatId })) {
-        return;
-    }
-    persistConversationStore();
+    const chats = chatId ? view.chats.filter(chat => chat.id === chatId) : view.chats;
+    await Promise.all(chats.filter(chat => chat.unread > 0).map(chat => conversationData.markRead({ conversationId: view.id, chatId: chat.id })));
 }
 
-export function clearUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    setUnreadCount(avatar, 0, { chatId, groupId, personaId });
+export function clearUnreadCount(avatar, options = {}) {
+    return markConversationRead(avatar, options);
 }
 
-export function incrementUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!avatar) {
-        return;
-    }
-
-    const currentUnread = parsePositiveInt(getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId })?.unread, 0, 0);
-    setUnreadCount(avatar, currentUnread + 1, { chatId, groupId, personaId });
+/** A conversation counts toward the badges when its character is in the library (a group: when one of its members is). */
+function isUnreadConversationCountable(view) {
+    return view.characters.some(avatar => getCharacterForAvatar(avatar));
 }
 
-function isUnreadConversationCountable(avatar, groupId) {
-    if (!avatar || !getCharacterForAvatar(avatar)) {
-        return false;
-    }
-
-    if (groupId) {
-        const group = getConversationGroupById(groupId);
-        if (!group?.members?.includes(avatar) || group.disabled_members?.includes(avatar)) {
-            return false;
-        }
-    }
-
-    return isConversationModeEnabled(avatar, { groupId });
-}
-
-function getUnreadConversationIdentity(conversationKey) {
-    const parsed = parseConversationKey(conversationKey);
-    return {
-        avatar: parsed.avatar,
-        groupId: parsed.groupId || '',
-    };
-}
-
-export function sanitizeConversationUnreadCounts() {
-    const result = sanitizeConversationUnreadStore(getConversationStore(), (conversationKey) => {
-        if (!isConversationKeyForPersona(conversationKey)) {
-            return true;
-        }
-
-        const { avatar, groupId } = getUnreadConversationIdentity(conversationKey);
-        return isUnreadConversationCountable(avatar, groupId);
-    });
-
-    if (result.changed) {
-        persistConversationStore();
-    }
-    return result;
-}
-
-export function clearAllConversationUnreadCounts() {
-    const storeResult = clearConversationUnreadStore(getConversationStore(), conversationKey => isConversationKeyForPersona(conversationKey));
+/**
+ * Marks every conversation of the current persona as read.
+ * @returns {Promise<{ changed: boolean, cleared: number, removedLegacy: number }>} `cleared` is the number of messages that were unread.
+ */
+export async function clearAllConversationUnreadCounts() {
+    const personaId = getConversationPersonaId();
+    const views = conversationData.list({ personaId }).filter(view => view.unread > 0 && isUnreadConversationCountable(view));
+    const cleared = views.reduce((sum, view) => sum + view.unread, 0);
+    await Promise.all(views.map(view => Promise.all(view.chats.filter(chat => chat.unread > 0).map(chat => conversationData.markRead({ conversationId: view.id, chatId: chat.id })))));
     const removedLegacy = clearLegacyConversationUnreadStorage();
-    const changed = storeResult.changed || removedLegacy > 0;
-
-    if (storeResult.changed) {
-        persistConversationStore();
-    }
+    const changed = cleared > 0 || removedLegacy > 0;
     if (changed) {
         updateConversationNotificationIndicators();
     }
 
-    return { ...storeResult, changed, removedLegacy };
+    return { changed, cleared, removedLegacy };
 }
 
 export function getTotalUnreadCount() {
-    return Object.entries(getConversationStore().characters || {}).reduce((sum, [conversationKey, conversationRecord]) => {
-        if (!isConversationKeyForPersona(conversationKey)) {
-            return sum;
-        }
-
-        const { avatar, groupId } = getUnreadConversationIdentity(conversationKey);
-        if (!isUnreadConversationCountable(avatar, groupId)) {
-            return sum;
-        }
-
-        return sum + getConversationUnreadCount(conversationRecord);
-    }, 0);
+    return conversationData.totalUnread(getConversationPersonaId(), isUnreadConversationCountable);
 }
 
 export function getBadgeLabel(count) {
@@ -284,13 +224,13 @@ export function getActiveConversationKey() {
 
 export function isConversationActive(avatar, groupId = getConversationGroupIdForAvatar(avatar), { chatId = '', personaId = getConversationPersonaId() } = {}) {
     const currentPersonaId = getConversationPersonaId();
-    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
     return Boolean(
         conversationState.conversationWorkspaceOpen
         && avatar
         && personaId === currentPersonaId
         && getConversationKey(avatar, groupId || '', { personaId }) === getActiveConversationKey()
-        && (!chatId || chatId === conversationRecord?.activeBranchId),
+        && (!chatId || chatId === conversationRecord?.activeChatId),
     );
 }
 

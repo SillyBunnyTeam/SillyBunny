@@ -24,13 +24,16 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? currentPersonaId : value || ''),
-    getConversationRecord: (avatar, options = {}) => getStore(options.personaId || currentPersonaId, avatar, options.groupId || ''),
+    getActiveConversationChat: () => null,
+    getConversationRecord: (avatar, options = {}) => {
+        const store = getStore(options.personaId || currentPersonaId, avatar, options.groupId || '');
+        return store ? { id: 'conv_test', activeChatId: store.activeChatId, chats: Object.values(store.chats) } : null;
+    },
     getCurrentCharacter: () => ({ avatar: 'char.png', name: 'Aster' }),
     getCurrentCharAvatar: () => 'char.png',
     getCurrentCharName: () => 'Aster',
     getIdleActionFromSettings: () => 'disabled',
     parsePositiveInt: value => Number(value) || 0,
-    saveGroupConversationSettings: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
     generateConversationRaw,
@@ -76,7 +79,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     getConversationMessages: (avatar, options = {}) => {
         const store = getStore(options.personaId || currentPersonaId, avatar, options.groupId || '');
-        return store?.branches?.[options.chatId || store.activeBranchId]?.messages || [];
+        return store?.chats?.[options.chatId || store.activeChatId]?.messages || [];
     },
     saveConversationMessages,
 }));
@@ -87,7 +90,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeli
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],
     getLastConversationPreview: () => '',
-    updateLastPreviewFromConversation: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     registerConversationRenderer: jest.fn(),
@@ -115,15 +117,15 @@ describe('Conversation prose polish identity', () => {
         currentPersonaId = 'persona-a.png';
         stores.clear();
         stores.set(key('persona-a.png', 'char.png'), {
-            activeBranchId: 'branch-a',
-            branches: {
+            activeChatId: 'branch-a',
+            chats: {
                 'branch-a': { messages: [message('original')] },
                 'branch-b': { messages: [message('other branch')] },
             },
         });
         stores.set(key('persona-b.png', 'char.png'), {
-            activeBranchId: 'branch-b',
-            branches: { 'branch-b': { messages: [message('other persona')] } },
+            activeChatId: 'branch-b',
+            chats: { 'branch-b': { messages: [message('other persona')] } },
         });
         generateConversationRaw.mockReset();
         saveConversationMessages.mockClear();
@@ -136,14 +138,14 @@ describe('Conversation prose polish identity', () => {
         generateConversationRaw.mockReturnValueOnce(generation.promise);
 
         const run = handleCharacterMessagePolish('message-1');
-        stores.get(key('persona-a.png', 'char.png')).activeBranchId = 'branch-b';
+        stores.get(key('persona-a.png', 'char.png')).activeChatId = 'branch-b';
         currentPersonaId = 'persona-b.png';
         generation.resolve('polished original');
         await run;
 
-        expect(stores.get(key('persona-a.png', 'char.png')).branches['branch-a'].messages[0].mes).toBe('polished original');
-        expect(stores.get(key('persona-a.png', 'char.png')).branches['branch-b'].messages[0].mes).toBe('other branch');
-        expect(stores.get(key('persona-b.png', 'char.png')).branches['branch-b'].messages[0].mes).toBe('other persona');
+        expect(stores.get(key('persona-a.png', 'char.png')).chats['branch-a'].messages[0].mes).toBe('polished original');
+        expect(stores.get(key('persona-a.png', 'char.png')).chats['branch-b'].messages[0].mes).toBe('other branch');
+        expect(stores.get(key('persona-b.png', 'char.png')).chats['branch-b'].messages[0].mes).toBe('other persona');
         expect(saveConversationMessages).toHaveBeenCalledWith('char.png', expect.any(Array), {
             chatId: 'branch-a',
             create: false,
@@ -156,7 +158,7 @@ describe('Conversation prose polish identity', () => {
     test('drops a polish completion when the captured source message changed', async () => {
         const generation = deferred();
         generateConversationRaw.mockReturnValueOnce(generation.promise);
-        const sourceMessage = stores.get(key('persona-a.png', 'char.png')).branches['branch-a'].messages[0];
+        const sourceMessage = stores.get(key('persona-a.png', 'char.png')).chats['branch-a'].messages[0];
 
         const run = handleCharacterMessagePolish('message-1');
         sourceMessage.mes = 'edited while polishing';

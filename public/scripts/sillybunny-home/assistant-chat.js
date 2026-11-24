@@ -61,15 +61,18 @@ function openTemporaryChat(avatar) {
  *   Opens a Conversation thread from Home, which hides the panel while the workspace comes up.
  */
 export function createAppAssistantActions({ openConversation }) {
-    // A new Conversation is a new branch of the thread, which Recent Chats lists once the character has Conversation on.
+    // A new Conversation is a new chat of the character's direct conversation, which Recent Chats lists.
     async function openConversationChat(avatar) {
-        const { createConversationChat, getConversationChats, getConversationGroupIdForAvatar } = await import('../sillybunny-conversation/context.js');
+        const { createConversationChat, ensureDirectConversation, getConversationChats, getConversationGroupIdForAvatar } = await import('../sillybunny-conversation/context.js');
         const groupId = getConversationGroupIdForAvatar(avatar);
-        const branch = createConversationChat(avatar, `Chat ${getConversationChats(avatar, { groupId }).length + 1}`, { groupId });
-        if (!branch) {
-            throw new Error(`No Conversation branch could be made for "${avatar}".`);
+        if (!groupId) {
+            await ensureDirectConversation(avatar);
         }
-        await openConversation(avatar, { chatId: branch.id, groupId: groupId || '', enable: true });
+        const chat = createConversationChat(avatar, `Chat ${getConversationChats(avatar, { groupId }).length + 1}`, { groupId });
+        if (!chat) {
+            throw new Error(`No Conversation chat could be made for "${avatar}".`);
+        }
+        await openConversation(avatar, { chatId: chat.id, groupId: groupId || '', enable: true });
         return true;
     }
 

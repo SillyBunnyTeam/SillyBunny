@@ -425,7 +425,7 @@ export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(
         return;
     }
 
-    const capturedChatId = chatId || getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const capturedChatId = chatId || getConversationRecord(avatar, { create: false, groupId, personaId })?.activeChatId || '';
     const memoryKey = `${getConversationKey(avatar, groupId, { personaId })}:${capturedChatId}`;
     const existingTimer = memorySummaryTimers.get(memoryKey);
     if (existingTimer) {

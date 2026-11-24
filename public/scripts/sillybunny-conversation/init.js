@@ -1,5 +1,6 @@
 import { chat } from '../../script.js';
 import { event_types, eventSource } from '../events.js';
+import { extension_settings } from '../extensions.js';
 import { selected_group } from '../group-chats.js';
 import {
     captureGroupAsideRequest,
@@ -12,12 +13,14 @@ import {
     triggerRoleplayAside,
 } from './auto-engine.js';
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, selectConversation } from './chrome.js';
-import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
-import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById, migrateConversationLocalStorage } from './context.js';
+import { CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
+import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById } from './context.js';
+import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
 import { loadCurrentPanelSettings } from './interface.js';
-import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
+import { importLegacyLocalStorage } from './legacy-import.js';
+import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './conversation-list.js';
-import { scheduleInterfaceRefresh } from './render-scheduler.js';
+import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { closeConversationSettings } from './settings-panel.js';
 import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
 import { conversationState, setExternalConversationGenerationActive } from './state.js';
@@ -48,8 +51,16 @@ export function init() {
     }
 
     conversationState.initialized = true;
-    migrateConversationLocalStorage();
-    sanitizeConversationUnreadCounts();
+    conversationData.subscribe((event) => {
+        if (event.type === 'list' || event.type === 'status') {
+            updateConversationNotificationIndicators();
+            if (conversationState.conversationWorkspaceOpen) {
+                scheduleConversationListRender();
+            }
+        } else if (event.type === 'chat' && !event.local && conversationState.conversationWorkspaceOpen && event.address.conversationId === getActiveConversationKey()) {
+            scheduleInterfaceRefreshIfOpen();
+        }
+    });
     eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
         if (!hasConversationRuntimeUsage()) {
             return;
@@ -144,7 +155,6 @@ export function init() {
     eventSource.on(event_types.PERSONA_CHANGED, () => {
         closeConversationSettings();
         conversationState.conversationReplyTarget = null;
-        sanitizeConversationUnreadCounts();
         updateConversationNotificationIndicators();
         ensureConversationRuntimeStarted();
         if (conversationState.conversationWorkspaceOpen) {
@@ -180,10 +190,24 @@ export function init() {
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
     window.addEventListener('beforeunload', stopConversationAutoWorker);
 
-    if (hasAnyConversationModeUsage()) {
-        ensureConversationRuntimeStarted();
-        loadCurrentPanelSettings();
-    }
+    // The page does not wait for the conversations: the rest of the mode starts when the list has arrived.
+    void conversationData.whenReady().then(async () => {
+        try {
+            await importLegacyLocalStorage();
+        } catch (error) {
+            console.error('Conversation Mode: the old browser data could not be moved', error);
+        }
+        updateConversationNotificationIndicators();
+        if (hasAnyConversationModeUsage()) {
+            ensureConversationRuntimeStarted();
+            loadCurrentPanelSettings();
+        }
+    });
 }
 
+installConversationDataHooks({
+    eventSource,
+    settingsLoaded: event_types.SETTINGS_LOADED,
+    getModeObject: () => extension_settings[CONVERSATION_STORE_KEY],
+});
 eventSource.on(event_types.APP_READY, init);

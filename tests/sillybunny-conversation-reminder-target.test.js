@@ -2,24 +2,33 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 import { resolveConversationReminderChatId } from '../public/scripts/sillybunny-conversation/conversation-store-utils.js';
 
-const persistConversationStore = jest.fn();
+const patchConversation = jest.fn();
 const generateConversationReply = jest.fn();
 const reminder = {
     id: 'reminder-1',
     avatar: 'char.png',
-    branchId: 'deleted-branch',
-    groupId: '',
-    personaId: 'persona-a.png',
+    chatId: 'deleted-chat',
     text: 'remember this',
     triggerAt: 1,
     fired: false,
+};
+const conversationView = {
+    id: 'conv_1_direct',
+    kind: 'direct',
+    personaId: 'persona-a.png',
+    characters: ['char.png'],
+    activeChatId: 'main',
+    chats: [{ id: 'main' }],
+    reminders: [reminder],
 };
 
 await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], is_send_press: false, name1: 'User' }));
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     getActiveConversationChat: () => null,
+    getConversationAddress: () => null,
     getConversationGroupIdForAvatar: () => '',
+    getConversationKey: () => 'conv_1_direct',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-a.png' : value || ''),
     getConversationStore: () => ({ reminders: [reminder] }),
     getConversationRecord: () => ({
@@ -31,7 +40,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getRoleplayCurrentCharacter: () => ({ avatar: 'char.png' }),
     getRoleplayGroupById: () => null,
     parsePositiveInt: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
-    persistConversationStore,
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+    conversationData: { list: () => [conversationView], get: () => conversationView, patchConversation, loadChat: jest.fn() },
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
     generateConversationReply,
@@ -109,12 +120,18 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 const { checkConversationReminders } = await import('../public/scripts/sillybunny-conversation/auto-engine.js');
 
 describe('conversation reminder target identity', () => {
-    test('marks a missing captured branch invalid without posting or falsely firing', async () => {
+    test('marks a reminder for a chat that is gone invalid without posting or falsely firing', async () => {
         await expect(checkConversationReminders(100)).resolves.toBe(false);
+
         expect(generateConversationReply).not.toHaveBeenCalled();
-        expect(reminder.fired).toBe(false);
-        expect(reminder.invalidAt).toBe(100);
-        expect(reminder.invalidReason).toBe('missing_branch');
-        expect(persistConversationStore).toHaveBeenCalled();
+        expect(patchConversation).toHaveBeenCalledWith('conv_1_direct', { reminders: [{ ...reminder, invalidAt: 100 }] });
+    });
+
+    test('leaves a reminder alone that is not due yet', async () => {
+        patchConversation.mockClear();
+
+        await expect(checkConversationReminders(0)).resolves.toBe(false);
+
+        expect(patchConversation).not.toHaveBeenCalled();
     });
 });

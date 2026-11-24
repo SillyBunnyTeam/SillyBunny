@@ -2,6 +2,7 @@ import { online_status } from '../../script.js';
 import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
 import { CHROME_IDS, DEFAULT_CHAT_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
+    getActiveConversationChat,
     getConversationChats,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
@@ -12,7 +13,6 @@ import {
     getCurrentCharName,
     getIdleActionFromSettings,
     parsePositiveInt,
-    saveGroupConversationSettings,
 } from './context.js';
 import { generateConversationRaw, normalizeConversationOutputText } from './generation.js';
 import { getConversationMessageRevision } from './message-identity-utils.js';
@@ -24,6 +24,7 @@ import {
     isConversationActive,
     updateConversationNotificationIndicators,
 } from './notifications.js';
+import { conversationData } from './conversation-data-browser.js';
 import { getConversationRailItems } from './conversation-list.js';
 import { getAvailabilityCopy } from './personas.js';
 import { readChimingMembersFromList, readWeeklyScheduleFromEditor, updateUserFooter } from './pickers.js';
@@ -32,20 +33,20 @@ import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationMessages, saveConversationMessages } from './conversation-store.js';
 import { renderConversationTimeline, updateConversationNotificationSettingsVisibility } from './timeline-render.js';
-import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
+import { getActiveTypingParticipants, getLastConversationPreview } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
 import { createSpinner, createStatusPage } from '../sillybunny-editor/status-page.js';
 
-function buildChatListFingerprint(characterStore, activeBranchId) {
-    return Object.entries(characterStore?.branches || {})
-        .map(([id, chat]) => [
-            chat?.id || id,
-            chat?.name || '',
-            chat?.preview || '',
-            chat?.updatedAt || '',
-            chat?.unread || 0,
-            (chat?.id || id) === activeBranchId ? '1' : '0',
+function buildChatListFingerprint(characterStore, activeChatId) {
+    return (characterStore?.chats || [])
+        .map(chat => [
+            chat.id,
+            chat.name || '',
+            chat.preview || '',
+            chat.lastMessageAt || '',
+            chat.unread || 0,
+            chat.id === activeChatId ? '1' : '0',
         ].join('\u001f'))
         .join('\u001e');
 }
@@ -56,15 +57,15 @@ function buildConversationListFingerprint(conversations) {
     for (const { character, index, settings, groupId, group } of conversations) {
         const avatar = character?.avatar || '';
         const unreadCount = getUnreadCount(avatar, { groupId, personaId });
-        const characterStore = getConversationRecord(avatar, { create: false, groupId, personaId });
-        const activeBranchId = characterStore?.activeBranchId || DEFAULT_CHAT_ID;
+        const characterStore = getConversationRecord(avatar, { groupId, personaId });
+        const activeChatId = characterStore?.activeChatId || DEFAULT_CHAT_ID;
         const participants = getConversationParticipants(avatar, settings, { groupId })
             .map((participant) => {
                 const participantSettings = participant?.avatar === avatar ? settings : getSettings(participant?.avatar, { groupId });
                 return `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, participantSettings)}`;
             })
             .join(',');
-        const branches = buildChatListFingerprint(characterStore, activeBranchId);
+        const branches = buildChatListFingerprint(characterStore, activeChatId);
 
         parts.push([
             avatar,
@@ -79,7 +80,7 @@ function buildConversationListFingerprint(conversations) {
             getLastConversationPreview(avatar, { groupId, personaId }),
             unreadCount,
             isConversationActive(avatar, groupId, { personaId }) ? '1' : '0',
-            activeBranchId,
+            activeChatId,
             participants,
             branches,
         ].join('\u001f'));
@@ -252,8 +253,8 @@ export function updateConversationHeader(settings = getSettings()) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
-        const activeBranchId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || DEFAULT_CHAT_ID;
-        const chatName = getConversationChats(avatar, { groupId }).find(chat => chat.id === activeBranchId)?.name || 'Main';
+        const activeChatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || DEFAULT_CHAT_ID;
+        const chatName = getConversationChats(avatar, { groupId }).find(chat => chat.id === activeChatId)?.name || 'Main';
         const typingParticipants = getActiveTypingParticipants(avatar, { groupId, personaId });
         let statusText;
         if (typingParticipants.length) {
@@ -303,9 +304,15 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
     if (active) {
         if (avatar) {
-            const chatId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-            clearUnreadCount(avatar, { chatId, groupId, personaId });
-            updateLastPreviewFromConversation(avatar, { groupId, personaId });
+            const record = getConversationRecord(avatar, { groupId, personaId });
+            const chatId = record?.activeChatId || '';
+            const address = record && chatId ? { conversationId: record.id, chatId } : null;
+            conversationData.setOpen(address);
+            if (address && !conversationData.chat(address)) {
+                void conversationData.loadChat(address).then(() => scheduleInterfaceRefresh({ syncControls: false }), () => {});
+            } else {
+                void clearUnreadCount(avatar, { chatId, groupId, personaId });
+            }
         }
         renderConversationTimeline();
         updateConversationChrome(settings);
@@ -317,8 +324,10 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
             ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
             : null;
         const isConnected = online_status !== 'no_connection';
+        const openChat = avatar ? getActiveConversationChat(avatar, { groupId, personaId }) : null;
+        const chatLoading = Boolean(openChat) && !openChat.loaded;
         if (input instanceof HTMLTextAreaElement) {
-            input.disabled = !avatar;
+            input.disabled = !avatar || chatLoading;
             input.placeholder = !isConnected
                 ? 'Not connected to API!'
                 : avatar
@@ -328,7 +337,7 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
                         : 'Pick or start a DM from the Pals rail…';
         }
         if (send instanceof HTMLButtonElement) {
-            send.disabled = !avatar || !isConnected || conversationState.conversationUploadActive;
+            send.disabled = !avatar || chatLoading || !isConnected || conversationState.conversationUploadActive;
         }
         document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-quick`).forEach((button) => {
             if (button instanceof HTMLButtonElement) {
@@ -385,9 +394,6 @@ export function saveCurrentPanelSettings(options = {}) {
     settings.idle_action = getIdleActionFromSettings(settings);
     settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
     settings.auto_chat_names = settings.multi_char_names;
-    if (groupId) {
-        saveGroupConversationSettings(groupId, settings, { personaId });
-    }
     saveSettings(avatar, settings, { groupId, personaId });
     if (personaId === getConversationPersonaId()) {
         scheduleInterfaceRefresh({ syncControls: false });
@@ -450,7 +456,7 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
 
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const chatId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     if (!chatId) {
         return;
     }
@@ -487,7 +493,6 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
             }
             targetMessage.mes = normalizeConversationOutputText(response.trim());
             saveConversationMessages(avatar, targetMessages, { chatId, create: false, groupId, personaId });
-            updateLastPreviewFromConversation(avatar, { chatId, groupId, personaId });
             if (isConversationActive(avatar, groupId, { chatId, personaId })) {
                 scheduleTimelineRender();
             }

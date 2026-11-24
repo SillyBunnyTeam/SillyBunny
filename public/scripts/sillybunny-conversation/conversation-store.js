@@ -1,16 +1,15 @@
 import { getMessageTimeStamp } from '../RossAscends-mods.js';
-import { DEFAULT_CHAT_ID, MAX_CONVERSATION_MESSAGES, SAFE_TOAST_OPTIONS } from './constants.js';
+import { SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     getActiveConversationChat,
+    getConversationAddress,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationStore,
-    getConversationRecord,
     getCurrentCharAvatar,
     getCurrentCharName,
     parsePositiveInt,
-    persistConversationStore,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { isConversationActive } from './notifications.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
@@ -104,25 +103,24 @@ export function addConversationReminder(avatar, groupId, delayText, memoText, { 
         return null;
     }
 
-    const triggerAt = Date.now() + delayMs;
-    const store = getConversationStore();
-    const characterStore = getConversationRecord(avatar, { groupId, personaId });
-    const resolvedChatId = chatId || characterStore?.activeBranchId || DEFAULT_CHAT_ID;
+    const address = getConversationAddress(avatar, { groupId, personaId, chatId });
+    const view = address ? conversationData.get(address.conversationId) : null;
+    if (!view) {
+        return null;
+    }
 
+    const triggerAt = Date.now() + delayMs;
     const reminder = {
         id: `rem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         avatar,
-        groupId: groupId || '',
-        personaId,
-        branchId: resolvedChatId,
+        chatId: address.chatId,
         triggerAt,
-        text: String(memoText || '').trim(),
+        text: String(memoText || '').trim().slice(0, 4000),
         fired: false,
         createdAt: Date.now(),
     };
 
-    store.reminders.push(reminder);
-    persistConversationStore();
+    conversationData.patchConversation(view.id, { reminders: [...view.reminders, reminder] });
 
     const triggerLabel = new Date(triggerAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     toastr.info(`Reminder scheduled: "${reminder.text}" at ${triggerLabel}`, '', SAFE_TOAST_OPTIONS);
@@ -145,6 +143,8 @@ export function createConversationMessage({ role = 'character', name = getCurren
         id: `${createdAt}-${Math.random().toString(36).slice(2)}`,
         role,
         name,
+        is_user: role === 'user',
+        is_system: role === 'system',
         mes,
         send_date: getMessageTimeStamp(),
         created_at: createdAt,
@@ -178,53 +178,71 @@ export function buildConversationMessageReplyReference(message) {
 }
 
 /**
- * Returns the active branch message array by reference. Copy it before speculative mutation.
+ * Returns the messages of the chat by reference when it is loaded, and an empty list that cannot be changed when it is
+ * not: nothing can be written to a chat that is not loaded. Copy it before speculative mutation.
  */
-export function getConversationMessages(avatar = getCurrentCharAvatar(), { chatId = '', create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function getConversationMessages(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return [];
     }
 
-    return getActiveConversationChat(avatar, { chatId, create, groupId, personaId })?.messages ?? [];
+    return getActiveConversationChat(avatar, { chatId, groupId, personaId })?.messages ?? [];
 }
 
 export function getConversationMessageCount(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    return getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId })?.messages?.length || 0;
+    return getActiveConversationChat(avatar, { chatId, groupId, personaId })?.messageCount || 0;
 }
 
-export function saveConversationMessages(avatar, messages, { chatId = '', create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!avatar) {
+/**
+ * Loads the chat that an avatar and a group name, so that it can be read and written.
+ * @returns {Promise<{ conversationId: string, chatId: string }|null>} The address of the chat, or null when there is none.
+ */
+export async function ensureConversationChatLoaded(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const address = avatar ? getConversationAddress(avatar, { chatId, groupId, personaId }) : null;
+    if (!address) {
+        return null;
+    }
+    await conversationData.loadChat(address);
+    return address;
+}
+
+function withRoleFlags(message) {
+    return {
+        ...message,
+        is_user: message.is_user ?? message.role === 'user',
+        is_system: message.is_system ?? message.role === 'system',
+    };
+}
+
+/**
+ * Replaces the messages of a loaded chat. `shrink` says that messages are deleted on purpose, so that the guard of the
+ * server against a save that empties a chat by mistake does not refuse the save. It defaults to whether the list is
+ * shorter than the chat is now, which a caller that changed the chat's own array before the call has to say itself.
+ */
+export function saveConversationMessages(avatar, messages, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), shrink = undefined } = {}) {
+    const address = avatar ? getConversationAddress(avatar, { chatId, groupId, personaId }) : null;
+    if (!address) {
         return;
     }
 
-    const chat = getActiveConversationChat(avatar, { chatId, create, groupId, personaId });
-    if (!chat) {
-        return;
-    }
-
-    chat.messages = safeParseMessages(messages).slice(-MAX_CONVERSATION_MESSAGES);
-    chat.updatedAt = Date.now();
-    persistConversationStore();
+    const next = safeParseMessages(messages).map(withRoleFlags);
+    conversationData.commitChat(address, (draft) => {
+        draft.messages.splice(0, draft.messages.length, ...next);
+    }, { shrink: shrink ?? next.length < (conversationData.chat(address)?.messages.length ?? 0) });
 }
 
-export function appendConversationChatMessage(avatar, messageInput, { chatId = '', create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const chat = getActiveConversationChat(avatar, { chatId, create, groupId, personaId });
-    if (!chat) {
+/** Adds a message to a loaded chat. Load the chat first with `ensureConversationChatLoaded` when it may not be. */
+export function appendConversationChatMessage(avatar, messageInput, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
+    if (!address) {
         return null;
     }
 
     const message = createConversationMessage(messageInput);
-    chat.messages.push(message);
-    if (chat.messages.length > MAX_CONVERSATION_MESSAGES) {
-        chat.messages.splice(0, chat.messages.length - MAX_CONVERSATION_MESSAGES);
-    }
-    const preview = getConversationMessagePreviewText(message);
-    if (preview) {
-        chat.preview = preview;
-    }
-    chat.updatedAt = Date.now();
-    persistConversationStore();
-    const isStillVisible = () => isConversationActive(avatar, groupId, { chatId: chat.id, personaId });
+    conversationData.commitChat(address, (draft) => {
+        draft.messages.push(message);
+    });
+    const isStillVisible = () => isConversationActive(avatar, groupId, { chatId: address.chatId, personaId });
     if (isStillVisible()) {
         scheduleTimelineRender();
         // TTS readiness can await provider/network work; the capability rechecks
@@ -235,21 +253,21 @@ export function appendConversationChatMessage(avatar, messageInput, { chatId = '
 }
 
 export function updateConversationChatMessage(avatar, messageId, messageText, extra = null, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
-    const message = messages.find(item => item.id === messageId);
-    if (!message) {
+    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
+    if (!address || !conversationData.chat(address)) {
         return;
     }
 
-    message.mes = messageText;
-    if (extra && typeof extra === 'object') {
-        message.extra = { ...message.extra, ...extra };
-    }
-    saveConversationMessages(avatar, messages, { chatId, create: false, groupId, personaId });
-    const chat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
-    if (chat) {
-        chat.preview = getConversationMessagePreviewText(messages[messages.length - 1]) || 'Conversation ready';
-    }
+    conversationData.commitChat(address, (draft) => {
+        const message = draft.messages.find(item => item.id === messageId);
+        if (!message) {
+            return;
+        }
+        message.mes = messageText;
+        if (extra && typeof extra === 'object') {
+            message.extra = { ...message.extra, ...extra };
+        }
+    });
     if (isConversationActive(avatar, groupId, { chatId, personaId })) {
         scheduleTimelineRender();
     }

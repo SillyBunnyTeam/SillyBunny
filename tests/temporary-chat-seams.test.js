@@ -389,7 +389,7 @@ describe('Conversation reactions to the open roleplay', () => {
         const context = createContext({
             getCurrentCharAvatar: () => 'bunny.png',
             getConversationPersonaId: () => 'persona.png',
-            getConversationRecord: () => ({ activeBranchId: 'main' }),
+            getConversationRecord: () => ({ activeChatId: 'main' }),
             buildConversationRoleplayContext: () => 'The scene so far.',
             getRoleplaySourceMessageRevision: () => 'revision',
             ...overrides,
@@ -404,7 +404,7 @@ describe('Conversation reactions to the open roleplay', () => {
         expect(context.captureRoleplayAsideRequest()).toMatchObject({ avatar: 'bunny.png', chatId: 'main', roleplayContext: 'The scene so far.' });
     });
 
-    test('captures nothing from a temporary chat, so no reaction is written into the Conversation store', () => {
+    test('captures nothing from a temporary chat, so no reaction is written into a conversation', () => {
         const context = captureContext({ isTemporaryChat: jest.fn(() => true) });
 
         expect(context.captureRoleplayAsideRequest()).toBeNull();

@@ -27,17 +27,16 @@ import {
 } from './constants.js';
 import { truncateConversationReplyPreview } from './preview-utils.js';
 import {
-    buildConversationChat,
     getActiveConversationChat,
-    getConversationGroupById,
     getConversationChats,
+    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getConversationRecord,
     getCurrentCharAvatar,
     getCurrentCharName,
-    persistConversationStore,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { promptConversationText } from './dialogs.js';
 import { commitCharacterReplyCommands, extractCharacterReplyCommands, generateConversationRaw, generateSelfieFromContext, getCharacterReplyCommandMetadata, reportConversationGenerationError } from './generation.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
@@ -63,11 +62,10 @@ import {
     buildConversationMessageReplyReference,
     getConversationAttachmentSummary,
     getConversationSeenAt,
-    getConversationMessagePreviewText,
     getConversationMessages,
     saveConversationMessages,
 } from './conversation-store.js';
-import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
+import { getActiveTypingParticipants, getPrimaryTypingParticipant, withTypingParticipant } from './typing.js';
 import { getConversationWorldInfo } from './world-info.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 
@@ -82,8 +80,8 @@ export {
 } from './timeline-slash-commands.js';
 
 function getConversationRenderChatId(avatar, groupId, personaId) {
-    const store = getConversationRecord(avatar, { create: false, groupId, personaId });
-    return String(store?.activeBranchId || getActiveConversationChat(avatar, { create: false, groupId, personaId })?.id || '');
+    const store = getConversationRecord(avatar, { groupId, personaId });
+    return String(store?.activeChatId || getActiveConversationChat(avatar, { groupId, personaId })?.id || '');
 }
 
 function buildConversationRenderKey(avatar, groupId, chatId, personaId) {
@@ -100,7 +98,7 @@ function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings
     }
 
     const messageParts = messages.map((message) => {
-        const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
+        const speakerAvatar = message?.role === 'member' ? message.extra?.member_avatar : avatar;
         if (speakerAvatar && message?.role !== 'user' && message?.role !== 'system') {
             statusAvatars.add(speakerAvatar);
         }
@@ -148,7 +146,7 @@ function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings
 }
 
 function buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index }) {
-    const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
+    const speakerAvatar = message?.role === 'member' ? message.extra?.member_avatar : avatar;
     const speakerStatus = speakerAvatar && message?.role !== 'user' && message?.role !== 'system'
         ? getEffectiveConversationStatus(speakerAvatar, getSettings(speakerAvatar, { groupId, personaId }))
         : '';
@@ -255,8 +253,8 @@ function createConversationReplyReferenceElement(reference, className) {
 
 export function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const target = conversationState.conversationReplyTarget;
-    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-    const resolvedChatId = chatId || conversationRecord?.activeBranchId || '';
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    const resolvedChatId = chatId || conversationRecord?.activeChatId || '';
     if (!target) {
         return null;
     }
@@ -395,7 +393,7 @@ function getConversationMessageSpeakerKey(message) {
         return `system:${message?.id || ''}`;
     }
 
-    return `${message?.role || 'character'}:${message?.extra?.partner_avatar || message?.name || ''}`;
+    return `${message?.role || 'character'}:${message?.extra?.member_avatar || message?.name || ''}`;
 }
 
 function messagesShareConversationGroup(current, previous) {
@@ -486,8 +484,8 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     avatarWrap.className = 'sb-conversation-message-avatar';
     const messageAvatar = message.role === 'user'
         ? ''
-        : message.role === 'partner' || message.role === 'system'
-            ? message.extra?.partner_avatar || avatar
+        : message.role === 'member' || message.role === 'system'
+            ? message.extra?.member_avatar || avatar
             : avatar;
     if (message.role !== 'user' && messageAvatar) {
         avatarWrap.dataset.sbConversationAction = 'zoom-avatar';
@@ -884,6 +882,21 @@ export function renderConversationTimeline() {
     const chatId = getConversationRenderChatId(avatar, groupId, personaId);
     const renderConversationKey = buildConversationRenderKey(avatar, groupId, chatId, personaId);
     const contextChanged = previousConversationKey !== renderConversationKey;
+    // The chat of a conversation is read from the server when the conversation is opened.
+    const openChat = getActiveConversationChat(avatar, { chatId, groupId, personaId });
+    if (openChat && !openChat.loaded) {
+        const loadingFingerprint = `loading:${renderConversationKey}`;
+        if (timeline.dataset.sbConversationFingerprint !== loadingFingerprint) {
+            conversationState.lastTimelineFingerprint = loadingFingerprint;
+            timeline.dataset.sbConversationFingerprint = loadingFingerprint;
+            timeline.replaceChildren(createConversationStatusPage({ state: 'loading', icon: 'message', title: 'Loading' }));
+            conversationState.lastRenderedAvatar = avatar;
+            conversationState.lastRenderedConversationKey = renderConversationKey;
+            conversationState.lastRenderedMessageCount = 0;
+        }
+        updateConversationToolsState();
+        return;
+    }
     const messagesAdded = allMessages.length > previousMessageCount;
     const isNearBottom = previousScrollBottom <= 150;
     const needsBottomScroll = Boolean(conversationState.timelineBottomScrollPending);
@@ -946,7 +959,7 @@ export function renderConversationTimeline() {
     const typingParticipants = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });
     if (typingParticipants.length > 2) {
         timeline.appendChild(createConversationTransientRow({
-            role: 'partner',
+            role: 'member',
             extraClass: 'sb-conversation-typing-indicator',
             avatarSrc: getThumbnailUrl('avatar', typingParticipants[0]?.avatar) || default_user_avatar,
             nameHtml: 'Several people',
@@ -962,7 +975,7 @@ export function renderConversationTimeline() {
             const typingAvatar = typingParticipant?.avatar || getCurrentCharAvatar();
             const typingName = typingParticipant?.name || getCurrentCharName();
             timeline.appendChild(createConversationTransientRow({
-                role: typingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character',
+                role: typingAvatar !== getCurrentCharAvatar() ? 'member' : 'character',
                 extraClass: 'sb-conversation-typing-indicator',
                 avatarSrc: getThumbnailUrl('avatar', typingAvatar) || default_user_avatar,
                 nameHtml: escapeHtmlText(typingName),
@@ -975,7 +988,7 @@ export function renderConversationTimeline() {
         const pendingParticipant = getPrimaryTypingParticipant(avatar, { chatId, groupId, personaId });
         const pendingAvatar = pendingParticipant?.avatar || getCurrentCharAvatar();
         timeline.appendChild(createConversationTransientRow({
-            role: pendingParticipant && pendingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character',
+            role: pendingParticipant && pendingAvatar !== getCurrentCharAvatar() ? 'member' : 'character',
             extraClass: 'sb-conversation-image-pending',
             avatarSrc: getThumbnailUrl('avatar', pendingAvatar) || default_user_avatar,
             nameHtml: 'Image Generation',
@@ -1122,42 +1135,24 @@ export function getConversationMessageById(messageId, { avatar = getCurrentCharA
         return null;
     }
 
-    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-    const resolvedChatId = chatId || conversationRecord?.activeBranchId || '';
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    const resolvedChatId = chatId || conversationRecord?.activeChatId || '';
     const messages = getConversationMessages(avatar, { chatId: resolvedChatId, create: false, groupId, personaId });
     const message = messages.find(item => item.id === messageId);
     return message ? { avatar, chatId: resolvedChatId, groupId, messages, message, personaId } : null;
 }
 
-export function saveConversationContextMessages(context) {
+export function saveConversationContextMessages(context, { shrink = false } = {}) {
     if (!context?.avatar) {
         return;
     }
 
     saveConversationMessages(context.avatar, context.messages, {
         chatId: context.chatId,
-        create: false,
         groupId: context.groupId,
         personaId: context.personaId,
+        shrink,
     });
-    if (context.messages.length) {
-        updateLastPreviewFromConversation(context.avatar, {
-            chatId: context.chatId,
-            groupId: context.groupId,
-            personaId: context.personaId,
-        });
-    } else {
-        const chat = getActiveConversationChat(context.avatar, {
-            chatId: context.chatId,
-            create: false,
-            groupId: context.groupId,
-            personaId: context.personaId,
-        });
-        if (chat) {
-            chat.preview = 'Conversation ready';
-            persistConversationStore();
-        }
-    }
     scheduleTimelineRender();
 }
 
@@ -1246,7 +1241,7 @@ export function deleteConversationMessage(messageId) {
     }
 
     context.messages = context.messages.filter(item => item.id !== messageId);
-    saveConversationContextMessages(context);
+    saveConversationContextMessages(context, { shrink: true });
 }
 
 export async function regenerateConversationMessage(messageId) {
@@ -1260,7 +1255,7 @@ export async function regenerateConversationMessage(messageId) {
         return;
     }
 
-    const speakerAvatar = context.message.extra?.partner_avatar || context.avatar;
+    const speakerAvatar = context.message.extra?.member_avatar || context.avatar;
     const settings = getSettings(speakerAvatar, { groupId: context.groupId, personaId: context.personaId });
     const speakerName = context.message.name || getCharacterForAvatar(speakerAvatar)?.name || getCurrentCharName();
     const operationKey = [context.personaId, context.avatar, context.groupId, context.chatId, messageId].join('\u001f');
@@ -1365,34 +1360,27 @@ export function branchConversationFromMessage(messageId) {
 
     const sourceChat = getActiveConversationChat(context.avatar, {
         chatId: context.chatId,
-        create: false,
         groupId: context.groupId,
         personaId: context.personaId,
     });
-    if (!sourceChat) {
-        return;
-    }
-
-    const chat = buildConversationChat(`Branch ${getConversationChats(context.avatar, { groupId: context.groupId }).length + 1}`);
-    chat.messages = context.messages.slice(0, index + 1).map(item => ({ ...item, extra: { ...(item.extra || {}) } }));
-    chat.preview = getConversationMessagePreviewText(chat.messages[chat.messages.length - 1]) || 'Conversation ready';
-    chat.updatedAt = Date.now();
-    if (sourceChat.memorySummary) {
-        chat.memorySummary = sourceChat.memorySummary;
-        chat.memoryMessageCount = sourceChat.memoryMessageCount;
-    }
     const store = getConversationRecord(context.avatar, { groupId: context.groupId, personaId: context.personaId });
-    if (!store) {
+    if (!sourceChat || !store) {
         return;
     }
 
-    store.branches[chat.id] = chat;
-    store.activeBranchId = chat.id;
-    const group = context.groupId ? getConversationGroupById(context.groupId, { personaId: context.personaId }) : null;
-    if (group?.is_conversation_group) {
-        group.updatedAt = Date.now();
+    // The branch is a chat of the same conversation that holds the messages up to this one. The memory summary of the
+    // chat it came from goes with it.
+    const created = conversationData.createChat(store.id, { name: `Branch ${getConversationChats(context.avatar, { groupId: context.groupId }).length + 1}`, activate: true });
+    if (!created) {
+        return;
     }
-    persistConversationStore();
+    const chat = { id: created.address.chatId };
+    conversationData.commitChat(created.address, (draft) => {
+        draft.messages.splice(0, 0, ...context.messages.slice(0, index + 1).map(item => structuredClone(item)));
+        if (sourceChat.memorySummary) {
+            draft.header.chat_metadata.sb_conversation = { memory_summary: sourceChat.memorySummary, memory_message_count: sourceChat.memoryMessageCount, memory_updated_at: sourceChat.memoryUpdatedAt };
+        }
+    });
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
         detail: {
             avatar: context.avatar,
@@ -1433,7 +1421,7 @@ export async function quickConversationSelfie() {
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const chatId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     const settings = getSettings(avatar, { groupId, personaId });
     const context = await promptConversationText({
         title: 'Send a Selfie',
@@ -1461,12 +1449,12 @@ export async function generateConversationSelfieFromMessageCommand(messageId, se
         return;
     }
 
-    const speakerAvatar = context.message.role === 'partner'
-        ? context.message.extra?.partner_avatar || context.avatar
+    const speakerAvatar = context.message.role === 'member'
+        ? context.message.extra?.member_avatar || context.avatar
         : context.avatar;
-    const role = context.message.role === 'partner' ? 'partner' : 'character';
+    const role = context.message.role === 'member' ? 'member' : 'character';
     const settings = getSettings(speakerAvatar, { groupId: context.groupId, personaId: context.personaId });
-    const extra = role === 'partner' ? { partner_avatar: speakerAvatar } : {};
+    const extra = role === 'member' ? { member_avatar: speakerAvatar } : {};
     await generateSelfieFromContext(request.context, settings, speakerAvatar, {
         anchorAvatar: context.avatar,
         chatId: context.chatId,
@@ -1488,7 +1476,7 @@ export async function quickConversationReminder() {
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const chatId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     const delay = await promptConversationText({
         title: 'Remind Me',
         text: 'When should the reminder fire? For example 30m, 1h or 2d.',

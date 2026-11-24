@@ -5,6 +5,8 @@ const appendConversationMessage = jest.fn();
 const addConversationReminder = jest.fn();
 const generateConversationImage = jest.fn();
 const updateConversationChatMessage = jest.fn();
+const ensureConversationChatLoaded = jest.fn(async () => ({ conversationId: 'conv_1_direct', chatId: 'main' }));
+const loadRelatedMemoryChats = jest.fn(async () => {});
 const runtimeStatusOverrides = new Map();
 const chatMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
 const generateRaw = jest.fn();
@@ -59,9 +61,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedu
     parseDurationToMs: () => 60_000,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({ runtimeStatusOverrides }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({ loadRelatedMemoryChats }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     addConversationReminder,
     buildConversationMessageReplyReference: message => message ? { messageId: message.id, name: message.name, role: message.role, text: message.mes } : null,
+    ensureConversationChatLoaded,
     getConversationMessages: () => chatMessages,
     getImageCooldownRemainingSeconds: () => 0,
     hasConversationMessageContent: message => Boolean(message?.id && message?.mes),
@@ -139,6 +143,22 @@ describe('Conversation core generated reply regressions', () => {
         expect(buildConversationPromptMessages).toHaveBeenCalledWith(chatMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { anchorAvatar: 'char.png', chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 100 }));
+    });
+
+    test('loads the chat that the transcript is read from, and the chats of related memories only when the setting asks for them', async () => {
+        globalThis.window = {};
+        generateRaw.mockResolvedValue('reply');
+        ensureConversationChatLoaded.mockClear();
+        loadRelatedMemoryChats.mockClear();
+
+        await generateConversationReply('Reply now.', settings, { avatar: 'char.png', chatId: 'branch-a', groupId: '', personaId: 'persona-a.png' });
+
+        expect(ensureConversationChatLoaded).toHaveBeenCalledWith('char.png', { chatId: 'branch-a', groupId: '', personaId: 'persona-a.png' });
+        expect(loadRelatedMemoryChats).not.toHaveBeenCalled();
+
+        await generateConversationReply('Reply now.', { ...settings, include_related_memory: true }, { avatar: 'char.png', speakerAvatar: 'partner.png', groupId: 'conv_2_group', personaId: 'persona-a.png' });
+
+        expect(loadRelatedMemoryChats).toHaveBeenCalledWith('partner.png', { groupId: 'conv_2_group', personaId: 'persona-a.png' });
     });
 
     test('asks the active API for the response length that it can serve', async () => {

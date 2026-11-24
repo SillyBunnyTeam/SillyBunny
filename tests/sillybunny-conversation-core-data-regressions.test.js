@@ -1,8 +1,16 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+/* global globalThis */
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+
+import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
+import { PERSONA, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
 
 const extensionSettings = {};
 const charactersByAvatar = new Map();
 const saveSettingsDebounced = jest.fn();
+let data;
+
+// The module under test reads the page's data module through this stand-in, which points at the one of the test.
+const conversationData = new Proxy({}, { get: (_target, key) => data[key] });
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [],
@@ -15,7 +23,8 @@ await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({
     groups: [],
     selected_group: null,
 }));
-await jest.unstable_mockModule('../public/scripts/personas.js', () => ({ user_avatar: 'persona-a.png' }));
+await jest.unstable_mockModule('../public/scripts/personas.js', () => ({ user_avatar: PERSONA }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({ conversationData }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     getCharacterForAvatar: avatar => charactersByAvatar.get(avatar) || null,
 }));
@@ -30,200 +39,267 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
         conversationWorkspaceOpen: false,
     },
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({ safeParseMessages: value => value }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 
 const {
+    clearLegacyConversationUnreadStorage,
+    createConversationChat,
     deleteConversationChat,
     deleteConversationWelcomeChat,
+    ensureDirectConversation,
+    getActiveConversationChat,
+    getConversationAddress,
+    getConversationChats,
     getConversationGroupAnchor,
+    getConversationGroupById,
+    getConversationKey,
+    getConversationRecord,
     getConversationStore,
-    normalizeGroupConversationSettings,
+    makeConversationGroup,
+    renameConversationChat,
     resetCharacterConversationChats,
 } = await import('../public/scripts/sillybunny-conversation/context.js');
 
-function createStore(overrides = {}) {
-    return {
-        characters: {},
-        groups: [],
-        legacyThreadPersonaAssignments: {},
-        localStorageMigrated: true,
-        reminders: [],
-        settings: {},
-        version: 1,
-        ...overrides,
-    };
+let server;
+
+async function startData(descriptors) {
+    seedConversations(server, descriptors);
+    data = createConversationData(server.adapter());
+    await data.start();
 }
 
-describe('Conversation core persisted data regressions', () => {
-    beforeEach(() => {
-        for (const key of Object.keys(extensionSettings)) {
-            delete extensionSettings[key];
-        }
+beforeEach(async () => {
+    server = await startConversationServer();
+    for (const avatar of ['Nova.png', 'Orion.png', 'Pax.png']) {
+        charactersByAvatar.set(avatar, { avatar, name: avatar });
+    }
+});
+
+afterEach(async () => {
+    data?.destroy();
+    data = undefined;
+    charactersByAvatar.clear();
+    for (const key of Object.keys(extensionSettings)) {
+        delete extensionSettings[key];
+    }
+    saveSettingsDebounced.mockClear();
+    await server.stop();
+});
+
+const GROUP = { id: 'conv_2_group001', characters: ['Missing.png', 'Orion.png', 'Pax.png'], name: 'Crew', chats: [{ id: 'main', messages: ['one', 'two'] }] };
+const DIRECT = { id: 'conv_1_direct01', characters: ['Nova.png'], chats: [{ id: 'main', name: 'Main', messages: ['hello', 'hi'] }] };
+
+describe('conversations as the rest of the mode reads them', () => {
+    test('a group is the old group record: its members, a name that is never empty, no disabled members', async () => {
+        await startData([GROUP, { ...DIRECT, id: 'conv_3_second001', characters: ['Nova.png', 'Orion.png'], name: '' }]);
+
+        expect(getConversationGroupById('conv_2_group001')).toMatchObject({
+            id: 'conv_2_group001',
+            name: 'Crew',
+            members: ['Missing.png', 'Orion.png', 'Pax.png'],
+            disabled_members: [],
+            is_conversation_group: true,
+            personaId: PERSONA,
+        });
+        expect(getConversationGroupById('conv_3_second001').name).toBe('Conversation Group');
+        expect(getConversationGroupById('conv_1_direct01')).toBeNull();
+        expect(getConversationGroupById('conv_2_group001', { personaId: 'other.png' })).toBeNull();
+    });
+
+    test('the anchor of a group is its first member with a character card, and its key is the id of the conversation', async () => {
+        await startData([GROUP]);
+
+        const anchor = getConversationGroupAnchor(getConversationGroupById('conv_2_group001'), { personaId: PERSONA });
+
+        expect(anchor.avatar).toBe('Orion.png');
+        expect(anchor.key).toBe('conv_2_group001');
+        expect(anchor.conversationRecord).toBe(data.get('conv_2_group001'));
+    });
+
+    test('a group with no member that has a card has no anchor', async () => {
+        await startData([GROUP]);
         charactersByAvatar.clear();
-        saveSettingsDebounced.mockClear();
+
+        expect(getConversationGroupAnchor(getConversationGroupById('conv_2_group001'))).toBeNull();
     });
 
-    test('defaults missing legacy group cross-talk keys on while preserving explicit false', () => {
-        expect(normalizeGroupConversationSettings({})).toMatchObject({
-            auto_character_chat: true,
-            multi_char: true,
-        });
-        expect(normalizeGroupConversationSettings({ auto_character_chat: false, multi_char: false })).toMatchObject({
-            auto_character_chat: false,
-            multi_char: false,
-        });
-        expect(normalizeGroupConversationSettings(JSON.stringify({ auto_character_chat: false, multi_char: false }))).toMatchObject({
-            auto_character_chat: false,
-            multi_char: false,
-        });
-        expect(normalizeGroupConversationSettings(JSON.stringify({}))).toMatchObject({
-            auto_character_chat: true,
-            multi_char: true,
-        });
+    test('a call in the old form finds the direct conversation of the persona or the group by its id', async () => {
+        await startData([DIRECT, GROUP]);
+
+        expect(getConversationRecord('Nova.png', { groupId: '' })).toBe(data.get('conv_1_direct01'));
+        expect(getConversationRecord('Orion.png', { groupId: 'conv_2_group001' })).toBe(data.get('conv_2_group001'));
+        expect(getConversationRecord('Nova.png', { groupId: '', personaId: 'other.png' })).toBeNull();
+        expect(getConversationRecord('Ghost.png', { groupId: '' })).toBeNull();
+        expect(getConversationAddress('Nova.png', { groupId: '', chatId: 'ghost' })).toEqual({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        expect(getConversationKey('Nova.png', '')).toBe('conv_1_direct01');
+        expect(getConversationKey('Ghost.png', '')).toBe(`pending:${PERSONA}::Ghost.png`);
     });
 
-    test('uses persisted eligible group history instead of a disabled first member or solo alias', () => {
-        for (const avatar of ['disabled.png', 'fallback.png', 'persisted.png']) {
-            charactersByAvatar.set(avatar, { avatar, name: avatar });
-        }
-        const group = {
-            id: 'group-a',
-            personaId: 'persona-a.png',
-            members: ['disabled.png', 'fallback.png', 'persisted.png'],
-            disabled_members: ['disabled.png'],
-            conversation_settings: {},
-        };
-        const persistedConversation = {
-            activeBranchId: 'main',
-            branches: { main: { id: 'main', messages: [{ id: 'group-message' }], updatedAt: 20 } },
-            settings: {},
-        };
-        extensionSettings.sillybunny_conversation = createStore({
-            groups: [group],
-            characters: {
-                'persona:persona-a.png:disabled.png': {
-                    activeBranchId: 'main',
-                    branches: { main: { id: 'main', messages: [{ id: 'solo-message' }], updatedAt: 50 } },
-                    settings: {},
-                },
-                'persona:persona-a.png:group:group-a:persisted.png': persistedConversation,
-            },
-        });
+    test('a chat is a handle with its messages only while it is loaded', async () => {
+        await startData([DIRECT]);
 
-        const anchor = getConversationGroupAnchor(group, { personaId: 'persona-a.png' });
+        expect(getActiveConversationChat('Nova.png', { groupId: '' })).toMatchObject({ id: 'main', loaded: false, messageCount: 2 });
+        expect(getActiveConversationChat('Nova.png', { groupId: '' }).messages).toHaveLength(0);
+        expect(Object.isFrozen(getActiveConversationChat('Nova.png', { groupId: '' }).messages)).toBe(true);
 
-        expect(anchor.avatar).toBe('persisted.png');
-        expect(anchor.key).toBe('persona:persona-a.png:group:group-a:persisted.png');
-        expect(anchor.conversationRecord).toBe(persistedConversation);
+        await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
+
+        expect(getActiveConversationChat('Nova.png', { groupId: '' })).toMatchObject({ loaded: true, messageCount: 2, preview: 'hi' });
+        expect(getActiveConversationChat('Nova.png', { groupId: '' }).messages.map(item => item.mes)).toEqual(['hello', 'hi']);
+    });
+});
+
+describe('making conversations', () => {
+    test('a direct conversation is made once for a character, and a group from its members', async () => {
+        await startData([]);
+
+        const first = await ensureDirectConversation('Nova.png');
+        const second = await ensureDirectConversation('Nova.png');
+        const group = await makeConversationGroup(['Nova.png', 'Orion.png', 'Nova.png'], { name: 'Crew' });
+
+        expect(second).toBe(first);
+        expect(group).toMatchObject({ name: 'Crew', members: ['Nova.png', 'Orion.png'], is_conversation_group: true });
+        expect(await makeConversationGroup(['Nova.png'])).toBeNull();
+    });
+});
+
+describe('chats of a conversation', () => {
+    test('a new chat is listed and active at once, and the server makes it', async () => {
+        await startData([DIRECT]);
+
+        const chat = createConversationChat('Nova.png', 'Trip', { groupId: '' });
+
+        expect(chat).toMatchObject({ name: 'Trip', loaded: true });
+        expect(getConversationRecord('Nova.png', { groupId: '' }).activeChatId).toBe(chat.id);
+        expect(getConversationChats('Nova.png', { groupId: '' }).map(item => item.name)).toEqual(['Main', 'Trip']);
+        await data.flush();
+        const stored = await server.adapter().fetchJson('/get', { id: 'conv_1_direct01' });
+        expect(stored.json.conversation.chats.map(item => item.id)).toEqual(['main', chat.id]);
     });
 
-    test('falls back to the first enabled group member when no group thread exists', () => {
-        for (const avatar of ['disabled.png', 'enabled.png', 'later.png']) {
-            charactersByAvatar.set(avatar, { avatar, name: avatar });
-        }
-        const group = {
-            id: 'group-a',
-            personaId: 'persona-a.png',
-            members: ['disabled.png', 'enabled.png', 'later.png'],
-            disabled_members: ['disabled.png'],
-            conversation_settings: {},
-        };
-        extensionSettings.sillybunny_conversation = createStore({ groups: [group] });
-
-        expect(getConversationGroupAnchor(group, { personaId: 'persona-a.png' })).toMatchObject({
-            avatar: 'enabled.png',
-            key: 'persona:persona-a.png:group:group-a:enabled.png',
-            conversationRecord: null,
+    test('a new chat takes the memory summary of the chat it was started from', async () => {
+        await startData([DIRECT]);
+        const loaded = await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        data.commitChat(loaded.address, (draft) => {
+            draft.header.chat_metadata.sb_conversation = { memory_summary: 'Durable memory', memory_message_count: 7, memory_updated_at: 123 };
         });
+
+        const chat = createConversationChat('Nova.png', 'Trip', { groupId: '' });
+
+        expect(chat.memorySummary).toBe('Durable memory');
+        expect(chat.memoryMessageCount).toBe(0);
+        expect(chat.sessionMarkers).toEqual({ memory_copied_from: 'main' });
+        await data.flush();
     });
 
-    test('merges disabled and missing group aliases into the best eligible anchor', () => {
-        charactersByAvatar.set('disabled.png', { avatar: 'disabled.png', name: 'Disabled' });
-        charactersByAvatar.set('enabled.png', { avatar: 'enabled.png', name: 'Enabled' });
-        const group = {
-            id: 'group-a',
-            personaId: 'persona-a.png',
-            members: ['disabled.png', 'enabled.png', 'missing.png'],
-            disabled_members: ['disabled.png'],
-            conversation_settings: {},
-        };
-        const makeConversation = (id, unread, updatedAt) => ({
-            activeBranchId: 'main',
-            branches: {
-                main: {
-                    id: 'main',
-                    messages: [{ id, created_at: updatedAt, mes: id }],
-                    preview: id,
-                    unread,
-                    updatedAt,
-                },
-            },
-            settings: {},
-        });
-        extensionSettings.sillybunny_conversation = createStore({
-            groups: [group],
-            characters: {
-                'persona:persona-a.png:group:group-a:disabled.png': makeConversation('from-disabled', 2, 10),
-                'persona:persona-a.png:group:group-a:enabled.png': makeConversation('from-enabled', 3, 30),
-                'persona:persona-a.png:group:group-a:missing.png': makeConversation('from-missing', 4, 20),
-            },
+    test('a chat can be renamed, and a blank name or a chat that does not exist is refused', async () => {
+        await startData([DIRECT]);
+
+        expect(renameConversationChat('Nova.png', 'main', '  Renamed  ', { groupId: '' })).toBe(true);
+        expect(renameConversationChat('Nova.png', 'main', '   ', { groupId: '' })).toBe(false);
+        expect(renameConversationChat('Nova.png', 'ghost', 'x', { groupId: '' })).toBe(false);
+        expect(getConversationChats('Nova.png', { groupId: '' })[0].name).toBe('Renamed');
+        await data.flush();
+    });
+
+    test('deleting the only chat leaves one empty chat', async () => {
+        await startData([DIRECT]);
+
+        expect(await deleteConversationChat('Nova.png', 'main', { groupId: '' })).toBe(true);
+
+        const chats = getConversationChats('Nova.png', { groupId: '' });
+        expect(chats).toHaveLength(1);
+        expect(chats[0]).toMatchObject({ messageCount: 0, unread: 0 });
+        expect(chats[0].id).not.toBe('main');
+        expect(await deleteConversationChat('Nova.png', 'ghost', { groupId: '' })).toBe(false);
+    });
+
+    test('Home says whether deleting a chat was the reset of the only one', async () => {
+        await startData([{ ...DIRECT, chats: [{ id: 'main', messages: ['a'] }, { id: 'side', messages: ['b'] }] }]);
+
+        expect(await deleteConversationWelcomeChat('Nova.png', 'side', { personaId: PERSONA })).toEqual({ deleted: true, reset: false });
+        expect(await deleteConversationWelcomeChat('Nova.png', 'main', { personaId: PERSONA })).toEqual({ deleted: true, reset: true });
+        expect(await deleteConversationWelcomeChat('Nova.png', 'ghost', { personaId: PERSONA })).toEqual({ deleted: false, reset: false });
+    });
+
+    test('emptying a conversation leaves one empty chat that keeps the memory summary and the conversation listed', async () => {
+        await startData([{ ...DIRECT, chats: [{ id: 'main', messages: ['a', 'b'] }, { id: 'side', messages: ['c'] }] }]);
+        const loaded = await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        data.commitChat(loaded.address, (draft) => {
+            draft.header.chat_metadata.sb_conversation = { memory_summary: 'Durable memory', memory_message_count: 2, memory_updated_at: 5 };
         });
 
-        const anchor = getConversationGroupAnchor(group, { personaId: 'persona-a.png' });
+        await resetCharacterConversationChats('Nova.png', { groupId: '' });
+        await data.flush();
+
+        const chats = getConversationChats('Nova.png', { groupId: '' });
+        expect(chats).toHaveLength(1);
+        expect(chats[0]).toMatchObject({ name: 'Main', messageCount: 0, memorySummary: 'Durable memory' });
+        expect(data.get('conv_1_direct01')).not.toBeNull();
+        expect(getConversationRecord('Nova.png', { groupId: '' }).activeChatId).toBe(chats[0].id);
+    });
+});
+
+describe('the mode object in settings.json', () => {
+    test('is made with the version of the new storage when there is none', () => {
+        expect(getConversationStore()).toEqual({ version: 2, localStorageMigrated: false, settings: {} });
+        expect(extensionSettings.sillybunny_conversation).toBe(getConversationStore());
+    });
+
+    test('takes the version of the new storage when it only has the mode-wide values', () => {
+        extensionSettings.sillybunny_conversation = { version: 1, localStorageMigrated: true, userStatus: 'idle' };
+
         const store = getConversationStore();
 
-        expect(anchor.avatar).toBe('enabled.png');
-        expect(Object.keys(store.characters)).toEqual(['persona:persona-a.png:group:group-a:enabled.png']);
-        expect(anchor.conversationRecord.branches.main.messages.map(message => message.id)).toEqual([
-            'from-disabled',
-            'from-missing',
-            'from-enabled',
-        ]);
-        expect(anchor.conversationRecord.branches.main.unread).toBe(9);
-        expect(saveSettingsDebounced).toHaveBeenCalled();
+        expect(store).toMatchObject({ version: 2, localStorageMigrated: true, userStatus: 'idle', settings: {} });
     });
 
-    test('seeds reset branches from retained thread memory', () => {
-        const conversationRecord = {
-            activeBranchId: 'only',
-            branches: {
-                only: { id: 'only', memorySummary: 'Durable memory', messages: [{ id: 'old-message' }] },
-            },
-            memoryMessageCount: 7,
-            memorySummary: 'Durable memory',
-            memoryUpdatedAt: 123,
-            settings: {},
+    test('leaves the old parts and the old version alone while the old parts have content, and adds none', () => {
+        const old = {
+            version: 1,
+            characters: { 'persona:a.png:Nova.png': { branches: {} } },
+            groups: [],
+            reminders: [{ id: 'r1' }],
+            legacyThreadPersonaAssignments: {},
+            settings: { custom_instructions: 'x' },
         };
-        extensionSettings.sillybunny_conversation = createStore({
-            characters: { 'persona:persona-a.png:char.png': conversationRecord },
-        });
+        extensionSettings.sillybunny_conversation = structuredClone(old);
 
-        expect(deleteConversationChat('char.png', 'only', { groupId: '', personaId: 'persona-a.png' })).toBe(true);
-        expect(conversationRecord.branches.only.messages).toEqual([]);
-        expect(conversationRecord.branches.only.memorySummary).toBe('Durable memory');
+        const store = getConversationStore();
 
-        resetCharacterConversationChats('char.png', { groupId: '', personaId: 'persona-a.png' });
-        expect(conversationRecord.branches.main.memorySummary).toBe('Durable memory');
-        expect(getConversationStore().characters['persona:persona-a.png:char.png'].memorySummary).toBe('Durable memory');
+        expect(store).toEqual(old);
     });
 
-    test('reports when deleting a welcome branch resets the sole thread', () => {
-        const conversationRecord = {
-            activeBranchId: 'only',
-            branches: {
-                only: { id: 'only', messages: [{ id: 'old-message' }] },
-            },
-            settings: {},
-        };
-        extensionSettings.sillybunny_conversation = createStore({
-            characters: { 'persona:persona-a.png:char.png': conversationRecord },
-        });
+    test('never adds the parts of the old store to an object that does not have them', () => {
+        extensionSettings.sillybunny_conversation = { version: 2, settings: {}, userStatus: 'dnd' };
 
-        expect(deleteConversationWelcomeChat('char.png', 'only', { personaId: 'persona-a.png' })).toEqual({
-            deleted: true,
-            reset: true,
-        });
-        expect(conversationRecord.branches.only.messages).toEqual([]);
+        const store = getConversationStore();
+
+        for (const part of ['characters', 'groups', 'reminders', 'legacyThreadPersonaAssignments']) {
+            expect(Object.hasOwn(store, part)).toBe(false);
+        }
+        expect(JSON.parse(JSON.stringify(extensionSettings.sillybunny_conversation))).toEqual({ version: 2, settings: {}, userStatus: 'dnd' });
+    });
+});
+
+describe('the unread counts of the first versions', () => {
+    test('are removed from localStorage and counted', () => {
+        const removed = [];
+        const keys = ['sb_conv_unread_a.png', 'sb_conv_settings_a.png', 'sb_conv_unread_b.png'];
+        globalThis.localStorage = {
+            get length() {
+                return keys.length;
+            },
+            key: index => keys[index],
+            removeItem: (key) => {
+                removed.push(key);
+            },
+        };
+
+        try {
+            expect(clearLegacyConversationUnreadStorage()).toBe(2);
+            expect(removed).toEqual(['sb_conv_unread_a.png', 'sb_conv_unread_b.png']);
+        } finally {
+            delete globalThis.localStorage;
+        }
     });
 });

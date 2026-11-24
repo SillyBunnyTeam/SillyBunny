@@ -10,10 +10,8 @@ import {
     getActiveConversationChat,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationRecord,
     getCurrentCharAvatar,
     parsePositiveInt,
-    saveGroupConversationSettings,
 } from './context.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
@@ -493,13 +491,8 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
     const editTarget = targets.find(target => target.avatar === editAvatar);
     const editGroupId = editTarget?.groupId || '';
     const editSettings = getSettings(editAvatar, { groupId: editGroupId, personaId });
-    editSettings.auto_schedule = JSON.stringify(normalized);
     editSettings.talkativeness = normalized.talkativeness;
     editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
-    editSettings.schedule_generated_at = normalized.generatedAt;
-    if (editGroupId) {
-        saveGroupConversationSettings(editGroupId, editSettings, { personaId });
-    }
     saveSettings(editAvatar, editSettings, { groupId: editGroupId, personaId });
     if (isConversationActive(editAvatar, editGroupId, { personaId })) {
         applySettingsToPanel(editSettings);
@@ -540,7 +533,7 @@ export function renderScheduleDisplay() {
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId, personaId });
     const talkativeness = parsePositiveInt(settings.talkativeness, DEFAULT_TALKATIVENESS, 0);
-    const generatedLabel = formatScheduleTimestamp(settings.schedule_generated_at);
+    const generatedLabel = formatScheduleTimestamp(schedule?.generatedAt);
 
     const currentLine = `<div class="sb-conversation-schedule-now" data-status="${escapeHtmlAttribute(current.status)}">`
         + '<span class="sb-conversation-status-dot" data-status="' + escapeHtmlAttribute(current.status) + '"></span>'
@@ -580,11 +573,10 @@ export function renderConversationMemoryPanel() {
 
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const chat = avatar ? getActiveConversationChat(avatar, { create: false, groupId }) : null;
-    const conversationRecord = avatar ? getConversationRecord(avatar, { create: false, groupId }) : null;
+    const chat = avatar ? getActiveConversationChat(avatar, { groupId }) : null;
     const memorySummary = getConversationMemorySummary(avatar, { groupId });
     const messageCount = Array.isArray(chat?.messages) ? chat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system').length : 0;
-    const summarizedCount = parsePositiveInt(conversationRecord?.memoryMessageCount ?? chat?.memoryMessageCount, 0, 0);
+    const summarizedCount = parsePositiveInt(chat?.memoryMessageCount, 0, 0);
 
     memoryInput.value = memorySummary;
     memoryInput.placeholder = messageCount

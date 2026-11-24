@@ -663,7 +663,8 @@ export function createConversationData(adapter) {
             refreshEntrySummary(view, entry);
             recomputeAggregates(view);
         }
-        emit('chat', { address: session.address });
+        // `local` says that the caller made the change itself, so it renders what it changed and a listener need not.
+        emit('chat', { address: session.address, local: true });
         emit('list', { id: session.address.conversationId });
         queueMicrotask(() => {
             void saveSession(session);

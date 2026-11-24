@@ -17,6 +17,7 @@ import {
     SEND_QUEUE_COALESCE_MS,
 } from './constants.js';
 import {
+    ensureDirectConversation,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
@@ -33,7 +34,7 @@ import { formatConversationFileSize } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlText } from './render-utils.js';
-import { getSettings, saveSettings } from './settings-store.js';
+import { getSettings } from './settings-store.js';
 import {
     beginConversationGenerationOperation,
     conversationState,
@@ -45,6 +46,7 @@ import { consumeConversationReplyTarget } from './timeline-render.js';
 import {
     appendConversationChatMessage,
     buildConversationMessageReplyReference,
+    ensureConversationChatLoaded,
     getConversationAttachmentSummary,
     getConversationFileAttachments,
     getConversationMediaAttachments,
@@ -282,8 +284,8 @@ function getConversationSpeakerAvatar(message, anchorAvatar) {
         return '';
     }
 
-    return message.role === 'partner'
-        ? String(message.extra?.partner_avatar || '')
+    return message.role === 'member'
+        ? String(message.extra?.member_avatar || '')
         : String(anchorAvatar || '');
 }
 
@@ -521,7 +523,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
                 chatId,
                 extra: {
                     ...replyExtra,
-                    partner_avatar: replyAvatar,
+                    member_avatar: replyAvatar,
                 },
                 groupId,
                 personaId,
@@ -547,12 +549,12 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
             markImageGenerated(replyAvatar, Date.now(), { chatId, groupId, personaId });
             await appendConversationMessage('Here, I can show you.', {
                 name: speakerName,
-                role: replyAvatar === anchorAvatar ? 'character' : 'partner',
+                role: replyAvatar === anchorAvatar ? 'character' : 'member',
                 extra: {
                     conversation_mode_image: true,
                     image_url: imageUrl,
                     image_prompt: prompt,
-                    ...(replyAvatar === anchorAvatar ? {} : { partner_avatar: replyAvatar }),
+                    ...(replyAvatar === anchorAvatar ? {} : { member_avatar: replyAvatar }),
                 },
                 chatId,
                 groupId,
@@ -596,8 +598,11 @@ export async function processQueuedConversationReply(queueItem) {
     if (!conversationKey || queueItem?.conversationKey !== conversationKey) {
         return;
     }
-    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-    if (!chatId || !conversationRecord?.branches?.[chatId]) {
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    if (!chatId || !conversationRecord?.chats.some(entry => entry.id === chatId)) {
+        return;
+    }
+    if (!await ensureConversationChatLoaded(avatar, { chatId, groupId, personaId })) {
         return;
     }
     const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
@@ -766,9 +771,6 @@ export async function submitConversationInput() {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
-    const chatId = conversationRecord?.activeBranchId || '';
-    const settings = getSettings(avatar, { groupId, personaId });
     const text = input.value.trim();
     const pendingFiles = getValidatedConversationPendingFiles({ notify: true });
     if (!pendingFiles) {
@@ -777,6 +779,22 @@ export async function submitConversationInput() {
     if (!avatar) {
         return;
     }
+
+    // Writing to a character that has no conversation with this persona yet starts one.
+    let conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    if (!conversationRecord && !groupId && (text || pendingFiles.length)) {
+        try {
+            conversationRecord = await ensureDirectConversation(avatar, { personaId });
+        } catch (error) {
+            console.error('Conversation Mode: the conversation could not be made', error);
+            return;
+        }
+    }
+    const chatId = conversationRecord?.activeChatId || '';
+    if (!await ensureConversationChatLoaded(avatar, { chatId, groupId, personaId })) {
+        return;
+    }
+    const settings = getSettings(avatar, { groupId, personaId });
 
     if (!text && !pendingFiles.length) {
         const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
@@ -794,11 +812,6 @@ export async function submitConversationInput() {
         }, chatMessages));
         void processSendQueue();
         return;
-    }
-
-    if (!settings.enabled) {
-        settings.enabled = true;
-        saveSettings(avatar, settings, { groupId, personaId });
     }
 
     if (text.startsWith('/') && !pendingFiles.length) {
@@ -910,8 +923,8 @@ if (typeof window !== 'undefined') {
         const createdAt = Number(detail.createdAt);
         const personaId = String(detail.personaId || getConversationPersonaId()).trim();
         const groupId = detail.groupId || '';
-        const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-        const chatId = String(detail.chatId || conversationRecord?.activeBranchId || '').trim();
+        const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+        const chatId = String(detail.chatId || conversationRecord?.activeChatId || '').trim();
         if (!chatId) {
             return;
         }

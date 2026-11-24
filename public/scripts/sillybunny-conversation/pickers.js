@@ -1,6 +1,5 @@
 import {
     characters,
-    default_avatar,
     default_user_avatar,
     getThumbnailUrl,
     name1,
@@ -12,18 +11,15 @@ import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
-import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_CHAT_ID, WEEKDAY_LABELS } from './constants.js';
+import { AVAILABILITY_COPY, CHROME_IDS, WEEKDAY_LABELS } from './constants.js';
 import {
-    buildConversationChat,
-    createConversationGroupRecord,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationRecord,
     getCurrentCharAvatar,
-    getDefaultGroupConversationSettings,
-    normalizeConversationChat,
-    persistConversationStore,
+    makeConversationGroup,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { saveCurrentPanelSettings } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
 import {
@@ -664,30 +660,49 @@ export function cloneConversationStoreValue(value) {
     }
 }
 
-export function copyConversationToGroup(sourceAvatar, targetGroupId, { sourceGroupId = '' } = {}) {
+/**
+ * Copies the chats of a conversation, with their messages and read markers, into a group that was just made. The first
+ * chat of the group is the first chat of the source, so that the group does not start with an empty one.
+ * @returns {Promise<boolean>}
+ */
+export async function copyConversationToGroup(sourceAvatar, targetGroupId, { sourceGroupId = '' } = {}) {
     if (!sourceAvatar || !targetGroupId) {
         return false;
     }
 
-    const sourceStore = getConversationRecord(sourceAvatar, { create: false, groupId: sourceGroupId || '' });
-    const targetStore = getConversationRecord(sourceAvatar, { create: true, groupId: targetGroupId });
-    if (!sourceStore?.branches || !targetStore) {
+    const source = getConversationRecord(sourceAvatar, { groupId: sourceGroupId || '' });
+    const target = conversationData.get(targetGroupId);
+    if (!source?.chats.length || !target) {
         return false;
     }
 
-    const clonedChats = cloneConversationStoreValue(sourceStore.branches);
-    targetStore.activeBranchId = sourceStore.activeBranchId || DEFAULT_CHAT_ID;
-    targetStore.branches = clonedChats && typeof clonedChats === 'object'
-        ? clonedChats
-        : { [DEFAULT_CHAT_ID]: buildConversationChat('Main', DEFAULT_CHAT_ID) };
-
-    const activeBranchId = targetStore.activeBranchId || DEFAULT_CHAT_ID;
-    targetStore.branches[activeBranchId] = normalizeConversationChat(targetStore.branches[activeBranchId], activeBranchId);
-    targetStore.branches[activeBranchId].sessionMarkers = {
-        ...(targetStore.branches[activeBranchId].sessionMarkers || {}),
-        copied_to_group_at: Date.now(),
-    };
-    persistConversationStore();
+    const idMap = new Map();
+    for (const [index, entry] of source.chats.entries()) {
+        const sourceChat = await conversationData.loadChat({ conversationId: source.id, chatId: entry.id });
+        const targetChatId = index === 0 ? target.chats[0].id : conversationData.createChat(target.id, { name: entry.name })?.address.chatId;
+        if (!targetChatId) {
+            return false;
+        }
+        idMap.set(entry.id, targetChatId);
+        const memory = sourceChat.header.chat_metadata?.sb_conversation;
+        conversationData.commitChat({ conversationId: target.id, chatId: targetChatId }, (draft) => {
+            draft.messages.splice(0, draft.messages.length, ...cloneConversationStoreValue(sourceChat.messages));
+            if (memory) {
+                draft.header.chat_metadata.sb_conversation = cloneConversationStoreValue(memory);
+            }
+        });
+        conversationData.patchConversation(target.id, {
+            chats: {
+                [targetChatId]: {
+                    ...(index === 0 ? { name: entry.name } : {}),
+                    readThrough: entry.readThrough,
+                    lastActivity: entry.lastActivity,
+                    sessionMarkers: { ...entry.sessionMarkers, copied_to_group_at: String(Date.now()) },
+                },
+            },
+        });
+    }
+    conversationData.patchConversation(target.id, { activeChatId: idMap.get(source.activeChatId) ?? target.chats[0].id });
     return true;
 }
 
@@ -698,18 +713,19 @@ export async function createConversationGroup(memberAvatars, { sourceAvatar = ''
         return null;
     }
 
-    const group = createConversationGroupRecord(members, {
-        name: buildConversationGroupName(members),
-        avatarUrl: default_avatar,
-        settings: getDefaultGroupConversationSettings(),
-    });
+    let group = null;
+    try {
+        group = await makeConversationGroup(members, { name: buildConversationGroupName(members) });
+    } catch (error) {
+        console.error('Conversation Mode: the group could not be made', error);
+    }
     if (!group?.id) {
         toastr.error('Could not create group Conversation');
         return null;
     }
 
     if (sourceAvatar && copySourceGroupId !== null) {
-        copyConversationToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
+        await copyConversationToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
     }
 
     return group;

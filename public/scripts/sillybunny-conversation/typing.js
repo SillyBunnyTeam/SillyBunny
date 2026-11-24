@@ -7,16 +7,15 @@ import {
     getConversationKey,
     getCurrentCharAvatar,
     parsePositiveInt,
-    persistConversationStore,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
-import { isConversationActive, updateConversationNotificationIndicators } from './notifications.js';
+import { isConversationActive } from './notifications.js';
 import { getAvailabilityCopy } from './personas.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getConversationSessionMarker, getLastUserActivity, setConversationSessionMarker } from './settings-store.js';
 import { activeTypingParticipants } from './state.js';
-import { appendConversationChatMessage, getConversationMessagePreviewText, getConversationMessages, hasConversationMessageContent } from './conversation-store.js';
+import { appendConversationChatMessage } from './conversation-store.js';
 
 export function getConversationActivityContext(settings, avatar, now = new Date(), { personaId = getConversationPersonaId() } = {}) {
     const schedule = getStoredSchedule(avatar, { personaId });
@@ -64,7 +63,7 @@ export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { chatI
     }
 
     const storageKey = getConversationKey(anchorAvatar, groupId || '', { personaId });
-    const resolvedChatId = chatId || getConversationRecord(anchorAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const resolvedChatId = chatId || getConversationRecord(anchorAvatar, { groupId, personaId })?.activeChatId || '';
     const conversationKey = resolvedChatId ? `${storageKey}:${resolvedChatId}` : storageKey;
     if (!conversationKey) {
         return null;
@@ -112,7 +111,7 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
                 participantMap.delete(participantAvatar);
             }
             const storageKey = getConversationKey(anchorAvatar, groupId || '', { personaId });
-            const resolvedChatId = chatId || getConversationRecord(anchorAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
+            const resolvedChatId = chatId || getConversationRecord(anchorAvatar, { groupId, personaId })?.activeChatId || '';
             const conversationKey = resolvedChatId ? `${storageKey}:${resolvedChatId}` : storageKey;
             if (!participantMap.size && conversationKey) {
                 activeTypingParticipants.delete(conversationKey);
@@ -147,8 +146,8 @@ export function maybePostDelayedReplyNotice(avatar, settings, { chatId = '', gro
         role: 'system',
         name: 'Status',
         mes: `${charName} is ${current.activity} right now. Replies may take a little longer.`,
-        extra: { conversation_mode_notice: true, availability: current.status, partner_avatar: statusAvatar },
-    }, { chatId, create: !chatId, groupId, personaId });
+        extra: { conversation_mode_notice: true, availability: current.status, member_avatar: statusAvatar },
+    }, { chatId, groupId, personaId });
     setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { chatId, groupId, personaId });
 }
 
@@ -168,35 +167,7 @@ export function splitChatroomMessages(text) {
     return parts.length ? parts : [String(text || '').trim()].filter(Boolean);
 }
 
-export function setLastConversationPreview(avatar, messageText, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const preview = stripPreviewText(messageText);
-    if (!avatar || !preview) {
-        return;
-    }
-
-    const chat = getActiveConversationChat(avatar, { chatId, create: !chatId, groupId, personaId });
-    // Opening a thread re-derives its preview; an unchanged preview must not bump updatedAt.
-    if (chat && chat.preview !== preview) {
-        chat.preview = preview;
-        chat.updatedAt = Date.now();
-        persistConversationStore();
-    }
-}
-
+/** The preview of a conversation in the list: what the list shows for its active chat, which the server and the cache work out from the last message. */
 export function getLastConversationPreview(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    return getActiveConversationChat(avatar, { create: false, groupId, personaId })?.preview || 'Conversation ready';
-}
-
-export function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!avatar) {
-        return;
-    }
-
-    const messages = getConversationMessages(avatar, { chatId, create: !chatId, groupId, personaId });
-    const message = [...messages].reverse().find(hasConversationMessageContent);
-    if (message) {
-        setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { chatId, groupId, personaId });
-    }
-
-    updateConversationNotificationIndicators();
+    return getActiveConversationChat(avatar, { groupId, personaId })?.preview || 'Conversation ready';
 }

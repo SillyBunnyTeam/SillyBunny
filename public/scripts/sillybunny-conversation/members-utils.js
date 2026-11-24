@@ -64,7 +64,7 @@ export function isCharacterMentionedInText(character, text, candidates = []) {
 export function getLastMemberMessageIndex(messages, member) {
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
-        if (message?.extra?.partner_avatar === member.avatar) {
+        if (message?.extra?.member_avatar === member.avatar) {
             return index;
         }
     }
@@ -83,7 +83,7 @@ export function getRecentlySilentMentionedMemberFromConversation(messages, membe
         return isCharacterMentionedInText(mentionedMember, message?.mes || '', members) ? index : lastIndex;
     }, -1);
     const spokeAfterMention = recentMessages.slice(lastMentionIndex + 1).some((message) => {
-        const isMemberMessage = message?.extra?.partner_avatar === mentionedMember.avatar;
+        const isMemberMessage = message?.extra?.member_avatar === mentionedMember.avatar;
         return isMemberMessage && !['user', 'system'].includes(message.role);
     });
     return spokeAfterMention ? null : mentionedMember;

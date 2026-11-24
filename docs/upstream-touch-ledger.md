@@ -2812,6 +2812,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-24, conversation mode rework, task 2B. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/settings.js` - conversation migration before a settings read
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/settings.js`. |
+| Area | Settings: `POST /api/settings/get`, which gives the page the stored settings at boot. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `ensureMigrated()` in `src/conversation-migration.js`. |
+| Adapter shape | One import and one `try` block at the start of the `/get` handler that calls `ensureMigrated(request.user)` before `settings.json` is read, and logs an error that it throws and goes on. It runs on every read: `ensureMigrated()` costs one `stat` when the file has not changed, and runs the check again when a save, a restore or a reset changed it. |
+| Protecting tests | `tests/conversation-settings-read-migration.test.js` (the real `/get` and `/save` routes and the conversation routes: the answer after the migration, the first settings save of the page after a conversation request, an old object that came back, a user with nothing to migrate, a failed migration), `tests/conversation-migration.test.js`, `tests/conversation-migration-routes.test.js`. |
+| Validation | 2026-11-24: root and `tests/` lint; `npm run test:unit` in `tests/`; the protecting test fails with the call removed and passes with it. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-24, conversation mode rework, task 2A. |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/welcome-screen.js` - Home recent chats and pins of conversations
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/welcome-screen.js`, with the fork-owned `public/scripts/templates/sillybunnyHome.html` and `public/scripts/sillybunny-home/recent-chat.js`. |
+| Area | Home: the Recent Chats rows of Conversation Mode, their pin key, and how Home opens, renames and deletes them. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `getConversationWelcomeChats()`, `loadConversationWelcomeChats()`, `openConversationWorkspaceForAvatar()`, `renameConversationChat()` and `deleteConversationWelcomeChat()` in `public/scripts/sillybunny-conversation/`, and `readRecentChatIdentity()` in `public/scripts/sillybunny-home/recent-chat.js`. |
+| Adapter shape | A recent chat of a conversation carries `conversation_id` and `conversation_chat_id` (the template writes `data-conversation-id` and `data-conversation-chat-id`), and `PinnedChatsManager.getKey()` keys its pin `conversation_<conversationId>_<chatId>`, which is the key that the migration gives old pins. `getRecentChats()` awaits `loadConversationWelcomeChats()`, which waits for the list of conversations for three seconds at most. The open and the delete await the promises that the Conversation functions return. The rename of the parameters from `branchId` to `chatId` in the Home functions that were already adapters follows the stored names. |
+| Protecting tests | `tests/unit/sillybunny-home-recent-chat.test.js`, `tests/unit/sillybunny-home-focus.test.js`, `tests/sillybunny-conversation-settings-store.test.js` (the fields of a recent chat), `tests/home-assistants.e2e.js`, `tests/home-layout.e2e.js`, `tests/home-state.e2e.js`. |
+| Validation | 2026-11-24: root and `tests/` lint; `npm run test:unit` in `tests/`; `e2e-related --run 0ac0cb9df` (the Home specs among 23 specs). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-24, conversation mode rework, task 2A. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

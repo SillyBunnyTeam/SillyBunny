@@ -7,22 +7,17 @@ import {
 } from '../../script.js';
 import { selected_group } from '../group-chats.js';
 import { user_avatar } from '../personas.js';
-import { DEFAULT_CHAT_ID, DEFAULT_SETTINGS, GROUP_ASIDE_CONTEXT_LIMIT } from './constants.js';
+import { DEFAULT_SETTINGS, GROUP_ASIDE_CONTEXT_LIMIT } from './constants.js';
 import {
-    getActiveConversationChat,
     getConversationGroupById,
     getConversationGroupAnchor,
     getConversationGroupIdForAvatar,
-    getConversationGroups,
     getConversationPersonaId,
-    getConversationStore,
     getConversationKey,
     getCurrentCharAvatar,
-    isConversationKeyForPersona,
-    normalizeConversationChat,
-    parseConversationKey,
     parsePositiveInt,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar, getCharacterIndexForAvatar, getConversationParticipants } from './media.js';
 import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
@@ -34,121 +29,46 @@ export function getConversationSettingsForCharacter(character, { groupId = getCo
     return character?.avatar ? getSettings(character.avatar, { groupId, personaId }) : { ...DEFAULT_SETTINGS };
 }
 
+/** The characters that have a direct conversation with the persona. */
 export function getDirectConversations({ personaId = getConversationPersonaId() } = {}) {
     if (!Array.isArray(characters)) {
         return [];
     }
 
-    return characters
-        .map((character, index) => ({ character, index, settings: getConversationSettingsForCharacter(character, { groupId: '', personaId }) }))
-        .filter(item => item.character?.avatar && item.settings.enabled);
+    return conversationData.list({ personaId })
+        .filter(view => view.kind === 'direct')
+        .map((view) => {
+            const character = getCharacterForAvatar(view.characters[0]);
+            return { character, index: getCharacterIndexForAvatar(view.characters[0]), settings: getConversationSettingsForCharacter(character, { groupId: '', personaId }) };
+        })
+        .filter(item => item.character?.avatar);
 }
 
+/**
+ * The rows of the list, newest message first (the cache keeps that order). A conversation whose characters are all
+ * gone from the library is left out; its files stay.
+ */
 export function getConversationRailItems({ personaId = getConversationPersonaId() } = {}) {
     const items = [];
-    const seen = new Set();
-    const seenGroupIds = new Set();
-    const addItem = ({ character, index, settings, groupId = '', group = null, conversationRecord = null }) => {
-        const avatar = character?.avatar;
-        if (!avatar || (!groupId && !settings?.enabled)) {
-            return;
-        }
-
-        const key = getConversationKey(avatar, groupId || '', { personaId });
-        if (!key || seen.has(key) || (groupId && seenGroupIds.has(String(groupId)))) {
-            return;
-        }
-
-        if (groupId) {
-            const chatId = conversationRecord?.activeBranchId || DEFAULT_CHAT_ID;
-            const conversationChat = normalizeConversationChat(conversationRecord?.branches?.[chatId], chatId);
-            const isEmptyConversation = !conversationChat.messages.length && !conversationChat.unread && conversationChat.preview === 'Conversation ready';
-            if (isEmptyConversation && !group?.is_conversation_group) {
-                return;
-            }
-        }
-
-        seen.add(key);
-        if (groupId) {
-            seenGroupIds.add(String(groupId));
-        }
-        items.push({ character, index, settings, groupId: groupId || '', group, key });
-    };
-
-    getDirectConversations({ personaId }).forEach(conversation => addItem({ ...conversation, groupId: '' }));
-
-    getConversationGroups({ personaId }).forEach((group) => {
-        const anchor = getConversationGroupAnchor(group, { personaId });
-        const character = anchor?.character;
+    for (const view of conversationData.list({ personaId })) {
+        const group = view.kind === 'group' ? getConversationGroupById(view.id) : null;
+        const anchor = group ? getConversationGroupAnchor(group, { personaId }) : null;
+        const character = group ? anchor?.character : getCharacterForAvatar(view.characters[0]);
         if (!character?.avatar) {
-            return;
+            continue;
         }
 
-        const groupId = String(group.id || '');
-        const settings = getConversationSettingsForCharacter(character, { groupId, personaId });
-        addItem({
+        const groupId = group ? group.id : '';
+        items.push({
             character,
             index: getCharacterIndexForAvatar(character.avatar),
-            settings,
+            settings: getConversationSettingsForCharacter(character, { groupId, personaId }),
             groupId,
             group,
-            conversationRecord: anchor.conversationRecord,
+            key: getConversationKey(character.avatar, groupId, { personaId }),
         });
-    });
-
-    Object.entries(getConversationStore().characters || {}).forEach(([storeKey]) => {
-        if (!isConversationKeyForPersona(storeKey, personaId)) {
-            return;
-        }
-
-        const parsed = parseConversationKey(storeKey);
-        if (!parsed.groupId || !parsed.avatar) {
-            return;
-        }
-
-        const group = getConversationGroupById(parsed.groupId, { personaId });
-        const anchor = getConversationGroupAnchor(group, { personaId });
-        const character = anchor?.character;
-        if (!character || !group) {
-            return;
-        }
-
-        const settings = getConversationSettingsForCharacter(character, { groupId: parsed.groupId, personaId });
-
-        addItem({
-            character,
-            index: getCharacterIndexForAvatar(parsed.avatar),
-            settings,
-            groupId: parsed.groupId,
-            group,
-            conversationRecord: anchor.conversationRecord,
-        });
-    });
-
-    // Messaging-app order: newest message first. Selecting a thread must not move it.
-    const activityTimes = new Map(items.map(item => [item.key, getRailItemActivityTime(item, personaId)]));
-    return items.sort((first, second) => activityTimes.get(second.key) - activityTimes.get(first.key));
-}
-
-function getMessageTimeMs(message) {
-    const createdAt = Number(message?.created_at);
-    if (Number.isFinite(createdAt) && createdAt > 0) {
-        return createdAt;
     }
-    const sendDate = Date.parse(String(message?.send_date || ''));
-    return Number.isFinite(sendDate) ? sendDate : 0;
-}
-
-function getRailItemActivityTime(item, personaId) {
-    const conversationChat = getActiveConversationChat(item.character.avatar, { create: false, groupId: item.groupId, personaId });
-    const messages = Array.isArray(conversationChat?.messages) ? conversationChat.messages : [];
-    for (let index = messages.length - 1; index >= 0; index--) {
-        const time = getMessageTimeMs(messages[index]);
-        if (time) {
-            return time;
-        }
-    }
-    return Number((messages.length ? conversationChat?.updatedAt : conversationChat?.createdAt) || conversationChat?.updatedAt || 0);
+    return items;
 }
 
 export function getSelectedConversationGroup() {
@@ -237,8 +157,8 @@ export function getConversationMessageAvatar(message, avatar = getCurrentCharAva
             : default_user_avatar;
     }
 
-    if (message.role === 'partner' || message.role === 'system') {
-        const memberAvatar = message.extra?.partner_avatar;
+    if (message.role === 'member' || message.role === 'system') {
+        const memberAvatar = message.extra?.member_avatar;
         if (memberAvatar) {
             return getThumbnailUrl('avatar', memberAvatar);
         }

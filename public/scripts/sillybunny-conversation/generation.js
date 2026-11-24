@@ -26,11 +26,13 @@ import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
 import { getActiveApiResponseLength } from './response-length.js';
 import { formatPromptText } from './shared-helpers.js';
+import { loadRelatedMemoryChats } from './settings-store.js';
 import { clamp, getConversationReplyMaxTokens, getConversationRuntimeStatusKey, parseDurationToMs } from './schedule.js';
 import { runtimeStatusOverrides } from './state.js';
 import {
     addConversationReminder,
     buildConversationMessageReplyReference,
+    ensureConversationChatLoaded,
     getConversationMessages,
     getImageCooldownRemainingSeconds,
     hasConversationMessageContent,
@@ -109,6 +111,11 @@ export async function generateConversationRaw(options, settings) {
 }
 
 export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), anchorAvatar = avatar, speakerAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId() } = {}) {
+    // The transcript is read from the chat, and a related memory comes from the chats of other conversations.
+    await ensureConversationChatLoaded(anchorAvatar, { chatId, groupId, personaId });
+    if (settings?.include_related_memory) {
+        await loadRelatedMemoryChats(speakerAvatar, { groupId, personaId });
+    }
     const messages = getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId });
     const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
         ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
@@ -407,15 +414,15 @@ function splitConversationGeneratedReplyMessages(rawText, fallbackSpeaker, { anc
 }
 
 function getResolvedReplyRole(speakerAvatar, anchorAvatar) {
-    return speakerAvatar && speakerAvatar !== anchorAvatar ? 'partner' : 'character';
+    return speakerAvatar && speakerAvatar !== anchorAvatar ? 'member' : 'character';
 }
 
 function getConversationGeneratedMessageSpeakerId(message, anchorAvatar) {
     if (message?.role === 'user') {
         return 'user';
     }
-    if (message?.role === 'partner') {
-        return String(message.extra?.partner_avatar || '').trim();
+    if (message?.role === 'member') {
+        return String(message.extra?.member_avatar || '').trim();
     }
     if (message?.role === 'character') {
         return String(anchorAvatar || '').trim();
@@ -452,9 +459,9 @@ function getGeneratedReplyReference(speakerAvatar, anchorAvatar, { chatId = '', 
 function getResolvedReplyExtra(extra, speakerAvatar, anchorAvatar, { chatId = '', groupId = undefined, personaId = getConversationPersonaId(), attachReplyReference = true } = {}) {
     const resolvedExtra = { ...extra };
     if (speakerAvatar && speakerAvatar !== anchorAvatar) {
-        resolvedExtra.partner_avatar = speakerAvatar;
+        resolvedExtra.member_avatar = speakerAvatar;
     } else {
-        delete resolvedExtra.partner_avatar;
+        delete resolvedExtra.member_avatar;
     }
 
     if (!attachReplyReference) {

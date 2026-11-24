@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 let onlineStatus = 'no_connection';
 let currentAvatar = 'char.png';
+let openChat = null;
 const elements = new Map();
 const conversationState = {
     conversationUnavailableGroupId: null,
@@ -30,7 +31,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome
     isConversationStylesheetLoading: () => false,
     setConversationInterfaceActive: jest.fn(),
 }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+    conversationData: { setOpen: jest.fn(), chat: () => null, loadChat: jest.fn(async () => null) },
+}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    getActiveConversationChat: () => openChat,
     getConversationChats: () => [],
     getConversationGroupById: id => id ? { name: 'Group DM' } : null,
     getConversationGroupIdForAvatar: () => '',
@@ -41,7 +46,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getCurrentCharName: () => 'Aster',
     getIdleActionFromSettings: () => 'disabled',
     parsePositiveInt: value => Number(value) || 0,
-    saveGroupConversationSettings: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
     generateConversationRaw: jest.fn(),
@@ -96,7 +100,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeli
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],
     getLastConversationPreview: () => '',
-    updateLastPreviewFromConversation: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     registerConversationRenderer: jest.fn(),
@@ -114,6 +117,7 @@ describe('Conversation composer connection state', () => {
         jest.resetModules();
         onlineStatus = 'no_connection';
         currentAvatar = 'char.png';
+        openChat = null;
         conversationState.conversationUnavailableGroupId = null;
         conversationState.conversationUploadActive = false;
         conversationState.conversationWorkspaceOpen = true;
@@ -154,6 +158,22 @@ describe('Conversation composer connection state', () => {
         expect(input.disabled).toBe(true);
         expect(input.placeholder).toBe('This group has no eligible Conversation members yet…');
         expect(send.disabled).toBe(true);
+    });
+
+    test('keeps the composer off while the chat that is open is being read from the server', async () => {
+        onlineStatus = 'Connected';
+        openChat = { id: 'main', loaded: false };
+        const { refreshConversationInterface } = await import('../public/scripts/sillybunny-conversation/interface.js');
+        refreshConversationInterface();
+
+        expect(input.disabled).toBe(true);
+        expect(send.disabled).toBe(true);
+
+        openChat = { id: 'main', loaded: true };
+        refreshConversationInterface();
+
+        expect(input.disabled).toBe(false);
+        expect(send.disabled).toBe(false);
     });
 
     test('keeps Send disabled when a connected interface refresh runs during an upload', async () => {

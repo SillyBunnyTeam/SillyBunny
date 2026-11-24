@@ -882,7 +882,7 @@ describe('events', () => {
         }
         await settle(1);
 
-        expect(events.filter(event => event.type === 'chat')).toEqual([{ type: 'chat', address: ADDRESS }]);
+        expect(events.filter(event => event.type === 'chat')).toEqual([{ type: 'chat', address: ADDRESS, local: true }]);
         expect(events.filter(event => event.type === 'list')).toHaveLength(1);
         await data.flush();
     });

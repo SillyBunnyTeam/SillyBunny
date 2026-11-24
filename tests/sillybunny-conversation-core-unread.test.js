@@ -1,11 +1,12 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 const conversationRecord = {
-    activeBranchId: 'main',
-    branches: {
-        main: { unread: 1 },
-        side: { unread: 3 },
-    },
+    activeChatId: 'main',
+    unread: 4,
+    chats: [
+        { id: 'main', unread: 1 },
+        { id: 'side', unread: 3 },
+    ],
 };
 
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ playMessageSound: jest.fn() }));
@@ -16,21 +17,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/consta
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     clearLegacyConversationUnreadStorage: () => 0,
-    getActiveConversationChat: (_avatar, options = {}) => conversationRecord.branches[options.chatId || conversationRecord.activeBranchId],
-    getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-a.png' : value || ''),
-    getConversationStore: () => ({ characters: {} }),
-    getConversationKey: () => 'persona:persona-a.png:char.png',
+    getConversationKey: () => 'conv_1_direct',
     getConversationRecord: () => conversationRecord,
     getCurrentCharAvatar: () => 'char.png',
-    isConversationKeyForPersona: () => true,
-    parseConversationKey: () => ({ avatar: 'char.png', groupId: '', personaId: 'persona-a.png' }),
-    parsePositiveInt: (value, fallback, min = 1) => {
-        const parsed = Number.parseInt(String(value), 10);
-        return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
-    },
-    persistConversationStore: jest.fn(),
     shouldSurfaceConversationNotification: () => false,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: () => ({ avatar: 'char.png' }) }));
@@ -51,7 +42,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 const { getUnreadCount } = await import('../public/scripts/sillybunny-conversation/notifications.js');
 
 describe('Conversation unread aggregation', () => {
-    test('aggregates inactive branches for a DM row while exposing individual branch counts', () => {
+    test('adds up the unread counts of the chats of a conversation while exposing the count of each chat', () => {
         expect(getUnreadCount('char.png', { groupId: '', personaId: 'persona-a.png' })).toBe(4);
         expect(getUnreadCount('char.png', { chatId: 'side', groupId: '', personaId: 'persona-a.png' })).toBe(3);
     });

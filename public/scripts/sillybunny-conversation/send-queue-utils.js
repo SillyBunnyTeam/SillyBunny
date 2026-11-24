@@ -133,8 +133,8 @@ export function resolveConversationQueueReplyTarget(queueItem, messages, anchorA
         return { explicit: true, valid: false, speakerAvatar: '', targetMessage: targetMessage || null };
     }
 
-    const speakerAvatar = targetMessage.role === 'partner'
-        ? String(targetMessage.extra?.partner_avatar || '').trim()
+    const speakerAvatar = targetMessage.role === 'member'
+        ? String(targetMessage.extra?.member_avatar || '').trim()
         : String(anchorAvatar || '').trim();
     return { explicit: true, valid: Boolean(speakerAvatar), speakerAvatar, targetMessage };
 }

@@ -60,13 +60,13 @@ describe('sillybunny conversation thread store utils', () => {
         expect(getConversationAttachmentSummary(message)).toBe('[Attachments: generated image; image: Desk; video; file: Notes]');
     });
 
-    test('resolves only existing reminder branches', () => {
+    test('resolves only existing reminder chats', () => {
         const conversationRecord = {
-            activeBranchId: 'main',
-            branches: { main: { id: 'main' } },
+            activeChatId: 'main',
+            chats: [{ id: 'main' }],
         };
-        expect(resolveConversationReminderChatId({ branchId: 'main' }, conversationRecord)).toBe('main');
-        expect(resolveConversationReminderChatId({ branchId: 'deleted' }, conversationRecord)).toBe('');
+        expect(resolveConversationReminderChatId({ chatId: 'main' }, conversationRecord)).toBe('main');
+        expect(resolveConversationReminderChatId({ chatId: 'deleted' }, conversationRecord)).toBe('');
         expect(resolveConversationReminderChatId({}, conversationRecord)).toBe('main');
         expect(resolveConversationReminderChatId({}, null)).toBe('');
     });

@@ -6,7 +6,6 @@ import { scheduleTimelineRender } from './render-scheduler.js';
 import { openScheduleEditorModal, renderConversationMemoryPanel } from './settings-panel.js';
 import { getSettings } from './settings-store.js';
 import { addConversationReminder, appendConversationChatMessage } from './conversation-store.js';
-import { updateLastPreviewFromConversation } from './typing.js';
 
 export function parseConversationSlashCommand(text) {
     const value = String(text || '').trim();
@@ -56,8 +55,7 @@ export function appendConversationOocNote(note, { avatar = getCurrentCharAvatar(
         extra: {
             conversation_mode_ooc: true,
         },
-    }, { chatId, create: !chatId, groupId, personaId });
-    updateLastPreviewFromConversation(avatar, { chatId, groupId, personaId });
+    }, { chatId, groupId, personaId });
     scheduleTimelineRender();
     return true;
 }
@@ -67,13 +65,13 @@ export async function quickConversationSummarize({ avatar = getCurrentCharAvatar
         return;
     }
 
-    const capturedChatId = chatId || getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const capturedChatId = chatId || getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     await updateConversationMemorySummary(avatar, { chatId: capturedChatId, force: true, groupId, notify: true, personaId });
     renderConversationMemoryPanel();
 }
 
 export async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), chatId = '', settings = null, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const capturedChatId = chatId || getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const capturedChatId = chatId || getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
     const parsed = parseConversationSlashCommand(text);
     if (!parsed || !avatar) {

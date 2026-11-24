@@ -105,9 +105,9 @@ describe('sillybunny conversation send-queue utils', () => {
     test('resolves the speaker targeted by explicit reply metadata', () => {
         const memberMessage = {
             id: 'partner-message',
-            role: 'partner',
+            role: 'member',
             mes: 'Want to go?',
-            extra: { partner_avatar: 'partner.png' },
+            extra: { member_avatar: 'partner.png' },
         };
         const userMessage = {
             id: 'captured-user',

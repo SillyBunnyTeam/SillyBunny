@@ -14,7 +14,7 @@ import {
 import {
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getRawConversationKey,
+    getConversationRecord,
     getConversationStore,
     getConversationKey,
     getCurrentCharAvatar,
@@ -104,14 +104,20 @@ export function getConversationPersonaName(personaId, fallback = 'User') {
     return fallbackName;
 }
 
+/**
+ * The key under which a persona's Scenario Notes for one conversation are stored: the id of the conversation. A
+ * conversation that came from the old store also has its old key, which is read as a fallback.
+ */
 export function getConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
-    return String(getConversationKey(avatar, targetGroupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    const key = getConversationKey(avatar, targetGroupId, { personaId });
+    return key && !key.startsWith('pending:') ? key : PERSONA_APPENDICES_DEFAULT_SCOPE_KEY;
 }
 
-function getLegacyConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+function getLegacyConversationPersonaAppendixScopeKeys({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
-    return String(getRawConversationKey(avatar, targetGroupId, '') || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    const record = getConversationRecord(avatar, { groupId: targetGroupId, personaId });
+    return [record?.legacyKey, targetGroupId ? `group:${targetGroupId}:${avatar}` : avatar].filter(Boolean);
 }
 
 function normalizeConversationPersonaAppendixSelections(descriptor) {
@@ -156,10 +162,10 @@ export function getActiveConversationPersonaAppendixIds(avatarId, options = {}) 
     const normalized = normalizeConversationPersonaAppendixSelections(descriptor);
     const selections = normalized.selections;
     const scopeKey = getConversationPersonaAppendixScopeKey(options);
-    const legacyScopeKey = getLegacyConversationPersonaAppendixScopeKey(options);
     let changed = normalized.changed;
     if (!Object.prototype.hasOwnProperty.call(selections, scopeKey)) {
-        const legacyIds = selections[legacyScopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY];
+        const legacyScopeKey = getLegacyConversationPersonaAppendixScopeKeys(options).find(key => Object.prototype.hasOwnProperty.call(selections, key));
+        const legacyIds = (legacyScopeKey ? selections[legacyScopeKey] : undefined) ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY];
         if (Array.isArray(legacyIds)) {
             selections[scopeKey] = [...legacyIds];
             changed = true;

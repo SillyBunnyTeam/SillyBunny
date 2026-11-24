@@ -1,36 +1,26 @@
 import { characters, saveSettingsDebounced, this_chid } from '../../script.js';
 import { extension_settings } from '../extensions.js';
-import { editGroup, groups, selected_group } from '../group-chats.js';
+import { groups, selected_group } from '../group-chats.js';
 import { user_avatar } from '../personas.js';
 import {
     CONVERSATION_NOTIFICATION_PRIORITIES,
-    CHARACTER_CONVERSATION_SETTINGS_KEYS,
     CONVERSATION_STORE_KEY,
     DEFAULT_AUTO_CHAT_COOLDOWN,
     DEFAULT_CHAT_ID,
     DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
     DEFAULT_SETTINGS,
-    FOLLOWUP_COUNT_PREFIX,
-    GROUP_CONVERSATION_SETTINGS_KEYS,
-    GROUP_CONVERSATION_STORE_PREFIX,
-    LAST_AUTO_MESSAGE_PREFIX,
-    LAST_PREVIEW_PREFIX,
-    LAST_SCHEDULE_TRIGGER_PREFIX,
-    LAST_USER_ACTIVITY_PREFIX,
-    MAX_CONVERSATION_MESSAGES,
-    SCHEDULE_PREFIX,
-    SETTINGS_KEY_PREFIX,
-    CONVERSATION_SETTINGS_KEYS,
-    CONVERSATION_KEY_PREFIX,
     UNREAD_PREFIX,
 } from './constants.js';
+import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';
-import { getConversationReplyMaxTokens, getScheduleStorageKey } from './schedule.js';
+import { getConversationReplyMaxTokens } from './schedule.js';
 import { conversationState } from './state.js';
-import { safeParseMessages } from './conversation-store.js';
-import { stripPreviewText } from './typing.js';
 
-export const PERSONA_CONVERSATION_STORE_PREFIX = 'persona:';
+const GROUP_FALLBACK_NAME = 'Conversation Group';
+const EMPTY_MESSAGES = Object.freeze([]);
+const LEGACY_STORE_PARTS = Object.freeze(['characters', 'groups', 'reminders', 'legacyThreadPersonaAssignments']);
+// The version of the mode's object in settings.json once the server has moved the conversations out of it.
+const MODE_OBJECT_VERSION = 2;
 
 export function getRoleplayCurrentCharacter() {
     if (typeof this_chid === 'undefined' || !Array.isArray(characters)) {
@@ -67,283 +57,60 @@ export function getConversationPersonaId(personaId = user_avatar) {
     return String(personaId || '').trim();
 }
 
-function getExplicitConversationPersonaId(personaId) {
-    return String(personaId || '').trim();
+export function parsePositiveInt(value, fallback, min = 1) {
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
 }
 
-function encodeConversationStoragePart(value) {
-    return encodeURIComponent(String(value || '').trim());
+// ---------------------------------------------------------------------------------------------------------------------
+// The conversations: the module `conversation-data.js` holds them; these functions answer in the terms that the rest of
+// the mode uses (an avatar, a group id, a persona), by asking it which conversation that is.
+
+/**
+ * @param {string} avatar
+ * @param {{ groupId?: string|null, personaId?: string, chatId?: string }} [options]
+ * @returns {{ conversationId: string, chatId: string }|null}
+ */
+export function getConversationAddress(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), chatId = '' } = {}) {
+    return conversationData.resolve({ avatar, groupId: groupId || '', personaId, chatId });
 }
 
-function decodeConversationStoragePart(value) {
-    try {
-        return decodeURIComponent(String(value || ''));
-    } catch {
-        return String(value || '');
-    }
-}
-
-function scopeConversationStorageKey(storageKey, personaId = getConversationPersonaId()) {
-    const key = String(storageKey || '').trim();
-    const persona = getConversationPersonaId(personaId);
-    if (!key || !persona || key.startsWith(PERSONA_CONVERSATION_STORE_PREFIX)) {
-        return key;
-    }
-
-    return `${PERSONA_CONVERSATION_STORE_PREFIX}${encodeConversationStoragePart(persona)}:${key}`;
-}
-
-export function getRawConversationKey(avatar, groupId = '', personaId = getConversationPersonaId()) {
-    const safeAvatar = String(avatar || '').trim();
-    const safeGroupId = String(groupId || '').trim();
-    if (!safeAvatar) {
-        return '';
-    }
-
-    const conversationKey = safeGroupId ? `${GROUP_CONVERSATION_STORE_PREFIX}${safeGroupId}:${safeAvatar}` : safeAvatar;
-    return scopeConversationStorageKey(conversationKey, personaId);
-}
-
-export function isConversationKeyForPersona(key, personaId = getConversationPersonaId()) {
-    const parsed = parseConversationKey(key);
-    return getConversationPersonaId(parsed.personaId) === getConversationPersonaId(personaId);
-}
-
-export function normalizeConversationGroupRecord(group) {
-    const source = group && typeof group === 'object' ? group : {};
-    const id = String(source.id || '').trim();
-    const personaId = getExplicitConversationPersonaId(source.personaId || source.persona || source.personaAvatar || source.userAvatar);
-    const members = Array.isArray(source.members)
-        ? Array.from(new Set(source.members.map(avatar => String(avatar || '').trim()).filter(Boolean)))
-        : [];
-    if (!id || members.length < 2) {
-        return null;
-    }
-
-    const disabledMembers = Array.isArray(source.disabled_members)
-        ? source.disabled_members.map(avatar => String(avatar || '').trim()).filter(avatar => avatar && members.includes(avatar))
-        : [];
-    const now = Date.now();
+/** A group in the shape that the rest of the mode reads: its members, and a name that is never empty. */
+function toGroupRecord(view) {
     return {
-        ...source,
-        id,
-        personaId,
-        name: String(source.name || 'Conversation Group'),
-        members,
-        disabled_members: disabledMembers,
-        conversation_settings: normalizeGroupConversationSettings(source.conversation_settings),
+        id: view.id,
+        personaId: view.personaId,
+        name: view.name || GROUP_FALLBACK_NAME,
+        description: view.description ?? '',
+        members: [...view.characters],
+        disabled_members: [],
+        conversation_settings: view.settings,
         is_conversation_group: true,
-        createdAt: parsePositiveInt(source.createdAt, now, 0),
-        updatedAt: parsePositiveInt(source.updatedAt, source.createdAt || now, 0),
+        avatar_url: view.avatar ? `/api/sillybunny-conversation/avatar?id=${encodeURIComponent(view.id)}` : '',
+        createdAt: view.createdAt,
+        updatedAt: view.updatedAt,
     };
 }
 
 export function getConversationGroups({ personaId = getConversationPersonaId() } = {}) {
-    const store = getConversationStore();
-    const persona = getConversationPersonaId(personaId);
-    store.groups = Array.isArray(store.groups)
-        ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean)
-        : [];
-    return store.groups.filter(group => getConversationPersonaId(group.personaId) === persona);
+    return conversationData.list({ personaId }).filter(view => view.kind === 'group').map(toGroupRecord);
 }
 
-export function getConversationGroupById(groupId, { personaId = getConversationPersonaId() } = {}) {
-    if (!groupId) {
+export function getConversationGroupById(groupId, { personaId } = {}) {
+    const view = groupId ? conversationData.get(String(groupId)) : null;
+    if (!view || view.kind !== 'group' || (personaId !== undefined && view.personaId !== getConversationPersonaId(personaId))) {
         return null;
     }
-
-    const conversationGroup = getConversationGroups({ personaId }).find(group => String(group?.id) === String(groupId));
-    if (conversationGroup) {
-        return conversationGroup;
-    }
-
-    if (!Array.isArray(groups)) {
-        return null;
-    }
-
-    return groups.find(group => String(group?.id) === String(groupId)) || null;
+    return toGroupRecord(view);
 }
 
-function getConversationAnchorRank(conversationRecord) {
-    const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? Object.values(conversationRecord.branches) : [];
-    const messageCount = branches.reduce((total, chat) => total + (Array.isArray(chat?.messages) ? chat.messages.length : 0), 0);
-    const unread = branches.reduce((total, chat) => total + parsePositiveInt(chat?.unread, 0, 0), 0);
-    const hasHistory = messageCount > 0 || unread > 0 || branches.some(chat => chat?.preview && chat.preview !== 'Conversation ready');
-    const updatedAt = branches.reduce((latest, chat) => Math.max(latest, Number(chat?.updatedAt || chat?.createdAt || 0)), 0);
-    return { hasHistory, messageCount, unread, updatedAt };
+export function isConversationOwnedGroup(groupId) {
+    return Boolean(getConversationGroupById(groupId));
 }
 
-function compareConversationAnchors(left, right) {
-    return Number(right.rank.hasHistory) - Number(left.rank.hasHistory)
-        || right.rank.messageCount - left.rank.messageCount
-        || right.rank.unread - left.rank.unread
-        || right.rank.updatedAt - left.rank.updatedAt
-        || left.memberIndex - right.memberIndex
-        || left.storeKey.localeCompare(right.storeKey);
-}
-
-function mergeConversationAliasStore(target, source) {
-    const targetChats = target?.branches && typeof target.branches === 'object' ? target.branches : {};
-    const sourceChats = source?.branches && typeof source.branches === 'object' ? source.branches : {};
-    const targetState = new Map(Object.entries(targetChats).map(([chatId, chat]) => [chatId, {
-        memoryUpdatedAt: Number(chat?.memoryUpdatedAt || chat?.updatedAt || 0),
-        unread: parsePositiveInt(chat?.unread, 0, 0),
-        updatedAt: Number(chat?.updatedAt || 0),
-    }]));
-    const sourceState = new Map(Object.entries(sourceChats).map(([chatId, chat]) => [chatId, {
-        memoryUpdatedAt: Number(chat?.memoryUpdatedAt || chat?.updatedAt || 0),
-        unread: parsePositiveInt(chat?.unread, 0, 0),
-        updatedAt: Number(chat?.updatedAt || 0),
-    }]));
-    const targetMemoryUpdatedAt = Number(target?.memoryUpdatedAt || 0);
-    const sourceMemoryUpdatedAt = Number(source?.memoryUpdatedAt || 0);
-
-    mergeLegacyConversationStore(target, source);
-    target.branches = target.branches && typeof target.branches === 'object' ? target.branches : {};
-    for (const [chatId, sourceChat] of Object.entries(sourceChats)) {
-        const targetChat = target.branches[chatId];
-        if (!targetChat) {
-            continue;
-        }
-
-        const previous = targetState.get(chatId);
-        const incoming = sourceState.get(chatId);
-        targetChat.unread = (previous?.unread || 0) + (incoming?.unread || 0);
-        targetChat.lastActivity = Math.max(Number(targetChat.lastActivity || 0), Number(sourceChat?.lastActivity || 0));
-        targetChat.lastAutoMessageAt = Math.max(Number(targetChat.lastAutoMessageAt || 0), Number(sourceChat?.lastAutoMessageAt || 0));
-        targetChat.scheduleTriggers = { ...(sourceChat?.scheduleTriggers || {}), ...(targetChat.scheduleTriggers || {}) };
-        targetChat.sessionMarkers = { ...(sourceChat?.sessionMarkers || {}), ...(targetChat.sessionMarkers || {}) };
-        if (incoming?.updatedAt > (previous?.updatedAt || 0)) {
-            targetChat.preview = sourceChat.preview || targetChat.preview;
-            targetChat.updatedAt = sourceChat.updatedAt;
-        }
-        if (sourceChat?.memorySummary && incoming?.memoryUpdatedAt > (previous?.memoryUpdatedAt || 0)) {
-            targetChat.memorySummary = sourceChat.memorySummary;
-            targetChat.memoryMessageCount = sourceChat.memoryMessageCount;
-            targetChat.memoryUpdatedAt = sourceChat.memoryUpdatedAt;
-        }
-    }
-
-    if (source?.memorySummary && sourceMemoryUpdatedAt > targetMemoryUpdatedAt) {
-        target.memorySummary = source.memorySummary;
-        target.memoryMessageCount = source.memoryMessageCount;
-        target.memoryUpdatedAt = source.memoryUpdatedAt;
-    }
-    if (!target.branches[target.activeBranchId]) {
-        target.activeBranchId = source?.activeBranchId && target.branches[source.activeBranchId]
-            ? source.activeBranchId
-            : Object.keys(target.branches)[0] || DEFAULT_CHAT_ID;
-    }
-}
-
-export function getConversationGroupAnchor(group, { personaId = getConversationPersonaId() } = {}) {
-    const groupId = String(group?.id || '').trim();
-    const eligibleAvatars = (Array.isArray(group?.members) ? group.members : [])
-        .filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
-    if (!groupId || !eligibleAvatars.length) {
-        return null;
-    }
-
-    const eligibleSet = new Set(eligibleAvatars);
-    const memberIndexes = new Map(eligibleAvatars.map((avatar, index) => [avatar, index]));
-    const store = getConversationStore();
-    const aliases = Object.entries(store.characters || {})
-        .filter(([storeKey]) => isConversationKeyForPersona(storeKey, personaId))
-        .map(([storeKey, conversationRecord]) => ({ storeKey, conversationRecord, parsed: parseConversationKey(storeKey) }))
-        .filter(item => item.parsed.groupId === groupId)
-        .map(item => ({
-            ...item,
-            memberIndex: memberIndexes.get(item.parsed.avatar) ?? Number.MAX_SAFE_INTEGER,
-            rank: getConversationAnchorRank(item.conversationRecord),
-        }))
-        .sort(compareConversationAnchors);
-    const persisted = aliases.filter(item => eligibleSet.has(item.parsed.avatar))[0];
-    const avatar = persisted?.parsed.avatar || eligibleAvatars[0];
-    const character = getCharacterForAvatar(avatar);
-    if (!character) {
-        return null;
-    }
-
-    if (!aliases.length) {
-        return {
-            avatar,
-            character,
-            key: getConversationKey(avatar, groupId, { personaId }),
-            conversationRecord: null,
-        };
-    }
-
-    const targetKey = getConversationKey(avatar, groupId, { personaId });
-    const seed = persisted || aliases[0];
-    const targetStore = seed.conversationRecord;
-    let changed = false;
-    if (seed.storeKey !== targetKey) {
-        store.characters[targetKey] = targetStore;
-        delete store.characters[seed.storeKey];
-        changed = true;
-    }
-    for (const alias of aliases) {
-        if (alias.conversationRecord === targetStore) {
-            continue;
-        }
-        mergeConversationAliasStore(targetStore, alias.conversationRecord);
-        delete store.characters[alias.storeKey];
-        changed = true;
-    }
-    targetStore.threadAvatar = avatar;
-    targetStore.groupId = groupId;
-    if (changed) {
-        persistConversationStore();
-    }
-
-    return {
-        avatar,
-        character,
-        key: targetKey,
-        conversationRecord: targetStore,
-    };
-}
-
-export function isConversationOwnedGroup(groupId, { personaId = getConversationPersonaId() } = {}) {
-    return Boolean(groupId && getConversationGroups({ personaId }).some(group => String(group?.id) === String(groupId)));
-}
-
-export function createConversationGroupRecord(memberAvatars, { name = '', avatarUrl = '', settings = null, personaId = getConversationPersonaId() } = {}) {
-    const members = Array.from(new Set(
-        (Array.isArray(memberAvatars) ? memberAvatars : [])
-            .map(avatar => String(avatar || '').trim())
-            .filter(Boolean),
-    ));
-    if (members.length < 2) {
-        return null;
-    }
-
-    const now = Date.now();
-    const group = normalizeConversationGroupRecord({
-        id: `conversation_${now}_${Math.random().toString(36).slice(2)}`,
-        personaId: getConversationPersonaId(personaId),
-        name: name || 'Conversation Group',
-        members,
-        avatar_url: avatarUrl || '',
-        disabled_members: [],
-        conversation_settings: settings || getDefaultGroupConversationSettings(),
-        createdAt: now,
-        updatedAt: now,
-    });
-    if (!group) {
-        return null;
-    }
-
-    const store = getConversationStore();
-    store.groups = Array.isArray(store.groups) ? store.groups : [];
-    store.groups.push(group);
-    persistConversationStore();
-    return group;
-}
-
-export function isAvatarInConversationGroup(avatar, groupId, { personaId = getConversationPersonaId() } = {}) {
+export function isAvatarInConversationGroup(avatar, groupId, { personaId } = {}) {
     const group = getConversationGroupById(groupId, { personaId });
-    return Boolean(avatar && group?.members?.includes(avatar) && !group.disabled_members?.includes(avatar));
+    return Boolean(avatar && group?.members.includes(avatar));
 }
 
 export function getConversationGroupIdForAvatar(avatar) {
@@ -360,54 +127,74 @@ export function getConversationGroupIdForAvatar(avatar) {
     return selected_group && isAvatarInConversationGroup(avatar, selected_group) ? String(selected_group) : null;
 }
 
+/**
+ * The first member of a group that has a character card, which the rest of the mode uses as the group's own character.
+ * @returns {{ avatar: string, character: object, key: string, conversationRecord: object|null }|null}
+ */
+export function getConversationGroupAnchor(group, { personaId = getConversationPersonaId() } = {}) {
+    const groupId = String(group?.id || '').trim();
+    const avatar = (Array.isArray(group?.members) ? group.members : []).find(item => item && !group.disabled_members?.includes(item) && getCharacterForAvatar(item));
+    const character = avatar ? getCharacterForAvatar(avatar) : null;
+    if (!groupId || !character) {
+        return null;
+    }
+    return {
+        avatar,
+        character,
+        key: getConversationKey(avatar, groupId, { personaId }),
+        conversationRecord: conversationData.get(groupId),
+    };
+}
+
+/**
+ * A string that is equal for the same conversation and for no other, for comparisons and for keys of maps. It is the
+ * id of the conversation; a conversation that is not there yet gets a key from the names that will make it.
+ */
 export function getConversationKey(avatar, groupId = getConversationGroupIdForAvatar(avatar), { personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return '';
     }
-
-    const safeGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? String(groupId) : '';
-    return getRawConversationKey(avatar, safeGroupId, personaId);
+    const address = getConversationAddress(avatar, { groupId, personaId });
+    return address?.conversationId ?? `pending:${personaId}:${groupId || ''}:${avatar}`;
 }
 
-export function parseConversationKey(key) {
-    let value = String(key || '');
-    let personaId = '';
-    if (value.startsWith(PERSONA_CONVERSATION_STORE_PREFIX)) {
-        const withoutPrefix = value.slice(PERSONA_CONVERSATION_STORE_PREFIX.length);
-        const separatorIndex = withoutPrefix.indexOf(':');
-        if (separatorIndex < 0) {
-            return { avatar: '', groupId: '', personaId: '' };
-        }
-
-        personaId = decodeConversationStoragePart(withoutPrefix.slice(0, separatorIndex));
-        value = withoutPrefix.slice(separatorIndex + 1);
+/** The conversation as the cache holds it, or null. It is never created here; see `ensureDirectConversation`. */
+export function getConversationRecord(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    if (!avatar) {
+        return null;
     }
+    const address = getConversationAddress(avatar, { groupId, personaId });
+    return address ? conversationData.get(address.conversationId) : null;
+}
 
-    if (!value.startsWith(GROUP_CONVERSATION_STORE_PREFIX)) {
-        return { avatar: value, groupId: '', personaId };
+/**
+ * The direct conversation of the persona with a character, made now when there is none.
+ * @returns {Promise<object>} The conversation.
+ */
+export async function ensureDirectConversation(avatar, { personaId = getConversationPersonaId() } = {}) {
+    const existing = conversationData.findDirect(personaId, avatar);
+    if (existing) {
+        return existing;
     }
+    const { conversation } = await conversationData.createConversation({ kind: 'direct', personaId, characters: [avatar] });
+    return conversation;
+}
 
-    const withoutPrefix = value.slice(GROUP_CONVERSATION_STORE_PREFIX.length);
-    const separatorIndex = withoutPrefix.indexOf(':');
-    if (separatorIndex < 0) {
-        return { avatar: '', groupId: '', personaId };
+/**
+ * @param {string[]} memberAvatars At least two characters.
+ * @returns {Promise<object>} The group conversation, in the shape of `getConversationGroupById`.
+ */
+export async function makeConversationGroup(memberAvatars, { name = '', personaId = getConversationPersonaId() } = {}) {
+    const members = [...new Set((Array.isArray(memberAvatars) ? memberAvatars : []).map(avatar => String(avatar || '').trim()).filter(Boolean))];
+    if (members.length < 2) {
+        return null;
     }
-
-    return {
-        groupId: withoutPrefix.slice(0, separatorIndex),
-        avatar: withoutPrefix.slice(separatorIndex + 1),
-        personaId,
-    };
+    const { conversation } = await conversationData.createConversation({ kind: 'group', personaId, characters: members, ...(name ? { name } : {}) });
+    return toGroupRecord(conversation);
 }
 
-export function getCharacterStorageKey(prefix, avatar) {
-    return `${prefix}${avatar}`;
-}
-
-export function parsePositiveInt(value, fallback, min = 1) {
-    const parsed = Number.parseInt(String(value), 10);
-    return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
-}
+// ---------------------------------------------------------------------------------------------------------------------
+// Settings values
 
 export function getIdleActionFromSettings(settings) {
     const hasFollowup = Boolean(settings?.idle_followup);
@@ -527,526 +314,40 @@ export function pickConversationSettings(settings, keys) {
     }, {});
 }
 
-export function normalizeGroupConversationSettings(settings = {}) {
-    let parsedSource = {};
-    try {
-        const parsed = typeof settings === 'string' ? JSON.parse(settings) : settings;
-        parsedSource = parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-        parsedSource = {};
-    }
-    const normalized = safeParseSettings(settings);
-    if (!Object.prototype.hasOwnProperty.call(parsedSource, 'multi_char')) {
-        normalized.multi_char = true;
-    }
-    if (!Object.prototype.hasOwnProperty.call(parsedSource, 'auto_character_chat')) {
-        normalized.auto_character_chat = true;
-    }
-    return pickConversationSettings(normalized, GROUP_CONVERSATION_SETTINGS_KEYS);
-}
+// ---------------------------------------------------------------------------------------------------------------------
+// The mode's own settings in settings.json: the mode-wide settings and the status of the user. Conversations are not here.
 
-export function getDefaultGroupConversationSettings() {
-    return normalizeGroupConversationSettings({
-        ...DEFAULT_SETTINGS,
-        multi_char: true,
-        auto_character_chat: true,
+function hasLegacyStoreContent(store) {
+    return LEGACY_STORE_PARTS.some((part) => {
+        const value = store[part];
+        return Array.isArray(value) ? value.length > 0 : Boolean(value) && typeof value === 'object' && Object.keys(value).length > 0;
     });
 }
 
-export function getGroupConversationSettings(groupId, { personaId = getConversationPersonaId() } = {}) {
-    const group = getConversationGroupById(groupId, { personaId });
-    return normalizeGroupConversationSettings(group?.conversation_settings);
-}
-
-export function saveGroupConversationSettings(groupId, settings, { personaId = getConversationPersonaId() } = {}) {
-    const group = getConversationGroupById(groupId, { personaId });
-    if (!group) {
-        return;
-    }
-
-    group.conversation_settings = normalizeGroupConversationSettings(settings);
-    group.updatedAt = Date.now();
-    if (isConversationOwnedGroup(groupId, { personaId })) {
-        persistConversationStore();
-        return;
-    }
-
-    void editGroup(String(group.id), false, false);
-}
-
-function getLegacyConversationMessageFingerprint(message) {
-    const normalizeValue = (value) => {
-        if (Array.isArray(value)) {
-            return value.map(normalizeValue);
-        }
-        if (value && typeof value === 'object') {
-            return Object.keys(value).sort().reduce((result, key) => {
-                result[key] = normalizeValue(value[key]);
-                return result;
-            }, {});
-        }
-        return value;
-    };
-    return JSON.stringify(normalizeValue(message));
-}
-
-function mergeLegacyConversationMessages(destinationMessages, sourceMessages) {
-    const destination = Array.isArray(destinationMessages) ? destinationMessages : [];
-    const source = Array.isArray(sourceMessages) ? sourceMessages : [];
-    const byId = new Map(destination.map(message => [String(message?.id || ''), message]));
-    const fingerprintCounts = destination.reduce((counts, message) => {
-        if (!message?.id) {
-            const fingerprint = getLegacyConversationMessageFingerprint(message);
-            counts.set(fingerprint, (counts.get(fingerprint) || 0) + 1);
-        }
-        return counts;
-    }, new Map());
-    const sourceFingerprintCounts = new Map();
-    let complete = true;
-    let changed = false;
-
-    for (const message of source) {
-        const messageId = String(message?.id || '');
-        if (!messageId) {
-            const fingerprint = getLegacyConversationMessageFingerprint(message);
-            const occurrence = (sourceFingerprintCounts.get(fingerprint) || 0) + 1;
-            sourceFingerprintCounts.set(fingerprint, occurrence);
-            if ((fingerprintCounts.get(fingerprint) || 0) >= occurrence) {
-                continue;
-            }
-
-            destination.push(message);
-            fingerprintCounts.set(fingerprint, occurrence);
-            changed = true;
-            continue;
-        }
-
-        const existing = messageId ? byId.get(messageId) : null;
-        if (!existing) {
-            destination.push(message);
-            if (messageId) {
-                byId.set(messageId, message);
-            }
-            changed = true;
-            continue;
-        }
-
-        if (JSON.stringify(existing) !== JSON.stringify(message)) {
-            complete = false;
-        }
-    }
-
-    destination.sort((left, right) => Number(left?.created_at || 0) - Number(right?.created_at || 0));
-    return { messages: destination, complete, changed };
-}
-
-function mergeLegacyConversationStore(destination, source) {
-    if (!destination || typeof destination !== 'object' || !source || typeof source !== 'object') {
-        return { complete: false, changed: false };
-    }
-
-    let changed = false;
-    let complete = true;
-    for (const [key, value] of Object.entries(source)) {
-        if (key === 'branches' || key === 'settings') {
-            continue;
-        }
-        if (typeof destination[key] === 'undefined' || destination[key] === null || destination[key] === '') {
-            destination[key] = value;
-            changed = true;
-        } else if (JSON.stringify(destination[key]) !== JSON.stringify(value)) {
-            complete = false;
-        }
-    }
-
-    const sourceSettings = source.settings && typeof source.settings === 'object' ? source.settings : {};
-    const destinationSettings = destination.settings && typeof destination.settings === 'object' ? destination.settings : {};
-    const mergedSettings = { ...sourceSettings, ...destinationSettings };
-    for (const [key, value] of Object.entries(sourceSettings)) {
-        if (Object.prototype.hasOwnProperty.call(destinationSettings, key) && JSON.stringify(destinationSettings[key]) !== JSON.stringify(value)) {
-            complete = false;
-        }
-    }
-    if (JSON.stringify(mergedSettings) !== JSON.stringify(destinationSettings)) {
-        destination.settings = mergedSettings;
-        changed = true;
-    }
-
-    const sourceChats = source.branches && typeof source.branches === 'object' ? source.branches : {};
-    destination.branches = destination.branches && typeof destination.branches === 'object' ? destination.branches : {};
-    for (const [chatId, sourceChat] of Object.entries(sourceChats)) {
-        const destinationChat = destination.branches[chatId];
-        if (!destinationChat) {
-            destination.branches[chatId] = sourceChat;
-            changed = true;
-            continue;
-        }
-
-        for (const [key, value] of Object.entries(sourceChat || {})) {
-            if (key !== 'messages' && (typeof destinationChat[key] === 'undefined' || destinationChat[key] === null || destinationChat[key] === '')) {
-                destinationChat[key] = value;
-                changed = true;
-            } else if (key !== 'messages' && JSON.stringify(destinationChat[key]) !== JSON.stringify(value)) {
-                complete = false;
-            }
-        }
-        const mergedMessages = mergeLegacyConversationMessages(destinationChat.messages, sourceChat?.messages);
-        destinationChat.messages = mergedMessages.messages;
-        complete = complete && mergedMessages.complete;
-        changed = changed || mergedMessages.changed;
-    }
-
-    return { complete, changed };
-}
-
-export function migrateLegacyConversationStoreToPersona(store, personaId = getConversationPersonaId()) {
-    const persona = getConversationPersonaId(personaId);
-    if (!persona || !store || typeof store !== 'object') {
-        return false;
-    }
-
-    let changed = false;
-    const charactersStore = store.characters && typeof store.characters === 'object' ? store.characters : {};
-    const legacyAssignments = store.legacyThreadPersonaAssignments && typeof store.legacyThreadPersonaAssignments === 'object'
-        ? store.legacyThreadPersonaAssignments
-        : {};
-    store.legacyThreadPersonaAssignments = legacyAssignments;
-    for (const [storeKey, conversationRecord] of Object.entries(charactersStore)) {
-        const parsed = parseConversationKey(storeKey);
-        if (parsed.personaId || !parsed.avatar || (legacyAssignments[storeKey] && legacyAssignments[storeKey] !== persona)) {
-            continue;
-        }
-
-        const scopedKey = scopeConversationStorageKey(storeKey, persona);
-        if (!charactersStore[scopedKey]) {
-            charactersStore[scopedKey] = conversationRecord;
-            delete charactersStore[storeKey];
-            delete legacyAssignments[storeKey];
-            changed = true;
-            continue;
-        }
-
-        const merged = mergeLegacyConversationStore(charactersStore[scopedKey], conversationRecord);
-        changed = changed || merged.changed;
-        if (merged.complete) {
-            delete charactersStore[storeKey];
-            delete legacyAssignments[storeKey];
-            changed = true;
-        } else if (legacyAssignments[storeKey] !== persona) {
-            legacyAssignments[storeKey] = persona;
-            changed = true;
-        }
-    }
-
-    store.groups = Array.isArray(store.groups) ? store.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
-    for (const group of store.groups) {
-        if (!getExplicitConversationPersonaId(group.personaId)) {
-            group.personaId = persona;
-            group.updatedAt = Date.now();
-            changed = true;
-        }
-    }
-
-    store.reminders = Array.isArray(store.reminders) ? store.reminders : [];
-    for (const reminder of store.reminders) {
-        if (reminder && typeof reminder === 'object' && !getExplicitConversationPersonaId(reminder.personaId)) {
-            reminder.personaId = persona;
-            changed = true;
-        }
-    }
-
-    return changed;
-}
-
+/**
+ * The mode's object in `settings.json`. It holds `settings` (mode-wide), `userStatus`, `userPersonaStatus`,
+ * `localStorageMigrated` and `version`. Old parts of it (`characters`, `groups`, `reminders`,
+ * `legacyThreadPersonaAssignments`) are left as they were found and never written: while they have content the server
+ * has not moved them yet, and the object keeps its version so that the server still sees it as old.
+ */
 export function getConversationStore() {
-    const store = extension_settings[CONVERSATION_STORE_KEY];
+    let store = extension_settings[CONVERSATION_STORE_KEY];
     if (!store || typeof store !== 'object') {
-        extension_settings[CONVERSATION_STORE_KEY] = {
-            version: 1,
-            localStorageMigrated: false,
-            settings: {},
-            characters: {},
-            groups: [],
-            legacyThreadPersonaAssignments: {},
-            reminders: [],
-        };
+        store = { version: MODE_OBJECT_VERSION, localStorageMigrated: false, settings: {} };
+        extension_settings[CONVERSATION_STORE_KEY] = store;
     }
-
-    const current = extension_settings[CONVERSATION_STORE_KEY];
-    current.version = current.version || 1;
-    current.settings = current.settings && typeof current.settings === 'object' ? current.settings : {};
-    current.characters = current.characters && typeof current.characters === 'object' ? current.characters : {};
-    current.groups = Array.isArray(current.groups) ? current.groups.map(normalizeConversationGroupRecord).filter(Boolean) : [];
-    current.legacyThreadPersonaAssignments = current.legacyThreadPersonaAssignments && typeof current.legacyThreadPersonaAssignments === 'object'
-        ? current.legacyThreadPersonaAssignments
-        : {};
-    current.reminders = Array.isArray(current.reminders) ? current.reminders : [];
-    if (migrateLegacyConversationStoreToPersona(current)) {
-        persistConversationStore();
+    if (!hasLegacyStoreContent(store) && !(Number(store.version) >= MODE_OBJECT_VERSION)) {
+        store.version = MODE_OBJECT_VERSION;
     }
-    return current;
+    store.settings = store.settings && typeof store.settings === 'object' ? store.settings : {};
+    return store;
 }
 
 export function persistConversationStore() {
     saveSettingsDebounced();
 }
 
-export function buildConversationChat(name = 'Main', id = `br_${Date.now()}_${Math.random().toString(36).slice(2)}`) {
-    return {
-        id,
-        name,
-        messages: [],
-        preview: 'Conversation ready',
-        unread: 0,
-        lastActivity: Date.now(),
-        followupCount: 0,
-        lastAutoMessageAt: 0,
-        scheduleTriggers: {},
-        sessionMarkers: {},
-        memorySummary: '',
-        memoryMessageCount: 0,
-        memoryUpdatedAt: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-    };
-}
-
-export function normalizeConversationChat(chat, id = DEFAULT_CHAT_ID) {
-    const target = chat && typeof chat === 'object'
-        ? chat
-        : buildConversationChat(id === DEFAULT_CHAT_ID ? 'Main' : 'Conversation', id);
-    const now = Date.now();
-
-    target.id = target.id || id;
-    target.name = target.name || (id === DEFAULT_CHAT_ID ? 'Main' : 'Conversation');
-    target.messages = Array.isArray(target.messages) ? target.messages : [];
-    target.preview = typeof target.preview === 'string' ? target.preview : 'Conversation ready';
-    target.unread = parsePositiveInt(target.unread, 0, 0);
-    target.lastActivity = parsePositiveInt(target.lastActivity, now, 0);
-    target.followupCount = parsePositiveInt(target.followupCount, 0, 0);
-    target.lastAutoMessageAt = parsePositiveInt(target.lastAutoMessageAt, 0, 0);
-    target.scheduleTriggers = target.scheduleTriggers && typeof target.scheduleTriggers === 'object' ? target.scheduleTriggers : {};
-    target.sessionMarkers = target.sessionMarkers && typeof target.sessionMarkers === 'object' ? target.sessionMarkers : {};
-    target.memorySummary = typeof target.memorySummary === 'string' ? target.memorySummary : '';
-    target.memoryMessageCount = parsePositiveInt(target.memoryMessageCount, 0, 0);
-    target.memoryUpdatedAt = parsePositiveInt(target.memoryUpdatedAt, 0, 0);
-    target.createdAt = parsePositiveInt(target.createdAt, now, 0);
-    target.updatedAt = parsePositiveInt(target.updatedAt, target.createdAt, 0);
-    return target;
-}
-
-function migrateGlobalIdleActionSettings(store, settings) {
-    const globalSettings = store.settings && typeof store.settings === 'object' ? store.settings : {};
-    const alreadyGlobal = Object.prototype.hasOwnProperty.call(globalSettings, 'idle_followup')
-        || Object.prototype.hasOwnProperty.call(globalSettings, 'idle_spontaneous')
-        || Object.prototype.hasOwnProperty.call(globalSettings, 'idle_action');
-    if (alreadyGlobal || (!settings.idle_followup && !settings.idle_spontaneous && settings.idle_action === DEFAULT_SETTINGS.idle_action)) {
-        return false;
-    }
-
-    store.settings = globalSettings;
-    store.settings.idle_followup = Boolean(settings.idle_followup);
-    store.settings.idle_spontaneous = Boolean(settings.idle_spontaneous);
-    store.settings.idle_action = getIdleActionFromSettings(settings);
-    return true;
-}
-
-export function getCharacterConversationStore(avatar, { create = true, personaId = getConversationPersonaId() } = {}) {
-    const storeKey = scopeConversationStorageKey(avatar, personaId);
-    if (!storeKey) {
-        return null;
-    }
-
-    const store = getConversationStore();
-    if (!store.characters[storeKey] && !create) {
-        return null;
-    }
-    if (!store.characters[storeKey]) {
-        store.characters[storeKey] = {
-            settings: { ...DEFAULT_SETTINGS },
-            schedule: null,
-            activeBranchId: DEFAULT_CHAT_ID,
-            branches: {
-                [DEFAULT_CHAT_ID]: buildConversationChat('Main', DEFAULT_CHAT_ID),
-            },
-        };
-    }
-
-    const characterStore = store.characters[storeKey];
-    const normalizedSettings = safeParseSettings(characterStore.settings);
-    const migratedGlobalIdle = migrateGlobalIdleActionSettings(store, normalizedSettings);
-    characterStore.settings = pickConversationSettings(
-        normalizedSettings,
-        parseConversationKey(storeKey).groupId ? CHARACTER_CONVERSATION_SETTINGS_KEYS : CONVERSATION_SETTINGS_KEYS,
-    );
-    characterStore.branches = characterStore.branches && typeof characterStore.branches === 'object' ? characterStore.branches : {};
-    characterStore.activeBranchId = characterStore.activeBranchId || DEFAULT_CHAT_ID;
-    if (!characterStore.branches[characterStore.activeBranchId]) {
-        characterStore.branches[characterStore.activeBranchId] = buildConversationChat('Main', characterStore.activeBranchId);
-    }
-    characterStore.branches[characterStore.activeBranchId] = normalizeConversationChat(characterStore.branches[characterStore.activeBranchId], characterStore.activeBranchId);
-    const activeChat = characterStore.branches[characterStore.activeBranchId];
-    characterStore.memorySummary = typeof characterStore.memorySummary === 'string' ? characterStore.memorySummary : '';
-    if (!characterStore.memorySummary && activeChat.memorySummary) {
-        characterStore.memorySummary = activeChat.memorySummary;
-        characterStore.memoryMessageCount = activeChat.memoryMessageCount;
-        characterStore.memoryUpdatedAt = activeChat.memoryUpdatedAt || activeChat.updatedAt || Date.now();
-    }
-    characterStore.memoryMessageCount = parsePositiveInt(characterStore.memoryMessageCount, 0, 0);
-    characterStore.memoryUpdatedAt = parsePositiveInt(characterStore.memoryUpdatedAt, 0, 0);
-    if (migratedGlobalIdle) {
-        persistConversationStore();
-    }
-    return characterStore;
-}
-
-export function getConversationRecord(avatar, { create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const conversationKey = getConversationKey(avatar, groupId, { personaId });
-    if (!conversationKey) {
-        return null;
-    }
-
-    const conversationRecord = getCharacterConversationStore(conversationKey, { create, personaId });
-    if (!conversationRecord) {
-        return null;
-    }
-
-    conversationRecord.threadAvatar = avatar;
-    conversationRecord.groupId = groupId || '';
-    return conversationRecord;
-}
-
-export function getActiveConversationChat(avatar, { chatId = '', create = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const characterStore = getConversationRecord(avatar, { create, groupId, personaId });
-    if (!characterStore) {
-        return null;
-    }
-
-    const id = chatId || characterStore.activeBranchId || DEFAULT_CHAT_ID;
-    if (!characterStore.branches[id] && !create) {
-        return null;
-    }
-    characterStore.branches[id] = normalizeConversationChat(characterStore.branches[id], id);
-    return characterStore.branches[id];
-}
-
-export function getConversationChats(avatar, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const characterStore = getConversationRecord(avatar, { create: false, groupId });
-    if (!characterStore) {
-        return [];
-    }
-
-    return Object.entries(characterStore.branches).map(([id, chat]) => {
-        const normalized = normalizeConversationChat(chat, chat?.id || id);
-        characterStore.branches[id] = normalized;
-        return normalized;
-    });
-}
-
-export function setActiveConversationChat(avatar, chatId, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const characterStore = getConversationRecord(avatar, { groupId });
-    if (!characterStore?.branches?.[chatId]) {
-        return;
-    }
-
-    characterStore.activeBranchId = chatId;
-    persistConversationStore();
-}
-
-export function createConversationChat(avatar, name = 'New chat', { groupId = getConversationGroupIdForAvatar(avatar), copyMemory = null } = {}) {
-    const characterStore = getConversationRecord(avatar, { groupId });
-    if (!characterStore) {
-        return null;
-    }
-
-    const sourceChat = normalizeConversationChat(
-        characterStore.branches?.[characterStore.activeBranchId || DEFAULT_CHAT_ID],
-        characterStore.activeBranchId || DEFAULT_CHAT_ID,
-    );
-    const chat = buildConversationChat(name || 'New chat');
-    const memorySummary = String(characterStore.memorySummary || sourceChat.memorySummary || '').trim();
-    const shouldCopyMemory = copyMemory ?? true;
-    if (shouldCopyMemory && memorySummary) {
-        chat.memorySummary = memorySummary;
-        chat.memoryMessageCount = 0;
-        chat.sessionMarkers.memory_copied_from = sourceChat.id;
-    }
-    characterStore.branches[chat.id] = chat;
-    characterStore.activeBranchId = chat.id;
-    const group = groupId ? getConversationGroupById(groupId) : null;
-    if (group?.is_conversation_group) {
-        group.updatedAt = Date.now();
-    }
-    persistConversationStore();
-    return chat;
-}
-
-export function renameConversationChat(avatar, chatId, name, { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const characterStore = getConversationRecord(avatar, { create: false, groupId });
-    const chat = characterStore?.branches?.[chatId];
-    if (!chat || !String(name || '').trim()) {
-        return false;
-    }
-
-    chat.name = String(name).trim();
-    chat.updatedAt = Date.now();
-    persistConversationStore();
-    return true;
-}
-
-function createConversationResetChat(characterStore, name, chatId) {
-    const chat = buildConversationChat(name, chatId);
-    const memorySummary = String(characterStore?.memorySummary || '').trim();
-    if (memorySummary) {
-        chat.memorySummary = memorySummary;
-        chat.memoryMessageCount = 0;
-        chat.memoryUpdatedAt = parsePositiveInt(characterStore?.memoryUpdatedAt, Date.now(), 0);
-    }
-    return chat;
-}
-
-export function deleteConversationChat(avatar, chatId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const characterStore = getConversationRecord(avatar, { create: false, groupId, personaId });
-    if (!characterStore?.branches?.[chatId]) {
-        return false;
-    }
-
-    const chatIds = Object.keys(characterStore.branches);
-    if (chatIds.length <= 1) {
-        characterStore.branches[chatId] = createConversationResetChat(characterStore, 'Main', chatId);
-        characterStore.activeBranchId = chatId;
-    } else {
-        delete characterStore.branches[chatId];
-        if (characterStore.activeBranchId === chatId) {
-            characterStore.activeBranchId = Object.keys(characterStore.branches)[0] || DEFAULT_CHAT_ID;
-        }
-    }
-    persistConversationStore();
-    return true;
-}
-
-export function deleteConversationWelcomeChat(avatar, chatId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-    const reset = Boolean(conversationRecord?.branches?.[chatId]) && Object.keys(conversationRecord.branches).length <= 1;
-    return {
-        deleted: deleteConversationChat(avatar, chatId, { groupId, personaId }),
-        reset,
-    };
-}
-
-export function resetCharacterConversationChats(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const characterStore = getConversationRecord(avatar, { groupId, personaId });
-    if (!characterStore) {
-        return;
-    }
-
-    characterStore.activeBranchId = DEFAULT_CHAT_ID;
-    characterStore.branches = {
-        [DEFAULT_CHAT_ID]: createConversationResetChat(characterStore, 'Main', DEFAULT_CHAT_ID),
-    };
-    persistConversationStore();
-}
-
+/** Removes the unread counts that the first versions kept in `localStorage`. They are worked out from the chats now. */
 export function clearLegacyConversationUnreadStorage() {
     if (typeof localStorage === 'undefined') {
         return 0;
@@ -1063,76 +364,129 @@ export function clearLegacyConversationUnreadStorage() {
     return unreadKeys.length;
 }
 
-export function migrateConversationLocalStorage() {
-    const store = getConversationStore();
-    if (typeof localStorage === 'undefined') {
+// ---------------------------------------------------------------------------------------------------------------------
+// Chats of a conversation
+
+function toChatHandle(view, entry) {
+    const loaded = conversationData.chat({ conversationId: view.id, chatId: entry.id });
+    const memory = loaded?.header?.chat_metadata?.sb_conversation ?? {};
+    return {
+        id: entry.id,
+        name: entry.name || (entry.id === DEFAULT_CHAT_ID ? 'Main' : 'Conversation'),
+        messages: loaded?.messages ?? EMPTY_MESSAGES,
+        loaded: Boolean(loaded),
+        preview: entry.preview || 'Conversation ready',
+        unread: entry.unread ?? 0,
+        messageCount: entry.messageCount ?? 0,
+        lastMessageRole: entry.lastMessageRole ?? '',
+        hasUserMessage: entry.hasUserMessage === true,
+        readThrough: entry.readThrough ?? '',
+        lastActivity: entry.lastActivity ?? 0,
+        followupCount: entry.followupCount ?? 0,
+        lastAutoMessageAt: entry.lastAutoMessageAt ?? 0,
+        sessionMarkers: entry.sessionMarkers ?? {},
+        memorySummary: String(memory.memory_summary ?? ''),
+        memoryMessageCount: Number(memory.memory_message_count) || 0,
+        memoryUpdatedAt: Number(memory.memory_updated_at) || 0,
+        createdAt: entry.createdAt ?? 0,
+        updatedAt: entry.lastMessageAt || entry.createdAt || 0,
+    };
+}
+
+/**
+ * The chat of a conversation as one object to read: the list's summary of it, its state, and its messages when it is
+ * loaded. It is made on each call, so changing it changes nothing; the setters of the mode write.
+ * @returns {object|null}
+ */
+export function getActiveConversationChat(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
+        return null;
+    }
+    const entry = view.chats.find(item => item.id === (chatId || view.activeChatId));
+    return entry ? toChatHandle(view, entry) : null;
+}
+
+export function getConversationChats(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    return view ? view.chats.map(entry => toChatHandle(view, entry)) : [];
+}
+
+export function setActiveConversationChat(avatar, chatId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view?.chats.some(entry => entry.id === chatId)) {
         return;
     }
-    if (store.localStorageMigrated) {
-        clearLegacyConversationUnreadStorage();
+    conversationData.patchConversation(view.id, { activeChatId: chatId });
+}
+
+/**
+ * Starts a chat in the conversation and makes it the active one. The chat exists in the cache at once; the memory
+ * summary of the chat it was started from is carried over when that chat is loaded.
+ * @returns {object|null} The new chat, or null when the conversation does not exist.
+ */
+export function createConversationChat(avatar, name = 'New chat', { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), copyMemory = null } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
+        return null;
+    }
+    const source = view.chats.find(entry => entry.id === view.activeChatId);
+    const sourceChat = source ? toChatHandle(view, source) : null;
+    const created = conversationData.createChat(view.id, { name: name || 'New chat', activate: true });
+    if (!created) {
+        return null;
+    }
+    const memorySummary = String(sourceChat?.memorySummary || '').trim();
+    if ((copyMemory ?? true) && memorySummary) {
+        conversationData.commitChat(created.address, (draft) => {
+            draft.header.chat_metadata.sb_conversation = { memory_summary: memorySummary, memory_message_count: 0, memory_updated_at: Date.now() };
+        });
+        conversationData.patchConversation(view.id, { chats: { [created.address.chatId]: { sessionMarkers: { memory_copied_from: sourceChat.id } } } });
+    }
+    return getActiveConversationChat(avatar, { chatId: created.address.chatId, groupId, personaId });
+}
+
+export function renameConversationChat(avatar, chatId, name, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    const trimmed = String(name || '').trim();
+    if (!view?.chats.some(entry => entry.id === chatId) || !trimmed) {
+        return false;
+    }
+    conversationData.patchConversation(view.id, { chats: { [chatId]: { name: trimmed } } });
+    return true;
+}
+
+/**
+ * @returns {Promise<boolean>} Whether the chat was removed. The last chat is replaced by an empty one.
+ */
+export async function deleteConversationChat(avatar, chatId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view?.chats.some(entry => entry.id === chatId)) {
+        return false;
+    }
+    await conversationData.deleteChat({ conversationId: view.id, chatId });
+    return true;
+}
+
+/** Home deletes a chat of a conversation: `reset` says that it was the only chat, which is replaced by an empty one. */
+export async function deleteConversationWelcomeChat(avatar, chatId, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    const reset = Boolean(view?.chats.some(entry => entry.id === chatId)) && view.chats.length <= 1;
+    return { deleted: await deleteConversationChat(avatar, chatId, { groupId, personaId }), reset };
+}
+
+/**
+ * Empties a conversation to one blank chat and keeps it listed. The memory summary of the active chat is carried over.
+ * @returns {Promise<void>}
+ */
+export async function resetCharacterConversationChats(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
         return;
     }
-
-    const prefixes = [
-        SETTINGS_KEY_PREFIX,
-        CONVERSATION_KEY_PREFIX,
-        SCHEDULE_PREFIX,
-        LAST_USER_ACTIVITY_PREFIX,
-        FOLLOWUP_COUNT_PREFIX,
-        UNREAD_PREFIX,
-        LAST_PREVIEW_PREFIX,
-        LAST_AUTO_MESSAGE_PREFIX,
-        LAST_SCHEDULE_TRIGGER_PREFIX,
-    ];
-    const avatars = new Set();
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i) || '';
-        const prefix = prefixes.find(value => key.startsWith(value));
-        if (prefix) {
-            avatars.add(key.slice(prefix.length));
-        }
+    const oldChatIds = view.chats.map(entry => entry.id);
+    createConversationChat(avatar, 'Main', { groupId, personaId });
+    for (const chatId of oldChatIds) {
+        await conversationData.deleteChat({ conversationId: view.id, chatId });
     }
-
-    for (const avatar of avatars) {
-        const characterStore = getCharacterConversationStore(avatar);
-        const settingsRaw = localStorage.getItem(getCharacterStorageKey(SETTINGS_KEY_PREFIX, avatar));
-        if (settingsRaw) {
-            characterStore.settings = safeParseSettings(settingsRaw);
-        }
-
-        const chat = getActiveConversationChat(avatar);
-        const conversationRaw = localStorage.getItem(getCharacterStorageKey(CONVERSATION_KEY_PREFIX, avatar));
-        if (conversationRaw) {
-            chat.messages = safeParseMessages(conversationRaw).slice(-MAX_CONVERSATION_MESSAGES);
-        }
-        const preview = localStorage.getItem(getCharacterStorageKey(LAST_PREVIEW_PREFIX, avatar));
-        if (preview) {
-            chat.preview = preview;
-        } else if (chat.messages.length) {
-            chat.preview = stripPreviewText(chat.messages[chat.messages.length - 1].mes) || 'Conversation ready';
-        }
-        chat.unread = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(UNREAD_PREFIX, avatar)), 0, 0);
-        chat.lastActivity = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(LAST_USER_ACTIVITY_PREFIX, avatar)), chat.lastActivity, 1);
-        chat.followupCount = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(FOLLOWUP_COUNT_PREFIX, avatar)), 0, 0);
-        chat.lastAutoMessageAt = parsePositiveInt(localStorage.getItem(getCharacterStorageKey(LAST_AUTO_MESSAGE_PREFIX, avatar)), 0, 0);
-        try {
-            chat.scheduleTriggers = JSON.parse(localStorage.getItem(getCharacterStorageKey(LAST_SCHEDULE_TRIGGER_PREFIX, avatar))) || {};
-        } catch {
-            chat.scheduleTriggers = {};
-        }
-
-        const scheduleRaw = localStorage.getItem(getScheduleStorageKey(avatar));
-        if (scheduleRaw) {
-            try {
-                const schedule = JSON.parse(scheduleRaw);
-                characterStore.schedule = schedule && typeof schedule === 'object' ? schedule : null;
-            } catch {
-                characterStore.schedule = null;
-            }
-        }
-    }
-
-    store.localStorageMigrated = true;
-    clearLegacyConversationUnreadStorage();
-    persistConversationStore();
 }

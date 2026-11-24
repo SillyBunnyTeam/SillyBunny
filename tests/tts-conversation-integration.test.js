@@ -76,7 +76,7 @@ describe('TTS Conversation integration', () => {
 
         const narrateTtsMessage = jest.fn(async () => true);
         installCapabilityRegistry([['tts', { narrateTtsMessage }]]);
-        const message = { role: 'partner', name: 'Mona', mes: 'Hello', extra: { partner_avatar: 'mona.png' } };
+        const message = { role: 'member', name: 'Mona', mes: 'Hello', extra: { member_avatar: 'mona.png' } };
 
         await expect(conversationTts.narrateConversationMessage(message)).resolves.toBe(true);
         expect(narrateTtsMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -117,7 +117,7 @@ describe('TTS Conversation integration', () => {
 
     test('auto narration only runs for the exact visible persona, group, and branch', async () => {
         jest.resetModules();
-        const branches = new Map();
+        const chats = new Map();
         const narrateConversationMessage = jest.fn(async () => true);
         const scheduleTimelineRender = jest.fn();
         const isConversationActive = jest.fn((avatar, groupId, { chatId, personaId }) => (
@@ -126,33 +126,33 @@ describe('TTS Conversation integration', () => {
             && chatId === 'branch-a'
             && personaId === 'persona-a'
         ));
-        const getActiveConversationChat = jest.fn((_avatar, options = {}) => {
-            const id = options.chatId || 'main';
-            const key = `${options.personaId}|${options.groupId}|${id}`;
-            if (!branches.has(key)) {
-                branches.set(key, { id, messages: [], preview: '', updatedAt: 0 });
+        // The conversation is named by its persona and group, and each chat holds the messages that were written to it.
+        const getConversationAddress = jest.fn((_avatar, { chatId = '', groupId = '', personaId = '' } = {}) => ({ conversationId: `${personaId}|${groupId}`, chatId: chatId || 'main' }));
+        const commitChat = jest.fn((address, edit) => {
+            const key = `${address.conversationId}|${address.chatId}`;
+            if (!chats.has(key)) {
+                chats.set(key, { messages: [] });
             }
-            return branches.get(key);
+            edit(chats.get(key));
         });
 
         await jest.unstable_mockModule('../public/scripts/RossAscends-mods.js', () => ({
             getMessageTimeStamp: jest.fn(() => 'now'),
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
-            DEFAULT_CHAT_ID: 'main',
-            MAX_CONVERSATION_MESSAGES: 100,
             SAFE_TOAST_OPTIONS: {},
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-            getActiveConversationChat,
+            getActiveConversationChat: jest.fn(() => null),
+            getConversationAddress,
             getConversationGroupIdForAvatar: jest.fn(() => 'group-a'),
             getConversationPersonaId: jest.fn(() => 'persona-a'),
-            getConversationStore: jest.fn(() => ({ reminders: [] })),
-            getConversationRecord: jest.fn(() => ({ activeBranchId: 'branch-a' })),
             getCurrentCharAvatar: jest.fn(() => 'speaker.png'),
             getCurrentCharName: jest.fn(() => 'Speaker'),
             parsePositiveInt: jest.fn(value => Number(value) || 0),
-            persistConversationStore: jest.fn(),
+        }));
+        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+            conversationData: { commitChat, chat: jest.fn(() => null) },
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
             isConversationActive,
@@ -208,6 +208,9 @@ describe('TTS Conversation integration', () => {
             groupId: 'group-a',
             personaId: 'persona-a',
         });
+        // Every message is written to the chat it names; only the visible one is narrated.
+        expect([...chats.keys()].sort()).toEqual(['persona-a|group-a|branch-a', 'persona-a|group-a|branch-b', 'persona-a|group-b|branch-a', 'persona-b|group-a|branch-a']);
+        expect(chats.get('persona-a|group-a|branch-a').messages).toEqual([visibleMessage]);
         expect(narrateConversationMessage).toHaveBeenCalledTimes(1);
         expect(narrateConversationMessage).toHaveBeenCalledWith(visibleMessage, { isStillVisible: expect.any(Function) });
         expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);

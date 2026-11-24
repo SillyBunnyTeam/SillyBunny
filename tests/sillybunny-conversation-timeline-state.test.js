@@ -52,19 +52,21 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-editor/rows.js', ()
 await jest.unstable_mockModule('../public/scripts/sillybunny-editor/select-row.js', () => ({ createSelectRow: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    buildConversationChat: (name, id = 'new-named-chat') => ({ id, name, messages: [] }),
     getActiveConversationChat: (avatar, options = {}) => {
         const store = getStore(avatar, options.groupId || '', options.personaId || currentPersonaId);
-        return store?.branches?.[options.chatId || store.activeBranchId] || null;
+        const chat = store?.chats?.[options.chatId || store.activeChatId];
+        return chat ? { ...chat, loaded: true } : null;
     },
-    getConversationChats: avatar => Object.values(getStore(avatar, '', currentPersonaId)?.branches || {}),
+    getConversationChats: avatar => Object.values(getStore(avatar, '', currentPersonaId)?.chats || {}),
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? currentPersonaId : value || ''),
-    getConversationRecord: (avatar, options = {}) => getStore(avatar, options.groupId || '', options.personaId || currentPersonaId),
+    getConversationRecord: (avatar, options = {}) => {
+        const store = getStore(avatar, options.groupId || '', options.personaId || currentPersonaId);
+        return store ? { id: 'conv_test', activeChatId: store.activeChatId, chats: Object.values(store.chats) } : null;
+    },
     getCurrentCharAvatar: () => currentAvatar,
     getCurrentCharName: () => 'Aster',
-    persistConversationStore: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
     commitCharacterReplyCommands,
@@ -127,18 +129,16 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
         text: message.mes,
     }),
     getConversationAttachmentSummary: () => '',
-    getConversationMessagePreviewText: message => message?.mes || '',
     getConversationSeenAt: () => 0,
     getConversationMessages: (avatar, options = {}) => {
         const store = getStore(avatar, options.groupId || '', options.personaId || currentPersonaId);
-        return store?.branches?.[options.chatId || store.activeBranchId]?.messages || [];
+        return store?.chats?.[options.chatId || store.activeChatId]?.messages || [];
     },
     saveConversationMessages,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],
     getPrimaryTypingParticipant: () => null,
-    updateLastPreviewFromConversation: jest.fn(),
     withTypingParticipant: (_participant, task) => task(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-info.js', () => ({ getConversationWorldInfo }));
@@ -181,15 +181,15 @@ describe('conversation timeline operation identity', () => {
         currentPersonaId = 'persona-a.png';
         stores.clear();
         stores.set(storeKey('persona-a.png', 'char.png'), {
-            activeBranchId: 'branch-a',
-            branches: {
+            activeChatId: 'branch-a',
+            chats: {
                 'branch-a': { id: 'branch-a', messages: [makeMessage('message-1'), makeMessage('message-2')] },
                 'branch-b': { id: 'branch-b', messages: [makeMessage('branch-b-message')] },
             },
         });
         stores.set(storeKey('persona-b.png', 'char.png'), {
-            activeBranchId: 'branch-b',
-            branches: { 'branch-b': { id: 'branch-b', messages: [makeMessage('persona-b-message')] } },
+            activeChatId: 'branch-b',
+            chats: { 'branch-b': { id: 'branch-b', messages: [makeMessage('persona-b-message')] } },
         });
         generateConversationRaw.mockReset();
         extractCharacterReplyCommands.mockReset().mockImplementation(rawText => ({ text: String(rawText || '').trim(), selfieRequests: [] }));
@@ -219,7 +219,7 @@ describe('conversation timeline operation identity', () => {
         };
         expect(getActiveConversationReplyTarget()).not.toBeNull();
 
-        stores.get(storeKey('persona-a.png', 'char.png')).activeBranchId = 'branch-b';
+        stores.get(storeKey('persona-a.png', 'char.png')).activeChatId = 'branch-b';
         expect(getActiveConversationReplyTarget()).toBeNull();
         expect(stateModule.conversationState.conversationReplyTarget).toBeNull();
 
@@ -262,8 +262,8 @@ describe('conversation timeline operation identity', () => {
     test('applies completion only to its captured persona and branch', async () => {
         const generation = deferred();
         generateConversationRaw.mockImplementationOnce(() => generation.promise);
-        const oldMessage = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages[0];
-        const newPersonaMessage = stores.get(storeKey('persona-b.png', 'char.png')).branches['branch-b'].messages[0];
+        const oldMessage = stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages[0];
+        const newPersonaMessage = stores.get(storeKey('persona-b.png', 'char.png')).chats['branch-b'].messages[0];
 
         const run = regenerateConversationMessage('message-1');
         currentPersonaId = 'persona-b.png';
@@ -277,7 +277,7 @@ describe('conversation timeline operation identity', () => {
     test('drops a stale regeneration completion after the source message is revised', async () => {
         const generation = deferred();
         generateConversationRaw.mockImplementationOnce(() => generation.promise);
-        const message = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages[0];
+        const message = stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages[0];
 
         const run = regenerateConversationMessage('message-1');
         message.mes = 'edited while generating';
@@ -291,7 +291,7 @@ describe('conversation timeline operation identity', () => {
     test('drops a regeneration completion after preceding prompt context changes', async () => {
         const generation = deferred();
         generateConversationRaw.mockImplementationOnce(() => generation.promise);
-        const messages = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages;
+        const messages = stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages;
 
         const run = regenerateConversationMessage('message-2');
         messages[0].mes = 'preceding context edited';
@@ -309,7 +309,7 @@ describe('conversation timeline operation identity', () => {
             selfieRequests: ['at the park'],
         });
         generateConversationRaw.mockResolvedValueOnce('clean replacement [selfie: context="at the park"]');
-        const message = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages[0];
+        const message = stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages[0];
         message.extra.conversation_commands = { selfieRequests: ['stale request'], stale: true };
 
         await regenerateConversationMessage('message-1');
@@ -321,7 +321,7 @@ describe('conversation timeline operation identity', () => {
 
     test('removes stale command metadata when regenerated output has no commands', async () => {
         generateConversationRaw.mockResolvedValueOnce('plain replacement');
-        const message = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages[0];
+        const message = stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages[0];
         message.extra.conversation_commands = { selfieRequests: ['stale request'] };
 
         await regenerateConversationMessage('message-1');
@@ -331,7 +331,7 @@ describe('conversation timeline operation identity', () => {
 
     test('scans lorebooks for the regenerated speaker without the replaced message', async () => {
         generateConversationRaw.mockResolvedValueOnce('replacement');
-        const messages = stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages;
+        const messages = stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages;
 
         await regenerateConversationMessage('message-2');
 
@@ -380,8 +380,8 @@ describe('conversation timeline operation identity', () => {
             createElement: () => new FakeElement(),
             getElementById: id => elements.get(id),
         };
-        stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages = [];
-        stores.get(storeKey('persona-b.png', 'char.png')).branches['branch-b'].messages = [];
+        stores.get(storeKey('persona-a.png', 'char.png')).chats['branch-a'].messages = [];
+        stores.get(storeKey('persona-b.png', 'char.png')).chats['branch-b'].messages = [];
         stateModule.conversationState.lastRenderedConversationKey = '';
         stateModule.conversationState.lastRenderedMessageCount = 0;
         stateModule.conversationState.lastTimelineFingerprint = '';

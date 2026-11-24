@@ -38,13 +38,13 @@ describe('sillybunny conversation partner utils', () => {
         const grace = { name: 'Grace Hopper', avatar: 'grace.png' };
         const messages = [
             { role: 'user', mes: 'Grace already answered.' },
-            { role: 'character', mes: 'yep', extra: { partner_avatar: 'grace.png' } },
+            { role: 'character', mes: 'yep', extra: { member_avatar: 'grace.png' } },
             { role: 'user', mes: '@Ada can you check this?' },
         ];
 
         expect(getRecentlySilentMentionedMemberFromConversation(messages, [ada, grace], 6)).toBe(ada);
 
-        messages.push({ role: 'character', mes: 'looking now', extra: { partner_avatar: 'ada.png' } });
+        messages.push({ role: 'character', mes: 'looking now', extra: { member_avatar: 'ada.png' } });
         expect(getRecentlySilentMentionedMemberFromConversation(messages, [ada, grace], 6)).toBe(null);
     });
 

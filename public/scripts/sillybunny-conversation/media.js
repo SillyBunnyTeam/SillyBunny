@@ -119,11 +119,11 @@ export function getConversationMemberAvatars(avatar = getCurrentCharAvatar(), se
 
     if (includeConversationMembers) {
         getConversationMessages(avatar, { chatId, create: false, groupId, personaId }).forEach((message) => {
-            if (message?.role !== 'partner') {
+            if (message?.role !== 'member') {
                 return;
             }
 
-            addUniqueAvatar(memberAvatars, message.extra?.partner_avatar, avatar);
+            addUniqueAvatar(memberAvatars, message.extra?.member_avatar, avatar);
         });
     }
 

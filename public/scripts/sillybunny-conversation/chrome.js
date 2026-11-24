@@ -13,6 +13,7 @@ import { confirmConversationAction, promptConversationText } from './dialogs.js'
 import {
     createConversationChat,
     deleteConversationChat,
+    ensureDirectConversation,
     getConversationChats,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
@@ -25,7 +26,6 @@ import {
     parsePositiveInt,
     renameConversationChat,
     resetCharacterConversationChats,
-    saveGroupConversationSettings,
     setActiveConversationChat,
 } from './context.js';
 import { editConversationMessage } from './generation.js';
@@ -37,8 +37,8 @@ import {
     updateConversationHeader,
 } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
-import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActive } from './notifications.js';
-import { getDirectConversations, getConversationRailItems, getCurrentGroupConversationMembers } from './conversation-list.js';
+import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
+import { getDirectConversations, getCurrentGroupConversationMembers } from './conversation-list.js';
 import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
@@ -94,7 +94,6 @@ import {
     toggleConversationMessagePin,
     updateConversationSearchQuery,
 } from './timeline-render.js';
-import { setLastConversationPreview } from './typing.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 
@@ -440,9 +439,9 @@ function openConversationChatMenu(trigger) {
         return;
     }
 
-    const activeBranchId = getConversationRecord(avatar, { create: false, groupId })?.activeBranchId || DEFAULT_CHAT_ID;
+    const activeChatId = getConversationRecord(avatar, { create: false, groupId })?.activeChatId || DEFAULT_CHAT_ID;
     const branches = getConversationChats(avatar, { groupId });
-    const activeChat = branches.find(chat => chat.id === activeBranchId);
+    const activeChat = branches.find(chat => chat.id === activeChatId);
     const identity = { avatar, groupId };
     openActionMenu({
         trigger,
@@ -451,7 +450,7 @@ function openConversationChatMenu(trigger) {
             {
                 items: branches.map(chat => ({
                     label: chat.name || 'Conversation',
-                    checked: chat.id === activeBranchId,
+                    checked: chat.id === activeChatId,
                     detail: chat.unread > 0 ? String(chat.unread) : '',
                     onSelect: runFromMenu('select-chat', { ...identity, chatId: chat.id }),
                 })),
@@ -459,12 +458,12 @@ function openConversationChatMenu(trigger) {
             {
                 items: [
                     { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-named-chat', identity) },
-                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeChat, onSelect: runFromMenu('rename-chat', { ...identity, chatId: activeBranchId }) },
+                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeChat, onSelect: runFromMenu('rename-chat', { ...identity, chatId: activeChatId }) },
                 ],
             },
             {
                 items: [
-                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeChat, onSelect: runFromMenu('delete-chat', { ...identity, chatId: activeBranchId }) },
+                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeChat, onSelect: runFromMenu('delete-chat', { ...identity, chatId: activeChatId }) },
                 ],
             },
         ],
@@ -623,7 +622,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             toggleConversationGroupPicker({ anchor: target });
             break;
         case 'mark-all-read': {
-            const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
+            const { cleared, removedLegacy } = await clearAllConversationUnreadCounts();
             scheduleConversationListRender();
             if (cleared > 0 || removedLegacy > 0) {
                 toastr.success('Marked all Conversation pings as read');
@@ -670,9 +669,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         focusConversationInput();
                     }
 
-                    const charSettings = getSettings(char.avatar, { groupId: '' });
-                    charSettings.enabled = true;
-                    saveSettings(char.avatar, charSettings, { groupId: '' });
+                    await ensureDirectConversation(char.avatar);
                     hideConversationPickers();
                     closeConversationList();
                     await selectConversation(char.avatar, {
@@ -761,7 +758,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                     text: 'This cannot be undone',
                 });
                 if (confirmed) {
-                    deleteConversationChat(avatar, chatId, { groupId });
+                    await deleteConversationChat(avatar, chatId, { groupId });
                     if (isConversationActive(avatar, groupId)) {
                         scheduleInterfaceRefresh({ syncControls: false });
                         renderConversationMemoryPanel();
@@ -786,29 +783,11 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 text: 'This cannot be undone',
             });
             if (confirmed) {
-                resetCharacterConversationChats(avatar, { groupId });
-                setLastConversationPreview(avatar, 'Conversation ready', { groupId });
-                clearUnreadCount(avatar, { groupId });
+                await resetCharacterConversationChats(avatar, { groupId });
                 resetFollowupCount(avatar, { groupId });
 
-                if (!groupId) {
-                    const charSettings = getSettings(avatar, { groupId: '' });
-                    charSettings.enabled = false;
-                    saveSettings(avatar, charSettings, { groupId: '' });
-                }
-
                 if (isConversationActive(avatar, groupId)) {
-                    const remainingConversations = getConversationRailItems()
-                        .filter(item => !(item.character.avatar === avatar && item.groupId === groupId));
-                    if (remainingConversations.length > 0) {
-                        const nextConversation = remainingConversations[0];
-                        openConversationWorkspaceForAvatar(nextConversation.character.avatar, { groupId: nextConversation.groupId || null, showToast: false });
-                        scheduleInterfaceRefresh({ syncControls: true });
-                    } else {
-                        conversationState.conversationWorkspaceOpen = false;
-                        emitConversationWorkspaceStateChange();
-                        scheduleInterfaceRefresh({ syncControls: false });
-                    }
+                    scheduleInterfaceRefresh({ syncControls: true });
                 } else {
                     scheduleConversationListRender();
                 }
@@ -878,8 +857,8 @@ export async function runConversationAction(action, data = {}, target = null, ev
             if (avatar) {
                 const groupId = conversationState.conversationSelectedGroupId || '';
                 const personaId = getConversationPersonaId();
-                const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
-                const chatId = conversationRecord?.activeBranchId || '';
+                const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+                const chatId = conversationRecord?.activeChatId || '';
                 const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
                 sendQueue.push(createForcedConversationQueueItem({
                     avatar,
@@ -977,15 +956,10 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 const groupId = getConversationGroupIdForAvatar(genAvatar);
                 const schedule = await generateCharacterSchedule(character, { groupId, personaId });
                 if (schedule) {
-                    saveStoredSchedule(genAvatar, schedule, { personaId });
+                    saveStoredSchedule(genAvatar, { ...schedule, generatedAt: Date.now() });
                     const genSettings = getSettings(genAvatar, { groupId, personaId });
-                    genSettings.auto_schedule = JSON.stringify(schedule);
                     genSettings.talkativeness = schedule.talkativeness;
                     genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
-                    genSettings.schedule_generated_at = Date.now();
-                    if (groupId) {
-                        saveGroupConversationSettings(groupId, genSettings, { personaId });
-                    }
                     saveSettings(genAvatar, genSettings, { groupId, personaId });
                     if (isConversationActive(genAvatar, groupId, { personaId })) {
                         applySettingsToPanel(genSettings);
@@ -1257,13 +1231,18 @@ function emitConversationWorkspaceStateChange() {
     }));
 }
 
+/**
+ * Opens the workspace on a conversation. The workspace and its chrome change at once; the returned promise settles
+ * when the conversation is known to exist: with `enable` a direct conversation that is not there yet is made first.
+ * @returns {Promise<boolean>} False when there is no such character, chat or conversation to open.
+ */
 export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupId = null, showToast = true, enable = false } = {}) {
     closeConversationSettings();
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
     if (chatId && targetAvatar && !getConversationChats(targetAvatar, { groupId: targetGroupId }).some(chat => chat.id === String(chatId))) {
-        return false;
+        return Promise.resolve(false);
     }
     const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
     const conversationChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
@@ -1283,41 +1262,47 @@ export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupI
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh({ syncControls: false });
-        return false;
+        return Promise.resolve(false);
     }
 
     // Every way into a thread ends here, and Conversation opens no chat of the app, so Home hears about it from this event (Getting Started, step 3).
     window.dispatchEvent(new CustomEvent(CONVERSATION_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
 
-    if (chatId) {
-        setActiveConversationChat(targetAvatar, String(chatId), { groupId: targetGroupId });
+    const wasEnabled = Boolean(getConversationRecord(targetAvatar, { groupId: targetGroupId }));
+    const finish = () => {
+        if (chatId) {
+            setActiveConversationChat(targetAvatar, String(chatId), { groupId: targetGroupId });
+        }
+        const settings = getSettings(targetAvatar, { groupId: targetGroupId });
+        requestConversationRuntimeStart();
+        applySettingsToPanel(settings);
+        scheduleInterfaceRefresh({ syncControls: true });
+        if (showToast && enable && !wasEnabled) {
+            toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
+        }
+        focusConversationInputAfterRender();
+        return true;
+    };
+    if (enable && !targetGroupId && !wasEnabled) {
+        scheduleInterfaceRefresh({ syncControls: false });
+        return ensureDirectConversation(targetAvatar).then(finish, (error) => {
+            console.error('Conversation Mode: the conversation could not be made', error);
+            return false;
+        });
     }
-
-    const settings = getSettings(targetAvatar, { groupId: targetGroupId });
-    const wasEnabled = Boolean(settings.enabled);
-    if (enable && !settings.enabled) {
-        settings.enabled = true;
-        saveSettings(targetAvatar, settings, { groupId: targetGroupId });
-    }
-    requestConversationRuntimeStart();
-    applySettingsToPanel(settings);
-    scheduleInterfaceRefresh({ syncControls: true });
-    if (showToast && enable && !wasEnabled) {
-        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
-    }
-    focusConversationInputAfterRender();
-    return true;
+    return Promise.resolve(finish());
 }
 
 export function openConversationWorkspaceFromWelcome() {
     const avatar = conversationState.conversationSelectedAvatar || getDefaultConversationAvatar();
     const selectedGroupId = conversationState.conversationSelectedGroupId || '';
     const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
-    if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
+    if (!avatar || !getCharacterForAvatar(avatar)) {
         toastr.warning('Pick or import a character before opening Conversation Mode');
         return false;
     }
 
+    void openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false });
     return true;
 }
 

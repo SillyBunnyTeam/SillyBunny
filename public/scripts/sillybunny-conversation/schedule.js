@@ -6,13 +6,12 @@ import {
     SCHEDULE_PREFIX,
 } from './constants.js';
 import {
-    getCharacterConversationStore,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getCurrentCharAvatar,
     parsePositiveInt,
-    persistConversationStore,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { generateConversationRaw } from './generation.js';
 import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
@@ -54,23 +53,37 @@ export function getCurrentActivityFromSchedule(schedule, avatar = getCurrentChar
     return getCurrentActivityFromScheduleBase(schedule, getConversationRuntimeStatusKey(avatar, personaId), now, runtimeStatusOverrides);
 }
 
-export function getStoredSchedule(avatar = getCurrentCharAvatar(), { personaId = getConversationPersonaId() } = {}) {
-    if (!avatar) {
+/**
+ * The schedule of a character, from its routine in `characters.json`. The routine holds the schedule as JSON text, so
+ * that its form can change without a change of the file; a routine that is off or that does not parse is no schedule.
+ * A character has one routine for every persona and every conversation.
+ */
+export function getStoredSchedule(avatar = getCurrentCharAvatar()) {
+    const routine = avatar ? conversationData.characterState(avatar).routine : null;
+    if (!routine || routine.enabled === false || typeof routine.text !== 'string') {
         return null;
     }
 
-    const schedule = getCharacterConversationStore(avatar, { create: false, personaId })?.schedule;
-    return schedule && typeof schedule === 'object' ? schedule : null;
+    try {
+        const schedule = JSON.parse(routine.text);
+        return schedule && typeof schedule === 'object' && !Array.isArray(schedule) ? { ...schedule, generatedAt: routine.generatedAt ?? schedule.generatedAt } : null;
+    } catch {
+        return null;
+    }
 }
 
-export function saveStoredSchedule(avatar, schedule, { personaId = getConversationPersonaId() } = {}) {
+export function saveStoredSchedule(avatar, schedule) {
     if (!avatar) {
         return;
     }
 
-    const characterStore = getCharacterConversationStore(avatar, { personaId });
-    characterStore.schedule = schedule && typeof schedule === 'object' ? schedule : null;
-    persistConversationStore();
+    if (!schedule || typeof schedule !== 'object') {
+        conversationData.patchCharacter(avatar, { routine: null });
+        return;
+    }
+
+    const { generatedAt = Date.now(), ...rest } = schedule;
+    conversationData.patchCharacter(avatar, { routine: { enabled: true, text: JSON.stringify(rest), generatedAt } });
 }
 
 export async function generateCharacterSchedule(character, { groupId = getConversationGroupIdForAvatar(character?.avatar), personaId = getConversationPersonaId() } = {}) {

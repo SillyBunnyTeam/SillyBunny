@@ -70,7 +70,7 @@ export function getConversationMessageExtraFingerprint(message) {
         : '';
 
     return [
-        extra.partner_avatar || '',
+        extra.member_avatar || '',
         extra.image_url || '',
         extra.image_prompt || '',
         extra.media_display || '',

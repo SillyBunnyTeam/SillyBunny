@@ -1,6 +1,7 @@
 export {
     isConversationModeEnabled,
     getConversationWelcomeChats,
+    loadConversationWelcomeChats,
     deleteConversationWelcomeChat,
     renameConversationChat,
     openConversationWorkspaceForAvatar,
