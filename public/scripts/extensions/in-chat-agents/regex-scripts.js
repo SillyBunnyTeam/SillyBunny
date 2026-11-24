@@ -25,6 +25,33 @@ export const AGENT_REGEX_SUBSTITUTE = {
 
 const VALID_REGEX_PLACEMENTS = new Set(Object.values(AGENT_REGEX_PLACEMENT));
 const compiledRegexCache = new Map();
+/** @type {WeakMap<object, { id: unknown, scriptName: unknown, findRegex: unknown, replaceString: unknown, disabled: unknown, markdownOnly: unknown, promptOnly: unknown, runOnEdit: unknown, substituteRegex: unknown, minDepth: unknown, maxDepth: unknown, placement: unknown, trimStrings: unknown, normalized: import('../../char-data.js').RegexScriptData }>} */
+const normalizedScriptCache = new WeakMap();
+
+function arraysShallowEqual(a, b) {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+function matchesRawScriptSnapshot(raw, entry) {
+    return raw.id === entry.id
+        && raw.scriptName === entry.scriptName
+        && raw.findRegex === entry.findRegex
+        && raw.replaceString === entry.replaceString
+        && raw.disabled === entry.disabled
+        && raw.markdownOnly === entry.markdownOnly
+        && raw.promptOnly === entry.promptOnly
+        && raw.runOnEdit === entry.runOnEdit
+        && raw.substituteRegex === entry.substituteRegex
+        && raw.minDepth === entry.minDepth
+        && raw.maxDepth === entry.maxDepth
+        && arraysShallowEqual(raw.placement, entry.placement)
+        && arraysShallowEqual(raw.trimStrings, entry.trimStrings);
+}
 
 function sanitizeRegexMacro(value) {
     return (value && typeof value === 'string')
@@ -117,34 +144,69 @@ export function createDefaultRegexScript() {
  * @returns {import('../../char-data.js').RegexScriptData}
  */
 export function normalizeRegexScript(rawScript = {}) {
-    const defaults = createDefaultRegexScript();
+    const id = typeof rawScript.id === 'string' && rawScript.id.trim() ? rawScript.id.trim() : uuidv4();
     const placement = Array.isArray(rawScript.placement)
         ? rawScript.placement
             .map(value => Number(value))
             .filter(value => VALID_REGEX_PLACEMENTS.has(value))
-        : defaults.placement;
+        : [AGENT_REGEX_PLACEMENT.AI_OUTPUT];
 
     return {
-        ...defaults,
         ...rawScript,
-        id: typeof rawScript.id === 'string' && rawScript.id.trim() ? rawScript.id.trim() : defaults.id,
-        scriptName: typeof rawScript.scriptName === 'string' ? rawScript.scriptName.trim() : defaults.scriptName,
-        findRegex: typeof rawScript.findRegex === 'string' ? rawScript.findRegex : defaults.findRegex,
-        replaceString: typeof rawScript.replaceString === 'string' ? rawScript.replaceString : defaults.replaceString,
+        id,
+        scriptName: typeof rawScript.scriptName === 'string' ? rawScript.scriptName.trim() : '',
+        findRegex: typeof rawScript.findRegex === 'string' ? rawScript.findRegex : '',
+        replaceString: typeof rawScript.replaceString === 'string' ? rawScript.replaceString : '',
         trimStrings: Array.isArray(rawScript.trimStrings)
             ? rawScript.trimStrings.map(value => String(value ?? '')).filter(Boolean)
-            : defaults.trimStrings,
-        placement: placement.length > 0 ? [...new Set(placement)] : defaults.placement,
+            : [],
+        placement: placement.length > 0 ? [...new Set(placement)] : [AGENT_REGEX_PLACEMENT.AI_OUTPUT],
         disabled: Boolean(rawScript.disabled),
-        markdownOnly: rawScript.markdownOnly === undefined ? defaults.markdownOnly : Boolean(rawScript.markdownOnly),
+        markdownOnly: rawScript.markdownOnly === undefined ? true : Boolean(rawScript.markdownOnly),
         promptOnly: Boolean(rawScript.promptOnly),
-        runOnEdit: rawScript.runOnEdit === undefined ? defaults.runOnEdit : Boolean(rawScript.runOnEdit),
+        runOnEdit: rawScript.runOnEdit === undefined ? true : Boolean(rawScript.runOnEdit),
         substituteRegex: Number.isFinite(Number(rawScript.substituteRegex))
             ? Number(rawScript.substituteRegex)
-            : defaults.substituteRegex,
+            : AGENT_REGEX_SUBSTITUTE.NONE,
         minDepth: normalizeNullableDepth(rawScript.minDepth, { allowNegativeOne: true }),
         maxDepth: normalizeNullableDepth(rawScript.maxDepth),
     };
+}
+
+/**
+ * Returns a memoized normalized regex script for read-only execution paths (such as streaming ticks).
+ * Invalidates automatically if any relevant field or array element on the source script object is mutated.
+ * @param {Partial<import('../../char-data.js').RegexScriptData>} rawScript
+ * @returns {import('../../char-data.js').RegexScriptData}
+ */
+export function getNormalizedRegexScript(rawScript) {
+    if (!rawScript || typeof rawScript !== 'object') {
+        return normalizeRegexScript({});
+    }
+
+    const cached = normalizedScriptCache.get(rawScript);
+    if (cached && matchesRawScriptSnapshot(rawScript, cached)) {
+        return cached.normalized;
+    }
+
+    const normalized = normalizeRegexScript(rawScript);
+    normalizedScriptCache.set(rawScript, {
+        id: rawScript.id,
+        scriptName: rawScript.scriptName,
+        findRegex: rawScript.findRegex,
+        replaceString: rawScript.replaceString,
+        disabled: rawScript.disabled,
+        markdownOnly: rawScript.markdownOnly,
+        promptOnly: rawScript.promptOnly,
+        runOnEdit: rawScript.runOnEdit,
+        substituteRegex: rawScript.substituteRegex,
+        minDepth: rawScript.minDepth,
+        maxDepth: rawScript.maxDepth,
+        placement: Array.isArray(rawScript.placement) ? rawScript.placement.slice() : rawScript.placement,
+        trimStrings: Array.isArray(rawScript.trimStrings) ? rawScript.trimStrings.slice() : rawScript.trimStrings,
+        normalized,
+    });
+    return normalized;
 }
 
 function shouldApplyScript(script, placement, { isMarkdown = false, isPrompt = false, isEdit = false, depth } = {}) {
@@ -276,7 +338,7 @@ export function applyRegexScriptList(rawString, scripts, placement, options = {}
     let output = rawString;
 
     for (const rawScript of scripts) {
-        const script = normalizeRegexScript(rawScript);
+        const script = getNormalizedRegexScript(rawScript);
         if (!shouldApplyScript(script, placement, options)) {
             continue;
         }

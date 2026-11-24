@@ -86,7 +86,174 @@ export class RegexProvider {
      */
     clear() {
         this.#cache.clear();
+        invalidateRegexScriptsCache();
     }
+}
+
+const EMPTY_SCRIPTS = Object.freeze([]);
+let regexCacheRevision = 0;
+let compiledScriptsCache = null;
+
+/**
+ * Invalidates cached filtered/compiled script buckets used by getRegexedString.
+ */
+export function invalidateRegexScriptsCache() {
+    regexCacheRevision++;
+    compiledScriptsCache = null;
+}
+
+function isRegexDebugEnabled() {
+    return Boolean(extension_settings?.regex_debug);
+}
+
+function placementsShallowEqual(a, b) {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+function resolveAllowedScriptSources() {
+    const globalScripts = Array.isArray(extension_settings?.regex) ? extension_settings.regex : EMPTY_SCRIPTS;
+
+    const presetManager = getPresetManager();
+    const presetApi = presetManager?.apiId ?? null;
+    const presetName = presetManager?.getSelectedPresetName() ?? null;
+    const presetAllowed = Boolean(presetApi && presetName && extension_settings?.preset_allowed_regex?.[presetApi]?.includes(presetName));
+    const rawPresetScripts = presetAllowed ? presetManager?.readPresetExtensionField({ path: 'regex_scripts' }) : EMPTY_SCRIPTS;
+    const presetScripts = Array.isArray(rawPresetScripts) ? rawPresetScripts : EMPTY_SCRIPTS;
+
+    const scopedAvatar = characters?.[this_chid]?.avatar;
+    const scopedAllowed = Boolean(extension_settings?.character_allowed_regex?.includes(scopedAvatar));
+    const rawScopedScripts = scopedAllowed ? characters?.[this_chid]?.data?.extensions?.regex_scripts : EMPTY_SCRIPTS;
+    const scopedScripts = Array.isArray(rawScopedScripts) ? rawScopedScripts : EMPTY_SCRIPTS;
+
+    // Order matches SCRIPT_TYPES priority: GLOBAL -> PRESET -> SCOPED.
+    return { globalScripts, presetScripts, scopedScripts };
+}
+
+function isCompiledCacheValid(cache, globalScripts, presetScripts, scopedScripts) {
+    if (!cache || cache.revision !== regexCacheRevision) return false;
+    if (cache.globalScripts !== globalScripts || cache.globalLen !== globalScripts.length) return false;
+    if (cache.presetScripts !== presetScripts || cache.presetLen !== presetScripts.length) return false;
+    if (cache.scopedScripts !== scopedScripts || cache.scopedLen !== scopedScripts.length) return false;
+
+    const snapshots = cache.snapshots;
+    let index = 0;
+    const lists = [globalScripts, presetScripts, scopedScripts];
+    for (let l = 0; l < lists.length; l++) {
+        const list = lists[l];
+        for (let i = 0; i < list.length; i++) {
+            const script = list[i];
+            const snap = snapshots[index++];
+            if (!snap || snap.script !== script) return false;
+            if (!script) continue;
+            if (snap.disabled !== script.disabled
+                || snap.findRegex !== script.findRegex
+                || snap.markdownOnly !== script.markdownOnly
+                || snap.promptOnly !== script.promptOnly
+                || snap.runOnEdit !== script.runOnEdit
+                || snap.substituteRegex !== script.substituteRegex
+                || snap.minDepth !== script.minDepth
+                || snap.maxDepth !== script.maxDepth
+                || !placementsShallowEqual(script.placement, snap.placement)) {
+                return false;
+            }
+        }
+    }
+    return index === snapshots.length;
+}
+
+function buildCompiledCache(globalScripts, presetScripts, scopedScripts) {
+    const snapshots = [];
+    const lists = [globalScripts, presetScripts, scopedScripts];
+    for (let l = 0; l < lists.length; l++) {
+        const list = lists[l];
+        for (let i = 0; i < list.length; i++) {
+            const script = list[i];
+            snapshots.push(script
+                ? {
+                    script,
+                    disabled: script.disabled,
+                    findRegex: script.findRegex,
+                    markdownOnly: script.markdownOnly,
+                    promptOnly: script.promptOnly,
+                    runOnEdit: script.runOnEdit,
+                    substituteRegex: script.substituteRegex,
+                    minDepth: script.minDepth,
+                    maxDepth: script.maxDepth,
+                    placement: Array.isArray(script.placement) ? script.placement.slice() : script.placement,
+                }
+                : { script });
+        }
+    }
+
+    return {
+        revision: regexCacheRevision,
+        globalScripts,
+        globalLen: globalScripts.length,
+        presetScripts,
+        presetLen: presetScripts.length,
+        scopedScripts,
+        scopedLen: scopedScripts.length,
+        snapshots,
+        buckets: new Map(),
+    };
+}
+
+function getCompiledBucket(placement, isMarkdown, isPrompt) {
+    const { globalScripts, presetScripts, scopedScripts } = resolveAllowedScriptSources();
+    if (!isCompiledCacheValid(compiledScriptsCache, globalScripts, presetScripts, scopedScripts)) {
+        compiledScriptsCache = buildCompiledCache(globalScripts, presetScripts, scopedScripts);
+    }
+
+    const mode = (isMarkdown ? 1 : 0) | (isPrompt ? 2 : 0);
+    const bucketKey = typeof placement === 'number' ? (placement * 4) + mode : `${placement}:${mode}`;
+    let bucket = compiledScriptsCache.buckets.get(bucketKey);
+    if (bucket !== undefined) {
+        return bucket;
+    }
+
+    bucket = [];
+    const lists = [globalScripts, presetScripts, scopedScripts];
+    for (let l = 0; l < lists.length; l++) {
+        const list = lists[l];
+        for (let i = 0; i < list.length; i++) {
+            const script = list[i];
+            if (!script || script.disabled || !script.findRegex) continue;
+            const modeMatches = (script.markdownOnly && isMarkdown)
+                || (script.promptOnly && isPrompt)
+                || (!script.markdownOnly && !script.promptOnly && !isMarkdown && !isPrompt);
+            if (!modeMatches) continue;
+            if (!Array.isArray(script.placement) || !script.placement.includes(placement)) continue;
+
+            const subMode = Number(script.substituteRegex);
+            const hasStaticRegex = subMode === substitute_find_regex.NONE
+                || ((subMode === substitute_find_regex.RAW || subMode === substitute_find_regex.ESCAPED)
+                    && !script.findRegex.includes('{{'));
+            let compiledRegex = null;
+            if (hasStaticRegex) {
+                compiledRegex = RegexProvider.instance.get(script.findRegex);
+                if (!compiledRegex) continue;
+            }
+
+            bucket.push({
+                script,
+                hasStaticRegex,
+                compiledRegex,
+                runOnEdit: Boolean(script.runOnEdit),
+                hasMinDepth: !isNaN(script.minDepth) && script.minDepth !== null && script.minDepth >= -1,
+                minDepth: script.minDepth,
+                hasMaxDepth: !isNaN(script.maxDepth) && script.maxDepth !== null && script.maxDepth >= 0,
+                maxDepth: script.maxDepth,
+            });
+        }
+    }
+
+    compiledScriptsCache.buckets.set(bucketKey, bucket);
+    return bucket;
 }
 
 /**
@@ -139,6 +306,7 @@ export function getScriptsByType(scriptType, { allowedOnly } = DEFAULT_GET_REGEX
  * @returns {Promise<void>}
  */
 export async function saveScriptsByType(scripts, scriptType) {
+    invalidateRegexScriptsCache();
     switch (scriptType) {
         case SCRIPT_TYPES.GLOBAL:
             extension_settings.regex = scripts;
@@ -182,6 +350,7 @@ export function allowScopedScripts(character) {
     }
     if (!extension_settings.character_allowed_regex.includes(avatar)) {
         extension_settings.character_allowed_regex.push(avatar);
+        invalidateRegexScriptsCache();
         saveSettingsDebounced();
     }
 }
@@ -202,6 +371,7 @@ export function disallowScopedScripts(character) {
     const index = extension_settings.character_allowed_regex.indexOf(avatar);
     if (index !== -1) {
         extension_settings.character_allowed_regex.splice(index, 1);
+        invalidateRegexScriptsCache();
         saveSettingsDebounced();
     }
 }
@@ -234,6 +404,7 @@ export function allowPresetScripts(apiId, presetName) {
     }
     if (!extension_settings.preset_allowed_regex[apiId].includes(presetName)) {
         extension_settings.preset_allowed_regex[apiId].push(presetName);
+        invalidateRegexScriptsCache();
         saveSettingsDebounced();
     }
 }
@@ -254,6 +425,7 @@ export function disallowPresetScripts(apiId, presetName) {
     const index = extension_settings.preset_allowed_regex[apiId].indexOf(presetName);
     if (index !== -1) {
         extension_settings.preset_allowed_regex[apiId].splice(index, 1);
+        invalidateRegexScriptsCache();
         saveSettingsDebounced();
     }
 }
@@ -339,43 +511,54 @@ export function getRegexedString(rawString, placement, { characterOverride, isMa
     }
 
     let finalString = rawString;
-    if (extension_settings.disabledExtensions.includes('regex') || !rawString || placement === undefined) {
+    if (extension_settings.disabledExtensions?.includes('regex') || !rawString || placement === undefined) {
         return finalString;
     }
 
-    const allRegex = getRegexScripts({ allowedOnly: true });
-    allRegex.forEach((script) => {
-        if (
-            // Script applies to Markdown and input is Markdown
-            (script.markdownOnly && isMarkdown) ||
-            // Script applies to Generate and input is Generate
-            (script.promptOnly && isPrompt) ||
-            // Script applies to all cases when neither "only"s are true, but there's no need to do it when `isMarkdown`, the as source (chat history) should already be changed beforehand
-            (!script.markdownOnly && !script.promptOnly && !isMarkdown && !isPrompt)
-        ) {
-            if (isEdit && !script.runOnEdit) {
-                console.debug(`getRegexedString: Skipping script ${script.scriptName} because it does not run on edit`);
-                return;
+    const bucket = getCompiledBucket(placement, Boolean(isMarkdown), Boolean(isPrompt));
+    if (bucket.length === 0) {
+        return finalString;
+    }
+
+    const debugEnabled = isRegexDebugEnabled();
+    const hasDepth = typeof depth === 'number';
+    for (let i = 0; i < bucket.length; i++) {
+        const entry = bucket[i];
+        if (isEdit && !entry.runOnEdit) {
+            if (debugEnabled) {
+                console.debug(`getRegexedString: Skipping script ${entry.script.scriptName} because it does not run on edit`);
+            }
+            continue;
+        }
+
+        // Check if the depth is within the min/max depth
+        if (hasDepth) {
+            if (entry.hasMinDepth && depth < entry.minDepth) {
+                if (debugEnabled) {
+                    console.debug(`getRegexedString: Skipping script ${entry.script.scriptName} because depth ${depth} is less than minDepth ${entry.minDepth}`);
+                }
+                continue;
             }
 
-            // Check if the depth is within the min/max depth
-            if (typeof depth === 'number') {
-                if (!isNaN(script.minDepth) && script.minDepth !== null && script.minDepth >= -1 && depth < script.minDepth) {
-                    console.debug(`getRegexedString: Skipping script ${script.scriptName} because depth ${depth} is less than minDepth ${script.minDepth}`);
-                    return;
+            if (entry.hasMaxDepth && depth > entry.maxDepth) {
+                if (debugEnabled) {
+                    console.debug(`getRegexedString: Skipping script ${entry.script.scriptName} because depth ${depth} is greater than maxDepth ${entry.maxDepth}`);
                 }
-
-                if (!isNaN(script.maxDepth) && script.maxDepth !== null && script.maxDepth >= 0 && depth > script.maxDepth) {
-                    console.debug(`getRegexedString: Skipping script ${script.scriptName} because depth ${depth} is greater than maxDepth ${script.maxDepth}`);
-                    return;
-                }
-            }
-
-            if (script.placement.includes(placement)) {
-                finalString = runRegexScript(script, finalString, { characterOverride });
+                continue;
             }
         }
-    });
+
+        if (entry.hasStaticRegex) {
+            if (!finalString) break;
+            const compiled = entry.compiledRegex;
+            if (compiled.global || compiled.sticky) {
+                compiled.lastIndex = 0;
+            }
+            finalString = applyCompiledRegex(entry.script, compiled, finalString, { characterOverride });
+        } else {
+            finalString = runRegexScript(entry.script, finalString, { characterOverride });
+        }
+    }
 
     return finalString;
 }
@@ -389,22 +572,22 @@ export function getRegexedString(rawString, placement, { characterOverride, isMa
  * @typedef {{characterOverride?: string}} RegexScriptParams The parameters to use for the regex script
  */
 export function runRegexScript(regexScript, rawString, { characterOverride } = {}) {
-    let newString = rawString;
     if (!regexScript || !!(regexScript.disabled) || !regexScript?.findRegex || !rawString) {
-        return newString;
+        return rawString;
     }
 
     const getRegexString = () => {
+        const findRegexStr = regexScript.findRegex;
         switch (Number(regexScript.substituteRegex)) {
             case substitute_find_regex.NONE:
-                return regexScript.findRegex;
+                return findRegexStr;
             case substitute_find_regex.RAW:
-                return substituteParamsExtended(regexScript.findRegex);
+                return findRegexStr.includes('{{') ? substituteParamsExtended(findRegexStr) : findRegexStr;
             case substitute_find_regex.ESCAPED:
-                return substituteParamsExtended(regexScript.findRegex, {}, sanitizeRegexMacro);
+                return findRegexStr.includes('{{') ? substituteParamsExtended(findRegexStr, {}, sanitizeRegexMacro) : findRegexStr;
             default:
                 console.warn(`runRegexScript: Unknown substituteRegex value ${regexScript.substituteRegex}. Using raw regex.`);
-                return regexScript.findRegex;
+                return findRegexStr;
         }
     };
     const regexString = getRegexString();
@@ -412,11 +595,23 @@ export function runRegexScript(regexScript, rawString, { characterOverride } = {
 
     // The user skill issued. Return with nothing.
     if (!findRegex) {
-        return newString;
+        return rawString;
     }
 
+    return applyCompiledRegex(regexScript, findRegex, rawString, { characterOverride });
+}
+
+/**
+ * Applies an already-compiled regex for a regex script.
+ * @param {RegexScript} regexScript The regex script
+ * @param {RegExp} findRegex Compiled regular expression
+ * @param {string} rawString The string to transform
+ * @param {RegexScriptParams} params Replacement parameters
+ * @returns {string} The transformed string
+ */
+function applyCompiledRegex(regexScript, findRegex, rawString, { characterOverride } = {}) {
     // Run replacement. Currently does not support the Overlay strategy
-    newString = rawString.replace(findRegex, function (match) {
+    return rawString.replace(findRegex, function (match) {
         const args = [...arguments];
         const replaceString = regexScript.replaceString.replace(/{{match}}/gi, '$0');
         const replaceWithGroups = replaceString.replaceAll(/\$(\d+)|\$<([^>]+)>/g, (_, num, groupName) => {
@@ -443,8 +638,6 @@ export function runRegexScript(regexScript, rawString, { characterOverride } = {
         // Substitute at the end
         return substituteParams(replaceWithGroups);
     });
-
-    return newString;
 }
 
 /**

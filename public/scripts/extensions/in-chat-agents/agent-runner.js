@@ -131,6 +131,7 @@ let missedGenerationEndRecoveryTimeout = null;
 let agentRunnerInitialized = false;
 let postGenerationRecoveryHooksInitialized = false;
 let postGenerationRecoveryObserver = null;
+let postGenerationRecoveryObserverArmed = false;
 const activePromptTransformToasts = new Set();
 const agentGenerationStateListeners = new Set();
 const manualAgentRunQueue = [];
@@ -1778,6 +1779,7 @@ function recoverMissedGenerationEnd(reason = 'fallback') {
     clearInitialGenerationToast();
     queueLatestAssistantPostProcessingFromSnapshot();
     scheduleDeferredPostProcessingFlush();
+    observePostGenerationRecoveryTargets();
     schedulePostGenerationRecoveryCheck();
     latestAssistantPostProcessingFallbackDeadline = Date.now() + LATEST_ASSISTANT_POST_PROCESSING_FALLBACK_WINDOW_MS;
     scheduleLatestAssistantPostProcessingFallback();
@@ -1806,12 +1808,38 @@ function scheduleMissedGenerationEndRecoveryCheck(delayMs = MISSED_GENERATION_EN
     }, delayMs);
 }
 
+function isStreamingActiveForRecoveryObserver() {
+    const liveStreamingProcessor = streamingProcessor;
+    if (!liveStreamingProcessor) {
+        return false;
+    }
+
+    return Boolean(
+        !liveStreamingProcessor.isFinished &&
+        !liveStreamingProcessor.isStopped &&
+        !liveStreamingProcessor.abortController?.signal?.aborted,
+    );
+}
+
+function disconnectPostGenerationRecoveryObserver() {
+    postGenerationRecoveryObserver?.disconnect();
+    postGenerationRecoveryObserverArmed = false;
+}
+
 function observePostGenerationRecoveryTargets() {
     if (!postGenerationRecoveryObserver) {
         return;
     }
 
+    // SillyBunny: never keep the recovery observer armed while streaming tokens;
+    // generation end/stop/render hooks re-arm it once streaming finishes.
+    if (isStreamingActiveForRecoveryObserver()) {
+        disconnectPostGenerationRecoveryObserver();
+        return;
+    }
+
     try {
+        postGenerationRecoveryObserver.disconnect();
         if (document.body) {
             postGenerationRecoveryObserver.observe(document.body, {
                 attributes: true,
@@ -1823,9 +1851,10 @@ function observePostGenerationRecoveryTargets() {
         if (chatElement) {
             postGenerationRecoveryObserver.observe(chatElement, {
                 childList: true,
-                subtree: true,
+                subtree: false,
             });
         }
+        postGenerationRecoveryObserverArmed = true;
     } catch (error) {
         console.warn('[InChatAgents] Could not start post-generation recovery observer:', error);
     }
@@ -3822,6 +3851,7 @@ function onGenerationEnded(_chatLength, generationContext) {
         clearMissedGenerationEndRecoveryCheck();
         clearDeferredPostProcessing();
         clearAllPromptTransformRunningToasts();
+        observePostGenerationRecoveryTargets();
         return;
     }
 
@@ -3829,6 +3859,7 @@ function onGenerationEnded(_chatLength, generationContext) {
         isGenerationInProgress = false;
         generationStopRequested = false;
         clearPendingPostProcessingForChatChange();
+        observePostGenerationRecoveryTargets();
         return;
     }
 
@@ -3840,6 +3871,7 @@ function onGenerationEnded(_chatLength, generationContext) {
     clearAllPromptTransformRunningToasts();
     queueLatestAssistantPostProcessingFromSnapshot();
     scheduleDeferredPostProcessingFlush();
+    observePostGenerationRecoveryTargets();
     schedulePostGenerationRecoveryCheck();
     latestAssistantPostProcessingFallbackDeadline = Date.now() + LATEST_ASSISTANT_POST_PROCESSING_FALLBACK_WINDOW_MS;
     scheduleLatestAssistantPostProcessingFallback();
@@ -3876,6 +3908,7 @@ function onGenerationStopped(generationContext) {
     takePendingPreGenerationInterceptRuns();
     abortActivePathfinderRetrieval('Pathfinder retrieval cancelled because generation stopped.');
     clearPathfinderExtensionPrompts();
+    observePostGenerationRecoveryTargets();
     notifyAgentGenerationStateChanged();
 }
 
@@ -4287,6 +4320,10 @@ async function onMessageReceived(messageIndex, generationType) {
 }
 
 function onStreamTokenReceived() {
+    if (postGenerationRecoveryObserverArmed && isStreamingActiveForRecoveryObserver()) {
+        disconnectPostGenerationRecoveryObserver();
+    }
+
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
         return;
     }
@@ -4314,6 +4351,10 @@ function onStreamTokenReceived() {
 }
 
 async function onCharacterMessageRendered(messageIndex, generationType) {
+    if (!postGenerationRecoveryObserverArmed) {
+        observePostGenerationRecoveryTargets();
+    }
+
     const numericMessageIndex = Number(messageIndex);
     const message = chat[numericMessageIndex];
 

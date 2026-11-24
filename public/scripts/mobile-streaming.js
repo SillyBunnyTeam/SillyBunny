@@ -3,6 +3,8 @@ import { extractOocBlocksForDisplay, restoreOocBlocksForDisplay } from './ooc-bl
 
 export const IOS_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const IOS_REASONING_RENDER_INTERVAL_MS = 1500;
+export const IOS_ADAPTIVE_RENDER_BUDGET_MS = 33;
+export const IOS_MAX_ADAPTIVE_INTERVAL_MS = 500;
 export const ANDROID_STREAMING_UPDATE_INTERVAL_MS = 250;
 export const ANDROID_REASONING_RENDER_INTERVAL_MS = 1500;
 export const ANDROID_STREAMING_SETTING_DEFAULTS = Object.freeze({
@@ -46,9 +48,18 @@ export function isReducedStreamingDomWorkPlatform(navigatorRef = globalThis.navi
     return isIOSWebKitPlatform(navigatorRef) || isAndroidStreamingPlatform(navigatorRef);
 }
 
-function shouldUsePlatformStreamingReduction(navigatorRef, { enabled = true, iosEnabled = enabled, androidEnabled = false } = {}) {
+function shouldUsePlatformStreamingReduction(navigatorRef, {
+    enabled = true,
+    iosEnabled = enabled,
+    androidEnabled = false,
+    renderDurationMs = 0,
+    frameBudgetMs = IOS_ADAPTIVE_RENDER_BUDGET_MS,
+} = {}) {
     if (isIOSWebKitPlatform(navigatorRef)) {
-        return Boolean(iosEnabled);
+        if (iosEnabled) {
+            return true;
+        }
+        return Number.isFinite(renderDurationMs) && renderDurationMs > frameBudgetMs;
     }
 
     if (isAndroidStreamingPlatform(navigatorRef)) {
@@ -115,10 +126,21 @@ export function shouldUsePlainTextStreamingPreview({
     isFinal = false,
     isReducedDomWork = false,
     isAndroidPlatform = false,
+    isIOSWebKit = false,
+    renderDurationMs = 0,
+    frameBudgetMs = IOS_ADAPTIVE_RENDER_BUDGET_MS,
     isImpersonate = false,
     useBasicMarkdown = false,
 } = {}) {
-    return Boolean(isReducedDomWork) && Boolean(isAndroidPlatform) && !isFinal && !isImpersonate && !useBasicMarkdown;
+    if (!isReducedDomWork || isFinal || isImpersonate || useBasicMarkdown) {
+        return false;
+    }
+
+    if (isAndroidPlatform) {
+        return true;
+    }
+
+    return Boolean(isIOSWebKit) && Number.isFinite(renderDurationMs) && renderDurationMs > frameBudgetMs;
 }
 
 /**
@@ -202,10 +224,6 @@ export function formatBasicMarkdownStreamingPreview(text = '', { converter = nul
 
         let mes = escaped.replaceAll('\\begin{align*}', '$$').replaceAll('\\end{align*}', '$$');
         mes = converter.makeHtml(mes);
-        mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
-            return match.replace(/\n/gm, '\u0000');
-        });
-        mes = mes.replace(/\u0000/g, '\n');
 
         return String(sanitizeHtml(mes)).trim();
     } catch (error) {
@@ -309,44 +327,62 @@ export function shouldReduceStreamingDomWork(navigatorRef = globalThis.navigator
  * @param {number} [options.renderDurationMs] Recent formatting and DOM write cost
  * @returns {number}
  */
-export function getStreamingUpdateInterval(baseIntervalMs, { navigatorRef = globalThis.navigator, enabled = true, iosEnabled = enabled, androidEnabled = false, renderDurationMs = 0 } = {}) {
+export function getStreamingUpdateInterval(baseIntervalMs, {
+    navigatorRef = globalThis.navigator,
+    enabled = true,
+    iosEnabled = enabled,
+    androidEnabled = false,
+    renderDurationMs = 0,
+    frameBudgetMs = IOS_ADAPTIVE_RENDER_BUDGET_MS,
+} = {}) {
     const interval = Number(baseIntervalMs);
     const normalizedInterval = Number.isFinite(interval) && interval > 0 ? interval : 1;
 
-    const platformFloor = shouldReduceStreamingDomWork(navigatorRef, { enabled, iosEnabled, androidEnabled })
+    const isIOS = isIOSWebKitPlatform(navigatorRef);
+    const platformFloor = shouldReduceStreamingDomWork(navigatorRef, { enabled, iosEnabled, androidEnabled, renderDurationMs, frameBudgetMs })
         ? getStreamingUpdateIntervalFloor(navigatorRef) : 0;
     // Leave roughly two thirds of the main thread for input/layout, with a bounded live-preview delay.
-    const renderCostFloor = Number.isFinite(renderDurationMs) ? Math.min(250, Math.max(0, renderDurationMs) * 3) : 0;
+    // iOS WebKit backs off further when render frames exceed budget to prevent page reload loops.
+    const maxRenderCostFloor = isIOS && Number.isFinite(renderDurationMs) && renderDurationMs > frameBudgetMs
+        ? IOS_MAX_ADAPTIVE_INTERVAL_MS
+        : 250;
+    const renderCostFloor = Number.isFinite(renderDurationMs) ? Math.min(maxRenderCostFloor, Math.max(0, renderDurationMs) * 3) : 0;
     return Math.max(normalizedInterval, platformFloor, renderCostFloor);
 }
 
 /**
  * Decides whether a live reasoning body should be rendered on this streaming tick.
+ * Closed `<details>` reasoning panels NEVER render during active thinking on any platform
+ * (Desktop, iOS, or Android); they render lazily on expand or once on finish.
  * @param {object} options
- * @param {boolean} options.isReducedDomWork Whether live DOM work is reduced for the platform
+ * @param {boolean} [options.isReducedDomWork] Whether live DOM work is reduced for the platform
  * @param {string} options.state Current reasoning state
  * @param {boolean} options.detailsOpen Whether the reasoning details panel is open
- * @param {boolean} options.hasRenderedContent Whether the reasoning body already has rendered content
- * @param {number} options.lastRenderAt Last render timestamp
- * @param {number} options.now Current timestamp
+ * @param {boolean} [options.hasRenderedContent] Whether the reasoning body already has rendered content
+ * @param {number} [options.lastRenderAt] Last render timestamp
+ * @param {number} [options.now] Current timestamp
  * @param {number} [options.minIntervalMs] Minimum interval between open-panel renders
  * @returns {boolean}
  */
 export function shouldRenderLiveReasoningContent({
-    isReducedDomWork,
+    isReducedDomWork = false,
     state,
     detailsOpen,
-    hasRenderedContent,
-    lastRenderAt,
-    now,
+    hasRenderedContent = false,
+    lastRenderAt = 0,
+    now = 0,
     minIntervalMs = IOS_REASONING_RENDER_INTERVAL_MS,
 }) {
-    if (!isReducedDomWork || state !== 'thinking' || !hasRenderedContent) {
+    if (state !== 'thinking') {
         return true;
     }
 
     if (!detailsOpen) {
         return false;
+    }
+
+    if (!hasRenderedContent || !isReducedDomWork) {
+        return true;
     }
 
     return now - lastRenderAt >= minIntervalMs;

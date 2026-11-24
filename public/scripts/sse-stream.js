@@ -108,44 +108,58 @@ function getDelay(s) {
 
 /**
  * Parses the stream data and returns the parsed data and the chunk to be sent.
+ *
+ * Text is split by Unicode code points, so astral characters (emoji, rare CJK) stay whole.
+ * Each yielded payload is a shallow copy of the event that only replaces the streamed text.
+ *
+ * With `segments: true` the generator yields one descriptor per streamed text run instead of
+ * one item per code point, so a caller can build payloads for slices of any size. Descriptors
+ * have `text`, `suffix` (appended to the last slice), `reasoning` (undefined when the provider
+ * shape carries no reasoning flag) and `build(slice, isLast)`. Payloads that cannot be split
+ * are yielded as `{ data, chunk: '' }` in both modes.
  * @param {object} json The JSON data.
- * @returns {AsyncGenerator<{data: object, chunk: string, reasoning?: boolean}>} The parsed data and the chunk to be sent.
+ * @param {object} [options]
+ * @param {boolean} [options.segments=false] Yield text run descriptors instead of single characters
+ * @returns {AsyncGenerator<{data: object, chunk: string, reasoning?: boolean}|{text: string, suffix: string, reasoning?: boolean, build: (slice: string, isLast: boolean) => object}>}
  */
-async function* parseStreamData(json) {
+async function* parseStreamData(json, { segments = false } = {}) {
+    /**
+     * @param {string} text
+     * @param {boolean|undefined} reasoning
+     * @param {(slice: string, isLast: boolean) => object} build
+     * @param {string} [suffix]
+     */
+    function* emit(text, reasoning, build, suffix = '') {
+        if (segments) {
+            yield { text, suffix, reasoning, build };
+            return;
+        }
+        const units = Array.from(text);
+        for (let index = 0; index < units.length; index++) {
+            const isLast = index === units.length - 1;
+            const chunk = isLast ? units[index] + suffix : units[index];
+            const data = build(chunk, isLast);
+            yield reasoning === undefined ? { data, chunk } : { data, chunk, reasoning };
+        }
+    }
+
     if (typeof json.delta === 'object' && typeof json.delta.message === 'object' && ['tool-plan-delta', 'content-delta'].includes(json.type)) {
         // Cohere
         const text = json?.delta?.message?.content?.text ?? '';
-        for (let i = 0; i < text.length; i++) {
-            const str = json.delta.message.content.text[i];
-            yield {
-                data: { ...json, delta: { message: { content: { text: str } } } },
-                chunk: str,
-            };
+        if (text.length > 0) {
+            yield* emit(text, undefined, str => ({ ...json, delta: { message: { content: { text: str } } } }));
         }
         return;
     } else if (typeof json.delta === 'object' && typeof json.delta.text === 'string') {
         // Claude
         if (json.delta.text.length > 0) {
-            for (let i = 0; i < json.delta.text.length; i++) {
-                const str = json.delta.text[i];
-                yield {
-                    data: { ...json, delta: { text: str } },
-                    chunk: str,
-                };
-            }
+            yield* emit(json.delta.text, undefined, str => ({ ...json, delta: { text: str } }));
         }
         return;
     } else if (typeof json.delta === 'object' && typeof json.delta.thinking === 'string') {
         // Claude (reasoning content)
         if (json.delta.thinking.length > 0) {
-            for (let i = 0; i < json.delta.thinking.length; i++) {
-                const str = json.delta.thinking[i];
-                yield {
-                    data: { ...json, delta: { thinking: str } },
-                    chunk: str,
-                    reasoning: true,
-                };
-            }
+            yield* emit(json.delta.thinking, true, str => ({ ...json, delta: { thinking: str } }));
         }
         return;
     } else if (Array.isArray(json.candidates)) {
@@ -162,39 +176,27 @@ async function* parseStreamData(json) {
                 return;
             }
             if (typeof json.candidates[0].content === 'object' && Array.isArray(json.candidates[i].content.parts)) {
-                for (let j = 0; j < json.candidates[i].content.parts.length; j++) {
-                    if (typeof json.candidates[i].content.parts[j].text === 'string') {
-                        for (let k = 0; k < json.candidates[i].content.parts[j].text.length; k++) {
-                            const moreThanOnePart = json.candidates[i].content.parts.length > 1;
-                            const isNotLastPart = j !== json.candidates[i].content.parts.length - 1;
-                            const isLastSymbol = k === json.candidates[i].content.parts[j].text.length - 1;
-                            const addNewline = moreThanOnePart && isNotLastPart && isLastSymbol;
-                            const str = json.candidates[i].content.parts[j].text[k] + (addNewline ? '\n\n' : '');
-                            const candidateClone = structuredClone(json.candidates[0]);
-                            candidateClone.content.parts[j].text = str;
-                            candidateClone.content.parts = [candidateClone.content.parts[j]];
-                            const candidates = [candidateClone];
-                            const reasoning = json.candidates[i].content.parts[j].thought ?? false;
-                            yield {
-                                data: { ...json, candidates },
-                                chunk: str,
-                                reasoning,
-                            };
-                        }
+                const parts = json.candidates[i].content.parts;
+                const base = json.candidates[0];
+                for (let j = 0; j < parts.length; j++) {
+                    const text = parts[j].text;
+                    if (typeof text !== 'string' || text.length === 0) {
+                        continue;
                     }
+                    const addNewline = parts.length > 1 && j !== parts.length - 1;
+                    const reasoning = parts[j].thought ?? false;
+                    const build = str => ({
+                        ...json,
+                        candidates: [{ ...base, content: { ...base.content, parts: [{ ...base.content.parts[j], text: str }] } }],
+                    });
+                    yield* emit(text, reasoning, build, addNewline ? '\n\n' : '');
                 }
             }
         }
         return;
     } else if (typeof json.token === 'string' && json.token.length > 0) {
         // NovelAI / KoboldCpp Classic
-        for (let i = 0; i < json.token.length; i++) {
-            const str = json.token[i];
-            yield {
-                data: { ...json, token: str },
-                chunk: str,
-            };
-        }
+        yield* emit(json.token, undefined, str => ({ ...json, token: str }));
         return;
     } else if (typeof json.content === 'string' && json.content.length > 0 && json.object !== 'chat.completion.chunk') {
         // llama.cpp?
@@ -202,13 +204,7 @@ async function* parseStreamData(json) {
         if (isNotPrimary) {
             throw new Error('Not a primary swipe', { cause: NOT_PRIMARY });
         }
-        for (let i = 0; i < json.content.length; i++) {
-            const str = json.content[i];
-            yield {
-                data: { ...json, content: str },
-                chunk: str,
-            };
-        }
+        yield* emit(json.content, undefined, str => ({ ...json, content: str }));
         return;
     } else if (Array.isArray(json.choices)) {
         // OpenAI-likes and friends
@@ -217,116 +213,50 @@ async function* parseStreamData(json) {
             throw new Error('Not a primary swipe', { cause: NOT_PRIMARY });
         }
 
-        if (typeof json.choices[0].text === 'string' && json.choices[0].text.length > 0) {
-            for (let j = 0; j < json.choices[0].text.length; j++) {
-                const str = json.choices[0].text[j];
-                const choiceClone = structuredClone(json.choices[0]);
-                choiceClone.text = str;
-                const choices = [choiceClone];
-                yield {
-                    data: { ...json, choices },
-                    chunk: str,
-                };
-            }
+        const choice = json.choices[0];
+        const withChoice = next => ({ ...json, choices: [next] });
+
+        if (typeof choice.text === 'string' && choice.text.length > 0) {
+            yield* emit(choice.text, undefined, str => withChoice({ ...choice, text: str }));
             return;
-        } else if (typeof json.choices[0].thinking === 'string' && json.choices[0].thinking.length > 0) {
-            for (let j = 0; j < json.choices[0].thinking.length; j++) {
-                const str = json.choices[0].thinking[j];
-                const choiceClone = structuredClone(json.choices[0]);
-                choiceClone.thinking = str;
-                const choices = [choiceClone];
-                yield {
-                    data: { ...json, choices },
-                    chunk: str,
-                    reasoning: true,
-                };
-            }
+        } else if (typeof choice.thinking === 'string' && choice.thinking.length > 0) {
+            yield* emit(choice.thinking, true, str => withChoice({ ...choice, thinking: str }));
             return;
-        } else if (typeof json.choices[0].delta === 'object') {
-            if (typeof json.choices[0].delta.text === 'string' && json.choices[0].delta.text.length > 0) {
-                for (let j = 0; j < json.choices[0].delta.text.length; j++) {
-                    const str = json.choices[0].delta.text[j];
-                    const choiceClone = structuredClone(json.choices[0]);
-                    choiceClone.delta.text = str;
-                    const choices = [choiceClone];
-                    yield {
-                        data: { ...json, choices },
-                        chunk: str,
-                    };
-                }
+        } else if (typeof choice.delta === 'object') {
+            const delta = choice.delta;
+            if (typeof delta.text === 'string' && delta.text.length > 0) {
+                yield* emit(delta.text, undefined, str => withChoice({ ...choice, delta: { ...delta, text: str } }));
                 return;
-            } else if (typeof json.choices[0].delta.reasoning_content === 'string' && json.choices[0].delta.reasoning_content.length > 0) {
-                for (let j = 0; j < json.choices[0].delta.reasoning_content.length; j++) {
-                    const str = json.choices[0].delta.reasoning_content[j];
-                    const isLastSymbol = j === json.choices[0].delta.reasoning_content.length - 1;
-                    const choiceClone = structuredClone(json.choices[0]);
-                    choiceClone.delta.reasoning_content = str;
-                    choiceClone.delta.content = isLastSymbol ? choiceClone.delta.content : '';
-                    const choices = [choiceClone];
-                    yield {
-                        data: { ...json, choices },
-                        chunk: str,
-                        reasoning: true,
-                    };
-                }
+            } else if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+                // The answer text of a mixed delta goes out with the last reasoning slice only.
+                yield* emit(delta.reasoning_content, true, (str, isLast) => withChoice({ ...choice, delta: { ...delta, reasoning_content: str, content: isLast ? delta.content : '' } }));
                 return;
-            } else if (typeof json.choices[0].delta.reasoning === 'string' && json.choices[0].delta.reasoning.length > 0) {
-                for (let j = 0; j < json.choices[0].delta.reasoning.length; j++) {
-                    const str = json.choices[0].delta.reasoning[j];
-                    const isLastSymbol = j === json.choices[0].delta.reasoning.length - 1;
-                    const choiceClone = structuredClone(json.choices[0]);
-                    choiceClone.delta.reasoning = str;
-                    choiceClone.delta.content = isLastSymbol ? choiceClone.delta.content : '';
-                    const choices = [choiceClone];
-                    yield {
-                        data: { ...json, choices },
-                        chunk: str,
-                        reasoning: true,
-                    };
-                }
+            } else if (typeof delta.reasoning === 'string' && delta.reasoning.length > 0) {
+                yield* emit(delta.reasoning, true, (str, isLast) => withChoice({ ...choice, delta: { ...delta, reasoning: str, content: isLast ? delta.content : '' } }));
                 return;
-            } else if (typeof json.choices[0].delta.content === 'string' && json.choices[0].delta.content.length > 0) {
-                for (let j = 0; j < json.choices[0].delta.content.length; j++) {
-                    const str = json.choices[0].delta.content[j];
-                    const choiceClone = structuredClone(json.choices[0]);
-                    choiceClone.delta.content = str;
-                    const choices = [choiceClone];
-                    yield {
-                        data: { ...json, choices },
-                        chunk: str,
-                    };
-                }
+            } else if (typeof delta.content === 'string' && delta.content.length > 0) {
+                yield* emit(delta.content, undefined, str => withChoice({ ...choice, delta: { ...delta, content: str } }));
                 return;
-            } else if (Array.isArray(json.choices[0].delta.content) && json.choices[0].delta.content.length > 0) {
-                if (Array.isArray(json.choices[0].delta.content[0].thinking) && json.choices[0].delta.content[0].thinking.length > 0) {
-                    if (typeof json.choices[0].delta.content[0].thinking[0].text === 'string' && json.choices[0].delta.content[0].thinking[0].text.length > 0) {
-                        for (let j = 0; j < json.choices[0].delta.content[0].thinking[0].text.length; j++) {
-                            const str = json.choices[0].delta.content[0].thinking[0].text[j];
-                            const choiceClone = structuredClone(json.choices[0]);
-                            choiceClone.delta.content[0].thinking[0].text = str;
-                            const choices = [choiceClone];
-                            yield {
-                                data: { ...json, choices },
-                                chunk: str,
-                                reasoning: true,
-                            };
-                        }
+            } else if (Array.isArray(delta.content) && delta.content.length > 0) {
+                const block = delta.content[0];
+                if (Array.isArray(block.thinking) && block.thinking.length > 0) {
+                    const thought = block.thinking[0];
+                    if (typeof thought.text === 'string' && thought.text.length > 0) {
+                        const build = str => withChoice({
+                            ...choice,
+                            delta: {
+                                ...delta,
+                                content: [{ ...block, thinking: [{ ...thought, text: str }, ...block.thinking.slice(1)] }, ...delta.content.slice(1)],
+                            },
+                        });
+                        yield* emit(thought.text, true, build);
                         return;
                     }
                 }
             }
-        } else if (typeof json.choices[0].message === 'object') {
-            if (typeof json.choices[0].message.content === 'string' && json.choices[0].message.content.length > 0) {
-                for (let j = 0; j < json.choices[0].message.content.length; j++) {
-                    const str = json.choices[0].message.content[j];
-                    const choiceClone = structuredClone(json.choices[0]);
-                    choiceClone.message.content = str;
-                    const choices = [choiceClone];
-                    yield {
-                        data: { ...json, choices },
-                        chunk: str,
-                    };
-                }
+        } else if (typeof choice.message === 'object') {
+            if (typeof choice.message.content === 'string' && choice.message.content.length > 0) {
+                yield* emit(choice.message.content, undefined, str => withChoice({ ...choice, message: { ...choice.message, content: str } }));
                 return;
             }
         }
@@ -335,36 +265,141 @@ async function* parseStreamData(json) {
     throw new Error('Unknown event data format');
 }
 
+/** A single-step wait shorter than this is coalesced into a ~16 ms frame slice instead of its own timer. */
+const SMOOTH_MIN_PAUSE_MS = 12;
+/** Target presentation frame slice when coalescing sub-frame waits via rAF. */
+const SMOOTH_FRAME_SLICE_MS = 16;
+/** Characters left in one event before the pauses start shrinking to catch up. */
+const SMOOTH_CATCH_UP_UNITS = 120;
+
+function waitForAnimationFrameOrDelay(waitMs) {
+    if (
+        typeof globalThis.requestAnimationFrame === 'function'
+        && globalThis.document?.visibilityState !== 'hidden'
+    ) {
+        return new Promise(resolve => globalThis.requestAnimationFrame(() => resolve()));
+    }
+    return delay(waitMs);
+}
+
+/** @type {Intl.Segmenter|null|undefined} */
+let graphemeSegmenter;
+
+/**
+ * Splits text into user-perceived characters, falling back to code points.
+ * @param {string} text
+ * @returns {string[]}
+ */
+function splitStreamUnits(text) {
+    if (graphemeSegmenter === undefined) {
+        graphemeSegmenter = typeof Intl?.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+    }
+    if (!graphemeSegmenter) {
+        return Array.from(text);
+    }
+    const units = [];
+    for (const { segment } of graphemeSegmenter.segment(text)) {
+        units.push(segment);
+    }
+    return units;
+}
+
+/**
+ * Paces the characters of one smooth stream. Each character is still delivered as its own event,
+ * but sub-frame pauses are accumulated into ~16 ms presentation slices (yielded via rAF when
+ * available), and a large backlog in one event shortens pauses adaptively so text catches up.
+ */
+export class StreamPacer {
+    /** Last character delivered, which sets the pause before the next one. */
+    lastUnit = '';
+    /** Sub-frame pause owed and not slept yet. */
+    owedMs = 0;
+
+    reset() {
+        this.lastUnit = '';
+        this.owedMs = 0;
+    }
+
+    /**
+     * Takes the pause before the next character.
+     * @param {boolean} paced Whether this character waits at all
+     * @param {number} backlog Characters left in the current event, this one included
+     * @returns {Promise<void>|null} A promise to await, or null when no timer is needed now
+     */
+    pause(paced, backlog) {
+        if (!paced) {
+            return null;
+        }
+        const catchUp = backlog > SMOOTH_CATCH_UP_UNITS ? SMOOTH_CATCH_UP_UNITS / backlog : 1;
+        const stepMs = getDelay(this.lastUnit) * catchUp;
+        if (stepMs < SMOOTH_MIN_PAUSE_MS) {
+            this.owedMs += stepMs;
+            if (this.owedMs < SMOOTH_FRAME_SLICE_MS) {
+                return null;
+            }
+            const wait = this.owedMs;
+            this.owedMs = 0;
+            return waitForAnimationFrameOrDelay(wait);
+        }
+        const wait = this.owedMs + stepMs;
+        this.owedMs = 0;
+        return delay(wait);
+    }
+}
+
 /**
  * Like the default one, but multiplies the events by the number of letters in the event data.
  */
 export class SmoothEventSourceStream extends EventSourceStream {
     constructor() {
         super();
-        let lastStr = '';
+        const pacer = new StreamPacer();
         const transformStream = new TransformStream({
             async transform(chunk, controller) {
                 const event = chunk;
                 const data = event.data;
                 try {
-                    const hasFocus = document.hasFocus();
+                    const hasFocus = typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+                        ? document.hasFocus()
+                        : false;
 
                     if (data === '[DONE]') {
-                        lastStr = '';
+                        pacer.reset();
                         return controller.enqueue(event);
                     }
 
                     const json = JSON.parse(data);
 
                     if (!json) {
-                        lastStr = '';
+                        pacer.reset();
                         return controller.enqueue(event);
                     }
 
-                    for await (const parsed of parseStreamData(json)) {
-                        !(power_user.smooth_streaming_no_think && parsed.reasoning) && hasFocus && await delay(getDelay(lastStr));
-                        controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(parsed.data) }));
-                        lastStr = parsed.chunk;
+                    for await (const segment of parseStreamData(json, { segments: true })) {
+                        if (typeof segment.build !== 'function') {
+                            const wait = pacer.pause(hasFocus, 1);
+                            if (wait) await wait;
+                            controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(segment.data) }));
+                            pacer.lastUnit = segment.chunk;
+                            continue;
+                        }
+
+                        const units = splitStreamUnits(segment.text);
+                        if (power_user.smooth_streaming_no_think && segment.reasoning) {
+                            // Reasoning is shown without pacing, so it goes out whole.
+                            controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(segment.build(segment.text + segment.suffix, true)) }));
+                            pacer.lastUnit = units[units.length - 1] + segment.suffix;
+                            continue;
+                        }
+
+                        for (let index = 0; index < units.length; index++) {
+                            const wait = pacer.pause(hasFocus, units.length - index);
+                            if (wait) await wait;
+                            const isLast = index === units.length - 1;
+                            const unit = isLast ? units[index] + segment.suffix : units[index];
+                            controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(segment.build(unit, isLast)) }));
+                            pacer.lastUnit = unit;
+                        }
                     }
                 } catch (error) {
                     if (error instanceof Error && error.cause !== NOT_PRIMARY) {

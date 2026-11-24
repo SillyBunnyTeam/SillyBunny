@@ -391,6 +391,14 @@ export class ReasoningHandler {
     #activeStreamingTemplate = null;
     /** @type {number} Last time the live reasoning body was rendered */
     #lastReasoningDomRenderAt = 0;
+    /** @type {boolean} Whether unrendered reasoning content is waiting for expand or finish */
+    #hasPendingReasoningRender = false;
+    /** @type {number?} Message ID associated with the pending reasoning render */
+    #pendingRenderMessageId = null;
+    /** @type {HTMLDetailsElement?} Details element currently bound with a lazy-render toggle listener */
+    #boundToggleDetails = null;
+    /** @type {(() => void)?} Bound toggle listener reference */
+    #boundToggleListener = null;
 
     /**
      * @param {Date?} [timeStarted=null] - When the generation started
@@ -502,6 +510,8 @@ export class ReasoningHandler {
             this.#isParsingReasoning = false;
             this.#parsingReasoningMesStartIndex = null;
             this.#activeStreamingTemplate = null;
+            this.#hasPendingReasoningRender = false;
+            this.#pendingRenderMessageId = null;
         }
 
         this.updateDom(messageId);
@@ -726,26 +736,22 @@ export class ReasoningHandler {
         const hasReasoningContent = Boolean(String(rawReasoning ?? '').trim());
         setDatasetProperty(this.messageReasoningDetailsDom, 'hasContent', hasReasoningContent ? 'true' : null);
 
-        // SillyBunny: mobile browsers can force-reload under reasoning-heavy streams if we
-        // format and morph a growing hidden reasoning block on every live tick.
+        this.#ensureToggleListener(messageId);
+
+        // Universal zero-work closed reasoning: while <details> is collapsed during active thinking,
+        // skip messageFormatting / DOMPurify / segmentation / morphdom on all platforms and render
+        // lazily on toggle expand or once on finish().
         if (shouldRenderReasoning) {
-            // SillyBunny: throttle live reasoning DOM work on reduced platforms so large
-            // hidden reasoning blocks do not cause aggressive repaint or reload loops.
-            const reasoning = trimSpaces(this.reasoningDisplayText ?? this.reasoning);
-            const displayReasoning = messageFormatting(reasoning, '', false, false, messageId, {}, true);
-
-            if (power_user.stream_fade_in) {
-                applyStreamFadeIn(this.messageReasoningContentDom, displayReasoning, {
-                    bypassFadeIn: shouldReduceStreamingDomWork(navigatorRef, {
-                        iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
-                        androidEnabled: power_user.android_disable_stream_fade_in,
-                    }),
-                });
+            if (hasReasoningContent || this.messageReasoningContentDom.childNodes.length > 0) {
+                this.#renderReasoningBody(messageId, now, navigatorRef);
             } else {
-                applyStreamDomPatch(this.messageReasoningContentDom, displayReasoning);
+                this.#hasPendingReasoningRender = false;
+                setDatasetProperty(this.messageReasoningDetailsDom, 'reasoningPendingRender', null);
             }
-
-            this.#lastReasoningDomRenderAt = now;
+        } else if (hasReasoningContent) {
+            this.#hasPendingReasoningRender = true;
+            this.#pendingRenderMessageId = messageId;
+            setDatasetProperty(this.messageReasoningDetailsDom, 'reasoningPendingRender', 'true');
         }
 
         // Update tooltip for hidden reasoning edit
@@ -764,6 +770,69 @@ export class ReasoningHandler {
     }
 
     /**
+     * Renders the latest reasoning body into `.mes_reasoning` and clears any pending marker.
+     * @param {number} messageId Message ID
+     * @param {number} [now] Current timestamp
+     * @param {Navigator} [navigatorRef] Navigator reference
+     */
+    #renderReasoningBody(messageId, now = Date.now(), navigatorRef = globalThis.navigator) {
+        const reasoning = trimSpaces(this.reasoningDisplayText ?? this.reasoning);
+        const displayReasoning = messageFormatting(reasoning, '', false, false, messageId, {}, true);
+
+        if (power_user.stream_fade_in) {
+            applyStreamFadeIn(this.messageReasoningContentDom, displayReasoning, {
+                bypassFadeIn: shouldReduceStreamingDomWork(navigatorRef, {
+                    iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
+                    androidEnabled: power_user.android_disable_stream_fade_in,
+                }),
+            });
+        } else {
+            applyStreamDomPatch(this.messageReasoningContentDom, displayReasoning);
+        }
+
+        this.#lastReasoningDomRenderAt = now;
+        this.#hasPendingReasoningRender = false;
+        setDatasetProperty(this.messageReasoningDetailsDom, 'reasoningPendingRender', null);
+    }
+
+    /**
+     * Attaches a `toggle` listener to the current `<details>` element so expanding a closed
+     * reasoning block immediately renders any deferred reasoning text.
+     * @param {number} messageId Message ID
+     */
+    #ensureToggleListener(messageId) {
+        const details = this.messageReasoningDetailsDom;
+        this.#pendingRenderMessageId = messageId;
+
+        if (!details || typeof details.addEventListener !== 'function') {
+            return;
+        }
+
+        if (this.#boundToggleDetails === details) {
+            return;
+        }
+
+        if (this.#boundToggleDetails && this.#boundToggleListener) {
+            this.#boundToggleDetails.removeEventListener('toggle', this.#boundToggleListener);
+        }
+
+        const onToggle = () => {
+            if (!details.open || !this.#hasPendingReasoningRender) {
+                return;
+            }
+            const targetMessageId = this.#pendingRenderMessageId ?? Number(this.messageDom?.getAttribute('mesid'));
+            if (!Number.isFinite(targetMessageId)) {
+                return;
+            }
+            this.#renderReasoningBody(targetMessageId);
+        };
+
+        details.addEventListener('toggle', onToggle);
+        this.#boundToggleDetails = details;
+        this.#boundToggleListener = onToggle;
+    }
+
+    /**
      * Finds and caches reasoning-related DOM elements for the given message.
      *
      * @param {number} messageId - The ID of the message to cache the DOM elements for
@@ -772,6 +841,9 @@ export class ReasoningHandler {
         // Make sure we reset dom elements if we are checking for a different message (shouldn't happen, but be sure)
         if (this.messageDom !== null && this.messageDom.getAttribute('mesid') !== messageId.toString()) {
             this.messageDom = null;
+            this.messageReasoningDetailsDom = null;
+            this.messageReasoningContentDom = null;
+            this.messageReasoningHeaderDom = null;
         }
 
         // Cache the DOM elements once

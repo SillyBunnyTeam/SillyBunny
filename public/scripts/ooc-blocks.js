@@ -36,6 +36,9 @@ export function shouldRetainContextAtDepth(messageDepth, retentionDepth) {
     return Math.max(0, Number(messageDepth) || 0) <= normalizedDepth;
 }
 
+const OPEN_PAREN_CODE = 0x28; // '('
+const CLOSE_PAREN_CODE = 0x29; // ')'
+
 /**
  * Replaces balanced OOC blocks with the supplied replacement.
  * @param {string} value Source text.
@@ -44,42 +47,48 @@ export function shouldRetainContextAtDepth(messageDepth, retentionDepth) {
  */
 function replaceBalancedOocBlocks(value, replacer) {
     const source = String(value ?? '');
+    if (!source.includes('((')) {
+        return source;
+    }
+
     let output = '';
     let cursor = 0;
     let blockStart = -1;
     let contentStart = -1;
     let depth = 0;
     let blockIndex = 0;
+    const lastPairStart = source.length - 1;
 
     for (let index = 0; index < source.length;) {
-        const token = source.slice(index, index + 2);
-
-        if (token === '((') {
-            if (depth === 0) {
-                output += source.slice(cursor, index);
-                blockStart = index;
-                contentStart = index + 2;
-            }
-            depth++;
-            index += 2;
-            continue;
-        }
-
-        if (token === '))' && depth > 0) {
-            depth--;
-
-            if (depth === 0) {
-                output += replacer(source.slice(contentStart, index), blockIndex);
-                blockIndex++;
+        if (index < lastPairStart) {
+            const first = source.charCodeAt(index);
+            if (first === OPEN_PAREN_CODE && source.charCodeAt(index + 1) === OPEN_PAREN_CODE) {
+                if (depth === 0) {
+                    output += source.slice(cursor, index);
+                    blockStart = index;
+                    contentStart = index + 2;
+                }
+                depth++;
                 index += 2;
-                cursor = index;
-                blockStart = -1;
-                contentStart = -1;
                 continue;
             }
 
-            index += 2;
-            continue;
+            if (depth > 0 && first === CLOSE_PAREN_CODE && source.charCodeAt(index + 1) === CLOSE_PAREN_CODE) {
+                depth--;
+
+                if (depth === 0) {
+                    output += replacer(source.slice(contentStart, index), blockIndex);
+                    blockIndex++;
+                    index += 2;
+                    cursor = index;
+                    blockStart = -1;
+                    contentStart = -1;
+                    continue;
+                }
+
+                index += 2;
+                continue;
+            }
         }
 
         index++;

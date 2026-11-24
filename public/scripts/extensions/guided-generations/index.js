@@ -49,7 +49,7 @@ const defaultSettings = {
 
 let qrObserver;
 let qrPollTimer;
-let flushGuidePollTimer;
+let flushGuideUpdatesStarted = false;
 
 function isLegacySystemPromptPreset(value) {
     return typeof value === 'string' && legacySystemPromptPresetNames.has(value.trim());
@@ -319,7 +319,7 @@ function createActionButton(id, title, iconClass, actionFunc) {
     button.setAttribute('aria-label', title);
     button.addEventListener('click', event => {
         event.preventDefault();
-        actionFunc();
+        Promise.resolve(actionFunc()).finally(updateFlushGuideButton);
     });
     return button;
 }
@@ -448,7 +448,7 @@ function watchActionButtonFit(container) {
     fitWatching = true;
     new ResizeObserver(scheduleFit).observe(container);
     new MutationObserver(scheduleFit).observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-    new MutationObserver(scheduleFit).observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-mobile-ui-mode', 'data-sb-mobile-tray-open', 'data-sb-compact-mode', 'style'] });
+    new MutationObserver(scheduleFit).observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-mobile-ui-mode', 'data-sb-mobile-tray-open', 'data-sb-compact-mode'] });
 }
 
 function updateFlushGuideButton() {
@@ -495,11 +495,43 @@ function createFlushGuidesButton() {
 }
 
 function startFlushGuideButtonUpdates() {
-    if (flushGuidePollTimer) {
+    if (flushGuideUpdatesStarted) {
         return;
     }
 
-    flushGuidePollTimer = window.setInterval(updateFlushGuideButton, 500);
+    flushGuideUpdatesStarted = true;
+    const refresh = () => updateFlushGuideButton();
+    const events = [
+        event_types?.CHAT_CHANGED,
+        event_types?.GENERATION_STARTED,
+        event_types?.GENERATION_AFTER_COMMANDS,
+        event_types?.GENERATION_ENDED,
+        event_types?.GENERATION_STOPPED,
+        event_types?.MESSAGE_SENT,
+        event_types?.MESSAGE_RECEIVED,
+        event_types?.MESSAGE_SWIPED,
+        event_types?.MESSAGE_EDITED,
+        event_types?.MESSAGE_UPDATED,
+        event_types?.MESSAGE_DELETED,
+        event_types?.CHARACTER_MESSAGE_RENDERED,
+        event_types?.USER_MESSAGE_RENDERED,
+        event_types?.CHAT_COMPLETION_PROMPT_READY,
+        event_types?.GENERATE_AFTER_COMBINE_PROMPTS,
+    ];
+    for (const eventName of events) {
+        if (eventName && typeof eventSource?.on === 'function') {
+            eventSource.on(eventName, refresh);
+        }
+    }
+    if (typeof document.addEventListener === 'function') {
+        document.addEventListener('sb:guided-generations-guides-changed', refresh);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) refresh();
+        });
+    }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('focus', refresh);
+    }
 }
 
 function ensureButtonContainer() {
@@ -584,11 +616,24 @@ function integrateQrBar() {
     return true;
 }
 
+function stopQrIntegrationWatchers() {
+    if (qrPollTimer) {
+        window.clearInterval(qrPollTimer);
+        qrPollTimer = null;
+    }
+    qrObserver?.disconnect();
+    qrObserver = null;
+}
+
 function startQrIntegration() {
+    if (integrateQrBar()) {
+        stopQrIntegrationWatchers();
+        return;
+    }
+
     qrPollTimer = window.setInterval(() => {
         if (integrateQrBar()) {
-            window.clearInterval(qrPollTimer);
-            qrPollTimer = null;
+            stopQrIntegrationWatchers();
         }
     }, 1000);
 
@@ -600,10 +645,15 @@ function startQrIntegration() {
     }, 30000);
 
     qrObserver?.disconnect();
-    qrObserver = new MutationObserver(() => {
-        integrateQrBar();
-    });
-    qrObserver.observe(document.body, { childList: true, subtree: true });
+    const sendForm = document.getElementById('send_form');
+    if (sendForm && typeof MutationObserver === 'function') {
+        qrObserver = new MutationObserver(() => {
+            if (integrateQrBar()) {
+                stopQrIntegrationWatchers();
+            }
+        });
+        qrObserver.observe(sendForm, { childList: true, subtree: false });
+    }
 }
 
 export async function init() {

@@ -1582,18 +1582,19 @@ let galleryRepository = null;
 let galleryInitializationPromise = Promise.resolve();
 let accountStorageScope = null;
 let promptHistory = [];
-let charSettings = safeParse("qig_char_settings", {});
-let connectionProfiles = safeParse("qig_profiles", {});
-let charRefImages = safeParse("qig_char_ref_images", {});
-let generationPresets = safeParse("qig_gen_presets", []);
-let comfyWorkflows = safeParse("qig_comfy_workflows", []);
-let configurations = safeParse("qig_configurations", []);
-let contextualFilters = safeParse("qig_contextual_filters", []);
-let filterPools = safeParse("qig_filter_pools", []);
-let activeFilterPoolIdsGlobal = safeParse("qig_active_pool_ids_global", []);
-let activeFilterPoolIdsByCard = safeParse("qig_active_pool_ids_by_card", {});
-let activeFilterPoolIdsByChar = safeParse("qig_active_pool_ids_by_char", {});
-let contextMediaLibrary;
+let localStoresHydrated = false;
+let charSettings = {};
+let connectionProfiles = {};
+let charRefImages = {};
+let generationPresets = [];
+let comfyWorkflows = [];
+let configurations = [];
+let contextualFilters = [];
+let filterPools = [];
+let activeFilterPoolIdsGlobal = [];
+let activeFilterPoolIdsByCard = {};
+let activeFilterPoolIdsByChar = {};
+let contextMediaLibrary = null;
 let contextMediaQuarantined = false;
 let contextMediaTestController = null;
 function quarantineContextMediaData(reason) {
@@ -1622,12 +1623,27 @@ function quarantineContextMediaData(reason) {
         console.warn(`[Quick Image Gen] Failed to quarantine Context Media data: ${quarantineError.message}`);
     }
 }
-try {
-    contextMediaLibrary = normalizeContextMediaLibrary(safeParse(CONTEXT_MEDIA_STORE_KEY, {}));
-} catch (error) {
-    console.warn(`[Quick Image Gen] Quarantining unsupported Context Media storage: ${error.message}`);
-    quarantineContextMediaData(error);
-    contextMediaLibrary = normalizeContextMediaLibrary({});
+function ensureLocalStoresHydrated() {
+    if (localStoresHydrated) return;
+    localStoresHydrated = true;
+    charSettings = safeParse("qig_char_settings", {});
+    connectionProfiles = safeParse("qig_profiles", {});
+    charRefImages = safeParse("qig_char_ref_images", {});
+    generationPresets = safeParse("qig_gen_presets", []);
+    comfyWorkflows = safeParse("qig_comfy_workflows", []);
+    configurations = safeParse("qig_configurations", []);
+    contextualFilters = safeParse("qig_contextual_filters", []);
+    filterPools = safeParse("qig_filter_pools", []);
+    activeFilterPoolIdsGlobal = safeParse("qig_active_pool_ids_global", []);
+    activeFilterPoolIdsByCard = safeParse("qig_active_pool_ids_by_card", {});
+    activeFilterPoolIdsByChar = safeParse("qig_active_pool_ids_by_char", {});
+    try {
+        contextMediaLibrary = normalizeContextMediaLibrary(safeParse(CONTEXT_MEDIA_STORE_KEY, {}));
+    } catch (error) {
+        console.warn(`[Quick Image Gen] Quarantining unsupported Context Media storage: ${error.message}`);
+        quarantineContextMediaData(error);
+        contextMediaLibrary = normalizeContextMediaLibrary({});
+    }
 }
 let isGenerating = false;
 const generationRunManager = new GenerationRunManager();
@@ -1685,6 +1701,9 @@ let qigMessageActionObserver = null;
 let qigMessageActionObserverRetryTimer = null;
 let qigMessageActionRefreshQueued = false;
 let qigMessageActionRefreshCancel = null;
+let qigMessageActionAddedQueued = false;
+let qigMessageActionAddedCancel = null;
+const qigPendingAddedMessageNodes = new Set();
 let qigMessageActionClicksBound = false;
 let qigSlashCommandsRegistered = false;
 const PALETTE_GENERATE_LOCK_MS = 350;
@@ -4745,6 +4764,7 @@ async function loadSettings() {
     }
     if (synchronizedFromServer > 0) log(`Synchronized ${synchronizedFromServer} setting store(s) from SillyTavern`);
     if (serverStoresSeeded > 0) log(`Seeded ${serverStoresSeeded} setting store(s) into SillyTavern`);
+    localStoresHydrated = true;
     let contextMediaSupported = false;
     try {
         contextMediaLibrary = normalizeContextMediaLibrary(contextMediaLibrary);
@@ -5959,6 +5979,7 @@ function shouldReviewPrompt(settings) {
 }
 
 function getGenerationSettingsForRun(context = null) {
+    ensureLocalStoresHydrated();
     const baseSettings = getSettings();
     const transientValues = transientGenerationSettingsState.current?.value;
     const merged = transientValues && typeof transientValues === "object"
@@ -14111,6 +14132,7 @@ async function executeExternalImageGeneration(prompt, negative, settings, contex
 }
 
 function getCapabilitySettingsSnapshot({ avatar = "", character = null, characterName = "" } = {}) {
+    ensureLocalStoresHydrated();
     const context = avatar || character || characterName
         ? createScopedCharacterGenerationContext({ avatar, character, characterName })
         : null;
@@ -21295,6 +21317,37 @@ function scheduleRefreshMessageGenerateActions() {
     }
 }
 
+function flushPendingAddedMessageGenerateActions() {
+    qigMessageActionAddedCancel = null;
+    qigMessageActionAddedQueued = false;
+    if (qigPendingAddedMessageNodes.size === 0) return;
+    const nodes = [...qigPendingAddedMessageNodes];
+    qigPendingAddedMessageNodes.clear();
+    const ctx = getContext?.();
+    for (const node of nodes) {
+        if (!node.isConnected) continue;
+        if (node.matches(".mes[mesid]")) {
+            ensureMessageGenerateAction(node, ctx);
+        } else if (node.firstElementChild) {
+            for (const messageElement of node.querySelectorAll(".mes[mesid]")) {
+                ensureMessageGenerateAction(messageElement, ctx);
+            }
+        }
+    }
+}
+
+function scheduleAddedMessageGenerateActions() {
+    if (qigMessageActionAddedQueued) return;
+    qigMessageActionAddedQueued = true;
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        const frameId = window.requestAnimationFrame(flushPendingAddedMessageGenerateActions);
+        qigMessageActionAddedCancel = () => window.cancelAnimationFrame(frameId);
+    } else {
+        const timeoutId = setTimeout(flushPendingAddedMessageGenerateActions, 0);
+        qigMessageActionAddedCancel = () => clearTimeout(timeoutId);
+    }
+}
+
 function initMessageGenerateActionObserver() {
     if (qigMessageActionObserverRetryTimer !== null) {
         clearTimeout(qigMessageActionObserverRetryTimer);
@@ -21313,11 +21366,21 @@ function initMessageGenerateActionObserver() {
         qigMessageActionObserver.disconnect();
     }
     qigMessageActionObserver = new MutationObserver((mutations) => {
-        if (mutations.some(mutation => mutation.type === "childList" && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0))) {
-            scheduleRefreshMessageGenerateActions();
+        let hasAddedElements = false;
+        for (const mutation of mutations) {
+            if (mutation.type !== "childList" || mutation.addedNodes.length === 0) continue;
+            for (const node of mutation.addedNodes) {
+                if (node instanceof Element) {
+                    qigPendingAddedMessageNodes.add(node);
+                    hasAddedElements = true;
+                }
+            }
+        }
+        if (hasAddedElements) {
+            scheduleAddedMessageGenerateActions();
         }
     });
-    qigMessageActionObserver.observe(chatRoot, { childList: true, subtree: true });
+    qigMessageActionObserver.observe(chatRoot, { childList: true, subtree: false });
     scheduleRefreshMessageGenerateActions();
 }
 
@@ -21331,6 +21394,10 @@ function cleanupMessageGenerateActionBindings() {
     qigMessageActionRefreshCancel?.();
     qigMessageActionRefreshCancel = null;
     qigMessageActionRefreshQueued = false;
+    qigMessageActionAddedCancel?.();
+    qigMessageActionAddedCancel = null;
+    qigMessageActionAddedQueued = false;
+    qigPendingAddedMessageNodes.clear();
     if (qigMessageActionClicksBound) {
         $(document).off("click.qigMessageGenerate", `.${QIG_MESSAGE_ACTION_CLASS}`);
         qigMessageActionClicksBound = false;

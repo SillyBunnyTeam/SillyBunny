@@ -20,6 +20,25 @@ const SHOWDOWN_BLOCK_TAGS = [
 const BLOCK_OPEN_TAG_RE = new RegExp(`<(${SHOWDOWN_BLOCK_TAGS.join('|')})\\b[^>]*>`, 'iy');
 // Showdown's githubCodeBlocks pattern. Showdown applies it before it looks for HTML blocks.
 const SHOWDOWN_FENCE_SOURCE = '(?:^|\\n) {0,3}(```+|~~~+) *([^\\s`~]*)\\n([\\s\\S]*?)\\n {0,3}\\1';
+const SHOWDOWN_FENCE_RANGES_RE = new RegExp(SHOWDOWN_FENCE_SOURCE, 'g');
+const HTML_BLOCK_FENCE_RE = new RegExp(SHOWDOWN_FENCE_SOURCE, 'g');
+const HTML_COMMENT_MARKER_RE = /\n {0,3}<!--|-->/g;
+/** @type {Map<string, RegExp>} */
+const blockTagMarkerRegexCache = new Map();
+
+/**
+ * Returns a cached global marker regex for matching opening and closing tags of `tag`.
+ * @param {string} tag Lowercase HTML tag name
+ * @returns {RegExp}
+ */
+function getBlockTagMarkerRegex(tag) {
+    let tagRe = blockTagMarkerRegexCache.get(tag);
+    if (!tagRe) {
+        tagRe = new RegExp(`<${tag}\\b[^>]*>|</${tag}>`, 'gi');
+        blockTagMarkerRegexCache.set(tag, tagRe);
+    }
+    return tagRe;
+}
 const PRE_CODE_START_RE = /^<pre\b[^>]*>\s*<code\b[^>]*>/;
 const HR_LINE_RE = /^<hr\b[^<>]*?\/?>[ \t]*$/;
 const MARKDOWN_ATTRIBUTE_RE = /\bmarkdown\b/;
@@ -52,9 +71,9 @@ function getShowdownFenceRanges(state) {
     let ranges = fenceRangesByState.get(state);
     if (!ranges) {
         ranges = [];
-        const fenceRe = new RegExp(SHOWDOWN_FENCE_SOURCE, 'g');
-        for (let match = fenceRe.exec(state.src); match; match = fenceRe.exec(state.src)) {
-            ranges.push([match[0].startsWith('\n') ? match.index + 1 : match.index, fenceRe.lastIndex]);
+        SHOWDOWN_FENCE_RANGES_RE.lastIndex = 0;
+        for (let match = SHOWDOWN_FENCE_RANGES_RE.exec(state.src); match; match = SHOWDOWN_FENCE_RANGES_RE.exec(state.src)) {
+            ranges.push([match[0].startsWith('\n') ? match.index + 1 : match.index, SHOWDOWN_FENCE_RANGES_RE.lastIndex]);
         }
         fenceRangesByState.set(state, ranges);
     }
@@ -115,7 +134,7 @@ function matchShowdownHtmlBlock(state, startLine, endLine) {
 
     // As in Showdown, a comment nests only where `<!--` starts a line.
     if (src.startsWith('<!--', start)) {
-        const end = findMatchingEnd(src, /\n {0,3}<!--|-->/g, marker => marker === '-->', start + 4, limit, getShowdownFenceRanges(state));
+        const end = findMatchingEnd(src, HTML_COMMENT_MARKER_RE, marker => marker === '-->', start + 4, limit, getShowdownFenceRanges(state));
         return end < 0 ? null : { end };
     }
 
@@ -131,7 +150,7 @@ function matchShowdownHtmlBlock(state, startLine, endLine) {
     }
 
     const tag = openTag[1].toLowerCase();
-    const tagRe = new RegExp(`<${tag}\\b[^>]*>|</${tag}>`, 'gi');
+    const tagRe = getBlockTagMarkerRegex(tag);
     const end = findMatchingEnd(src, tagRe, marker => marker[1] === '/', BLOCK_OPEN_TAG_RE.lastIndex, limit, getShowdownFenceRanges(state));
     return end < 0 ? null : { end, tag, markdown: MARKDOWN_ATTRIBUTE_RE.test(openTag[0]) };
 }
@@ -161,7 +180,7 @@ function pushHtmlBlockContent(state, content, map) {
         return;
     }
 
-    const fenceRe = new RegExp(SHOWDOWN_FENCE_SOURCE, 'g');
+    HTML_BLOCK_FENCE_RE.lastIndex = 0;
     let htmlStart = 0;
     const pushHtmlUntil = (end) => {
         const html = content.slice(htmlStart, end);
@@ -169,14 +188,14 @@ function pushHtmlBlockContent(state, content, map) {
             pushHtmlToken(state, html, map);
         }
     };
-    for (let match = fenceRe.exec(content); match; match = fenceRe.exec(content)) {
+    for (let match = HTML_BLOCK_FENCE_RE.exec(content); match; match = HTML_BLOCK_FENCE_RE.exec(content)) {
         pushHtmlUntil(match.index);
         const token = state.push('fence', 'code', 0);
         token.map = map;
         token.markup = match[1];
         token.info = match[2];
         token.content = `${match[3].replace(/^\n+|\n+$/g, '')}\n`;
-        htmlStart = content[fenceRe.lastIndex] === '\n' ? fenceRe.lastIndex + 1 : fenceRe.lastIndex;
+        htmlStart = content[HTML_BLOCK_FENCE_RE.lastIndex] === '\n' ? HTML_BLOCK_FENCE_RE.lastIndex + 1 : HTML_BLOCK_FENCE_RE.lastIndex;
     }
     pushHtmlUntil(content.length);
 }

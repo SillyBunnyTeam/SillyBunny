@@ -321,7 +321,7 @@ describe('mobile streaming helpers', () => {
         })).toBe('auto');
     });
 
-    test('skips repeated hidden live reasoning renders on reduced DOM platforms', () => {
+    test('skips closed live reasoning renders on all platforms while thinking', () => {
         expect(shouldRenderLiveReasoningContent({
             isReducedDomWork: true,
             state: 'thinking',
@@ -330,13 +330,31 @@ describe('mobile streaming helpers', () => {
             lastRenderAt: 1000,
             now: 2000,
         })).toBe(false);
-    });
 
-    test('renders the first and finished reasoning bodies', () => {
+        expect(shouldRenderLiveReasoningContent({
+            isReducedDomWork: false,
+            state: 'thinking',
+            detailsOpen: false,
+            hasRenderedContent: false,
+            lastRenderAt: 0,
+            now: 1000,
+        })).toBe(false);
+
         expect(shouldRenderLiveReasoningContent({
             isReducedDomWork: true,
             state: 'thinking',
             detailsOpen: false,
+            hasRenderedContent: false,
+            lastRenderAt: 0,
+            now: 1000,
+        })).toBe(false);
+    });
+
+    test('renders open first ticks and finished reasoning bodies', () => {
+        expect(shouldRenderLiveReasoningContent({
+            isReducedDomWork: true,
+            state: 'thinking',
+            detailsOpen: true,
             hasRenderedContent: false,
             lastRenderAt: 0,
             now: 1000,
