@@ -504,7 +504,7 @@ export async function checkProactiveMessaging(avatar, settings, now, { chatId = 
 }
 
 export function getMemberReplyBusyKey(avatar, memberAvatar, scope) {
-    return `${avatar || 'thread'}:${memberAvatar || 'partner'}:${scope || 'reply'}`;
+    return `${avatar || 'conversation'}:${memberAvatar || 'member'}:${scope || 'reply'}`;
 }
 
 export function getConversationMemberChimeCandidates(avatar, selectedAvatars, { chatId = '', max = PARALLEL_CHIME_MAX_MEMBERS, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), settings = getSettings(avatar, { groupId, personaId }) } = {}) {

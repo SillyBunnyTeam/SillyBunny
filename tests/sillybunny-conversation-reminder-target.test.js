@@ -30,11 +30,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getConversationGroupIdForAvatar: () => '',
     getConversationKey: () => 'conv_1_direct',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-a.png' : value || ''),
-    getConversationStore: () => ({ reminders: [reminder] }),
-    getConversationRecord: () => ({
-        activeBranchId: 'main',
-        branches: { main: { id: 'main' } },
-    }),
+    getConversationRecord: () => conversationView,
     getCurrentCharAvatar: () => 'char.png',
     getCurrentCharName: () => 'Aster',
     getRoleplayCurrentCharacter: () => ({ avatar: 'char.png' }),

@@ -12,8 +12,8 @@ const chat = {
     })),
 };
 const conversationRecord = {
-    activeBranchId: 'branch-a',
-    branches: { 'branch-a': chat },
+    activeChatId: 'branch-a',
+    chats: [chat],
     memoryMessageCount: 100,
 };
 const composeConversationPersonaDescription = jest.fn(() => 'captured persona appendix');

@@ -440,15 +440,15 @@ function openConversationChatMenu(trigger) {
     }
 
     const activeChatId = getConversationRecord(avatar, { create: false, groupId })?.activeChatId || DEFAULT_CHAT_ID;
-    const branches = getConversationChats(avatar, { groupId });
-    const activeChat = branches.find(chat => chat.id === activeChatId);
+    const chats = getConversationChats(avatar, { groupId });
+    const activeChat = chats.find(chat => chat.id === activeChatId);
     const identity = { avatar, groupId };
     openActionMenu({
         trigger,
         title: 'Branches',
         sections: [
             {
-                items: branches.map(chat => ({
+                items: chats.map(chat => ({
                     label: chat.name || 'Conversation',
                     checked: chat.id === activeChatId,
                     detail: chat.unread > 0 ? String(chat.unread) : '',

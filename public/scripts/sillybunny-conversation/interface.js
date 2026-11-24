@@ -65,7 +65,7 @@ function buildConversationListFingerprint(conversations) {
                 return `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, participantSettings)}`;
             })
             .join(',');
-        const branches = buildChatListFingerprint(characterStore, activeChatId);
+        const chats = buildChatListFingerprint(characterStore, activeChatId);
 
         parts.push([
             avatar,
@@ -82,7 +82,7 @@ function buildConversationListFingerprint(conversations) {
             isConversationActive(avatar, groupId, { personaId }) ? '1' : '0',
             activeChatId,
             participants,
-            branches,
+            chats,
         ].join('\u001f'));
     }
 

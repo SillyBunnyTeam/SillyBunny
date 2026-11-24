@@ -21,7 +21,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getConversationPersonaId: () => '',
     getConversationStore: () => ({ characters: {} }),
     getConversationKey: () => '',
-    getConversationRecord: () => ({ branches: {} }),
+    getConversationRecord: () => ({ chats: [] }),
     getCurrentCharAvatar: () => '',
     isConversationKeyForPersona: () => true,
     parseConversationKey: () => ({}),
