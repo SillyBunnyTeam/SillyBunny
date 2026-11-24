@@ -6,6 +6,7 @@
  * is set at once, so `:not([hidden])` never matches a sheet that is on its way out.
  */
 
+import { alternatingMessages, seedConversation } from '../conversation-seed.js';
 import { FIXTURES } from './fixture-data.js';
 import { openPersonaEditorEntry } from './panel-steps.js';
 import { isBottomBarChipRow, selectBackend, settle } from './steps.js';
@@ -176,7 +177,7 @@ export async function openAuditConversation(page) {
     if (await page.locator('#sheld[data-sb-conversation-mode="on"] #sb_conversation_timeline .sb-conversation-message').count()) {
         return;
     }
-    await page.evaluate(async ({ avatar, messages }) => {
+    await page.evaluate(async (avatar) => {
         const context = window.SillyTavern.getContext();
         if (!context.characters.length) {
             await context.getCharacters();
@@ -187,17 +188,14 @@ export async function openAuditConversation(page) {
         }
         await context.selectCharacterById(index, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
-        const day = Date.UTC(2026, 0, 1, 12, 0, 0);
-        saveConversationMessages(avatar, messages.map((text, number) => ({
-            id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
-            mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
-        })));
+    }, FIXTURES.character.avatar);
+    await seedConversation(page, { avatar: FIXTURES.character.avatar, chats: [{ messages: alternatingMessages(FIXTURES.chat.messages) }] });
+    await page.evaluate(async (avatar) => {
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
+        if (!await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
             throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
         }
-    }, { avatar: FIXTURES.character.avatar, messages: FIXTURES.chat.messages });
+    }, FIXTURES.character.avatar);
     await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
     await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
     await settle(page);

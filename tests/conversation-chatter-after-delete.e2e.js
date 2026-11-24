@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { resetConversations, uniquePersona } from './helpers/conversation-seed.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { MockServer } from './util/mock-server.js';
 
@@ -66,6 +67,15 @@ async function advance(page, totalMs, stepMs = 30_000) {
  */
 async function openApp(page) {
     await protectMaintainerServer(page);
+    // The server's user is shared with the specs that run beside this one, so this page has a persona of its own.
+    const persona = uniquePersona();
+    await page.route('**/api/settings/get', async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        const settings = JSON.parse(data.settings);
+        settings.user_avatar = persona;
+        await route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
+    });
     await page.clock.install({ time: new Date() });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('preloader') === null, null, { timeout: 60_000 });
@@ -85,11 +95,11 @@ async function openApp(page) {
         if (!context.characters.length) {
             await context.getCharacters();
         }
-        // A data root that other runs have used can hold conversations; the test starts from none.
-        context.extensionSettings.sillybunny_conversation = {};
         return context.characters.filter(character => character.avatar).slice(0, 3).map(character => character.name);
     }, `http://127.0.0.1:${model.port}`);
     expect(names, 'the library has three characters for a group').toHaveLength(3);
+    // A data root that other runs have used can hold conversations; the test starts from none.
+    await resetConversations(page);
     return names;
 }
 
@@ -292,7 +302,7 @@ test.fail('a reply that was being generated when the history was deleted is drop
     }
 });
 
-test.fail('a reminder set before the history was deleted does not fire into the emptied chat', async ({ page }) => {
+test('a reminder set before the history was deleted does not fire into the emptied chat', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');

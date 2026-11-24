@@ -152,10 +152,10 @@ const currentAvatar = page => page.evaluate(async () => {
 });
 const reloadCharacters = page => page.evaluate(async () => (await import('/script.js')).getCharacters());
 
-/** Makes the thread of a character, which holds its first branch, so a test can count the branches that a click adds. */
+/** Makes the direct conversation of a character, which holds its first chat, so a test can count the chats that a click adds. */
 const startConversation = (page, avatar) => page.evaluate(async (target) => {
-    const { getConversationRecord } = await import('/scripts/sillybunny-conversation/context.js');
-    getConversationRecord(target, { create: true });
+    const { ensureDirectConversation } = await import('/scripts/sillybunny-conversation/context.js');
+    await ensureDirectConversation(target);
 }, avatar);
 
 const conversationOf = (page, avatar) => page.evaluate(async (target) => {
@@ -166,7 +166,7 @@ const conversationOf = (page, avatar) => page.evaluate(async (target) => {
         open: Boolean(conversationState.conversationWorkspaceOpen),
         selected: conversationState.conversationSelectedAvatar,
         branches: getConversationChats(target).length,
-        active: getConversationRecord(target, { create: false })?.activeBranchId ?? null,
+        active: getConversationRecord(target)?.activeChatId ?? null,
         enabled: Boolean(getSettings(target).enabled),
     };
 }, avatar);

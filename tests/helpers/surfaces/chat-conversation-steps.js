@@ -8,6 +8,7 @@
  * opened again, so `openConversation()` puts the workspace back to its resting page whatever the last state opened.
  */
 
+import { seedConversation } from '../conversation-seed.js';
 import { FIXTURES } from './fixture-data.js';
 import { AVATAR_IMAGE_URL, sentences } from './need-kit.js';
 import { closeOverlays, dismissDialogs } from './menu-steps.js';
@@ -140,7 +141,7 @@ export async function openConversation(page) {
             created_at: START + entry.at * MINUTE,
             extra: entry.extra ?? {},
         }));
-        await page.evaluate(async ({ avatar, messages }) => {
+        await page.evaluate(async (avatar) => {
             const context = window.SillyTavern.getContext();
             if (!context.characters.length) {
                 await context.getCharacters();
@@ -151,13 +152,14 @@ export async function openConversation(page) {
             }
             await context.selectCharacterById(index, { switchMenu: false });
             document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-            const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
-            saveConversationMessages(avatar, messages);
+        }, FIXTURES.character.avatar);
+        await seedConversation(page, { avatar: FIXTURES.character.avatar, chats: [{ messages }] });
+        await page.evaluate(async (avatar) => {
             const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-            if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
+            if (!await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
                 throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
             }
-        }, { avatar: FIXTURES.character.avatar, messages });
+        }, FIXTURES.character.avatar);
         await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
         await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
         await dismissDialogs(page);

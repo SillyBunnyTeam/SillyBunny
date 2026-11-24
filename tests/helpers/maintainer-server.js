@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { appendFileSync } from 'node:fs';
 import { test } from '@playwright/test';
+import { isolateConversations } from './conversation-isolation.js';
 import { fetchBodyOrSkip } from './route-fetch.js';
 import { keepWelcomeClosed } from './welcome-dialog.js';
 
@@ -59,6 +60,8 @@ export async function protectMaintainerServer(page) {
         const payload = readPayload(route.request());
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
+    // Conversations are kept on the server, which other specs share, so this page gets conversations of its own.
+    await isolateConversations(page);
     await page.route(/\/api\/chats\/(?:group\/)?get$/, async route => {
         const request = route.request();
         const payload = readPayload(request);

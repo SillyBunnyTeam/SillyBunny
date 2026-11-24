@@ -12,6 +12,7 @@
  */
 
 import { showSettingsSidebar } from '../settings-phone-pane.js';
+import { alternatingMessages, seedConversation } from '../conversation-seed.js';
 import { FIXTURES } from './fixture-data.js';
 import { openAuditChat as openAuditChatAfterFocus } from './dialog-steps.js';
 import { closeSidePanelById, MOBILE_LAYOUT_VIEWPORTS, openAuditChat } from './panel-steps.js';
@@ -1239,18 +1240,14 @@ async function openConversation(page, { thread = false, messages = null } = {}) 
     if (thread) {
         await openAuditChat(page);
     }
-    await page.evaluate(async ({ avatar, messages }) => {
-        if (messages) {
-            const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
-            const day = Date.UTC(2026, 0, 1, 12, 0, 0);
-            saveConversationMessages(avatar, messages.map((text, number) => ({
-                id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
-                mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
-            })));
-        }
+    const avatar = thread ? FIXTURES.character.avatar : null;
+    if (messages && avatar) {
+        await seedConversation(page, { avatar, chats: [{ messages: alternatingMessages(messages) }] });
+    }
+    await page.evaluate(async (avatar) => {
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: Boolean(avatar) });
-    }, { avatar: thread ? FIXTURES.character.avatar : null, messages });
+        await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: Boolean(avatar) });
+    }, avatar);
     await page.locator(CONVERSATION_ON).waitFor({ state: 'visible' });
 }
 

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resetConversations, seedConversation as seedStoredConversation } from '../helpers/conversation-seed.js';
 import { TOAST_CONTAINERS } from '../helpers/toasts.js';
 
 test.beforeEach(async ({ page, baseURL }) => {
@@ -29,34 +30,43 @@ async function seedConversation(page, { messageOverrides = [] } = {}) {
     await page.goto('/');
     await page.waitForFunction(() => document.getElementById('preloader') === null, null, { timeout: 60000 });
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
-    await page.evaluate(async (messageOverrides) => {
+    const character = await page.evaluate(async () => {
         const context = window.SillyTavern.getContext();
         if (!context.characters.length) {
             await context.getCharacters();
         }
-        const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
-        if (!character?.avatar) {
+        const entry = context.characters.find(item => /Seraphina/.test(item?.name ?? ''));
+        if (!entry?.avatar) {
             throw new Error('No bundled Conversation character found.');
         }
-        const id = context.characters.findIndex(entry => entry.avatar === character.avatar);
+        const id = context.characters.findIndex(item => item.avatar === entry.avatar);
         await context.selectCharacterById(id, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+        return { avatar: entry.avatar, name: entry.name };
+    });
 
-        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
-        const day = Date.UTC(2026, 8, 30, 12, 0, 0);
-        const nextDay = Date.UTC(2026, 9, 1, 9, 0, 0);
-        saveConversationMessages(character.avatar, [
-            { id: 'seed-0', role: 'character', name: character.name, mes: 'Good morning. The glade is quiet.', send_date: new Date(day).toISOString(), created_at: day, extra: {} },
-            { id: 'seed-1', role: 'user', name: 'Tester', mes: 'Hi. I wanted to check in.', send_date: new Date(day + 60_000).toISOString(), created_at: day + 60_000, extra: {} },
-            { id: 'seed-2', role: 'character', name: character.name, mes: 'Still here after a longer pause.', send_date: new Date(day + 21 * 60_000).toISOString(), created_at: day + 21 * 60_000, extra: {} },
-            { id: 'seed-3', role: 'character', name: character.name, mes: 'A new day in the forest.', send_date: new Date(nextDay).toISOString(), created_at: nextDay, extra: {} },
-        ].map((message, index) => ({ ...message, ...messageOverrides[index] })));
+    // The server's user is shared by the tests of a worker, so each test starts from no conversations.
+    await resetConversations(page);
+    const day = Date.UTC(2026, 8, 30, 12, 0, 0);
+    const nextDay = Date.UTC(2026, 9, 1, 9, 0, 0);
+    await seedStoredConversation(page, {
+        avatar: character.avatar,
+        chats: [{
+            messages: [
+                { id: 'seed-0', role: 'character', name: character.name, mes: 'Good morning. The glade is quiet.', created_at: day },
+                { id: 'seed-1', role: 'user', name: 'Tester', mes: 'Hi. I wanted to check in.', created_at: day + 60_000 },
+                { id: 'seed-2', role: 'character', name: character.name, mes: 'Still here after a longer pause.', created_at: day + 21 * 60_000 },
+                { id: 'seed-3', role: 'character', name: character.name, mes: 'A new day in the forest.', created_at: nextDay },
+            ].map((message, index) => ({ ...message, ...messageOverrides[index] })),
+        }],
+    });
 
+    await page.evaluate(async (avatar) => {
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        if (!openConversationWorkspaceForAvatar(character.avatar, { showToast: false, enable: true })) {
-            throw new Error(`Could not open Conversation workspace for ${character.avatar}`);
+        if (!await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
+            throw new Error(`Could not open Conversation workspace for ${avatar}`);
         }
-    }, messageOverrides);
+    }, character.avatar);
     await expect(page.locator('#sheld[data-sb-conversation-mode="on"]')).toBeVisible();
     await expect(page.locator('#sb_conversation_timeline .sb-conversation-message')).toHaveCount(4, { timeout: 15000 });
 }

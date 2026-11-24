@@ -7,6 +7,7 @@
  */
 
 import { showSettingsSidebar } from '../settings-phone-pane.js';
+import { seedConversation } from '../conversation-seed.js';
 import { FIXTURES } from './fixture-data.js';
 import {
     AGENTS, LONG_TITLE, discardEdits, enterAgentSelection, enterCharacterSelection, enterWorldInfoSelection, gone, leaveSelection,
@@ -155,16 +156,16 @@ async function openConversation(page, { group = false } = {}) {
         id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? FIXTURES.character.name : 'Audit User',
         mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
     }));
-    // The other members of the group answer as partners of the first one.
+    // The other members of the group answer as members of the conversation, next to the first one.
     const names = new Map([[FIXTURES.character.avatar, FIXTURES.character.name], ...FIXTURES['characters-many'].characters.map(entry => [entry.avatar, entry.name])]);
     const grouped = FIXTURES['group-chat'].turns.map((turn, number) => ({
-        id: `audit-group-${number}`, role: !turn.speaker ? 'user' : turn.speaker === FIXTURES.character.avatar ? 'character' : 'partner',
+        id: `audit-group-${number}`, role: !turn.speaker ? 'user' : turn.speaker === FIXTURES.character.avatar ? 'character' : 'member',
         name: turn.speaker ? names.get(turn.speaker) : FIXTURES['group-chat'].userName, mes: turn.text,
         send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000,
-        extra: turn.speaker && turn.speaker !== FIXTURES.character.avatar ? { partner_avatar: turn.speaker, original_avatar: turn.speaker } : {},
+        extra: turn.speaker && turn.speaker !== FIXTURES.character.avatar ? { member_avatar: turn.speaker, original_avatar: turn.speaker } : {},
     }));
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('sb:close-conversation-workspace')));
-    await page.evaluate(async ({ avatar, messages, groupName }) => {
+    await page.evaluate(async (avatar) => {
         const context = window.SillyTavern.getContext();
         if (!context.characters.length) {
             await context.getCharacters();
@@ -175,24 +176,16 @@ async function openConversation(page, { group = false } = {}) {
         }
         await context.selectCharacterById(index, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        let groupId = null;
-        if (groupName) {
-            const groupChats = await import('/scripts/group-chats.js');
-            if (!groupChats.groups.length) {
-                await groupChats.getGroups();
-            }
-            groupId = groupChats.groups.find(candidate => candidate.name === groupName)?.id ?? null;
-            if (!groupId) {
-                throw new Error(`The audit group ${groupName} is not on the server.`);
-            }
-        }
-        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
-        saveConversationMessages(avatar, messages, { groupId });
+    }, FIXTURES.character.avatar);
+    // The audit group is a group conversation of the audit character and the other members of the group of the same name.
+    const members = group ? FIXTURES.group.members.filter(avatar => avatar !== FIXTURES.character.avatar) : [];
+    const { conversationId } = await seedConversation(page, { avatar: FIXTURES.character.avatar, members, name: group ? FIXTURES.group.name : '', chats: [{ messages: group ? grouped : solo }] });
+    await page.evaluate(async ({ avatar, groupId }) => {
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true, groupId })) {
+        if (!await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true, groupId })) {
             throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
         }
-    }, { avatar: FIXTURES.character.avatar, messages: group ? grouped : solo, groupName: group ? FIXTURES.group.name : null });
+    }, { avatar: FIXTURES.character.avatar, groupId: group ? conversationId : null });
     await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
     await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
 }

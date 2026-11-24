@@ -38,7 +38,7 @@ async function openConversationOverHome(page) {
         const context = window.SillyTavern.getContext();
         const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        if (!openConversationWorkspaceForAvatar(character.avatar, { showToast: false, enable: true })) {
+        if (!await openConversationWorkspaceForAvatar(character.avatar, { showToast: false, enable: true })) {
             throw new Error('Could not open the Conversation workspace.');
         }
     });

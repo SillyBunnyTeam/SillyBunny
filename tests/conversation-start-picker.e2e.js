@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resetConversations, uniquePersona } from './helpers/conversation-seed.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { waitForAppReady } from './helpers/app-ready.js';
@@ -13,6 +14,7 @@ async function boot(page, baseURL, { stylesheetDelay = 0 } = {}) {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
     let settingsVersion = Date.now();
+    const persona = uniquePersona();
     const readOnlyEndpoints = new Set([
         '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
         '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
@@ -34,8 +36,9 @@ async function boot(page, baseURL, { stylesheetDelay = 0 } = {}) {
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             applyWelcomeSettings(settings);
+            // This page sees only its own conversations, because the server's user is shared with the specs that run beside this one.
+            settings.user_avatar = persona;
             settings.power_user.auto_connect = false;
-            settings.extension_settings.sillybunny_conversation = {};
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
@@ -47,7 +50,8 @@ async function boot(page, baseURL, { stylesheetDelay = 0 } = {}) {
             await new Promise(resolve => setTimeout(resolve, stylesheetDelay));
             return route.continue();
         }
-        if (readOnlyEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) {
+        // The conversations are on the server of the test, which each test empties after the page has loaded.
+        if (readOnlyEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/') || url.pathname.startsWith('/api/sillybunny-conversation/')) {
             return route.continue();
         }
         if (url.pathname.startsWith('/api/backends/')) {
@@ -61,6 +65,7 @@ async function boot(page, baseURL, { stylesheetDelay = 0 } = {}) {
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page, { timeout: 60000 });
+    await resetConversations(page);
 }
 
 /** Opens the workspace on no thread, so that the rail's New button is the way in. */
