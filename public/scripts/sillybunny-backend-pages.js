@@ -925,6 +925,24 @@ function presentPromptCosts(body) {
 }
 
 /**
+ * Prompt Caching and Provider Server Config: adopt their rows and bind Prompt Caching's master switch so its
+ * dependent rows stay insensitive while caching is off.
+ * @param {HTMLElement} root
+ */
+function presentServerConfigGroups(root) {
+    const caching = root.querySelector('#sb-openai-prompt-caching');
+    const cachingBody = caching && bodyOf(caching);
+    if (caching instanceof HTMLElement && cachingBody instanceof HTMLElement) {
+        adoptRows(caching);
+        cachingBody.dataset.sbEnabledBy = '#sb-config-prompt-caching-enabled';
+    }
+    const providerConfig = root.querySelector('#sb-openai-provider-server-config');
+    if (providerConfig instanceof HTMLElement) {
+        adoptRows(providerConfig);
+    }
+}
+
+/**
  * Chat Completions groups.
  * @param {HTMLElement} root
  */
@@ -939,6 +957,7 @@ function presentChatCompletion(root) {
     presentNames(root);
     presentPrefill(root);
     presentRequestOptions(root);
+    presentServerConfigGroups(root);
 }
 
 /**

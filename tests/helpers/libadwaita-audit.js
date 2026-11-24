@@ -425,4 +425,5 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#sb-background-settings-controls', rule: 'row-edges', reason: 'The last row of the background controls keeps its bottom border because the controls after it are shown or hidden by script' },
     { selector: '#sb-interface-content', rule: 'row-edges', reason: 'The last visible switch row of one Interface category keeps its bottom border; rows after it are hidden by script, so :last-child cannot remove the separator' },
     { selector: '#sb-openai-request', rule: 'row-edges', reason: 'Backend source rules hide sibling rows with inline display, so the first or last visible row keeps a separator that :first-child and :last-child cannot remove' },
+    { selector: '#sb-openai-provider-server-config', rule: 'row-edges', reason: 'Backend source rules hide sibling rows with inline display, so the first or last visible row keeps a separator that :first-child and :last-child cannot remove' },
 ]);

@@ -349,34 +349,79 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(page.locator('#speecht5_tts_speaker')).toHaveValue('fixture-speaker-two');
         });
 
-        test('OpenAI server config reload discards a draft only after the destructive Alert response', async ({ page }) => {
+        test('Prompt Caching and Provider Server Config confirm config.yaml writes through the shared Alert', async ({ page }) => {
+            const saves = [];
+            await page.route('**/api/server-admin/config/chat-completions/save', route => {
+                const payload = route.request().postDataJSON();
+                saves.push(payload);
+                return route.fulfill({
+                    json: {
+                        ok: true,
+                        restarting: Boolean(payload?.restart),
+                        lastModifiedMs: 2,
+                        settings: payload.settings,
+                        message: 'Chat completion server config saved.',
+                    },
+                });
+            });
             await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'prompting'));
             await page.evaluate(() => {
                 $('#main_api').val('openai').trigger('change');
-                $('#chat_completion_source').val('claude').trigger('change');
+                $('#chat_completion_source').val('openrouter').trigger('change');
             });
-            const setting = page.locator('#sb-config-claude-system-prompt-cache');
-            await expect(setting).toBeVisible();
-            const initialReads = chatCompletionConfigReads;
-            await setting.check();
-            const reload = page.locator('#sb-chat-completion-config-reload');
-            await reload.evaluate(element => element.scrollIntoView({ block: 'center' }));
-            await reload.click();
 
-            let alert = await expectDestructiveAlert(page, 'discard');
-            await expect(alert).toContainText('Discard your unsaved server config edits and reload from config.yaml?');
-            expect(chatCompletionConfigReads).toBe(initialReads);
+            const cachingGroup = page.locator('#sb-openai-prompt-caching');
+            const providerGroup = page.locator('#sb-openai-provider-server-config');
+            await expect(cachingGroup).toBeVisible();
+            await expect(providerGroup).toBeHidden();
+            expect(chatCompletionConfigReads).toBeGreaterThan(0);
+
+            const masterToggle = page.locator('#sb-config-prompt-caching-enabled');
+            const systemCacheToggle = page.locator('#sb-config-system-prompt-cache');
+            await expect(masterToggle).not.toBeChecked();
+            await expect(systemCacheToggle).toBeDisabled();
+
+            // Canceling the Alert reverts the master switch and keeps dependent rows insensitive.
+            await masterToggle.evaluate(element => element.scrollIntoView({ block: 'center' }));
+            await masterToggle.check();
+            let alert = await expectAlert(page);
+            await expect(alert).toContainText('Save Prompt Caching?');
+            await expect(alert.locator('[data-response="save"]')).toHaveClass(/is-suggested/);
             await alert.locator('[data-response="cancel"]').click();
             await expect(alert).toHaveCount(0);
-            expect(chatCompletionConfigReads).toBe(initialReads);
+            expect(saves).toHaveLength(0);
+            await expect(masterToggle).not.toBeChecked();
+            await expect(systemCacheToggle).toBeDisabled();
 
-            await setting.uncheck();
-            await setting.check();
-            await reload.evaluate(element => element.scrollIntoView({ block: 'center' }));
-            await reload.dispatchEvent('click');
-            alert = await expectDestructiveAlert(page, 'discard');
-            await alert.locator('[data-response="discard"]').click();
-            await expect.poll(() => chatCompletionConfigReads).toBe(initialReads + 1);
+            // Confirming Save writes both Claude and Gemini system prompt cache flags and enables dependent rows.
+            await masterToggle.check();
+            alert = await expectAlert(page);
+            await alert.locator('[data-response="save"]').click();
+            await expect(alert).toHaveCount(0);
+            await expect.poll(() => saves.length).toBe(1);
+            expect(saves[0].restart).toBe(false);
+            expect(saves[0].settings.claude.enableSystemPromptCache).toBe(true);
+            expect(saves[0].settings.gemini.enableSystemPromptCache).toBe(true);
+            await expect(masterToggle).toBeChecked();
+            await expect(systemCacheToggle).toBeEnabled();
+            await expect(systemCacheToggle).toBeChecked();
+
+            // Switching to Claude exposes Provider Server Config with Save & Restart suggested.
+            await page.evaluate(() => {
+                $('#chat_completion_source').val('claude').trigger('change');
+            });
+            await expect(providerGroup).toBeVisible();
+            const adaptiveThinking = page.locator('#sb-config-claude-adaptive-thinking');
+            await expect(adaptiveThinking).toBeVisible();
+            await expect(page.locator('#sb-config-gemini-api-version')).toBeHidden();
+            await adaptiveThinking.evaluate(element => element.scrollIntoView({ block: 'center' }));
+            await adaptiveThinking.uncheck();
+            alert = await expectAlert(page);
+            await expect(alert).toContainText('Save Provider Server Config?');
+            await expect(alert.locator('[data-response="save-restart"]')).toHaveClass(/is-suggested/);
+            await alert.locator('[data-response="cancel"]').click();
+            await expect(alert).toHaveCount(0);
+            await expect(adaptiveThinking).toBeChecked();
         });
     });
 }

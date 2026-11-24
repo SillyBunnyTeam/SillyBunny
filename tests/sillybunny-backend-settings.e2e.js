@@ -141,7 +141,7 @@ async function expectPromptingFlow(prompting, api) {
     await expect.poll(() => groupNames(prompting.locator('.sb-prompting-group'))).toEqual([
         'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
         'System Messages', 'Reply Prefill', 'Request Options', 'Enable function calling', 'Send inline media',
-        'Request model reasoning', 'Reasoning Template',
+        'Request model reasoning', 'Prompt Caching', 'Reasoning Template',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);

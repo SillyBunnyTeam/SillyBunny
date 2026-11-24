@@ -44,34 +44,81 @@ const archiveSource = [
 ].join('\n').replace(/^import [^;]*;$/gm, '').replace(/^export /gm, '');
 const vectorSource = readPublic('scripts/extensions/vectors/index.js');
 
-test('OpenAI server config reload awaits the destructive Alert response before loading', async () => {
-    const start = openaiSource.indexOf('document.getElementById(\'sb-chat-completion-config-reload\')');
-    const arrowStart = openaiSource.indexOf('async () => {', start);
-    const nextHandler = openaiSource.indexOf('\n    document.getElementById(\'sb-chat-completion-config-save\')', arrowStart);
-    const handlerSource = openaiSource.slice(arrowStart, nextHandler);
-    const handlerEnd = handlerSource.lastIndexOf('});');
+test('OpenAI server config changes await the shared Alert response before saving or restarting', async () => {
+    const state = {
+        loaded: true,
+        busy: false,
+        restarting: false,
+        dialogOpen: false,
+        applying: false,
+        originalSettings: {
+            claude: { enableSystemPromptCache: false, cachingAtDepth: -1, extendedTTL: false, enableAdaptiveThinking: true },
+            gemini: { apiVersion: 'v1beta', thoughtSignatures: true, enableSystemPromptCache: false },
+        },
+    };
+    const nextCacheSettings = {
+        claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false, enableAdaptiveThinking: true },
+        gemini: { apiVersion: 'v1beta', thoughtSignatures: true, enableSystemPromptCache: true },
+    };
+    const nextProviderSettings = {
+        claude: { enableSystemPromptCache: false, cachingAtDepth: -1, extendedTTL: false, enableAdaptiveThinking: false },
+        gemini: { apiVersion: 'v1beta', thoughtSignatures: true, enableSystemPromptCache: false },
+    };
     const openAlert = jest.fn().mockResolvedValue('cancel');
-    const loadServerChatCompletionConfig = jest.fn();
-    const handler = runInNewContext(`(${handlerSource.slice(0, handlerEnd + 1)})`, {
-        serverChatCompletionConfigState: { loaded: true },
-        updateServerChatCompletionConfigDirtyState: jest.fn(() => true),
+    const fillServerChatCompletionConfigForm = jest.fn();
+    const saveServerChatCompletionConfig = jest.fn();
+    const confirmChange = loadFunction(openaiSource, 'confirmServerChatCompletionConfigChange', {
+        serverChatCompletionConfigState: state,
+        SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS: state.originalSettings,
+        clearServerChatCompletionConfigTimers: jest.fn(),
+        buildNextServerChatCompletionConfig: jest.fn(control => control === 'master'
+            ? { nextSettings: nextCacheSettings, category: 'prompt-caching' }
+            : { nextSettings: nextProviderSettings, category: 'provider-server-config' }),
+        fillServerChatCompletionConfigForm,
+        saveServerChatCompletionConfig,
         openAlert,
         t: strings,
-        loadServerChatCompletionConfig,
     });
-    await handler();
-    expect(loadServerChatCompletionConfig).not.toHaveBeenCalled();
+
+    await confirmChange('master');
+    expect(saveServerChatCompletionConfig).not.toHaveBeenCalled();
+    expect(fillServerChatCompletionConfigForm).toHaveBeenLastCalledWith(state.originalSettings);
     expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
-        heading: 'Discard your unsaved server config edits and reload from config.yaml?',
+        heading: 'Save Prompt Caching?',
+        defaultResponse: 'save',
+        closeResponse: 'cancel',
         responses: [
             { id: 'cancel', label: 'Cancel' },
-            { id: 'discard', label: 'Discard', appearance: 'destructive' },
+            { id: 'save-restart', label: 'Save & Restart' },
+            { id: 'save', label: 'Save', appearance: 'suggested' },
         ],
     }));
 
-    openAlert.mockResolvedValueOnce('discard');
-    await handler();
-    expect(loadServerChatCompletionConfig).toHaveBeenCalledWith({ force: true });
+    openAlert.mockResolvedValueOnce('save');
+    await confirmChange('master');
+    expect(saveServerChatCompletionConfig).toHaveBeenLastCalledWith({
+        settings: nextCacheSettings,
+        restart: false,
+        category: 'prompt-caching',
+    });
+
+    openAlert.mockResolvedValueOnce('save-restart');
+    await confirmChange('adaptiveThinking');
+    expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
+        heading: 'Save Provider Server Config?',
+        defaultResponse: 'save-restart',
+        closeResponse: 'cancel',
+        responses: [
+            { id: 'cancel', label: 'Cancel' },
+            { id: 'save', label: 'Save' },
+            { id: 'save-restart', label: 'Save & Restart', appearance: 'suggested' },
+        ],
+    }));
+    expect(saveServerChatCompletionConfig).toHaveBeenLastCalledWith({
+        settings: nextProviderSettings,
+        restart: true,
+        category: 'provider-server-config',
+    });
 });
 
 test('server admin reload and thumbnail cache actions wait for Alert responses', async () => {

@@ -203,12 +203,19 @@ function hasPromptPayload(chatItem) {
     ]);
 }
 
+// SillyBunny: tracks loaded config.yaml state, Alert modal lock, and stepper debounce for Prompt Caching and Provider Server Config.
+const SERVER_CONFIG_STEP_DEBOUNCE_MS = 700;
 const serverChatCompletionConfigState = {
     loaded: false,
     busy: false,
     restarting: false,
+    dialogOpen: false,
+    applying: false,
     lastModifiedMs: 0,
     originalSettings: null,
+    debounceTimers: {
+        cachingDepth: null,
+    },
 };
 
 const max_2k = 2047;
@@ -3904,7 +3911,8 @@ function groupOpenAISettingsIntoDrawers() {
         {
             id: 'sb-openai-request',
             title: 'Request Options',
-            description: 'Tools, media, reasoning, and server config',
+            // SillyBunny: Prompt Caching and Provider Server Config now have their own groups separate from Request Options.
+            description: 'Tools, media, and reasoning',
             selectors: [
                 '#openai_settings > div > .range-block:has(#openai_enable_web_search)',
                 '#openai_settings > div > .range-block:has(#openai_function_calling)',
@@ -4044,10 +4052,11 @@ export function getEffectivePromptBias() {
     return power_user.user_prompt_bias;
 }
 
+// SillyBunny: Prompt Caching is global across Chat Completion sources; Provider Server Config stays source-gated.
 function updateServerChatCompletionConfigSourceVisibility() {
     const currentSource = oai_settings.chat_completion_source;
 
-    $('#sb-chat-completion-server-config-drawer, #sb-chat-completion-server-config, #sb-chat-completion-server-config-drawer [data-source], #sb-chat-completion-server-config [data-source]').each(function () {
+    $('#sb-openai-provider-server-config, #sb-openai-provider-server-config [data-source]').each(function () {
         const mode = $(this).data('source-mode');
         const sourceValue = $(this).data('source');
 
@@ -4065,13 +4074,16 @@ function cloneServerChatCompletionConfig(settings) {
     return JSON.parse(JSON.stringify(settings));
 }
 
-function normalizeServerChatCompletionConfig(settings) {
-    const normalizedClaudeCachingDepth = Number.parseInt(String(settings?.claude?.cachingAtDepth ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+function normalizeServerCachingDepth(value) {
+    const parsed = Number.parseInt(String(value ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth;
+}
 
+function normalizeServerChatCompletionConfig(settings) {
     return {
         claude: {
             enableSystemPromptCache: Boolean(settings?.claude?.enableSystemPromptCache ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableSystemPromptCache),
-            cachingAtDepth: Number.isInteger(normalizedClaudeCachingDepth) && normalizedClaudeCachingDepth >= 0 ? normalizedClaudeCachingDepth : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth,
+            cachingAtDepth: normalizeServerCachingDepth(settings?.claude?.cachingAtDepth),
             extendedTTL: Boolean(settings?.claude?.extendedTTL ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.extendedTTL),
             enableAdaptiveThinking: Boolean(settings?.claude?.enableAdaptiveThinking ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking),
         },
@@ -4083,21 +4095,32 @@ function normalizeServerChatCompletionConfig(settings) {
     };
 }
 
+function isUnifiedSystemPromptCacheEnabled(settings) {
+    return Boolean(settings?.claude?.enableSystemPromptCache || settings?.gemini?.enableSystemPromptCache);
+}
+
+function isPromptCachingEnabled(settings) {
+    return isUnifiedSystemPromptCacheEnabled(settings) || normalizeServerCachingDepth(settings?.claude?.cachingAtDepth) >= 0;
+}
+
+function clearServerChatCompletionConfigTimers() {
+    if (serverChatCompletionConfigState.debounceTimers.cachingDepth !== null) {
+        window.clearTimeout(serverChatCompletionConfigState.debounceTimers.cachingDepth);
+        serverChatCompletionConfigState.debounceTimers.cachingDepth = null;
+    }
+}
+
 function getServerChatCompletionConfigRefs() {
     return {
-        root: document.getElementById('sb-chat-completion-server-config'),
-        state: document.getElementById('sb-chat-completion-config-state'),
-        status: document.getElementById('sb-chat-completion-config-status'),
-        reloadButton: document.getElementById('sb-chat-completion-config-reload'),
-        saveButton: document.getElementById('sb-chat-completion-config-save'),
-        saveRestartButton: document.getElementById('sb-chat-completion-config-save-restart'),
-        claudeSystemPromptCache: document.getElementById('sb-config-claude-system-prompt-cache'),
-        claudeCachingDepth: document.getElementById('sb-config-claude-caching-depth'),
+        promptCachingGroup: document.getElementById('sb-openai-prompt-caching'),
+        providerServerConfigGroup: document.getElementById('sb-openai-provider-server-config'),
+        promptCachingEnabled: document.getElementById('sb-config-prompt-caching-enabled'),
+        systemPromptCache: document.getElementById('sb-config-system-prompt-cache'),
         claudeExtendedTtl: document.getElementById('sb-config-claude-extended-ttl'),
+        claudeCachingDepth: document.getElementById('sb-config-claude-caching-depth'),
         claudeAdaptiveThinking: document.getElementById('sb-config-claude-adaptive-thinking'),
         geminiApiVersion: document.getElementById('sb-config-gemini-api-version'),
         geminiThoughtSignatures: document.getElementById('sb-config-gemini-thought-signatures'),
-        geminiSystemPromptCache: document.getElementById('sb-config-gemini-system-prompt-cache'),
     };
 }
 
@@ -4118,110 +4141,112 @@ async function requestServerChatCompletionConfig(endpoint, body = {}) {
     }
 
     if (!response.ok) {
-        throw new Error(data?.error || data?.message || text || `Request failed with status ${response.status}.`);
+        const error = new Error(data?.error || data?.message || text || `Request failed with status ${response.status}.`);
+        error.status = response.status;
+        throw error;
     }
 
     return data;
 }
 
-function setServerChatCompletionConfigMessage(message = '') {
-    const refs = getServerChatCompletionConfigRefs();
-
-    if (!(refs.status instanceof HTMLElement)) {
-        return;
+function syncServerChatCompletionDependentControls(refs = getServerChatCompletionConfigRefs()) {
+    const prevApplying = serverChatCompletionConfigState.applying;
+    serverChatCompletionConfigState.applying = true;
+    try {
+        if (refs.promptCachingEnabled instanceof HTMLInputElement) {
+            refs.promptCachingEnabled.dispatchEvent(new Event('change'));
+        }
+        if (refs.claudeCachingDepth instanceof HTMLInputElement) {
+            refs.claudeCachingDepth.dispatchEvent(new Event('change'));
+        }
+    } finally {
+        serverChatCompletionConfigState.applying = prevApplying;
     }
-
-    refs.status.textContent = String(message ?? '').trim();
-    refs.status.hidden = !refs.status.textContent;
-}
-
-function collectServerChatCompletionConfigForm() {
-    const refs = getServerChatCompletionConfigRefs();
-
-    return normalizeServerChatCompletionConfig({
-        claude: {
-            enableSystemPromptCache: refs.claudeSystemPromptCache instanceof HTMLInputElement ? refs.claudeSystemPromptCache.checked : false,
-            cachingAtDepth: refs.claudeCachingDepth instanceof HTMLInputElement ? refs.claudeCachingDepth.value : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth,
-            extendedTTL: refs.claudeExtendedTtl instanceof HTMLInputElement ? refs.claudeExtendedTtl.checked : false,
-            enableAdaptiveThinking: refs.claudeAdaptiveThinking instanceof HTMLInputElement ? refs.claudeAdaptiveThinking.checked : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking,
-        },
-        gemini: {
-            apiVersion: refs.geminiApiVersion instanceof HTMLInputElement ? refs.geminiApiVersion.value : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
-            thoughtSignatures: refs.geminiThoughtSignatures instanceof HTMLInputElement ? refs.geminiThoughtSignatures.checked : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures,
-            enableSystemPromptCache: refs.geminiSystemPromptCache instanceof HTMLInputElement ? refs.geminiSystemPromptCache.checked : SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache,
-        },
-    });
 }
 
 function fillServerChatCompletionConfigForm(settings) {
     const refs = getServerChatCompletionConfigRefs();
     const normalizedSettings = normalizeServerChatCompletionConfig(settings);
+    const prevApplying = serverChatCompletionConfigState.applying;
 
-    if (refs.claudeSystemPromptCache instanceof HTMLInputElement) {
-        refs.claudeSystemPromptCache.checked = normalizedSettings.claude.enableSystemPromptCache;
-    }
+    clearServerChatCompletionConfigTimers();
+    serverChatCompletionConfigState.applying = true;
 
-    if (refs.claudeCachingDepth instanceof HTMLInputElement) {
-        refs.claudeCachingDepth.value = String(normalizedSettings.claude.cachingAtDepth);
-    }
+    try {
+        if (refs.promptCachingEnabled instanceof HTMLInputElement) {
+            refs.promptCachingEnabled.checked = isPromptCachingEnabled(normalizedSettings);
+        }
 
-    if (refs.claudeExtendedTtl instanceof HTMLInputElement) {
-        refs.claudeExtendedTtl.checked = normalizedSettings.claude.extendedTTL;
-    }
+        if (refs.systemPromptCache instanceof HTMLInputElement) {
+            refs.systemPromptCache.checked = isUnifiedSystemPromptCacheEnabled(normalizedSettings);
+        }
 
-    if (refs.claudeAdaptiveThinking instanceof HTMLInputElement) {
-        refs.claudeAdaptiveThinking.checked = normalizedSettings.claude.enableAdaptiveThinking;
-    }
+        if (refs.claudeExtendedTtl instanceof HTMLInputElement) {
+            refs.claudeExtendedTtl.checked = normalizedSettings.claude.extendedTTL;
+        }
 
-    if (refs.geminiApiVersion instanceof HTMLInputElement) {
-        refs.geminiApiVersion.value = normalizedSettings.gemini.apiVersion;
-    }
+        if (refs.claudeCachingDepth instanceof HTMLInputElement) {
+            refs.claudeCachingDepth.value = String(normalizedSettings.claude.cachingAtDepth);
+        }
 
-    if (refs.geminiThoughtSignatures instanceof HTMLInputElement) {
-        refs.geminiThoughtSignatures.checked = normalizedSettings.gemini.thoughtSignatures;
-    }
+        if (refs.claudeAdaptiveThinking instanceof HTMLInputElement) {
+            refs.claudeAdaptiveThinking.checked = normalizedSettings.claude.enableAdaptiveThinking;
+        }
 
-    if (refs.geminiSystemPromptCache instanceof HTMLInputElement) {
-        refs.geminiSystemPromptCache.checked = normalizedSettings.gemini.enableSystemPromptCache;
+        if (refs.geminiApiVersion instanceof HTMLInputElement) {
+            refs.geminiApiVersion.value = normalizedSettings.gemini.apiVersion;
+        }
+
+        if (refs.geminiThoughtSignatures instanceof HTMLInputElement) {
+            refs.geminiThoughtSignatures.checked = normalizedSettings.gemini.thoughtSignatures;
+        }
+    } finally {
+        serverChatCompletionConfigState.applying = prevApplying;
     }
 
     serverChatCompletionConfigState.originalSettings = cloneServerChatCompletionConfig(normalizedSettings);
-    updateServerChatCompletionConfigDirtyState();
-}
-
-function updateServerChatCompletionConfigDirtyState() {
-    const refs = getServerChatCompletionConfigRefs();
-
-    if (!(refs.state instanceof HTMLElement)) {
-        return false;
-    }
-
-    const isDirty = JSON.stringify(collectServerChatCompletionConfigForm()) !== JSON.stringify(serverChatCompletionConfigState.originalSettings);
-    refs.state.textContent = isDirty ? 'Unsaved changes' : 'Saved';
-    refs.state.dataset.state = isDirty ? 'dirty' : 'saved';
-    return isDirty;
+    updateServerChatCompletionConfigInteractivity();
 }
 
 function updateServerChatCompletionConfigInteractivity() {
     const refs = getServerChatCompletionConfigRefs();
     const locked = serverChatCompletionConfigState.busy || serverChatCompletionConfigState.restarting;
-
-    [
-        refs.claudeSystemPromptCache,
-        refs.claudeCachingDepth,
-        refs.claudeExtendedTtl,
+    const independentInputs = [
+        refs.promptCachingEnabled,
         refs.claudeAdaptiveThinking,
         refs.geminiApiVersion,
         refs.geminiThoughtSignatures,
-        refs.geminiSystemPromptCache,
-        refs.reloadButton,
-        refs.saveButton,
-        refs.saveRestartButton,
-    ].forEach(element => {
-        if (element instanceof HTMLInputElement || element instanceof HTMLButtonElement) {
+    ];
+    const dependentInputs = [
+        refs.systemPromptCache,
+        refs.claudeExtendedTtl,
+        refs.claudeCachingDepth,
+    ];
+
+    for (const element of independentInputs) {
+        if (element instanceof HTMLInputElement) {
             element.disabled = locked;
         }
-    });
+    }
+
+    for (const element of dependentInputs) {
+        if (!(element instanceof HTMLInputElement)) {
+            continue;
+        }
+        delete element.dataset.sbInsensitive;
+        element.disabled = locked;
+        const row = element.closest('.ds-row');
+        if (row instanceof HTMLElement) {
+            for (const button of row.querySelectorAll('button')) {
+                delete button.dataset.sbInsensitive;
+                button.disabled = locked;
+            }
+        }
+    }
+
+    if (!locked) {
+        syncServerChatCompletionDependentControls(refs);
+    }
 }
 
 async function waitForServerChatCompletionConfigRestart() {
@@ -4253,59 +4278,105 @@ async function waitForServerChatCompletionConfigRestart() {
 async function loadServerChatCompletionConfig({ force = false } = {}) {
     const refs = getServerChatCompletionConfigRefs();
 
-    if (!(refs.root instanceof HTMLElement) || serverChatCompletionConfigState.busy || serverChatCompletionConfigState.restarting) {
+    if (!(refs.promptCachingGroup instanceof HTMLElement) || serverChatCompletionConfigState.busy || serverChatCompletionConfigState.restarting) {
         return;
     }
 
     serverChatCompletionConfigState.busy = true;
     updateServerChatCompletionConfigInteractivity();
-    setServerChatCompletionConfigMessage('Loading server config values…');
 
     try {
         const result = await requestServerChatCompletionConfig('/api/server-admin/config/chat-completions/get');
         const nextSettings = normalizeServerChatCompletionConfig(result?.settings);
-        const hasDraft = serverChatCompletionConfigState.loaded && updateServerChatCompletionConfigDirtyState();
 
-        if (!hasDraft || force) {
+        if (!serverChatCompletionConfigState.loaded || force) {
             fillServerChatCompletionConfigForm(nextSettings);
-            setServerChatCompletionConfigMessage('Restart required after saving these server-side settings.');
-        } else {
-            serverChatCompletionConfigState.lastModifiedMs = Number(result?.lastModifiedMs ?? serverChatCompletionConfigState.lastModifiedMs) || 0;
-            setServerChatCompletionConfigMessage('config.yaml changed on disk, but your unsaved Presets draft was kept.');
         }
 
         serverChatCompletionConfigState.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || 0;
         serverChatCompletionConfigState.loaded = true;
     } catch (error) {
         console.error('Failed to load chat completion server config.', error);
-        setServerChatCompletionConfigMessage(error.message || 'Failed to load chat completion server config.');
     } finally {
         serverChatCompletionConfigState.busy = false;
         updateServerChatCompletionConfigInteractivity();
     }
 }
 
-async function saveServerChatCompletionConfig({ restart = false } = {}) {
+function buildNextServerChatCompletionConfig(changedControl) {
+    const refs = getServerChatCompletionConfigRefs();
+    const base = cloneServerChatCompletionConfig(serverChatCompletionConfigState.originalSettings ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS);
+
+    switch (changedControl) {
+        case 'master': {
+            const enabled = refs.promptCachingEnabled instanceof HTMLInputElement ? refs.promptCachingEnabled.checked : false;
+            if (enabled) {
+                base.claude.enableSystemPromptCache = true;
+                base.gemini.enableSystemPromptCache = true;
+            } else {
+                base.claude.enableSystemPromptCache = false;
+                base.gemini.enableSystemPromptCache = false;
+                base.claude.cachingAtDepth = SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth;
+            }
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'prompt-caching' };
+        }
+        case 'systemPromptCache': {
+            const enabled = refs.systemPromptCache instanceof HTMLInputElement ? refs.systemPromptCache.checked : false;
+            base.claude.enableSystemPromptCache = enabled;
+            base.gemini.enableSystemPromptCache = enabled;
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'prompt-caching' };
+        }
+        case 'extendedTTL': {
+            base.claude.extendedTTL = refs.claudeExtendedTtl instanceof HTMLInputElement ? refs.claudeExtendedTtl.checked : false;
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'prompt-caching' };
+        }
+        case 'cachingDepth': {
+            base.claude.cachingAtDepth = normalizeServerCachingDepth(refs.claudeCachingDepth instanceof HTMLInputElement ? refs.claudeCachingDepth.value : base.claude.cachingAtDepth);
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'prompt-caching' };
+        }
+        case 'adaptiveThinking': {
+            base.claude.enableAdaptiveThinking = refs.claudeAdaptiveThinking instanceof HTMLInputElement ? refs.claudeAdaptiveThinking.checked : base.claude.enableAdaptiveThinking;
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'provider-server-config' };
+        }
+        case 'geminiApiVersion': {
+            base.gemini.apiVersion = refs.geminiApiVersion instanceof HTMLInputElement ? refs.geminiApiVersion.value : base.gemini.apiVersion;
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'provider-server-config' };
+        }
+        case 'geminiThoughtSignatures': {
+            base.gemini.thoughtSignatures = refs.geminiThoughtSignatures instanceof HTMLInputElement ? refs.geminiThoughtSignatures.checked : base.gemini.thoughtSignatures;
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'provider-server-config' };
+        }
+        default:
+            return { nextSettings: normalizeServerChatCompletionConfig(base), category: 'prompt-caching' };
+    }
+}
+
+async function saveServerChatCompletionConfig({ settings, restart = false, category = 'prompt-caching' } = {}) {
     if (serverChatCompletionConfigState.busy || serverChatCompletionConfigState.restarting) {
         return;
     }
 
+    const toastTitle = category === 'prompt-caching' ? 'Prompt caching' : 'Server config';
+    const fallbackSettings = serverChatCompletionConfigState.originalSettings ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS;
     serverChatCompletionConfigState.busy = true;
     updateServerChatCompletionConfigInteractivity();
-    setServerChatCompletionConfigMessage(restart ? 'Saving server config and preparing restart…' : 'Saving server config…');
 
     try {
         const result = await requestServerChatCompletionConfig('/api/server-admin/config/chat-completions/save', {
             expectedLastModifiedMs: serverChatCompletionConfigState.lastModifiedMs,
             restart,
-            settings: collectServerChatCompletionConfigForm(),
+            settings: normalizeServerChatCompletionConfig(settings ?? fallbackSettings),
         });
 
-        fillServerChatCompletionConfigForm(result?.settings);
+        fillServerChatCompletionConfigForm(result?.settings ?? settings ?? fallbackSettings);
         serverChatCompletionConfigState.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || serverChatCompletionConfigState.lastModifiedMs;
-        setServerChatCompletionConfigMessage(result?.message || 'Chat completion server config saved.');
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.success(result?.message || 'Chat completion server config saved', 'Server config');
+        const successMessage = restart
+            ? (result?.message || 'Server config saved. Restarting SillyBunny now.')
+            : category === 'prompt-caching'
+                ? 'Prompt caching settings saved and applied.'
+                : 'Server config saved. Restart the server to apply changes.';
+        toastr.success(successMessage, toastTitle);
 
         if (restart) {
             serverChatCompletionConfigState.busy = false;
@@ -4315,16 +4386,22 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
             const restarted = await waitForServerChatCompletionConfigRestart();
             if (!restarted) {
                 serverChatCompletionConfigState.restarting = false;
-                setServerChatCompletionConfigMessage('Restart is taking longer than expected. Refresh the page once the server is back.');
                 // SillyBunny: capitalisation by DESIGN.md
                 toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
             }
         }
     } catch (error) {
         console.error('Failed to save chat completion server config.', error);
-        setServerChatCompletionConfigMessage(error.message || 'Failed to save chat completion server config.');
+        if (error?.status === 409) {
+            serverChatCompletionConfigState.busy = false;
+            await loadServerChatCompletionConfig({ force: true });
+            // SillyBunny: capitalisation by DESIGN.md
+            toastr.warning('config.yaml changed on disk and was reloaded. Apply your change again.', 'Server config');
+            return;
+        }
+        fillServerChatCompletionConfigForm(fallbackSettings);
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(error.message || 'Failed to save chat completion server config', 'Server config');
+        toastr.error(error.message || 'Failed to save server config', toastTitle);
     } finally {
         if (!serverChatCompletionConfigState.restarting) {
             serverChatCompletionConfigState.busy = false;
@@ -4334,149 +4411,229 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
 }
 
 // SillyBunny: capitalisation by DESIGN.md
-function buildServerChatCompletionConfigCard({ nested = false } = {}) {
-    const headerLead = nested
-        ? `
-            <div class="sb-chat-completion-config-inline-copy">
-                <strong>Claude & Gemini Flags</strong>
-                <small>These values are saved into <code>config.yaml</code> and need a restart after saving.</small>
-            </div>
-        `
-        : '<div class="range-block-title">Server Config (config.yaml)</div>';
+async function confirmServerChatCompletionConfigChange(changedControl) {
+    if (
+        serverChatCompletionConfigState.applying
+        || !serverChatCompletionConfigState.loaded
+        || serverChatCompletionConfigState.busy
+        || serverChatCompletionConfigState.restarting
+        || serverChatCompletionConfigState.dialogOpen
+    ) {
+        return;
+    }
 
-    // SillyBunny: expose Claude and Gemini cache flags on router/proxy sources that consume them, gated per row so no-op flags stay hidden.
-    return $(`
-        <div id="sb-chat-completion-server-config" class="range-block sb-chat-completion-server-config${nested ? ' is-nested' : ''}" data-source="claude,openrouter,makersuite,vertexai,nanogpt,electronhub,linkapi">
-            <div class="sb-chat-completion-config-header">
-                ${headerLead}
-                <span id="sb-chat-completion-config-state" class="sb-chat-completion-config-state">Loading…</span>
-            </div>
-            <div class="toggle-description justifyLeft">
-                Mirror the Claude and Gemini <code>config.yaml</code> flags here so you can tweak them from Presets. These are server-side settings, so a restart is required after saving.
-            </div>
-            <div class="sb-chat-completion-config-grid">
-                <section class="sb-chat-completion-config-section" data-source="claude,openrouter,nanogpt,electronhub,linkapi">
-                    <strong class="sb-chat-completion-config-title">Claude</strong>
-                    <label class="checkbox_label widthFreeExpand" for="sb-config-claude-system-prompt-cache">
-                        <input id="sb-config-claude-system-prompt-cache" type="checkbox">
-                        <span>System prompt cache</span>
-                        <small class="ds-row-subtitle" data-i18n="Let Claude cache system instructions for reuse between replies.">Let Claude cache system instructions for reuse between replies.</small>
-                    </label>
-                    <label class="checkbox_label widthFreeExpand" for="sb-config-claude-extended-ttl">
-                        <input id="sb-config-claude-extended-ttl" type="checkbox">
-                        <span>Extended cache TTL</span>
-                        <small class="ds-row-subtitle" data-i18n="Extend the cache duration from five minutes to one hour. Cache creation costs more.">Extend the cache duration from five minutes to one hour. Cache creation costs more.</small>
-                    </label>
-                    <label class="checkbox_label widthFreeExpand" for="sb-config-claude-adaptive-thinking" data-source="claude,linkapi">
-                        <input id="sb-config-claude-adaptive-thinking" type="checkbox">
-                        <span>Adaptive thinking</span>
-                        <small class="ds-row-subtitle" data-i18n="Let supported Claude models adjust their thinking based on your chosen reasoning effort.">Let supported Claude models adjust their thinking based on your chosen reasoning effort.</small>
-                    </label>
-                    <label class="sb-chat-completion-config-field" for="sb-config-claude-caching-depth">
-                        <span>Caching at Depth</span>
-                        <small class="ds-row-subtitle" data-i18n="Higher values place cache markers earlier in the chat. Set to -1 to disable.">Higher values place cache markers earlier in the chat. Set to -1 to disable.</small>
-                        <input id="sb-config-claude-caching-depth" class="text_pole" type="number" step="1" min="-1">
-                    </label>
-                    <div class="toggle-description justifyLeft">
-                        Use <code>-1</code> to disable depth-based cache insertion.
-                    </div>
-                </section>
-                <section class="sb-chat-completion-config-section" data-source="makersuite,vertexai,openrouter">
-                    <strong class="sb-chat-completion-config-title">Gemini</strong>
-                    <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version" data-source="makersuite,vertexai">
-                        <span>API Version</span>
-                        <small class="ds-row-subtitle" data-i18n="Set the Google AI Studio API version. Leave blank to use v1beta.">Set the Google AI Studio API version. Leave blank to use v1beta.</small>
-                        <input id="sb-config-gemini-api-version" class="text_pole" type="text" placeholder="v1beta">
-                    </label>
-                    <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-thought-signatures" data-source="makersuite,vertexai">
-                        <input id="sb-config-gemini-thought-signatures" type="checkbox">
-                        <span>Thought signatures</span>
-                        <small class="ds-row-subtitle" data-i18n="Send saved thought signatures back to Gemini to preserve reasoning context between replies.">Send saved thought signatures back to Gemini to preserve reasoning context between replies.</small>
-                    </label>
-                    <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-system-prompt-cache" data-source="openrouter">
-                        <input id="sb-config-gemini-system-prompt-cache" type="checkbox">
-                        <span>System prompt cache</span>
-                        <small class="ds-row-subtitle" data-i18n="Let supported Gemini models cache system instructions through OpenRouter.">Let supported Gemini models cache system instructions through OpenRouter.</small>
-                    </label>
-                </section>
-            </div>
-            <!-- SillyBunny: the three actions are label-only buttons (an icon or a label, not both). -->
-            <div class="sb-chat-completion-config-actions">
-                <button id="sb-chat-completion-config-reload" class="menu_button menu_button_icon" type="button">
-                    <span>Reload</span>
-                </button>
-                <button id="sb-chat-completion-config-save" class="menu_button menu_button_icon" type="button">
-                    <span>Save Server Config</span>
-                </button>
-                <button id="sb-chat-completion-config-save-restart" class="menu_button menu_button_icon menu_button_primary" type="button">
-                    <span>Save & Restart</span>
-                </button>
-            </div>
-            <div id="sb-chat-completion-config-status" class="toggle-description justifyLeft sb-chat-completion-config-status">
-                Restart required after saving these server-side settings.
-            </div>
-        </div>
-    `);
+    clearServerChatCompletionConfigTimers();
+
+    const { nextSettings, category } = buildNextServerChatCompletionConfig(changedControl);
+    const original = serverChatCompletionConfigState.originalSettings ?? SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS;
+
+    if (JSON.stringify(nextSettings) === JSON.stringify(original)) {
+        fillServerChatCompletionConfigForm(original);
+        return;
+    }
+
+    const isCaching = category === 'prompt-caching';
+    serverChatCompletionConfigState.dialogOpen = true;
+    let response = 'cancel';
+
+    try {
+        // SillyBunny: capitalisation by DESIGN.md
+        response = await openAlert(isCaching
+            ? {
+                heading: t`Save Prompt Caching?`,
+                body: t`This updates config.yaml and applies immediately to new requests. Restart the server if you also want to reload the full config.`,
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'save-restart', label: t`Save & Restart` },
+                    { id: 'save', label: t`Save`, appearance: 'suggested' },
+                ],
+                defaultResponse: 'save',
+                closeResponse: 'cancel',
+                preferWide: true,
+            }
+            : {
+                heading: t`Save Provider Server Config?`,
+                body: t`This updates config.yaml and requires a server restart to take effect.`,
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'save', label: t`Save` },
+                    { id: 'save-restart', label: t`Save & Restart`, appearance: 'suggested' },
+                ],
+                defaultResponse: 'save-restart',
+                closeResponse: 'cancel',
+                preferWide: true,
+            });
+    } finally {
+        serverChatCompletionConfigState.dialogOpen = false;
+    }
+
+    if (response !== 'save' && response !== 'save-restart') {
+        fillServerChatCompletionConfigForm(original);
+        return;
+    }
+
+    await saveServerChatCompletionConfig({
+        settings: nextSettings,
+        restart: response === 'save-restart',
+        category,
+    });
 }
 
-function buildServerChatCompletionConfigDrawer() {
-    const $drawer = createOpenAISettingsDrawer(
-        'sb-chat-completion-server-config-drawer',
-        'Server Config (config.yaml)',
-        'Claude and Gemini server-side flags mirrored from config.yaml.',
-    );
+function scheduleServerCachingDepthCommit() {
+    clearServerChatCompletionConfigTimers();
+    serverChatCompletionConfigState.debounceTimers.cachingDepth = window.setTimeout(() => {
+        serverChatCompletionConfigState.debounceTimers.cachingDepth = null;
+        void confirmServerChatCompletionConfigChange('cachingDepth');
+    }, SERVER_CONFIG_STEP_DEBOUNCE_MS);
+}
 
-    $drawer
-        .attr('data-source', 'claude,openrouter,makersuite,vertexai,nanogpt,electronhub,linkapi')
-        .addClass('sb-settings-subdrawer sb-openai-settings-subdrawer');
+// SillyBunny: capitalisation by DESIGN.md
+function buildPromptCachingDrawer() {
+    const $drawer = createOpenAISettingsDrawer('sb-openai-prompt-caching', 'Prompt Caching', '');
+    $drawer.attr('data-sb-description', 'none');
 
-    $drawer.children('.inline-drawer-content')
-        .addClass('sb-settings-subdrawer-body')
-        .append(buildServerChatCompletionConfigCard({ nested: true }));
+    $drawer.children('.inline-drawer-content').append($(`
+        <label class="checkbox_label widthFreeExpand" for="sb-config-prompt-caching-enabled">
+            <input id="sb-config-prompt-caching-enabled" type="checkbox">
+            <span>Enable Prompt Caching</span>
+            <small class="ds-row-subtitle" data-i18n="Reuse repeated prompt prefixes across supported providers">Reuse repeated prompt prefixes across supported providers</small>
+        </label>
+        <label class="checkbox_label widthFreeExpand" for="sb-config-system-prompt-cache">
+            <input id="sb-config-system-prompt-cache" type="checkbox">
+            <span>System Prompt Cache</span>
+            <small class="ds-row-subtitle" data-i18n="Cache static system instructions across supported providers">Cache static system instructions across supported providers</small>
+        </label>
+        <label class="checkbox_label widthFreeExpand" for="sb-config-claude-extended-ttl">
+            <input id="sb-config-claude-extended-ttl" type="checkbox">
+            <span>Extended Cache TTL</span>
+            <small class="ds-row-subtitle" data-i18n="Extend Claude cache lifetime from five minutes to one hour. Cache writes cost more.">Extend Claude cache lifetime from five minutes to one hour. Cache writes cost more.</small>
+        </label>
+        <label class="sb-chat-completion-config-field" for="sb-config-claude-caching-depth">
+            <span>Caching at Depth</span>
+            <small class="ds-row-subtitle" data-i18n="Higher values place Claude cache markers earlier in chat. Set to -1 to disable.">Higher values place Claude cache markers earlier in chat. Set to -1 to disable.</small>
+            <input id="sb-config-claude-caching-depth" class="text_pole" type="number" step="1" min="-1">
+        </label>
+    `));
 
     return $drawer;
 }
 
-function injectServerChatCompletionConfigCard() {
-    const $advancedDrawerContent = $('#sb-openai-request > .inline-drawer-content');
+// SillyBunny: capitalisation by DESIGN.md
+function buildProviderServerConfigDrawer() {
+    const $drawer = createOpenAISettingsDrawer('sb-openai-provider-server-config', 'Provider Server Config', '');
 
-    if ($advancedDrawerContent.length === 0 || $('#sb-chat-completion-server-config, #sb-chat-completion-server-config-drawer').length) {
+    $drawer
+        .attr('data-sb-description', 'none')
+        .attr('data-source', 'claude,linkapi,makersuite,vertexai');
+    $drawer.children('.inline-drawer-content').append($(`
+        <label class="checkbox_label widthFreeExpand" for="sb-config-claude-adaptive-thinking" data-source="claude,linkapi">
+            <input id="sb-config-claude-adaptive-thinking" type="checkbox">
+            <span>Adaptive Thinking</span>
+            <small class="ds-row-subtitle" data-i18n="Let supported Claude models adjust thinking based on your reasoning effort">Let supported Claude models adjust thinking based on your reasoning effort</small>
+        </label>
+        <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version" data-source="makersuite,vertexai">
+            <span>API Version</span>
+            <small class="ds-row-subtitle" data-i18n="Set the Google AI Studio API version. Leave blank to use v1beta.">Set the Google AI Studio API version. Leave blank to use v1beta.</small>
+            <input id="sb-config-gemini-api-version" class="text_pole" type="text" placeholder="v1beta">
+        </label>
+        <label class="checkbox_label widthFreeExpand" for="sb-config-gemini-thought-signatures" data-source="makersuite,vertexai">
+            <input id="sb-config-gemini-thought-signatures" type="checkbox">
+            <span>Thought Signatures</span>
+            <small class="ds-row-subtitle" data-i18n="Send saved thought signatures back to Gemini to preserve reasoning context">Send saved thought signatures back to Gemini to preserve reasoning context</small>
+        </label>
+    `));
+
+    return $drawer;
+}
+
+// SillyBunny: mount Prompt Caching and Provider Server Config as standalone top-level Presets groups backed by config.yaml.
+function injectServerChatCompletionConfigCard() {
+    const $requestDrawer = $('#sb-openai-request');
+
+    if ($requestDrawer.length === 0 || $('#sb-openai-prompt-caching, #sb-openai-provider-server-config').length) {
         return;
     }
 
-    $advancedDrawerContent.append(buildServerChatCompletionConfigDrawer());
+    $requestDrawer.after(buildPromptCachingDrawer(), buildProviderServerConfigDrawer());
 
-    // SillyBunny: Reloading this editor can discard a draft, so Cancel is the default response.
-    document.getElementById('sb-chat-completion-config-reload')?.addEventListener('click', async () => {
-        if (serverChatCompletionConfigState.loaded && updateServerChatCompletionConfigDirtyState()) {
-            const response = await openAlert({
-                heading: 'Discard your unsaved server config edits and reload from config.yaml?',
-                responses: [
-                    { id: 'cancel', label: t`Cancel` },
-                    { id: 'discard', label: t`Discard`, appearance: 'destructive' },
-                ],
-            });
-            if (response !== 'discard') return;
-        }
+    const switchBindings = [
+        ['sb-config-prompt-caching-enabled', 'master'],
+        ['sb-config-system-prompt-cache', 'systemPromptCache'],
+        ['sb-config-claude-extended-ttl', 'extendedTTL'],
+        ['sb-config-claude-adaptive-thinking', 'adaptiveThinking'],
+        ['sb-config-gemini-thought-signatures', 'geminiThoughtSignatures'],
+    ];
 
-        await loadServerChatCompletionConfig({ force: true });
-    });
-    document.getElementById('sb-chat-completion-config-save')?.addEventListener('click', () => void saveServerChatCompletionConfig({ restart: false }));
-    document.getElementById('sb-chat-completion-config-save-restart')?.addEventListener('click', () => void saveServerChatCompletionConfig({ restart: true }));
-
-    [
-        'sb-config-claude-system-prompt-cache',
-        'sb-config-claude-caching-depth',
-        'sb-config-claude-extended-ttl',
-        'sb-config-claude-adaptive-thinking',
-        'sb-config-gemini-api-version',
-        'sb-config-gemini-thought-signatures',
-        'sb-config-gemini-system-prompt-cache',
-    ].forEach(id => {
-        document.getElementById(id)?.addEventListener('input', () => {
-            updateServerChatCompletionConfigDirtyState();
+    for (const [id, controlName] of switchBindings) {
+        document.getElementById(id)?.addEventListener('change', () => {
+            if (serverChatCompletionConfigState.applying) {
+                return;
+            }
+            void confirmServerChatCompletionConfigChange(controlName);
         });
-    });
+    }
+
+    const cachingDepthInput = document.getElementById('sb-config-claude-caching-depth');
+    if (cachingDepthInput instanceof HTMLInputElement) {
+        cachingDepthInput.addEventListener('input', () => {
+            if (serverChatCompletionConfigState.applying) {
+                return;
+            }
+            if (document.activeElement !== cachingDepthInput) {
+                scheduleServerCachingDepthCommit();
+            } else {
+                clearServerChatCompletionConfigTimers();
+            }
+        });
+        cachingDepthInput.addEventListener('change', () => {
+            if (serverChatCompletionConfigState.applying) {
+                return;
+            }
+            if (document.activeElement !== cachingDepthInput) {
+                scheduleServerCachingDepthCommit();
+            }
+        });
+        cachingDepthInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                void confirmServerChatCompletionConfigChange('cachingDepth');
+            }
+        });
+        cachingDepthInput.addEventListener('blur', (event) => {
+            if (serverChatCompletionConfigState.applying) {
+                return;
+            }
+            const nextFocus = event.relatedTarget;
+            if (nextFocus instanceof Element && nextFocus.closest('.ds-row--spin')?.contains(cachingDepthInput)) {
+                return;
+            }
+            void confirmServerChatCompletionConfigChange('cachingDepth');
+        });
+    }
+
+    const geminiApiVersionInput = document.getElementById('sb-config-gemini-api-version');
+    if (geminiApiVersionInput instanceof HTMLInputElement) {
+        geminiApiVersionInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                void confirmServerChatCompletionConfigChange('geminiApiVersion');
+            }
+        });
+        geminiApiVersionInput.addEventListener('blur', () => {
+            if (serverChatCompletionConfigState.applying) {
+                return;
+            }
+            void confirmServerChatCompletionConfigChange('geminiApiVersion');
+        });
+        geminiApiVersionInput.addEventListener('change', () => {
+            if (serverChatCompletionConfigState.applying) {
+                return;
+            }
+            if (document.activeElement !== geminiApiVersionInput) {
+                void confirmServerChatCompletionConfigChange('geminiApiVersion');
+            }
+        });
+    }
 
     updateServerChatCompletionConfigInteractivity();
     updateServerChatCompletionConfigSourceVisibility();
