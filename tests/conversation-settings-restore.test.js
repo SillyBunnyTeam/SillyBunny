@@ -23,8 +23,8 @@ global.DATA_ROOT = sandbox.dataRoot;
 
 const { getUserDirectories } = await import('../src/users.js');
 const { conversationIndex } = await import('../src/conversation-index.js');
-const { ensureMigrated, importLegacyThreads, runMigration } = await import('../src/conversation-migration.js');
-const { listConversations, readConversation } = await import('../src/conversation-store.js');
+const { BACKUP_FOLDER_NAME, ensureMigrated, importLegacyThreads, runMigration } = await import('../src/conversation-migration.js');
+const { listConversations, readCharacterState, readConversation, updateCharacterState } = await import('../src/conversation-store.js');
 
 let server;
 let baseUrl;
@@ -111,7 +111,7 @@ describe('a snapshot of settings.json from before the migration', () => {
         return { before, state, migrated };
     }
 
-    test('brings the old conversation object back into settings.json, with its old version', async () => {
+    test('brings the old conversation object back into settings.json, with its old version, until the next settings read', async () => {
         const { before, state } = await migrateThenRestoreTheOldSnapshot();
 
         expect(state.state).toBe('migrated');
@@ -120,26 +120,60 @@ describe('a snapshot of settings.json from before the migration', () => {
         expect(readSettings().extension_settings.sillybunny_conversation.version).toBe(1);
     });
 
-    test('is not migrated again by the server that migrated, because that server remembers the answer', async () => {
-        await migrateThenRestoreTheOldSnapshot();
+    test('is trimmed at the next settings read of the server that migrated, without a restart, and no conversation is written', async () => {
+        const { before, migrated } = await migrateThenRestoreTheOldSnapshot();
         const tree = snapshotTree(user.directories.conversations);
 
+        // `POST /api/settings/get` calls this before it reads settings.json.
         expect(ensureMigrated(user)).toMatchObject({ state: 'migrated' });
+
+        const kept = readSettings().extension_settings.sillybunny_conversation;
+        for (const part of ['characters', 'groups', 'reminders', 'legacyThreadPersonaAssignments']) {
+            expect(kept).not.toHaveProperty(part);
+        }
+        expect(kept.version).toBe(2);
+        expect(readSettings()._version).toBe(before._version + 1);
+        expect(readSettings().extension_settings.unrelated).toEqual(before.extension_settings.unrelated);
+        expect(conversationFolders()).toEqual(migrated);
         expect(snapshotTree(user.directories.conversations)).toEqual(tree);
     });
 
-    // `runMigration()` is what `ensureMigrated()` runs for a user whom the server has not seen yet, as after a restart.
-    test.failing('is not migrated again by the first request after a restart, so that no conversation is written twice', async () => {
+    test('keeps the old object in a backup file, beside the one that the migration wrote', async () => {
+        const { before } = await migrateThenRestoreTheOldSnapshot();
+
+        ensureMigrated(user);
+
+        const backups = fs.readdirSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME));
+        expect(backups.length).toBeGreaterThan(0);
+        const file = path.join(user.directories.backups, BACKUP_FOLDER_NAME, backups[0], 'sillybunny_conversation.json');
+        expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(before.extension_settings.sillybunny_conversation);
+    });
+
+    test('is not migrated again by the first request after a restart, so that no conversation is written twice', async () => {
         const { migrated } = await migrateThenRestoreTheOldSnapshot();
 
+        // `runMigration()` is what `ensureMigrated()` runs for a user whom the server has not seen yet, as after a restart.
         runMigration(user);
 
         expect(conversationFolders()).toEqual(migrated);
+        expect(listConversations(user).conversations).toHaveLength(migrated.length);
+    });
+
+    test('does not reset the status that a character got after the migration, when the server restarts', async () => {
+        useFixtureUser();
+        const snapshot = await makeSnapshot();
+        ensureMigrated(user);
+        updateCharacterState(user, 'Cass.png', { statusOverride: 'dnd' });
+        await restoreSnapshot(snapshot);
+
+        runMigration(user);
+
+        expect(readCharacterState(user).characters['Cass.png']).toEqual({ statusOverride: 'dnd' });
     });
 });
 
 describe('a snapshot of settings.json from before the import of the old browser storage', () => {
-    test.failing('does not import the same threads again, so that the conversation does not get the chat twice', async () => {
+    test('does not import the same threads again, so that the conversation does not get the chat twice', async () => {
         useUser({
             settings: { user_avatar: PERSONA, power_user: { personas: { [PERSONA]: 'x' } }, extension_settings: { sillybunny_conversation: { version: 2, localStorageMigrated: false, settings: {} } }, _version: 5 },
             userAvatars: [PERSONA],

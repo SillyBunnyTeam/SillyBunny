@@ -15,6 +15,16 @@
  * it was. A backup file that step 4 wrote stays. `settings.json` is the last thing written, so a crash before step 5
  * leaves the old object whole, and the marker file tells the next run which folders to remove. The whole migration is
  * synchronous, so no other request runs between the read of `settings.json` and its write in this process.
+ *
+ * `settings.json` is the one file that a reset, a snapshot restore and an account import replace, so it cannot be the
+ * only record that the migration ran: a restored copy from before the migration would bring the old object back, and
+ * the next run would write every conversation a second time. After step 5 the run writes `conversations/migration-done.json`.
+ * While that file exists, no run plans or writes a conversation. A run only removes the old object again from
+ * `settings.json`, after it copied the object to a backup file. The file also records that the import of the old
+ * browser storage ran, which `localStorageMigrated` in `settings.json` could not guard for the same reason.
+ *
+ * `ensureMigrated()` is cheap to call on every read of `settings.json`: it looks at the file's status, and reads and
+ * parses the file only when the status is not what it was when the user was last checked.
  */
 
 import crypto from 'node:crypto';
@@ -25,7 +35,7 @@ import { SETTINGS_FILE } from './constants.js';
 import { buildLegacyThreadKey, LEGACY_STORE_KEY } from './conversation-legacy.js';
 import { MIGRATED_STORE_VERSION, planMigration } from './conversation-migration-plan.js';
 import { conversationIndex } from './conversation-index.js';
-import { createChatId, getChatFilePath, getConversationDirectory, isConversationId } from './conversation-paths.js';
+import { CHARACTERS_FILE_NAME, createChatId, getChatFilePath, getConversationDirectory, isConversationId } from './conversation-paths.js';
 import { readChatJsonlStrict } from './chat-recovery.js';
 import {
     ConversationStoreError,
@@ -43,6 +53,7 @@ import { getSettingsVersion } from './settings-version.js';
 import { tryWriteFileSync } from './util.js';
 
 export const MARKER_FILE_NAME = 'migration-in-progress.json';
+export const DONE_MARKER_FILE_NAME = 'migration-done.json';
 export const BACKUP_FOLDER_NAME = '_conversation_migration';
 export const BACKUP_FILE_NAME = 'sillybunny_conversation.json';
 
@@ -195,6 +206,129 @@ function writeMarker(user, conversationIds) {
     fs.mkdirSync(user.directories.conversations, { recursive: true });
     tryWriteFileSync(getMarkerPath(user), JSON.stringify(marker), 'utf8', { durable: true });
     return marker;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The done marker: what a finished migration leaves, so that no later run moves the conversations again.
+
+const DONE_MARKER_VERSION = 1;
+
+/**
+ * @typedef {object} DoneMarker
+ * @property {number} version
+ * @property {number} migratedAt Milliseconds since the epoch.
+ * @property {string} backupFile The backup of the old object, relative to `backups/`. Empty for a user who was migrated
+ * before the marker existed, and for a user who only imported the old browser storage.
+ * @property {boolean} localStorageImported Whether the import of the old browser storage ran.
+ */
+
+function getDoneMarkerPath(user) {
+    return path.join(user.directories.conversations, DONE_MARKER_FILE_NAME);
+}
+
+/**
+ * The presence of the file is what stops a second migration, so a file that cannot be read or parsed still counts as a
+ * marker, with nothing recorded in it.
+ * @returns {DoneMarker|null} Null when the user has no marker.
+ */
+function readDoneMarker(user) {
+    let parsed = {};
+    try {
+        const value = JSON.parse(fs.readFileSync(getDoneMarkerPath(user), 'utf8'));
+        parsed = isObject(value) ? value : {};
+    } catch (error) {
+        if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
+            return null;
+        }
+    }
+    return {
+        version: DONE_MARKER_VERSION,
+        migratedAt: Number.isFinite(parsed.migratedAt) ? parsed.migratedAt : 0,
+        backupFile: typeof parsed.backupFile === 'string' ? parsed.backupFile : '',
+        localStorageImported: parsed.localStorageImported === true,
+    };
+}
+
+/**
+ * Writes the marker with the fields of `changes` over what it holds now. Atomic, like every other file of the store.
+ * @param {Partial<DoneMarker>} changes
+ */
+function writeDoneMarker(user, changes) {
+    const marker = { ...(readDoneMarker(user) ?? { version: DONE_MARKER_VERSION, migratedAt: 0, backupFile: '', localStorageImported: false }), ...changes, version: DONE_MARKER_VERSION };
+    fs.mkdirSync(user.directories.conversations, { recursive: true });
+    tryWriteFileSync(getDoneMarkerPath(user), JSON.stringify(marker, null, 4), 'utf8', { durable: true });
+}
+
+/**
+ * The marker is written after the work that it vouches for is complete, so a failure here must not undo that work. A
+ * user with folders and a migrated `settings.json` and no marker gets it on the next run.
+ * @param {Partial<DoneMarker>} changes
+ * @returns {boolean} Whether the marker was written.
+ */
+function tryWriteDoneMarker(user, changes) {
+    try {
+        writeDoneMarker(user, changes);
+        return true;
+    } catch (error) {
+        console.error('The conversation migration could not write its marker file. The next request writes it again:', error);
+        return false;
+    }
+}
+
+/** Whether the conversations folder holds what a migration writes: a conversation folder or `characters.json`. */
+function hasMigratedStore(user) {
+    try {
+        return fs.readdirSync(user.directories.conversations, { withFileTypes: true }).some(entry => (
+            (entry.isDirectory() && isConversationId(entry.name)) || (entry.isFile() && entry.name === CHARACTERS_FILE_NAME)
+        ));
+    } catch {
+        return false;
+    }
+}
+
+/** Whether the old object holds anything that the new store replaced: a part with content, or the version of the old store. */
+function carriesLegacyStore(legacy) {
+    return hasLegacyContent(legacy) || (Number.isFinite(legacy.version) && legacy.version < MIGRATED_STORE_VERSION);
+}
+
+/**
+ * For a user whose migration is over: removes the old object from `settings.json` when it is there again (a snapshot
+ * restore, a reset to an older file, an account import), after it copied the object to a backup file. Plans and writes
+ * no conversation. The conversations do not depend on `settings.json` any more, so a file that cannot be read, and a
+ * trim that fails, leave the user migrated; a failed trim is tried again later (`trimFailed`).
+ * @returns {{ state: 'migrated', trimmed?: { backupFile: string, settingsVersion: number }, trimFailed?: true }}
+ */
+function checkMigratedUser(user, now) {
+    try {
+        fs.rmSync(getMarkerPath(user), { force: true });
+    } catch (error) {
+        console.error('The conversation migration could not remove the marker of a run that was stopped:', error);
+    }
+
+    const settingsPath = getSettingsPath(user);
+    let initialText;
+    let settings;
+    try {
+        initialText = readSettingsText(settingsPath);
+        settings = initialText === null ? null : parseSettings(initialText);
+    } catch {
+        return { state: 'migrated' };
+    }
+    const legacy = settings?.extension_settings?.[LEGACY_STORE_KEY];
+    if (!isObject(legacy) || !carriesLegacyStore(legacy)) {
+        return { state: 'migrated' };
+    }
+
+    try {
+        const backupFile = writeBackup(user, legacy, null, now);
+        // The mode-wide settings stay as the restored file has them: the values that the migration derived from the conversations are in the store's own files.
+        const globalSettings = isObject(legacy.settings) ? legacy.settings : {};
+        const settingsVersion = writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, globalSettings, pins: { changed: false } });
+        return { state: 'migrated', trimmed: { backupFile, settingsVersion } };
+    } catch (error) {
+        console.error('The old conversation data is in settings.json again and could not be removed:', error);
+        return { state: 'migrated', trimFailed: true };
+    }
 }
 
 /**
@@ -374,7 +508,7 @@ function writeBackup(user, legacy, pinsText, now) {
  * The `_version` goes up by one, as it does for a save from a page, so that a page that still holds the old object
  * (and its old version) is refused with a conflict instead of writing the old conversations back.
  */
-function writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, plan }) {
+function writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, globalSettings, pins }) {
     if (readSettingsText(settingsPath) !== initialText) {
         throw new MigrationError('settings_changed', 'settings.json changed while the conversations were being moved.');
     }
@@ -383,9 +517,9 @@ function writeTrimmedSettings(user, { settingsPath, initialText, settings, legac
         delete kept[part];
     }
     const next = structuredClone(settings);
-    next.extension_settings[LEGACY_STORE_KEY] = { ...kept, version: MIGRATED_STORE_VERSION, settings: plan.globalSettings };
-    if (plan.pins.changed) {
-        next.accountStorage.pinnedChats = JSON.stringify(plan.pins.pins);
+    next.extension_settings[LEGACY_STORE_KEY] = { ...kept, version: MIGRATED_STORE_VERSION, settings: globalSettings };
+    if (pins.changed) {
+        next.accountStorage.pinnedChats = JSON.stringify(pins.pins);
     }
     next._version = getSettingsVersion(settings) + 1;
     try {
@@ -399,13 +533,19 @@ function writeTrimmedSettings(user, { settingsPath, initialText, settings, legac
 // ---------------------------------------------------------------------------------------------------------------------
 
 /**
- * Migrates the conversations of one user, if there is anything to migrate. Synchronous.
+ * Migrates the conversations of one user, if there is anything to migrate. Synchronous. For a user whose migration is
+ * over (the done marker exists) it moves nothing, and only removes the old object from `settings.json` if that is back.
  * @param {MigrationUser} user
  * @param {{ now?: number }} [options]
- * @returns {MigrationState}
+ * @returns {MigrationState | { state: 'migrated', trimmed?: { backupFile: string, settingsVersion: number }, trimFailed?: true }}
+ * `trimmed` and `trimFailed` say what a user with a marker needed; `report` is only there for a run that moved conversations.
  * @throws {MigrationError} When any step fails. `settings.json` is as it was, and the folders that the run made are removed.
  */
 export function runMigration(user, { now = Date.now() } = {}) {
+    if (readDoneMarker(user)) {
+        return checkMigratedUser(user, now);
+    }
+
     const settingsPath = getSettingsPath(user);
     const initialText = readSettingsText(settingsPath);
     if (initialText === null) {
@@ -419,7 +559,11 @@ export function runMigration(user, { now = Date.now() } = {}) {
 
     const leftover = readMarker(user);
     if (Number(legacy.version) >= MIGRATED_STORE_VERSION) {
-        // A run that finished its last step and was stopped before it removed the marker.
+        // A run that finished its last step and was stopped before it removed its marker, or one from before the done
+        // marker existed. Its folders and the version of settings.json say that the migration ran.
+        if (hasMigratedStore(user)) {
+            tryWriteDoneMarker(user, { migratedAt: now, backupFile: '', localStorageImported: legacy.localStorageMigrated === true });
+        }
         fs.rmSync(getMarkerPath(user), { force: true });
         return { state: 'migrated' };
     }
@@ -441,7 +585,8 @@ export function runMigration(user, { now = Date.now() } = {}) {
         }
         // The pins are in settings.json outside the old object, and the migration re-keys them, so their old text goes into the backup too.
         const backupFile = writeBackup(user, legacy, plan.pins.changed ? String(settings.accountStorage?.pinnedChats ?? '{}') : null, now);
-        const settingsVersion = writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, plan });
+        const settingsVersion = writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, globalSettings: plan.globalSettings, pins: plan.pins });
+        tryWriteDoneMarker(user, { migratedAt: now, backupFile, localStorageImported: legacy.localStorageMigrated === true });
         fs.rmSync(getMarkerPath(user), { force: true });
         return { state: 'migrated', report: { ...plan.report, avatarsNotCopied, backupFile, settingsVersion } };
     } catch (error) {
@@ -453,6 +598,12 @@ export function runMigration(user, { now = Date.now() } = {}) {
 // ---------------------------------------------------------------------------------------------------------------------
 // Once per user
 
+/**
+ * What `ensureMigrated()` knows about each user, by the path of the user's folder. `signature` is the status of
+ * `settings.json` when the user was last checked, and `recheckAt` is when a state that cannot be trusted any longer
+ * (a failed run, a trim that failed) is checked again whatever the file's status is.
+ * @type {Map<string, { state: MigrationState, signature: string|null, recheckAt: number }>}
+ */
 const states = new Map();
 
 function toFailure(error, now) {
@@ -466,10 +617,29 @@ function toFailure(error, now) {
 }
 
 /**
- * Migrates the user's conversations the first time it is asked, and answers the same state afterwards. A failed
- * migration is remembered for `RETRY_AFTER_MS`, then tried again, so that a fault that was fixed in the meantime
- * (a full disk, a locked file) does not need a restart, and a fault that is not fixed does not repeat the work on
- * every request.
+ * The inode, the size and the modification time (to the nanosecond) of `settings.json`. A save, a snapshot restore and
+ * a reset each write a new file, so each changes at least one of the three. It costs one `stat`.
+ * @returns {string|null} Null when the status cannot be read, which never equals another answer.
+ */
+function getSettingsSignature(user) {
+    try {
+        const stats = fs.statSync(getSettingsPath(user), { bigint: true });
+        return `${stats.ino}:${stats.size}:${stats.mtimeNs}`;
+    } catch (error) {
+        return error?.code === 'ENOENT' || error?.code === 'ENOTDIR' ? 'absent' : null;
+    }
+}
+
+/**
+ * Migrates the user's conversations the first time it is asked, and answers the same state afterwards, so it can be
+ * called on every request and on every read of `settings.json`. While the status of `settings.json` is what it was at
+ * the last check, the answer comes from memory after one `stat`. When the status changed, the user is checked again,
+ * because the new file can be an older one: for a user with nothing to migrate it can hold an old store, and for a
+ * migrated user it can hold the old object again, which `runMigration()` then removes.
+ *
+ * A failed migration is remembered for `RETRY_AFTER_MS`, then tried again, so that a fault that was fixed in the
+ * meantime (a full disk, a locked file) does not need a restart, and a fault that is not fixed does not repeat the
+ * work on every request. A trim of the old object that failed is remembered the same way, and does not fail the user.
  * @param {MigrationUser} user
  * @returns {MigrationState}
  */
@@ -477,21 +647,35 @@ export function ensureMigrated(user) {
     const key = path.resolve(user.directories.root);
     const known = states.get(key);
     const now = Date.now();
-    if (known && (known.state !== 'failed' || now < known.retryAt)) {
-        return known;
+    let signature = getSettingsSignature(user);
+    if (known && now < known.recheckAt && (known.state.state === 'failed' || (signature !== null && signature === known.signature))) {
+        return known.state;
     }
 
     let state;
+    let recheckAt = Number.POSITIVE_INFINITY;
     try {
-        state = runMigration(user, { now });
-        if (state.report) {
-            console.info(`The conversations of "${user.profile.handle}" were moved out of settings.json: ${state.report.migrated.conversations} conversations, ${state.report.migrated.chats} chats, ${state.report.migrated.messages} messages. The old data is in backups/${BACKUP_FOLDER_NAME}.`);
+        const { trimmed, trimFailed, ...outcome } = runMigration(user, { now });
+        if (outcome.report) {
+            console.info(`The conversations of "${user.profile.handle}" were moved out of settings.json: ${outcome.report.migrated.conversations} conversations, ${outcome.report.migrated.chats} chats, ${outcome.report.migrated.messages} messages. The old data is in backups/${BACKUP_FOLDER_NAME}.`);
         }
+        if (trimmed) {
+            console.info(`The old conversation data was in settings.json of "${user.profile.handle}" again and was removed. A copy is in backups/${trimmed.backupFile}.`);
+        }
+        if (outcome.report || trimmed) {
+            signature = getSettingsSignature(user);
+        }
+        if (trimFailed) {
+            recheckAt = now + RETRY_AFTER_MS;
+        }
+        // Answer the object that the user was given before, so that the report of this server run stays with it.
+        state = outcome.state === 'migrated' && !outcome.report && known?.state.state === 'migrated' ? known.state : outcome;
     } catch (error) {
         console.error(`The conversation migration of "${user.profile.handle}" failed, and settings.json was not changed:`, error);
         state = toFailure(error, now);
+        recheckAt = state.retryAt;
     }
-    states.set(key, state);
+    states.set(key, { state, signature, recheckAt });
     return state;
 }
 
@@ -512,7 +696,8 @@ function unusedChatId(conversation) {
  * Takes the threads that the browser built from its old `localStorage` keys, and writes them as conversations. They
  * have the shape of a thread of the old store, so they go through the same plan; a character that already has a
  * conversation with this persona gets the imported chats added to it. Runs once: `localStorageMigrated` in
- * `settings.json` is set when it is done, and a second call changes nothing.
+ * `settings.json` and `localStorageImported` in the done marker are set when it is done, and a second call changes
+ * nothing. The marker is the record that survives a reset and a restored older `settings.json`.
  * @param {MigrationUser} user
  * @param {{ personaId?: unknown, characters?: unknown }} body `characters` maps an avatar file name to a thread.
  * @param {{ now?: number }} [options]
@@ -521,6 +706,11 @@ function unusedChatId(conversation) {
 export function importLegacyThreads(user, body, { now = Date.now() } = {}) {
     if (!isSafeName(body.personaId) || !isObject(body.characters)) {
         throw new ConversationStoreError('invalid_input', 'personaId must be a persona file name, and characters an object of threads.');
+    }
+    // The marker is read first: it is the record that a reset or a restored older `settings.json` cannot take away.
+    const marker = readDoneMarker(user);
+    if (marker?.localStorageImported === true) {
+        return { state: 'already_imported' };
     }
     const settingsPath = getSettingsPath(user);
     const initialText = readSettingsText(settingsPath);
@@ -572,5 +762,8 @@ export function importLegacyThreads(user, body, { now = Date.now() } = {}) {
         made.forEach(id => removeConversationFolder(user, id));
         throw error;
     }
+    // After the settings write, and without undoing the import if it fails: the flag in settings.json still guards it then.
+    // A user with no marker gets one here, because this is the first thing that the new store holds for the user.
+    tryWriteDoneMarker(user, marker ? { localStorageImported: true } : { migratedAt: now, localStorageImported: true });
     return { state: 'imported', conversations: plan.report.migrated.conversations, chats: plan.report.migrated.chats, messages: plan.report.migrated.messages };
 }

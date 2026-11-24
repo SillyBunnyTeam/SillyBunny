@@ -54,18 +54,22 @@ function seedMigratedUser(handle) {
         }],
     });
     updateCharacterState(user, 'Nova.png', { routine: { enabled: true, text: '{"days":{}}', generatedAt: at } });
-    fs.writeFileSync(path.join(user.directories.root, 'settings.json'), JSON.stringify({
+    const settingsPath = path.join(user.directories.root, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
         user_avatar: PERSONA,
         _version: 7,
         extension_settings: { sillybunny_conversation: { version: 2, localStorageMigrated: true, settings: { quiet_hours_start: '23:00' }, userStatus: { text: 'away' } } },
         accountStorage: { pinnedChats: JSON.stringify({ [PIN_KEY]: { is_conversation: true, conversation_id: CONVERSATION_ID, conversation_chat_id: 'main' } }) },
     }));
+    // A user migrated before the marker existed gets it from the folders and the version of settings.json.
+    expect(runMigration(user)).toEqual({ state: 'migrated' });
+    expect(fs.existsSync(path.join(user.directories.conversations, 'migration-done.json'))).toBe(true);
     return user;
 }
 
 describe('the import of the old browser storage after a reset', () => {
-    // `localStorageMigrated` is the only record that the import ran, and it sits in the file that a reset deletes.
-    test.failing('does not run a second time, so that the imported chats are not added to their conversation again', async () => {
+    // `localStorageMigrated` sits in the file that a reset deletes, so the marker in `conversations/` holds the record too.
+    test('does not run a second time, so that the imported chats are not added to their conversation again', async () => {
         const client = await harness.loginAs(OPEN_MEMBER);
         const user = seedMigratedUser(OPEN_MEMBER.handle);
         for (const [directory, name] of [[user.directories.characters, 'Nova.png'], [user.directories.avatars, PERSONA]]) {
@@ -95,7 +99,7 @@ describe('POST /api/users/reset-settings with conversations', () => {
         expect(JSON.parse(fs.readFileSync(path.join(user.directories.root, 'settings.json'), 'utf8'))).toEqual(JSON.parse(fs.readFileSync(DEFAULT_SETTINGS_PATH, 'utf8')));
     });
 
-    test('the conversations and the character state are still there, and nothing is left to migrate', async () => {
+    test('the conversations and the character state are still there, and the marker still says that they were migrated', async () => {
         const client = await harness.loginAs(OPEN_MEMBER);
         const user = seedMigratedUser(OPEN_MEMBER.handle);
 
@@ -106,7 +110,7 @@ describe('POST /api/users/reset-settings with conversations', () => {
         expect(listed.conversations.map(item => item.id)).toEqual([CONVERSATION_ID]);
         expect(listed.conversations[0].messageCount).toBe(1);
         expect(readCharacterState(user).characters['Nova.png'].routine.enabled).toBe(true);
-        expect(runMigration(user)).toEqual({ state: 'nothing_to_migrate' });
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
     });
 
     test('the mode-wide settings and the pins of conversations live in settings.json, so they are reset', async () => {

@@ -17,6 +17,8 @@ const FILES = {
     [`conversations/${CONVERSATION_ID}/conversation.json`]: '{"version":1}',
     [`conversations/${CONVERSATION_ID}/chats/main.jsonl`]: '{"chat_metadata":{}}',
     'conversations/characters.json': '{"version":1}',
+    // The marker that says the migration ran, and that the browser storage was imported. It must travel with the folders.
+    'conversations/migration-done.json': '{"version":1,"migratedAt":1700000000000,"backupFile":"","localStorageImported":true}',
 };
 
 function writeUserFiles(handle, files) {
@@ -90,7 +92,7 @@ describe('the conversations folder of a user', () => {
         }
     });
 
-    test('is part of the account backup ZIP, with the chats and the character file', async () => {
+    test('is part of the account backup ZIP, with the chats, the character file and the migration marker', async () => {
         const client = await harness.loginAs(OPEN_MEMBER);
         writeUserFiles(OPEN_MEMBER.handle, { 'settings.json': '{}', ...FILES });
 

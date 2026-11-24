@@ -35,6 +35,7 @@ const { conversationIndex } = await import('../src/conversation-index.js');
 const { planMigration } = await import('../src/conversation-migration-plan.js');
 const {
     BACKUP_FOLDER_NAME,
+    DONE_MARKER_FILE_NAME,
     ensureMigrated,
     importLegacyThreads,
     MARKER_FILE_NAME,
@@ -562,6 +563,56 @@ describe('importLegacyThreads', () => {
         expect(listConversations(created.user).conversations).toEqual([]);
     });
 
+    describe('and the marker of the conversations folder', () => {
+        const characters = () => ({ 'Nova.png': thread('solo', [branch('main', 'Main', lines(2))], { settings: { enabled: true } }) });
+        const markerPathOf = created => path.join(created.user.directories.conversations, DONE_MARKER_FILE_NAME);
+        const readMarkerOf = created => JSON.parse(fs.readFileSync(markerPathOf(created), 'utf8'));
+
+        test('records the import in the marker, so that a settings.json without the flag does not let it run twice', () => {
+            const created = createUser({ settings: importSettings(), userAvatars: personaFiles });
+            importLegacyThreads(created.user, { personaId: PERSONA, characters: characters() });
+            expect(readMarkerOf(created)).toMatchObject({ version: 1, localStorageImported: true });
+            fs.rmSync(created.settingsPath);
+            fs.writeFileSync(created.settingsPath, JSON.stringify(importSettings()));
+
+            const second = importLegacyThreads(created.user, { personaId: PERSONA, characters: characters() });
+
+            expect(second).toEqual({ state: 'already_imported' });
+            expect(listConversations(created.user).conversations.map(item => item.chats.length)).toEqual([1]);
+        });
+
+        test('keeps what the marker says about the migration, and sets only the import', () => {
+            const created = createUser({ settings: importSettings(), userAvatars: personaFiles });
+            fs.writeFileSync(markerPathOf(created), JSON.stringify({ version: 1, migratedAt: 5, backupFile: 'a/b.json', localStorageImported: false }));
+
+            importLegacyThreads(created.user, { personaId: PERSONA, characters: characters() });
+
+            expect(readMarkerOf(created)).toEqual({ version: 1, migratedAt: 5, backupFile: 'a/b.json', localStorageImported: true });
+        });
+
+        test('refuses when the marker says imported, whatever settings.json says, and writes nothing', () => {
+            const created = createUser({ settings: importSettings(), userAvatars: personaFiles });
+            fs.writeFileSync(markerPathOf(created), JSON.stringify({ version: 1, migratedAt: 5, backupFile: '', localStorageImported: true }));
+            const tree = snapshotTree(created.user.directories.root);
+
+            expect(importLegacyThreads(created.user, { personaId: PERSONA, characters: characters() })).toEqual({ state: 'already_imported' });
+
+            expect(snapshotTree(created.user.directories.root)).toEqual(tree);
+        });
+
+        test('is still marked in settings.json when the marker cannot be written, and the import stands', () => {
+            const created = createUser({ settings: importSettings(), userAvatars: personaFiles });
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            fs.mkdirSync(markerPathOf(created));
+
+            const outcome = importLegacyThreads(created.user, { personaId: PERSONA, characters: characters() });
+
+            expect(outcome.state).toBe('imported');
+            expect(JSON.parse(fs.readFileSync(created.settingsPath, 'utf8')).extension_settings.sillybunny_conversation.localStorageMigrated).toBe(true);
+            expect(listConversations(created.user).conversations).toHaveLength(1);
+        });
+    });
+
     test.each([
         ['a persona that is not a file name', { personaId: '../x', characters: {} }],
         ['characters that are not an object', { personaId: PERSONA, characters: [] }],
@@ -570,5 +621,312 @@ describe('importLegacyThreads', () => {
         const created = createUser({ settings: importSettings() });
 
         expect(() => importLegacyThreads(created.user, body)).toThrow(ConversationStoreError);
+    });
+});
+
+/** What a settings snapshot restore does to settings.json: the file is replaced by older text. */
+function restoreSettingsText(text) {
+    fs.rmSync(settingsPath, { force: true });
+    fs.writeFileSync(settingsPath, text);
+}
+
+const doneMarkerPath = () => path.join(user.directories.conversations, DONE_MARKER_FILE_NAME);
+const readDoneMarker = () => JSON.parse(fs.readFileSync(doneMarkerPath(), 'utf8'));
+const LEGACY_PARTS = ['characters', 'groups', 'reminders', 'legacyThreadPersonaAssignments'];
+
+describe('the marker that says the migration is over', () => {
+    let result;
+    let beforeText;
+
+    beforeEach(() => {
+        useFixtureUser();
+        beforeText = fs.readFileSync(settingsPath, 'utf8');
+        result = runMigration(user, { now: MIGRATION_TIME });
+    });
+
+    test('is written when the migration ends, and names the time, the backup and whether the browser storage was imported', () => {
+        expect(readDoneMarker()).toEqual({
+            version: 1,
+            migratedAt: MIGRATION_TIME,
+            backupFile: result.report.backupFile,
+            localStorageImported: true,
+        });
+        expect(fs.readdirSync(user.directories.conversations).filter(name => name.endsWith('.tmp'))).toEqual([]);
+    });
+
+    test('is not written when the migration fails', () => {
+        useFixtureUser();
+        fs.writeFileSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME), 'a file where the folder should be');
+
+        expect(() => runMigration(user)).toThrow();
+
+        expect(fs.existsSync(doneMarkerPath())).toBe(false);
+    });
+
+    test('that cannot be written does not undo a migration that is complete', () => {
+        useFixtureUser();
+        const original = fs.mkdirSync;
+        const isTrimmed = () => readSettings().extension_settings.sillybunny_conversation.version === 2;
+        // The marker is the last thing written, so a folder call after the trim of settings.json is the marker's.
+        jest.spyOn(fs, 'mkdirSync').mockImplementation((directory, ...rest) => {
+            if (String(directory) === user.directories.conversations && isTrimmed()) {
+                throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+            }
+            return original(directory, ...rest);
+        });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const outcome = runMigration(user);
+
+        jest.restoreAllMocks();
+        expect(outcome.state).toBe('migrated');
+        expect(conversationFolders()).toHaveLength(outcome.report.migrated.conversations);
+        expect(readSettings().extension_settings.sillybunny_conversation.version).toBe(2);
+        expect(fs.existsSync(doneMarkerPath())).toBe(false);
+        // The next run finds folders and a migrated settings.json, and writes the marker that was missed.
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
+        expect(fs.existsSync(doneMarkerPath())).toBe(true);
+    });
+
+    describe('with the old object back in settings.json', () => {
+        let treeOfConversations;
+
+        beforeEach(() => {
+            treeOfConversations = snapshotTree(user.directories.conversations);
+            restoreSettingsText(beforeText);
+        });
+
+        test('plans and writes no conversation, whatever the old object holds', () => {
+            const outcome = runMigration(user, { now: MIGRATION_TIME });
+
+            expect(outcome).toMatchObject({ state: 'migrated' });
+            expect(snapshotTree(user.directories.conversations)).toEqual(treeOfConversations);
+        });
+
+        test('trims it as the migration does, keeps the rest of the file, and raises the settings version', () => {
+            const restored = JSON.parse(beforeText);
+
+            runMigration(user, { now: MIGRATION_TIME });
+
+            const after = readSettings();
+            const kept = after.extension_settings.sillybunny_conversation;
+            for (const part of LEGACY_PARTS) {
+                expect(kept).not.toHaveProperty(part);
+            }
+            expect(kept).toMatchObject({ version: 2, localStorageMigrated: true, userStatus: 'online', userPersonaStatus: 'working from home' });
+            expect(kept.settings).toEqual(restored.extension_settings.sillybunny_conversation.settings);
+            expect(after.extension_settings.unrelated).toEqual(restored.extension_settings.unrelated);
+            expect(after.accountStorage).toEqual(restored.accountStorage);
+            expect(after._version).toBe(restored._version + 1);
+        });
+
+        test('copies the old object to the backup folder first, and the same object is not written twice', () => {
+            const outcome = runMigration(user, { now: MIGRATION_TIME });
+
+            expect(outcome.trimmed.backupFile).toBe(result.report.backupFile);
+            expect(fs.readdirSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME))).toEqual([MIGRATION_DAY]);
+        });
+
+        test('never writes over a backup that holds other data', () => {
+            const firstBackup = path.join(user.directories.backups, result.report.backupFile);
+            const firstText = fs.readFileSync(firstBackup, 'utf8');
+            const changed = JSON.parse(beforeText);
+            changed.extension_settings.sillybunny_conversation.userStatus = 'a status that the first backup does not have';
+            restoreSettingsText(JSON.stringify(changed));
+
+            const outcome = runMigration(user, { now: MIGRATION_TIME });
+
+            expect(outcome.trimmed.backupFile).toBe(path.join(BACKUP_FOLDER_NAME, `${MIGRATION_DAY}-2`, 'sillybunny_conversation.json'));
+            expect(fs.readFileSync(firstBackup, 'utf8')).toBe(firstText);
+            expect(JSON.parse(fs.readFileSync(path.join(user.directories.backups, outcome.trimmed.backupFile), 'utf8')).userStatus).toBe('a status that the first backup does not have');
+        });
+
+        test('leaves settings.json as it was when the backup cannot be written, and answers migrated', () => {
+            fs.rmSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME), { recursive: true });
+            fs.writeFileSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME), 'a file where the folder should be');
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            const outcome = runMigration(user);
+
+            expect(outcome).toMatchObject({ state: 'migrated', trimFailed: true });
+            expect(fs.readFileSync(settingsPath, 'utf8')).toBe(beforeText);
+            expect(snapshotTree(user.directories.conversations)).toEqual(treeOfConversations);
+        });
+    });
+
+    test('an object of the old version with nothing in its parts is trimmed too', () => {
+        const stale = { ...JSON.parse(beforeText), extension_settings: { sillybunny_conversation: { version: 1, settings: { custom_instructions: 'kept' } } } };
+        restoreSettingsText(JSON.stringify(stale));
+
+        const outcome = runMigration(user, { now: MIGRATION_TIME });
+
+        expect(outcome.trimmed).toBeDefined();
+        expect(readSettings().extension_settings.sillybunny_conversation).toEqual({ version: 2, settings: { custom_instructions: 'kept' } });
+    });
+
+    test.each([
+        ['an object of the new version', { version: 2, settings: { a: 1 }, userStatus: 'online' }],
+        ['an object with no version and no old parts', { settings: { a: 1 } }],
+        ['no object', undefined],
+    ])('writes nothing for %s', (_name, object) => {
+        const current = JSON.parse(beforeText);
+        current.extension_settings = { ...current.extension_settings, sillybunny_conversation: object };
+        restoreSettingsText(JSON.stringify(current));
+        const text = fs.readFileSync(settingsPath, 'utf8');
+        const tree = snapshotTree(user.directories.backups);
+
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
+
+        expect(fs.readFileSync(settingsPath, 'utf8')).toBe(text);
+        expect(snapshotTree(user.directories.backups)).toEqual(tree);
+    });
+
+    test('a settings.json that cannot be read or parsed does not fail the user, because the conversations do not depend on it', () => {
+        fs.writeFileSync(settingsPath, '{ not json');
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
+
+        fs.rmSync(settingsPath);
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
+    });
+
+    test('removes the marker of an unfinished run, as a user without the done marker does', () => {
+        fs.writeFileSync(path.join(user.directories.conversations, MARKER_FILE_NAME), JSON.stringify({ conversationIds: conversationFolders(), charactersBefore: null }));
+
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
+
+        expect(fs.existsSync(path.join(user.directories.conversations, MARKER_FILE_NAME))).toBe(false);
+        expect(conversationFolders()).toHaveLength(result.report.migrated.conversations);
+    });
+});
+
+describe('a user who was migrated before the marker existed', () => {
+    let treeBefore;
+
+    beforeEach(() => {
+        useFixtureUser();
+        runMigration(user, { now: MIGRATION_TIME });
+        fs.rmSync(doneMarkerPath());
+        treeBefore = snapshotTree(user.directories.conversations);
+    });
+
+    test('gets the marker from the folders and the version of settings.json, and nothing else changes', () => {
+        const settingsText = fs.readFileSync(settingsPath, 'utf8');
+
+        expect(runMigration(user, { now: MIGRATION_TIME + 5 })).toEqual({ state: 'migrated' });
+
+        expect(readDoneMarker()).toEqual({ version: 1, migratedAt: MIGRATION_TIME + 5, backupFile: '', localStorageImported: true });
+        const treeAfter = snapshotTree(user.directories.conversations);
+        delete treeAfter[DONE_MARKER_FILE_NAME];
+        expect(treeAfter).toEqual(treeBefore);
+        expect(fs.readFileSync(settingsPath, 'utf8')).toBe(settingsText);
+    });
+
+    test('is not migrated a second time when an old snapshot is restored, after the marker is written', () => {
+        const folders = conversationFolders().toSorted();
+        runMigration(user);
+        restoreSettingsText(JSON.stringify(fixture.settings));
+
+        runMigration(user);
+
+        expect(conversationFolders().toSorted()).toEqual(folders);
+        expect(folders.length).toBeGreaterThan(0);
+    });
+
+    test('with characters.json and no conversation folder is migrated too', () => {
+        for (const id of conversationFolders()) {
+            fs.rmSync(path.join(user.directories.conversations, id), { recursive: true });
+        }
+        expect(fs.existsSync(path.join(user.directories.conversations, 'characters.json'))).toBe(true);
+
+        runMigration(user);
+
+        expect(fs.existsSync(doneMarkerPath())).toBe(true);
+    });
+
+    test('with no folder and no characters.json gets no marker, so an old snapshot can still be migrated', () => {
+        fs.rmSync(user.directories.conversations, { recursive: true });
+        fs.mkdirSync(user.directories.conversations);
+
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
+
+        expect(fs.existsSync(doneMarkerPath())).toBe(false);
+    });
+});
+
+describe('ensureMigrated on every settings read', () => {
+    function settingsReads() {
+        const original = fs.readFileSync;
+        const spy = jest.spyOn(fs, 'readFileSync').mockImplementation((file, ...rest) => original(file, ...rest));
+        return () => spy.mock.calls.filter(([file]) => String(file) === settingsPath).length;
+    }
+
+    beforeEach(() => {
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    test('reads nothing but the file status while settings.json is as it was, and answers the state it had', () => {
+        useFixtureUser();
+        const first = ensureMigrated(user);
+        const reads = settingsReads();
+
+        expect(ensureMigrated(user)).toBe(first);
+        expect(ensureMigrated(user)).toBe(first);
+        expect(first.report.migrated.conversations).toBeGreaterThan(0);
+        expect(reads()).toBe(0);
+    });
+
+    test('reads settings.json again when it is replaced, trims the old object that came back, and keeps the report', () => {
+        useFixtureUser();
+        const text = fs.readFileSync(settingsPath, 'utf8');
+        const first = ensureMigrated(user);
+        const tree = snapshotTree(user.directories.conversations);
+        restoreSettingsText(text);
+
+        const second = ensureMigrated(user);
+
+        expect(second).toBe(first);
+        for (const part of LEGACY_PARTS) {
+            expect(readSettings().extension_settings.sillybunny_conversation).not.toHaveProperty(part);
+        }
+        expect(snapshotTree(user.directories.conversations)).toEqual(tree);
+        const reads = settingsReads();
+        expect(ensureMigrated(user)).toBe(first);
+        expect(reads()).toBe(0);
+    });
+
+    test('also notices a replaced settings.json of a user who had nothing to migrate', () => {
+        const created = createUser({ settings: { username: 'nobody' }, groups: { [ROLEPLAY_GROUP_FILE.id]: ROLEPLAY_GROUP_FILE } });
+        expect(ensureMigrated(created.user)).toEqual({ state: 'nothing_to_migrate' });
+        fs.rmSync(created.settingsPath);
+        fs.writeFileSync(created.settingsPath, JSON.stringify(buildLegacySettingsFixture().settings));
+
+        expect(ensureMigrated(created.user)).toMatchObject({ state: 'migrated' });
+        expect(listConversations(created.user).conversations.length).toBeGreaterThan(0);
+    });
+
+    test('does not fail the user when the trim fails, and tries again after the retry time', () => {
+        jest.useFakeTimers({ now: BASE });
+        useFixtureUser();
+        const text = fs.readFileSync(settingsPath, 'utf8');
+        const first = ensureMigrated(user);
+        restoreSettingsText(text);
+        const backups = path.join(user.directories.backups, BACKUP_FOLDER_NAME);
+        fs.renameSync(backups, `${backups}-moved`);
+        fs.writeFileSync(backups, 'a file where the folder should be');
+
+        expect(ensureMigrated(user)).toMatchObject({ state: 'migrated' });
+        expect(readSettings().extension_settings.sillybunny_conversation).toHaveProperty('characters');
+
+        fs.rmSync(backups);
+        fs.renameSync(`${backups}-moved`, backups);
+        const reads = settingsReads();
+        ensureMigrated(user);
+        expect(reads()).toBe(0);
+        jest.setSystemTime(BASE + RETRY_AFTER_MS);
+
+        expect(ensureMigrated(user)).toMatchObject({ state: 'migrated' });
+        expect(readSettings().extension_settings.sillybunny_conversation).not.toHaveProperty('characters');
+        expect(first.state).toBe('migrated');
     });
 });

@@ -250,6 +250,7 @@ describe('POST /import-legacy', () => {
 
         expect(status).toBe(200);
         expect(json).toMatchObject({ state: 'imported', conversations: 0 });
-        expect(fs.readdirSync(user.directories.conversations)).toEqual([]);
+        // The import is marked done even when it wrote nothing, so the marker is the only file.
+        expect(fs.readdirSync(user.directories.conversations)).toEqual(['migration-done.json']);
     });
 });
