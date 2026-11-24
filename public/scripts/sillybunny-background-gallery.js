@@ -57,6 +57,15 @@ let suppressClickUntil = 0;
 let bulkBusy = false;
 let selectionShown = false;
 let requestQueue = Promise.resolve();
+let flatGridCache = new Map();
+let sectionRecords = new Map();
+let unfiledGroupNode = null;
+let unfiledHeadingNode = null;
+let unfiledGridNode = null;
+let unfiledGridCache = new Map();
+let noResultsStatusNode = null;
+let galleryUnsubscribe = null;
+let galleryScrollbarObserver = null;
 
 function el(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -136,8 +145,19 @@ const bridge = {
 
 function moveTo(trigger, keys, after = () => {}) {
     const folders = getFolders(SCOPE);
+    const folderIdsByKey = new Map();
+    for (const folder of folders) {
+        for (const member of getFolderMembers(SCOPE, folder.id)) {
+            let list = folderIdsByKey.get(member);
+            if (!list) {
+                list = [];
+                folderIdsByKey.set(member, list);
+            }
+            list.push(folder.id);
+        }
+    }
     const inFolder = folderId => keys.every(key => {
-        const ids = folders.filter(folder => getFolderMembers(SCOPE, folder.id).includes(key)).map(folder => folder.id);
+        const ids = folderIdsByKey.get(key) ?? [];
         return folderId === null ? ids.length === 0 : ids.length === 1 && ids[0] === folderId;
     });
     const place = folderId => () => {
@@ -219,6 +239,10 @@ export function createBackgroundFolderAdapter() {
         getName: file => friendlyName(String(file)),
         getAvatar: file => {
             const image = document.createElement('img');
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            image.setAttribute('loading', 'lazy');
+            image.setAttribute('decoding', 'async');
             image.src = hooks.getThumbnailUrl(file);
             image.alt = '';
             return image;
@@ -230,8 +254,33 @@ export function createBackgroundFolderAdapter() {
 // ---------------------------------------------------------------------------------------------------------------------
 // Sections
 
-function makeCell(file) {
-    const image = hooks.getImages().find(candidate => candidate.filename === file) ?? { filename: file };
+/** Indexes background metadata by filename and CSS URL in O(N) so thumbnail lookups are O(1). */
+export function buildBackgroundImageMap(images) {
+    const map = new Map();
+    if (!Array.isArray(images)) return map;
+    for (const image of images) {
+        if (!image?.filename) continue;
+        map.set(image.filename, image);
+        const urlKey = image.url ?? `url("backgrounds/${encodeURIComponent(image.filename)}")`;
+        map.set(urlKey, image);
+    }
+    return map;
+}
+
+function getActiveImageMap(images) {
+    const hookMap = hooks?.getImageMap?.();
+    if (hookMap instanceof Map && hookMap.size === images.length) return hookMap;
+    return buildBackgroundImageMap(images);
+}
+
+function cellSignature(file, image) {
+    const isAnimated = Boolean(image?.isAnimated);
+    const mediaType = image?.mediaType ?? (hooks?.isVideo?.(file) ? 'video' : 'image');
+    return `${file}\u001f${isAnimated ? 1 : 0}\u001f${mediaType}`;
+}
+
+function makeCell(file, imageMap) {
+    const image = imageMap?.get(file) ?? hooks?.getImageMap?.()?.get(file) ?? { filename: file };
     const cell = hooks.createThumbnail({
         filename: file,
         isAnimated: image.isAnimated ?? false,
@@ -253,27 +302,121 @@ function makeCell(file) {
     return cell;
 }
 
-function buildGrid(files) {
-    const grid = el('div', 'bg_list sb-bg-grid');
-    for (const file of files) grid.append(makeCell(file));
-    return grid;
+function takeRecycledCell(recyclePool, file, signature) {
+    const bucket = recyclePool?.get(file);
+    if (!bucket?.length) return null;
+    for (let index = 0; index < bucket.length; index++) {
+        const candidate = bucket[index];
+        if (candidate.sig === signature && !candidate.used) {
+            candidate.used = true;
+            return candidate;
+        }
+    }
+    return null;
+}
+
+/**
+ * Reconciles a thumbnail grid in place by filename, batching insertions through a DocumentFragment.
+ * @param {HTMLElement} grid
+ * @param {string[]} files
+ * @param {{ cache: Map<string, { cell: HTMLElement, sig: string }>, imageMap?: Map<string, object>, createCell?: (file: string, imageMap?: Map<string, object>) => HTMLElement, recyclePool?: Map<string, Array<{ cell: HTMLElement, sig: string, used?: boolean }>> }} options
+ */
+export function reconcileBackgroundGrid(grid, files, { cache, imageMap, createCell = makeCell, recyclePool = null }) {
+    const nextKeys = new Set();
+    let cursor = grid.firstElementChild;
+    while (cursor && !cursor.classList.contains('bg_example')) {
+        const stray = cursor;
+        cursor = cursor.nextElementSibling;
+        stray.remove();
+    }
+    let fragment = null;
+    const flushFragment = () => {
+        if (!fragment) return;
+        grid.insertBefore(fragment, cursor);
+        fragment = null;
+    };
+
+    for (const file of files) {
+        nextKeys.add(file);
+        const image = imageMap?.get(file);
+        const sig = cellSignature(file, image);
+        let cached = cache.get(file);
+        if (!cached || cached.sig !== sig) {
+            const recycled = takeRecycledCell(recyclePool, file, sig);
+            const cell = recycled ? recycled.cell : createCell(file, imageMap);
+            if (cached && cached.cell !== cell) {
+                if (cursor === cached.cell) cursor = cached.cell.nextElementSibling;
+                cached.cell.remove();
+            }
+            cached = { cell, sig };
+            cache.set(file, cached);
+        }
+        const { cell } = cached;
+        const positionedBeforeCursor = cell.parentElement === grid && cell.nextElementSibling === cursor && !fragment;
+        if (cell === cursor) {
+            flushFragment();
+            cursor = cursor.nextElementSibling;
+        } else if (!positionedBeforeCursor) {
+            fragment ??= document.createDocumentFragment();
+            fragment.appendChild(cell);
+        }
+    }
+    flushFragment();
+
+    for (const [file, cached] of cache) {
+        if (nextKeys.has(file)) continue;
+        if (cached.cell.parentElement === grid) cached.cell.remove();
+        cache.delete(file);
+    }
 }
 
 function createEmptyNote() {
     return el('p', 'sb-bg-section__empty', t`No backgrounds`);
 }
 
-function setSectionExpanded(section, expanded, { persist, files, emptyFolder }) {
-    const row = section.querySelector('.sb-folder-row');
-    const body = section.querySelector('.sb-bg-section__body');
+function reconcileOrderedChildren(parent, desiredChildren) {
+    const desiredSet = new Set(desiredChildren);
+    for (const child of [...parent.children]) {
+        if (!desiredSet.has(child)) child.remove();
+    }
+    let cursor = parent.firstElementChild;
+    let fragment = null;
+    const flushFragment = () => {
+        if (!fragment) return;
+        parent.insertBefore(fragment, cursor);
+        fragment = null;
+    };
+    for (const child of desiredChildren) {
+        const positionedBeforeCursor = child.parentElement === parent && child.nextElementSibling === cursor && !fragment;
+        if (child === cursor) {
+            flushFragment();
+            cursor = cursor.nextElementSibling;
+        } else if (!positionedBeforeCursor) {
+            fragment ??= document.createDocumentFragment();
+            fragment.appendChild(child);
+        }
+    }
+    flushFragment();
+}
+
+function setSectionExpanded(record, expanded, { persist }) {
+    const { section, rowFactory, body } = record;
+    const row = rowFactory.row;
     row.setAttribute('aria-expanded', String(expanded));
     if (expanded && !body.firstElementChild) {
-        if (files.length) {
-            body.append(buildGrid(files));
+        if (record.files.length) {
+            record.grid ??= el('div', 'bg_list sb-bg-grid');
+            const images = hooks.getImages();
+            reconcileBackgroundGrid(record.grid, record.files, {
+                cache: record.gridCache,
+                imageMap: getActiveImageMap(images),
+            });
+            body.append(record.grid);
             hooks.activateLazyLoader();
             hooks.refreshHighlights();
-        } else if (emptyFolder) {
-            body.append(createEmptyNote());
+        } else if (record.emptyFolder) {
+            record.emptyNote ??= createEmptyNote();
+            body.append(record.emptyNote);
         }
     }
     if (persist) setFolderExpanded(SCOPE, section.dataset.folderId, expanded);
@@ -281,6 +424,7 @@ function setSectionExpanded(section, expanded, { persist, files, emptyFolder }) 
     const close = () => {
         if (row.getAttribute('aria-expanded') === 'true') return;
         body.hidden = true;
+        record.gridCache.clear();
         body.replaceChildren();
     };
     if (expanded) body.hidden = false;
@@ -291,41 +435,98 @@ function setSectionExpanded(section, expanded, { persist, files, emptyFolder }) 
     animateFolderBody(body, expanded, { onEnd: expanded ? null : close });
 }
 
-function buildSection({ folder, files, total, expanded }, searching) {
-    const section = el('section', 'sb-bg-section');
-    section.dataset.folderId = folder.id;
-    const { row } = createFolderRow({
+function getOrCreateSectionRecord({ folder, files, total, expanded }, searching, imageMap, recyclePool) {
+    let record = sectionRecords.get(folder.id);
+    const countLabel = folderCountLabel(total, SCOPE);
+    const emptyFolder = !total && !searching;
+    const folderPayload = {
         key: `folder:${SCOPE}:${folder.id}`,
         folder: { ...folder, scope: SCOPE },
         count: total,
-        countLabel: folderCountLabel(total, SCOPE),
+        countLabel,
         expanded,
-    });
-    row.tabIndex = 0;
-    const head = el('div', 'sb-bg-section__head ds-entity-list');
-    const rows = el('div', 'ds-entity-list__rows');
-    rows.append(row);
-    head.append(rows);
-    const body = el('div', 'sb-bg-section__body');
-    // A closed folder builds no thumbnails: they appear on the first open.
-    if (expanded && files.length) body.append(buildGrid(files));
-    const emptyFolder = !total && !searching;
-    if (expanded && emptyFolder) body.append(createEmptyNote());
-    body.hidden = !expanded;
-    section.append(head, body);
-    const toggle = () => {
-        if (selection?.isActive) return;
-        const next = row.getAttribute('aria-expanded') !== 'true';
-        // A search opens folders for its own sake and leaves the stored state alone, so a click during one changes only what is on screen.
-        setSectionExpanded(section, next, { persist: !searching, files, emptyFolder });
     };
-    row.addEventListener('click', toggle);
-    row.addEventListener('keydown', event => {
-        if (event.target !== row || event.isComposing || !['Enter', ' '].includes(event.key)) return;
-        event.preventDefault();
-        toggle();
-    });
-    return section;
+    if (!record) {
+        const section = el('section', 'sb-bg-section');
+        section.dataset.folderId = folder.id;
+        const rowFactory = createFolderRow(folderPayload);
+        const { row } = rowFactory;
+        row.tabIndex = 0;
+        const head = el('div', 'sb-bg-section__head ds-entity-list');
+        const rows = el('div', 'ds-entity-list__rows');
+        rows.append(row);
+        head.append(rows);
+        const body = el('div', 'sb-bg-section__body');
+        section.append(head, body);
+        record = {
+            section,
+            rowFactory,
+            body,
+            grid: null,
+            gridCache: new Map(),
+            emptyNote: null,
+            files,
+            emptyFolder,
+            searching,
+            signature: '',
+        };
+        const toggle = () => {
+            if (selection?.isActive) return;
+            const next = row.getAttribute('aria-expanded') !== 'true';
+            // A search opens folders for its own sake and leaves the stored state alone, so a click during one changes only what is on screen.
+            setSectionExpanded(record, next, { persist: !record.searching });
+        };
+        row.addEventListener('click', toggle);
+        row.addEventListener('keydown', event => {
+            if (event.target !== row || event.isComposing || !['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            toggle();
+        });
+        sectionRecords.set(folder.id, record);
+    }
+
+    record.files = files;
+    record.emptyFolder = emptyFolder;
+    record.searching = searching;
+    const nextSig = `${folder.id}\u001f${folder.name}\u001f${folder.color ?? ''}\u001f${countLabel}\u001f${expanded ? 1 : 0}`;
+    if (record.signature !== nextSig) {
+        record.rowFactory.update(folderPayload);
+        record.signature = nextSig;
+    }
+
+    if (!expanded) {
+        for (const cached of record.gridCache.values()) cached.cell.remove();
+        record.gridCache.clear();
+        record.body.hidden = true;
+        record.body.replaceChildren();
+    } else {
+        record.body.hidden = false;
+        if (files.length) {
+            record.emptyNote?.remove();
+            record.grid ??= el('div', 'bg_list sb-bg-grid');
+            if (record.grid.parentElement !== record.body) {
+                record.body.replaceChildren(record.grid);
+            }
+            reconcileBackgroundGrid(record.grid, files, {
+                cache: record.gridCache,
+                imageMap,
+                recyclePool,
+            });
+        } else if (emptyFolder) {
+            for (const cached of record.gridCache.values()) cached.cell.remove();
+            record.gridCache.clear();
+            record.grid?.remove();
+            record.emptyNote ??= createEmptyNote();
+            if (record.emptyNote.parentElement !== record.body) {
+                record.body.replaceChildren(record.emptyNote);
+            }
+        } else {
+            for (const cached of record.gridCache.values()) cached.cell.remove();
+            record.gridCache.clear();
+            record.body.replaceChildren();
+        }
+    }
+    return record.section;
 }
 
 function render() {
@@ -357,17 +558,34 @@ function syncFolderRows() {
     }
 }
 
+function collectRecyclePool(cachesToRelease) {
+    const pool = new Map();
+    for (const cache of cachesToRelease) {
+        for (const [file, entry] of cache) {
+            let bucket = pool.get(file);
+            if (!bucket) {
+                bucket = [];
+                pool.set(file, bucket);
+            }
+            bucket.push({ cell: entry.cell, sig: entry.sig, used: false });
+        }
+        cache.clear();
+    }
+    return pool;
+}
+
 function draw() {
     const folders = getFolders(SCOPE);
+    const images = hooks.getImages();
+    const imageMap = getActiveImageMap(images);
     const model = buildBackgroundSections({
-        images: hooks.getImages(),
+        images,
         folders,
         getMembers: id => getFolderMembers(SCOPE, id),
         query,
         sortFiles: hooks.sortFiles,
     });
     const searching = Boolean(query.trim());
-    container.replaceChildren();
     container.classList.toggle('sb-bg-sections', folders.length > 0);
     // The shared accessibility pass makes every `.bg_list` a list of items. With sections the children are sections, not items, so the
     // container leaves that class (the pass watches it) and only groups them.
@@ -375,23 +593,80 @@ function draw() {
     container.setAttribute('role', folders.length ? 'group' : 'list');
     if (folders.length) container.setAttribute('aria-label', t`Background`);
     else container.removeAttribute('aria-label');
+
     if (!folders.length) {
         // Without folders the gallery is a flat grid.
-        for (const file of model.unfiled) container.append(makeCell(file));
-    } else {
-        for (const section of model.sections) container.append(buildSection(section, searching));
-        if (model.unfiled.length) {
-            const group = el('div', 'sb-bg-unfiled');
-            if (model.showUnfiledHeading) {
-                const heading = el('h3', 'sb-bg-unfiled__heading', t`No Folder`);
-                group.append(heading);
-            }
-            group.append(buildGrid(model.unfiled));
-            container.append(group);
+        const releasing = [...[...sectionRecords.values()].map(rec => rec.gridCache), unfiledGridCache];
+        const recyclePool = collectRecyclePool(releasing);
+        for (const rec of sectionRecords.values()) rec.section.remove();
+        sectionRecords.clear();
+        unfiledGroupNode?.remove();
+        if (searching && !model.hasMatches) {
+            for (const cached of flatGridCache.values()) cached.cell.remove();
+            flatGridCache.clear();
+            noResultsStatusNode ??= createStatusPage({
+                state: 'no-results',
+                icon: 'magnifying-glass',
+                title: t`No Results Found`,
+                description: t`Try a different search`,
+                compact: true,
+            }).element;
+            reconcileOrderedChildren(container, [noResultsStatusNode]);
+        } else {
+            noResultsStatusNode?.remove();
+            reconcileBackgroundGrid(container, model.unfiled, {
+                cache: flatGridCache,
+                imageMap,
+                recyclePool,
+            });
         }
-    }
-    if (searching && !model.hasMatches) {
-        container.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results Found`, description: t`Try a different search`, compact: true }).element);
+    } else {
+        const activeSectionIds = new Set(model.sections.map(section => section.folder.id));
+        const releasing = [flatGridCache];
+        for (const [id, rec] of sectionRecords) {
+            if (!activeSectionIds.has(id)) {
+                releasing.push(rec.gridCache);
+                rec.section.remove();
+                sectionRecords.delete(id);
+            }
+        }
+        if (!model.unfiled.length && unfiledGridCache.size) {
+            releasing.push(unfiledGridCache);
+        }
+        const recyclePool = collectRecyclePool(releasing);
+
+        const desiredChildren = [];
+        for (const sectionModel of model.sections) {
+            desiredChildren.push(getOrCreateSectionRecord(sectionModel, searching, imageMap, recyclePool));
+        }
+        if (model.unfiled.length) {
+            unfiledGroupNode ??= el('div', 'sb-bg-unfiled');
+            unfiledGridNode ??= el('div', 'bg_list sb-bg-grid');
+            if (model.showUnfiledHeading) {
+                unfiledHeadingNode ??= el('h3', 'sb-bg-unfiled__heading', t`No Folder`);
+                reconcileOrderedChildren(unfiledGroupNode, [unfiledHeadingNode, unfiledGridNode]);
+            } else {
+                unfiledHeadingNode?.remove();
+                reconcileOrderedChildren(unfiledGroupNode, [unfiledGridNode]);
+            }
+            reconcileBackgroundGrid(unfiledGridNode, model.unfiled, {
+                cache: unfiledGridCache,
+                imageMap,
+                recyclePool,
+            });
+            desiredChildren.push(unfiledGroupNode);
+        }
+        if (searching && !model.hasMatches) {
+            noResultsStatusNode ??= createStatusPage({
+                state: 'no-results',
+                icon: 'magnifying-glass',
+                title: t`No Results Found`,
+                description: t`Try a different search`,
+                compact: true,
+            }).element;
+            desiredChildren.push(noResultsStatusNode);
+        }
+        reconcileOrderedChildren(container, desiredChildren);
     }
     hooks.activateLazyLoader();
     hooks.refreshHighlights();
@@ -558,11 +833,37 @@ function bindTouchAndKeyboard() {
 // ---------------------------------------------------------------------------------------------------------------------
 // Entry
 
+function resetGalleryState() {
+    galleryUnsubscribe?.();
+    galleryUnsubscribe = null;
+    galleryScrollbarObserver?.disconnect();
+    galleryScrollbarObserver = null;
+    selection?.destroy();
+    selection = null;
+    hooks = null;
+    initialized = null;
+    container = null;
+    drawer = null;
+    query = '';
+    rendering = false;
+    pendingRender = false;
+    flatGridCache = new Map();
+    sectionRecords = new Map();
+    unfiledGroupNode = null;
+    unfiledHeadingNode = null;
+    unfiledGridNode = null;
+    unfiledGridCache = new Map();
+    noResultsStatusNode = null;
+}
+
 /**
  * Starts the gallery. Safe to call again.
  * @returns {Promise<void>}
  */
 export function initBackgroundGallery() {
+    if (initialized && container && !container.isConnected) {
+        resetGalleryState();
+    }
     initialized ??= start().catch(error => {
         initialized = null;
         throw error;
@@ -615,7 +916,7 @@ async function start() {
     });
     bindTouchAndKeyboard();
 
-    subscribe(({ scope, reason }) => {
+    galleryUnsubscribe = subscribe(({ scope, reason }) => {
         if (scope && scope !== SCOPE) return;
         // The renders that follow a load, an open or a close, and a deleted file draw themselves; a colour only changes a dot.
         if (['hydrate', 'set-folder-expanded', 'delete-member'].includes(reason)) return;
@@ -646,9 +947,12 @@ async function start() {
         }
         tabs.style.setProperty('--sb-bg-grid-inset', `${Math.max(0, Math.round(gap * 100) / 100)}px`);
     };
-    const scrollbarObserver = new ResizeObserver(syncScrollbar);
-    for (const panel of panels) scrollbarObserver.observe(panel);
-    scrollbarObserver.observe(container);
+    if (typeof ResizeObserver === 'function') {
+        const scrollbarObserver = new ResizeObserver(syncScrollbar);
+        for (const panel of panels) scrollbarObserver.observe(panel);
+        scrollbarObserver.observe(container);
+        galleryScrollbarObserver = scrollbarObserver;
+    }
     const syncTab = () => {
         if (selection.isActive) selection.exit();
         menu.hidden = !isGlobalTab();

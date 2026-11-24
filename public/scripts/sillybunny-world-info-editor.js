@@ -37,8 +37,55 @@ const STYLESHEETS = [
     { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-world-info-editor.css?v=20261122g', id: 'deferred-world-info-editor-css' },
 ];
+const WI_VIRTUAL_THRESHOLD = 100;
+const WI_VIRTUAL_OVERSCAN = 12;
+const WI_ESTIMATED_ROW_HEIGHT = 56;
+const WI_MAX_VIRTUAL_WINDOW = 56;
 const mountedEditors = new WeakMap();
+const rowRefs = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
+
+/** Builds a primitive diff key for a row without serializing entry content or toggle state. */
+export function worldInfoRowSignature(entry, reorderable = false) {
+    const comment = entry?.comment ? String(entry.comment) : '';
+    const keys = entry?.key;
+    let keysSig = '';
+    if (Array.isArray(keys)) {
+        const len = keys.length;
+        if (len === 1) {
+            const first = String(keys[0] ?? '');
+            keysSig = comment && first.length > 100 ? first.slice(0, 100) : first;
+        } else if (len === 2) {
+            const combined = `${keys[0] ?? ''}\u001e${keys[1] ?? ''}`;
+            keysSig = comment && combined.length > 100 ? combined.slice(0, 100) : combined;
+        } else if (len > 2) {
+            let previewChars = 0;
+            for (let index = 0; index < len; index++) {
+                const token = String(keys[index] ?? '');
+                if (index > 0) {
+                    keysSig += '\u001e';
+                    previewChars += 2;
+                }
+                if (comment && previewChars + token.length > 100) {
+                    keysSig += token.slice(0, Math.max(0, 100 - previewChars));
+                    break;
+                }
+                keysSig += token;
+                previewChars += token.length;
+                if (comment && previewChars >= 100) break;
+            }
+        }
+    }
+    const title = comment || keysSig || t`Untitled entry`;
+    const strategy = entry?.constant === true ? 1 : entry?.vectorized === true ? 2 : 0;
+    const pos = Number(entry?.position ?? 0);
+    const role = pos === 4 ? Number(entry?.role ?? 0) : 0;
+    const depth = pos === 4 && entry?.depth !== null && entry?.depth !== undefined ? entry.depth : '';
+    const rawOrder = entry?.order ?? 0;
+    const numOrder = typeof rawOrder === 'number' ? rawOrder : Number(rawOrder);
+    const order = Number.isNaN(numOrder) ? 0 : numOrder;
+    return `${entry?.uid ?? ''}\u001f${title}\u001f${keysSig}\u001f${strategy}\u001f${pos}:${role}:${depth}\u001f${order}\u001f${reorderable ? 1 : 0}`;
+}
 
 /** Collects stable, deduplicated character/persona links for a book without changing saved data. */
 export function collectWorldInfoUsers(name, characterList, charLore, personas, descriptions) {
@@ -117,12 +164,17 @@ export function pageForWorldInfoUid(entries, uid, pageSize) {
 export function preserveWorldInfoEntryOrder(heldUids, displayEntries, allEntries) {
     const heldKeys = heldUids.map(String);
     const heldSet = new Set(heldKeys);
-    const entriesByUid = new Map(allEntries.map(entry => [String(entry.uid), entry]));
-    const heldEntries = heldKeys.flatMap(uid => {
+    const entriesByUid = new Map();
+    for (const entry of allEntries) entriesByUid.set(String(entry.uid), entry);
+    const ordered = [];
+    for (const uid of heldKeys) {
         const entry = entriesByUid.get(uid);
-        return entry ? [entry] : [];
-    });
-    return [...heldEntries, ...displayEntries.filter(entry => !heldSet.has(String(entry.uid)))];
+        if (entry) ordered.push(entry);
+    }
+    for (const entry of displayEntries) {
+        if (!heldSet.has(String(entry.uid))) ordered.push(entry);
+    }
+    return ordered;
 }
 
 export function createWorldInfoDeps() {
@@ -179,9 +231,13 @@ export function mountWorldInfoEditor(container) {
     let renderRevision = 0;
     let shownRevision = 0;
     let dragBook = null;
+    let dragging = false;
     let heldOrder = null;
     let selection = null;
     let bulkBusy = false;
+    let virtualStart = 0;
+    let virtualEnd = 0;
+    let measuredRowHeight = WI_ESTIMATED_ROW_HEIGHT;
 
     const toggleSettings = () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' });
     const listHeader = createListHeader({
@@ -514,8 +570,8 @@ export function mountWorldInfoEditor(container) {
         if (!row?.isConnected && page !== pagination.page) {
             internalPaging = true;
             try { await pagination.goTo(page); } finally { internalPaging = false; }
-            row = rows.get(`entry:${uid}`)?.row;
         }
+        row = ensureUidMounted(uid, { scroll: true });
         return row?.isConnected ? row : null;
     }
 
@@ -638,12 +694,118 @@ export function mountWorldInfoEditor(container) {
             slots.grip.setAttribute('aria-disabled', 'false');
             slots.grip.title = t`Drag to Reorder ${title}`;
         }
+        rowRefs.set(row, {
+            enabled,
+            enableTarget,
+            more,
+            grip: slots.grip ?? null,
+            controls: slots.grip ? [enableTarget, more, slots.grip] : [enableTarget, more],
+        });
         return row;
+    }
+
+    function computeVirtualWindow(pageLength) {
+        if (pageLength <= WI_VIRTUAL_THRESHOLD) return { start: 0, end: pageLength, topPad: 0, bottomPad: 0 };
+        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : WI_ESTIMATED_ROW_HEIGHT;
+        const viewportHeight = listBody.clientHeight > 0 ? listBody.clientHeight : 600;
+        const windowCount = Math.min(pageLength, Math.min(WI_MAX_VIRTUAL_WINDOW, Math.ceil(viewportHeight / rowHeight) + WI_VIRTUAL_OVERSCAN * 2));
+        const boxOffset = entryBox.offsetTop > 0 ? entryBox.offsetTop : 0;
+        const scrollOffset = Math.max(0, listBody.scrollTop - boxOffset);
+        const firstVisible = Math.floor(scrollOffset / rowHeight);
+        const start = Math.max(0, Math.min(pageLength - windowCount, firstVisible - WI_VIRTUAL_OVERSCAN));
+        const end = Math.min(pageLength, start + windowCount);
+        return {
+            start,
+            end,
+            topPad: start * rowHeight,
+            bottomPad: Math.max(0, (pageLength - end) * rowHeight),
+        };
+    }
+
+    function scrollPageIndexIntoView(indexInPage) {
+        if (indexInPage < 0) return;
+        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : WI_ESTIMATED_ROW_HEIGHT;
+        const viewportHeight = listBody.clientHeight > 0 ? listBody.clientHeight : 600;
+        const boxOffset = entryBox.offsetTop > 0 ? entryBox.offsetTop : 0;
+        const top = boxOffset + indexInPage * rowHeight;
+        const bottom = top + rowHeight;
+        const viewTop = listBody.scrollTop;
+        const viewBottom = viewTop + viewportHeight;
+        if (top < viewTop) listBody.scrollTop = top;
+        else if (bottom > viewBottom) listBody.scrollTop = Math.max(0, bottom - viewportHeight);
+    }
+
+    function reconcilePageWindow(pageEntries) {
+        const { start, end, topPad, bottomPad } = computeVirtualWindow(pageEntries.length);
+        virtualStart = start;
+        virtualEnd = end;
+        const nextTop = topPad > 0 ? `${topPad}px` : '';
+        const nextBottom = bottomPad > 0 ? `${bottomPad}px` : '';
+        if (entryBox.style.paddingTop !== nextTop) entryBox.style.paddingTop = nextTop;
+        if (entryBox.style.paddingBottom !== nextBottom) entryBox.style.paddingBottom = nextBottom;
+
+        const windowEntries = start === 0 && end === pageEntries.length ? pageEntries : pageEntries.slice(start, end);
+        const reorderable = customSort() && !searchControl.query;
+        const selecting = Boolean(selection?.isActive);
+        const activeUid = selecting ? null : selectedUid();
+        const activeUidText = activeUid === null ? null : String(activeUid);
+        const pageOffset = (pagination.page - 1) * pagination.pageSize;
+        const setSizeText = String(entries.length);
+        let windowOffset = 0;
+
+        reconcileRows({
+            container: entryBox,
+            cache: rows,
+            entries: windowEntries,
+            key: entry => `entry:${entry.uid}`,
+            signature: entry => worldInfoRowSignature(entry, reorderable),
+            create: makeEntryRow,
+            update: (row, entry) => {
+                const posInSetText = String(Math.min(entries.length, pageOffset + start + windowOffset + 1));
+                windowOffset++;
+                if (row.getAttribute('aria-setsize') !== setSizeText) row.setAttribute('aria-setsize', setSizeText);
+                if (row.getAttribute('aria-posinset') !== posInSetText) row.setAttribute('aria-posinset', posInSetText);
+                row.classList.toggle('is-selected', activeUidText !== null && activeUidText === String(entry.uid));
+                const isDisabled = Boolean(entry.disable);
+                row.classList.toggle('is-disabled', isDisabled);
+                const refs = rowRefs.get(row);
+                if (refs) {
+                    if (refs.enabled.checked !== !isDisabled) refs.enabled.checked = !isDisabled;
+                    for (const control of refs.controls) {
+                        if (control.inert !== selecting) control.inert = selecting;
+                    }
+                }
+            },
+        });
+
+        const firstRowHeight = entryBox.firstElementChild?.offsetHeight ?? 0;
+        if (firstRowHeight > 0) measuredRowHeight = firstRowHeight;
+    }
+
+    function ensureUidMounted(uid, { scroll = false } = {}) {
+        if (uid === null || uid === undefined) return null;
+        const pageEntries = pagination.slice(entries);
+        if (pageEntries.length <= WI_VIRTUAL_THRESHOLD) return rows.get(`entry:${uid}`)?.row ?? null;
+        const index = pageEntries.findIndex(entry => String(entry.uid) === String(uid));
+        if (index < 0) return null;
+        if (scroll || index < virtualStart || index >= virtualEnd) {
+            scrollPageIndexIntoView(index);
+            reconcilePageWindow(pageEntries);
+            selection?.decorate();
+        }
+        return rows.get(`entry:${uid}`)?.row ?? null;
     }
 
     function updateDisplayEntries() {
         const displayEntries = state.data ? getWorldInfoDisplayEntries(state.data) : [];
-        const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object' && !Array.isArray(entry));
+        const rawEntries = state.data?.entries;
+        const allEntries = [];
+        if (rawEntries) {
+            for (const key of Object.keys(rawEntries)) {
+                const entry = rawEntries[key];
+                if (entry && typeof entry === 'object' && !Array.isArray(entry)) allEntries.push(entry);
+            }
+        }
         entries = heldOrder && state.data ? preserveWorldInfoEntryOrder(heldOrder, displayEntries, allEntries) : displayEntries;
         if (heldOrder) heldOrder = entries.map(entry => entry.uid);
         pagination.setTotal(entries.length);
@@ -668,9 +830,17 @@ export function mountWorldInfoEditor(container) {
         filterButton.setAttribute('aria-pressed', String(altered));
         listHeader.setPressed('search', altered);
         listHeader.setSubtitleHidden(!state.data);
-        const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object');
-        const total = allEntries.length;
-        const active = allEntries.filter(entry => !entry.disable).length;
+        let total = 0;
+        let active = 0;
+        const rawEntries = state.data?.entries;
+        if (rawEntries) {
+            for (const key of Object.keys(rawEntries)) {
+                const entry = rawEntries[key];
+                if (!entry || typeof entry !== 'object') continue;
+                total++;
+                if (!entry.disable) active++;
+            }
+        }
         if (selection?.isActive) selection.select(existingSelectedUids());
         listHeader.setSubtitle(total === 1 ? t`${total} entry · ${active} active` : t`${total} entries · ${active} active`);
         listStatus.hidden = Boolean(state.data && entries.length);
@@ -690,29 +860,31 @@ export function mountWorldInfoEditor(container) {
                 actions: total ? [] : [{ label: t`New Entry`, primary: true, onActivate: () => run(() => clickTransport('world_popup_new')) }],
             });
         }
-        reconcileRows({
-            container: entryBox, cache: rows, entries: pagination.slice(entries), key: entry => `entry:${entry.uid}`,
-            signature: entry => JSON.stringify([entry, customSort(), Boolean(searchControl.query)]),
-            create: makeEntryRow,
-            update: (row, entry) => {
-                row.classList.toggle('is-selected', !selection?.isActive && String(selectedUid()) === String(entry.uid));
-                row.classList.toggle('is-disabled', Boolean(entry.disable));
-                row.querySelector('.sb-wi-row-enable input').checked = !entry.disable;
-                for (const control of row.querySelectorAll('.sb-wi-row-enable, .sb-wi-row-menu, .sb-wi-grip')) control.inert = Boolean(selection?.isActive);
-            },
-        });
+        const pageEntries = pagination.slice(entries);
+        reconcilePageWindow(pageEntries);
         searchControl.report(entries.length, total);
         selection?.decorate();
         sortable = bindSortable(entryBox, {
             handle: '.sb-wi-grip', items: '> .sb-wi-row', disabled: selection?.isActive || !customSort() || Boolean(searchControl.query),
             touch: () => matchMedia(LAYOUT_MOBILE_QUERY).matches,
-            start: () => { dragBook = state; },
+            start: () => {
+                dragBook = state;
+                dragging = true;
+            },
             update: () => run(async () => {
                 if (dragBook !== state) return;
-                const ids = [...entryBox.children].map(row => row.dataset.uid);
+                const domIds = [...entryBox.children].map(row => row.dataset.uid);
+                const pageSlice = pagination.slice(entries);
+                const ids = pageSlice.length > WI_VIRTUAL_THRESHOLD
+                    ? [
+                        ...pageSlice.slice(0, virtualStart).map(entry => String(entry.uid)),
+                        ...domIds,
+                        ...pageSlice.slice(virtualEnd).map(entry => String(entry.uid)),
+                    ]
+                    : domIds;
                 const previousOrder = heldOrder;
                 if (heldOrder) {
-                    const pageIds = new Set(pagination.slice(entries).map(entry => String(entry.uid)));
+                    const pageIds = new Set(pageSlice.map(entry => String(entry.uid)));
                     let next = 0;
                     heldOrder = heldOrder.map(uid => pageIds.has(String(uid)) ? ids[next++] : uid);
                 }
@@ -725,7 +897,10 @@ export function mountWorldInfoEditor(container) {
                 if (selectedUid() !== null) rebase(selectedUid(), 'displayIndex');
                 await finishListMutation(data, result);
             }),
-            stop: () => requestAnimationFrame(() => shell.flushRefresh()),
+            stop: () => {
+                dragging = false;
+                requestAnimationFrame(() => shell.flushRefresh());
+            },
         });
     }
 
@@ -760,7 +935,11 @@ export function mountWorldInfoEditor(container) {
         onDiscard: () => entryController()?.discard(),
         onDeselect: () => destroyDetail(),
         onSelect: () => renderList(),
-        findRow: key => key === 'settings' ? bookActions : rows.get(key)?.row ?? null,
+        findRow: key => {
+            if (key === 'settings') return bookActions;
+            const uid = typeof key === 'string' && key.startsWith('entry:') ? key.slice(6) : null;
+            return uid !== null ? ensureUidMounted(uid) : rows.get(key)?.row ?? null;
+        },
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
@@ -769,6 +948,7 @@ export function mountWorldInfoEditor(container) {
     selection = createSelectionMode({
         root: shell.root, list: entryBox, header: selectionHeader, actionBar: selectionBar,
         rowSelector: '.sb-wi-row', getKey: row => row.dataset.uid, keySourceSelector: '.sb-wi-grip',
+        getAllKeys: () => pagination.slice(entries).map(entry => String(entry.uid)),
         canEnter: () => Boolean(state.name && Object.keys(state.data?.entries ?? {}).length),
         title: selectionTitle, selectAllLabel: t`Select All`, iconOnlyAtNarrow: true,
         actions: [
@@ -779,6 +959,51 @@ export function mountWorldInfoEditor(container) {
         ],
         onChange: () => renderList(), onExit: () => renderList(),
     });
+    const onListScroll = () => {
+        if (destroyed || dragging || !state.data) return;
+        const pageEntries = pagination.slice(entries);
+        if (pageEntries.length <= WI_VIRTUAL_THRESHOLD) return;
+        const { start, end } = computeVirtualWindow(pageEntries.length);
+        if (start === virtualStart && end === virtualEnd) return;
+        reconcilePageWindow(pageEntries);
+        selection?.decorate();
+    };
+    const onVirtualKeydown = event => {
+        if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return;
+        const pageEntries = pagination.slice(entries);
+        if (pageEntries.length <= WI_VIRTUAL_THRESHOLD) return;
+        const row = event.target instanceof Element ? event.target.closest('.sb-wi-row') : null;
+        if (!row || !entryBox.contains(row)) return;
+        const fromRow = event.target === row || Boolean(event.target.closest('.sb-wi-grip'));
+        if (!fromRow) return;
+        const index = pageEntries.findIndex(entry => String(entry.uid) === row.dataset.uid);
+        if (index < 0) return;
+        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : WI_ESTIMATED_ROW_HEIGHT;
+        const pageStep = Math.max(1, Math.floor((listBody.clientHeight > 0 ? listBody.clientHeight : 600) / rowHeight) - 1);
+        let targetIndex = index;
+        if (event.key === 'Home') targetIndex = 0;
+        else if (event.key === 'End') targetIndex = pageEntries.length - 1;
+        else if (event.key === 'ArrowUp') targetIndex = Math.max(0, index - 1);
+        else if (event.key === 'ArrowDown') targetIndex = Math.min(pageEntries.length - 1, index + 1);
+        else if (event.key === 'PageUp') targetIndex = Math.max(0, index - pageStep);
+        else if (event.key === 'PageDown') targetIndex = Math.min(pageEntries.length - 1, index + pageStep);
+        if (targetIndex === index) {
+            event.preventDefault();
+            return;
+        }
+        if (targetIndex < virtualStart || targetIndex >= virtualEnd || event.key === 'Home' || event.key === 'End' || event.key === 'PageUp' || event.key === 'PageDown') {
+            event.preventDefault();
+            event.stopPropagation();
+            scrollPageIndexIntoView(targetIndex);
+            reconcilePageWindow(pageEntries);
+            selection?.decorate();
+            const targetRow = rows.get(`entry:${pageEntries[targetIndex].uid}`)?.row;
+            targetRow?.focus({ preventScroll: true });
+        }
+    };
+    listBody.addEventListener('scroll', onListScroll, { passive: true });
+    listBody.addEventListener('keydown', onVirtualKeydown, true);
     const unbindRows = bindListKeyboard(listBody, {
         rowSelector: '.sb-wi-row', keySourceSelector: '.sb-wi-grip',
         ignoreSelector: 'button, input, select, textarea, a, label, [role="switch"], [role="button"]',
@@ -877,6 +1102,16 @@ export function mountWorldInfoEditor(container) {
         }
         if (revision !== renderRevision || destroyed) return;
         if (!data && controllerKind === 'entry') { destroyDetail(); shell.deselectNow(); }
+        if (navigation !== navigation_option.previous) {
+            const revealUid = target?.uid ?? selectedUid();
+            if (revealUid !== null && revealUid !== undefined) {
+                const pageSlice = pagination.slice(entries);
+                if (pageSlice.length > WI_VIRTUAL_THRESHOLD) {
+                    const idx = pageSlice.findIndex(entry => String(entry.uid) === String(revealUid));
+                    if (idx >= 0) scrollPageIndexIntoView(idx);
+                }
+            }
+        }
         shell.refresh();
         shownRevision = revision;
     }
@@ -931,6 +1166,7 @@ export function mountWorldInfoEditor(container) {
             updateDisplayEntries();
             await pagination.goTo(snapshot.page);
             if (destroyed || !isCurrent()) return false;
+            listBody.scrollTop = snapshot.scrollTop;
             renderList();
             listBody.scrollTop = snapshot.scrollTop;
             return true;
@@ -948,6 +1184,8 @@ export function mountWorldInfoEditor(container) {
             shell.root.removeEventListener('keydown', onEscape);
             worldInfo.removeEventListener('change', onTransportChange, true);
             worldInfo.removeEventListener('click', onTransportClick, true);
+            listBody.removeEventListener('scroll', onListScroll);
+            listBody.removeEventListener('keydown', onVirtualKeydown, true);
             unbindRows();
             filterButton.removeEventListener('click', onSortClick);
             listHeader.destroy();

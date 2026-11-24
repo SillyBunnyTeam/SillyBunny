@@ -1,3 +1,5 @@
+import { subscribeViewport } from './viewport-coordinator.js';
+
 const MOVING_UI_VIEWPORT_TOLERANCE_PX = 1;
 const MOVING_UI_BOUND_PROPERTIES = ['width', 'height', 'left', 'top', 'right', 'bottom'];
 
@@ -199,4 +201,32 @@ export function scaleMovingUIViewportState(state, { scaleX, scaleY } = {}) {
     }
 
     return { ...sourceState, ...updates };
+}
+
+/**
+ * Subscribes MovingUI viewport rescaling to the unified ViewportCoordinator.
+ * Coalesces window resize and orientationchange events into the single rAF pass.
+ *
+ * @param {(viewport: {viewportWidth: number, viewportHeight: number, snapshot: object, meta: object}) => void} onResize
+ * @param {object} [options]
+ * @param {object|null} [options.coordinator=null] Optional coordinator for isolated tests.
+ * @returns {() => void} Teardown / unsubscribe callback.
+ */
+export function subscribeMovingUIViewport(onResize, { coordinator = null } = {}) {
+    if (typeof onResize !== 'function') {
+        throw new TypeError('subscribeMovingUIViewport requires an onResize callback.');
+    }
+
+    const subscribe = coordinator && typeof coordinator.subscribe === 'function'
+        ? coordinator.subscribe
+        : subscribeViewport;
+
+    return subscribe((snapshot, meta) => {
+        onResize({
+            viewportWidth: snapshot.layoutWidth,
+            viewportHeight: snapshot.layoutHeight,
+            snapshot,
+            meta,
+        });
+    }, { sources: ['window'] });
 }

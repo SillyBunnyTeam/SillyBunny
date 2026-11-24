@@ -26,16 +26,14 @@ import './sillybunny-home/greeting-art-boot.js';
 import { initializeColorPickers } from './sillybunny-color-picker.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { isApplePlatform } from './sillybunny-platform.js';
-import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
-import { registerSidePanel } from './sillybunny-editor/side-panel.js';
+import { initializePresetAutosave } from './sillybunny-preset-autosave.js';
 import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createButtonRow, createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
+import { createEntryRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { bindRovingFocus } from './sillybunny-editor/list-focus.js';
-import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { presentMarkdownEngineRow } from './sillybunny-markdown-engine-row.js';
-import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
     animateIn,
     animateOut,
@@ -65,23 +63,10 @@ import { flashHighlight } from './utils.js';
 import { extension_settings } from './extensions.js';
 import { changePanelApiVisibility, characters, displayVersion, flushCharacterSaveDebounced, getCurrentChatId, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 import { addLanguagesToDropdown, t, translate } from './i18n.js';
-import { isAdmin, syncUserControls } from './user.js';
-import {
-    SAMPLING_PARAMETER_DESCRIPTORS,
-} from './sampling-parameter-policy.js';
-import {
-    setSamplingParameterTransmissionState,
-    getSamplingParameterViewModel,
-} from './openai.js';
-import {
-    setTextSamplingParameterTransmissionState,
-    getTextSamplingParameterViewModel,
-    showTGSamplerControls,
-} from './textgen-settings.js';
+import { syncUserControls } from './user.js';
 import {
     SB_USER_SETTINGS_CONTAINER_IDS,
     SB_DATA_SECURITY_CONTAINER_ID,
-    SB_FLAT_SECTION_CLASS,
     SB_FLAT_SECTION_HEADER_CLASS,
     applyPageWidth,
     applySettingsSectionOrder,
@@ -95,14 +80,12 @@ import { buildExtensionsLead, SB_SUBPAGE_BUILDERS } from './sillybunny-settings-
 import { watchStrayExtensionDrawers } from './sillybunny-settings-stray-drawers.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
-import { initializePromptEditor } from './sillybunny-prompt-editor.js';
 // SillyBunny: the Agents shell mounts independently of extension initialization.
 import { mountAgentsPanel, getAgentsPanelSearchEntries } from './extensions/in-chat-agents/ui/agent-list.js';
 // SillyBunny: character editor controller
 import { initCharacterEditor } from './sillybunny-character-editor.js';
 import { leaveTemporaryChat } from './sillybunny-temporary-chat.js';
 import { isReservedChatName } from './sillybunny-temporary-chat-state.js';
-import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybunny-search-entities.js';
 import { eventSource, event_types } from './events.js';
 import { registerHelpKeys } from './sillybunny-help/help-keys.js';
 import { openHelp, openKeyboardShortcuts } from './sillybunny-home/windows.js';
@@ -123,6 +106,169 @@ let serverToolsPromise;
 let settingsPanelPromise;
 /** Set once the Appearance module has regrouped the upstream rows; the Appearance helpers need it. */
 let appearanceModule = null;
+
+// SillyBunny: lazy sub-module loaders shrink the eager boot chunk by deferring panel builders,
+// universal search, chat management/search, and importer UI until first activation.
+let samplingPanelController = null;
+let samplingPanelControllerPromise = null;
+let backendPanelsController = null;
+let backendPanelsControllerPromise = null;
+let importerUiController = null;
+let importerUiControllerPromise = null;
+let chatActionsSearchController = null;
+let chatActionsSearchControllerPromise = null;
+let universalSearchController = null;
+let universalSearchControllerPromise = null;
+
+function loadSamplingPanelController() {
+    samplingPanelControllerPromise ??= import('./sillybunny-tabs/sampling-panel.js')
+        .then(module => {
+            samplingPanelController = module.createSamplingPanelController({
+                createElement,
+                createShellPanel,
+                createBackendSectionHeader,
+                createBackendGroupHeader,
+                getCurrentMainApiValue,
+                isShellTabOpen,
+                loadSamplingModule,
+                hideEmptyGroupedSettingsDrawers: () => backendPanelsController?.hideEmptyGroupedSettingsDrawers(),
+            });
+            return samplingPanelController;
+        })
+        .catch(error => {
+            samplingPanelControllerPromise = null;
+            throw error;
+        });
+    return samplingPanelControllerPromise;
+}
+
+function loadBackendPanelsController() {
+    backendPanelsControllerPromise ??= import('./sillybunny-tabs/backend-panels.js')
+        .then(module => {
+            backendPanelsController = module.createBackendPanelsController({
+                createElement,
+                createBackendSectionHeader,
+                createBackendGroupHeader,
+                createBackendPromptGroup,
+                getShellState,
+                getCurrentMainApiValue,
+                isShellTabOpen,
+                openShell,
+                getAppearanceModule: () => appearanceModule,
+                getBackendPagesModule: () => backendPagesModule,
+                backendPagesContext,
+                invalidateUserSettingsTabSearchIndexes,
+                updateSamplingSectionVisibility: section => samplingPanelController?.updateSamplingCardVisibility(section),
+            });
+            return backendPanelsController;
+        })
+        .catch(error => {
+            backendPanelsControllerPromise = null;
+            throw error;
+        });
+    return backendPanelsControllerPromise;
+}
+
+function loadImporterUiController() {
+    importerUiControllerPromise ??= import('./sillybunny-tabs/importer-ui.js')
+        .then(module => {
+            importerUiController = module.createImporterUiController({
+                createElement,
+                getImporterState,
+                getImporterRefs,
+                setButtonDisabled,
+                setServerAdminPill,
+                handleSillyTavernFolderImport,
+                handleSillyTavernExtensionSync,
+                handleSillyTavernZipImport,
+            });
+            return importerUiController;
+        })
+        .catch(error => {
+            importerUiControllerPromise = null;
+            throw error;
+        });
+    return importerUiControllerPromise;
+}
+
+function loadChatActionsSearchController() {
+    chatActionsSearchControllerPromise ??= import('./sillybunny-tabs/chat-actions-search.js')
+        .then(module => {
+            chatActionsSearchController = module.createChatActionsSearchController({
+                createElement,
+                formatChatTokenEstimate,
+                normalizeChatFileName,
+                formatChatPreview,
+                getChatSortTimestamp,
+                formatChatTimestamp,
+                getAuthorizedRequestHeadersOrNull,
+                getRequestHeadersFromContext,
+                getChatUiContext,
+                getBottomChatBarState,
+                getChatbarState,
+                getChatSidebarRefs,
+                getChatScriptModule,
+                getSillyTavernContext,
+                getChatScrollElement,
+                getReducedMotionScrollBehavior,
+                setButtonDisabled,
+                setSearchStatusText,
+                scheduleChatbarRefresh,
+                scheduleBottomChatBarRefresh,
+                scrollElementIntoManagedView,
+                SB_CHAT_SEARCH_MARK_SELECTOR,
+                SB_CHATBAR_SEARCH_DEBOUNCE,
+            });
+            return chatActionsSearchController;
+        })
+        .catch(error => {
+            chatActionsSearchControllerPromise = null;
+            throw error;
+        });
+    return chatActionsSearchControllerPromise;
+}
+
+function loadUniversalSearchController() {
+    universalSearchControllerPromise ??= import('./sillybunny-tabs/universal-search-panel.js')
+        .then(module => {
+            universalSearchController = module.createUniversalSearchController({
+                sbState,
+                sbSubpageStacks,
+                sbSearchRenderRequests,
+                SB_SEARCH_TARGET_SELECTOR,
+                SB_SIDEBAR_SECTION_MATCH_SELECTOR,
+                SB_CHARACTER_PANEL_TABS,
+                SB_UNIVERSAL_SEARCH_IDLE_TITLE,
+                SB_UNIVERSAL_SEARCH_IDLE_HINT,
+                SB_UNIVERSAL_SEARCH_EMPTY_HINT,
+                SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
+                SB_UNIVERSAL_SEARCH_GROUP_LIMIT,
+                SB_UNIVERSAL_ENTITY_SCAN_LIMIT,
+                createElement,
+                escapeRegex,
+                getShellConfig,
+                getCharacterPanel,
+                getUniversalSearchState,
+                getUserSettingsContentRoots,
+                getSearchEntryDedupeKey,
+                getExtraTabSearchEntries,
+                getEntityPersonaSearchEntries,
+                createTabSearchIndex: createSearchIndex,
+                isMobileViewport,
+                prepareShellSearch,
+                setUniversalSearchOpenState,
+                scrollElementIntoManagedView,
+                getSillyTavernContext,
+                scheduleUniversalSearchRender,
+            });
+            return universalSearchController;
+        })
+        .catch(error => {
+            universalSearchControllerPromise = null;
+            throw error;
+        });
+    return universalSearchControllerPromise;
+}
 
 /** Appearance holds raw upstream rows until its module has regrouped them, and the settings passes must not reshape them first. */
 function isAppearancePending(tabId) {
@@ -164,7 +310,7 @@ function revealBackendGroup(tabId, groupId) {
 
 const backendPagesContext = {
     revealGroup: revealBackendGroup,
-    templateMenuSections: holder => getPresetMenuSections(holder, false, { master: false }),
+    templateMenuSections: holder => backendPanelsController?.getPresetMenuSections(holder, false, { master: false }) ?? [],
     refreshPresets() {
         const prompting = getShellState('left')?.tabs.get('prompting');
         if (prompting?.panel instanceof HTMLElement) updatePromptingPanel(prompting.panel);
@@ -176,14 +322,17 @@ const backendPagesContext = {
  * row is found before the page was opened.
  */
 function ensureBackendPages() {
-    backendPagesPromise ??= markPanelsBusyUntilBuilt('left', ['context', 'prompting'], loadBackendPagesModule().then(module => {
+    backendPagesPromise ??= markPanelsBusyUntilBuilt('left', ['context', 'prompting'], Promise.all([
+        loadBackendPagesModule(),
+        loadBackendPanelsController(),
+    ]).then(([module, panels]) => {
         backendPagesModule = module;
-        groupAdvancedFormattingIntoDrawers();
+        panels.groupAdvancedFormattingIntoDrawers();
         module.presentFormatting(backendPagesContext);
-        updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
+        panels.updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
         // The Presets groups are built by the update that follows, so build the rows after it and update once more.
         const prompting = getShellState('left')?.tabs.get('prompting');
-        if (prompting?.panel instanceof HTMLElement) updatePromptingPanel(prompting.panel);
+        if (prompting?.panel instanceof HTMLElement) panels.updatePromptingPanel(prompting.panel);
         for (const tabId of ['context', 'prompting']) {
             const tab = getShellState('left')?.tabs.get(tabId);
             if (tab) tab.searchIndex = null;
@@ -216,7 +365,10 @@ function markPanelsBusyUntilBuilt(shellKey, tabIds, build) {
 }
 
 function initializeSettingsPanel() {
-    settingsPanelPromise ??= markPanelsBusyUntilBuilt('right', ['appearance', 'interface', 'messages'], presentAppearancePage().then(() => {
+    settingsPanelPromise ??= markPanelsBusyUntilBuilt('right', ['appearance', 'interface', 'messages'], Promise.all([
+        presentAppearancePage(),
+        loadBackendPanelsController(),
+    ]).then(() => {
         injectThemePicker();
         // SillyTavern's own settings tab UI is not used here: the settings page sidebar owns
         // navigation, so the inline drawers are opened directly instead.
@@ -369,179 +521,6 @@ function installSettingsSubpage(shellKey, tabId) {
     }
 }
 
-function getPresetActionKind(button) {
-    if (!(button instanceof HTMLElement)) return null;
-    for (const kind of ['import', 'export', 'update', 'rename', 'new', 'restore', 'delete']) {
-        if (button.matches(`[data-preset-manager-${kind}]`)) return kind;
-    }
-    if (button.matches('[data-preset-manager-delete-all]')) {
-        return 'deleteAll';
-    }
-    if (button.matches('[data-preset-manager-restore-defaults]')) return 'restoreDefaults';
-    if (button.id === 'import_oai_preset') return 'import';
-    if (button.id === 'export_oai_preset') return 'export';
-    if (button.id === 'update_oai_preset') return 'update';
-    if (button.id === 'new_oai_preset') return 'new';
-    if (button.id === 'delete_oai_preset') return 'delete';
-    return null;
-}
-
-const SB_PRESET_BLOCK_BY_API = Object.freeze({
-    kobold: 'kobold_api-presets',
-    koboldhorde: 'kobold_api-presets',
-    novel: 'novel_api-presets',
-    textgenerationwebui: 'textgenerationwebui_api-presets',
-    openai: 'openai_api-presets',
-});
-
-/** Picker and menu titles reuse each backend's preset heading key, which the locales already translate. */
-const SB_PRESET_ROW_TITLES = Object.freeze({
-    'kobold_api-presets': ['Kobold Presets', 'kobldpresets'],
-    'novel_api-presets': ['NovelAI Presets', 'novelaipresets'],
-    'textgenerationwebui_api-presets': ['Text Completion Presets', 'Text Completion presets'],
-    'openai_api-presets': ['Chat Completion Presets', 'openaipresets'],
-});
-
-const SB_PRESET_MENU_SECTIONS = Object.freeze([
-    ['update', 'rename', 'new'],
-    ['import', 'export', 'masterImport', 'masterExport'],
-    ['restore', 'restoreDefaults'],
-    ['delete', 'deleteAll'],
-]);
-
-const sbPresetRows = [];
-
-/**
- * An ellipsis marks an action that asks for more input or a confirmation. PresetManager confirms
- * Update and downloads Export at once. Chat Completions saves Update at once and asks before it exports.
- */
-function getPresetActionLabels(isChatCompletion) {
-    return {
-        update: isChatCompletion ? t`Update` : t`Update…`,
-        rename: t`Rename…`,
-        new: t`Save As…`,
-        import: t`Import…`,
-        export: isChatCompletion ? t`Export…` : t`Export`,
-        masterImport: t`Master Import…`,
-        masterExport: t`Master Export…`,
-        restore: t`Restore…`,
-        restoreDefaults: t`Restore Default Presets…`,
-        delete: t`Delete…`,
-        deleteAll: t`Delete in Bulk…`,
-    };
-}
-
-/** Reads the live originals, so call it on every open: PresetManager adds its restore-defaults button late, and autosave marks Update read-only per preset. */
-function getPresetMenuSections(block, isChatCompletion, { master = true } = {}) {
-    const originals = new Map();
-    for (const button of block.querySelectorAll('.menu_button, .menu_button_icon')) {
-        const kind = getPresetActionKind(button);
-        if (kind && !originals.has(kind)) originals.set(kind, button);
-    }
-    if (!isChatCompletion && master) {
-        originals.set('masterImport', document.getElementById('af_master_import'));
-        originals.set('masterExport', document.getElementById('af_master_export'));
-    }
-    const labels = getPresetActionLabels(isChatCompletion);
-    const toItem = kind => {
-        const original = originals.get(kind);
-        if (!(original instanceof HTMLElement)) return null;
-        // An action that does not apply (a preset that cannot be updated) is left out, not drawn dimmed.
-        const disabled = original.classList.contains('disabled')
-            || original.hasAttribute('disabled')
-            || original.getAttribute('aria-disabled') === 'true';
-        if (disabled) return null;
-        return {
-            label: labels[kind],
-            icon: original.querySelector('i')?.className,
-            ...(kind.startsWith('master') ? { title: original.title } : {}),
-            danger: kind === 'delete' || kind === 'deleteAll',
-            onSelect: () => original.click(),
-        };
-    };
-    return SB_PRESET_MENU_SECTIONS.map(kinds => ({ items: kinds.map(toItem).filter(Boolean) }));
-}
-
-/**
- * Each backend's original preset select row, its buttons, the Chat Completions title card and Master
- * Import/Export stay in the document, hidden, because upstream binds every action to them and the
- * Preset Menu clicks them.
- */
-function mountPresetRows(root) {
-    for (const blockId of new Set(Object.values(SB_PRESET_BLOCK_BY_API))) {
-        const block = root.querySelector(`#${blockId}`);
-        const select = block?.querySelector('select[data-preset-manager-for]');
-        if (!(select instanceof HTMLSelectElement) || select.closest('[data-sb-preset-row]')) continue;
-        // Read before createProfileRow adopts the select into the new row.
-        const source = select.parentElement;
-        const isChatCompletion = blockId === SB_PRESET_BLOCK_BY_API.openai;
-        const title = translate(...SB_PRESET_ROW_TITLES[blockId]);
-        const preset = createProfileRow({
-            select,
-            label: t`Preset`,
-            field: `preset-${blockId}`,
-            title,
-            searchLabel: t`Search Presets`,
-            searchPlaceholder: t`Search presets`,
-            menuLabel: t`Preset Menu`,
-            onMenu: trigger => openActionMenu({ trigger, title, sections: getPresetMenuSections(block, isChatCompletion) }),
-        });
-        preset.row.dataset.sbPresetRow = '';
-        source.before(preset.row);
-        source.hidden = true;
-        sbPresetRows.push(preset);
-    }
-    const hidden = root.querySelector('#openai_api-presets > div > .standoutHeader');
-    if (hidden instanceof HTMLElement && !hidden.hidden) hidden.hidden = true;
-}
-
-/** Keeps Edit Prompts and then the autosave switch directly below the active backend's preset block. */
-function placeSharedPresetControls(root, activeApi) {
-    let anchor = document.getElementById(SB_PRESET_BLOCK_BY_API[activeApi] ?? '');
-    if (!(anchor instanceof HTMLElement) || !root.contains(anchor)) return;
-    for (const row of [root.querySelector('[data-sb-edit-prompts]'), root.querySelector('[data-sb-preset-autosave]')]) {
-        if (!(row instanceof HTMLElement)) continue;
-        // Moving a row that is already in place still queues a mutation, and the drawer observer re-runs this.
-        if (anchor.nextElementSibling !== row) anchor.after(row);
-        anchor = row;
-    }
-}
-
-/**
- * Moves the Chat Completions linking switches out of their drawer in Presets into a group after it.
- * Each copy block moves whole: its copy line becomes the row subtitle only while it follows the label,
- * and toggle-dependent.css shows the profile buttons only while their container follows the label.
- */
-function mountPresetLinkingGroup(presetsContainer) {
-    if (!(presetsContainer instanceof HTMLElement)) return;
-    // The Prompting content is still detached from the document here, so document.getElementById() finds nothing.
-    const blocks = ['bind_preset_to_connection', 'bind_preset_to_sampling', 'model_sampling_profiles_enabled']
-        .map(id => presetsContainer.querySelector(`#${id}`)?.closest('.sb-setting-inline-copy'))
-        .filter(block => block instanceof HTMLElement);
-    const drawer = blocks[0]?.closest('.inline-drawer');
-    if (!(drawer instanceof HTMLElement)) return;
-    const group = createBackendPromptGroup('sb-preset-linking', 'Preset API/Sampler Linking');
-    group.firstElementChild.replaceWith(createBackendGroupHeader('Preset API/Sampler Linking'));
-    group.querySelector(':scope > .sb-prompting-group-body').append(...blocks);
-    // The flatten pass would turn the emptied drawer into a headed section inside Presets.
-    drawer.remove();
-    presetsContainer.after(group);
-}
-
-function groupPromptingRowHelpers(root) {
-    for (const row of root.querySelectorAll('.sb-prompting-group-body .ds-row')) {
-        if (row.parentElement.matches('.sb-prompting-row-with-help') || row.closest('#completion_prompt_manager')) continue;
-        const helpers = [];
-        for (let helper = row.nextElementSibling; helper?.matches('.toggle-description, .notes, p, small'); helper = helper.nextElementSibling) {
-            helpers.push(helper);
-        }
-        if (helpers.length === 0) continue;
-        const wrapper = createElement('div', { className: 'sb-prompting-row-with-help' });
-        row.before(wrapper);
-        wrapper.append(row, ...helpers);
-    }
-}
-
 /**
  * Flattens drawers in every Backend and Customize panel, covering drawers authored after the split.
  */
@@ -668,9 +647,12 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
 
 async function prepareShellSearch() {
     // Search also discovers controls in unopened panels, without starting their polling.
-    await Promise.allSettled(Object.values(sbState.shells).flatMap(shell =>
-        Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
-    ));
+    await Promise.allSettled([
+        loadUniversalSearchController(),
+        ...Object.values(sbState.shells).flatMap(shell =>
+            Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
+        ),
+    ]);
 }
 
 const SB_STORAGE_KEYS = Object.freeze({
@@ -2118,81 +2100,6 @@ function wait(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-// Row subtitles and section meta lines describe a setting rather than name it: they stay searchable,
-// but folding them into `textContent` would turn every label into "NameDescription". Placeholder copy is
-// unwritten filler and is neither searchable nor shown.
-const SB_SEARCH_DESCRIPTION_SELECTOR = [
-    '.ds-row-subtitle',
-    '.sb-group-meta',
-    '.sb-settings-category-heading > small',
-    `.${SB_FLAT_SECTION_HEADER_CLASS} > .flex-container > small`,
-].join(', ');
-const SB_SEARCH_PLACEHOLDER_SELECTOR = '[data-sb-copy-placeholder]';
-
-/** Text inside `element`, leaving out descendants matching `skipSelector`. */
-function getSearchNodeText(element, skipSelector) {
-    if (!element.querySelector(skipSelector)) {
-        return element.textContent ?? '';
-    }
-    const parts = [];
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const skipped = node.parentElement?.closest(skipSelector);
-        if (skipped && skipped !== element && element.contains(skipped)) continue;
-        parts.push(node.data);
-    }
-    return parts.join(' ');
-}
-
-/** The name a row or heading shows, without its description or placeholder copy. */
-function getSearchLabelText(element) {
-    return getSearchNodeText(element, `${SB_SEARCH_DESCRIPTION_SELECTOR}, ${SB_SEARCH_PLACEHOLDER_SELECTOR}`);
-}
-
-function getSearchTextCandidates(element) {
-    const extensionContainer = element.closest('.extension_container');
-    const extensionName = extensionContainer?.querySelector('.extension_name')?.textContent ?? '';
-    const candidates = [
-        element.dataset.sbSearchLabel,
-        element.matches('.extension_name') ? element.textContent : '',
-        extensionName,
-        element.getAttribute('aria-label'),
-        element.getAttribute('title'),
-        element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement ? element.placeholder : '',
-        element instanceof HTMLSelectElement ? element.selectedOptions?.[0]?.textContent : '',
-        element.matches('.range-block, .range-block-title, .range-block-header')
-            ? element.closest('.range-block')?.querySelector('.range-block-title, .range-block-header, label, strong, h4, h5')?.textContent
-            : '',
-        element.matches('.extension_container, .extension_name')
-            ? extensionContainer?.querySelector('.extension_name, .inline-drawer-header, .inline-drawer-toggle, h3, h4, strong')?.textContent
-            : '',
-        getSearchLabelText(element),
-    ];
-
-    return candidates
-        .map(candidate => String(candidate ?? '').replace(/\s+/g, ' ').trim())
-        .filter(Boolean)
-        .filter((candidate, index, collection) => collection.indexOf(candidate) === index);
-}
-
-function getSearchDisplayText(element, fallback = '') {
-    const candidates = getSearchTextCandidates(element);
-    const normalizedFallback = normalizeText(fallback);
-    const preferredCandidate = candidates.find(candidate => normalizeText(candidate) !== normalizedFallback);
-    return clampText(preferredCandidate || candidates[0] || fallback, 110);
-}
-
-function getSearchText(element, sectionLabel = '', includeCategoryDescription = false) {
-    const descriptionRoot = includeCategoryDescription && element.matches('.sb-settings-category-title')
-        ? element.closest('.sb-settings-category-heading') ?? element
-        : element;
-    return normalizeText([
-        ...getSearchTextCandidates(element),
-        getSearchNodeText(descriptionRoot, SB_SEARCH_PLACEHOLDER_SELECTOR),
-        sectionLabel,
-    ].join(' '));
-}
-
 function getSearchEntryDedupeKey(tabState, sectionLabel, displayText, { avatarId = '' } = {}) {
     const personaAvatarId = tabState.id === 'persona'
         ? normalizeText(avatarId)
@@ -2226,66 +2133,20 @@ function scheduleUniversalSearchRender({ flush = false } = {}) {
     window.clearTimeout(searchState.renderTimer);
     if (flush) {
         searchState.renderTimer = 0;
-        renderUniversalSearchResults(input.value);
+        void renderUniversalSearchResults(input.value);
         return;
     }
 
     searchState.renderTimer = window.setTimeout(() => {
         searchState.renderTimer = 0;
-        renderUniversalSearchResults(input.value);
+        void renderUniversalSearchResults(input.value);
     }, SB_UNIVERSAL_SEARCH_DEBOUNCE_MS);
 }
 
-// Loading one book per keystroke would be a request storm, so entry bodies are primed once when
-// the panel opens under a fixed budget, then the list is repainted with whatever arrived.
 function primeUniversalSearchEntityMetadata() {
-    const searchState = getUniversalSearchState();
-    if (searchState.entityPrimeStarted) {
-        return;
-    }
-    searchState.entityPrimeStarted = true;
-    const skippedWorlds = searchState.skippedWorlds ?? new Set();
-    searchState.skippedWorlds = skippedWorlds;
-    const names = getSillyTavernContext()?.getWorldInfoNames?.() ?? [];
-    void primeWorldInfoSearchCache({ names, skippedWorlds }).then(() => {
-        if (getUniversalSearchState().expanded && (getUniversalSearchState().input?.value ?? '').trim()) {
-            scheduleUniversalSearchRender({ flush: true });
-        }
-    }).catch(() => {
-        // A failed priming pass leaves world names searchable; only entry bodies are missing.
-    });
-}
-
-// The panel paints a short list, so a broad query needs a way to ask for the rest. The row carries
-// no id of its own, which keeps it out of the arrow-key list, and it is not a result: Enter on it
-// still opens the highlighted setting.
-function createUniversalSearchShowAllRow(hiddenCount, groupLabel = '') {
-    const row = createElement('button', {
-        className: 'sb-search-show-all',
-        attrs: {
-            type: 'button',
-            'data-sb-search-show-all': 'true',
-        },
-    });    row.appendChild(createElement('strong', {
-        text: groupLabel
-            ? `Show ${hiddenCount} More in ${groupLabel}`
-            : `Show All ${hiddenCount} More Results`,
-    }));
-    row.addEventListener('click', () => {
-        const searchState = getUniversalSearchState();
-        searchState.expandedAll = true;
-        // Go through the open-state setter: it is the path that repaints an already-open panel.
-        setUniversalSearchOpenState(true);
-    });
-    return row;
-}
-
-function renderSearchEmptyState(container, title, detail, state = 'no-results') {
-    container.replaceChildren();
-
-    const empty = createElement('div', { className: 'sb-search-empty' });
-    empty.append(createStatusPage({ state, icon: 'magnifying-glass', title, description: detail, compact: true }).element);
-    container.appendChild(empty);
+    void loadUniversalSearchController()
+        .then(controller => controller.primeUniversalSearchEntityMetadata())
+        .catch(() => {});
 }
 
 function focusUniversalSearchInput(input) {
@@ -4467,310 +4328,28 @@ function formatChatSelectorLabel(fileName, tokenEstimate = 0) {
     return tokenLabel ? `${displayName} (${tokenLabel})` : displayName;
 }
 
-function normalizeChatInfo(chatInfo) {
-    const rawFileName = chatInfo?.file_name ?? chatInfo?.id ?? chatInfo?.chat_id ?? chatInfo ?? '';
-    const fileName = normalizeChatFileName(rawFileName);
-
-    return {
-        fileName,
-        preview: formatChatPreview(chatInfo?.mes ?? chatInfo?.preview ?? chatInfo?.message ?? ''),
-        lastMessage: chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? '',
-        sortTimestamp: getChatSortTimestamp(chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? ''),
-        chatItems: Number(chatInfo?.chat_items ?? chatInfo?.message_count ?? 0) || 0,
-        tokenEstimate: Number(chatInfo?.token_estimate ?? chatInfo?.tokenEstimate ?? 0) || 0,
-        fileSize: String(chatInfo?.file_size ?? '').trim(),
-    };
-}
-
-function sortChatFiles(files) {
-    return [...files].sort((left, right) => {
-        if (right.sortTimestamp !== left.sortTimestamp) {
-            return right.sortTimestamp - left.sortTimestamp;
-        }
-
-        return left.fileName.localeCompare(right.fileName);
-    });
-}
-
-async function fetchCharacterChatFiles(chatContext) {
-    const avatarUrl = chatContext.character?.avatar;
-
-    if (!avatarUrl) {
-        return [];
-    }
-
-    try {
-        const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
-        if (!headers) {
-            return [];
-        }
-
-        const response = await fetch('/api/characters/chats', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ avatar_url: avatarUrl }),
-        });
-
-        if (!response.ok) {
-            return [];
-        }
-
-        const data = await response.json();
-        if (typeof data === 'object' && data?.error === true) {
-            return [];
-        }
-
-        const chats = Array.isArray(data) ? data : Object.values(data ?? {});
-        return sortChatFiles(chats.map(normalizeChatInfo).filter(chat => chat.fileName));
-    } catch (error) {
-        console.error('Failed to fetch character chats', error);
-        return [];
-    }
-}
-
-async function fetchGroupChatFiles(chatContext) {
-    const groupChats = Array.isArray(chatContext.group?.chats) ? chatContext.group.chats : [];
-
-    if (!groupChats.length) {
-        return [];
-    }
-
-    try {
-        const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
-        if (!headers) {
-            return [];
-        }
-
-        const chats = await Promise.all(groupChats.map(async chatId => {
-            try {
-                const response = await fetchWithCsrfRetry('/api/chats/group/info', () => ({
-                    method: 'POST',
-                    headers: getRequestHeadersFromContext(chatContext.context),
-                    body: JSON.stringify({ id: chatId }),
-                }), { refreshCsrfToken });
-
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        return null;
-                    }
-
-                    return normalizeChatInfo({ file_name: chatId });
-                }
-
-                const chatInfo = normalizeChatInfo(await response.json());
-                return chatInfo.fileName ? chatInfo : normalizeChatInfo({ file_name: chatId });
-            } catch {
-                return normalizeChatInfo({ file_name: chatId });
-            }
-        }));
-
-        return sortChatFiles(chats.filter(chat => chat?.fileName));
-    } catch (error) {
-        console.error('Failed to fetch group chats', error);
-        return [];
-    }
-}
-
 async function getChatFilesForContext(chatContext = getChatUiContext()) {
-    if (!chatContext.canBrowseChats) {
-        return [];
-    }
-
-    return chatContext.group
-        ? fetchGroupChatFiles(chatContext)
-        : fetchCharacterChatFiles(chatContext);
+    return (await loadChatActionsSearchController()).getChatFilesForContext(chatContext);
 }
 
 async function openChatById(chatId) {
-    const nextChatId = normalizeChatFileName(chatId);
-    const chatContext = getChatUiContext();
-
-    if (!nextChatId || !chatContext.context) {
-        return;
-    }
-
-    if (nextChatId === chatContext.chatId) {
-        return;
-    }
-
-    try {
-        if (chatContext.group?.id) {
-            await chatContext.context.openGroupChat?.(chatContext.group.id, nextChatId);
-        } else {
-            await chatContext.context.openCharacterChat?.(nextChatId);
-        }
-    } finally {
-        scheduleChatbarRefresh(80);
-    }
+    return (await loadChatActionsSearchController()).openChatById(chatId);
 }
 
 async function handleRenameChat() {
-    const chatContext = getChatUiContext();
-    const currentChatId = chatContext.chatId;
-
-    if (!currentChatId || typeof chatContext.context?.renameChat !== 'function') {
-        return;
-    }
-
-    const newChatName = await chatContext.context.Popup?.show?.input?.('Rename Chat', 'Enter a new chat name:', currentChatId);
-
-    if (!newChatName || String(newChatName).trim() === currentChatId) {
-        return;
-    }
-
-    try {
-        await chatContext.context.renameChat(currentChatId, String(newChatName).trim());
-    } catch {
-        return;
-    }
-    scheduleChatbarRefresh(120);
+    return (await loadChatActionsSearchController()).handleRenameChat();
 }
 
 async function handleDeleteChat() {
-    const chatContext = getChatUiContext();
-
-    if (!chatContext.chatId) {
-        return;
-    }
-
-    const confirmed = await openAlert({
-        heading: t`Delete Chat?`,
-        body: t`This action cannot be undone`,
-        responses: [
-            { id: 'cancel', label: t`Cancel` },
-            { id: 'delete', label: t`Delete`, appearance: 'destructive' },
-        ],
-    });
-    if (confirmed !== 'delete') {
-        return;
-    }
-
-    await chatContext.context?.executeSlashCommandsWithOptions?.('/delchat');
-    scheduleChatbarRefresh(150);
-}
-
-function setBottomChatActionBusy(button, busy) {
-    if (!(button instanceof HTMLElement)) {
-        return;
-    }
-
-    button.classList.toggle('is-busy', Boolean(busy));
-    setButtonDisabled(button, Boolean(busy));
+    return (await loadChatActionsSearchController()).handleDeleteChat();
 }
 
 async function handleAutoNameChat() {
-    const chatContext = getChatUiContext();
-    const button = getBottomChatBarState().autoNameButton;
-
-    if (!chatContext.hasChat) {
-        return;
-    }
-
-    setBottomChatActionBusy(button, true);
-    try {
-        const { autoLabelCurrentChat } = await getChatScriptModule();
-        if (typeof autoLabelCurrentChat !== 'function') {
-            throw new Error('Chat auto-name helper is unavailable.');
-        }
-
-        await autoLabelCurrentChat();
-        scheduleBottomChatBarRefresh(160);
-    } catch (error) {
-        console.error('[SillyBunny] Failed to auto-name current chat.', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Auto-name chat');
-    } finally {
-        setBottomChatActionBusy(button, false);
-    }
-}
-
-function getMassDeleteOlderThanDays(files, days, currentChatId) {
-    const numericDays = Number(days);
-    if (!Number.isFinite(numericDays) || numericDays <= 0) {
-        return [];
-    }
-
-    const cutoff = Date.now() - (numericDays * 24 * 60 * 60 * 1000);
-    return files.filter(chatFile => chatFile.fileName !== currentChatId && chatFile.sortTimestamp > 0 && chatFile.sortTimestamp < cutoff);
-}
-
-function showBottomChatMassDeleteDialog(files, currentChatId) {
-    return openMassDeleteChatDialog(files, currentChatId, {
-        getOlderCount: days => getMassDeleteOlderThanDays(files, days, currentChatId).length,
-        formatChatTimestamp,
-    });
-}
-
-async function deleteChatFileForContext(chatContext, fileName, chatModule) {
-    if (chatContext.group?.id) {
-        const { deleteGroupChatByName } = await import('./group-chats.js');
-        return deleteGroupChatByName(chatContext.group.id, fileName);
-    }
-
-    if (chatContext.context?.characterId !== undefined && chatContext.context?.characterId !== null) {
-        await chatModule.deleteCharacterChatByName(chatContext.context.characterId, fileName);
-        return true;
-    }
-
-    return false;
+    return (await loadChatActionsSearchController()).handleAutoNameChat();
 }
 
 async function handleMassDeleteChats() {
-    const chatContext = getChatUiContext();
-    const button = getBottomChatBarState().massDeleteButton;
-
-    if (!chatContext.canBrowseChats) {
-        return;
-    }
-
-    setBottomChatActionBusy(button, true);
-    try {
-        const files = await getChatFilesForContext(chatContext);
-        const deletableFiles = files.filter(chatFile => chatFile.fileName !== chatContext.chatId);
-        if (!deletableFiles.length) {
-            globalThis.toastr?.info?.('No saved chats can be deleted for this character or group', 'Mass delete chats');
-            return;
-        }
-
-        const result = await showBottomChatMassDeleteDialog(files, chatContext.chatId);
-        if (!result) {
-            return;
-        }
-
-        const names = result.mode === 'older'
-            ? getMassDeleteOlderThanDays(files, result.days, chatContext.chatId).map(chatFile => chatFile.fileName)
-            : result.names;
-
-        if (!names.length) {
-            return;
-        }
-
-        const confirmed = await openAlert({
-            heading: t`Delete Chats?`,
-            body: t`Delete ${names.length} chat(s)? This cannot be undone.`,
-            responses: [
-                { id: 'cancel', label: t`Cancel` },
-                { id: 'delete', label: t`Delete`, appearance: 'destructive' },
-            ],
-        });
-        if (confirmed !== 'delete') {
-            return;
-        }
-
-        const chatModule = await getChatScriptModule();
-        for (const fileName of names) {
-            await deleteChatFileForContext(chatContext, fileName, chatModule);
-        }
-
-        globalThis.toastr?.success?.(`Deleted ${names.length} chat(s)`, 'Mass delete chats');
-        scheduleBottomChatBarRefresh(160);
-        scheduleChatbarRefresh(160);
-        await chatModule.displayPastChats?.();
-    } catch (error) {
-        console.error('[SillyBunny] Failed to mass delete chats.', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Mass delete chats');
-    } finally {
-        setBottomChatActionBusy(button, false);
-    }
+    return (await loadChatActionsSearchController()).handleMassDeleteChats();
 }
 
 function handleNewChat() {
@@ -4858,146 +4437,20 @@ function scrollCurrentChatToBottom() {
     });
 }
 
-function countRegexMatches(value, regex) {
-    const text = String(value ?? '');
-    if (!text || !(regex instanceof RegExp)) {
-        return 0;
-    }
-
-    regex.lastIndex = 0;
-    return Array.from(text.matchAll(regex)).length;
-}
-
-function createChatFileButton(chatFile, currentChatId, onSelect) {
-    const button = createElement('button', {
-        className: 'sb-chat-file',
-        attrs: {
-            type: 'button',
-        },
-    });
-
-    const dateLabel = formatChatTimestamp(chatFile.lastMessage);
-    button.classList.toggle('is-current', chatFile.fileName === currentChatId);
-    button.innerHTML = `
-        <div class="sb-chat-file-head">
-            <strong>${describeChatName(chatFile.fileName)}</strong>
-            <small>${dateLabel || ''}</small>
-        </div>
-        <span class="sb-chat-file-preview">${chatFile.preview}</span>
-        <div class="sb-chat-file-meta">
-            <small>${chatFile.chatItems ? `${chatFile.chatItems} msg` : ''}</small>
-            <small>${chatFile.fileSize || ''}</small>
-        </div>
-    `;
-
-    button.addEventListener('click', () => {
-        void onSelect(chatFile.fileName);
-    });
-
-    return button;
-}
-
-function renderChatFiles(listRoot, files, currentChatId, { emptyTitle = 'No chats yet.', emptyBody = 'Start a chat to see it here.', onSelect } = {}) {
-    if (!(listRoot instanceof HTMLElement)) {
+function setChatSidebarOpenState(shouldOpen, options = {}) {
+    if (chatActionsSearchController) {
+        chatActionsSearchController.setChatSidebarOpenState(shouldOpen, options);
         return;
     }
-
-    listRoot.replaceChildren();
-
-    if (!files.length) {
-        const empty = createElement('div', { className: 'sb-chat-files-empty' });
-        empty.append(createElement('strong', { text: emptyTitle }), createElement('p', { text: emptyBody }));
-        listRoot.appendChild(empty);
+    if (!shouldOpen) {
+        getChatbarState().sidebarOpen = false;
         return;
     }
-
-    for (const chatFile of files) {
-        listRoot.appendChild(createChatFileButton(chatFile, currentChatId, onSelect));
-    }
-}
-
-function buildChatSidebar() {
-    const existingSidebar = getChatSidebarRefs();
-    if (existingSidebar) {
-        return existingSidebar;
-    }
-
-    const template = document.getElementById('generic_draggable_template');
-    const movingDivs = document.getElementById('movingDivs');
-
-    if (!(template instanceof HTMLTemplateElement) || !(movingDivs instanceof HTMLElement)) {
-        return null;
-    }
-
-    const fragment = template.content.cloneNode(true);
-    const root = fragment.querySelector('.draggable');
-    const title = fragment.querySelector('.dragTitle');
-    const closeButton = fragment.querySelector('.dragClose');
-
-    if (!(root instanceof HTMLElement) || !(title instanceof HTMLElement) || !(closeButton instanceof HTMLElement)) {
-        return null;
-    }
-
-    root.id = 'sb-chat-sidebar';
-    root.classList.remove('draggable');
-    root.classList.add('sb-chat-sidebar');
-    root.style.top = 'calc(var(--sb-topbar-layout-offset) + 18px)';
-    root.style.right = '16px';
-    root.style.left = 'auto';
-    root.style.bottom = 'auto';
-
-    title.textContent = t`Recent Chats`;
-
-    const body = createElement('div', { className: 'sb-chat-sidebar-body' });
-    const list = createElement('div', { className: 'sb-chat-sidebar-list' });
-    body.appendChild(list);
-    root.appendChild(body);
-
-    closeButton.addEventListener('click', () => setChatSidebarOpenState(false));
-
-    movingDivs.appendChild(root);
-
-    const controller = registerSidePanel({
-        id: 'sb-chat-sidebar',
-        element: root,
-        title: t`Recent Chats`,
-        defaultSide: 'left',
-        onClose: () => { getChatbarState().sidebarOpen = false; },
-    });
-    getChatbarState().sidebar = { root, title, list, controller };
-    return getChatbarState().sidebar;
-}
-
-function isChatSidebarOpen() {
-    return Boolean(getChatbarState().sidebarOpen);
-}
-
-function setChatSidebarOpenState(shouldOpen, { opener = document.activeElement, restoreFocus = false } = {}) {
-    const refs = buildChatSidebar();
-
-    if (!refs?.root) {
-        return;
-    }
-
-    const isOpen = Boolean(shouldOpen);
-    getChatbarState().sidebarOpen = isOpen;
-    refs.root.classList.toggle('sb-chat-sidebar-visible', isOpen);
-
-    if (isOpen) {
-        void refs.controller.open({ opener });
-        scheduleChatbarRefresh(0);
-    } else {
-        refs.controller.close({ restoreFocus });
-    }
+    void loadChatActionsSearchController().then(controller => controller.setChatSidebarOpenState(shouldOpen, options));
 }
 
 function toggleChatSidebar() {
-    const chatContext = getChatUiContext();
-    if (!chatContext.canBrowseChats) {
-        return;
-    }
-
-    setChatSidebarOpenState(!isChatSidebarOpen(), { restoreFocus: true });
+    void loadChatActionsSearchController().then(controller => controller.toggleChatSidebar());
 }
 
 function getMobileShellSurfaceForShell(shellKey) {
@@ -5056,333 +4509,12 @@ function getSearchTerms(query = getChatbarState().searchQuery) {
         .filter(Boolean);
 }
 
-function createChatSearchRegex(terms = getSearchTerms()) {
-    if (!terms.length) {
-        return null;
-    }
-
-    return new RegExp(`(${terms.map(escapeRegex).join('|')})`, 'gi');
-}
-
-function addChatSearchTextSegment(segments, value) {
-    const normalizedValue = String(value ?? '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    if (normalizedValue && !segments.includes(normalizedValue)) {
-        segments.push(normalizedValue);
-    }
-}
-
-function getChatSearchMessageText(message) {
-    if (!message || typeof message !== 'object') {
-        return '';
-    }
-
-    const segments = [];
-
-    addChatSearchTextSegment(segments, message.extra?.display_text);
-    addChatSearchTextSegment(segments, message.mes);
-    addChatSearchTextSegment(segments, message.extra?.reasoning_display_text);
-    addChatSearchTextSegment(segments, message.extra?.reasoning);
-
-    return segments.join('\n');
-}
-
-function getChatSearchMatches(regex) {
-    const context = getSillyTavernContext();
-    const chat = Array.isArray(context?.chat) ? context.chat : [];
-    const matches = [];
-    let totalMatches = 0;
-
-    if (!(regex instanceof RegExp)) {
-        return { matches, totalMatches };
-    }
-
-    chat.forEach((message, messageId) => {
-        const count = countRegexMatches(getChatSearchMessageText(message), regex);
-        if (!count) {
-            return;
-        }
-
-        matches.push({ messageId, count, message });
-        totalMatches += count;
-    });
-
-    return { matches, totalMatches };
-}
-
-function getChatMessageElement(messageId) {
-    const chatRoot = getChatScrollElement();
-    if (!(chatRoot instanceof HTMLElement) || !Number.isInteger(messageId)) {
-        return null;
-    }
-
-    return chatRoot.querySelector(`.mes[mesid="${messageId}"]`);
-}
-
-async function waitForNextAnimationFrame() {
-    await new Promise(resolve => window.requestAnimationFrame(resolve));
-}
-
-async function ensureChatMessageRendered(messageId) {
-    if (!Number.isInteger(messageId) || messageId < 0) {
-        return null;
-    }
-
-    let messageElement = getChatMessageElement(messageId);
-    if (messageElement instanceof HTMLElement) {
-        return messageElement;
-    }
-
-    const context = getSillyTavernContext();
-    const chatLength = Array.isArray(context?.chat) ? context.chat.length : 0;
-    const renderedMessages = Array.from(document.querySelectorAll('#chat .mes[mesid]'));
-    const firstRenderedId = Number(renderedMessages.at(0)?.getAttribute('mesid') ?? NaN);
-    const lastRenderedId = Number(renderedMessages.at(-1)?.getAttribute('mesid') ?? NaN);
-    const chatModule = await getChatScriptModule().catch(() => null);
-    const showMoreMessages = typeof context?.showMoreMessages === 'function'
-        ? context.showMoreMessages
-        : chatModule?.showMoreMessages;
-    const showNewerMessages = typeof context?.showNewerMessages === 'function'
-        ? context.showNewerMessages
-        : chatModule?.showNewerMessages;
-    const redisplayChat = typeof context?.redisplayChat === 'function'
-        ? context.redisplayChat
-        : chatModule?.redisplayChat;
-
-    if (typeof showMoreMessages === 'function' && Number.isInteger(firstRenderedId) && messageId < firstRenderedId) {
-        await showMoreMessages(firstRenderedId - messageId);
-        await waitForNextAnimationFrame();
-        messageElement = getChatMessageElement(messageId);
-        if (messageElement instanceof HTMLElement) {
-            return messageElement;
-        }
-    }
-
-    if (typeof showNewerMessages === 'function' && Number.isInteger(lastRenderedId) && messageId > lastRenderedId) {
-        await showNewerMessages(messageId - lastRenderedId);
-        await waitForNextAnimationFrame();
-        messageElement = getChatMessageElement(messageId);
-        if (messageElement instanceof HTMLElement) {
-            return messageElement;
-        }
-    }
-
-    if (typeof redisplayChat === 'function' && chatLength > 0) {
-        const fallbackStartIndex = Math.max(0, Math.min(messageId, chatLength - 1));
-        if (!getChatMessageElement(fallbackStartIndex)) {
-            getChatScrollElement()?.querySelectorAll('.mes, #show_more_messages, #show_newer_messages').forEach(element => element.remove());
-        }
-
-        await redisplayChat({ startIndex: fallbackStartIndex, fade: false });
-        await waitForNextAnimationFrame();
-        return getChatMessageElement(messageId);
-    }
-
-    return null;
-}
-
-function releaseChatSearchApply(chatbarState, applyToken) {
-    window.setTimeout(() => {
-        if (applyToken === chatbarState.searchApplyToken) {
-            chatbarState.isApplyingSearch = false;
-        }
-    }, 0);
-}
-
-function getChatSearchStatusText(totalMatches, renderedMatches) {
-    if (!totalMatches) {
-        return 'No matches';
-    }
-
-    if (renderedMatches > 0 && renderedMatches < totalMatches) {
-        return `${renderedMatches}/${totalMatches} visible`;
-    }
-
-    if (!renderedMatches) {
-        return `${totalMatches} hidden match${totalMatches === 1 ? '' : 'es'}`;
-    }
-
-    return `${totalMatches} match${totalMatches === 1 ? '' : 'es'}`;
-}
-
 function clearChatSearchHighlights() {
-    for (const mark of document.querySelectorAll(SB_CHAT_SEARCH_MARK_SELECTOR)) {
-        if (!(mark instanceof HTMLElement) || !mark.parentNode) {
-            continue;
-        }
-
-        mark.replaceWith(document.createTextNode(mark.textContent ?? ''));
-    }
-
-    document.querySelectorAll('#chat .sb-search-hit').forEach(element => {
-        element.classList.remove('sb-search-hit');
-    });
-    document.getElementById('chat')?.normalize();
-    setSearchStatusText('');
+    chatActionsSearchController?.clearChatSearchHighlights();
 }
 
-function highlightMessageText(root, regex) {
-    if (!(root instanceof HTMLElement)) {
-        return { count: 0, firstMatch: null };
-    }
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-            if (!node.nodeValue?.trim()) {
-                return NodeFilter.FILTER_REJECT;
-            }
-
-            const parent = node.parentElement;
-            if (!parent
-                || parent.closest(SB_CHAT_SEARCH_MARK_SELECTOR)
-                || parent.closest('.mes_buttons, .extraMesButtons, .mes_edit_buttons, .mes_reasoning_actions, .mes_bias, .mes_avatar, .avatar, .timestamp, .tokenCounterDisplay, .mesIDDisplay, .swipes-counter')) {
-                return NodeFilter.FILTER_REJECT;
-            }
-
-            return NodeFilter.FILTER_ACCEPT;
-        },
-    });
-
-    const textNodes = [];
-    while (walker.nextNode()) {
-        textNodes.push(walker.currentNode);
-    }
-
-    let count = 0;
-    let firstMatch = null;
-
-    for (const textNode of textNodes) {
-        const textValue = textNode.nodeValue ?? '';
-        regex.lastIndex = 0;
-
-        if (!regex.test(textValue)) {
-            continue;
-        }
-
-        regex.lastIndex = 0;
-        const fragment = document.createDocumentFragment();
-        let previousIndex = 0;
-
-        for (const match of textValue.matchAll(regex)) {
-            const matchValue = match[0];
-            const matchIndex = match.index ?? 0;
-
-            if (!matchValue) {
-                continue;
-            }
-
-            fragment.append(textValue.slice(previousIndex, matchIndex));
-
-            const mark = createElement('mark', {
-                className: 'sb-chat-search-hit',
-                text: matchValue,
-                attrs: {
-                    'data-sb-chat-search': 'true',
-                },
-            });
-
-            if (!firstMatch) {
-                firstMatch = mark;
-            }
-
-            fragment.appendChild(mark);
-            previousIndex = matchIndex + matchValue.length;
-            count += 1;
-        }
-
-        fragment.append(textValue.slice(previousIndex));
-        textNode.parentNode?.replaceChild(fragment, textNode);
-    }
-
-    return { count, firstMatch };
-}
-
-async function applyChatSearchHighlights({ scrollToFirst = false } = {}) {
-    const chatbarState = getChatbarState();
-    const terms = getSearchTerms();
-    const applyToken = ++chatbarState.searchApplyToken;
-
-    chatbarState.pendingSearchScroll = false;
-    clearTimeout(chatbarState.searchTimer);
-    chatbarState.isApplyingSearch = true;
-    clearChatSearchHighlights();
-
-    if (!terms.length || !getChatUiContext().hasChat) {
-        chatbarState.isApplyingSearch = false;
-        return;
-    }
-
-    const regex = createChatSearchRegex(terms);
-    if (!(regex instanceof RegExp)) {
-        chatbarState.isApplyingSearch = false;
-        return;
-    }
-
-    const searchMatches = getChatSearchMatches(regex);
-    const firstMatchId = searchMatches.matches[0]?.messageId;
-
-    if (scrollToFirst && Number.isInteger(firstMatchId)) {
-        setSearchStatusText('Loading match…');
-
-        try {
-            await ensureChatMessageRendered(firstMatchId);
-        } catch (error) {
-            console.warn('[SillyBunny] Failed to reveal chat search match.', error);
-        }
-
-        if (applyToken !== chatbarState.searchApplyToken) {
-            chatbarState.isApplyingSearch = false;
-            return;
-        }
-    }
-
-    let renderedMatches = 0;
-    let firstMatch = null;
-
-    try {
-        for (const node of document.querySelectorAll('#chat .mes_text')) {
-            const result = highlightMessageText(node, regex);
-            renderedMatches += result.count;
-            firstMatch ??= result.firstMatch;
-        }
-    } finally {
-        releaseChatSearchApply(chatbarState, applyToken);
-    }
-
-    const totalMatches = Math.max(searchMatches.totalMatches, renderedMatches);
-    setSearchStatusText(getChatSearchStatusText(totalMatches, renderedMatches));
-
-    if (scrollToFirst && firstMatch instanceof HTMLElement) {
-        scrollElementIntoManagedView(firstMatch, {
-            block: 'center',
-            behavior: getReducedMotionScrollBehavior(),
-        });
-    } else if (scrollToFirst && Number.isInteger(firstMatchId)) {
-        const messageElement = getChatMessageElement(firstMatchId);
-        if (messageElement instanceof HTMLElement) {
-            messageElement.classList.add('sb-search-hit');
-            window.setTimeout(() => messageElement.classList.remove('sb-search-hit'), 2400);
-            scrollElementIntoManagedView(messageElement, {
-                block: 'center',
-                behavior: getReducedMotionScrollBehavior(),
-            });
-        }
-    }
-}
-
-function scheduleChatSearchHighlight({ scrollToFirst = false } = {}) {
-    const chatbarState = getChatbarState();
-    chatbarState.pendingSearchScroll = chatbarState.pendingSearchScroll || scrollToFirst;
-
-    clearTimeout(chatbarState.searchTimer);
-    chatbarState.searchTimer = window.setTimeout(() => {
-        const shouldScroll = chatbarState.pendingSearchScroll;
-        chatbarState.pendingSearchScroll = false;
-        void applyChatSearchHighlights({ scrollToFirst: shouldScroll });
-    }, SB_CHATBAR_SEARCH_DEBOUNCE);
+function scheduleChatSearchHighlight(options = {}) {
+    void loadChatActionsSearchController().then(controller => controller.scheduleChatSearchHighlight(options));
 }
 
 function setChatSearchQuery(value, { source = null } = {}) {
@@ -5588,7 +4720,8 @@ async function refreshChatbarState() {
     const refreshToken = ++chatbarState.refreshToken;
 
     const chatContext = getChatUiContext();
-    const files = await getChatFilesForContext(chatContext);
+    const chatActions = await loadChatActionsSearchController();
+    const files = await chatActions.getChatFilesForContext(chatContext);
 
     if (refreshToken !== chatbarState.refreshToken) {
         return;
@@ -5597,10 +4730,10 @@ async function refreshChatbarState() {
     const chatNames = files.map(chat => chat.fileName);
 
     if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
-        files.unshift(normalizeChatInfo(chatContext.chatId));
+        files.unshift(chatActions.normalizeChatInfo(chatContext.chatId));
     }
 
-    renderChatFiles(getChatSidebarRefs()?.list, files, chatContext.chatId, {
+    chatActions.renderChatFiles(getChatSidebarRefs()?.list, files, chatContext.chatId, {
         onSelect: chatId => openChatById(chatId),
     });
 
@@ -7819,653 +6952,7 @@ function prepareEmbeddedDrawer(drawerId, root = document) {
 }
 
 function syncBackgroundSettingsSection() {
-    const appearance = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
-    const gallery = document.getElementById('backgrounds-button');
-    if (!appearanceModule || !(appearance instanceof HTMLElement) || !(gallery instanceof HTMLElement)) return;
-
-    let section = appearance.querySelector('#sb-background-settings-section');
-    let changed = false;
-    if (!(section instanceof HTMLElement)) {
-        const group = appearanceModule.createAppearanceGroup({
-            id: 'background',
-            elementId: 'sb-background-settings-section',
-            title: 'Background',
-            description: 'Choose backgrounds and adjust their size, blur, opacity, and visibility',
-        });
-        group.group.id = 'sb-background-settings-controls';
-        const heading = group.section.querySelector('.ds-pref-group-heading');
-        heading.id = 'sb-background-settings-heading';
-        group.group.setAttribute('aria-labelledby', heading.id);
-        section = group.section;
-        appearance.append(section);
-        changed = true;
-    }
-
-    const controls = section.querySelector('#sb-background-settings-controls');
-    if (!(controls instanceof HTMLElement)) throw new Error('Missing Background settings control group.');
-
-    // The gallery owns its toolbar and layout; the normalizer must not box it around another pill.
-    if (gallery.dataset.sbPresentation !== 'manual') gallery.dataset.sbPresentation = 'manual';
-    const fitting = appearanceModule.presentBackgroundGallery(gallery);
-    if (fitting) {
-        controls.append(fitting.row);
-        changed = true;
-    }
-    // The fitting row and the gallery close the group; the slider rows, which Interface injects after the initial split, come before them.
-    const closing = controls.querySelector(':scope > .ds-select-row') ?? (gallery.parentElement === controls ? gallery : null);
-    // These rows are authored in three tabs.
-    for (const id of ['background-blur-block', 'background-opacity-block', 'background_thumbnails_animation', 'sb-surface-transparency-input']) {
-        const control = document.getElementById(id);
-        const row = id === 'background_thumbnails_animation' && control instanceof HTMLInputElement
-            ? appearanceModule.presentBackgroundSwitch(control)
-            : control?.closest('.ds-row, .checkbox_label');
-        if (!(row instanceof HTMLElement) || row.parentElement === controls) continue;
-        controls.insertBefore(row, closing);
-        changed = true;
-    }
-
-    if (gallery.parentElement !== controls) {
-        controls.append(gallery);
-        changed = true;
-    }
-    if (changed) invalidateUserSettingsTabSearchIndexes();
-}
-
-/** The Sampling rows module, once the panel has loaded it. */
-let samplingModule = null;
-
-const SB_SAMPLING_BACKENDS = Object.freeze([
-    {
-        id: 'openai',
-        apiIds: ['openai'],
-        title: 'Chat Completions',
-        usesContextSettings: false,
-    },
-    {
-        id: 'textgenerationwebui',
-        apiIds: ['textgenerationwebui'],
-        title: 'Text Completions',
-        usesContextSettings: true,
-    },
-    {
-        id: 'kobold',
-        apiIds: ['kobold', 'koboldhorde'],
-        title: 'Kobold/Horde',
-        usesContextSettings: true,
-    },
-    {
-        id: 'novel',
-        apiIds: ['novel'],
-        title: 'NovelAI',
-        usesContextSettings: true,
-    },
-]);
-
-const SB_SAMPLING_GROUPS = Object.freeze([
-    { id: 'sampling', title: 'Sampling', description: 'Adjust how the AI chooses tokens and how varied its replies can be' },
-    { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases' },
-    { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition' },
-    { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits' },
-    // The group has no description; its title keeps the translation key the upstream heading uses.
-    { id: 'banned', title: 'Banned Tokens/Strings', i18n: 'Banned Tokens', description: '' },
-    { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules' },
-]);
-
-/**
- * Shared sampler registry. Each entry maps a canonical sampler id to selectors across backends.
- * Controls are displayed in registry order within their group. Backends with no selector omit the entry.
- * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, gated?: boolean, description?: string, subtitleSource?: string}>}
- */
-const SB_SAMPLER_REGISTRY = Object.freeze([
-    // Sampling
-    { id: 'sampler_toolbar', group: 'sampling', openai: '#sb_neutralize_chat_samplers', textgenerationwebui: '#samplerResetButton', gated: true },
-    { id: 'temperature', group: 'sampling', openai: '#temp_openai', textgenerationwebui: '#temp_textgenerationwebui', kobold: '#temp', novel: '#temp_novel' },
-    { id: 'top_k', group: 'sampling', openai: '#top_k_openai', textgenerationwebui: '#top_k_textgenerationwebui', kobold: '#top_k', novel: '#top_k_novel' },
-    { id: 'top_p', group: 'sampling', openai: '#top_p_openai', textgenerationwebui: '#top_p_textgenerationwebui', kobold: '#top_p', novel: '#top_p_novel' },
-    { id: 'typical_p', group: 'sampling', textgenerationwebui: '#typical_p_textgenerationwebui', kobold: '#typical_p', novel: '#typical_p_novel' },
-    { id: 'min_p', group: 'sampling', openai: '#min_p_openai', textgenerationwebui: '#min_p_textgenerationwebui', kobold: '#min_p', novel: '#min_p_novel' },
-    { id: 'top_a', group: 'sampling', openai: '#top_a_openai', textgenerationwebui: '#top_a_textgenerationwebui', kobold: '#top_a', novel: '#top_a_novel' },
-    { id: 'tfs', group: 'sampling', textgenerationwebui: '#tfs_textgenerationwebui', kobold: '#tfs', novel: '#tail_free_sampling_novel' },
-    { id: 'epsilon_cutoff', group: 'sampling', textgenerationwebui: '#epsilon_cutoff_textgenerationwebui' },
-    { id: 'eta_cutoff', group: 'sampling', textgenerationwebui: '#eta_cutoff_textgenerationwebui' },
-    { id: 'nsigma', group: 'sampling', textgenerationwebui: '#nsigma_textgenerationwebui' },
-    { id: 'min_keep', group: 'sampling', textgenerationwebui: '#min_keep_textgenerationwebui' },
-    { id: 'skew', group: 'sampling', textgenerationwebui: '#skew_textgenerationwebui' },
-    // Penalties
-    { id: 'repetition_penalty', group: 'penalties', openai: '#repetition_penalty_openai', textgenerationwebui: '#rep_pen_textgenerationwebui', kobold: '#rep_pen', novel: '#rep_pen_novel' },
-    { id: 'rep_pen_range', group: 'penalties', textgenerationwebui: '#rep_pen_range_textgenerationwebui', kobold: '#rep_pen_range', novel: '#rep_pen_size_novel' },
-    { id: 'rep_pen_slope', group: 'penalties', textgenerationwebui: '#rep_pen_slope_textgenerationwebui', kobold: '#rep_pen_slope', novel: '#rep_pen_slope_novel' },
-    { id: 'rep_pen_decay', group: 'penalties', textgenerationwebui: '#rep_pen_decay_textgenerationwebui' },
-    { id: 'encoder_rep_pen', group: 'penalties', textgenerationwebui: '#encoder_rep_pen_textgenerationwebui' },
-    { id: 'frequency_penalty', group: 'penalties', openai: '#freq_pen_openai', textgenerationwebui: '#freq_pen_textgenerationwebui', novel: '#rep_pen_freq_novel' },
-    { id: 'presence_penalty', group: 'penalties', openai: '#pres_pen_openai', textgenerationwebui: '#presence_pen_textgenerationwebui', novel: '#rep_pen_presence_novel' },
-    { id: 'no_repeat_ngram', group: 'penalties', textgenerationwebui: '#no_repeat_ngram_size_textgenerationwebui' },
-    // Algorithms
-    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true, description: 'Adjust token choices toward your chosen level of predictability' },
-    { id: 'smoothing', group: 'algorithms', textgenerationwebui: '#smoothingBlock', expander: true },
-    { id: 'math1_temp', group: 'algorithms', novel: '#math1_temp_novel' },
-    { id: 'math1_quad', group: 'algorithms', novel: '#math1_quad_novel' },
-    { id: 'math1_quad_entropy_scale', group: 'algorithms', novel: '#math1_quad_entropy_scale_novel' },
-    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true, description: 'Exclude top token choices to encourage more varied replies' },
-    { id: 'dry', group: 'algorithms', textgenerationwebui: '#dryBlock', expander: true },
-    { id: 'dynatemp', group: 'algorithms', textgenerationwebui: '#dynatemp_block_ooba', expander: true },
-    { id: 'mirostat', group: 'algorithms', textgenerationwebui: '#mirostat_block_ooba', kobold: '[name="miroStatBlock-kobold"]', expander: true, subtitleSource: '[data-sb-sampling-control="#mirostat_block_ooba"] .ds-row-subtitle' },
-    { id: 'mirostat_tau', group: 'algorithms', novel: '#mirostat_tau_novel' },
-    { id: 'mirostat_lr', group: 'algorithms', novel: '#mirostat_lr_novel' },
-    { id: 'beam_search', group: 'algorithms', textgenerationwebui: '#beamSearchBlock', expander: true, gated: true },
-    { id: 'contrastive_search', group: 'algorithms', textgenerationwebui: '#contrastiveSearchBlock', expander: true, gated: true },
-    // Tokens
-    { id: 'seed', group: 'tokens', openai: '#seed_openai', textgenerationwebui: '#seed_textgenerationwebui', kobold: '#seed_kobold', subtitleSource: '[data-sb-sampling-control="#seed_textgenerationwebui"] .ds-row-subtitle' },
-    { id: 'logit_bias', group: 'tokens', openai: '#openai_logit_bias_preset', textgenerationwebui: '#logit_bias_block_ooba', gated: true },
-    { id: 'banned_tokens', group: 'banned', textgenerationwebui: '#banned_tokens_block_ooba', gated: true },
-    { id: 'min_length', group: 'tokens', textgenerationwebui: '#min_length_textgenerationwebui', novel: '#min_length_novel', gated: true },
-    { id: 'max_tokens_second', group: 'tokens', textgenerationwebui: '#max_tokens_second_textgenerationwebui', gated: true },
-    // Output
-    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', novel: '#novel_order', gated: true },
-    { id: 'sampler_priority', group: 'output', textgenerationwebui: ['#sampler_priority_block_ooba', '#sampler_priority_block_aphrodite'], gated: true },
-    { id: 'json_schema', group: 'output', textgenerationwebui: '#json_schema_block', gated: true },
-    { id: 'do_sample', group: 'output', textgenerationwebui: '#do_sample_textgenerationwebui', gated: true },
-    { id: 'add_bos_token', group: 'output', textgenerationwebui: '#add_bos_token_textgenerationwebui', gated: true },
-    { id: 'ban_eos_token', group: 'output', textgenerationwebui: '#ban_eos_token_textgenerationwebui', gated: true },
-    { id: 'skip_special_tokens', group: 'output', textgenerationwebui: '#skip_special_tokens_textgenerationwebui', gated: true },
-    { id: 'ignore_eos_token', group: 'output', textgenerationwebui: '#ignore_eos_token_textgenerationwebui', gated: true },
-    { id: 'use_default_badwordsids', group: 'output', kobold: '#use_default_badwordsids', gated: true },
-    { id: 'temperature_last', group: 'output', textgenerationwebui: '#temperature_last_textgenerationwebui', gated: true },
-    { id: 'include_reasoning', group: 'output', textgenerationwebui: '#include_reasoning_textgenerationwebui', gated: true },
-    { id: 'speculative_ngram', group: 'output', textgenerationwebui: '#speculative_ngram_textgenerationwebui', gated: true },
-    { id: 'spaces_between_special_tokens', group: 'output', textgenerationwebui: '#spaces_between_special_tokens_textgenerationwebui', gated: true },
-    { id: 'cfg', group: 'output', textgenerationwebui: '#cfg_block_ooba', gated: true },
-    { id: 'grammar', group: 'output', textgenerationwebui: '#grammar_block_ooba', kobold: '#grammar', gated: true, subtitleSource: '[data-sb-sampling-control="#grammar_block_ooba"] .ds-row-subtitle' },
-]);
-
-function getSamplingBackendControls(backendId) {
-    return SB_SAMPLER_REGISTRY.flatMap(entry => [entry[backendId] ?? []].flat());
-}
-
-const SB_SAMPLER_ENTRY_BY_SELECTOR = Object.freeze(new Map(SB_SAMPLER_REGISTRY.flatMap(entry => SB_SAMPLING_BACKENDS
-    .flatMap(backend => [entry[backend.id] ?? []].flat())
-    .map(selector => [selector, entry]))));
-
-function getSamplingGroupId(selector) {
-    return SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.group ?? 'sampling';
-}
-
-/** Text Completions sampler tools: an action row for each button, with the tooltip beside it as the subtitle. */
-function getSamplerToolbarControlBlock() {
-    const reset = document.getElementById('samplerResetButton');
-    if (!(reset instanceof HTMLElement) || !samplingModule) {
-        return null;
-    }
-
-    const block = createElement('div', { className: 'sb-sampling-sampler-tools-card' });
-    for (const button of [reset, document.getElementById('samplerSelectButton')]) {
-        if (button instanceof HTMLElement) {
-            block.append(samplingModule.createActionRow(button, samplingModule.readTooltip(button.parentElement?.querySelector(':scope > .fa-circle-info'))));
-        }
-    }
-
-    return block;
-}
-
-function neutralizeChatCompletionSamplers() {
-    const values = {
-        '#temp_openai': 1,
-        '#top_p_openai': 1,
-        '#top_k_openai': 0,
-        '#min_p_openai': 0,
-        '#top_a_openai': 0,
-        '#repetition_penalty_openai': 1,
-        '#freq_pen_openai': 0,
-        '#pres_pen_openai': 0,
-    };
-
-    for (const [selector, value] of Object.entries(values)) {
-        const input = document.querySelector(selector);
-        if (input instanceof HTMLInputElement) {
-            input.value = String(value);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-
-    ['#claude_disable_temperature', '#claude_disable_top_p'].forEach(selector => {
-        const input = document.querySelector(selector);
-        if (input instanceof HTMLInputElement) {
-            input.checked = false;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    });
-}
-
-const SAMPLING_SELECTOR_TO_CANONICAL_ID = Object.freeze({
-    '#temp_openai': 'temperature',
-    '#temp_textgenerationwebui': 'temperature',
-    '#top_p_openai': 'top_p',
-    '#top_p_textgenerationwebui': 'top_p',
-    '#pres_pen_openai': 'presence_penalty',
-    '#presence_pen_textgenerationwebui': 'presence_penalty',
-    '#freq_pen_openai': 'frequency_penalty',
-    '#freq_pen_textgenerationwebui': 'frequency_penalty',
-    '#typical_p_textgenerationwebui': 'typical_p',
-});
-
-/**
- * The transmission policy of a sampler, for the wire row that the Sampling module builds after its slider row.
- * @param {string} selector
- * @returns {{parameterId: string, read: Function, write: Function}|null}
- */
-function getSamplingWire(selector) {
-    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
-    if (!parameterId || !SAMPLING_PARAMETER_DESCRIPTORS[parameterId]) {
-        return null;
-    }
-    const textGeneration = selector.includes('textgenerationwebui');
-    return {
-        parameterId,
-        read: () => (textGeneration ? getTextSamplingParameterViewModel : getSamplingParameterViewModel)(parameterId),
-        write: state => (textGeneration ? setTextSamplingParameterTransmissionState : setSamplingParameterTransmissionState)(parameterId, state),
-    };
-}
-
-function refreshSamplingTransmission(card, selector) {
-    const wire = getSamplingWire(selector);
-    if (wire) {
-        samplingModule?.syncWireRow(card, wire.read());
-    }
-}
-
-function decorateSamplingControlCard(card, selector) {
-    if (card instanceof HTMLElement && getSamplingWire(selector)) {
-        card.dataset.samplingParameter = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
-    }
-}
-
-/** Chat Completions counterpart of the Text Completions sampler tools (`#samplerResetButton` row). */
-function getChatSamplerToolbarControlBlock() {
-    const existing = document.getElementById('sb_neutralize_chat_samplers');
-    if (existing instanceof HTMLElement) return existing.closest('.sb-sampling-sampler-tools-card');
-    if (!samplingModule) return null;
-
-    const block = createElement('div', { className: 'sb-sampling-sampler-tools-card' });
-    const button = createElement('button', {
-        id: 'sb_neutralize_chat_samplers',
-        className: 'menu_button whitespacenowrap sb-neutralize-chat-samplers',
-        text: 'Neutralize Samplers',
-        attrs: { type: 'button', 'data-i18n': 'Neutralize Samplers' },
-    });
-    button.addEventListener('click', neutralizeChatCompletionSamplers);
-    block.append(samplingModule.createActionRow(button, {
-        text: 'Set all samplers to their neutral/disabled state.',
-        key: 'Set all samplers to their neutral/disabled state.',
-    }));
-    return block;
-}
-
-function getSamplingControlBlock(selector) {
-    const input = document.querySelector(selector);
-    if (!(input instanceof HTMLElement)) {
-        return null;
-    }
-
-    if (SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.expander || input.matches('#cfg_block_ooba, #grammar_block_ooba, #json_schema_block, #banned_tokens_block_ooba, #logit_bias_block_ooba, [id^="sampler_order_block_"], [id^="sampler_priority_block_"]')) {
-        return input;
-    }
-
-    if (input.matches('input[type="checkbox"]')) {
-        return input.closest('.checkbox_label') ?? input.parentElement;
-    }
-
-    return input.closest('.range-block')
-        ?? input.closest('[data-tg-samplers]')
-        ?? input.parentElement;
-}
-
-function buildSamplingControlCard(selector, root = document) {
-    const controlBlock = selector === '#samplerResetButton'
-        ? getSamplerToolbarControlBlock()
-        : selector === '#sb_neutralize_chat_samplers'
-            ? getChatSamplerToolbarControlBlock()
-            : getSamplingControlBlock(selector);
-    if (!(controlBlock instanceof HTMLElement)) {
-        return null;
-    }
-
-    const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector);
-    const isExpander = Boolean(entry?.expander);
-    let card;
-    if (isExpander) {
-        const heading = controlBlock.querySelector(':scope > h4');
-        // A header toggle may already be normalized; its subtitle is not part of the sampler name.
-        const headingCopy = heading?.cloneNode(true);
-        headingCopy?.querySelectorAll('.ds-row-subtitle, [data-sb-copy-placeholder]').forEach(node => node.remove());
-        const labelText = headingCopy?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum';
-        const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
-        const subtitleText = entry?.description || tooltip?.getAttribute('title') || tooltip?.getAttribute('data-sttt--title') || 'lorum ipsum';
-        // SillyBunny: move header toggles into the expander body as full-width live preference rows.
-        for (const label of controlBlock.querySelectorAll(':scope > h4 .checkbox_label')) controlBlock.prepend(label);
-        const expander = createExpanderRow({ label: labelText, subtitle: subtitleText, field: `sampler-${entry.id}`, children: [controlBlock] });
-        card = expander.row;
-        expander.content.classList.add('sb-sampling-multi-card');
-        const label = card.querySelector('.ds-row-label');
-        const subtitle = card.querySelector('.ds-row-subtitle');
-        if (labelText === 'lorum ipsum') label.dataset.sbCopyPlaceholder = 'true';
-        if (entry?.description) subtitle.dataset.i18n = entry.description;
-        if (subtitleText === 'lorum ipsum') subtitle.dataset.sbCopyPlaceholder = 'true';
-    } else {
-        card = createElement('div', { className: 'sb-sampling-row' });
-        card.appendChild(controlBlock);
-    }
-    card.classList.add('sb-sampling-control-card');
-    card.dataset.sbSamplingControl = selector;
-    if (entry) card.dataset.sbSamplerId = entry.id;
-    samplingModule?.prepareSamplingBlock(selector, controlBlock, { root });
-    // Ungated samplers stay visible for every provider; gating code in openai.js and
-    // textgen-settings.js skips elements carrying this marker.
-    if (entry && !entry.gated) {
-        for (const element of [controlBlock, ...controlBlock.querySelectorAll('[data-source], [data-tg-type]')]) {
-            element.setAttribute('data-sb-sampler-ungated', '');
-        }
-    }
-    for (const attributeName of ['data-source', 'data-source-mode', 'data-sb-sampler-ungated']) {
-        if (controlBlock.hasAttribute(attributeName)) {
-            card.setAttribute(attributeName, controlBlock.getAttribute(attributeName));
-        }
-    }
-    decorateSamplingControlCard(card, selector);
-    // The lists stay lists: their entries are data, not settings rows.
-    normalizeBackendSettingsRows(card, { skip: '.sb-sampling-list' });
-    applySamplingSubtitleSource(card, entry, root);
-    samplingModule?.finishSamplingCard(card, { wire: getSamplingWire(selector) });
-    addSamplingDescriptionToggles(card);
-    return card;
-}
-
-/** Slider explanations stay searchable and translated, but open only when the reader needs them. */
-function addSamplingDescriptionToggles(card) {
-    for (const row of card.querySelectorAll('.ds-row-slider, .sb-sampling-wire')) {
-        if (row.querySelector('.sb-sampling-help-toggle')) continue;
-        const text = row.querySelector(':scope > .ds-row-text');
-        const label = text?.querySelector(':scope > .ds-row-label');
-        const subtitle = text?.querySelector(':scope > .ds-row-subtitle:not([data-sb-copy-placeholder])');
-        // The wire row of a sampler is named by that sampler's slider.
-        const isWire = row.classList.contains('sb-sampling-wire');
-        const control = (isWire ? card.querySelector(':scope > .ds-row-slider') : row)?.querySelector('input[type="range"][id]');
-        if (!label || !subtitle || !control) continue;
-        const key = isWire ? `${control.id}-wire` : control.id;
-
-        label.id ||= `sb-sampler-${key}-label`;
-        subtitle.id ||= `sb-sampler-${key}-help`;
-        subtitle.classList.add('sb-sampling-help');
-        subtitle.hidden = true;
-        const button = createElement('button', {
-            className: 'sb-sampling-help-toggle',
-            attrs: { type: 'button', 'aria-expanded': 'false', 'aria-controls': subtitle.id, 'data-sb-keeps-sensitive': '' },
-        });
-        const name = createElement('span', {
-            className: 'sr-only', text: 'Details',
-            attrs: { id: `sb-sampler-${key}-help-label`, 'data-i18n': 'Details' },
-        });
-        const sliderLabelId = isWire ? card.querySelector(':scope > .ds-row-slider > .ds-row-text > .ds-row-label')?.id : '';
-        button.setAttribute('aria-labelledby', [sliderLabelId, label.id, name.id].filter(Boolean).join(' '));
-        button.append(createElement('i', { className: 'fa-solid fa-circle-info', attrs: { 'aria-hidden': 'true' } }), name);
-        button.addEventListener('click', () => {
-            subtitle.hidden = !subtitle.hidden;
-            button.setAttribute('aria-expanded', String(!subtitle.hidden));
-        });
-        text.append(button);
-        row.append(subtitle);
-        row.classList.add('sb-sampling-help-row');
-    }
-}
-
-/** Reuses another backend's subtitle (text and i18n key) when this card's native markup has none. */
-function applySamplingSubtitleSource(card, entry, root) {
-    if (!entry?.subtitleSource) return;
-    const placeholder = card.querySelector('.ds-row-subtitle[data-sb-copy-placeholder]');
-    const source = root.querySelector(entry.subtitleSource);
-    if (!(placeholder instanceof HTMLElement) || !(source instanceof HTMLElement) || source.hasAttribute('data-sb-copy-placeholder')) return;
-    const text = source.textContent.trim();
-    if (!text) return;
-    placeholder.textContent = text;
-    delete placeholder.dataset.sbCopyPlaceholder;
-    if (source.dataset.i18n) placeholder.dataset.i18n = source.dataset.i18n;
-}
-
-/**
- * Text Completions samplers that Chat Completions has no setting for. They are listed in the CC
- * section as inert rows so both lists read the same; gated mechanisms are left out because TC only
- * shows them for some backend types.
- */
-const SB_CC_PLACEHOLDER_SAMPLERS = Object.freeze(SB_SAMPLER_REGISTRY.filter(entry => entry.textgenerationwebui && !entry.openai && !entry.gated));
-const SB_CC_PLACEHOLDER_SUBTITLE = 'Not available in Chat Completions. Custom endpoints can send it with Additional Parameters.';
-
-/** Registry position of a sampling card, so placeholder rows sort beside real controls. */
-function getSamplingCardRank(card) {
-    const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(card.dataset.sbSamplingControl)
-        ?? SB_SAMPLER_REGISTRY.find(candidate => candidate.id === card.dataset.sbSamplerId);
-    const index = SB_SAMPLER_REGISTRY.indexOf(entry);
-    if (index < 0) return Number.MAX_SAFE_INTEGER;
-    const selectors = Object.values(entry).flat().filter(value => typeof value === 'string');
-    return index + Math.max(0, selectors.indexOf(card.dataset.sbSamplingControl)) / 100;
-}
-
-/** Builds an inert CC row from the live Text Completions card's label; returns null until that card exists. */
-function buildChatCompletionPlaceholderCard(entry, root) {
-    const source = root.querySelector(`#sb-sampling-textgenerationwebui [data-sb-sampling-control="${entry.textgenerationwebui}"]`);
-    const sourceLabel = source?.querySelector(entry.expander ? ':scope > .ds-row-expander__header .ds-row-label' : '.ds-row-label');
-    const labelText = sourceLabel?.textContent.replace(/\s+/g, ' ').trim();
-    if (!labelText || sourceLabel.hasAttribute('data-sb-copy-placeholder')) return null;
-
-    const card = createElement('div', {
-        className: 'sb-sampling-control-card sb-sampling-row sb-sampling-placeholder-card',
-        attrs: { 'data-sb-sampling-placeholder': '', 'data-sb-sampler-id': entry.id },
-    });
-    const badge = createElement('span', { className: 'sb-sampling-unavailable-badge' });
-    badge.append(
-        createElement('i', { className: 'fa-solid fa-ban', attrs: { 'aria-hidden': 'true' } }),
-        createElement('span', { text: 'Unavailable', attrs: { 'data-i18n': 'Unavailable' } }),
-    );
-    const { row } = createRow({ label: labelText, subtitle: SB_CC_PLACEHOLDER_SUBTITLE, field: `sampler-${entry.id}-unavailable`, suffix: badge });
-    // The row has no control to disable, so it takes the insensitive look without `inert`: the reason stays readable to a screen reader.
-    row.classList.add('is-insensitive');
-    row.setAttribute('aria-disabled', 'true');
-    const label = row.querySelector('.ds-row-label');
-    const i18nKey = sourceLabel.getAttribute('data-i18n') ?? sourceLabel.querySelector(':scope > [data-i18n]')?.getAttribute('data-i18n');
-    if (i18nKey && !i18nKey.startsWith('[')) label.dataset.i18n = i18nKey;
-    row.querySelector('.ds-row-subtitle').dataset.i18n = SB_CC_PLACEHOLDER_SUBTITLE;
-    card.append(row);
-    return card;
-}
-
-function syncChatCompletionPlaceholderCards(root) {
-    const section = root.querySelector('#sb-sampling-openai');
-    if (!(section instanceof HTMLElement)) return false;
-    let built = false;
-    for (const entry of SB_CC_PLACEHOLDER_SAMPLERS) {
-        if (section.querySelector(`[data-sb-sampling-placeholder][data-sb-sampler-id="${entry.id}"]`)) continue;
-        const target = section.querySelector(`[data-sb-sampling-group="${entry.group}"] > .ds-pref-group`);
-        const card = target instanceof HTMLElement ? buildChatCompletionPlaceholderCard(entry, root) : null;
-        if (!card) continue;
-        target.append(card);
-        built = true;
-    }
-    return built;
-}
-
-function drawerHasControls(drawer) {
-    if (!(drawer instanceof HTMLElement)) {
-        return false;
-    }
-
-    const content = drawer.querySelector('.inline-drawer-content');
-    if (!(content instanceof HTMLElement)) {
-        return false;
-    }
-
-    return Boolean(content.querySelector([
-        '.range-block',
-        '[data-tg-samplers]',
-        'select',
-        'textarea',
-        'button',
-        '.menu_button',
-        'input:not([type="hidden"])',
-    ].join(',')));
-}
-
-function hideEmptyGroupedSettingsDrawers() {
-    // Flattened sections are skipped: they have no `.inline-drawer-content` left, so the control
-    // test would report them empty and hide a section that only exists while expanded.
-    document.querySelectorAll('#range_block_openai .sb-openai-settings-drawer, #textgenerationwebui_api-settings .sb-textgen-drawers > .inline-drawer').forEach(drawer => {
-        if (!(drawer instanceof HTMLElement) || !drawer.classList.contains('inline-drawer')) {
-            return;
-        }
-
-        drawer.style.display = drawerHasControls(drawer) ? '' : 'none';
-    });
-}
-
-function updateSamplingCardVisibility(section) {
-    if (!(section instanceof HTMLElement)) {
-        return;
-    }
-
-    // Read every card's state before writing any `hidden`, so the pass costs one style flush, not one per card.
-    const cardVisibility = Array.from(section.querySelectorAll('[data-sb-sampling-control]'))
-        .filter(card => card instanceof HTMLElement)
-        .map(card => {
-            const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
-            const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
-                && !child.classList.contains('sb-sampling-wire')
-                && getComputedStyle(child).display !== 'none');
-            return [card, hasVisibleContent];
-        });
-    for (const [card, hasVisibleContent] of cardVisibility) {
-        if (card.hidden !== !hasVisibleContent) card.hidden = !hasVisibleContent;
-    }
-
-    // Track visibility as we write: the `card.hidden` writes have not been flushed yet, so a
-    // checkVisibility() here would force the very layout this function is trying to avoid.
-    const visibleCards = new Set(cardVisibility.filter(([, visible]) => visible).map(([card]) => card));
-    const groups = [];
-    for (const group of section.querySelectorAll('[data-sb-sampling-group]')) {
-        if (!(group instanceof HTMLElement)) continue;
-        // Placeholder rows have no gated content, so they always keep their group visible.
-        const hasSamplingCard = Boolean(group.querySelector('[data-sb-sampling-placeholder]'))
-            || [...group.querySelectorAll('[data-sb-sampling-control]')].some(card => visibleCards.has(card));
-        groups.push([group, !hasSamplingCard]);
-    }
-    for (const [group, hidden] of groups) {
-        if (group.hidden !== hidden) group.hidden = hidden;
-    }
-}
-
-function sortSamplingSectionCards(section) {
-    for (const group of section.querySelectorAll('[data-sb-sampling-group] > .ds-pref-group')) {
-        const cards = [...group.querySelectorAll(':scope > [data-sb-sampling-control], :scope > [data-sb-sampling-placeholder]')];
-        const sorted = [...cards].sort((a, b) => getSamplingCardRank(a) - getSamplingCardRank(b));
-        if (sorted.some((card, index) => card !== cards[index])) group.append(...sorted);
-    }
-}
-
-function resyncUngatedSamplerVisibility(section, backendId) {
-    // Cards built after the backend's own gating pass may still carry its inline display:none.
-    $(section).find('[data-sb-sampler-ungated]').filter('[data-source], [data-tg-type]').show();
-    if (backendId === 'textgenerationwebui') showTGSamplerControls();
-}
-
-function syncSamplingPanelControls(root) {
-    if (!(root instanceof HTMLElement)) {
-        return;
-    }
-
-    for (const backend of SB_SAMPLING_BACKENDS) {
-        const section = root.querySelector(`#sb-sampling-${backend.id}`);
-        if (!(section instanceof HTMLElement)) {
-            continue;
-        }
-
-        section.querySelector('.sb-sampling-note')?.remove();
-
-        let builtCards = false;
-        const backendControls = getSamplingBackendControls(backend.id);
-
-        for (const selector of backendControls) {
-            const groupId = getSamplingGroupId(selector);
-            const target = section.querySelector(`[data-sb-sampling-group="${groupId}"] > .ds-pref-group`);
-            if (!(target instanceof HTMLElement)) throw new Error(`Missing Sampling group: ${backend.id}/${groupId}`);
-            const existingCard = Array.from(section.querySelectorAll('[data-sb-sampling-control]'))
-                .find(card => card instanceof HTMLElement && card.dataset.sbSamplingControl === selector);
-            if (existingCard instanceof HTMLElement && existingCard.children.length > 0) {
-                if (existingCard.parentElement !== target) {
-                    target.appendChild(existingCard);
-                }
-                refreshSamplingTransmission(existingCard, selector);
-                continue;
-            }
-
-            existingCard?.remove();
-
-            const card = buildSamplingControlCard(selector, root);
-            if (card) {
-                target.appendChild(card);
-                builtCards = true;
-            }
-        }
-
-        if (backend.id === 'openai' && syncChatCompletionPlaceholderCards(root)) builtCards = true;
-
-        if (builtCards) {
-            sortSamplingSectionCards(section);
-            section.dataset.sbUngatedResyncPending = 'true';
-        }
-        // Base gating and manual sampler hiding query the live document, so wait until the panel is attached.
-        if (section.dataset.sbUngatedResyncPending && section.isConnected) {
-            delete section.dataset.sbUngatedResyncPending;
-            resyncUngatedSamplerVisibility(section, backend.id);
-        }
-
-        if (!section.querySelector('[data-sb-sampling-control]') && !section.querySelector('[data-sb-sampling-placeholder]')) {
-            section.appendChild(createElement('p', {
-                className: 'sb-sampling-note',
-                text: 'Sampler controls are not ready yet. Reopen the Backend menu after settings finish loading.',
-            }));
-        }
-
-        updateSamplingCardVisibility(section);
-    }
-
-    samplingModule?.syncSamplingDependents(root);
-    hideEmptyGroupedSettingsDrawers();
-}
-
-function updateSamplingPanelVisibility(root) {
-    if (!(root instanceof HTMLElement)) {
-        return;
-    }
-
-    syncSamplingPanelControls(root);
-
-    const activeApi = getCurrentMainApiValue();
-    let activeSection = null;
-
-    for (const section of root.querySelectorAll('[data-sb-sampling-apis]')) {
-        if (!(section instanceof HTMLElement)) {
-            continue;
-        }
-
-        const apiIds = String(section.dataset.sbSamplingApis ?? '').split(',');
-        const isActive = apiIds.includes(activeApi);
-        section.hidden = !isActive;
-
-        if (isActive) {
-            activeSection = section;
-        }
-    }
-
-    const empty = root.querySelector('#sb-sampling-empty');
-    if (empty instanceof HTMLElement) {
-        empty.hidden = Boolean(activeSection);
-    }
+    backendPanelsController?.syncBackgroundSettingsSection();
 }
 
 // SillyBunny: one line under the page header, without a box: the backend label, and a note when the page has one.
@@ -8499,76 +6986,7 @@ function createBackendGroupHeader(title, attrs = {}, description = '') {
 }
 
 async function buildSamplingPanel() {
-    samplingModule ??= await loadSamplingModule();
-    await samplingModule.loadSamplingStyles();
-    const { panel, scroller } = createShellPanel({ id: 'sampling' });
-    const column = createElement('div', {
-        className: 'sb-shell-column sb-sampling-panel',
-        attrs: { 'data-sb-presentation': 'manual' },
-    });
-
-    const sections = createElement('div', { className: 'sb-sampling-sections' });
-    for (const backend of SB_SAMPLING_BACKENDS) {
-        const section = createElement('section', {
-            id: `sb-sampling-${backend.id}`,
-            className: 'sb-sampling-section',
-            attrs: {
-                'data-sb-sampling-apis': backend.apiIds.join(','),
-            },
-        });
-        section.append(createBackendSectionHeader({
-            title: `Backend: ${backend.title}`,
-            note: 'Some backends ignore samplers they do not support',
-        }));
-        for (const group of SB_SAMPLING_GROUPS) {
-            const category = createElement('section', {
-                className: 'sb-sampling-group',
-                attrs: { 'data-sb-sampling-group': group.id },
-            });
-            category.append(
-                createBackendGroupHeader(group.title, group.i18n ? { 'data-i18n': group.i18n } : {}, group.description),
-                createElement('div', { className: 'ds-pref-group' }),
-            );
-            section.append(category);
-        }
-        sections.appendChild(section);
-    }
-
-    const empty = createElement('div', {
-        id: 'sb-sampling-empty',
-        className: 'sb-sampling-empty sb-shell-callout',
-        html: '<strong>No unified samplers for this backend yet</strong><p>This POC currently supports Chat Completions, Text Completions, Kobold/Kobold Horde, and NovelAI.</p>',
-    });
-
-    column.append(sections, empty);
-    scroller.appendChild(column);
-    let visibilityQueued = false;
-    const visibilityObserver = new MutationObserver(mutations => {
-        if (visibilityQueued || !mutations.some(({ target }) => target instanceof HTMLElement && target.matches('[data-source], [data-tg-type], [data-tg-samplers]'))) return;
-        visibilityQueued = true;
-        window.requestAnimationFrame(() => {
-            visibilityQueued = false;
-            sections.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
-        });
-    });
-    visibilityObserver.observe(sections, { subtree: true, attributes: true, attributeFilter: ['style'] });
-
-    $('#main_api').on('change.sbSamplingPanel', () => {
-        if (isShellTabOpen('left', 'sampling')) updateSamplingPanelVisibility(column);
-    });
-    $(document).on('change.sbSamplingTransmission', 'select', () => updateSamplingPanelVisibility(column));
-    updateSamplingPanelVisibility(column);
-    window.requestAnimationFrame(() => updateSamplingPanelVisibility(column));
-    window.setTimeout(() => updateSamplingPanelVisibility(column), 250);
-    window.setTimeout(() => updateSamplingPanelVisibility(column), 1000);
-
-    return {
-        id: 'sampling',
-        panel,
-        button: null,
-        searchRoot: column,
-        onActivate: () => updateSamplingPanelVisibility(column),
-    };
+    return (await loadSamplingPanelController()).buildSamplingPanel();
 }
 
 function buildInChatAgentsPanel() {
@@ -8601,330 +7019,47 @@ function createBackendPromptGroup(id, title) {
     return group;
 }
 
-const SB_EDITOR_UTILITY_PROMPT_IDS = Object.freeze([
-    'impersonation_prompt_textarea', 'wi_format_textarea', 'scenario_format_textarea', 'personality_format_textarea',
-    'group_nudge_prompt_textarea', 'newchat_prompt_textarea', 'newgroupchat_prompt_textarea',
-    'newexamplechat_prompt_textarea', 'continue_nudge_prompt_textarea', 'send_if_empty_textarea',
-]);
-
-function prepareEditorPanel(root) {
-    if (root.dataset.sbEditorPrepared === 'true') return;
-    root.dataset.sbEditorPrepared = 'true';
-    root.dataset.sbPresentation = 'manual';
-    root.classList.add('sb-prompting-panel', 'sb-editor-panel');
-    // The prompt list's header bar carries the presets, the backend, the way back to Presets and the two states, so the list starts under the page header.
-    for (const [id, title] of [
-        ['sb-editor-utility', 'Utility Prompts'],
-        ['sb-editor-sysprompt', 'System Prompt'],
-        ['sb-editor-instruct', 'Instruct Template'],
-        ['sb-editor-context', 'Context Template'],
-    ]) root.append(createBackendPromptGroup(id, title));
-}
-
 function buildEditorPanel() {
     const { panel, scroller } = createShellPanel({ id: 'editor' });
     const column = createElement('div', { className: 'sb-shell-column' });
-    prepareEditorPanel(column);
-    initializePromptEditor(column, { openPresets: () => openShell('left', 'prompting') });
     scroller.append(column);
-    return { panel, scroller, searchRoot: column, onActivate: () => {
-        groupAdvancedFormattingIntoDrawers();
-        updateEditorPanel(panel);
-    } };
+    const ensureEditorReady = () => loadBackendPanelsController().then(panels => {
+        panels.prepareEditorPanel(column);
+        panels.groupAdvancedFormattingIntoDrawers();
+        panels.updateEditorPanel(panel);
+    });
+    return {
+        panel,
+        scroller,
+        searchRoot: column,
+        ensureReady: ensureEditorReady,
+        onActivate: () => {
+            if (backendPanelsController) {
+                backendPanelsController.prepareEditorPanel(column);
+                backendPanelsController.groupAdvancedFormattingIntoDrawers();
+                backendPanelsController.updateEditorPanel(panel);
+            } else {
+                void ensureEditorReady().catch(error => console.error('[SillyBunny] Could not load Editor panel:', error));
+            }
+        },
+    };
 }
 
 function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.panel) {
-    const root = panel?.querySelector('.sb-editor-panel');
-    if (!(root instanceof HTMLElement)) return;
-    const activeApi = getCurrentMainApiValue();
-    const isChatCompletion = activeApi === 'openai';
-    const backend = SB_SAMPLING_BACKENDS.find(entry => entry.apiIds.includes(activeApi));
-    const mode = root.querySelector('[data-sb-editor-mode]');
-    const modeLabel = backend?.title ?? activeApi;
-    if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
-
-    const adoptDocument = (id, groupId, wrapperSelector = null) => {
-        const field = document.getElementById(id);
-        const body = root.querySelector(`#${groupId} > .sb-prompting-group-body`);
-        if (!(field instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
-        const documentNode = field.closest('[data-sb-editor-document]')
-            ?? (wrapperSelector ? field.closest(wrapperSelector) : field.parentElement);
-        if (!(documentNode instanceof HTMLElement)) return;
-        if (documentNode.dataset.sbEditorDocument !== 'true') documentNode.dataset.sbEditorDocument = 'true';
-        if (documentNode.parentElement !== body) body.append(documentNode);
-    };
-
-    const manager = document.getElementById('sb-openai-prompt-manager');
-    if (manager instanceof HTMLElement) {
-        if (manager.parentElement !== root || manager.previousElementSibling) root.prepend(manager);
-        if (manager.style.display) manager.style.display = '';
-        if (!manager.classList.contains('sb-prompting-group')) manager.classList.add('sb-prompting-group');
-        // The flatten pass visits descendants, so include the group's outer drawer via its parent.
-        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
-        let body = manager.querySelector(':scope > .sb-prompting-group-body');
-        if (!(body instanceof HTMLElement)) {
-            body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
-            for (const child of [...manager.children]) {
-                if (!child.classList.contains('sb-settings-flat-header')) body.append(child);
-            }
-            manager.append(body);
-        }
-        const block = document.getElementById('completion_prompt_manager')?.closest('.range-block');
-        if (block instanceof HTMLElement && !manager.contains(block)) body.append(block);
-        if (manager.hidden === isChatCompletion) manager.hidden = !isChatCompletion;
+    if (backendPanelsController) {
+        backendPanelsController.updateEditorPanel(panel);
+        return;
     }
-    for (const id of SB_EDITOR_UTILITY_PROMPT_IDS) adoptDocument(id, 'sb-editor-utility', '.range-block');
-    for (const id of ['sysprompt_content', 'sysprompt_post_history']) adoptDocument(id, 'sb-editor-sysprompt');
-    const sequences = document.getElementById('InstructSequencesColumn');
-    const instructBody = root.querySelector('#sb-editor-instruct > .sb-prompting-group-body');
-    if (sequences instanceof HTMLElement && sequences.parentElement !== instructBody) instructBody.append(sequences);
-    for (const id of ['context_story_string', 'context_story_string_position', 'context_example_separator']) {
-        adoptDocument(id, 'sb-editor-context', '[data-cc-null]');
-    }
-    for (const id of ['sb-editor-utility', 'sb-editor-sysprompt', 'sb-editor-instruct', 'sb-editor-context']) {
-        const group = root.querySelector(`#${id}`);
-        if (!(group instanceof HTMLElement)) continue;
-        const hidden = (id === 'sb-editor-utility' ? !isChatCompletion : isChatCompletion)
-            || !group.querySelector('textarea, select, input');
-        if (group.hidden !== hidden) group.hidden = hidden;
-    }
-    root.querySelector('#sb-editor-sysprompt').classList.toggle('disabled', document.getElementById('SystemPromptBlock')?.classList.contains('disabled') ?? false);
-
-    const selectedName = id => {
-        const select = document.getElementById(id);
-        return select instanceof HTMLSelectElement ? select.selectedOptions[0]?.textContent : null;
-    };
-    const presetNames = isChatCompletion
-        ? [selectedName('settings_preset_openai')]
-        : ['sysprompt_select', 'instruct_presets', 'context_presets'].map(id => {
-            const title = ({ sysprompt_select: 'System Prompt', instruct_presets: 'Instruct Template', context_presets: 'Context Template' })[id];
-            const name = selectedName(id);
-            return name ? `${title}: ${name}` : null;
-        });
-    const names = presetNames.filter(Boolean).join(' · ');
-    const meta = root.querySelector('[data-sb-editor-preset]');
-    if (meta && meta.textContent !== names) meta.textContent = names;
-    refreshPresetProtectionUi();
-    for (const group of root.querySelectorAll('.sb-prompting-group:not(#sb-openai-prompt-manager)')) normalizeBackendSettingsRows(group);
-    for (const wrapper of root.querySelectorAll('[data-sb-editor-document]:not(.ds-row):not(.sb-settings-row-wrapper)')) wrapper.classList.add('sb-settings-row-wrapper');
-    groupPromptingRowHelpers(root);
-    const tab = getShellState('left')?.tabs.get('editor');
-    if (tab) tab.searchIndex = null;
-}
-
-function preparePromptingPanel(root) {
-    if (root.dataset.sbPromptingPrepared === 'true') return;
-    root.dataset.sbPromptingPrepared = 'true';
-    root.classList.add('sb-prompting-panel');
-    root.dataset.sbPresentation = 'manual';
-    const completionTabs = /** @type {{openAITabManager?: {refreshTabs: () => void}}|undefined} */ (window['ChatCompletionTabs']);
-    completionTabs?.openAITabManager?.refreshTabs();
-    const configuration = root.querySelector('#ai_response_configuration');
-    if (!(configuration instanceof HTMLElement)) return;
-
-    configuration.prepend(createBackendSectionHeader({ modeAttrs: { 'data-sb-prompting-mode': '' } }));
-    const presetsContainer = configuration.querySelector('#respective-presets-block');
-
-    for (const [id, title, description] of [
-        ['respective-presets-block', 'Presets', 'Choose and manage presets for the current backend'],
-        ['common-gen-settings-block', 'Generation Settings', 'Set context and reply limits, streaming, and other generation options'],
-    ]) {
-        const block = configuration.querySelector(`#${id}`);
-        if (!(block instanceof HTMLElement)) continue;
-        block.classList.add('sb-prompting-group');
-        block.prepend(createBackendGroupHeader(title, {}, description));
-        const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
-        for (const child of [...block.children].slice(1)) body.append(child);
-        block.append(body);
-    }
-    const editPrompts = createButtonRow({
-        label: t`Edit Prompts`,
-        field: 'edit-prompts',
-        arrow: true,
-        onActivate: () => openShell('left', 'editor'),
-    });
-    editPrompts.row.dataset.sbEditPrompts = '';
-    presetsContainer?.querySelector(':scope > .sb-prompting-group-body')?.append(editPrompts.row);
-    mountPresetLinkingGroup(presetsContainer);
-    const generation = configuration.querySelector('#pro-settings-block');
-    if (generation instanceof HTMLElement) {
-        for (const id of ['streaming_textgenerationwebui_block', 'streaming_kobold_block', 'streaming_novel_block']) {
-            const streaming = configuration.querySelector(`#${id}`);
-            if (streaming) generation.append(streaming);
-        }
-    }
-
-    const createPromptingGroup = (id, title, description = '') => {
-        const existing = configuration.querySelector(`#${CSS.escape(id)}`);
-        if (existing instanceof HTMLElement) return existing;
-        const group = createBackendPromptGroup(id, title);
-        group.firstElementChild.replaceWith(createBackendGroupHeader(title, {}, description));
-        configuration.append(group);
-        return group;
-    };
-
-    for (const [id, title, description] of [
-        ['sb-tc-sysprompt', 'System Prompt', 'Choose and manage system prompt presets'],
-        ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI'],
-        ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules'],
-        ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode'],
-        ['sb-reasoning-template', 'Reasoning Template', 'Saves the reasoning prefix, suffix and separator under a name'],
-    ]) createPromptingGroup(id, title, description);
-
-    // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
-    const range = configuration.querySelector('#range_block_openai');
-    const advanced = configuration.querySelector('#advanced-ai-config-block');
-    if (range instanceof HTMLElement && advanced instanceof HTMLElement) advanced.prepend(range);
-    mountPresetRows(root);
+    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(() => {});
 }
 
 function updatePromptingPanel(panel) {
     if (!(panel instanceof HTMLElement)) return;
-    groupAdvancedFormattingIntoDrawers();
-    const root = panel.querySelector('.sb-prompting-panel');
-    if (!(root instanceof HTMLElement)) return;
-    const activeApi = getCurrentMainApiValue();
-    const backend = SB_SAMPLING_BACKENDS.find(entry => entry.apiIds.includes(activeApi));
-    const mode = root.querySelector('[data-sb-prompting-mode]');
-    const modeLabel = `Backend: ${backend?.title ?? activeApi}`;
-    if (mode && mode.textContent !== modeLabel) mode.textContent = modeLabel;
-    const bindModelPresetBlock = root.querySelector('[name="bindModelPresetBlock"]') ?? document.querySelector('[name="bindModelPresetBlock"]');
-    if (bindModelPresetBlock instanceof HTMLElement && bindModelPresetBlock.hidden !== (activeApi === 'openai')) bindModelPresetBlock.hidden = activeApi === 'openai';
-
-    flattenNestedSettingsDrawers(root, { includeTopLevel: true });
-    updateEditorPanel();
-    const range = root.querySelector('#range_block_openai');
-    // SillyBunny: Quick Prompts remain mounted for upstream integrations; the Prompt Manager is their single editor.
-    const quickPrompts = root.querySelector('#sb-openai-prompts');
-    if (quickPrompts instanceof HTMLElement && !quickPrompts.hidden) quickPrompts.hidden = true;
-    const reasoningBody = root.querySelector('#sb-reasoning-template > .sb-prompting-group-body');
-    const reasoningDetails = document.getElementById('reasoning_select')?.closest('details');
-    if (reasoningBody instanceof HTMLElement && reasoningDetails instanceof HTMLElement) {
-        for (const child of [...reasoningDetails.children]) {
-            if (child.tagName !== 'SUMMARY') reasoningBody.append(child);
-        }
-        if (!reasoningDetails.hidden) reasoningDetails.hidden = true;
+    if (backendPanelsController) {
+        backendPanelsController.updatePromptingPanel(panel);
+        return;
     }
-    const isChatCompletion = activeApi === 'openai';
-    const promptingGroupIds = [
-        'sb-openai-budget', 'sb-openai-sampling', 'sb-openai-names', 'sb-openai-prefill',
-        'sb-openai-request',
-        'sb-tc-sysprompt', 'sb-tc-instruct', 'sb-tc-context', 'sb-tc-names',
-    ];
-    for (const id of promptingGroupIds) {
-        const group = root.querySelector(`#${id}`);
-        if (!(group instanceof HTMLElement)) continue;
-        if (id.startsWith('sb-openai-') && range instanceof HTMLElement && group.parentElement !== range) range.append(group);
-        group.classList.toggle('sb-prompting-group', true);
-        if (id === 'sb-openai-budget') {
-            const title = group.querySelector('.sb-settings-flat-header :is(b, h3)');
-            if (title && title.textContent !== 'Generation Settings') title.textContent = 'Generation Settings';
-        }
-        if (!group.querySelector(':scope > .sb-prompting-group-body')) {
-            const body = createElement('div', { className: 'ds-pref-group sb-prompting-group-body' });
-            for (const child of [...group.children]) {
-                if (!child.classList.contains('sb-settings-flat-header')) body.append(child);
-            }
-            group.append(body);
-        }
-        normalizeBackendSettingsRows(group);
-        const isTcGroup = id.startsWith('sb-tc-');
-        const isCcGroup = id.startsWith('sb-openai-');
-        const hidden = id === 'sb-openai-sampling' || (isTcGroup ? isChatCompletion : isCcGroup ? !isChatCompletion : false);
-        if (group.hidden !== hidden) group.hidden = hidden;
-    }
-    // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
-    // The check must be "is the tail already in this order", not "is this group last yet": `append` on a
-    // node that is already its parent's last child still performs a remove+insert, which is a childList
-    // mutation. This function runs from the drawer observer, so a per-group append kept re-triggering the
-    // observer every frame and re-flattening the whole Prompting panel in a loop.
-    if (range instanceof HTMLElement) {
-        // SillyBunny: the Presets module adds the groups for the choice sets and the dependent sets between the upstream ones.
-        const openAIReadingOrder = [
-            'sb-openai-budget', 'sb-openai-names-behavior', 'sb-openai-continue-postfix', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request',
-            'sb-openai-function-calling', 'sb-openai-inline-media', 'sb-openai-request-images', 'sb-openai-request-reasoning', 'sb-openai-reasoning-tags',
-            'sb-openai-prompt-caching',
-        ];
-        const orderedGroups = openAIReadingOrder
-            .map(id => root.querySelector(`#${id}`))
-            .filter(group => group instanceof HTMLElement);
-        const currentTail = Array.from(range.children).slice(-orderedGroups.length);
-        const isOrdered = orderedGroups.length > 0
-            && currentTail.length === orderedGroups.length
-            && currentTail.every((child, index) => child === orderedGroups[index]);
-
-        if (!isOrdered) {
-            for (const group of orderedGroups) range.append(group);
-        }
-    }
-
-    const tcOrder = ['sb-tc-sysprompt', 'sb-tc-instruct', 'sb-tc-context', 'sb-tc-names'];
-    const commonGroup = root.querySelector('#common-gen-settings-block');
-    if (commonGroup instanceof HTMLElement) {
-        let anchor = commonGroup;
-        for (const id of tcOrder) {
-            const group = root.querySelector(`#${id}`);
-            if (!(group instanceof HTMLElement)) continue;
-            if (group.parentElement !== anchor.parentElement || group.previousElementSibling !== anchor) {
-                anchor.after(group);
-            }
-            anchor = group;
-        }
-    }
-    const reasoning = root.querySelector('#sb-reasoning-template');
-    const configuration = root.querySelector('#ai_response_configuration');
-    if (reasoning instanceof HTMLElement && configuration instanceof HTMLElement && configuration.lastElementChild !== reasoning) configuration.append(reasoning);
-    if (reasoning instanceof HTMLElement) normalizeBackendSettingsRows(reasoning);
-
-    // SillyBunny: the multiple-swipes control is authored as a data-tg-samplers wrapper,
-    // not a range-block. Move only that wrapper into the shared Generation Settings group.
-    const textgenSwipes = document.getElementById('n_textgenerationwebui')?.closest('[data-tg-samplers="n"]');
-    const generationBody = root.querySelector('#common-gen-settings-block > .sb-prompting-group-body');
-    if (textgenSwipes instanceof HTMLElement && generationBody instanceof HTMLElement && textgenSwipes.parentElement !== generationBody) {
-        generationBody.append(textgenSwipes);
-    }
-    const presets = root.querySelector('#respective-presets-block');
-    const presetsBody = presets?.querySelector(':scope > .sb-prompting-group-body');
-    if (presetsBody instanceof HTMLElement && !presetsBody.querySelector('[data-sb-preset-autosave]')) {
-        presetsBody.append(createPresetAutosaveToggle());
-    }
-    placeSharedPresetControls(root, activeApi);
-    // Upstream sets some preset selects without a change event, for example when it restores the selection after a source change.
-    for (const preset of sbPresetRows) preset.sync();
-    if (presets instanceof HTMLElement) normalizeBackendSettingsRows(presets);
-    const common = root.querySelector('#common-gen-settings-block');
-    if (common instanceof HTMLElement) {
-        const contextRow = common.querySelector('#max_context_block');
-        const quickContext = contextRow?.querySelector('.quick_context_size_container');
-        if (quickContext && contextRow && contextRow.nextElementSibling !== quickContext) contextRow.after(quickContext);
-        normalizeBackendSettingsRows(common);
-    }
-    normalizeBackendSettingsRows(root, { fields: false });
-    hideEmptyGroupedSettingsDrawers();
-    groupPromptingRowHelpers(root);
-    backendPagesModule?.presentPresets(backendPagesContext);
-    // Batch writes and reads: interleaving `hidden` writes with checkVisibility() forces a style and
-    // layout flush per group, which is what made opening Prompting drop frames on slower devices.
-    const measured = [];
-    for (const group of root.querySelectorAll('.sb-openai-settings-drawer, .sb-textgen-drawers > .sb-settings-flat-section, .sb-prompting-group')) {
-        if (!(group instanceof HTMLElement)) continue;
-        const shouldHideByMode = ['sb-openai-sampling', 'sb-openai-prompts'].includes(group.id)
-            || (group.id.startsWith('sb-openai-') && !isChatCompletion)
-            || (group.id.startsWith('sb-tc-') && isChatCompletion)
-            || (group.id === 'sb-preset-linking' && !isChatCompletion);
-        // The text-generation sampling sections are source containers for the separate Sampling tab,
-        // not Prompting content; only their live controls belong in the sampling cards.
-        const isSamplingSourceGroup = group.matches('.sb-textgen-drawers > .sb-settings-flat-section');
-        const hidesWhenEmpty = group.id.startsWith('sb-openai-') || group.id.startsWith('sb-tc-');
-        const hidden = shouldHideByMode || isSamplingSourceGroup;
-        if (group.hidden !== hidden) group.hidden = hidden;
-        if (hidesWhenEmpty && !hidden) measured.push(group);
-    }
-    const emptyGroups = measured.filter(group => ![...group.querySelectorAll('input:not([type="hidden"]), select, textarea, button, .menu_button')]
-        .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0)));
-    for (const group of emptyGroups) group.hidden = true;
-    const tab = getShellState('left')?.tabs.get('prompting');
-    if (tab) tab.searchIndex = null;
+    void loadBackendPanelsController().then(panels => panels.updatePromptingPanel(panel)).catch(error => console.error('[SillyBunny] Could not load Prompting panel:', error));
 }
 
 function getImporterState() {
@@ -8992,357 +7127,39 @@ function setServerAdminMessage(element, message, tone = 'neutral') {
 }
 
 function groupAdvancedFormattingIntoDrawers() {
-    const formatting = document.getElementById('AdvancedFormatting');
-    if (!(formatting instanceof HTMLElement)) return;
-    const groupOrder = ['sb-af-tokenizer', 'sb-af-stopping', 'sb-af-reply-prefix', 'sb-af-cleanup', 'sb-af-reasoning', 'sb-af-reasoning-prompts', 'sb-af-rendering', 'sb-af-advanced'];
-    const orderGroups = () => {
-        const groups = groupOrder.map(id => formatting.querySelector(`#${id}`)).filter(group => group instanceof HTMLElement);
-        const currentGroups = [...formatting.children].filter(child => child.classList.contains('sb-formatting-group'));
-        if (groups.length === currentGroups.length && groups.every((group, index) => group === currentGroups[index])) return;
-        for (const group of groups) formatting.append(group);
-    };
-    if (formatting.dataset.sbGrouped === 'true') {
-        const replyPrefixBody = formatting.querySelector('#sb-af-reply-prefix > .sb-prompting-group-body');
-        const startReplyWith = formatting.querySelector('[name="startReplyWithBlock"]');
-        if (startReplyWith instanceof HTMLElement && replyPrefixBody instanceof HTMLElement && startReplyWith.parentElement !== replyPrefixBody && !startReplyWith.dataset.sbEmptiedByOrder) {
-            startReplyWith.hidden = false;
-            replyPrefixBody.append(startReplyWith);
-        }
-        orderGroups();
-        if (isShellTabOpen('left', 'context')) updateFormattingGroupVisibility(formatting);
+    if (backendPanelsController) {
+        backendPanelsController.groupAdvancedFormattingIntoDrawers();
         return;
     }
-
-    const columns = formatting.querySelector('.flex-container.spaceEvenly');
-    const contextColumn = formatting.querySelector('#ContextSettings');
-    const instructColumn = formatting.querySelector('#InstructSettingsColumn');
-    const systemColumn = formatting.querySelector('#SystemPromptColumn');
-    if (!(columns instanceof HTMLElement) || !(contextColumn instanceof HTMLElement)
-        || !(instructColumn instanceof HTMLElement) || !(systemColumn instanceof HTMLElement)) return;
-
-    const startReplyWith = systemColumn.querySelector('[name="startReplyWithBlock"]');
-
-    const createGroup = (id, title, description) => {
-        const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group sb-settings-category' });
-        if (!description) group.dataset.sbDescription = 'none';
-        group.append(
-            createBackendGroupHeader(title, { 'data-i18n': title }, description),
-            createElement('div', { className: 'ds-pref-group sb-prompting-group-body sb-settings-category-body' }),
-        );
-        formatting.append(group);
-        return group.querySelector('.sb-prompting-group-body');
-    };
-    const bodies = new Map([
-        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding', 'Choose a tokenizer and adjust prompt token counts with padding')],
-        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement')],
-        ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat')],
-        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies')],
-        // SillyBunny: the caption of the Reasoning group says that its settings are global.
-        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'These settings apply to every chat, whichever template is chosen')],
-        ['reasoning-prompts', createGroup('sb-af-reasoning-prompts', 'Add to Prompts')],
-        ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown')],
-        // SillyBunny: the upstream page heading, its documentation link and Master Import/Export are this group (filled by sillybunny-backend-pages.js).
-        ['advanced', createGroup('sb-af-advanced', 'Advanced Formatting')],
-    ]);
-
-    // SillyBunny: a block that the Formatting and Presets rows emptied stays out of the box it came from.
-    const move = (target, body) => {
-        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement) || target.dataset.sbEmptiedByOrder) return;
-        body.append(target);
-    };
-    const moveClosest = (selector, body, ancestorSelector = null) => {
-        const target = formatting.querySelector(selector);
-        if (!(target instanceof HTMLElement)) return;
-        const resolved = ancestorSelector ? target.closest(ancestorSelector) : target;
-        move(resolved, body);
-    };
-
-    const prompting = getShellState('left')?.tabs.get('prompting')?.panel;
-    const promptingGroupBody = id => prompting?.querySelector(`#${id} > .sb-prompting-group-body`);
-    const moveToPrompting = (selector, id, ancestorSelector = null) => {
-        const target = formatting.querySelector(selector);
-        const body = promptingGroupBody(id);
-        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
-        move(ancestorSelector ? target.closest(ancestorSelector) : target, body);
-    };
-
-    const groupBody = id => promptingGroupBody(id);
-    const movePromptingNode = (node, id) => {
-        const body = groupBody(id);
-        if (node instanceof HTMLElement && body instanceof HTMLElement && node.parentElement !== body && !node.dataset.sbEmptiedByOrder) body.append(node);
-    };
-
-    moveToPrompting('[name="bindModelPresetBlock"]', 'respective-presets-block');
-    document.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
-    const systemPromptBlock = systemColumn.querySelector('#SystemPromptBlock');
-    movePromptingNode(systemColumn.querySelector(':scope > .title_restorable[data-cc-null]'), 'sb-tc-sysprompt');
-    movePromptingNode(systemPromptBlock, 'sb-tc-sysprompt');
-    moveToPrompting('#InstructSettingsColumn', 'sb-tc-instruct');
-    movePromptingNode(contextColumn.querySelector(':scope > div > .title_restorable'), 'sb-tc-context');
-    movePromptingNode(contextColumn.querySelector(':scope > div > .flex-container.flexNoGap'), 'sb-tc-context');
-    const storyBlock = formatting.querySelector('[data-cc-null]:has(#context_story_string)');
-    const contextBody = promptingGroupBody('sb-tc-context');
-    if (storyBlock instanceof HTMLElement && contextBody instanceof HTMLElement) move(storyBlock, contextBody);
-    movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container.flexFlowColumn[data-cc-null]'), 'sb-tc-context');
-    movePromptingNode(contextColumn.querySelector(':scope > div > div > .flex-container[data-cc-null]'), 'sb-tc-context');
-    movePromptingNode(contextColumn.querySelector('#context_use_stop_strings')?.closest('label'), 'sb-tc-context');
-    movePromptingNode(contextColumn.querySelector('#context_names_as_stop_strings')?.closest('label'), 'sb-tc-context');
-    movePromptingNode(contextColumn.querySelector('#always-force-name2-checkbox')?.closest('label'), 'sb-tc-names');
-    moveClosest('[name="tokenizerSettingsBlock"]', bodies.get('tokenizer'));
-    moveClosest('div[data-cc-null][data-cc-chat-completion-visible]', bodies.get('stopping'));
-    if (startReplyWith instanceof HTMLElement && !startReplyWith.dataset.sbEmptiedByOrder) {
-        startReplyWith.hidden = false;
-        move(startReplyWith, bodies.get('reply-prefix'));
-    }
-    moveClosest('#single_line', bodies.get('cleanup'), 'label');
-    moveClosest('#collapse-newlines-checkbox', bodies.get('cleanup'), 'label');
-    moveClosest('#trim_spaces', bodies.get('cleanup'), 'label');
-    moveClosest('#trim_sentences_checkbox', bodies.get('cleanup'), 'label');
-    const cleanupHeading = [...contextColumn.querySelectorAll('h4.standoutHeader')]
-        .find(heading => heading.textContent?.includes('Context Formatting'));
-    cleanupHeading?.setAttribute('hidden', '');
-    const reasoningWrapper = systemColumn.querySelector('div:has(.sb-reasoning-toggle-grid)');
-    if (reasoningWrapper instanceof HTMLElement) move(reasoningWrapper, bodies.get('reasoning'));
-    const renderingControl = formatting.querySelector('#markdown_escape_strings')?.parentElement?.parentElement;
-    if (renderingControl instanceof HTMLElement) move(renderingControl, bodies.get('rendering'));
-
-    const miscHeading = [...systemColumn.querySelectorAll('h4')].find(heading => heading.textContent?.trim() === 'Miscellaneous');
-    if (miscHeading instanceof HTMLElement) miscHeading.hidden = true;
-    // `.flex-container` sets `display: flex`, which outranks `[hidden]`, so the emptied row of columns would stay in the
-    // page's flex column as a zero-height item and add one gap above the first group. The marker is what the stylesheet hides.
-    columns.hidden = true;
-    columns.dataset.sbEmptiedByOrder = 'true';
-    formatting.dataset.sbGrouped = 'true';
-    orderGroups();
-    updateFormattingGroupVisibility(formatting);
-    // Normalize switch semantics for Formatting groups without restructuring.
-    for (const body of bodies.values()) {
-        normalizeBackendSettingsRows(body, { fields: false });
-    }
-
-    updateEditorPanel();
-    updatePromptingPanel(prompting);
+    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(() => {});
 }
 
 function updateFormattingGroupVisibility(formatting) {
-    if (!(formatting instanceof HTMLElement)) return;
-    const groups = [...formatting.querySelectorAll('.sb-formatting-group')].filter(group => group instanceof HTMLElement);
-    // Unhide every group first, then measure all, then write: one layout flush instead of one per group.
-    for (const group of groups) {
-        if (group.hidden) group.hidden = false;
-    }
-    const empty = groups.filter(group => ![...group.querySelectorAll('input, select, textarea, button, .menu_button')]
-        .some(control => control instanceof HTMLElement && (control.checkVisibility?.() ?? control.getClientRects().length > 0)));
-    for (const group of empty) group.hidden = true;
-}
-
-function updateSillyTavernImportInteractivity() {
-    const state = getImporterState();
-    const refs = getImporterRefs();
-
-    if (!refs) {
+    if (backendPanelsController) {
+        backendPanelsController.updateFormattingGroupVisibility(formatting);
         return;
     }
-
-    setButtonDisabled(refs.folderButton, state.busy);
-    setButtonDisabled(refs.syncButton, state.busy);
-    setButtonDisabled(refs.zipButton, state.busy);
-
-    if (refs.pathInput instanceof HTMLInputElement) {
-        refs.pathInput.disabled = state.busy;
-    }
-}
-
-/**
- * Shows the folder import pane only to admins, because the server refuses the folder import and the extension sync to other users.
- * With accounts off, isAdmin() is true.
- */
-function updateFolderImportVisibility() {
-    // .ds-row sets display: flex, which the hidden attribute does not override.
-    for (const row of getImporterRefs()?.folderRows ?? []) {
-        if (row instanceof HTMLElement) {
-            row.style.display = isAdmin() ? '' : 'none';
-        }
-    }
+    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(() => {});
 }
 
 function setSillyTavernImportBusy(isBusy) {
+    if (importerUiController) {
+        importerUiController.setSillyTavernImportBusy(isBusy);
+        return;
+    }
     getImporterState().busy = Boolean(isBusy);
-    updateSillyTavernImportInteractivity();
-}
-
-function getExtensionSyncStatusTone(status) {
-    if (status === 'failed') {
-        return 'danger';
-    }
-
-    if (status === 'warning') {
-        return 'warn';
-    }
-
-    return 'good';
-}
-
-function getExtensionSyncStatusLabel(status) {
-    if (status === 'failed') {
-        return 'Failed';
-    }
-
-    if (status === 'warning') {
-        return 'Needs Attention';
-    }
-
-    return 'Ready';
-}
-
-function getExtensionSyncCheckSummary(result) {
-    const checks = [];
-    const manifestFound = result?.checks?.manifestFound === true;
-    const manifestValid = result?.checks?.manifestValid === true;
-    const jsEntry = typeof result?.checks?.jsEntry === 'string' ? result.checks.jsEntry.trim() : '';
-    const jsEntryExists = result?.checks?.jsEntryExists === true;
-    const gitMetadataSkipped = result?.checks?.gitMetadataSkipped === true;
-
-    checks.push(!manifestFound
-        ? 'manifest missing'
-        : manifestValid
-            ? 'manifest OK'
-            : 'manifest invalid');
-    checks.push(jsEntry
-        ? jsEntryExists
-            ? `JS entry: ${jsEntry}`
-            : `JS missing: ${jsEntry}`
-        : 'no JS entry');
-
-    if (gitMetadataSkipped) {
-        checks.push('git metadata skipped');
-    }
-
-    return checks.join(' · ');
 }
 
 function renderSillyTavernExtensionSyncReport(reportData = null) {
-    const refs = getImporterRefs();
-    const report = refs?.report;
-    const summary = refs?.reportSummary;
-    const help = refs?.reportHelp;
-    const list = refs?.reportList;
-    const state = getImporterState();
-
-    state.report = reportData;
-
-    if (!(report instanceof HTMLElement) || !(summary instanceof HTMLElement) || !(help instanceof HTMLElement) || !(list instanceof HTMLElement)) {
+    if (importerUiController) {
+        importerUiController.renderSillyTavernExtensionSyncReport(reportData);
         return;
     }
-
-    if (!reportData || !Array.isArray(reportData.results) || reportData.results.length === 0) {
-        report.hidden = true;
-        summary.textContent = '';
-        help.textContent = '';
-        list.replaceChildren();
-        return;
-    }
-
-    const results = reportData.results;
-    const readyCount = Number(reportData.readyCount ?? 0) || 0;
-    const warningCount = Number(reportData.warningCount ?? 0) || 0;
-    const failedCount = Number(reportData.failedCount ?? 0) || 0;
-    const syncedCount = readyCount + warningCount;
-    const needsAttention = warningCount + failedCount > 0;
-    const gitMetadataSkippedCount = Number(reportData.gitMetadataSkippedCount ?? 0)
-        || results.filter(result => result?.checks?.gitMetadataSkipped === true).length;
-
-    summary.textContent = reportData.message
-        || `Synced ${syncedCount} of ${results.length} third-party extensions.`;
-    help.textContent = needsAttention
-        ? `If an extension still misbehaves after a reload, contact purachina with the extension name and the report below.${gitMetadataSkippedCount > 0 ? ` Git metadata was skipped on ${gitMetadataSkippedCount} extension${gitMetadataSkippedCount === 1 ? '' : 's'} to avoid permission issues, so built-in update tooling may need a reinstall later.` : ''}`
-        : gitMetadataSkippedCount > 0
-            ? `Reload when you are ready to activate the synced extensions. Git metadata was skipped on ${gitMetadataSkippedCount} extension${gitMetadataSkippedCount === 1 ? '' : 's'} to avoid permission issues, so built-in update tooling may need a reinstall later.`
-            : 'Reload when you are ready to activate the synced extensions.';
-
-    const items = results.map(result => {
-        const card = createElement('article', { className: `sb-import-report-item is-${result?.status || 'warning'}` });
-        const header = createElement('div', { className: 'sb-import-report-item-header' });
-        const titleGroup = createElement('div', { className: 'sb-import-report-item-title' });
-        const title = createElement('strong', { text: result?.displayName || result?.name || 'Unknown Extension' });
-        const metaParts = [];
-
-        if (result?.version) {
-            metaParts.push(`v${result.version}`);
-        }
-
-        if (result?.author) {
-            metaParts.push(result.author);
-        }
-
-        const meta = createElement('small', {
-            className: 'sb-import-report-item-meta',
-            text: metaParts.join(' • '),
-        });
-        const pill = createElement('span', { className: 'sb-server-pill' });
-
-        setServerAdminPill(pill, getExtensionSyncStatusLabel(result?.status), getExtensionSyncStatusTone(result?.status));
-        titleGroup.append(title);
-
-        if (metaParts.length > 0) {
-            titleGroup.append(meta);
-        }
-
-        header.append(titleGroup, pill);
-
-        const body = createElement('div', { className: 'sb-import-report-item-body' });
-        const copiedFiles = Number(result?.copiedFiles ?? 0) || 0;
-        const statusLine = createElement('p', {
-            className: 'sb-import-report-item-copy',
-            text: result?.status === 'failed'
-                ? (result?.error || 'This extension could not be synced.')
-                : `Copied ${copiedFiles} file${copiedFiles === 1 ? '' : 's'} into ${result?.name || 'extension'}.`,
-        });
-        const checksLine = createElement('p', {
-            className: 'sb-import-report-item-checks',
-            text: getExtensionSyncCheckSummary(result),
-        });
-
-        body.append(statusLine, checksLine);
-
-        if (Array.isArray(result?.warnings) && result.warnings.length > 0) {
-            const warningList = createElement('ul', { className: 'sb-import-report-warnings' });
-
-            for (const warning of result.warnings) {
-                warningList.appendChild(createElement('li', { text: warning }));
-            }
-
-            body.appendChild(warningList);
-        }
-
-        card.append(header, body);
-        return card;
-    });
-
-    list.replaceChildren(...items);
-    report.hidden = false;
+    getImporterState().report = reportData;
 }
 
 function logSillyTavernExtensionSyncReport(reportData) {
-    if (!reportData || !Array.isArray(reportData.results)) {
-        return;
-    }
-
-    console.groupCollapsed(`[SillyBunny] Third-party extension sync report (${reportData.results.length})`);
-    console.table(reportData.results.map(result => ({
-        name: result?.name || '',
-        displayName: result?.displayName || '',
-        status: result?.status || '',
-        copiedFiles: Number(result?.copiedFiles ?? 0) || 0,
-        manifestFound: result?.checks?.manifestFound === true,
-        manifestValid: result?.checks?.manifestValid === true,
-        jsEntry: result?.checks?.jsEntry || '',
-        jsEntryExists: result?.checks?.jsEntryExists === true,
-        gitMetadataSkipped: result?.checks?.gitMetadataSkipped === true,
-        warningCount: Array.isArray(result?.warnings) ? result.warnings.length : 0,
-        error: result?.error || '',
-    })));
-    console.groupEnd();
+    importerUiController?.logSillyTavernExtensionSyncReport(reportData);
 }
 
 async function handleSillyTavernFolderImport() {
@@ -9513,64 +7330,9 @@ async function handleSillyTavernZipImport(file) {
     }
 }
 
-function injectSillyTavernImportCard(host, { buildImportGroup }) {
-    // Import & Restore lives on the Data & Security tab. It is injected only when that panel is built:
-    // before then the settings container is detached, and an earlier call would paint the group into
-    // another tab.
-    if (!(host instanceof HTMLElement) || host.querySelector('#sb-import-card')) {
-        return;
-    }
-
-    const built = buildImportGroup();
-    const placeholder = host.querySelector('#SillyTavernImportSection');
-    if (placeholder) {
-        placeholder.replaceWith(built.section);
-    } else {
-        host.prepend(built.section);
-    }
-
-    const { folderButton, syncButton, pathInput, zipButton, zipFileInput, zipFileName } = built;
-    getImporterState().refs = {
-        card: built.card,
-        folderPane: built.folderPane,
-        folderRows: built.folderRows,
-        pathInput,
-        folderButton,
-        syncButton,
-        zipButton,
-        zipFileInput,
-        zipFileName,
-        note: built.note,
-        report: built.report,
-        reportSummary: built.reportSummary,
-        reportHelp: built.reportHelp,
-        reportList: built.reportList,
-    };
-
-    folderButton.addEventListener('click', handleSillyTavernFolderImport);
-    syncButton.addEventListener('click', handleSillyTavernExtensionSync);
-    pathInput.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            void handleSillyTavernFolderImport();
-        }
-    });
-
-    zipButton.addEventListener('click', () => zipFileInput.click());
-    zipFileInput.addEventListener('change', () => {
-        const [file] = Array.from(zipFileInput.files ?? []);
-        zipFileName.textContent = file?.name || 'No ZIP selected yet';
-
-        if (file) {
-            void handleSillyTavernZipImport(file);
-        }
-    });
-
-    updateSillyTavernImportInteractivity();
-    updateFolderImportVisibility();
-    // isAdmin() is true until the client knows that accounts are on, and then false until /api/users/me answers.
-    // getSettings() does both before it emits SETTINGS_LOADED, so a card built after that event already sees the final value.
-    eventSource.on(event_types.SETTINGS_LOADED, updateFolderImportVisibility);
+async function injectSillyTavernImportCard(host, dataSecurityModule) {
+    const controller = await loadImporterUiController();
+    controller.injectSillyTavernImportCard(host, dataSecurityModule);
 }
 
 function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step, ariaLabel, caption, onInput, className = '' }) {
@@ -10208,175 +7970,10 @@ function updateThemePickerUi() {
     }
 }
 
-/**
- * The sections the subpage stacks around `searchRoot` present as rows, with each row's label.
- *
- * A stack keeps its closed sections in the hidden store, moves the open one into its detail page,
- * and moves the panel's own chrome into its list heading. Once a stack is mounted none of that is
- * inside the tab's search root, so the headings are returned as extra roots alongside the sections.
- */
-function getSubpageSearchRoots(searchRoot) {
-    const sections = new Map();
-    const headings = [];
-    for (const stack of sbSubpageStacks.values()) {
-        if (!stack.host.contains(searchRoot) && !searchRoot.contains(stack.host)) {
-            continue;
-        }
-        headings.push(stack.listLead);
-        for (const row of stack.rows) {
-            const source = row.source?.();
-            if (source instanceof HTMLElement) {
-                sections.set(source, row.label);
-            }
-        }
-    }
-    return { sections, headings };
-}
-
-/**
- * One entry for the page itself, carrying its name, aliases and description.
- *
- * A tab's description never appears as a DOM label, and its aliases exist only for the sidebar, so
- * without this a page is unfindable by the words that describe it ("Prompt Manager", "API Response
- * Configuration"). The entry anchors to the page's heading when one is rendered, so activating it
- * opens the page rather than a control inside it.
- */
-function createPageSearchEntry(tabState) {
-    const heading = tabState.panel?.querySelector(`.${SB_FLAT_SECTION_HEADER_CLASS}, h3, h4, .standoutHeader`);
-    const searchText = normalizeText([
-        tabState.label,
-        tabState.id,
-        ...(tabState.searchAliases ?? []),
-    ].join(' '));
-    if (searchText.length < 3) {
-        return null;
-    }
-    return {
-        element: heading instanceof HTMLElement ? heading : null,
-        searchText,
-        displayText: tabState.label,
-        sectionLabel: tabState.label,
-        tabId: tabState.id,
-        tabLabel: tabState.label,
-        headingMatch: true,
-        dedupeKey: `${tabState.id}::page`,
-    };
-}
-
 function createSearchIndex(tabState) {
     // Persona results come from data; hidden transports and transient editor fields are not search targets.
     if (tabState.id === 'persona') return [];
-    const searchRoot = tabState.searchRoot;
-    if (!(searchRoot instanceof HTMLElement)) {
-        return [];
-    }
-
-    const entries = [];
-    const seen = new Set();
-    const pageEntry = createPageSearchEntry(tabState);
-    if (pageEntry) {
-        entries.push(pageEntry);
-    }
-    const excludedSelector = [
-        '.sb-search-result',
-        '.sb-legacy-search-hidden',
-        // Unwritten placeholder copy is not a setting.
-        SB_SEARCH_PLACEHOLDER_SELECTOR,
-        '.sb-theme-card',
-    ].join(', ');
-    const { sections: subpageSections, headings: subpageHeadings } = getSubpageSearchRoots(searchRoot);
-    const searchRoots = [searchRoot, ...subpageHeadings, ...subpageSections.keys()]
-        .filter((root, index) => index === 0 || !searchRoot.contains(root));
-
-    // The Editor retains its existing heading and search structure.
-    const includeCategoryTitles = tabState.id !== 'editor';
-    const targetSelector = includeCategoryTitles
-        ? `${SB_SEARCH_TARGET_SELECTOR}, .sb-settings-category-title`
-        : SB_SEARCH_TARGET_SELECTOR;
-    for (const element of searchRoots.flatMap(root => Array.from(root.querySelectorAll(targetSelector)))) {
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        if (element.closest(excludedSelector)) {
-            continue;
-        }
-
-        // The title carries the category description in search; indexing its wrapper adds a second result.
-        if (includeCategoryTitles && element.matches('.sb-settings-category-header, .sb-settings-flat-header, .inline-drawer-toggle')
-            && element.querySelector('.sb-settings-category-title')) {
-            continue;
-        }
-
-        // SillyBunny: the subpage store is hidden by CSS, and a match there is only reachable
-        // through the row that moves its section onto the detail page (see revealSearchMatch).
-        // Store content no row presents has no way on screen, so it is left out.
-        let subpageLabel = null;
-        for (const [section, label] of subpageSections) {
-            if (section.contains(element)) {
-                subpageLabel = label;
-                break;
-            }
-        }
-        if (subpageLabel === null && element.closest(`.${SB_SUBPAGE_STORE_CLASS}`)) {
-            continue;
-        }
-
-        const sectionLabel = subpageLabel ?? getSearchSectionLabel(element, tabState.label);
-        const searchText = getSearchText(element, sectionLabel, includeCategoryTitles);
-        const displayText = getSearchDisplayText(element, sectionLabel);
-        const dedupeKey = getSearchEntryDedupeKey(tabState, sectionLabel, displayText);
-        // Identical sampler explanations belong to separate live backend sections. Keep both
-        // until availability filtering, or the hidden first backend masks the active one's help.
-        const indexDedupeKey = [dedupeKey, element.closest('[data-sb-sampling-apis]')?.id].filter(Boolean).join('::');
-
-        // Keep each backend's category title until the active-backend filter runs.
-        if (searchText.length < 3 || (seen.has(indexDedupeKey) && !(includeCategoryTitles && element.matches('.sb-settings-category-title')))) {
-            continue;
-        }
-
-        seen.add(indexDedupeKey);
-        entries.push({
-            element,
-            searchText,
-            displayText,
-            sectionLabel,
-            tabId: tabState.id,
-            tabLabel: tabState.label,
-            dedupeKey,
-        });
-    }
-
-    return entries;
-}
-
-/**
- * Returns the Characters pages as search destinations, so "Prompt Manager" or "lorebook" finds the
- * page that holds them rather than only a control whose label happens to contain the word.
- */
-function getCharacterPanelSearchEntries() {
-    const panel = getCharacterPanel();
-
-    return SB_CHARACTER_PANEL_TABS.map((tab) => {
-        const button = panel?.querySelector(`[data-sb-character-tab="${CSS.escape(tab.id)}"]`);
-        const searchText = normalizeText([
-            tab.label,
-            tab.id,
-            'characters',
-            ...(tab.searchAliases ?? []),
-        ].join(' '));
-
-        return {
-            element: button instanceof HTMLElement ? button : null,
-            searchText,
-            displayText: tab.label,
-            sectionLabel: tab.label,
-            tabId: tab.id,
-            tabLabel: tab.label,
-            headingMatch: true,
-            dedupeKey: `characters::${tab.id}`,
-        };
-    });
+    return universalSearchController?.buildTabSearchIndex(tabState) ?? [];
 }
 
 /**
@@ -10424,500 +8021,39 @@ function getPersonaSearchEntries(tabState) {
     return entries;
 }
 
-function getSearchSectionLabel(element, fallback) {
-    const sampler = element.closest('.ds-row-expander[data-sb-sampling-control]');
-    const samplerTitle = sampler?.querySelector(':scope > .ds-row-expander__header .ds-row-label')?.textContent.trim();
-    if (samplerTitle) return samplerTitle;
-    // For extension containers: use the extension's own name/header, not the parent tab label
-    const extContainer = element.closest('.extension_container, [id$="-container"]');
-    if (extContainer instanceof HTMLElement) {
-        const extName = extContainer.querySelector('.extension_name')
-            ?? extContainer.querySelector(':scope > .inline-drawer > .inline-drawer-toggle b, :scope > .inline-drawer > .inline-drawer-header b')
-            ?? extContainer.querySelector(':scope > .inline-drawer > .inline-drawer-toggle, :scope > .inline-drawer > .inline-drawer-header')
-            ?? extContainer.querySelector('h3, h4, strong');
-        if (extName) {
-            const text = String(extName.textContent ?? '').replace(/\s+/g, ' ').trim();
-            if (text) return text;
-        }
-    }
-
-    // Walk up to the nearest inline-drawer and use its toggle header as the section
-    const inlineDrawer = element.closest('.inline-drawer');
-    if (inlineDrawer instanceof HTMLElement) {
-        const toggle = inlineDrawer.querySelector(':scope > .inline-drawer-toggle');
-        if (toggle) {
-            const text = getSearchLabelText(toggle).replace(/\s+/g, ' ').trim();
-            if (text && text !== fallback) return text;
-        }
-    }
-
-    // Flattened subsections are no longer drawers, so they are checked separately: without this a
-    // control lifted out of, say, Auto-swipe would report the enclosing drawer's name instead.
-    const flatSection = element.closest(`.${SB_FLAT_SECTION_CLASS}`);
-    if (flatSection instanceof HTMLElement) {
-        const heading = flatSection.querySelector(`:scope > .${SB_FLAT_SECTION_HEADER_CLASS}`);
-        const text = (heading ? getSearchLabelText(heading) : '').replace(/\s+/g, ' ').trim();
-        if (text && text !== fallback) return text;
-    }
-
-    // A group that SillyBunny builds names itself by its heading.
-    const labelledGroup = element.closest('[data-sb-category] > .ds-pref-group[aria-labelledby]');
-    const groupHeading = labelledGroup ? document.getElementById(labelledGroup.getAttribute('aria-labelledby') ?? '') : null;
-    const groupText = (groupHeading ? getSearchLabelText(groupHeading) : '').replace(/\s+/g, ' ').trim();
-    if (groupText && groupText !== fallback) return groupText;
-
-    const preferred = element.closest('.bg-header-row-1')
-        ?? element.closest('.bg-header-row-2')
-        ?? element.closest('label, h3, h4, h5, strong');
-
-    const text = (preferred ? getSearchLabelText(preferred) : String(fallback ?? '')).replace(/\s+/g, ' ').trim();
-    return text || fallback;
+function getExtraTabSearchEntries(tabState) {
+    return tabState.id === 'persona'
+        ? getPersonaSearchEntries(tabState)
+        : tabState.id === 'agents' ? getAgentsPanelSearchEntries(tabState) : [];
 }
 
-// Ranking is coarse on purpose: an exact query name beats a prefix, a prefix beats a word-start,
-// and a section heading beats a leaf control. Length is only a tiebreak, so a long descriptive row
-// cannot outrank the setting it describes.
-function getSearchMatchScore(entry, normalizedQuery, headingMatch) {
-    const searchText = entry.searchText;
-    const exactMatch = searchText === normalizedQuery;
-    const startsWithQuery = searchText.startsWith(normalizedQuery);
-    const wordMatch = !exactMatch && !startsWithQuery
-        && new RegExp(`(^|\\s)${escapeRegex(normalizedQuery)}`).test(searchText);
-    return Number(exactMatch) * 100
-        + Number(startsWithQuery) * 20
-        + Number(wordMatch) * 8
-        + Number(headingMatch) * 5
-        - Math.min(entry.displayText.length, 400) / 1000;
+function getEntityPersonaSearchEntries() {
+    return getPersonaSearchEntries(getCharacterPanelTabConfig('persona'));
 }
 
-function getSearchMatchKey(shellKey, entry) {
-    return [
-        shellKey,
-        entry.dedupeKey || [
-            entry.tabId,
-            normalizeText(entry.sectionLabel),
-            normalizeText(entry.displayText),
-        ].filter(Boolean).join('::'),
-    ].filter(Boolean).join('::');
-}
-
-function collectGlobalSearchMatches(query, { limit = Infinity, includeEntities = true } = {}) {
-    const normalizedQuery = normalizeText(query);
-
-    if (!normalizedQuery) {
-        return [];
-    }
-
-    const searchTerms = normalizedQuery.split(' ').filter(Boolean);
-    const matches = new Map();
-    const availableByEntry = new WeakMap();
-
-    for (const [shellKey, shellState] of Object.entries(sbState.shells)) {
-        const shellLabel = getShellConfig(shellKey)?.title || shellKey;
-
-        for (const tabState of shellState.tabs.values()) {
-            if (!tabState.searchIndex) {
-                tabState.searchIndex = createSearchIndex(tabState);
-            }
-
-            const extraEntries = tabState.id === 'persona' ? getPersonaSearchEntries(tabState)
-                : tabState.id === 'agents' ? getAgentsPanelSearchEntries(tabState) : [];
-
-            for (const entry of [...(tabState.id === 'agents' ? [] : tabState.searchIndex), ...extraEntries]) {
-                // Match first: the visibility check walks ancestors with `getComputedStyle`, and the
-                // memo only covers repeated rows, so this filter is what keeps a keystroke cheap.
-                if (!searchTerms.every(term => entry.searchText.includes(term))) {
-                    continue;
-                }
-                if (!isSearchEntryAvailable(entry, tabState, availableByEntry)) continue;
-
-                // Whether the hit names a section rather than a control. The universal search panel
-                // uses this for ranking; the sidebar needs it to tell a page-level hit from a control.
-                const headingMatch = entry.headingMatch === true || (entry.element instanceof HTMLElement
-                    && (entry.element.matches(SB_SIDEBAR_SECTION_MATCH_SELECTOR)
-                        || (tabState.id !== 'editor' && entry.element.matches('.sb-settings-category-title'))));
-                const match = {
-                    ...entry,
-                    shellKey,
-                    shellLabel,
-                    headingMatch,
-                    score: getSearchMatchScore(entry, normalizedQuery, headingMatch),
-                };
-                const matchKey = getSearchMatchKey(shellKey, entry);
-                const existingMatch = matches.get(matchKey);
-                const shouldReplaceMatch = !existingMatch
-                    || match.score > existingMatch.score
-                    || (match.score === existingMatch.score
-                        && typeof match.action === 'function'
-                        && typeof existingMatch.action !== 'function');
-
-                if (shouldReplaceMatch) {
-                    matches.set(matchKey, match);
-                }
-            }
-        }
-    }
-
-    // Characters, groups, World Info books and personas live outside sbState.shells; their entries
-    // come from app data rather than the tab DOM.
-    if (includeEntities) {
-        const searchState = getUniversalSearchState();
-        const personas = getPersonaSearchEntries(getCharacterPanelTabConfig('persona'));
-        const entities = [
-            ...getCharacterPanelSearchEntries(),
-            ...personas,
-            ...collectEntitySearchEntries(normalizedQuery, {
-                limit: SB_UNIVERSAL_ENTITY_SCAN_LIMIT,
-                skippedWorlds: searchState.skippedWorlds,
-            }),
-        ];
-        for (const entry of entities) {
-            if (!searchTerms.every(term => entry.searchText.includes(term))) continue;
-            const headingMatch = entry.headingMatch !== false;
-            matches.set(getSearchMatchKey('characters', entry), {
-                ...entry,
-                shellKey: 'characters',
-                shellLabel: 'Characters',
-                headingMatch,
-                score: getSearchMatchScore(entry, normalizedQuery, headingMatch),
-            });
-        }
-    }
-
-    // A stable tiebreak keeps the panel from reshuffling equal scores between keystrokes.
-    return Array.from(matches.values())
-        .sort((left, right) => right.score - left.score
-            || left.displayText.localeCompare(right.displayText))
-        .slice(0, limit);
-}
-
-// Intersection-observer-free visibility check is expensive (`getComputedStyle` per ancestor), and a
-// single pass asks about the same rows repeatedly. The memo is per pass: visibility can legitimately
-// change between renders, so it must never outlive one.
-function isSearchEntryAvailable(entry, tabState, availableByEntry = null) {
-    if (availableByEntry?.has(entry)) {
-        return availableByEntry.get(entry);
-    }
-    const available = computeSearchEntryAvailability(entry, tabState);
-    availableByEntry?.set(entry, available);
-    return available;
-}
-
-function computeSearchEntryAvailability(entry, tabState) {
-    // Keep both device variants indexed so resizing can reveal the newly available controls.
-    const unavailableDevice = isMobileViewport() ? '.sb-desktop-setting' : '.sb-mobile-setting';
-    if (entry.element instanceof HTMLElement && entry.element.closest(unavailableDevice)) return false;
-    if (!['sampling', 'prompting', 'editor'].includes(tabState.id)) return true;
-    if (!(entry.element instanceof HTMLElement) || !tabState.searchRoot.contains(entry.element)) return false;
-    for (let element = entry.element; element && element !== tabState.searchRoot; element = element.parentElement) {
-        // Collapsed sampler help and closed expanders are searchable; their provider/card ancestors still gate availability.
-        if (element.matches('.sb-sampling-help[hidden], .ds-row-expander-content[hidden]')) continue;
-        if (element.hidden || getComputedStyle(element).display === 'none') return false;
-    }
-    return true;
+function collectGlobalSearchMatches(query, options = {}) {
+    return universalSearchController?.collectGlobalSearchMatches(query, options) ?? [];
 }
 
 async function renderUniversalSearchResults(query) {
-    const searchState = getUniversalSearchState();
-    const results = searchState.results;
-
-    if (!(results instanceof HTMLElement)) {
-        return;
-    }
-
-    const request = Symbol();
-    sbSearchRenderRequests.set(results, request);
-
-    const clearResults = () => {
-        results.replaceChildren();
-        searchState.activeIndex = -1;
-        searchState.input?.removeAttribute('aria-activedescendant');
-    };
-
-    if (!searchState.expanded) {
-        clearResults();
-        results.classList.remove('is-visible');
-        return;
-    }
-
-    const trimmedQuery = String(query ?? '').trim();
-
-    // A new query starts from the short list: "show all" belongs to the query it was asked for.
-    if (trimmedQuery !== searchState.renderedQuery) {
-        searchState.renderedQuery = trimmedQuery;
-        searchState.expandedAll = false;
-    }
-
-    if (!trimmedQuery) {
-        results.removeAttribute('aria-busy');
-        clearResults();
-        renderSearchEmptyState(results, SB_UNIVERSAL_SEARCH_IDLE_TITLE, SB_UNIVERSAL_SEARCH_IDLE_HINT, 'empty');
-        results.classList.add('is-visible');
-        return;
-    }
-
-    // The first query waits for the on-demand settings pages. The list keeps what it shows (the idle state, or the
-    // last answer) until the new answer replaces it in one step, so it is never blank while the pages load.
-    results.setAttribute('aria-busy', 'true');
-    await prepareShellSearch();
-    if (sbSearchRenderRequests.get(results) !== request) return;
-    results.removeAttribute('aria-busy');
-    if (!searchState.expanded) return;
-    clearResults();
-    const matches = collectGlobalSearchMatches(trimmedQuery, {
-        limit: searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
-    });
-
-    // Rows are deduped on what the panel actually shows, so two controls that read identically in
-    // one section collapse to one destination instead of filling the list twice.
-    const groupedMatches = new Map();
-    for (const match of matches) {
-        const groupLabel = `${match.shellLabel} · ${match.tabLabel}`;
-        if (!groupedMatches.has(groupLabel)) {
-            groupedMatches.set(groupLabel, new Map());
-        }
-        const groupMatches = groupedMatches.get(groupLabel);
-        const rowKey = [match.dedupeKey, match.sectionLabel, match.displayText]
-            .map(value => normalizeText(value))
-            .join('::');
-        const existing = groupMatches.get(rowKey);
-        if (!existing || match.score > existing.score) {
-            groupMatches.set(rowKey, match);
-        }
-    }
-
-    const totalMatches = matches.length;
-    const perGroupLimit = searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_GROUP_LIMIT;
-    // Rows are addressed by position, not by the element: a debounced re-render can replace a row
-    // between the pointerdown and the click, and a handler bound to the dead node would do nothing.
-    const rows = [];
-    searchState.renderedRows = rows;
-
-    for (const [groupLabel, groupMatches] of groupedMatches.entries()) {
-        const group = createElement('div', {
-            className: 'sb-search-result-group',
-            attrs: {
-                role: 'group',
-                'aria-label': groupLabel,
-            },
-        });
-        group.appendChild(createElement('div', { className: 'sb-search-result-group-label', text: groupLabel }));
-
-        let shown = 0;
-        // Two cards can legitimately share a name, so identical rows are counted rather than hidden:
-        // three "Bunny Guide" results would otherwise read as three destinations when they are one.
-        const shownCounts = new Map();
-        for (const match of groupMatches.values()) {
-            if (shown >= perGroupLimit) break;
-            shown += 1;
-            const sectionDisplay = match.sectionLabel === match.tabLabel
-                ? match.displayText || match.tabLabel
-                : match.sectionLabel;
-            const duplicateKey = `${sectionDisplay}::${match.displayText}`;
-            shownCounts.set(duplicateKey, (shownCounts.get(duplicateKey) ?? 0) + 1);
-            const duplicateIndex = shownCounts.get(duplicateKey);
-
-            const rowIndex = rows.length;
-            rows.push(match);
-            const button = createElement('button', {
-                className: 'sb-search-result',
-                attrs: {
-                    type: 'button',
-                    role: 'option',
-                    id: `sb-search-result-${rowIndex}`,
-                    'data-sb-search-row': String(rowIndex),
-                    'aria-selected': 'false',
-                },
-            });
-            const detailText = normalizeText(match.displayText) === normalizeText(match.sectionLabel)
-                ? `Jump straight to this item in ${match.tabLabel}.`
-                : match.displayText;
-
-            button.appendChild(createElement('strong', { text: match.description !== undefined ? match.displayText : sectionDisplay }));
-
-            if (match.description !== undefined || sectionDisplay !== match.displayText) {
-                button.appendChild(createElement('span', { text: match.description ?? detailText }));
-            }
-
-            button.appendChild(createElement('small', {
-                text: match.locationLabel ? `${groupLabel} · ${match.sectionLabel}` : typeof match.action === 'function' ? 'Quick action' : 'Jump to setting',
-            }));
-
-            if (duplicateIndex > 1) {
-                button.classList.add('is-duplicate');
-                button.setAttribute('data-sb-search-duplicate', String(duplicateIndex));
-            }
-
-            group.appendChild(button);
-        }
-
-        const hiddenInGroup = groupMatches.size - shown;
-        if (hiddenInGroup > 0) {
-            group.appendChild(createUniversalSearchShowAllRow(hiddenInGroup, groupLabel));
-        }
-
-        results.appendChild(group);
-    }
-
-    if (!results.childElementCount) {
-        renderSearchEmptyState(
-            results,
-            t`No Results Found`,
-            SB_UNIVERSAL_SEARCH_EMPTY_HINT,
-        );
-    } else if (!searchState.expandedAll && totalMatches > rows.length) {
-        results.appendChild(createUniversalSearchShowAllRow(totalMatches - rows.length));
-    }
-
-    const wasVisible = results.classList.contains('is-visible');
-    results.classList.add('is-visible');
-
-    // Animate the results panel on first appearance
-    if (!wasVisible) {
-        stopMotion(results);
-        animateIn(results, [
-            { opacity: 0, transform: 'translateY(-4px)' },
-            { opacity: 1, transform: 'translateY(0)' },
-        ], { duration: MOTION_FAST });
-    }
-
-    setUniversalSearchActiveIndex(results.querySelector('.sb-search-result') ? 0 : -1);
+    const controller = await loadUniversalSearchController();
+    return controller.renderUniversalSearchResults(query);
 }
 
 function setUniversalSearchActiveIndex(index) {
-    const searchState = getUniversalSearchState();
-    const results = searchState.results;
-    const input = searchState.input;
-
-    if (!(results instanceof HTMLElement)) {
-        return;
-    }
-
-    const buttons = Array.from(results.querySelectorAll('.sb-search-result'));
-    searchState.activeIndex = buttons.length ? Math.min(Math.max(index, 0), buttons.length - 1) : -1;
-
-    for (let i = 0; i < buttons.length; i++) {
-        const button = buttons[i];
-        const active = i === searchState.activeIndex;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-selected', String(active));
-        if (active) {
-            input?.setAttribute('aria-activedescendant', button.id);
-            scrollElementIntoManagedView(button, { block: 'nearest' });
-        }
-    }
-
-    if (searchState.activeIndex === -1) {
-        input?.removeAttribute('aria-activedescendant');
-    }
+    universalSearchController?.setUniversalSearchActiveIndex(index);
 }
 
 function expandHiddenAccordions(target) {
-    // SillyBunny: elements in the subpage store are hidden by CSS, not by a closed drawer;
-    // clicking their toggles fires jQuery slideToggle and injects inline display:block,
-    // overriding the store hide rule and bleeding the old panel into view.
-    if (target?.closest('.' + SB_SUBPAGE_STORE_CLASS)) {
-        return;
-    }
-
-    const helpRow = target.closest('.sb-sampling-help-row');
-    const help = helpRow?.querySelector(':scope > .sb-sampling-help');
-    if (help?.hidden) {
-        helpRow.querySelector('.sb-sampling-help-toggle')?.click();
-    }
-
-    const hiddenContents = [];
-    const closedExpanders = [];
-    let current = target.parentElement;
-
-    while (current) {
-        if (current.classList.contains('inline-drawer-content') && getComputedStyle(current).display === 'none') {
-            hiddenContents.push(current);
-        }
-        if (current instanceof HTMLDetailsElement) current.open = true;
-        if (current.matches('.ds-row-expander-content[hidden]')) {
-            closedExpanders.push(current.parentElement?.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle'));
-        }
-
-        current = current.parentElement;
-    }
-
-    for (const toggle of closedExpanders.reverse()) {
-        if (toggle instanceof HTMLElement) toggle.click();
-    }
-
-    for (const content of hiddenContents.reverse()) {
-        const toggle = content.previousElementSibling?.classList.contains('inline-drawer-toggle')
-            ? content.previousElementSibling
-            : content.parentElement?.querySelector(':scope > .inline-drawer-toggle');
-
-        if (toggle instanceof HTMLElement) {
-            toggle.click();
-        }
-    }
+    universalSearchController?.expandHiddenAccordions(target);
 }
 
-const SB_SEARCH_HIGHLIGHT_CLASS = 'highlighted-drawer';
-const SB_SEARCH_HIGHLIGHT_DURATION_MS = 1800;
-
 function pulseSearchTarget(target) {
-    if (!(target instanceof HTMLElement)) {
-        return;
-    }
-
-    const drawer = target.closest('.inline-drawer');
-    const flatSection = target.closest(`.${SB_FLAT_SECTION_CLASS}`);
-    const highlightTarget = flatSection instanceof HTMLElement
-        ? flatSection
-        : drawer instanceof HTMLElement ? drawer : target;
-
-    document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
-        .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
-
-    highlightTarget.classList.add(SB_SEARCH_HIGHLIGHT_CLASS);
-    window.setTimeout(() => {
-        highlightTarget.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS);
-    }, SB_SEARCH_HIGHLIGHT_DURATION_MS);
+    universalSearchController?.pulseSearchTarget(target);
 }
 
 function revealSettingsCategoryFor(target) {
-    if (!(target instanceof HTMLElement)) {
-        return;
-    }
-
-    // Content is split across three permanent containers, so a match can live in any of them
-    // rather than all settings living in one block.
-    const roots = getUserSettingsContentRoots();
-    const settingsContent = roots.find(root => root.contains(target));
-    if (!settingsContent) {
-        return;
-    }
-
-    const taggedDrawer = target.closest('.inline-drawer[data-settings-tab]');
-    if (taggedDrawer instanceof HTMLElement) {
-        const category = taggedDrawer.getAttribute('data-settings-tab');
-        if (category) {
-            settingsContent.setAttribute('data-active-tab', category);
-            const settingsBlock = document.getElementById('user-settings-block');
-            if (settingsBlock) {
-                settingsBlock.setAttribute('data-active-tab', category);
-            }
-            document.querySelectorAll('.sb-settings-tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-tab') === category);
-            });
-            return;
-        }
-    }
-
-    settingsContent.setAttribute('data-search-active', 'true');
-    const tabNav = document.getElementById('sb-settings-tabs');
-    if (tabNav) {
-        const clearSearchActive = () => {
-            settingsContent.removeAttribute('data-search-active');
-            tabNav.removeEventListener('click', clearSearchActive);
-        };
-        tabNav.addEventListener('click', clearSearchActive);
-    }
+    universalSearchController?.revealSettingsCategoryFor(target);
 }
 
 /** Counts search jumps, so that the delayed steps of a jump stop when a newer jump replaces it. */
@@ -11223,7 +8359,6 @@ function buildShell(shellKey) {
             // Prompting tab gets presets drawer content (the original left shell content)
             const promptingPanel = createShellPanel(customTab);
             if (shellKey === 'left') {
-                preparePromptingPanel(originalContent);
                 promptingPanel.scroller.appendChild(originalContent);
             }
             promptingPanel.ensureReady = ensureBackendPages;
@@ -11233,22 +8368,27 @@ function buildShell(shellKey) {
                 void getShellState('left')?.tabs.get('sampling')?.ensureReady?.().then(() => updatePromptingPanel(promptingPanel.panel));
             };
             $(document).on('change.sbPromptingPanel', '#main_api, #chat_completion_source, #textgen_type', () => {
-                window.requestAnimationFrame(() => updatePromptingPanel(promptingPanel.panel));
+                if (backendPanelsController) {
+                    window.requestAnimationFrame(() => updatePromptingPanel(promptingPanel.panel));
+                }
             });
             registerShellTab(shellKey, customTab, promptingPanel, originalContent);
             continue;
         }
 
         if (shellKey === 'left' && customTab.id === 'editor') {
-            // Build eagerly so template adoption never parks text bodies in an unmounted workspace.
             const editorPanel = buildEditorPanel();
             registerShellTab(shellKey, customTab, editorPanel, editorPanel.searchRoot);
             $(document).on('change.sbEditorPanel input.sbEditorPanel', '#settings_preset_openai, #sysprompt_select, #instruct_presets, #context_presets, #sysprompt_enabled', () => {
-                window.requestAnimationFrame(() => updateEditorPanel(editorPanel.panel));
+                if (backendPanelsController) {
+                    window.requestAnimationFrame(() => updateEditorPanel(editorPanel.panel));
+                }
             });
             const systemBlock = document.getElementById('SystemPromptBlock');
             if (systemBlock instanceof HTMLElement) {
-                new MutationObserver(() => updateEditorPanel(editorPanel.panel)).observe(systemBlock, { attributes: true, attributeFilter: ['class'] });
+                new MutationObserver(() => {
+                    if (backendPanelsController) updateEditorPanel(editorPanel.panel);
+                }).observe(systemBlock, { attributes: true, attributeFilter: ['class'] });
             }
             continue;
         }
@@ -11342,11 +8482,11 @@ function buildShell(shellKey) {
                     bindClearCookiesAndCacheButton(dataSecurityContent);
                     // SillyBunny: the upstream rows move into boxed-list groups now that every fix-up has run on them.
                     dataSecurityModule.presentDataSecurity(dataSecurityContent);
-                    injectSillyTavernImportCard(dataSecurityContent, dataSecurityModule);
+                    await injectSillyTavernImportCard(dataSecurityContent, dataSecurityModule);
                 } else {
                     // Without the split there is no Data & Security container to adopt, so the card
                     // leads the server groups rather than going missing.
-                    injectSillyTavernImportCard(loaded.searchRoot, dataSecurityModule);
+                    await injectSillyTavernImportCard(loaded.searchRoot, dataSecurityModule);
                 }
 
                 return loaded;
@@ -13129,27 +10269,28 @@ function initAll() {
     bindInlineDrawerAutoCloseToggle();
     syncMobileViewportState();
 
-    window.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
-    window.addEventListener('orientationchange', queueMobileViewportStateSync);
-    window.visualViewport?.addEventListener('resize', queueMobileViewportStateSync, { passive: true });
-    // SillyBunny: iOS can move visualViewport.offsetTop without resizing while the keyboard is open.
-    window.visualViewport?.addEventListener('scroll', queueMobileViewportStateSync, { passive: true });
+    // SillyBunny: coalesce window resize/orientationchange and visualViewport resize/scroll
+    // (including iOS offsetTop pans without resize) through ViewportCoordinator in one frame.
+    sbMobileShellLifecycle.viewportSync.subscribe((_snapshot, meta) => {
+        queueMobileViewportStateSync();
+
+        if (meta?.sources?.has('visualViewport')) {
+            scheduleMobileFocusedInputScroll();
+            scheduleMobilePopupKeyboardSync();
+        }
+    });
 
     // SillyBunny: keep focused inputs in mobile settings drawers above the
     // virtual keyboard. The fixed/clipped body blocks native scrolling, so the
     // real panel scroller is nudged manually after viewport changes.
     document.addEventListener('focusin', scheduleMobileFocusedInputScroll);
     document.addEventListener('focusout', scheduleMobileFocusedInputScroll);
-    window.visualViewport?.addEventListener('resize', scheduleMobileFocusedInputScroll, { passive: true });
-    window.visualViewport?.addEventListener('scroll', scheduleMobileFocusedInputScroll, { passive: true });
 
     // SillyBunny: popup dialogs sit outside the shell scrollers; shift them
     // above the virtual keyboard instead so the browser never pans the visual
     // viewport away from the top bar (see syncMobilePopupKeyboardShift).
     document.addEventListener('focusin', scheduleMobilePopupKeyboardSync);
     document.addEventListener('focusout', scheduleMobilePopupKeyboardSync);
-    window.visualViewport?.addEventListener('resize', scheduleMobilePopupKeyboardSync, { passive: true });
-    window.visualViewport?.addEventListener('scroll', scheduleMobilePopupKeyboardSync, { passive: true });
 
     // SillyBunny: keep iOS drawer scroller padding in sync with keyboard focus;
     // this provides scroll range for bottom inputs without fixing the document.
@@ -13168,9 +10309,6 @@ function initAll() {
     // Reinitialize Select2 widgets after shell reparents DOM elements.
     // Select2 bindings break when elements are moved in the DOM.
     reinitSelect2AfterShell();
-
-    // Group Advanced Formatting sections into collapsible drawers
-    groupAdvancedFormattingIntoDrawers();
 
     initializeMobileShellUi();
     initializeMessageActions();

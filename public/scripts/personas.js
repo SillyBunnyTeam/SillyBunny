@@ -28,6 +28,7 @@ import {
     setUserName,
     this_chid,
 } from '../script.js';
+import { cloneTemplate } from './dom-template.js';
 import { power_user } from './power-user.js';
 // SillyBunny: adopt persona name/title fields into shared entry rows.
 import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
@@ -481,7 +482,7 @@ function verifyPersonaSearchSortRule() {
  * @returns {JQuery<HTMLElement>} Avatar block
  */
 function getUserAvatarBlock(avatarId) {
-    const template = $('#user_avatar_template .avatar-container').clone();
+    const template = cloneTemplate('user_avatar_template', '.avatar-container');
     const personaName = power_user.personas[avatarId];
     const personaDescription = power_user.persona_descriptions[avatarId]?.description;
     const personaTitle = power_user.persona_descriptions[avatarId]?.title;

@@ -3,8 +3,14 @@ const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'background
 const rowSlotOrder = ['grip', 'avatar', 'text', 'badge', 'suffix', 'chevron'];
 const textSlotOrder = ['title', 'subtitle', 'preview', 'tags'];
 const tagStrips = new WeakMap();
-const observedStrips = new Set();
+const stripWeakRefs = new WeakMap();
+const observedStripRefs = new Set();
+const stripFinalizers = typeof FinalizationRegistry === 'function'
+    ? new FinalizationRegistry(ref => observedStripRefs.delete(ref))
+    : null;
+const overflowWidthCache = new Map();
 let tagStripObserver = null;
+let tagStripObserverConstructor = null;
 let fontRefitFrame = 0;
 let fontListenerBound = false;
 const slotClasses = {
@@ -118,52 +124,115 @@ function applyTagLimit(container, { chips, names, overflow }, visibleCount) {
     container.append(overflow);
 }
 
+function unobserveStrip(container) {
+    tagStripObserver?.unobserve(container);
+    const ref = stripWeakRefs.get(container);
+    if (ref) {
+        observedStripRefs.delete(ref);
+        stripWeakRefs.delete(container);
+        stripFinalizers?.unregister(container);
+    }
+    tagStrips.delete(container);
+}
+
+function pruneDisconnectedStrips() {
+    for (const ref of observedStripRefs) {
+        const container = ref.deref();
+        if (!container) {
+            observedStripRefs.delete(ref);
+            continue;
+        }
+        const strip = tagStrips.get(container);
+        if (!strip || (strip.wasConnected && !container.isConnected)) {
+            unobserveStrip(container);
+        }
+    }
+}
+
+/**
+ * Releases ResizeObserver tracking for a tag strip or every tag strip inside a row.
+ * @param {Element|null|undefined} root
+ */
+export function releaseTagChips(root) {
+    if (!(root instanceof Element)) return;
+    if (root instanceof HTMLElement && tagStrips.has(root)) {
+        unobserveStrip(root);
+    }
+    for (const child of root.querySelectorAll('.ds-entity-row__tags')) {
+        if (child instanceof HTMLElement && tagStrips.has(child)) unobserveStrip(child);
+    }
+}
+
+/**
+ * Prunes disconnected strips and returns the active observed strip count.
+ * @returns {number}
+ */
+export function getObservedTagStripCount() {
+    pruneDisconnectedStrips();
+    let count = 0;
+    for (const ref of observedStripRefs) {
+        if (ref.deref()) count++;
+        else observedStripRefs.delete(ref);
+    }
+    return count;
+}
+
 function fitTagStrips(entries) {
     const pending = [];
+    const uncachedDigits = new Map();
     for (const { target: container, contentRect } of entries) {
         const strip = tagStrips.get(container);
         if (!strip || !container.isConnected) {
-            tagStripObserver.unobserve(container);
-            tagStrips.delete(container);
-            observedStrips.delete(container);
+            unobserveStrip(container);
             continue;
         }
+        strip.wasConnected = true;
         const width = contentRect.width;
         if (width <= 0 || strip.width === width) continue;
         strip.width = width;
         const candidates = strip.chips.slice(0, strip.max);
-        for (const chip of candidates) chip.hidden = false;
-        const probes = new Map();
-        // Measure every possible count together, including digit-boundary changes (+10 → +9).
+        if (strip.chipWidths === null) {
+            for (const chip of candidates) chip.hidden = false;
+        }
+        // Cache overflow badge widths by digit count across strips, including +10 → +9 boundaries.
         for (let visible = 0; visible <= candidates.length; visible++) {
             const hidden = strip.names.length - visible;
             if (!hidden) continue;
+            const digits = String(hidden).length;
+            if (overflowWidthCache.has(digits) || uncachedDigits.has(digits)) continue;
             const probe = createTagOverflow(hidden);
             probe.classList.add('sb-tag-overflow--measure');
             probe.setAttribute('aria-hidden', 'true');
-            probes.set(visible, probe);
             container.append(probe);
+            uncachedDigits.set(digits, probe);
         }
-        pending.push({ container, strip, width, candidates, probes });
+        pending.push({ container, strip, width, candidates });
     }
 
     // All strips are prepared before any layout reads, and all reads precede final hiding.
-    const measured = pending.map(work => ({
-        ...work,
-        gap: parseFloat(getComputedStyle(work.container).columnGap) || 0,
-        chipWidths: work.candidates.map(chip => chip.getBoundingClientRect().width),
-        overflowWidths: new Map([...work.probes].map(([visible, probe]) => [visible, probe.getBoundingClientRect().width])),
-    }));
-    for (const { container, strip, width, gap, chipWidths, overflowWidths, probes } of measured) {
+    for (const { container, strip, candidates } of pending) {
+        if (strip.chipWidths === null) {
+            strip.gap = parseFloat(getComputedStyle(container).columnGap) || 0;
+            strip.chipWidths = candidates.map(chip => chip.getBoundingClientRect().width);
+        }
+    }
+    for (const [digits, probe] of uncachedDigits) {
+        overflowWidthCache.set(digits, probe.getBoundingClientRect().width);
+    }
+    for (const probe of uncachedDigits.values()) probe.remove();
+
+    for (const { container, strip, width } of pending) {
+        const { chipWidths, gap } = strip;
         let visibleCount = 0;
         let usedWidth = 0;
         for (let visible = 1; visible <= chipWidths.length; visible++) {
             usedWidth += chipWidths[visible - 1] + (visible > 1 ? gap : 0);
-            const requiredWidth = usedWidth + (overflowWidths.has(visible) ? gap + overflowWidths.get(visible) : 0);
+            const hidden = strip.names.length - visible;
+            const overflowWidth = hidden > 0 ? (overflowWidthCache.get(String(hidden).length) ?? 0) : 0;
+            const requiredWidth = usedWidth + (hidden > 0 ? gap + overflowWidth : 0);
             if (requiredWidth <= width) visibleCount = visible;
         }
         applyTagLimit(container, strip, visibleCount);
-        for (const probe of probes.values()) probe.remove();
     }
 }
 
@@ -175,13 +244,21 @@ function refitStripsAfterFontLoad() {
     if (fontRefitFrame) return;
     fontRefitFrame = requestAnimationFrame(() => {
         fontRefitFrame = 0;
-        for (const container of observedStrips) {
+        overflowWidthCache.clear();
+        for (const ref of observedStripRefs) {
+            const container = ref.deref();
+            if (!container) {
+                observedStripRefs.delete(ref);
+                continue;
+            }
             const strip = tagStrips.get(container);
             if (!strip || !container.isConnected) {
-                observedStrips.delete(container);
+                unobserveStrip(container);
                 continue;
             }
             strip.width = null;
+            strip.chipWidths = null;
+            strip.gap = 0;
             tagStripObserver.unobserve(container);
             tagStripObserver.observe(container);
         }
@@ -203,10 +280,9 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
         throw new TypeError('Full tag names must be an array of strings.');
     }
 
+    pruneDisconnectedStrips();
     if (tagStrips.has(container)) {
-        tagStripObserver.unobserve(container);
-        tagStrips.delete(container);
-        observedStrips.delete(container);
+        unobserveStrip(container);
     }
     const chips = [];
     for (const child of [...container.children]) {
@@ -215,16 +291,32 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
         else if (child.matches('.tag')) chips.push(child);
     }
     const names = allNames ? [...allNames] : chips.map(chip => (chip.querySelector('.tag_name')?.textContent ?? chip.textContent).trim());
-    const strip = { chips, names, max, overflow: createTagOverflow(0), width: null };
+    const strip = {
+        chips,
+        names,
+        max,
+        overflow: createTagOverflow(0),
+        width: null,
+        chipWidths: null,
+        gap: 0,
+        wasConnected: container.isConnected,
+    };
     applyTagLimit(container, strip, max);
     if (!fit || !chips.length || max === 0 || typeof ResizeObserver !== 'function') return;
-    tagStripObserver ??= new ResizeObserver(fitTagStrips);
+    if (!tagStripObserver || tagStripObserverConstructor !== ResizeObserver) {
+        tagStripObserver = new ResizeObserver(fitTagStrips);
+        tagStripObserverConstructor = ResizeObserver;
+        overflowWidthCache.clear();
+    }
     if (!fontListenerBound && document.fonts?.addEventListener) {
         fontListenerBound = true;
         document.fonts.addEventListener('loadingdone', refitStripsAfterFontLoad);
     }
+    const ref = new WeakRef(container);
     tagStrips.set(container, strip);
-    observedStrips.add(container);
+    stripWeakRefs.set(container, ref);
+    observedStripRefs.add(ref);
+    stripFinalizers?.register(container, ref, container);
     tagStripObserver.observe(container);
 }
 

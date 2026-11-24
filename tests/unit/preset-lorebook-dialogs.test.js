@@ -178,9 +178,9 @@ test.each([
 
 test.each(['personaLorebook', 'chatLorebook', 'character'])('%s mirrors source selects and preserves translated help and names', async kind => {
     const html = kind === 'character'
-        ? readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8').split('<div id="character_world_template"')[1].split('<div id="past_chat_template"')[0]
+        ? readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8').split(/<(?:div|template) id="character_world_template"/)[1].split(/<(?:div|template) id="past_chat_template"/)[0]
         : readFileSync(new URL(`../../public/scripts/templates/${kind}.html`, import.meta.url), 'utf8');
-    const wrapper = root(kind === 'character' ? `<div ${html}` : html);
+    const wrapper = root(kind === 'character' ? `<div ${html.replace(/<\/template>\s*$/, '</div>')}` : html);
     const node = wrapper.querySelector('.character_world, .persona_world, .chat_world');
     const selects = [...node.querySelectorAll('select')];
     const changed = jest.fn();
@@ -201,8 +201,8 @@ test.each(['personaLorebook', 'chatLorebook', 'character'])('%s mirrors source s
 });
 
 test('empty auxiliary lorebooks reuse the upstream placeholder and omit only the picker sentinel', () => {
-    const html = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8').split('<div id="character_world_template"')[1].split('<div id="past_chat_template"')[0];
-    const wrapper = root(`<div ${html}`);
+    const html = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8').split(/<(?:div|template) id="character_world_template"/)[1].split(/<(?:div|template) id="past_chat_template"/)[0];
+    const wrapper = root(`<div ${html.replace(/<\/template>\s*$/, '</div>')}`);
     const node = wrapper.querySelector('.character_world');
     const select = node.querySelector('.character_extra_world_info_selector');
     const sentinel = select.options[0];

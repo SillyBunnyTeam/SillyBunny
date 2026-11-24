@@ -1,6 +1,7 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
 import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
+import { subscribeViewport } from './viewport-coordinator.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -291,11 +292,10 @@ function applyBrowserFixes() {
             }
 
             // SillyBunny: do not force the viewport fix while the mobile shell is
-            // actively editing an input; that can disrupt IME composition and text fixes.
-            // Avoid force-pinning the root while Android IMEs are actively
-            // editing text. That can break replacement/correction targets and
-            // make accepted suggestions append at the end of the field instead.
-            if (!force && isEditableFocusTarget(document.activeElement)) {
+            // actively editing an input (even on forced orientation changes);
+            // mutating root positioning disrupts IME composition and bounces the
+            // visual viewport on iOS and Android.
+            if (isEditableFocusTarget(document.activeElement)) {
                 return;
             }
 
@@ -310,23 +310,24 @@ function applyBrowserFixes() {
 
             viewportFixScheduled = true;
             console.debug('[Mobile] Device viewport change detected.');
-            document.documentElement.style.position = 'fixed';
+            // SillyBunny: never flip documentElement.style.position = 'fixed' —
+            // on iOS WebKit it resets IME composition and bounces the visual viewport.
             requestAnimationFrame(() => {
                 resetTransientViewportPosition();
                 viewportFixScheduled = false;
             });
         };
 
-        const fixFunkyPositioning = () => {
+        const fixFunkyPositioning = (snapshot = null) => {
             if (isFirefox() && isEditableFocusTarget(document.activeElement)) {
                 return;
             }
 
-            const currentViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
+            const currentViewportHeight = Math.round(snapshot?.height ?? viewport?.height ?? window.innerHeight ?? 0);
             const viewportDelta = Math.abs(currentViewportHeight - lastViewportHeight);
-            const currentOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+            const currentOffsetLeft = Math.round(snapshot?.offsetLeft ?? viewport?.offsetLeft ?? 0);
             const offsetLeftDelta = Math.abs(currentOffsetLeft - lastOffsetLeft);
-            const currentScale = viewport?.scale || 1;
+            const currentScale = snapshot?.scale ?? viewport?.scale ?? 1;
             const scaleDelta = Math.abs(currentScale - lastScale);
 
             lastViewportHeight = currentViewportHeight;
@@ -359,9 +360,15 @@ function applyBrowserFixes() {
             applyPositionFix();
         };
 
-        viewport?.addEventListener('resize', fixFunkyPositioning, { passive: true });
-        viewport?.addEventListener('scroll', fixFunkyPositioning, { passive: true });
-        window.addEventListener('resize', fixFunkyPositioning, { passive: true });
+        subscribeViewport((snapshot, meta) => {
+            if (meta?.types?.has('orientationchange')) {
+                updateViewportBaseline();
+                applyPositionFix({ force: true });
+                return;
+            }
+
+            fixFunkyPositioning(snapshot);
+        });
         document.addEventListener('pointerdown', (event) => {
             if (event.target instanceof HTMLElement && event.target.closest('#send_but')) {
                 lastSendInteractionAt = Date.now();
@@ -376,10 +383,6 @@ function applyBrowserFixes() {
         };
 
         document.addEventListener('focusin', handleFocusIn, true);
-        window.addEventListener('orientationchange', () => {
-            updateViewportBaseline();
-            applyPositionFix({ force: true });
-        }, { passive: true });
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 updateViewportBaseline();

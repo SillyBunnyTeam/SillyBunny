@@ -1,7 +1,7 @@
 import { power_user } from './power-user.js';
 import { t } from './i18n.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
-import { createEntityRow, entityKey, entityRowMotionKey, limitTagChips } from './sillybunny-editor/entity-row.js';
+import { createEntityRow, entityKey, entityRowMotionKey, limitTagChips, releaseTagChips } from './sillybunny-editor/entity-row.js';
 import { createListHeader } from './sillybunny-editor/list-header.js';
 import { createListShowMore } from './sillybunny-editor/list-show-more.js';
 import { reconcileRows, bindListKeyboard, rowEntry } from './sillybunny-editor/list-rows.js';
@@ -25,10 +25,16 @@ const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-character-list.css?v=20261122g', id: 'deferred-character-list-css' },
 ]);
 const DEFAULT_BATCH_SIZE = 50;
+export const CHARACTER_LIST_MAX_MOUNTED_ROWS = 60;
+const CHARACTER_LIST_WINDOW_SIZE = 50;
+const CHARACTER_LIST_OVERSCAN = 10;
+const CHARACTER_LIST_ROW_HEIGHT = 56;
+const SUBTITLE_NOTES_PREVIEW_LIMIT = 320;
 const mountedLists = new WeakMap();
 const mountingLists = new WeakMap();
 const rowFactories = new WeakMap();
 const rowPresentations = new WeakMap();
+const rowSubtitles = new WeakMap();
 const pendingListRestores = new Map();
 
 /** Supplies a route's snapshot before shell activation renders the list. */
@@ -137,34 +143,194 @@ function makeBadge(glyph, className, label) {
     return badge;
 }
 
-function buildSubtitle(data, item) {
+/** Builds a bounded primitive diff key for potentially large strings without JSON serialization. */
+export function compactTextKey(value) {
+    const text = textValue(value);
+    if (text.length <= 96) return text;
+    let hash = 2166136261;
+    const step = text.length > 1024 ? (text.length >> 8) : 1;
+    for (let index = 0; index < text.length; index += step) {
+        hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+    }
+    return `${text.length}:${text.slice(0, 32)}:${text.slice(-32)}:${hash >>> 0}`;
+}
+
+function compactTagsKey(tags) {
+    if (!Array.isArray(tags) || !tags.length) return '';
+    let out = '';
+    for (let index = 0; index < tags.length; index++) {
+        const tag = tags[index];
+        if (index > 0) out += '\u001e';
+        if (typeof tag === 'string') out += tag;
+        else if (tag && typeof tag === 'object') {
+            out += `${tag.id ?? ''}\u001d${tag.name ?? ''}\u001d${tag.color ?? ''}\u001d${tag.color2 ?? ''}\u001d${tag.is_hidden_on_character_card ? 1 : 0}`;
+        }
+    }
+    return out;
+}
+
+/**
+ * Pre-indexes characters once per render pass so group membership and collage avatars resolve in O(1).
+ * @param {Array<object>} characterList
+ */
+export function buildGroupMemberIndex(characterList) {
+    const list = Array.isArray(characterList) ? characterList : [];
+    const byAvatar = new Map();
+    const avatarOrder = new Map();
+    const nameOrder = new Map();
+    for (let index = 0; index < list.length; index++) {
+        const character = list[index];
+        if (!character || typeof character !== 'object') continue;
+        const avatar = character.avatar;
+        if (typeof avatar === 'string' && avatar && !avatarOrder.has(avatar)) {
+            avatarOrder.set(avatar, index);
+            byAvatar.set(avatar, character);
+        }
+        const name = character.name;
+        if (typeof name === 'string' && name && !nameOrder.has(name)) {
+            nameOrder.set(name, index);
+        }
+    }
+    return {
+        size: list.length,
+        byAvatar,
+        findMember(token) {
+            const byAvIdx = avatarOrder.get(token);
+            const byNmIdx = nameOrder.get(token);
+            if (byAvIdx === undefined && byNmIdx === undefined) return undefined;
+            const winner = byAvIdx === undefined ? byNmIdx : byNmIdx === undefined ? byAvIdx : Math.min(byAvIdx, byNmIdx);
+            return list[winner];
+        },
+        findByAvatar(avatar) {
+            return byAvatar.get(avatar);
+        },
+    };
+}
+
+function isCustomGroupAvatarUrl(avatarUrl) {
+    if (typeof avatarUrl !== 'string' || !avatarUrl) return false;
+    return avatarUrl.startsWith('data:') || avatarUrl.startsWith('user') || avatarUrl.startsWith('/user');
+}
+
+/** Resolves group row presentation data in O(members) using a pre-indexed character Map. */
+export function resolveGroupRowData(group, memberIndex, selectedGroup = null) {
+    const members = Array.isArray(group?.members) ? group.members : [];
+    const memberNames = [];
+    const memberAvatars = [];
+    for (const member of members) {
+        const matched = memberIndex.findMember(member);
+        if (matched) memberNames.push(matched.name);
+        if (memberAvatars.length < 4) {
+            const byAvatar = memberIndex.findByAvatar(member);
+            if (byAvatar && byAvatar.avatar !== 'none') memberAvatars.push(byAvatar.avatar);
+        }
+    }
+    const memberCount = memberNames.length;
+    const avatarUrl = typeof group?.avatar_url === 'string' ? group.avatar_url : '';
+    const customAvatar = isCustomGroupAvatarUrl(avatarUrl);
+    const active = group?.active !== undefined || group?.isActive !== undefined
+        ? Boolean(group.active ?? group.isActive)
+        : Boolean(selectedGroup !== null && selectedGroup !== undefined && selectedGroup === group?.id);
+    return {
+        id: group?.id,
+        name: group?.name ?? '',
+        favorite: Boolean(group?.fav ?? group?.favorite),
+        fav: group?.fav,
+        active,
+        isActive: active,
+        memberNames,
+        memberNamesText: memberNames.join(', '),
+        memberCount,
+        memberCountText: `${memberCount} ` + (memberCount !== 1 ? t`characters` : t`character`),
+        nameTitle: group?.nameTitle ?? `[Group] ${group?.name ?? ''}`,
+        avatarTitle: group?.avatarTitle ?? `[Group] ${group?.name ?? ''}`,
+        favIconDisplay: 'none',
+        avatarUrl: customAvatar ? avatarUrl : '',
+        avatarInfo: {
+            custom: customAvatar,
+            memberAvatars,
+        },
+    };
+}
+
+function buildCharacterSubtitleParts(row, entry) {
+    let refs = row ? rowSubtitles.get(row) : null;
+    if (!refs) {
+        refs = {
+            versionNode: node('span', 'character_version'),
+            notesNode: node('span', 'ch_description'),
+            avatarUrlNode: null,
+        };
+        if (row) rowSubtitles.set(row, refs);
+    }
+    const aux = entry.auxText;
+    const notes = entry.notesText.length > SUBTITLE_NOTES_PREVIEW_LIMIT
+        ? entry.notesText.slice(0, SUBTITLE_NOTES_PREVIEW_LIMIT)
+        : entry.notesText;
+    const avatarText = entry.showAvatar && entry.avatarFileText ? entry.avatarFileText : '';
+
+    if (refs.versionNode.textContent !== aux) refs.versionNode.textContent = aux;
+    refs.versionNode.hidden = !aux;
+    if (refs.notesNode.textContent !== notes) refs.notesNode.textContent = notes;
+    refs.notesNode.hidden = !notes;
+
+    const values = [refs.versionNode, refs.notesNode];
+    if (avatarText) {
+        refs.avatarUrlNode ??= node('span', 'ch_avatar_url');
+        if (refs.avatarUrlNode.textContent !== avatarText) refs.avatarUrlNode.textContent = avatarText;
+        refs.avatarUrlNode.hidden = false;
+        values.push(refs.avatarUrlNode);
+    } else if (refs.avatarUrlNode) {
+        refs.avatarUrlNode.remove();
+        refs.avatarUrlNode = null;
+    }
+
     const parts = [];
-    const aux = textValue(valueFrom(data, item, 'auxFieldValue', 'characterVersion'));
-    const notes = textValue(valueFrom(data, item, 'creatorNotes', 'description'));
-    const avatarFileName = valueFrom(data, item, 'avatarFileName', 'avatar');
-    const showAvatar = Boolean(valueFrom(data, item, 'showCardAvatarUrls'));
-    const values = [
-        node('span', 'character_version', aux),
-        node('span', 'ch_description', notes),
-        showAvatar && avatarFileName ? node('span', 'ch_avatar_url', textValue(avatarFileName)) : null,
-    ].filter(Boolean);
     let hasVisiblePart = false;
-    values.forEach(value => {
-        value.hidden = !value.textContent;
+    for (const value of values) {
         if (!value.hidden && hasVisiblePart) parts.push(document.createTextNode(' · '));
         if (!value.hidden) hasVisiblePart = true;
         parts.push(value);
-    });
+    }
     return parts;
 }
 
 function groupSubtitle(data, item) {
     const count = textValue(data.memberCountText ?? data.memberCount);
-    const names = valueFrom(data, item, 'memberNamesText');
+    const names = textValue(valueFrom(data, item, 'memberNamesText'));
+    if (!count && !names) return null;
+    const parts = [];
+    if (count) parts.push(node('span', 'group_select_counter', count));
+    if (names) parts.push(node('span', 'group_select_block_list ch_description', names.length > SUBTITLE_NOTES_PREVIEW_LIMIT ? names.slice(0, SUBTITLE_NOTES_PREVIEW_LIMIT) : names));
+    return parts;
+}
+
+/** Builds a compact primitive presentation key for an entity row without JSON serialization. */
+export function entityPresentationSignature(entry, tags = [], actionLabels = null) {
+    if (entry.kind === 'hidden') return `hidden\u001f${entry.item?.name ?? ''}`;
+    const { data, item } = entry;
+    const idPart = entry.kind === 'group'
+        ? textValue(data?.id ?? item?.id)
+        : textValue(data?.chid ?? data?.id ?? entry.entity?.id);
+    const avatarPart = entry.kind === 'group'
+        ? `${textValue(data?.avatarUrl)}\u001e${(data?.avatarInfo?.memberAvatars ?? item?.members?.slice(0, 4) ?? []).join(',')}`
+        : textValue(entry.avatarSrc);
+    const subtitlePart = entry.kind === 'group'
+        ? `${textValue(data?.memberCountText ?? data?.memberCount)}\u001e${compactTextKey(valueFrom(data, item, 'memberNamesText'))}`
+        : `${compactTextKey(entry.auxText)}\u001e${compactTextKey(entry.notesText)}\u001e${entry.showAvatar ? entry.avatarFileText : ''}`;
     return [
-        count ? node('span', 'group_select_counter', count) : null,
-        names ? node('span', 'group_select_block_list ch_description', textValue(names)) : null,
-    ].filter(Boolean);
+        entry.kind,
+        idPart,
+        entry.label ?? textValue(item?.name),
+        avatarPart,
+        textValue(data?.avatarTitle),
+        textValue(data?.nameTitle),
+        entry.favorite ? '1' : '0',
+        entry.assistant ? '1' : '0',
+        subtitlePart,
+        compactTagsKey(tags),
+        actionLabels ? `${actionLabels[0]}\u001e${actionLabels[1]}` : '',
+    ].join('\u001f');
 }
 
 function rowTags(row, key, data, tags) {
@@ -206,16 +372,12 @@ async function createHiddenEntry(count, script) {
     };
 }
 
-function normalizeEntry(entity, view, dataModules) {
+function normalizeEntry(entity, view, dataModules, memberIndex = null) {
     const item = entity.item ?? entity;
     if (entity.type === 'group' || view === 'groups') {
-        const data = dataModules.script.getGroupRowData?.(item) ?? item;
-        const avatar = dataModules.groups.getGroupAvatarElement(item);
-        avatar?.querySelectorAll('img').forEach(image => {
-            image.setAttribute('loading', 'lazy');
-            image.setAttribute('decoding', 'async');
-            if (!image.hasAttribute('alt')) image.alt = '';
-        });
+        const data = Array.isArray(item?.members) && memberIndex
+            ? resolveGroupRowData(item, memberIndex, dataModules.groups?.selected_group)
+            : (dataModules.script.getGroupRowData?.(item) ?? item);
         return {
             kind: 'group',
             key: entityKey('group', data.id ?? entity.id),
@@ -223,31 +385,46 @@ function normalizeEntry(entity, view, dataModules) {
             item,
             data,
             label: textValue(data.name ?? item.name),
-            subtitle: groupSubtitle(data, item),
             favorite: isFavorite(valueFrom(data, item, 'favorite', 'fav')),
+            assistant: false,
             active: Boolean(valueFrom(data, item, 'active', 'isActive')),
-            avatar,
+            buildAvatar: () => {
+                const avatar = dataModules.groups.getGroupAvatarElement(item);
+                avatar?.querySelectorAll('img').forEach(image => {
+                    image.setAttribute('loading', 'lazy');
+                    image.setAttribute('decoding', 'async');
+                    if (!image.hasAttribute('alt')) image.alt = '';
+                });
+                return avatar;
+            },
         };
     }
     const data = dataModules.script.getCharacterRowData?.(item, entity.id) ?? item;
+    const label = textValue(data.name ?? item.name);
+    const avatarSrc = textValue(valueFrom(data, item, 'avatarUrl')) || thumbnailUrl(dataModules.script, valueFrom(data, item, 'avatar'));
     return {
         kind: 'character',
         key: entityKey('character', valueFrom(data, item, 'avatar') ?? entity.id),
         entity,
         item,
         data,
-        label: textValue(data.name ?? item.name),
-        subtitle: buildSubtitle(data, item),
+        label,
+        auxText: textValue(valueFrom(data, item, 'auxFieldValue', 'characterVersion')),
+        notesText: textValue(valueFrom(data, item, 'creatorNotes', 'description')),
+        avatarFileText: textValue(valueFrom(data, item, 'avatarFileName', 'avatar')),
+        showAvatar: Boolean(valueFrom(data, item, 'showCardAvatarUrls')),
         favorite: isFavorite(valueFrom(data, item, 'favorite', 'fav')),
+        assistant: Boolean(valueFrom(data, item, 'assistant', 'isAssistant')),
         active: Boolean(valueFrom(data, item, 'active', 'isActive')),
+        avatarSrc,
         avatar: {
-            src: textValue(valueFrom(data, item, 'avatarUrl')) || thumbnailUrl(dataModules.script, valueFrom(data, item, 'avatar')),
-            alt: textValue(data.name ?? item.name),
+            src: avatarSrc,
+            alt: label,
         },
     };
 }
 
-function rowOptions(entry) {
+function rowOptions(entry, existingRow = null) {
     if (entry.kind === 'hidden') {
         return {
             key: entry.key,
@@ -265,17 +442,21 @@ function rowOptions(entry) {
         favorite.setAttribute('aria-label', favorite.title);
         badges.push(favorite);
     }
-    if (entry.kind === 'character' && Boolean(valueFrom(data, item, 'assistant', 'isAssistant'))) {
+    if (entry.kind === 'character' && entry.assistant) {
         const assistant = makeBadge('user-graduate', 'ch_assistant');
         assistant.title = t`This character will be used as a welcome page assistant.`;
         badges.push(assistant);
     }
+    const subtitle = entry.kind === 'group'
+        ? groupSubtitle(data, item)
+        : buildCharacterSubtitleParts(existingRow, entry);
+    const avatar = entry.kind === 'group' ? entry.buildAvatar() : entry.avatar;
     return {
         key: entry.key,
         label: entry.label,
         title: entry.label,
-        subtitle: entry.subtitle,
-        avatar: entry.avatar,
+        subtitle,
+        avatar,
         tags: true,
         badges,
         activation: 'activate',
@@ -302,8 +483,15 @@ function createRowEntry(entry, actionHandlers) {
         rowFactories.set(factory.row, factory);
         return factory.row;
     }
+    const pendingSubtitles = entry.kind === 'character' ? { versionNode: node('span', 'character_version'), notesNode: node('span', 'ch_description'), avatarUrlNode: null } : null;
     const factory = createEntityRow(rowOptions(entry));
     const { row } = factory;
+    if (pendingSubtitles && factory.slots.subtitle) {
+        const versionNode = factory.slots.subtitle.querySelector('.character_version');
+        const notesNode = factory.slots.subtitle.querySelector('.ch_description');
+        const avatarUrlNode = factory.slots.subtitle.querySelector('.ch_avatar_url');
+        if (versionNode && notesNode) rowSubtitles.set(row, { versionNode, notesNode, avatarUrlNode });
+    }
     rowFactories.set(row, factory);
     if (entry.kind !== 'character' && entry.kind !== 'group') return row;
     factory.update({ suffix: [
@@ -319,27 +507,33 @@ function createRowEntry(entry, actionHandlers) {
     return row;
 }
 
-function updateRow(row, entry, dependencies, visible) {
+function applySetPosition(row, setSizeText, posInSet) {
+    if (!posInSet || !setSizeText) return;
+    const posText = String(posInSet);
+    if (row.getAttribute('aria-setsize') !== setSizeText) row.setAttribute('aria-setsize', setSizeText);
+    if (row.getAttribute('aria-posinset') !== posText) row.setAttribute('aria-posinset', posText);
+}
+
+function updateRow(row, entry, dependencies, visible, setSizeText) {
     const factory = rowFactories.get(row);
+    if (entry.kind !== 'hidden') applySetPosition(row, setSizeText, entry.posInSet);
     if (entry.kind === 'folder') {
-        factory.update(entry);
-        rowPresentations.set(row, JSON.stringify([entry.folder, entry.countLabel, entry.expanded, entry.temporaryExpansion, entry.inert]));
+        const signature = `${entry.folder?.id ?? ''}\u001f${entry.folder?.name ?? ''}\u001f${entry.folder?.color ?? ''}\u001f${entry.countLabel ?? ''}\u001f${entry.expanded ? 1 : 0}\u001f${entry.temporaryExpansion ? 1 : 0}\u001f${entry.inert ? 1 : 0}`;
+        if (rowPresentations.get(row) !== signature) {
+            factory.update(entry);
+            rowPresentations.set(row, signature);
+        }
         return;
     }
     const tagKey = entry.kind === 'group' ? entry.data?.id ?? entry.item.id : entry.data?.avatar ?? entry.item.avatar;
     const tags = dependencies.tags.getTagsList?.(tagKey) ?? entry.data?.tags ?? [];
-    const presentation = Object.fromEntries(Object.entries(entry.data ?? {}).filter(([key]) => key !== 'active' && key !== 'isActive'));
-    const tagPresentation = tags.map(tag => typeof tag === 'string' ? tag : Object.fromEntries(Object.entries(tag).filter(([key]) => key !== 'filter_state')));
     const actionLabels = entry.kind === 'character' || entry.kind === 'group'
         ? [t`Edit`, t`Actions for ${entry.label}`] : null;
-    const signature = JSON.stringify([
-        entry.kind, entry.label ?? entry.item.name, presentation, tagPresentation, actionLabels,
-        entry.kind === 'group' ? [...(entry.avatar?.querySelectorAll('img') ?? [])].map(image => image.getAttribute('src')) : null,
-    ]);
+    const signature = entityPresentationSignature(entry, tags, actionLabels);
     const changed = rowPresentations.get(row) !== signature;
     if (changed) {
         const indicator = row.querySelector('.sb-character-list__active-dot');
-        factory.update(rowOptions(entry));
+        factory.update(rowOptions(entry, row));
         if (indicator) factory.slots.title.prepend(indicator);
         if (actionLabels) {
             if (factory.slots.avatar) factory.slots.avatar.title = textValue(entry.data.avatarTitle);
@@ -582,6 +776,12 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let extensionGap = 0;
     let extensionInsets = 0;
     let extensionMargin = 0;
+    let currentPageRows = [];
+    let currentHiddenEntry = null;
+    let currentMemberIndex = null;
+    let windowStart = 0;
+    let windowEnd = 0;
+    let measuredRowHeight = CHARACTER_LIST_ROW_HEIGHT;
 
     const menu = (trigger, title, sections) => openActionMenu({ trigger, title, sections, onClose: () => trigger.setAttribute('aria-expanded', 'false') });
     function refresh() {
@@ -617,15 +817,129 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (trigger && isPickerOpen(trigger)) closePicker({ animate: false, restoreFocus: false });
     }
 
+    function isEntityActive(entity, view = state.view) {
+        const item = entity?.item ?? entity;
+        if (item?.active !== undefined || item?.isActive !== undefined) {
+            return Boolean(item.active ?? item.isActive);
+        }
+        if (entity?.type === 'group' || view === 'groups') {
+            if (Array.isArray(item?.members) && dataModules.groups && 'selected_group' in dataModules.groups) {
+                return Boolean(dataModules.groups.selected_group && dataModules.groups.selected_group === item.id);
+            }
+            const data = dataModules.script.getGroupRowData?.(item) ?? item;
+            return Boolean(data?.active ?? data?.isActive);
+        }
+        const data = dataModules.script.getCharacterRowData?.(item, entity?.id) ?? item;
+        return Boolean(data?.active ?? data?.isActive);
+    }
+
+    function isVirtualized(pageLength = currentPageRows.length) {
+        return pageLength + (currentHiddenEntry ? 1 : 0) > CHARACTER_LIST_MAX_MOUNTED_ROWS;
+    }
+
+    function computeCharacterWindow(pageLength = currentPageRows.length) {
+        if (!isVirtualized(pageLength)) {
+            return {
+                start: 0,
+                end: pageLength,
+                includeHidden: Boolean(currentHiddenEntry),
+                topPad: 0,
+                bottomPad: 0,
+            };
+        }
+        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
+        const viewportHeight = box.clientHeight > 0 ? box.clientHeight : 600;
+        const desiredWindow = Math.min(
+            pageLength,
+            Math.min(CHARACTER_LIST_WINDOW_SIZE, Math.ceil(viewportHeight / rowHeight) + CHARACTER_LIST_OVERSCAN * 2),
+        );
+        const firstVisible = Math.max(0, Math.floor(box.scrollTop / rowHeight));
+        const start = Math.max(0, Math.min(pageLength - desiredWindow, firstVisible - CHARACTER_LIST_OVERSCAN));
+        const end = Math.min(pageLength, start + desiredWindow);
+        const includeHidden = Boolean(currentHiddenEntry) && end >= pageLength;
+        const remainingBelow = (pageLength - end) + (currentHiddenEntry && !includeHidden ? 1 : 0);
+        return {
+            start,
+            end,
+            includeHidden,
+            topPad: start * rowHeight,
+            bottomPad: Math.max(0, remainingBelow * rowHeight),
+        };
+    }
+
+    function scrollCharacterIndexIntoView(indexInPage) {
+        if (indexInPage < 0) return;
+        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
+        const viewportHeight = box.clientHeight > 0 ? box.clientHeight : 600;
+        const top = indexInPage * rowHeight;
+        const bottom = top + rowHeight;
+        const viewTop = box.scrollTop;
+        const viewBottom = viewTop + viewportHeight;
+        if (top < viewTop) box.scrollTop = top;
+        else if (bottom > viewBottom) box.scrollTop = Math.max(0, bottom - viewportHeight);
+    }
+
+    function renderWindow() {
+        const { start, end, includeHidden, topPad, bottomPad } = computeCharacterWindow(currentPageRows.length);
+        windowStart = start;
+        windowEnd = end;
+        const nextTop = topPad > 0 ? `${topPad}px` : '';
+        const nextBottom = bottomPad > 0 ? `${bottomPad}px` : '';
+        if (rowsContainer.style.paddingTop !== nextTop) rowsContainer.style.paddingTop = nextTop;
+        if (rowsContainer.style.paddingBottom !== nextBottom) rowsContainer.style.paddingBottom = nextBottom;
+
+        const slice = start === 0 && end === currentPageRows.length
+            ? currentPageRows
+            : currentPageRows.slice(start, end);
+        const setSizeText = String(state.visibleRows.length);
+        const windowEntries = slice.map((entry, idx) => {
+            const posInSet = start + idx + 1;
+            if (entry.kind === 'folder') {
+                return { ...entry, inert: selection.isActive, posInSet };
+            }
+            return {
+                ...normalizeEntry(entry.entity, state.view, dataModules, currentMemberIndex),
+                folderId: entry.folderId,
+                posInSet,
+            };
+        });
+        if (includeHidden && currentHiddenEntry) windowEntries.push(currentHiddenEntry);
+
+        const nextKeys = new Set(windowEntries.map(entry => String(entry.key)));
+        for (const [id, cached] of state.rows) {
+            if (!nextKeys.has(id)) releaseTagChips(cached.row);
+        }
+
+        reconcileRows({
+            container: rowsContainer,
+            cache: state.rows,
+            entries: windowEntries,
+            key: entry => entry.key,
+            signature: entry => entry.kind,
+            create: entry => createRowEntry(entry, { edit: openEditor, menu: openRowMenu }),
+            update: (row, entry) => updateRow(row, entry, dataModules, listVisible, setSizeText),
+        });
+        decorateFolderSections(rowsContainer);
+        const firstHeight = rowsContainer.firstElementChild?.offsetHeight ?? 0;
+        if (firstHeight > 0) measuredRowHeight = firstHeight;
+    }
+
+    function ensureCharacterIndexMounted(indexInPage) {
+        if (indexInPage < 0 || indexInPage >= currentPageRows.length) return;
+        if (!isVirtualized()) return;
+        if (indexInPage < windowStart || indexInPage >= windowEnd) {
+            scrollCharacterIndexIntoView(indexInPage);
+            renderWindow();
+            decorateSelection();
+        }
+    }
+
     function syncActiveRows() {
         if (destroyed || !listVisible) return;
         for (const { row } of state.rows.values()) {
             const entry = rowEntry(row);
-            if (entry.kind !== 'character' && entry.kind !== 'group') continue;
-            const data = entry.kind === 'group'
-                ? dataModules.script.getGroupRowData(entry.item)
-                : dataModules.script.getCharacterRowData(entry.item, entry.entity.id);
-            entry.active = Boolean(data.active ?? data.isActive);
+            if (!entry || (entry.kind !== 'character' && entry.kind !== 'group')) continue;
+            entry.active = isEntityActive(entry.entity, entry.kind === 'group' ? 'groups' : 'characters');
             setActiveState(row, entry.active);
         }
         decorateSelection();
@@ -650,7 +964,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     }
 
     function scrollToActiveRow() {
-        rowsContainer.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
+        let activeRow = rowsContainer.querySelector('[aria-current="true"]');
+        if (!activeRow && isVirtualized()) {
+            const activeIndex = currentPageRows.findIndex(entry => entry.kind === 'entity' && isEntityActive(entry.entity, state.view));
+            if (activeIndex >= 0) {
+                scrollCharacterIndexIntoView(activeIndex);
+                renderWindow();
+                decorateSelection();
+                activeRow = rowsContainer.querySelector('[aria-current="true"]');
+            }
+        }
+        activeRow?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
     }
 
     /** Reveals the current chat after shell mounting; editor Back restores its own origin instead. */
@@ -710,11 +1034,16 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         await dataModules.state.setListPage?.(view, batches);
         if (destroyed || !isCurrent()) return false;
 
-        let row = [...rowsContainer.children].find(element => element.dataset.sbListKey === key);
+        const mountRevealedRow = () => {
+            const pageIndex = currentPageRows.findIndex(entry => entry.kind === 'entity' && entry.key === key);
+            if (pageIndex >= 0) ensureCharacterIndexMounted(pageIndex);
+            return state.rows.get(key)?.row ?? [...rowsContainer.children].find(element => element.dataset.sbListKey === key);
+        };
+        let row = mountRevealedRow();
         if (!row) {
             await dataModules.script.printCharacters(false);
             if (destroyed || !isCurrent()) return false;
-            row = [...rowsContainer.children].find(element => element.dataset.sbListKey === key);
+            row = mountRevealedRow();
         }
         if (!(row instanceof HTMLElement)) return false;
 
@@ -887,12 +1216,14 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     async function showMoreRows() {
         const view = state.view;
-        const shownBefore = rowsContainer.children.length;
+        const shownBefore = currentPageRows.length;
         await dataModules.state.setListPage(view, (Number(dataModules.state.getListPage(view)) || 1) + 1);
         if (destroyed || view !== state.view) return;
         // A button that hides itself would drop the keyboard focus: continue at the first row that was added.
         if (showMore.isComplete && (document.activeElement === showMore.button || !section.contains(document.activeElement))) {
-            rowsContainer.children[shownBefore]?.focus({ preventScroll: true });
+            ensureCharacterIndexMounted(shownBefore);
+            const addedKey = currentPageRows[shownBefore]?.key;
+            (addedKey ? state.rows.get(addedKey)?.row : rowsContainer.children[shownBefore])?.focus({ preventScroll: true });
         }
     }
 
@@ -1083,16 +1414,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         state.visibleRows = visibleRows;
         const batchSize = batchSizeOf(state.view);
         let batches = Number(dataModules.state.getListPage?.(state.view)) || 1;
+        let revealIndex = -1;
         if (revealActiveOnRender && !selection.isActive) {
-            const activeEntity = model.entities.find(entity => {
-                if (entity.type !== 'character' && entity.type !== 'group') return false;
-                const data = entity.type === 'group'
-                    ? dataModules.script.getGroupRowData(entity.item)
-                    : dataModules.script.getCharacterRowData(entity.item, entity.id);
-                return Boolean(data.active ?? data.isActive);
-            });
-            const index = activeEntity ? visibleRows.findIndex(entry => entry.kind === 'entity' && entry.key === modelEntityKey(activeEntity)) : -1;
-            if (index >= 0) batches = Math.max(batches, Math.floor(index / batchSize) + 1);
+            const activeEntity = model.entities.find(entity => (entity.type === 'character' || entity.type === 'group') && isEntityActive(entity, view));
+            revealIndex = activeEntity ? visibleRows.findIndex(entry => entry.kind === 'entity' && entry.key === modelEntityKey(activeEntity)) : -1;
+            if (revealIndex >= 0) batches = Math.max(batches, Math.floor(revealIndex / batchSize) + 1);
         }
         const clampedBatches = Math.min(Math.max(1, Math.ceil(visibleRows.length / batchSize)), batches);
         await writeBatches(view, clampedBatches, () => revision === renderRevision);
@@ -1100,34 +1426,33 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const pageRows = visibleRows.slice(0, clampedBatches * batchSize);
         showMore.update({ shown: pageRows.length, total: visibleRows.length });
         footer.hidden = showMore.isComplete;
-        const pageEntries = pageRows.map(entry => entry.kind === 'folder'
-            ? { ...entry, inert: selection.isActive }
-            : { ...normalizeEntry(entry.entity, view, dataModules), folderId: entry.folderId });
         const hidden = getHiddenCount(model);
-        if (model.hasAnyFilter && hidden > 0) pageEntries.push(await createHiddenEntry(hidden, dataModules.script));
+        const hiddenEntry = model.hasAnyFilter && hidden > 0
+            ? await createHiddenEntry(hidden, dataModules.script)
+            : null;
         if (revision !== renderRevision) return;
-        const scrollTop = box.scrollTop;
+        currentPageRows = pageRows;
+        currentHiddenEntry = hiddenEntry;
+        currentMemberIndex = view === 'groups' ? buildGroupMemberIndex(dataModules.script.characters) : null;
+        let scrollTop = model.fullRefresh ? 0 : box.scrollTop;
+        if (revealIndex >= 0 && isVirtualized(pageRows.length)) {
+            const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
+            const viewportHeight = box.clientHeight > 0 ? box.clientHeight : 600;
+            scrollTop = Math.max(0, revealIndex * rowHeight - Math.floor(viewportHeight / 2));
+        }
+        box.scrollTop = scrollTop;
         const updateRows = () => {
-            reconcileRows({
-                container: rowsContainer,
-                cache: state.rows,
-                entries: pageEntries,
-                key: entry => entry.key,
-                signature: entry => entry.kind,
-                create: entry => createRowEntry(entry, { edit: openEditor, menu: openRowMenu }),
-                update: (row, entry) => updateRow(row, entry, dataModules, listVisible),
-            });
-            decorateFolderSections(rowsContainer);
+            renderWindow();
             folderMotion.reveal(rowsContainer);
         };
         for (const child of [...rowsContainer.children]) {
             if (!child.hasAttribute('data-sb-list-key')) child.remove();
         }
         // A folder opening reveals its own rows, so the list-wide change motion would play over it.
-        if (listVisible && !viewChanged && !revealActiveOnRender && !folderMotion.pending && state.rows.size > 0 && pageEntries.length <= 50 && Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
+        if (listVisible && !viewChanged && !revealActiveOnRender && !folderMotion.pending && state.rows.size > 0 && !isVirtualized(pageRows.length) && pageRows.length + (hiddenEntry ? 1 : 0) <= 50 && Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
         else updateRows();
         decorateSelection();
-        box.scrollTop = model.fullRefresh ? 0 : scrollTop;
+        box.scrollTop = scrollTop;
         state.lastQuery = search?.query ?? '';
         search?.report(modelCount(model), model.sourceCount);
         await renderStatus(model, revision);
@@ -1174,7 +1499,16 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     async function finishRestoreSnapshot(snapshot, isCurrent) {
         if (!isCurrent()) return;
         box.scrollTop = Number(snapshot.scrollTop) || 0;
+        if (isVirtualized()) {
+            const { start, end } = computeCharacterWindow(currentPageRows.length);
+            if (start !== windowStart || end !== windowEnd) {
+                renderWindow();
+                decorateSelection();
+            }
+        }
         if (snapshot.focusKey) {
+            const focusIndex = currentPageRows.findIndex(entry => entry.key === snapshot.focusKey);
+            if (focusIndex >= 0) ensureCharacterIndexMounted(focusIndex);
             await new Promise(resolve => requestAnimationFrame(() => {
                 if (isCurrent() && !destroyed) {
                     [...rowsContainer.querySelectorAll('[data-sb-list-key]')]
@@ -1274,6 +1608,76 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         showMore = createListShowMore({ onShowMore: showMoreRows });
         footer.append(showMore.element);
         footer.hidden = true;
+        const isRowEntryNavigable = entry => !(selection.isActive && entry?.kind === 'folder');
+        const findNavigableIndex = (fromIndex, step) => {
+            for (let cursor = fromIndex; cursor >= 0 && cursor < currentPageRows.length; cursor += step) {
+                if (isRowEntryNavigable(currentPageRows[cursor])) return cursor;
+            }
+            return -1;
+        };
+        const onBoxScroll = () => {
+            if (destroyed || !isVirtualized()) return;
+            const { start, end } = computeCharacterWindow(currentPageRows.length);
+            if (start === windowStart && end === windowEnd) return;
+            renderWindow();
+            decorateSelection();
+        };
+        const onVirtualKeydown = event => {
+            if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            if (!isVirtualized()) return;
+            if (event.target === showMore.button && (event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End')) {
+                const targetIndex = event.key === 'Home'
+                    ? findNavigableIndex(0, 1)
+                    : findNavigableIndex(currentPageRows.length - 1, -1);
+                if (targetIndex >= 0) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    scrollCharacterIndexIntoView(targetIndex);
+                    renderWindow();
+                    decorateSelection();
+                    state.rows.get(currentPageRows[targetIndex].key)?.row?.focus({ preventScroll: true });
+                }
+                return;
+            }
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return;
+            if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !power_user.charListGrid) return;
+            const row = event.target instanceof Element ? event.target.closest('.ds-entity-row--activatable:not([aria-disabled="true"])') : null;
+            if (!row || event.target !== row || !rowsContainer.contains(row)) return;
+            const currentIndex = currentPageRows.findIndex(entry => entry.key === row.dataset.sbListKey);
+            if (currentIndex < 0) return;
+            const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
+            const pageStep = Math.max(1, Math.floor((box.clientHeight > 0 ? box.clientHeight : 600) / rowHeight) - 1);
+            let targetIndex = -1;
+            if (event.key === 'Home') targetIndex = findNavigableIndex(0, 1);
+            else if (event.key === 'End') targetIndex = findNavigableIndex(currentPageRows.length - 1, -1);
+            else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') targetIndex = findNavigableIndex(currentIndex - 1, -1);
+            else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') targetIndex = findNavigableIndex(currentIndex + 1, 1);
+            else if (event.key === 'PageUp') targetIndex = findNavigableIndex(Math.max(0, currentIndex - pageStep), -1) !== -1
+                ? findNavigableIndex(Math.max(0, currentIndex - pageStep), -1)
+                : findNavigableIndex(0, 1);
+            else if (event.key === 'PageDown') targetIndex = findNavigableIndex(Math.min(currentPageRows.length - 1, currentIndex + pageStep), 1) !== -1
+                ? findNavigableIndex(Math.min(currentPageRows.length - 1, currentIndex + pageStep), 1)
+                : findNavigableIndex(currentPageRows.length - 1, -1);
+
+            if (targetIndex < 0) {
+                if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') event.preventDefault();
+                return;
+            }
+            if (targetIndex === currentIndex) {
+                event.preventDefault();
+                return;
+            }
+            if (targetIndex < windowStart || targetIndex >= windowEnd || event.key === 'Home' || event.key === 'End' || event.key === 'PageUp' || event.key === 'PageDown') {
+                event.preventDefault();
+                event.stopPropagation();
+                scrollCharacterIndexIntoView(targetIndex);
+                renderWindow();
+                decorateSelection();
+                state.rows.get(currentPageRows[targetIndex].key)?.row?.focus({ preventScroll: true });
+            }
+        };
+        box.addEventListener('scroll', onBoxScroll, { passive: true });
+        box.addEventListener('keydown', onVirtualKeydown, true);
         unbindKeyboard = bindListKeyboard(rowsContainer, {
             rowSelector: '.ds-entity-row--activatable:not([aria-disabled="true"])',
             trailingStops: () => [showMore.button],
@@ -1361,6 +1765,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 cancelActivation();
                 renderRevision++;
                 cancelAnimationFrame(firstRevealFrame);
+                box.removeEventListener('scroll', onBoxScroll);
+                box.removeEventListener('keydown', onVirtualKeydown, true);
+                for (const { row } of state.rows.values()) releaseTagChips(row);
                 unbindKeyboard();
                 resizeObserver?.disconnect();
                 extensionObserver?.disconnect();

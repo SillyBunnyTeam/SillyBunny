@@ -1641,7 +1641,11 @@ test.describe('Settings entry regressions', () => {
                 await portrait.hover();
                 await portrait.locator('.dragClose').click();
                 await expect(portrait).toHaveCount(0);
-                await expect(page.locator('#zoomed_avatar_template .zoomed_avatar')).toHaveCount(1);
+                await expect.poll(() => page.evaluate(() => {
+                    const host = document.getElementById('zoomed_avatar_template');
+                    const root = host?.content ?? host;
+                    return root?.querySelectorAll('.zoomed_avatar').length ?? 0;
+                })).toBe(1);
             });
         });
     }

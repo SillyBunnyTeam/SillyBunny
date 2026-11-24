@@ -26,7 +26,7 @@ test.afterEach(async ({ page }) => {
 /** Avatar shape of every group row in the list, plus the hidden template row. */
 function readGroupAvatars(page) {
     return page.evaluate(() => ({
-        template: Boolean(document.querySelector('#group_list_template .group_select > .avatar')),
+        template: Boolean((document.getElementById('group_list_template')?.content ?? document.getElementById('group_list_template'))?.querySelector('.group_select > .avatar')),
         rows: Array.from(document.querySelectorAll('#rm_print_characters_block .group_select'), (row) => ({
             id: row.getAttribute('data-grid'),
             avatar: Boolean(row.querySelector(':scope > .avatar')),

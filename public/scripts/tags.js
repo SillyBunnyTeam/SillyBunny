@@ -28,6 +28,7 @@ import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { INTERACTABLE_CONTROL_CLASS } from './keyboard.js';
 import { commonEnumProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
+import { getTemplateJQuery } from './dom-template.js';
 import { renderTemplateAsync } from './templates.js';
 import { t, translate } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -67,9 +68,9 @@ export {
 const CHARACTER_FILTER_SELECTOR = '#rm_characters_block .rm_tag_filter';
 const GROUP_FILTER_SELECTOR = '#rm_group_add_members_header ~ .rm_tag_controls .rm_tag_filter';
 const GROUP_MEMBERS_FILTER_SELECTOR = '#rm_group_members_header ~ .rm_tag_controls .rm_tag_filter';
-const TAG_TEMPLATE = $('#tag_template .tag');
-const FOLDER_TEMPLATE = $('#bogus_folder_template .bogus_folder_select');
-const VIEW_TAG_TEMPLATE = $('#tag_view_template .tag_view_item');
+const TAG_TEMPLATE = getTemplateJQuery('tag_template', '.tag');
+const FOLDER_TEMPLATE = getTemplateJQuery('bogus_folder_template', '.bogus_folder_select');
+const VIEW_TAG_TEMPLATE = getTemplateJQuery('tag_view_template', '.tag_view_item');
 
 /**
  * Gets the context information (selector and search input) for a filter helper.

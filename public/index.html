@@ -7701,7 +7701,7 @@
             <div class="export_format list-group-item" data-format="png">PNG</div>
             <div class="export_format list-group-item" data-format="json">JSON</div>
         </div>
-        <div id="zoomed_avatar_template" class="template_element">
+        <template id="zoomed_avatar_template" class="template_element">
             <div class="zoomed_avatar">
                 <div class="panelControlBar flex-container">
                     <div class="fa-fw fa-solid fa-grip drag-grabber"></div>
@@ -7712,7 +7712,7 @@
                     <img class="zoomed_avatar_img" src="" data-izoomify-url="" data-izoomify-magnify="1.8" data-izoomify-duration="300" alt="">
                 </div>
             </div>
-        </div>
+        </template>
         <template id="generic_draggable_template">
             <div class="draggable">
                 <div class="dragTitle"></div>
@@ -7723,7 +7723,7 @@
                 </div>
             </div>
         </template>
-        <div id="user_avatar_template" class="template_element">
+        <template id="user_avatar_template" class="template_element">
             <div class="avatar-container">
                 <div imgfile="" class="avatar">
                     <img src="" alt="User Avatar">
@@ -7748,7 +7748,7 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </template>
         <template id="popup_template" data-i18n="[popup-button-save]popup-button-save;[popup-button-yes]popup-button-yes;[popup-button-no]popup-button-no;[popup-button-cancel]popup-button-cancel;[popup-button-import]popup-button-import;[popup-button-crop]popup-button-crop" popup-button-save="Save" popup-button-yes="Yes" popup-button-no="No" popup-button-cancel="Cancel" popup-button-import="Import" popup-button-crop="Crop"> <!-- localization data holder for popups -->
             <dialog class="popup">
                 <div class="popup-body">
@@ -7874,7 +7874,7 @@
             </div>
         </div>
         <!-- templates for JS to reuse when needed -->
-        <div id="character_world_template" class="template_element">
+        <template id="character_world_template" class="template_element">
             <div class="character_world range-block flexFlowColumn flex-container">
                 <div class="range-block-title">
                     <h3>
@@ -7908,8 +7908,8 @@
                     </select>
                 </div>
             </div>
-        </div>
-        <div id="past_chat_template" class="template_element">
+        </template>
+        <template id="past_chat_template" class="template_element">
             <div class="select_chat_block_wrapper flex-container">
                 <div class="select_chat_block  wide100p flex-container" file_name="">
                     <div id="select_chat_name_wrapper" class="flex-container alignitemscenter justifySpaceBetween wide100p">
@@ -7933,8 +7933,8 @@
                     <div class="select_chat_block_mes"></div>
                 </div>
             </div>
-        </div>
-        <div id="tag_view_template" class="template_element">
+        </template>
+        <template id="tag_view_template" class="template_element">
             <div class="tag_view_item">
                 <div class="drag-handle" data-i18n="[title]Drag to reorder tag">☰</div>
                 <div title="Tag as folder" class="tag_as_folder fa-solid fa-folder-open right_menu_button" data-i18n="[title]Use tag as folder">
@@ -7947,8 +7947,8 @@
                 <div class="tag_view_counter"><span class="tag_view_counter_value"></span>&nbsp;<span data-i18n="tag_entries">entries</span></div>
                 <div title="Delete tag" class="tag_delete fa-solid fa-trash-can right_menu_button" data-i18n="[title]Delete tag"></div>
             </div>
-        </div>
-        <div id="entry_edit_template" class="template_element">
+        </template>
+        <template id="entry_edit_template" class="template_element">
             <div class="world_entry_edit">
                 <div class="flex-container wide100p alignitemscenter">
                     <div name="keywordsAndLogicBlock" class="flex-container wide100p alignitemscenter">
@@ -8374,8 +8374,8 @@
                     </div>
                 </form>
             </div>
-        </div>
-        <div id="character_template" class="template_element">
+        </template>
+        <template id="character_template" class="template_element">
             <div class="character_select entity_block flex-container wide100p alignitemsflexstart" chid="" id="">
                 <div class="avatar" title="">
                     <img src="">
@@ -8396,14 +8396,14 @@
                     <div class="tags tags_inline"></div>
                 </div>
             </div>
-        </div>
-        <div id="tag_template" class="template_element">
+        </template>
+        <template id="tag_template" class="template_element">
             <span id="" class="tag">
                 <span class="tag_name"></span>
                 <i class="fa-solid fa-circle-xmark tag_remove"></i>
             </span>
-        </div>
-        <div id="openai_logit_bias_template" class="template_element">
+        </template>
+        <template id="openai_logit_bias_template" class="template_element">
             <!-- SillyBunny: the entry is a row of the shared list pattern (`ds-entity-row`, `ds-entity-row__button`); the classes upstream and extensions query stay. -->
             <div class="openai_logit_bias_form ds-entity-row">
                 <span class="drag-handle">☰</span>
@@ -8411,8 +8411,8 @@
                 <input class="openai_logit_bias_value text_pole" type="number" min="-100" value="0" max="100" />
                 <i class="menu_button fa-solid fa-xmark openai_logit_bias_remove ds-entity-row__button"></i>
             </div>
-        </div>
-        <div id="logit_bias_template" class="template_element">
+        </template>
+        <template id="logit_bias_template" class="template_element">
             <!-- SillyBunny: same row pattern as the Chat Completions entry above. -->
             <div class="logit_bias_form ds-entity-row">
                 <span class="drag-handle">☰</span>
@@ -8420,7 +8420,7 @@
                 <input class="logit_bias_value text_pole" type="number" min="-100" value="0" max="100" step="0.01" />
                 <i class="menu_button fa-solid fa-xmark logit_bias_remove ds-entity-row__button"></i>
             </div>
-        </div>
+        </template>
         <div id="completion_prompt_manager_popup" class="drawer-content" style="display:none;">
             <div id="completion_prompt_manager_popup_inspect">
                 <h3>Inspect</h3>
@@ -8576,7 +8576,7 @@
                 </div>
             </div>
         </div>
-        <div id="message_template" class="template_element">
+        <template id="message_template" class="template_element">
             <div class="mes" mesid="" ch_name="" is_user="" is_system="" bookmark_link="">
                 <div class="for_checkbox"></div><input type="checkbox" class="del_checkbox">
                 <div class="mesAvatarWrapper">
@@ -8670,8 +8670,8 @@
                     <div class="swipes-counter"></div>
                 </div>
             </div>
-        </div>
-        <div id="group_avatars_template" class="template_element">
+        </template>
+        <template id="group_avatars_template" class="template_element">
             <div class="avatar avatar_collage collage_1">
                 <img alt="img1" class="img_1" src="">
             </div>
@@ -8690,7 +8690,7 @@
                 <img alt="img3" class="img_3" src="">
                 <img alt="img4" class="img_4" src="">
             </div>
-        </div>
+        </template>
 
         <div id="onboarding_template" class="template_element">
             <div class="onboarding">
@@ -8746,7 +8746,7 @@
             </div>
         </div>
         <!-- SillyBunny: kept for extensions; getGroupCharacterBlock builds rows with createEntityRow. -->
-        <div id="group_member_template" class="template_element">
+        <template id="group_member_template" class="template_element">
             <div class="group_member ds-entity-row">
                 <div class="avatar ds-entity-row__avatar">
                     <img alt="Avatar" src="" />
@@ -8786,8 +8786,8 @@
                     </div>
                 </div>
             </div>
-        </div>
-        <div id="group_list_template" class="template_element">
+        </template>
+        <template id="group_list_template" class="template_element">
             <div class="group_select entity_block flex-container wide100p alignitemsflexstart">
                 <div class="avatar">
                     <img src="">
@@ -8804,8 +8804,8 @@
                     <div class="tags tags_inline"></div>
                 </div>
             </div>
-        </div>
-        <div id="bogus_folder_template" class="template_element">
+        </template>
+        <template id="bogus_folder_template" class="template_element">
             <div class="bogus_folder_select entity_block flex-container wide100p alignitemsflexstart">
                 <div class="avatar flex alignitemscenter textAlignCenter">
                     <i class="bogus_folder_icon fa-solid fa-xl"></i>
@@ -8819,8 +8819,8 @@
                     <div class="bogus_folder_avatars_block avatars_inline avatars_inline_small tags tags_inline"></div>
                 </div>
             </div>
-        </div>
-        <div id="bogus_folder_back_template" class="template_element">
+        </template>
+        <template id="bogus_folder_back_template" class="template_element">
             <div class="bogus_folder_select bogus_folder_select_back flex-container wide100p alignitemsflexstart" id="BogusFolderBack" tagid="back">
                 <div class="avatar flex alignitemscenter textAlignCenter">
                     <i class="bogus_folder_icon fa-solid fa-xl fa-right-from-bracket fa-flip-horizontal"></i>
@@ -8834,13 +8834,13 @@
                     </div>
                 </div>
             </div>
-        </div>
-        <div id="inline_avatar_template" class="template_element">
+        </template>
+        <template id="inline_avatar_template" class="template_element">
             <div class="avatar inline_avatar flex alignitemscenter textAlignCenter">
                 <img src="">
             </div>
-        </div>
-        <div id="alternate_greetings_template" class="template_element">
+        </template>
+        <template id="alternate_greetings_template" class="template_element">
             <div class="alternate_grettings flexFlowColumn flex-container">
                 <div class="title_restorable">
                     <h3><span data-i18n="Alternate Greetings" class="mdhotkey_location">Alternate Greetings</span></h3>
@@ -8860,8 +8860,8 @@
                     </strong>
                 </div>
             </div>
-        </div>
-        <div id="alternate_greeting_form_template" class="template_element">
+        </template>
+        <template id="alternate_greeting_form_template" class="template_element">
             <div class="alternate_greeting">
                 <div class="alternate_greeting_header title_restorable gap5px">
                     <details open>
@@ -8885,10 +8885,10 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </template>
 
         <!-- Media Templates -->
-        <div id="message_file_template" class="template_element">
+        <template id="message_file_template" class="template_element">
             <div class="mes_media_container mes_file_container">
                 <div class="fa-lg fa-solid fa-file-alt mes_file_icon"></div>
                 <div class="mes_file_name"></div>
@@ -8896,9 +8896,9 @@
                 <div class="right_menu_button mes_file_open fa-solid fa-magnifying-glass" title="View contents" data-i18n="[title]View contents"></div>
                 <div class="right_menu_button mes_file_delete fa-solid fa-trash-can" title="Remove the file" data-i18n="[title]Remove the file"></div>
             </div>
-        </div>
+        </template>
 
-        <div id="message_image_template" class="template_element">
+        <template id="message_image_template" class="template_element">
             <div class="mes_media_container mes_img_container">
                 <div class="mes_img_controls">
                     <div title="Expand and zoom" class="right_menu_button fa-lg fa-solid fa-magnifying-glass mes_media_enlarge" data-i18n="[title]Expand and zoom"></div>
@@ -8907,9 +8907,9 @@
                 </div>
                 <img class="mes_img" src="" loading="lazy" decoding="async" />
             </div>
-        </div>
+        </template>
 
-        <div id="message_video_template" class="template_element">
+        <template id="message_video_template" class="template_element">
             <div class="mes_media_container mes_video_container">
                 <div class="mes_video_controls">
                     <div title="Expand and zoom" class="right_menu_button fa-lg fa-solid fa-magnifying-glass mes_media_enlarge" data-i18n="[title]Expand and zoom"></div>
@@ -8918,17 +8918,17 @@
                 </div>
                 <video class="mes_video" controls preload="metadata"></video>
             </div>
-        </div>
+        </template>
 
-        <div id="message_gallery_controls" class="template_element">
+        <template id="message_gallery_controls" class="template_element">
             <div class="mes_img_swipes">
                 <div title="Swipe left" class="right_menu_button fa-lg fa-solid fa-chevron-left mes_img_swipe_left" data-i18n="[title]Swipe left"></div>
                 <div class="mes_img_swipe_counter">1/1</div>
                 <div title="Swipe right" class="right_menu_button fa-lg fa-solid fa-chevron-right mes_img_swipe_right" data-i18n="[title]Swipe right"></div>
             </div>
-        </div>
+        </template>
 
-        <div id="message_audio_template" class="template_element">
+        <template id="message_audio_template" class="template_element">
             <div class="mes_media_container mes_audio_container audio-player">
                 <audio class="mes_audio" preload="auto" hidden></audio>
                 <div class="audio-player-header">
@@ -8950,7 +8950,7 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </template>
     </div>
     <div id="movingDivs">
         <div id="floatingPrompt" class="drawer-content flexGap5">

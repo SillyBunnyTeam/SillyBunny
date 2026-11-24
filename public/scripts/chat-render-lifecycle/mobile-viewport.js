@@ -1,3 +1,5 @@
+import { getViewportCoordinator } from '../viewport-coordinator.js';
+
 export const MOBILE_VIEWPORT_SETTLE_DELAY_MS = 180;
 
 function isViewportLike(viewport) {
@@ -31,9 +33,11 @@ function assertMobileViewportOptions({
 
 /**
  * Creates lifecycle-owned visual viewport listener setup with cancellable settle detection.
- * Runtime policy still belongs to the injected callbacks.
+ * Runtime calls share the unified ViewportCoordinator so competing visualViewport listeners
+ * collapse into one frame; injected custom viewport targets remain directly attached for unit tests.
  * @param {object} options Options.
  * @param {VisualViewport|null} [options.viewport=globalThis.visualViewport] Viewport-like event target.
+ * @param {object|null} [options.coordinator=null] Optional ViewportCoordinator instance.
  * @param {(event: Event) => void} options.onViewportChange Immediate viewport movement handler.
  * @param {(event: Event) => void|null} [options.onViewportSettle=null] Settled viewport handler.
  * @param {number} [options.settleDelayMs=MOBILE_VIEWPORT_SETTLE_DELAY_MS] Settle debounce delay.
@@ -43,6 +47,7 @@ function assertMobileViewportOptions({
  */
 export function createMobileViewportObserver({
     viewport = globalThis.visualViewport ?? null,
+    coordinator = null,
     onViewportChange,
     onViewportSettle = null,
     settleDelayMs = MOBILE_VIEWPORT_SETTLE_DELAY_MS,
@@ -59,6 +64,10 @@ export function createMobileViewportObserver({
     let isStarted = false;
     let settleTimer = null;
     let lastEvent = null;
+    let unsubscribeCoordinator = null;
+
+    const usesGlobalViewport = viewport !== null && viewport === globalThis.visualViewport;
+    const useCoordinator = Boolean(coordinator && typeof coordinator.subscribe === 'function') || usesGlobalViewport;
 
     const cancelSettleTimer = () => {
         if (settleTimer === null) {
@@ -95,7 +104,24 @@ export function createMobileViewportObserver({
     };
 
     const start = () => {
-        if (isStarted || !isViewportLike(viewport)) {
+        if (isStarted) {
+            return false;
+        }
+
+        if (useCoordinator) {
+            if (!coordinator && !isViewportLike(viewport)) {
+                return false;
+            }
+
+            const activeCoordinator = coordinator ?? getViewportCoordinator();
+            unsubscribeCoordinator = activeCoordinator.subscribe((_snapshot, meta) => {
+                handleViewportChange(meta?.event ?? { type: 'resize' });
+            }, { sources: ['visualViewport'] });
+            isStarted = true;
+            return true;
+        }
+
+        if (!isViewportLike(viewport)) {
             return false;
         }
 
@@ -108,7 +134,18 @@ export function createMobileViewportObserver({
     const dispose = () => {
         cancelSettleTimer();
 
-        if (!isStarted || !isViewportLike(viewport)) {
+        if (!isStarted) {
+            return;
+        }
+
+        if (typeof unsubscribeCoordinator === 'function') {
+            unsubscribeCoordinator();
+            unsubscribeCoordinator = null;
+            isStarted = false;
+            return;
+        }
+
+        if (!isViewportLike(viewport)) {
             isStarted = false;
             return;
         }

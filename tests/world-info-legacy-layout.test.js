@@ -70,8 +70,10 @@ describe('World Info legacy layout retirement', () => {
         expect(document.querySelector('#world_popup_entries_list').parentElement.id).toBe('world_popup');
         expect([...document.querySelectorAll('.world_info_view_filter')].map(button => button.dataset.filter)).toEqual(['all', 'active', 'disabled', 'constant', 'vectorized']);
         expect(document.querySelector('#world_info_sort_order').options).toHaveLength(15);
-        expect(document.querySelector('#entry_edit_template .world_entry_edit')).not.toBeNull();
-        expect(document.querySelector('#entry_edit_template .world_entry .inline-drawer')).not.toBeNull();
+        const entryTemplate = document.querySelector('#entry_edit_template');
+        const entryTemplateRoot = entryTemplate?.content ?? entryTemplate;
+        expect(entryTemplateRoot?.querySelector('.world_entry_edit')).not.toBeNull();
+        expect(entryTemplateRoot?.querySelector('.world_entry .inline-drawer')).not.toBeNull();
     });
 
     test('drops fork-only toolbar, workspace, popout and responsive layout paths', () => {

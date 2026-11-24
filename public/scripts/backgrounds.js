@@ -103,6 +103,62 @@ let lazyLoadObserver = null;
  * @type {Array<{filename: string, isAnimated: boolean}>}
  */
 let cachedSystemBackgrounds = [];
+// SillyBunny: index system backgrounds and rendered thumbnails by filename and URL so gallery lookups and highlights stay O(1).
+const systemBackgroundsByFilename = new Map();
+const systemBackgroundsByUrl = new Map();
+const thumbnailsByUrl = new Map();
+const systemThumbnailCache = new Map();
+const chatThumbnailCache = new Map();
+
+function rebuildSystemBackgroundIndex() {
+    systemBackgroundsByFilename.clear();
+    systemBackgroundsByUrl.clear();
+    for (const image of cachedSystemBackgrounds) {
+        if (!image?.filename) continue;
+        systemBackgroundsByFilename.set(image.filename, image);
+        systemBackgroundsByUrl.set(generateUrlParameter(image.filename, false), image);
+    }
+}
+
+function registerThumbnailByUrl(element, url) {
+    let refs = thumbnailsByUrl.get(url);
+    if (!refs) {
+        refs = new Set();
+        thumbnailsByUrl.set(url, refs);
+    }
+    refs.add(new WeakRef(element));
+}
+
+function highlightByUrl(className, targetUrl) {
+    for (const previous of document.querySelectorAll(`.bg_example.${className}`)) {
+        previous.classList.remove(className);
+    }
+    if (!targetUrl) return;
+    const refs = thumbnailsByUrl.get(targetUrl);
+    let matched = false;
+    if (refs) {
+        for (const ref of refs) {
+            const element = ref.deref();
+            if (!element) {
+                refs.delete(ref);
+                continue;
+            }
+            if (element.getAttribute('data-url') === targetUrl) {
+                element.classList.add(className);
+                matched = true;
+            } else {
+                refs.delete(ref);
+            }
+        }
+        if (!refs.size) thumbnailsByUrl.delete(targetUrl);
+    }
+    if (!matched) {
+        for (const element of document.querySelectorAll('.bg_example')) {
+            const url = element.getAttribute('data-url') ?? (typeof $ === 'function' ? $(element).data('url') : undefined);
+            if (url === targetUrl) element.classList.add(className);
+        }
+    }
+}
 
 export let background_settings = {
     name: '__transparent.png',
@@ -146,6 +202,24 @@ function sortBackgrounds(backgrounds, isCustom = false) {
     });
 }
 
+// SillyBunny: build gallery thumbnails without jQuery .clone(), and support <template> or <div> #background_template when the hover strip is kept.
+function cloneBackgroundTemplateWithMenu() {
+    const templateHost = document.getElementById('background_template');
+    const templateRoot = templateHost instanceof HTMLTemplateElement ? templateHost.content : templateHost;
+    const source = templateRoot?.querySelector('.bg_example');
+    if (source instanceof HTMLElement) {
+        return /** @type {HTMLElement} */ (source.cloneNode(true));
+    }
+    const fallback = document.createElement('div');
+    fallback.className = 'bg_example flex-container';
+    const img = document.createElement('div');
+    img.className = 'bg_example_img';
+    const sampleTitle = document.createElement('div');
+    sampleTitle.className = 'BGSampleTitle';
+    fallback.append(img, sampleTitle);
+    return fallback;
+}
+
 /**
  * Creates a single thumbnail DOM element. The CSS now handles all sizing.
  * @param {object} imageData - Data for the image (filename, isCustom, isAnimated).
@@ -153,11 +227,29 @@ function sortBackgrounds(backgrounds, isCustom = false) {
  */
 function createThumbnailElement(imageData) {
     const bg = imageData.filename;
-    const isCustom = imageData.isCustom;
+    const isCustom = Boolean(imageData.isCustom);
     const isAnimated = imageData.isAnimated ?? false;
     const mediaType = imageData.mediaType ?? (isVideoBackgroundExtension(bg) ? 'video' : 'image');
 
-    const thumbnail = $('#background_template .bg_example').clone();
+    let thumbnailEl;
+    let titleElement;
+    if (imageData.withMenu === false) {
+        // SillyBunny: a thumbnail in the folder gallery has its own menu, so build only the cell nodes without cloning or removing the hover strip.
+        thumbnailEl = document.createElement('div');
+        thumbnailEl.className = 'bg_example flex-container';
+        const imgBox = document.createElement('div');
+        imgBox.className = 'bg_example_img';
+        titleElement = document.createElement('div');
+        titleElement.className = 'BGSampleTitle';
+        thumbnailEl.append(imgBox);
+    } else {
+        thumbnailEl = cloneBackgroundTemplateWithMenu();
+        titleElement = thumbnailEl.querySelector('.BGSampleTitle');
+        if (!titleElement) {
+            titleElement = document.createElement('div');
+            titleElement.className = 'BGSampleTitle';
+        }
+    }
 
     const clipper = document.createElement('div');
     clipper.className = 'thumbnail-clipper lazy-load-background';
@@ -171,30 +263,76 @@ function createThumbnailElement(imageData) {
             clipper.style.backgroundColor = metadata.dominantColor;
         }
         if (metadata.aspectRatio) {
-            thumbnail.css('aspect-ratio', metadata.aspectRatio);
+            thumbnailEl.style.aspectRatio = String(metadata.aspectRatio);
         }
     }
 
-    // SillyBunny: a thumbnail in the folder gallery has its own menu, so the hover strip and its toggle are not built.
-    if (imageData.withMenu === false) thumbnail.find('.jg-menu, .mobile-only-menu-toggle').remove();
-
-    const titleElement = thumbnail.find('.BGSampleTitle');
-    clipper.appendChild(titleElement.get(0));
-    thumbnail.append(clipper);
+    clipper.appendChild(titleElement);
+    thumbnailEl.appendChild(clipper);
 
     const url = generateUrlParameter(bg, isCustom);
     const title = isCustom ? bg.split('/').pop() : bg;
     const friendlyTitle = getFriendlyBackgroundTitle(title);
 
-    thumbnail.attr('title', title);
-    thumbnail.attr('bgfile', bg);
-    thumbnail.attr('custom', String(isCustom));
-    thumbnail.attr('animated', String(isAnimated));
-    thumbnail.attr('data-media-type', mediaType);
-    thumbnail.data('url', url);
-    titleElement.text(friendlyTitle);
+    thumbnailEl.setAttribute('title', title);
+    thumbnailEl.setAttribute('bgfile', bg);
+    thumbnailEl.setAttribute('custom', String(isCustom));
+    thumbnailEl.setAttribute('animated', String(isAnimated));
+    thumbnailEl.setAttribute('data-media-type', mediaType);
+    thumbnailEl.setAttribute('data-url', url);
+    registerThumbnailByUrl(thumbnailEl, url);
+    titleElement.textContent = friendlyTitle;
 
-    return thumbnail.get(0);
+    return thumbnailEl;
+}
+
+// SillyBunny: reconcile thumbnail lists by key and batch insertions through DocumentFragment so re-sorts retain existing DOM nodes.
+function reconcileFlatThumbnailList(container, entries, cache) {
+    if (!(container instanceof HTMLElement)) return;
+    if (!entries.length) {
+        for (const cached of cache.values()) cached.element.remove();
+        cache.clear();
+        container.replaceChildren();
+        return;
+    }
+    const nextKeys = new Set();
+    let cursor = container.firstElementChild;
+    let fragment = null;
+    const flushFragment = () => {
+        if (!fragment) return;
+        container.insertBefore(fragment, cursor);
+        fragment = null;
+    };
+    for (const imageData of entries) {
+        const key = String(imageData.filename);
+        nextKeys.add(key);
+        const signature = `${key}\u001f${imageData.isCustom ? 1 : 0}\u001f${imageData.isAnimated ? 1 : 0}\u001f${imageData.mediaType ?? ''}`;
+        let cached = cache.get(key);
+        if (!cached || cached.signature !== signature) {
+            const element = createThumbnailElement(imageData);
+            if (cached) {
+                if (cursor === cached.element) cursor = cached.element.nextElementSibling;
+                cached.element.remove();
+            }
+            cached = { element, signature };
+            cache.set(key, cached);
+        }
+        const element = cached.element;
+        const positionedBeforeCursor = element.parentElement === container && element.nextElementSibling === cursor && !fragment;
+        if (element === cursor) {
+            flushFragment();
+            cursor = cursor.nextElementSibling;
+        } else if (!positionedBeforeCursor) {
+            fragment ??= document.createDocumentFragment();
+            fragment.appendChild(element);
+        }
+    }
+    flushFragment();
+    for (const [key, cached] of cache) {
+        if (nextKeys.has(key)) continue;
+        cached.element.remove();
+        cache.delete(key);
+    }
 }
 
 // SillyBunny: shared by the thumbnail and by Auto-select, which no longer reads titles from the DOM.
@@ -323,15 +461,7 @@ export function getBackgroundPath(fileUrl) {
 }
 
 function highlightLockedBackground() {
-    $('.bg_example.locked-background').removeClass('locked-background');
-
-    const lockedBackgroundUrl = chat_metadata[BG_METADATA_KEY];
-
-    if (lockedBackgroundUrl) {
-        $('.bg_example').filter(function () {
-            return $(this).data('url') === lockedBackgroundUrl;
-        }).addClass('locked-background');
-    }
+    highlightByUrl('locked-background', chat_metadata[BG_METADATA_KEY]);
 }
 
 /**
@@ -345,7 +475,7 @@ function onLockBackgroundClick(event = null) {
     }
 
     // Take the global background's URL and save it to the chat's metadata.
-    lockBackgroundUrl(event ? $(event.target).closest('.bg_example').data('url') : background_settings.url);
+    lockBackgroundUrl(event ? getUrlParameter(/** @type {Element} */ (event.target)) : background_settings.url);
 }
 
 // SillyBunny: split out of onLockBackgroundClick, so a thumbnail menu can lock a background by file name.
@@ -644,7 +774,10 @@ async function removeBackground(bg, { isCustom, deleteFromServer = false, elemen
 
     // Remove from cache to prevent reappearing on sort change
     const cachedIdx = cachedSystemBackgrounds.findIndex(img => img.filename === bg);
-    if (!isCustom && cachedIdx !== -1) cachedSystemBackgrounds.splice(cachedIdx, 1);
+    if (!isCustom && cachedIdx !== -1) {
+        cachedSystemBackgrounds.splice(cachedIdx, 1);
+        rebuildSystemBackgroundIndex();
+    }
 
     if (replace && (bg === background_settings.name || url === chat_metadata[BG_METADATA_KEY])) {
         const siblingSelector = '.bg_example';
@@ -775,26 +908,28 @@ function renderSystemBackgrounds(backgrounds) {
         return;
     }
     const sourceList = backgrounds || [];
-    const container = $('#bg_menu_content');
-    container.empty();
+    const container = document.getElementById('bg_menu_content');
+    if (!container) return;
 
     if (sourceList.length === 0) {
+        reconcileFlatThumbnailList(container, [], systemThumbnailCache);
         return;
     }
 
     const sortedList = sortBackgrounds(sourceList.map(bg => bg.filename), false);
-    const metadataByFilename = new Map(sourceList.map(bg => [bg.filename, bg]));
-    sortedList.forEach(filename => {
+    const metadataByFilename = sourceList === cachedSystemBackgrounds && systemBackgroundsByFilename.size === sourceList.length
+        ? systemBackgroundsByFilename
+        : new Map(sourceList.map(bg => [bg.filename, bg]));
+    const entries = sortedList.map(filename => {
         const bg = metadataByFilename.get(filename);
-        const imageData = {
+        return {
             filename,
             isCustom: false,
             isAnimated: bg?.isAnimated ?? false,
             mediaType: bg?.mediaType ?? (isVideoBackgroundExtension(filename) ? 'video' : 'image'),
         };
-        const thumbnail = createThumbnailElement(imageData);
-        container.append(thumbnail);
     });
+    reconcileFlatThumbnailList(container, entries, systemThumbnailCache);
 
     activateLazyLoader();
 }
@@ -823,25 +958,23 @@ function observeChatBackgroundsHint() {
  */
 function renderChatBackgrounds(backgrounds) {
     const sourceList = backgrounds ?? (chat_metadata[LIST_METADATA_KEY] || []);
-    const container = $('#bg_custom_content');
-    container.empty();
+    const container = document.getElementById('bg_custom_content');
     $('#bg_chat_hint').toggle(!sourceList.length);
+    if (!container) return;
 
-    if (sourceList.length === 0) return;
+    if (sourceList.length === 0) {
+        reconcileFlatThumbnailList(container, [], chatThumbnailCache);
+        return;
+    }
 
     const sortedList = sortBackgrounds(sourceList, true);
-    sortedList.forEach(bg => {
-        // For custom backgrounds, infer isAnimated from extension since we don't have server metadata
-        const isAnimated = isAnimatedBackgroundExtension(bg);
-        const imageData = {
-            filename: bg,
-            isCustom: true,
-            isAnimated,
-            mediaType: isVideoBackgroundExtension(bg) ? 'video' : 'image',
-        };
-        const thumbnail = createThumbnailElement(imageData);
-        container.append(thumbnail);
-    });
+    const entries = sortedList.map(bg => ({
+        filename: bg,
+        isCustom: true,
+        isAnimated: isAnimatedBackgroundExtension(bg),
+        mediaType: isVideoBackgroundExtension(bg) ? 'video' : 'image',
+    }));
+    reconcileFlatThumbnailList(container, entries, chatThumbnailCache);
 
     activateLazyLoader();
 }
@@ -856,6 +989,7 @@ export async function getBackgrounds() {
         const { images, config } = await response.json();
         Object.assign(THUMBNAIL_CONFIG, config);
         cachedSystemBackgrounds = images;
+        rebuildSystemBackgroundIndex();
 
         // SillyBunny: folders load first, so the gallery module has the index when it draws the sections.
         await loadFolders();
@@ -908,16 +1042,20 @@ async function loadFolders() {
             const imageFolderMap = data.imageFolderMap || {};
             folderIndex = { folders: folderList, imageFolderMap };
 
-            // Auto-assign thumbnail for folders that don't have one, then persist
-            const allImages = cachedSystemBackgrounds.map(img => img.filename);
+            // SillyBunny: index the first image per folder in one pass instead of scanning all images per folder.
+            const firstImageByFolder = new Map();
+            for (const img of cachedSystemBackgrounds) {
+                const fids = imageFolderMap[img.filename];
+                if (!Array.isArray(fids)) continue;
+                for (const fid of fids) {
+                    if (!firstImageByFolder.has(fid)) firstImageByFolder.set(fid, img.filename);
+                }
+            }
             /** @type {{id: string, thumbnailFile: string}[]} */
             const thumbnailUpdates = [];
             for (const folder of folderList) {
                 if (!folder.thumbnailFile) {
-                    const firstImage = allImages.find(img => {
-                        const fids = imageFolderMap[img];
-                        return fids && fids.includes(folder.id);
-                    });
+                    const firstImage = firstImageByFolder.get(folder.id);
                     if (firstImage) {
                         folder.thumbnailFile = firstImage;
                         thumbnailUpdates.push({ id: folder.id, thumbnailFile: firstImage });
@@ -941,21 +1079,11 @@ async function loadFolders() {
 
 
 function activateLazyLoader() {
-    // Disconnect previous observer to prevent memory leaks
-    if (lazyLoadObserver) {
-        lazyLoadObserver.disconnect();
-        lazyLoadObserver = null;
+    // SillyBunny: guard headless test environments without IntersectionObserver and reuse one observer across reconciled renders.
+    if (typeof IntersectionObserver !== 'function') {
+        return;
     }
-
-    const lazyLoadElements = document.querySelectorAll('.lazy-load-background');
-
-    const options = {
-        root: null,
-        rootMargin: '200px',
-        threshold: 0.01,
-    };
-
-    lazyLoadObserver = new IntersectionObserver((entries, observer) => {
+    lazyLoadObserver ??= new IntersectionObserver((entries, observer) => {
         entries.forEach(entry => {
             if (entry.target instanceof HTMLElement && entry.isIntersecting) {
                 const clipper = entry.target;
@@ -974,8 +1102,13 @@ function activateLazyLoader() {
                 observer.unobserve(clipper);
             }
         });
-    }, options);
+    }, {
+        root: null,
+        rootMargin: '200px',
+        threshold: 0.01,
+    });
 
+    const lazyLoadElements = document.querySelectorAll('.lazy-load-background');
     lazyLoadElements.forEach(element => {
         lazyLoadObserver.observe(element);
     });
@@ -987,7 +1120,8 @@ function activateLazyLoader() {
  * @returns {string} URL of the background
  */
 function getUrlParameter(block) {
-    return $(block).closest('.bg_example').data('url');
+    const example = block instanceof Element ? block.closest('.bg_example') : null;
+    return example?.getAttribute('data-url') ?? $(block).closest('.bg_example').data('url');
 }
 
 function generateUrlParameter(bg, isCustom) {
@@ -1252,17 +1386,8 @@ function setFittingClass(fitting) {
 }
 
 function highlightSelectedBackground() {
-    $('.bg_example.selected-background').removeClass('selected-background');
-
     // The "selected" highlight should always reflect the global background setting.
-    const activeUrl = background_settings.url;
-
-    if (activeUrl) {
-        // Find the thumbnail whose data-url attribute matches the active URL
-        $('.bg_example').filter(function () {
-            return $(this).data('url') === activeUrl;
-        }).addClass('selected-background');
-    }
+    highlightByUrl('selected-background', background_settings.url);
 }
 
 function onBackgroundFilterInput() {
@@ -1456,6 +1581,8 @@ export function attachBackgroundGallery(host) {
     galleryHost = host;
     return {
         getImages: () => cachedSystemBackgrounds,
+        getImageMap: () => systemBackgroundsByFilename,
+        getImageByUrl: url => systemBackgroundsByUrl.get(url),
         getFolderIndex: () => folderIndex,
         sortFiles: files => sortBackgrounds(files, false),
         createThumbnail: imageData => createThumbnailElement({ ...imageData, isCustom: false, withMenu: false }),

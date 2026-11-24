@@ -12,6 +12,7 @@ import { isMobile } from './RossAscends-mods.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import { addLongPressEvent, clamp, copyText, timestampToMoment } from './utils.js';
+import { cloneTemplate } from './dom-template.js';
 import { bindListFocus } from './sillybunny-editor/list-focus.js'; // SillyBunny: the swipe rows are one Tab stop with arrow keys
 import { chat, deleteSwipe, ensureSwipes, isMessageSwipeable, isSwipingAllowed, swipe, syncMesToSwipe } from '/script.js';
 
@@ -138,7 +139,7 @@ async function openSwipePicker(messageId) {
     async function renderSwipeList() {
         const swipeBlocks = await Promise.all(message.swipes.map(async (swipe, index) => {
             const swipeText = String(swipe ?? '');
-            const template = $('#past_chat_template .select_chat_block_wrapper').clone();
+            const template = cloneTemplate('past_chat_template', '.select_chat_block_wrapper');
             const block = template.find('.select_chat_block');
             // SillyBunny: `.swipe_picker_block` is a keyboard interactable that would take its own Tab stop. The select button covers
             // the whole row, so the row is not focusable and the button is its stop (`not_focusable` keeps keyboard.js from adding a tabindex).
