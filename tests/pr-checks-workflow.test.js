@@ -49,6 +49,14 @@ describe('pull request checks workflow', () => {
         expect(testIndex).toBeGreaterThan(installIndex);
     });
 
+    test('runs the conversation index tests under Bun after the Bun install', () => {
+        const commands = workflow.jobs['run-bun-checks'].steps.map(step => step.run ?? '');
+        const installIndex = commands.findIndex(command => command.startsWith('bun install'));
+        const testIndex = commands.indexOf('bun test ./tests/conversation-index.test.js');
+        expect(installIndex).toBeGreaterThanOrEqual(0);
+        expect(testIndex).toBeGreaterThan(installIndex);
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = Object.values(workflow.jobs).flatMap(job => job.steps.map(step => step.uses).filter(Boolean));
         expect(uses.length).toBeGreaterThan(0);

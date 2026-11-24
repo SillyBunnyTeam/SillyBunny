@@ -188,6 +188,9 @@ jobs:
       - name: Run SQLite cache tests
         run: bun test ./tests/sqlite-cache.test.js
 
+      - name: Run conversation index tests
+        run: bun test ./tests/conversation-index.test.js
+
   run-node-checks:
     name: ✅ Check Node Runtime
     runs-on: ubuntu-latest

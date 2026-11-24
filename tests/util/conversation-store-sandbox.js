@@ -1,3 +1,4 @@
+/* global globalThis */
 /**
  * A throwaway user for the conversation store and its routes: the `directories` the server gives a request, made
  * of real folders in a temp root, so that saves go through the real `trySaveChat` and the real recovery store.
@@ -8,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { conversationIndex } from '../../src/conversation-index.js';
 import { setConfigFilePath } from '../../src/util.js';
 
 setConfigFilePath(fileURLToPath(new URL('../../default/config.yaml', import.meta.url)));
@@ -18,6 +20,9 @@ export const PERSONA_TWO = 'persona-two.png';
 let sandboxCount = 0;
 
 /**
+ * The sandbox root is also the data root, so that the conversation index (`_cache/conversations.sqlite`) lives in the
+ * sandbox and goes with it. `cleanup()` closes the index first, because it keeps its database file open.
+ *
  * The handle is unique per sandbox because the regular chat backups are throttled per handle and chat name for the
  * life of the process, so that two tests with one handle would see each other's throttle window.
  * @param {string} [handle]
@@ -35,10 +40,16 @@ export function createSandboxUser(handle = `store-test-user-${++sandboxCount}`) 
     for (const directory of Object.values(directories)) {
         fs.mkdirSync(directory, { recursive: true });
     }
+    const previousDataRoot = globalThis.DATA_ROOT;
+    globalThis.DATA_ROOT = root;
     return {
         user: { profile: { handle }, directories },
         root,
-        cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+        cleanup: () => {
+            conversationIndex.close();
+            globalThis.DATA_ROOT = previousDataRoot;
+            fs.rmSync(root, { recursive: true, force: true });
+        },
     };
 }
 

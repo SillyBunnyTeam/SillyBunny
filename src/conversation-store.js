@@ -33,6 +33,7 @@ import {
     readChatJsonlStrict,
     runChatRecoveryBestEffort,
 } from './chat-recovery.js';
+import { conversationIndex } from './conversation-index.js';
 import {
     ConversationPathError,
     createChatId,
@@ -176,16 +177,40 @@ export function readConversation(user, id) {
     return normalizeStoredConversation(result.value, id);
 }
 
-function readChatForSummary(user, conversationId, chatId) {
-    const result = readChatJsonlStrict(guard(() => getChatFilePath(user.directories, conversationId, chatId)));
-    return result.status === 'ok' ? result.records : null;
+const EMPTY_SUMMARY = Object.freeze({ messageCount: 0, lastMessageAt: 0, preview: '', unread: 0 });
+
+/**
+ * What the list shows for one chat. The index answers while the chat file has the size and modification time it had
+ * when its row was written; otherwise the file is read and the row is replaced. The file metadata is read before the
+ * file, so that a write in between can only make the row look stale, never make an old summary look current.
+ */
+function summarizeChatFile(user, conversationId, entry, index, existingFiles) {
+    const filePath = guard(() => getChatFilePath(user.directories, conversationId, entry.id));
+    let stat;
+    try {
+        stat = fs.statSync(filePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return EMPTY_SUMMARY;
+        }
+        throw error;
+    }
+    existingFiles.push(filePath);
+    const cached = index.get(filePath, stat, entry.readThrough);
+    if (cached) {
+        return cached;
+    }
+    const result = readChatJsonlStrict(filePath);
+    if (result.status !== 'ok') {
+        return EMPTY_SUMMARY;
+    }
+    const summary = summarizeChatRecords(result.records, entry.readThrough);
+    index.set(filePath, stat, entry.readThrough, summary);
+    return summary;
 }
 
-function summarizeConversation(user, conversation) {
-    const chats = conversation.chats.map((entry) => {
-        const records = readChatForSummary(user, conversation.id, entry.id);
-        return { ...entry, ...(records ? summarizeChatRecords(records, entry.readThrough) : { messageCount: 0, lastMessageAt: 0, preview: '', unread: 0 }) };
-    });
+function summarizeConversation(user, conversation, index, existingFiles) {
+    const chats = conversation.chats.map(entry => ({ ...entry, ...summarizeChatFile(user, conversation.id, entry, index, existingFiles) }));
     const latest = chats.reduce((best, entry) => (entry.lastMessageAt > best.lastMessageAt ? entry : best), { lastMessageAt: 0, preview: '' });
     return {
         ...conversation,
@@ -226,16 +251,23 @@ function scanConversations(user) {
 }
 
 /**
- * Every conversation, newest message first, with the counts of each chat. Built by reading the files; an index can
- * answer the same question without that.
+ * Every conversation, newest message first, with the counts of each chat. The index answers for a chat whose file did
+ * not change; with the index off or failing, every chat file is read.
  * @param {StoreUser} user
+ * @param {{ index?: import('./conversation-index.js').ConversationIndex }} [options] `index` replaces the shared index, for tests.
  * @returns {{ conversations: Record<string, any>[], problems: { id: string, error: string }[] }}
  * `problems` names each folder that holds an id and no readable conversation.
  */
-export function listConversations(user) {
+export function listConversations(user, { index = conversationIndex } = {}) {
     const { conversations, problems } = scanConversations(user);
-    const summaries = conversations.map(conversation => summarizeConversation(user, conversation));
+    const existingFiles = [];
+    const summaries = conversations.map(conversation => summarizeConversation(user, conversation, index, existingFiles));
     summaries.sort((left, right) => right.lastMessageAt - left.lastMessageAt || right.createdAt - left.createdAt || left.id.localeCompare(right.id));
+    // A chat or conversation that was removed without the store leaves a row that nothing would ask for again.
+    const root = user.directories?.conversations;
+    if (typeof root === 'string') {
+        index.retain(root, existingFiles);
+    }
     return { conversations: summaries, problems };
 }
 
@@ -404,6 +436,7 @@ export function deleteConversation(user, id) {
             forgetChatRecoveryState(user, id, chatId);
         }
         fs.rmSync(directory, { recursive: true, force: true });
+        conversationIndex.deleteFolder(path.join(directory, CHATS_DIRECTORY_NAME));
         for (const chatId of chatIds) {
             clearChatRecoveryStateAfterDelete(user, id, chatId);
         }
@@ -567,8 +600,7 @@ export function loadChat(user, conversationId, chatId) {
  * drop most of the chat, `invalid_input` for records that are not a chat.
  */
 export async function saveChat(user, conversationId, chatId, records, { allowShrink = false, deferBackup = false, deferSequenceId = undefined } = {}) {
-    const conversation = readConversation(user, conversationId);
-    requireListedChat(conversation, chatId);
+    const entry = requireListedChat(readConversation(user, conversationId), chatId);
     const target = guard(() => resolveConversationChatTarget(user.directories, { conversationId, chatId }, maxRecoveryStates));
     if (!target) {
         throw new ConversationStoreError('invalid_id', 'Not a chat of this conversation.');
@@ -581,6 +613,7 @@ export async function saveChat(user, conversationId, chatId, records, { allowShr
             deferBackup: deferBackup === true,
             deferSequenceId: typeof deferSequenceId === 'string' ? deferSequenceId : undefined,
         });
+        recordChatSummary(user, conversationId, entry, records, result.integrity);
         return { integrity: result.integrity };
     } catch (error) {
         if (error instanceof IntegrityMismatchError) {
@@ -593,6 +626,65 @@ export async function saveChat(user, conversationId, chatId, records, { allowShr
             throw new ConversationStoreError('invalid_input', error.message);
         }
         throw error;
+    }
+}
+
+const MAX_HEADER_BYTES = 1024 * 1024;
+
+/**
+ * @param {string} filePath A chat file.
+ * @returns {string} The integrity slug in the first line, or an empty string when the line is missing, too long or not a header.
+ */
+function readHeaderIntegrity(filePath) {
+    const descriptor = fs.openSync(filePath, 'r');
+    try {
+        const chunk = Buffer.alloc(64 * 1024);
+        const parts = [];
+        let length = 0;
+        for (;;) {
+            const bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, length);
+            const newline = chunk.subarray(0, bytesRead).indexOf(0x0a);
+            const end = newline < 0 ? bytesRead : newline;
+            parts.push(Buffer.from(chunk.subarray(0, end)));
+            length += end;
+            if (newline >= 0 || bytesRead === 0) {
+                break;
+            }
+            if (length > MAX_HEADER_BYTES) {
+                return '';
+            }
+        }
+        const integrity = JSON.parse(Buffer.concat(parts).toString('utf8'))?.chat_metadata?.integrity;
+        return typeof integrity === 'string' ? integrity : '';
+    } catch {
+        return '';
+    } finally {
+        fs.closeSync(descriptor);
+    }
+}
+
+/**
+ * Writes the index row of a chat that was just saved, from the records that were saved. The row carries the metadata
+ * of the file as it is now, so it is written only if the file still has the slug of that save: another writer that
+ * replaced the file in between leaves a different slug, and its own row is the one that counts. The index is an
+ * optional speed-up, so nothing here may fail the save that it follows.
+ * Also for a writer that saves a chat on the server's behalf with `updateChatRecords()`.
+ * @param {StoreUser} user
+ * @param {string} conversationId
+ * @param {{ id: string, readThrough: string }} entry The chat's entry in `conversation.json`.
+ * @param {object[]} records `[header, ...messages]` as saved.
+ * @param {string} integrity The slug that the save returned.
+ * @param {import('./conversation-index.js').ConversationIndex} [index]
+ */
+export function recordChatSummary(user, conversationId, entry, records, integrity, index = conversationIndex) {
+    try {
+        const filePath = getChatFilePath(user.directories, conversationId, entry.id);
+        const stat = fs.statSync(filePath);
+        if (integrity && readHeaderIntegrity(filePath) === integrity) {
+            index.set(filePath, stat, entry.readThrough, summarizeChatRecords(records, entry.readThrough));
+        }
+    } catch {
+        // The next list reads the file and writes the row.
     }
 }
 
@@ -647,6 +739,7 @@ function removeChatFile(user, conversationId, chatId) {
     } finally {
         release();
     }
+    conversationIndex.delete(filePath);
     clearChatRecoveryStateAfterDelete(user, conversationId, chatId);
 }
 
