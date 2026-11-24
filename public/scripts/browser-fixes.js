@@ -1,5 +1,9 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
-import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
+import {
+    createMobileDocumentPanTouchStart,
+    MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR,
+    shouldBlockMobileDocumentPan,
+} from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
@@ -197,6 +201,7 @@ function applyBrowserFixes() {
 
     const isMobileViewport = isMobile();
     const isIOSWebKit = isIOSWebKitPlatform();
+    const isModernIOSWebKit = isIOSWebKit && !isLegacyIOSWebKitPlatform();
 
     addDocumentViewportAnchorPatch({ suspendWhileEditing: true });
 
@@ -266,17 +271,7 @@ function applyBrowserFixes() {
         };
 
         const captureDocumentPanStart = (event) => {
-            if (event.touches?.length !== 1) {
-                documentPanTouchStart = null;
-                return;
-            }
-
-            const touch = event.touches[0];
-            documentPanTouchStart = {
-                identifier: touch.identifier,
-                clientX: touch.clientX,
-                clientY: touch.clientY,
-            };
+            documentPanTouchStart = createMobileDocumentPanTouchStart(event);
         };
 
         const clearDocumentPanStart = () => {
@@ -285,6 +280,13 @@ function applyBrowserFixes() {
 
         const applyPositionFix = ({ force = false } = {}) => {
             updateViewportBaseline();
+
+            // SillyBunny: modern iOS WebKit handles interactive-widget=resizes-visual natively;
+            // toggling root position:fixed while an editable field is focused resets IME state
+            // and triggers visual-viewport bounce even when orientationchange passes force=true.
+            if (isModernIOSWebKit && isEditableFocusTarget(document.activeElement)) {
+                return;
+            }
 
             if (!force && viewportResetScheduled) {
                 return;
@@ -407,12 +409,19 @@ function applyBrowserFixes() {
                 event.preventDefault();
             }
         };
-        document.addEventListener('touchstart', blockMultiTouchZoom, { passive: false });
-        document.addEventListener('touchstart', captureDocumentPanStart, { passive: true, capture: true });
-        document.addEventListener('touchmove', blockMultiTouchZoom, { passive: false });
-        document.addEventListener('touchmove', blockDocumentPanFromShellGaps, { passive: false, capture: true });
-        document.addEventListener('touchend', clearDocumentPanStart, { passive: true, capture: true });
-        document.addEventListener('touchcancel', clearDocumentPanStart, { passive: true, capture: true });
+        if (isFirefox()) {
+            document.addEventListener('touchstart', blockMultiTouchZoom, { passive: false });
+            document.addEventListener('touchmove', blockMultiTouchZoom, { passive: false });
+        }
+
+        // SillyBunny: bind non-passive touchmove pan guards only on fixed non-scrollable
+        // chrome surfaces so #chat and scrollable shell panels stay 100% compositor-scrolled.
+        for (const surface of document.querySelectorAll(MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR)) {
+            surface.addEventListener('touchstart', captureDocumentPanStart, { passive: true, capture: true });
+            surface.addEventListener('touchmove', blockDocumentPanFromShellGaps, { passive: false, capture: true });
+            surface.addEventListener('touchend', clearDocumentPanStart, { passive: true, capture: true });
+            surface.addEventListener('touchcancel', clearDocumentPanStart, { passive: true, capture: true });
+        }
     }
 
     addMacOSPatch();

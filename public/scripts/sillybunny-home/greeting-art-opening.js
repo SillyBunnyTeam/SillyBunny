@@ -93,7 +93,7 @@ export function createOpeningHold({ chatElement, isGreetingOnly, win = window, n
         for (const type of USER_INPUT_EVENTS) doc.addEventListener(type, onUserInput, LISTENER_OPTIONS);
         doc.addEventListener('keydown', onKeydown, true);
         chatElement.scrollTop = 0;
-        chatElement.addEventListener('scroll', onScroll);
+        chatElement.addEventListener('scroll', onScroll, { passive: true });
     }
 
     function startOpening(id) {

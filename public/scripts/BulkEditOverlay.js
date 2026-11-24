@@ -653,14 +653,14 @@ class BulkEditOverlay {
         this.browseState();
 
         const elements = this.#getEnabledElements();
-        elements.forEach(element => element.addEventListener('touchstart', this.handleHold));
+        elements.forEach(element => element.addEventListener('touchstart', this.handleHold, { passive: true }));
         elements.forEach(element => element.addEventListener('mousedown', this.handleHold));
         elements.forEach(element => element.addEventListener('contextmenu', this.handleDefaultContextMenu));
 
-        elements.forEach(element => element.addEventListener('touchend', this.handleLongPressEnd));
+        elements.forEach(element => element.addEventListener('touchend', this.handleLongPressEnd, { passive: true }));
         elements.forEach(element => element.addEventListener('mouseup', this.handleLongPressEnd));
         elements.forEach(element => element.addEventListener('dragend', this.handleLongPressEnd));
-        elements.forEach(element => element.addEventListener('touchmove', this.handleLongPressEnd));
+        elements.forEach(element => element.addEventListener('touchmove', this.handleLongPressEnd, { passive: true }));
 
         // Cohee: It only triggers when clicking on a margin between the elements?
         // Feel free to fix or remove this, I'm not sure how to.
@@ -738,7 +738,7 @@ class BulkEditOverlay {
 
         const cancelHold = (event) => cancel = true;
         this.container.addEventListener('mouseup', cancelHold);
-        this.container.addEventListener('touchend', cancelHold);
+        this.container.addEventListener('touchend', cancelHold, { passive: true });
 
         this.isLongPress = true;
 

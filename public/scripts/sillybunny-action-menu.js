@@ -491,8 +491,8 @@ function watchVisualViewport() {
             frameId = requestAnimationFrame(reposition);
         }
     };
-    visual.addEventListener('resize', schedule);
-    visual.addEventListener('scroll', schedule);
+    visual.addEventListener('resize', schedule, { passive: true });
+    visual.addEventListener('scroll', schedule, { passive: true });
     visualViewportWatch = {
         stop() {
             visual.removeEventListener('resize', schedule);

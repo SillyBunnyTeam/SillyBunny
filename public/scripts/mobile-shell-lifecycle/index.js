@@ -371,6 +371,14 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
 
+export const MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR = [
+    '#top-bar',
+    '#form_sheld',
+    '#bg1',
+    '#bg_custom',
+    '#sheldheader',
+].join(', ');
+
 const MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR = [
     'html',
     'body',
@@ -553,16 +561,20 @@ function canElementScrollOnAxis(element, axis) {
         || (overflow === 'visible' && element.matches('textarea'));
 }
 
-function canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection = false } = {}) {
-    if (!element || !delta) {
+/** @type {WeakMap<object, object>} */
+const cachedPanTouchContexts = new WeakMap();
+
+function canCandidateScrollForGesture(candidate, delta, { requireAvailableScrollInDirection = false } = {}) {
+    if (!candidate?.element || !delta) {
         return false;
     }
 
+    const { element, overflowX, overflowY } = candidate;
     const absX = Math.abs(delta.x);
     const absY = Math.abs(delta.y);
     const wantsHorizontalScroll = absX > absY;
-    const canScrollX = normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && canElementScrollOnAxis(element, 'x');
-    const canScrollY = normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX && canElementScrollOnAxis(element, 'y');
+    const canScrollX = overflowX && normalizeNumber(element.scrollWidth) - normalizeNumber(element.clientWidth) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
+    const canScrollY = overflowY && normalizeNumber(element.scrollHeight) - normalizeNumber(element.clientHeight) > MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
 
     if (!requireAvailableScrollInDirection) {
         return wantsHorizontalScroll ? canScrollX : canScrollY;
@@ -591,15 +603,20 @@ function canElementScrollForGesture(element, delta, { requireAvailableScrollInDi
         : scrollTop < maxScrollTop - MOBILE_DOCUMENT_PAN_MIN_GESTURE_PX;
 }
 
-function closestScrollableElementForGesture(target, delta, {
-    requireAvailableScrollInDirection = false,
-    boundary = null,
-} = {}) {
-    let element = target;
+function collectScrollCandidates(startElement, boundary) {
+    const candidates = [];
+    let element = startElement;
 
     while (element && typeof element === 'object') {
-        if (canElementScrollForGesture(element, delta, { requireAvailableScrollInDirection })) {
-            return element;
+        const overflowX = canElementScrollOnAxis(element, 'x');
+        const overflowY = canElementScrollOnAxis(element, 'y');
+        if (overflowX || overflowY) {
+            candidates.push({
+                element,
+                overflowX,
+                overflowY,
+                allowsHorizontalRail: elementMatchesSelector(element, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR),
+            });
         }
 
         if (element === boundary) {
@@ -607,6 +624,114 @@ function closestScrollableElementForGesture(target, delta, {
         }
 
         element = getParentElementLike(element);
+    }
+
+    return candidates;
+}
+
+/**
+ * Resolves DOM-ancestry and computed overflow styles once at gesture start so
+ * 120Hz touchmove handlers never call getComputedStyle or walk selectors.
+ * @param {EventTarget|object|null} target Starting touch target.
+ * @returns {object}
+ */
+export function resolveMobileDocumentPanTargetContext(target) {
+    const backgroundElement = elementMatchesSelector(target, MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR);
+    const guardedElement = backgroundElement ? null : closestMatchingElement(target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR);
+
+    if (!guardedElement && !backgroundElement) {
+        return {
+            target,
+            unguarded: true,
+        };
+    }
+
+    const editableElement = closestMatchingElement(target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
+    if (editableElement) {
+        const isScrollableEditable = elementMatchesSelector(editableElement, 'textarea, [contenteditable="true"]');
+        const editableCandidate = isScrollableEditable
+            ? {
+                element: editableElement,
+                overflowX: canElementScrollOnAxis(editableElement, 'x'),
+                overflowY: canElementScrollOnAxis(editableElement, 'y'),
+                allowsHorizontalRail: false,
+            }
+            : null;
+        const scrollCandidates = guardedElement
+            ? collectScrollCandidates(getParentElementLike(editableElement), guardedElement)
+            : [];
+        return {
+            target,
+            unguarded: false,
+            editableCandidate,
+            hasEditableTarget: true,
+            isControlTarget: false,
+            scrollCandidates,
+        };
+    }
+
+    const isControlTarget = Boolean(closestMatchingElement(target, MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR));
+    const scrollCandidates = guardedElement
+        ? collectScrollCandidates(target, guardedElement)
+        : [];
+
+    return {
+        target,
+        unguarded: false,
+        editableCandidate: null,
+        hasEditableTarget: false,
+        isControlTarget,
+        scrollCandidates,
+    };
+}
+
+/**
+ * Captures single-finger touch start coordinates and precomputed pan context.
+ * @param {TouchEvent|object} event Touchstart-like event.
+ * @returns {{identifier: number, clientX: number, clientY: number, panContext: object}|null}
+ */
+export function createMobileDocumentPanTouchStart(event) {
+    if (event?.touches?.length !== 1) {
+        return null;
+    }
+
+    const touch = event.touches[0];
+    if (!touch) {
+        return null;
+    }
+
+    return {
+        identifier: touch.identifier,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        panContext: resolveMobileDocumentPanTargetContext(event.target),
+    };
+}
+
+function getOrResolvePanContext(target, touchStart) {
+    if (touchStart && typeof touchStart === 'object') {
+        if (touchStart.panContext && touchStart.panContext.target === target) {
+            return touchStart.panContext;
+        }
+
+        const cached = cachedPanTouchContexts.get(touchStart);
+        if (cached && cached.target === target) {
+            return cached;
+        }
+
+        const resolved = resolveMobileDocumentPanTargetContext(target);
+        cachedPanTouchContexts.set(touchStart, resolved);
+        return resolved;
+    }
+
+    return resolveMobileDocumentPanTargetContext(target);
+}
+
+function findMatchingScrollCandidate(candidates, delta) {
+    for (const candidate of candidates) {
+        if (canCandidateScrollForGesture(candidate, delta, { requireAvailableScrollInDirection: true })) {
+            return candidate;
+        }
     }
 
     return null;
@@ -617,7 +742,7 @@ function closestScrollableElementForGesture(target, delta, {
  * cancelled before the browser pans the visual viewport.
  * @param {TouchEvent|object} event Touchmove-like event.
  * @param {object} [options] Options.
- * @param {{identifier: number, clientX: number, clientY: number}|null} [options.touchStart=null] Starting touch point.
+ * @param {{identifier: number, clientX: number, clientY: number, panContext?: object}|null} [options.touchStart=null] Starting touch point.
  * @returns {boolean}
  */
 export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) {
@@ -625,52 +750,37 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
         return false;
     }
 
-    const target = event.target;
-    const backgroundElement = elementMatchesSelector(target, MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR);
-    const guardedElement = backgroundElement ? null : closestMatchingElement(target, MOBILE_DOCUMENT_PAN_GUARD_SELECTOR);
-
-    if (!guardedElement && !backgroundElement) {
+    const context = getOrResolvePanContext(event.target, touchStart);
+    if (context.unguarded) {
         return false;
     }
 
     const gestureDelta = getGestureDelta(event, touchStart);
-    const editableElement = closestMatchingElement(target, MOBILE_DOCUMENT_PAN_EDITABLE_SELECTOR);
-    if (editableElement) {
-        const isScrollableEditable = elementMatchesSelector(editableElement, 'textarea, [contenteditable="true"]');
-        if (isScrollableEditable && gestureDelta && canElementScrollForGesture(editableElement, gestureDelta, { requireAvailableScrollInDirection: true })) {
+    if (context.hasEditableTarget) {
+        if (context.editableCandidate && gestureDelta && canCandidateScrollForGesture(context.editableCandidate, gestureDelta, { requireAvailableScrollInDirection: true })) {
             return false;
         }
 
-        const ancestorScrollElement = guardedElement
-            ? closestScrollableElementForGesture(getParentElementLike(editableElement), gestureDelta, {
-                requireAvailableScrollInDirection: true,
-                boundary: guardedElement,
-            })
-            : null;
-        if (ancestorScrollElement && (!isHorizontalGesture(gestureDelta) || elementMatchesSelector(ancestorScrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR))) {
+        const ancestorCandidate = findMatchingScrollCandidate(context.scrollCandidates, gestureDelta);
+        if (ancestorCandidate && (!isHorizontalGesture(gestureDelta) || ancestorCandidate.allowsHorizontalRail)) {
             return false;
         }
 
         return true;
     }
 
-    const scrollElement = guardedElement
-        ? closestScrollableElementForGesture(target, gestureDelta, {
-            requireAvailableScrollInDirection: true,
-            boundary: guardedElement,
-        })
-        : null;
-    if (closestMatchingElement(target, MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR)) {
-        if (scrollElement && (!isHorizontalGesture(gestureDelta) || elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR))) {
+    const scrollCandidate = findMatchingScrollCandidate(context.scrollCandidates, gestureDelta);
+    if (context.isControlTarget) {
+        if (scrollCandidate && (!isHorizontalGesture(gestureDelta) || scrollCandidate.allowsHorizontalRail)) {
             return false;
         }
 
         return true;
     }
 
-    if (scrollElement) {
+    if (scrollCandidate) {
         if (isHorizontalGesture(gestureDelta)) {
-            return !elementMatchesSelector(scrollElement, MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR);
+            return !scrollCandidate.allowsHorizontalRail;
         }
 
         return false;

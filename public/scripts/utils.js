@@ -3141,6 +3141,65 @@ export function createTimeout(ms, errorMessage = '') {
     });
 }
 
+/** @type {{ selector: string, callback: Function, delay: number }[]} */
+const longPressRegistrations = [];
+/** @type {ReturnType<typeof setTimeout>[]} */
+const longPressActiveTimers = [];
+/** @type {Element|null} */
+let longPressFiredTarget = null;
+let longPressListenersBound = false;
+
+function clearLongPressTimers() {
+    while (longPressActiveTimers.length > 0) {
+        clearTimeout(longPressActiveTimers.pop());
+    }
+}
+
+function ensureLongPressDelegatedListeners() {
+    if (longPressListenersBound) {
+        return;
+    }
+
+    longPressListenersBound = true;
+
+    document.addEventListener('touchstart', function (event) {
+        clearLongPressTimers();
+        longPressFiredTarget = null;
+        const rawTarget = event.target;
+        if (!rawTarget || typeof rawTarget.closest !== 'function') {
+            return;
+        }
+
+        for (const registration of longPressRegistrations) {
+            const el = rawTarget.closest(registration.selector);
+            if (!el) {
+                continue;
+            }
+
+            const timer = setTimeout(() => {
+                longPressFiredTarget = el;
+                registration.callback.call(el, event);
+            }, registration.delay);
+            longPressActiveTimers.push(timer);
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchend', clearLongPressTimers, { passive: true });
+    document.addEventListener('touchmove', clearLongPressTimers, { passive: true });
+    document.addEventListener('touchcancel', clearLongPressTimers, { passive: true });
+
+    document.addEventListener('click', function (event) {
+        if (longPressFiredTarget) {
+            const suppressedTarget = longPressFiredTarget;
+            longPressFiredTarget = null;
+            if (suppressedTarget.contains(event.target)) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        }
+    }, true);
+}
+
 /**
  * Registers a long-press (touch hold) event as an alternative to modifier+click.
  * Supports event delegation for dynamically created elements.
@@ -3149,37 +3208,6 @@ export function createTimeout(ms, errorMessage = '') {
  * @param {number} [delay=500] Long-press duration in ms
  */
 export function addLongPressEvent(selector, callback, delay = 500) {
-    let timer = null;
-    let fired = false;
-    let target = null;
-
-    document.addEventListener('touchstart', function (event) {
-        const el = event.target.closest(selector);
-        if (!el) return;
-        target = el;
-        fired = false;
-        timer = setTimeout(() => {
-            fired = true;
-            event.preventDefault();
-            callback.call(el, event);
-        }, delay);
-    }, { passive: false });
-
-    document.addEventListener('touchend', cancelTimer);
-    document.addEventListener('touchmove', cancelTimer);
-    document.addEventListener('touchcancel', cancelTimer);
-
-    document.addEventListener('click', function (event) {
-        if (fired && target && target.contains(event.target)) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            fired = false;
-            target = null;
-        }
-    }, true);
-
-    function cancelTimer() {
-        clearTimeout(timer);
-        timer = null;
-    }
+    ensureLongPressDelegatedListeners();
+    longPressRegistrations.push({ selector, callback, delay });
 }
