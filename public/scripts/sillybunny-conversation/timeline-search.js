@@ -1,5 +1,5 @@
 import { conversationState } from './state.js';
-import { getConversationAttachmentLabels, getConversationAttachmentSummary } from './thread-store.js';
+import { getConversationAttachmentLabels, getConversationAttachmentSummary } from './conversation-store.js';
 
 export function getConversationTimelineMessages(messages, { channel = conversationState.conversationTimelineChannel, query = conversationState.conversationTimelineSearchQuery } = {}) {
     const normalizedQuery = String(query || '').trim().toLowerCase();

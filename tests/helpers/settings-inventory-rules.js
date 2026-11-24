@@ -14,7 +14,7 @@ export const SKIP_SELECTORS = Object.freeze({
     'settings.backend.sampling': ['.openai_logit_bias_list', '.logit_bias_list'],
     'settings.backend.editor': ['#completion_prompt_manager_list', '.sb-prompt-box'],
     'settings.backend.agents': ['.ica-agents-group'],
-    'settings.conversation.panel': ['.sb-conversation-partner-list'],
+    'settings.conversation.panel': ['.sb-conversation-member-list'],
     'settings.customize.appearance': ['.bg_list'],
     'settings.customize.extensions': ['.sb-subpage-store'],
     'extension:extension_settings_in_chat_agents_pathfinder': ['#pf--lorebook-list'],

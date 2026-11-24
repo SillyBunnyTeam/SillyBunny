@@ -64,7 +64,7 @@ async function openConversation(page, baseURL) {
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
         const { stopConversationAutoWorker } = await import('/scripts/sillybunny-conversation/auto-engine.js');
-        const { appendConversationThreadMessage } = await import('/scripts/sillybunny-conversation/thread-store.js');
+        const { appendConversationChatMessage } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const { renderConversationTimeline } = await import('/scripts/sillybunny-conversation/timeline-render.js');
         const { getSettings, saveSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
         const context = window.SillyTavern.getContext();
@@ -73,7 +73,7 @@ async function openConversation(page, baseURL) {
         openConversationWorkspaceForAvatar(character.avatar, { showToast: false });
         stopConversationAutoWorker();
         saveSettings(character.avatar, { ...getSettings(character.avatar), editable_messages: true });
-        appendConversationThreadMessage(character.avatar, { role: 'assistant', name: 'Seraphina', mes: text, extra: {} });
+        appendConversationChatMessage(character.avatar, { role: 'assistant', name: 'Seraphina', mes: text, extra: {} });
         renderConversationTimeline();
     }, { text: MESSAGE_TEXT });
     const message = page.locator('.sb-conversation-message').filter({ hasText: MESSAGE_TEXT });

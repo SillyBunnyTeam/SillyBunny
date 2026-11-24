@@ -1030,7 +1030,7 @@ async function renameRecentConversationChat(avatarId, groupId, branchId, branchN
         }
 
         const conversationModule = await import('./sillybunny-conversation.js');
-        const renamed = conversationModule.renameConversationBranch?.(avatarId, branchId, newName, { groupId });
+        const renamed = conversationModule.renameConversationChat?.(avatarId, branchId, newName, { groupId }); // SillyBunny: Home renames and deletes Conversation mode chats through that module's exports.
         if (!renamed) {
             toastr.warning(t`Failed to rename Conversation chat`); // SillyBunny: no trailing period, by DESIGN.md
             return;
@@ -1063,7 +1063,7 @@ async function deleteRecentConversationChat(avatarId, groupId, branchId, recentC
         }
 
         const conversationModule = await import('./sillybunny-conversation.js');
-        const result = conversationModule.deleteConversationWelcomeBranch?.(avatarId, branchId, { groupId });
+        const result = conversationModule.deleteConversationWelcomeChat?.(avatarId, branchId, { groupId }); // SillyBunny: Home renames and deletes Conversation mode chats through that module's exports.
         const deleted = Boolean(result?.deleted);
         if (!deleted) {
             toastr.warning(t`Failed to delete Conversation chat`); // SillyBunny: no trailing period, by DESIGN.md

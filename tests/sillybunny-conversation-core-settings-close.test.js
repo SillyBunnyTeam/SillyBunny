@@ -37,7 +37,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialog
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
     CHROME_IDS: {
-        palsRail: 'pals-rail',
+        conversationList: 'pals-rail',
         settingsBackdrop: 'settings-backdrop',
         settingsDrawer: 'settings-drawer',
     },
@@ -48,10 +48,10 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/consta
     WEEKDAY_LABELS: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getActiveConversationBranch: () => null,
+    getActiveConversationChat: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? currentPersonaId : value || ''),
-    getConversationThreadStore: () => null,
+    getConversationRecord: () => null,
     getCurrentCharAvatar: () => 'roleplay.png',
     parsePositiveInt: value => Number(value) || 0,
     saveGroupConversationSettings: jest.fn(),
@@ -61,10 +61,10 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/interf
     saveCurrentPanelSettings,
     updateConversationChrome: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({ isConversationActiveThread: () => false }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({ getScheduleEditorTargets: () => [] }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({ isConversationActive: () => false }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({ getScheduleEditorTargets: () => [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pickers.js', () => ({
-    bindPartnerList: jest.fn(),
+    bindMemberList: jest.fn(),
     bindWeeklyScheduleEditor: jest.fn(),
     updateUserFooter: jest.fn(),
 }));
@@ -88,8 +88,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
     saveConversationMemorySummary: jest.fn(),
     saveSettings: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
-    getConversationThread: () => [],
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
+    getConversationMessages: () => [],
     hasConversationMessageContent: () => false,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-render.js', () => ({

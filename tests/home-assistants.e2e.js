@@ -153,20 +153,20 @@ const currentAvatar = page => page.evaluate(async () => {
 const reloadCharacters = page => page.evaluate(async () => (await import('/script.js')).getCharacters());
 
 /** Makes the thread of a character, which holds its first branch, so a test can count the branches that a click adds. */
-const startThread = (page, avatar) => page.evaluate(async (target) => {
-    const { getConversationThreadStore } = await import('/scripts/sillybunny-conversation/context.js');
-    getConversationThreadStore(target, { create: true });
+const startConversation = (page, avatar) => page.evaluate(async (target) => {
+    const { getConversationRecord } = await import('/scripts/sillybunny-conversation/context.js');
+    getConversationRecord(target, { create: true });
 }, avatar);
 
 const conversationOf = (page, avatar) => page.evaluate(async (target) => {
     const { conversationState } = await import('/scripts/sillybunny-conversation/state.js');
-    const { getConversationBranches, getConversationThreadStore } = await import('/scripts/sillybunny-conversation/context.js');
+    const { getConversationChats, getConversationRecord } = await import('/scripts/sillybunny-conversation/context.js');
     const { getSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
     return {
         open: Boolean(conversationState.conversationWorkspaceOpen),
         selected: conversationState.conversationSelectedAvatar,
-        branches: getConversationBranches(target).length,
-        active: getConversationThreadStore(target, { create: false })?.activeBranchId ?? null,
+        branches: getConversationChats(target).length,
+        active: getConversationRecord(target, { create: false })?.activeBranchId ?? null,
         enabled: Boolean(getSettings(target).enabled),
     };
 }, avatar);
@@ -508,7 +508,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         test.describe('New Chat in Conversation', () => {
             sizeFreeTest('makes a new branch of the thread, turns Conversation on for the character and opens it', async ({ page }) => {
                 const world = await boot(page, { library: BOTH, lastMode: 'conversation' });
-                await startThread(page, REISEN);
+                await startConversation(page, REISEN);
                 const before = await conversationOf(page, REISEN);
 
                 await startOf(cardOf(page, 'assistant-reisen')).click();
@@ -522,7 +522,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
             sizeFreeTest('a second New Chat is a second fresh branch, not the one before', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'conversation' });
-                await startThread(page, TEWI);
+                await startConversation(page, TEWI);
                 await overlayOf(cardOf(page, 'assistant-tewi')).click({ position: CARD_CORNER });
                 await expect.poll(() => conversationOf(page, TEWI)).toMatchObject({ open: true });
                 const first = await conversationOf(page, TEWI);
@@ -589,7 +589,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
         test.describe('New Chat in the other mode, from the Assistant Menu', () => {
             sizeFreeTest('opens a fresh Conversation when Roleplay was the last mode', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'roleplay' });
-                await startThread(page, REISEN);
+                await startConversation(page, REISEN);
                 const before = await conversationOf(page, REISEN);
 
                 await menuOf(cardOf(page, 'assistant-reisen')).click();
@@ -612,7 +612,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
             sizeFreeTest('a new Roleplay chat closes the Conversation workspace that is open', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'conversation' });
-                await startThread(page, REISEN);
+                await startConversation(page, REISEN);
                 await overlayOf(cardOf(page, 'assistant-reisen')).click();
                 await expect.poll(() => conversationOf(page, REISEN)).toMatchObject({ open: true });
                 // Home turns off a moment after the workspace opens, and a layout change closes an open menu.

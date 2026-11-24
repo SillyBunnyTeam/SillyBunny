@@ -35,12 +35,12 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'active.png' : value || ''),
     getConversationStore: () => ({}),
-    getConversationThreadKey: (avatar, groupId, { personaId } = {}) => {
+    getConversationKey: (avatar, groupId, { personaId } = {}) => {
         const raw = groupId ? `group:${groupId}:${avatar}` : avatar;
         return personaId ? `persona:${personaId}:${raw}` : raw;
     },
     getCurrentCharAvatar: () => 'char.png',
-    getRawConversationThreadKey: (avatar, groupId, personaId) => {
+    getRawConversationKey: (avatar, groupId, personaId) => {
         const raw = groupId ? `group:${groupId}:${avatar}` : avatar;
         return personaId ? `persona:${personaId}:${raw}` : raw;
     },

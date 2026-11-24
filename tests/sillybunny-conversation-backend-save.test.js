@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { SETTINGS_FILE } from '../src/constants.js';
-import { CONVERSATION_STORE_KEY, DEFAULT_BRANCH_ID } from '../public/scripts/sillybunny-conversation/constants.js';
+import { CONVERSATION_STORE_KEY, DEFAULT_CHAT_ID } from '../public/scripts/sillybunny-conversation/constants.js';
 
 const triggerAutoSave = jest.fn();
 await jest.unstable_mockModule('../src/endpoints/settings.js', () => ({ triggerAutoSave }));
@@ -64,7 +64,7 @@ describe('Conversation backend store commits', () => {
         const request = createRequest();
         const store = createStore();
         store.characters['nova.png'] = {
-            activeBranchId: DEFAULT_BRANCH_ID,
+            activeBranchId: DEFAULT_CHAT_ID,
             branches: [],
         };
 

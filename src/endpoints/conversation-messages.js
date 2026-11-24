@@ -4,13 +4,13 @@
  * Functions for creating, appending, and formatting conversation messages.
  */
 
-import { MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+import { MAX_CONVERSATION_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
 import { truncateConversationReplyPreview } from '../../public/scripts/sillybunny-conversation/preview-utils.js';
 import {
     getConversationAttachmentLabels,
     getConversationAttachmentSummary,
     hasConversationMessageContent,
-} from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
+} from '../../public/scripts/sillybunny-conversation/conversation-store-utils.js';
 import {
     getObject,
     isObject,
@@ -176,8 +176,8 @@ export function appendConversationMessage(store, avatar, messageInput, { groupId
     }
 
     branch.messages.push(message);
-    if (branch.messages.length > MAX_THREAD_MESSAGES) {
-        branch.messages.splice(0, branch.messages.length - MAX_THREAD_MESSAGES);
+    if (branch.messages.length > MAX_CONVERSATION_MESSAGES) {
+        branch.messages.splice(0, branch.messages.length - MAX_CONVERSATION_MESSAGES);
     }
     if (message.role === 'user') {
         branch.lastActivity = Date.now();

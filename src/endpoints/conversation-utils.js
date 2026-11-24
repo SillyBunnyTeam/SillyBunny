@@ -14,7 +14,7 @@ import path from 'node:path';
 import ipaddr from 'ipaddr.js';
 import mime from 'mime-types';
 
-import { MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+import { MAX_CONVERSATION_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
 import { isPathInside } from '../path-containment.js';
 
 // Validation constants
@@ -555,7 +555,7 @@ function validateStoredThread(threadStore, { strictMessages }) {
         if (branch.messages !== undefined && !Array.isArray(branch.messages)) {
             return { valid: false, error: 'invalid_branch_messages' };
         }
-        if (strictMessages && branch.messages?.length > MAX_THREAD_MESSAGES) {
+        if (strictMessages && branch.messages?.length > MAX_CONVERSATION_MESSAGES) {
             return { valid: false, error: 'too_many_thread_messages' };
         }
         const messageIds = new Set();

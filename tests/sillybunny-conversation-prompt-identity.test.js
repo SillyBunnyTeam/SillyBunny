@@ -1,7 +1,7 @@
 /* global globalThis */
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-const branch = {
+const chat = {
     id: 'branch-a',
     memoryMessageCount: 0,
     messages: Array.from({ length: 24 }, (_, index) => ({
@@ -11,9 +11,9 @@ const branch = {
         mes: `message ${index}`,
     })),
 };
-const threadStore = {
+const conversationRecord = {
     activeBranchId: 'branch-a',
-    branches: { 'branch-a': branch },
+    branches: { 'branch-a': chat },
     memoryMessageCount: 100,
 };
 const composeConversationPersonaDescription = jest.fn(() => 'captured persona appendix');
@@ -28,11 +28,11 @@ await jest.unstable_mockModule('../public/scripts/constants.js', () => ({ MEDIA_
 await jest.unstable_mockModule('../public/scripts/personas.js', () => ({ user_avatar: 'persona-b.png' }));
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ power_user: { persona_description: 'active persona fallback' } }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getActiveConversationBranch: () => branch,
+    getActiveConversationChat: () => chat,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-b.png' : value || ''),
-    getConversationThreadKey: (_avatar, groupId, { personaId }) => `persona:${personaId}:${groupId || 'solo'}`,
-    getConversationThreadStore: () => threadStore,
+    getConversationKey: (_avatar, groupId, { personaId }) => `persona:${personaId}:${groupId || 'solo'}`,
+    getConversationRecord: () => conversationRecord,
     getCurrentCharAvatar: () => 'char.png',
     getCurrentCharName: () => 'Aster',
     parsePositiveInt: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
@@ -72,7 +72,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
     memorySummaryBusyAvatars: new Set(),
     memorySummaryTimers: new Map(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     getConversationAttachmentSummary: () => '',
     getConversationFileAttachments: () => [],
     getConversationMediaAttachments: () => [],
@@ -89,7 +89,7 @@ const {
 
 describe('conversation prompt captured identity', () => {
     beforeEach(() => {
-        branch.messages.forEach((message, index) => {
+        chat.messages.forEach((message, index) => {
             message.mes = `message ${index}`;
         });
         composeConversationPersonaDescription.mockClear();
@@ -103,10 +103,10 @@ describe('conversation prompt captured identity', () => {
 
     test('uses captured persona appendix scope and related memory without active-persona fallback', () => {
         const prompt = buildConversationSystemPrompt({ include_related_memory: true }, 'char.png', {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
-            threadAvatar: 'char.png',
+            anchorAvatar: 'char.png',
         });
 
         expect(prompt).toContain('captured persona appendix');
@@ -121,15 +121,15 @@ describe('conversation prompt captured identity', () => {
         expect(getConversationGroupMemorySummaries).toHaveBeenCalledWith('char.png', { max: 4, personaId: 'persona-a.png' });
 
         const groupPrompt = buildConversationSystemPrompt({ include_related_memory: true }, 'char.png', {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: 'group-a',
             personaId: 'persona-a.png',
-            threadAvatar: 'char.png',
+            anchorAvatar: 'char.png',
         });
         expect(groupPrompt).toContain('captured solo memory');
         expect(getConversationSoloMemorySummary).toHaveBeenCalledWith('char.png', { personaId: 'persona-a.png' });
         expect(getConversationParticipants).toHaveBeenLastCalledWith('char.png', expect.any(Object), {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: 'group-a',
             personaId: 'persona-a.png',
         });
@@ -137,7 +137,7 @@ describe('conversation prompt captured identity', () => {
 
     test('uses selected branch memory count instead of the thread-level count', async () => {
         await expect(updateConversationMemorySummary('char.png', {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
         })).resolves.toBe(true);
@@ -145,7 +145,7 @@ describe('conversation prompt captured identity', () => {
         expect(generateConversationRaw).toHaveBeenCalledTimes(1);
         expect(generateConversationRaw.mock.calls[0][0].prompt).toContain('Captured User');
         expect(saveConversationMemorySummary).toHaveBeenCalledWith('char.png', 'new branch summary', 24, {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
         });
@@ -158,11 +158,11 @@ describe('conversation prompt captured identity', () => {
         }));
 
         const update = updateConversationMemorySummary('char.png', {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
         });
-        branch.messages[0].mes = 'edited while summarizing';
+        chat.messages[0].mes = 'edited while summarizing';
         resolveGeneration('stale summary');
 
         await expect(update).resolves.toBe(false);

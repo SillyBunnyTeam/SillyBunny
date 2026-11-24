@@ -186,8 +186,8 @@ async function openConversation(page, { group = false } = {}) {
                 throw new Error(`The audit group ${groupName} is not on the server.`);
             }
         }
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
-        saveConversationThread(avatar, messages, { groupId });
+        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
+        saveConversationMessages(avatar, messages, { groupId });
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
         if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true, groupId })) {
             throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
@@ -207,10 +207,10 @@ async function closeConversation(page) {
 async function openConversationSidebar(page) {
     await openConversation(page);
     if (await isConversationPages(page)) {
-        await page.locator('#sb_conversation_pals_toggle').click();
-        await page.locator('#sheld[data-sb-conversation-page="pals"]').waitFor();
+        await page.locator('#sb_conversation_list_toggle').click();
+        await page.locator('#sheld[data-sb-conversation-page="list"]').waitFor();
     }
-    await shown(page, '#sb_conversation_pals_rail .sb-conversation-rail-header');
+    await shown(page, '#sb_conversation_list .sb-conversation-rail-header');
     await settle(page);
 }
 
@@ -465,8 +465,8 @@ export const surfaces = [
         family: 'header',
         owner: 'A',
         title: 'Conversation: sidebar header',
-        root: '#sb_conversation_pals_rail .sb-conversation-rail-header',
-        ready: ['#sb_conversation_pals_rail .sb-conversation-rail-title', '#sb_conversation_pals_rail .sb-conversation-rail-new-button'],
+        root: '#sb_conversation_list .sb-conversation-rail-header',
+        ready: ['#sb_conversation_list .sb-conversation-rail-title', '#sb_conversation_list .sb-conversation-rail-new-button'],
         open: openConversationSidebar,
         close: closeConversation,
         needs: ['character'],

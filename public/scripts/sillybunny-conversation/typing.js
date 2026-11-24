@@ -1,22 +1,22 @@
 import { DEFAULT_REPLY_DELAY_MULTIPLIER, DEFAULT_SETTINGS, DEFAULT_TALKATIVENESS, STATUS_NOTICE_COOLDOWN_MS } from './constants.js';
 import {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
-    getConversationThreadKey,
+    getConversationRecord,
+    getConversationKey,
     getCurrentCharAvatar,
     parsePositiveInt,
     persistConversationStore,
 } from './context.js';
 import { getCharacterForAvatar } from './media.js';
-import { isConversationActiveThread, updateConversationNotificationIndicators } from './notifications.js';
+import { isConversationActive, updateConversationNotificationIndicators } from './notifications.js';
 import { getAvailabilityCopy } from './personas.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getConversationSessionMarker, getLastUserActivity, setConversationSessionMarker } from './settings-store.js';
 import { activeTypingParticipants } from './state.js';
-import { appendConversationThreadMessage, getConversationMessagePreviewText, getConversationThread, hasConversationMessageContent } from './thread-store.js';
+import { appendConversationChatMessage, getConversationMessagePreviewText, getConversationMessages, hasConversationMessageContent } from './conversation-store.js';
 
 export function getConversationActivityContext(settings, avatar, now = new Date(), { personaId = getConversationPersonaId() } = {}) {
     const schedule = getStoredSchedule(avatar, { personaId });
@@ -45,61 +45,61 @@ export function getReplyDelayMs(messageText, settings, avatar, { personaId = get
     return Math.min(9000, Math.max(350, Math.round(delay)));
 }
 
-export async function waitForReplyDelay(messageText, settings, avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export async function waitForReplyDelay(messageText, settings, avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const delay = getReplyDelayMs(messageText, settings, avatar, { personaId });
     if (delay <= 0) {
         return;
     }
 
-    if (isConversationActiveThread(avatar, groupId, { branchId, personaId })) {
+    if (isConversationActive(avatar, groupId, { chatId, personaId })) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
     await new Promise(resolve => setTimeout(resolve, delay));
 }
 
-export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { branchId = '', create = false, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const threadAvatar = avatar || getCurrentCharAvatar();
-    if (!threadAvatar) {
+export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { chatId = '', create = false, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const anchorAvatar = avatar || getCurrentCharAvatar();
+    if (!anchorAvatar) {
         return null;
     }
 
-    const storageKey = getConversationThreadKey(threadAvatar, groupId || '', { personaId });
-    const resolvedBranchId = branchId || getConversationThreadStore(threadAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
-    const threadKey = resolvedBranchId ? `${storageKey}:${resolvedBranchId}` : storageKey;
-    if (!threadKey) {
+    const storageKey = getConversationKey(anchorAvatar, groupId || '', { personaId });
+    const resolvedChatId = chatId || getConversationRecord(anchorAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const conversationKey = resolvedChatId ? `${storageKey}:${resolvedChatId}` : storageKey;
+    if (!conversationKey) {
         return null;
     }
 
-    let participantMap = activeTypingParticipants.get(threadKey);
+    let participantMap = activeTypingParticipants.get(conversationKey);
     if (!participantMap && create) {
         participantMap = new Map();
-        activeTypingParticipants.set(threadKey, participantMap);
+        activeTypingParticipants.set(conversationKey, participantMap);
     }
 
     return participantMap || null;
 }
 
-export function getActiveTypingParticipants(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const participantMap = getTypingParticipantMap(avatar, { branchId, groupId, personaId });
+export function getActiveTypingParticipants(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const participantMap = getTypingParticipantMap(avatar, { chatId, groupId, personaId });
     return participantMap ? Array.from(participantMap.values()).filter(participant => participant?.avatar) : [];
 }
 
-export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const participants = getActiveTypingParticipants(avatar, { branchId, groupId, personaId });
+export function getPrimaryTypingParticipant(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const participants = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });
     return participants.length ? participants[participants.length - 1] : null;
 }
 
-export async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const threadAvatar = avatar || getCurrentCharAvatar();
-    const participantAvatar = participant?.avatar || threadAvatar;
-    const participantMap = getTypingParticipantMap(threadAvatar, { branchId, create: true, groupId, personaId });
+export async function withTypingParticipant(participant, task, avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const anchorAvatar = avatar || getCurrentCharAvatar();
+    const participantAvatar = participant?.avatar || anchorAvatar;
+    const participantMap = getTypingParticipantMap(anchorAvatar, { chatId, create: true, groupId, personaId });
     const previousTypingParticipant = participantMap?.get(participantAvatar) || null;
     if (participantMap && participantAvatar) {
         participantMap.set(participantAvatar, participant || { avatar: participantAvatar, name: 'Character' });
     }
 
-    const isThreadActive = isConversationActiveThread(threadAvatar, groupId, { branchId, personaId });
-    if (isThreadActive) {
+    const isActive = isConversationActive(anchorAvatar, groupId, { chatId, personaId });
+    if (isActive) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
     try {
@@ -111,20 +111,20 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
             } else {
                 participantMap.delete(participantAvatar);
             }
-            const storageKey = getConversationThreadKey(threadAvatar, groupId || '', { personaId });
-            const resolvedBranchId = branchId || getConversationThreadStore(threadAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
-            const threadKey = resolvedBranchId ? `${storageKey}:${resolvedBranchId}` : storageKey;
-            if (!participantMap.size && threadKey) {
-                activeTypingParticipants.delete(threadKey);
+            const storageKey = getConversationKey(anchorAvatar, groupId || '', { personaId });
+            const resolvedChatId = chatId || getConversationRecord(anchorAvatar, { create: false, groupId, personaId })?.activeBranchId || '';
+            const conversationKey = resolvedChatId ? `${storageKey}:${resolvedChatId}` : storageKey;
+            if (!participantMap.size && conversationKey) {
+                activeTypingParticipants.delete(conversationKey);
             }
         }
-        if (isConversationActiveThread(threadAvatar, groupId, { branchId, personaId })) {
+        if (isConversationActive(anchorAvatar, groupId, { chatId, personaId })) {
             scheduleInterfaceRefresh({ syncControls: false });
         }
     }
 }
 
-export function maybePostDelayedReplyNotice(avatar, settings, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), statusAvatar = avatar } = {}) {
+export function maybePostDelayedReplyNotice(avatar, settings, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), statusAvatar = avatar } = {}) {
     const current = getConversationActivityContext(settings, statusAvatar, new Date(), { personaId });
     if (current.source === 'manual' && ['dnd', 'offline'].includes(settings?.availability)) {
         return;
@@ -133,9 +133,9 @@ export function maybePostDelayedReplyNotice(avatar, settings, { branchId = '', g
         return;
     }
 
-    const lastUserActivity = getLastUserActivity(avatar, Date.now(), { branchId, groupId, personaId });
+    const lastUserActivity = getLastUserActivity(avatar, Date.now(), { chatId, groupId, personaId });
     const markerKey = 'sb_conv_busy_reply_notice';
-    const markerValue = getConversationSessionMarker(avatar, markerKey, { branchId, groupId, personaId });
+    const markerValue = getConversationSessionMarker(avatar, markerKey, { chatId, groupId, personaId });
     const markerTime = parsePositiveInt(markerValue.split(':')[1], 0, 0);
     if (markerTime > 0 && Date.now() - markerTime < STATUS_NOTICE_COOLDOWN_MS) {
         return;
@@ -143,13 +143,13 @@ export function maybePostDelayedReplyNotice(avatar, settings, { branchId = '', g
 
     const character = getCharacterForAvatar(statusAvatar);
     const charName = character?.name || 'This character';
-    appendConversationThreadMessage(avatar, {
+    appendConversationChatMessage(avatar, {
         role: 'system',
         name: 'Status',
         mes: `${charName} is ${current.activity} right now. Replies may take a little longer.`,
         extra: { conversation_mode_notice: true, availability: current.status, partner_avatar: statusAvatar },
-    }, { branchId, create: !branchId, groupId, personaId });
-    setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { branchId, groupId, personaId });
+    }, { chatId, create: !chatId, groupId, personaId });
+    setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { chatId, groupId, personaId });
 }
 
 export function stripPreviewText(messageText) {
@@ -168,34 +168,34 @@ export function splitChatroomMessages(text) {
     return parts.length ? parts : [String(text || '').trim()].filter(Boolean);
 }
 
-export function setLastConversationPreview(avatar, messageText, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function setLastConversationPreview(avatar, messageText, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const preview = stripPreviewText(messageText);
     if (!avatar || !preview) {
         return;
     }
 
-    const branch = getActiveConversationBranch(avatar, { branchId, create: !branchId, groupId, personaId });
+    const chat = getActiveConversationChat(avatar, { chatId, create: !chatId, groupId, personaId });
     // Opening a thread re-derives its preview; an unchanged preview must not bump updatedAt.
-    if (branch && branch.preview !== preview) {
-        branch.preview = preview;
-        branch.updatedAt = Date.now();
+    if (chat && chat.preview !== preview) {
+        chat.preview = preview;
+        chat.updatedAt = Date.now();
         persistConversationStore();
     }
 }
 
 export function getLastConversationPreview(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    return getActiveConversationBranch(avatar, { create: false, groupId, personaId })?.preview || 'Conversation ready';
+    return getActiveConversationChat(avatar, { create: false, groupId, personaId })?.preview || 'Conversation ready';
 }
 
-export function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function updateLastPreviewFromConversation(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const messages = getConversationThread(avatar, { branchId, create: !branchId, groupId, personaId });
+    const messages = getConversationMessages(avatar, { chatId, create: !chatId, groupId, personaId });
     const message = [...messages].reverse().find(hasConversationMessageContent);
     if (message) {
-        setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { branchId, groupId, personaId });
+        setLastConversationPreview(avatar, getConversationMessagePreviewText(message), { chatId, groupId, personaId });
     }
 
     updateConversationNotificationIndicators();

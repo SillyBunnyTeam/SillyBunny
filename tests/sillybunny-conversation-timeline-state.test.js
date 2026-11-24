@@ -6,7 +6,7 @@ let currentPersonaId = 'persona-a.png';
 const stores = new Map();
 const extractCharacterReplyCommands = jest.fn(rawText => ({ text: String(rawText || '').trim(), selfieRequests: [] }));
 const generateConversationRaw = jest.fn();
-const saveConversationThread = jest.fn();
+const saveConversationMessages = jest.fn();
 const commitCharacterReplyCommands = jest.fn();
 const buildConversationPromptMessages = jest.fn(async () => []);
 const buildConversationSystemPrompt = jest.fn(() => '');
@@ -52,16 +52,16 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-editor/rows.js', ()
 await jest.unstable_mockModule('../public/scripts/sillybunny-editor/select-row.js', () => ({ createSelectRow: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    createConversationBranch: (name, id = 'new-branch') => ({ id, name, messages: [] }),
-    getActiveConversationBranch: (avatar, options = {}) => {
+    buildConversationChat: (name, id = 'new-named-chat') => ({ id, name, messages: [] }),
+    getActiveConversationChat: (avatar, options = {}) => {
         const store = getStore(avatar, options.groupId || '', options.personaId || currentPersonaId);
-        return store?.branches?.[options.branchId || store.activeBranchId] || null;
+        return store?.branches?.[options.chatId || store.activeBranchId] || null;
     },
-    getConversationBranches: avatar => Object.values(getStore(avatar, '', currentPersonaId)?.branches || {}),
+    getConversationChats: avatar => Object.values(getStore(avatar, '', currentPersonaId)?.branches || {}),
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? currentPersonaId : value || ''),
-    getConversationThreadStore: (avatar, options = {}) => getStore(avatar, options.groupId || '', options.personaId || currentPersonaId),
+    getConversationRecord: (avatar, options = {}) => getStore(avatar, options.groupId || '', options.personaId || currentPersonaId),
     getCurrentCharAvatar: () => currentAvatar,
     getCurrentCharName: () => 'Aster',
     persistConversationStore: jest.fn(),
@@ -80,11 +80,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.
     getConversationParticipants: () => [],
     getEffectiveConversationStatus: () => 'online',
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     getConversationMessageAvatar: () => '',
     getConversationMessageReceipt: () => '',
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partners.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
     escapeRegExp: value => value,
     getCharacterMentionHandles: () => [],
     parseAvatarList: () => [],
@@ -98,7 +98,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     registerConversationRenderer: jest.fn(),
     scheduleInterfaceRefresh: jest.fn(),
-    schedulePalsRailRender: jest.fn(),
+    scheduleConversationListRender: jest.fn(),
     scheduleTimelineRender: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-utils.js', () => ({
@@ -118,7 +118,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeli
     quickConversationSummarize: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/tts.js', () => ({ narrateConversationMessage: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     addConversationReminder: jest.fn(),
     buildConversationMessageReplyReference: message => ({
         messageId: message.id,
@@ -129,11 +129,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread
     getConversationAttachmentSummary: () => '',
     getConversationMessagePreviewText: message => message?.mes || '',
     getConversationSeenAt: () => 0,
-    getConversationThread: (avatar, options = {}) => {
+    getConversationMessages: (avatar, options = {}) => {
         const store = getStore(avatar, options.groupId || '', options.personaId || currentPersonaId);
-        return store?.branches?.[options.branchId || store.activeBranchId]?.messages || [];
+        return store?.branches?.[options.chatId || store.activeBranchId]?.messages || [];
     },
-    saveConversationThread,
+    saveConversationMessages,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],
@@ -193,7 +193,7 @@ describe('conversation timeline operation identity', () => {
         });
         generateConversationRaw.mockReset();
         extractCharacterReplyCommands.mockReset().mockImplementation(rawText => ({ text: String(rawText || '').trim(), selfieRequests: [] }));
-        saveConversationThread.mockClear();
+        saveConversationMessages.mockClear();
         commitCharacterReplyCommands.mockClear();
         buildConversationPromptMessages.mockClear();
         buildConversationSystemPrompt.mockClear();
@@ -211,7 +211,7 @@ describe('conversation timeline operation identity', () => {
     test('isolates and clears reply targets when persona or branch changes', () => {
         stateModule.conversationState.conversationReplyTarget = {
             avatar: 'char.png',
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
             messageId: 'message-1',
@@ -225,7 +225,7 @@ describe('conversation timeline operation identity', () => {
 
         stateModule.conversationState.conversationReplyTarget = {
             avatar: 'char.png',
-            branchId: 'branch-b',
+            chatId: 'branch-b',
             groupId: '',
             personaId: 'persona-a.png',
             messageId: 'branch-b-message',
@@ -285,7 +285,7 @@ describe('conversation timeline operation identity', () => {
         await run;
 
         expect(message.mes).toBe('edited while generating');
-        expect(saveConversationThread).not.toHaveBeenCalled();
+        expect(saveConversationMessages).not.toHaveBeenCalled();
     });
 
     test('drops a regeneration completion after preceding prompt context changes', async () => {
@@ -299,7 +299,7 @@ describe('conversation timeline operation identity', () => {
         await run;
 
         expect(messages[1].mes).toBe('message message-2');
-        expect(saveConversationThread).not.toHaveBeenCalled();
+        expect(saveConversationMessages).not.toHaveBeenCalled();
         expect(extractCharacterReplyCommands).not.toHaveBeenCalled();
     });
 
@@ -382,18 +382,18 @@ describe('conversation timeline operation identity', () => {
         };
         stores.get(storeKey('persona-a.png', 'char.png')).branches['branch-a'].messages = [];
         stores.get(storeKey('persona-b.png', 'char.png')).branches['branch-b'].messages = [];
-        stateModule.conversationState.lastRenderedThreadKey = '';
+        stateModule.conversationState.lastRenderedConversationKey = '';
         stateModule.conversationState.lastRenderedMessageCount = 0;
         stateModule.conversationState.lastTimelineFingerprint = '';
 
         renderConversationTimeline();
-        const personaAThreadKey = stateModule.conversationState.lastRenderedThreadKey;
+        const personaAConversationKey = stateModule.conversationState.lastRenderedConversationKey;
         currentPersonaId = 'persona-b.png';
         renderConversationTimeline();
 
-        expect(personaAThreadKey).toContain('persona-a.png');
-        expect(stateModule.conversationState.lastRenderedThreadKey).toContain('persona-b.png');
-        expect(stateModule.conversationState.lastRenderedThreadKey).not.toBe(personaAThreadKey);
+        expect(personaAConversationKey).toContain('persona-a.png');
+        expect(stateModule.conversationState.lastRenderedConversationKey).toContain('persona-b.png');
+        expect(stateModule.conversationState.lastRenderedConversationKey).not.toBe(personaAConversationKey);
     });
 });
 

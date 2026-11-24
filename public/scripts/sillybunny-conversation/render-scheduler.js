@@ -1,4 +1,4 @@
-const RENDER_ORDER = ['interface', 'timeline', 'palsRail'];
+const RENDER_ORDER = ['interface', 'timeline', 'conversationList'];
 
 const registeredRenderers = new Map();
 const pendingRenderers = new Set();
@@ -51,7 +51,7 @@ function scheduleRenderer(name) {
 export function scheduleInterfaceRefresh({ syncControls = false } = {}) {
     pendingInterfaceSyncControls = pendingInterfaceSyncControls || Boolean(syncControls);
     pendingRenderers.delete('timeline');
-    pendingRenderers.delete('palsRail');
+    pendingRenderers.delete('conversationList');
     scheduleRenderer('interface');
 }
 
@@ -59,8 +59,8 @@ export function scheduleTimelineRender() {
     scheduleRenderer('timeline');
 }
 
-export function schedulePalsRailRender() {
-    scheduleRenderer('palsRail');
+export function scheduleConversationListRender() {
+    scheduleRenderer('conversationList');
 }
 
 /**

@@ -30,16 +30,16 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
         conversationWorkspaceOpen: false,
     },
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({ safeParseThread: value => value }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({ safeParseMessages: value => value }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 
 const {
-    deleteConversationBranch,
-    deleteConversationWelcomeBranch,
-    getConversationGroupThreadAnchor,
+    deleteConversationChat,
+    deleteConversationWelcomeChat,
+    getConversationGroupAnchor,
     getConversationStore,
     normalizeGroupConversationSettings,
-    resetCharacterConversationBranches,
+    resetCharacterConversationChats,
 } = await import('../public/scripts/sillybunny-conversation/context.js');
 
 function createStore(overrides = {}) {
@@ -94,7 +94,7 @@ describe('Conversation core persisted data regressions', () => {
             disabled_members: ['disabled.png'],
             conversation_settings: {},
         };
-        const persistedThread = {
+        const persistedConversation = {
             activeBranchId: 'main',
             branches: { main: { id: 'main', messages: [{ id: 'group-message' }], updatedAt: 20 } },
             settings: {},
@@ -107,15 +107,15 @@ describe('Conversation core persisted data regressions', () => {
                     branches: { main: { id: 'main', messages: [{ id: 'solo-message' }], updatedAt: 50 } },
                     settings: {},
                 },
-                'persona:persona-a.png:group:group-a:persisted.png': persistedThread,
+                'persona:persona-a.png:group:group-a:persisted.png': persistedConversation,
             },
         });
 
-        const anchor = getConversationGroupThreadAnchor(group, { personaId: 'persona-a.png' });
+        const anchor = getConversationGroupAnchor(group, { personaId: 'persona-a.png' });
 
         expect(anchor.avatar).toBe('persisted.png');
         expect(anchor.key).toBe('persona:persona-a.png:group:group-a:persisted.png');
-        expect(anchor.threadStore).toBe(persistedThread);
+        expect(anchor.conversationRecord).toBe(persistedConversation);
     });
 
     test('falls back to the first enabled group member when no group thread exists', () => {
@@ -131,10 +131,10 @@ describe('Conversation core persisted data regressions', () => {
         };
         extensionSettings.sillybunny_conversation = createStore({ groups: [group] });
 
-        expect(getConversationGroupThreadAnchor(group, { personaId: 'persona-a.png' })).toMatchObject({
+        expect(getConversationGroupAnchor(group, { personaId: 'persona-a.png' })).toMatchObject({
             avatar: 'enabled.png',
             key: 'persona:persona-a.png:group:group-a:enabled.png',
-            threadStore: null,
+            conversationRecord: null,
         });
     });
 
@@ -148,7 +148,7 @@ describe('Conversation core persisted data regressions', () => {
             disabled_members: ['disabled.png'],
             conversation_settings: {},
         };
-        const makeThread = (id, unread, updatedAt) => ({
+        const makeConversation = (id, unread, updatedAt) => ({
             activeBranchId: 'main',
             branches: {
                 main: {
@@ -164,28 +164,28 @@ describe('Conversation core persisted data regressions', () => {
         extensionSettings.sillybunny_conversation = createStore({
             groups: [group],
             characters: {
-                'persona:persona-a.png:group:group-a:disabled.png': makeThread('from-disabled', 2, 10),
-                'persona:persona-a.png:group:group-a:enabled.png': makeThread('from-enabled', 3, 30),
-                'persona:persona-a.png:group:group-a:missing.png': makeThread('from-missing', 4, 20),
+                'persona:persona-a.png:group:group-a:disabled.png': makeConversation('from-disabled', 2, 10),
+                'persona:persona-a.png:group:group-a:enabled.png': makeConversation('from-enabled', 3, 30),
+                'persona:persona-a.png:group:group-a:missing.png': makeConversation('from-missing', 4, 20),
             },
         });
 
-        const anchor = getConversationGroupThreadAnchor(group, { personaId: 'persona-a.png' });
+        const anchor = getConversationGroupAnchor(group, { personaId: 'persona-a.png' });
         const store = getConversationStore();
 
         expect(anchor.avatar).toBe('enabled.png');
         expect(Object.keys(store.characters)).toEqual(['persona:persona-a.png:group:group-a:enabled.png']);
-        expect(anchor.threadStore.branches.main.messages.map(message => message.id)).toEqual([
+        expect(anchor.conversationRecord.branches.main.messages.map(message => message.id)).toEqual([
             'from-disabled',
             'from-missing',
             'from-enabled',
         ]);
-        expect(anchor.threadStore.branches.main.unread).toBe(9);
+        expect(anchor.conversationRecord.branches.main.unread).toBe(9);
         expect(saveSettingsDebounced).toHaveBeenCalled();
     });
 
     test('seeds reset branches from retained thread memory', () => {
-        const threadStore = {
+        const conversationRecord = {
             activeBranchId: 'only',
             branches: {
                 only: { id: 'only', memorySummary: 'Durable memory', messages: [{ id: 'old-message' }] },
@@ -196,20 +196,20 @@ describe('Conversation core persisted data regressions', () => {
             settings: {},
         };
         extensionSettings.sillybunny_conversation = createStore({
-            characters: { 'persona:persona-a.png:char.png': threadStore },
+            characters: { 'persona:persona-a.png:char.png': conversationRecord },
         });
 
-        expect(deleteConversationBranch('char.png', 'only', { groupId: '', personaId: 'persona-a.png' })).toBe(true);
-        expect(threadStore.branches.only.messages).toEqual([]);
-        expect(threadStore.branches.only.memorySummary).toBe('Durable memory');
+        expect(deleteConversationChat('char.png', 'only', { groupId: '', personaId: 'persona-a.png' })).toBe(true);
+        expect(conversationRecord.branches.only.messages).toEqual([]);
+        expect(conversationRecord.branches.only.memorySummary).toBe('Durable memory');
 
-        resetCharacterConversationBranches('char.png', { groupId: '', personaId: 'persona-a.png' });
-        expect(threadStore.branches.main.memorySummary).toBe('Durable memory');
+        resetCharacterConversationChats('char.png', { groupId: '', personaId: 'persona-a.png' });
+        expect(conversationRecord.branches.main.memorySummary).toBe('Durable memory');
         expect(getConversationStore().characters['persona:persona-a.png:char.png'].memorySummary).toBe('Durable memory');
     });
 
     test('reports when deleting a welcome branch resets the sole thread', () => {
-        const threadStore = {
+        const conversationRecord = {
             activeBranchId: 'only',
             branches: {
                 only: { id: 'only', messages: [{ id: 'old-message' }] },
@@ -217,13 +217,13 @@ describe('Conversation core persisted data regressions', () => {
             settings: {},
         };
         extensionSettings.sillybunny_conversation = createStore({
-            characters: { 'persona:persona-a.png:char.png': threadStore },
+            characters: { 'persona:persona-a.png:char.png': conversationRecord },
         });
 
-        expect(deleteConversationWelcomeBranch('char.png', 'only', { personaId: 'persona-a.png' })).toEqual({
+        expect(deleteConversationWelcomeChat('char.png', 'only', { personaId: 'persona-a.png' })).toEqual({
             deleted: true,
             reset: true,
         });
-        expect(threadStore.branches.only.messages).toEqual([]);
+        expect(conversationRecord.branches.only.messages).toEqual([]);
     });
 });

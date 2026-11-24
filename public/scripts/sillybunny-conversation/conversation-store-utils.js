@@ -45,10 +45,10 @@ export function hasConversationMessageContent(message) {
     );
 }
 
-export function resolveConversationReminderBranchId(reminder, threadStore) {
-    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
-    const branchId = String(reminder?.branchId || threadStore?.activeBranchId || '').trim();
-    return branchId && branches[branchId] ? branchId : '';
+export function resolveConversationReminderChatId(reminder, conversationRecord) {
+    const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? conversationRecord.branches : {};
+    const chatId = String(reminder?.branchId || conversationRecord?.activeBranchId || '').trim();
+    return chatId && branches[chatId] ? chatId : '';
 }
 
 export function normalizeConversationStoredMessage(message, index = 0, now = Date.now()) {
@@ -94,7 +94,7 @@ export function getConversationAttachmentSummary(message) {
     return labels.length ? `[Attachments: ${labels.join('; ')}]` : '';
 }
 
-export function safeParseThread(stored) {
+export function safeParseMessages(stored) {
     if (!stored) {
         return [];
     }

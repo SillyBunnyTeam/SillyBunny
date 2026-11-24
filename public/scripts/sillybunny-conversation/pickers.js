@@ -6,22 +6,22 @@ import {
     name1,
 } from '../../script.js';
 import { user_avatar } from '../personas.js';
-import { runConversationAction, selectConversationThread } from './chrome.js';
+import { runConversationAction, selectConversation } from './chrome.js';
 import { MENU_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
-import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
+import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_CHAT_ID, WEEKDAY_LABELS } from './constants.js';
 import {
-    createConversationBranch,
+    buildConversationChat,
     createConversationGroupRecord,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
-    getConversationThreadStore,
+    getConversationRecord,
     getCurrentCharAvatar,
     getDefaultGroupConversationSettings,
-    normalizeConversationBranch,
+    normalizeConversationChat,
     persistConversationStore,
 } from './context.js';
 import { saveCurrentPanelSettings } from './interface.js';
@@ -34,9 +34,9 @@ import {
     getUserStatus,
     safeParseWeeklySchedule,
 } from './personas.js';
-import { schedulePalsRailRender } from './render-scheduler.js';
+import { scheduleConversationListRender } from './render-scheduler.js';
 import { escapeHtmlAttribute } from './render-utils.js';
-import { closePalsRail } from './settings-panel.js';
+import { closeConversationList } from './settings-panel.js';
 import { conversationState } from './state.js';
 
 export function renderWeeklyScheduleEditor(container, scheduleJson) {
@@ -110,14 +110,14 @@ export function readWeeklyScheduleFromEditor() {
     return JSON.stringify(entries);
 }
 
-export function readPartnersFromList(listId) {
+export function readMembersFromList(listId) {
     const list = document.getElementById(listId);
     if (!(list instanceof HTMLElement)) {
         return '';
     }
 
     const checked = [];
-    list.querySelectorAll('.sb-conversation-partner-checkbox:checked').forEach((cb) => {
+    list.querySelectorAll('.sb-conversation-member-checkbox:checked').forEach((cb) => {
         if (cb instanceof HTMLInputElement && cb.value) {
             checked.push(cb.value);
         }
@@ -125,8 +125,8 @@ export function readPartnersFromList(listId) {
     return checked.join(', ');
 }
 
-export function readChimingPartnersFromList() {
-    return readPartnersFromList('sb_conv_chiming_partner_list');
+export function readChimingMembersFromList() {
+    return readMembersFromList('sb_conv_chiming_member_list');
 }
 
 // Pickers are bottom sheets under the menu condition, like every other menu (sillybunny-conversation.css repeats it).
@@ -430,8 +430,8 @@ export function renderConversationPersonaPicker(picker) {
 function renderPersonaOptions(picker) {
     picker.innerHTML = '';
     const personas = getPersonaOptions();
-    const threadAvatar = getCurrentCharAvatar();
-    const groupId = getConversationGroupIdForAvatar(threadAvatar);
+    const anchorAvatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(anchorAvatar);
     if (!personas.length) {
         picker.append(createStatusPage({ state: 'empty', title: 'No Personas Configured', compact: true }).element);
         return;
@@ -464,7 +464,7 @@ function renderPersonaOptions(picker) {
         const appendices = getConversationPersonaAppendices(avatarId);
         if (appendices.length) {
             const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId, {
-                avatar: threadAvatar,
+                avatar: anchorAvatar,
                 groupId,
                 personaId: avatarId,
             }));
@@ -530,7 +530,7 @@ export function bindWeeklyScheduleEditor() {
     }
 }
 
-export function bindPartnerList(listId, searchId) {
+export function bindMemberList(listId, searchId) {
     const list = document.getElementById(listId);
     if (!(list instanceof HTMLElement) || list.dataset.sbConversationBound === 'true') {
         return;
@@ -539,7 +539,7 @@ export function bindPartnerList(listId, searchId) {
     list.dataset.sbConversationBound = 'true';
     list.addEventListener('change', (event) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('.sb-conversation-partner-checkbox')) {
+        if (target?.closest('.sb-conversation-member-checkbox')) {
             saveCurrentPanelSettings();
         }
     });
@@ -548,7 +548,7 @@ export function bindPartnerList(listId, searchId) {
     if (searchInput instanceof HTMLInputElement) {
         searchInput.addEventListener('input', () => {
             const query = searchInput.value.toLowerCase().trim();
-            const options = list.querySelectorAll('.sb-conversation-partner-option');
+            const options = list.querySelectorAll('.sb-conversation-member-option');
             options.forEach(opt => {
                 if (opt instanceof HTMLElement) {
                     const charName = opt.dataset.charName || '';
@@ -620,11 +620,11 @@ function getCharacterPickerItems() {
     return items;
 }
 
-export function toggleAddDmPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
+export function toggleStartDirectConversationPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
     openStartPicker('solo', anchor, {
         title: 'Create a Solo DM',
         items: getCharacterPickerItems(),
-        onSelect: index => void runConversationAction('add-character-dm', { characterIndex: String(index) }),
+        onSelect: index => void runConversationAction('start-direct-conversation', { characterIndex: String(index) }),
     });
 }
 
@@ -664,25 +664,25 @@ export function cloneConversationStoreValue(value) {
     }
 }
 
-export function copyConversationThreadToGroup(sourceAvatar, targetGroupId, { sourceGroupId = '' } = {}) {
+export function copyConversationToGroup(sourceAvatar, targetGroupId, { sourceGroupId = '' } = {}) {
     if (!sourceAvatar || !targetGroupId) {
         return false;
     }
 
-    const sourceStore = getConversationThreadStore(sourceAvatar, { create: false, groupId: sourceGroupId || '' });
-    const targetStore = getConversationThreadStore(sourceAvatar, { create: true, groupId: targetGroupId });
+    const sourceStore = getConversationRecord(sourceAvatar, { create: false, groupId: sourceGroupId || '' });
+    const targetStore = getConversationRecord(sourceAvatar, { create: true, groupId: targetGroupId });
     if (!sourceStore?.branches || !targetStore) {
         return false;
     }
 
-    const clonedBranches = cloneConversationStoreValue(sourceStore.branches);
-    targetStore.activeBranchId = sourceStore.activeBranchId || DEFAULT_BRANCH_ID;
-    targetStore.branches = clonedBranches && typeof clonedBranches === 'object'
-        ? clonedBranches
-        : { [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID) };
+    const clonedChats = cloneConversationStoreValue(sourceStore.branches);
+    targetStore.activeBranchId = sourceStore.activeBranchId || DEFAULT_CHAT_ID;
+    targetStore.branches = clonedChats && typeof clonedChats === 'object'
+        ? clonedChats
+        : { [DEFAULT_CHAT_ID]: buildConversationChat('Main', DEFAULT_CHAT_ID) };
 
-    const activeBranchId = targetStore.activeBranchId || DEFAULT_BRANCH_ID;
-    targetStore.branches[activeBranchId] = normalizeConversationBranch(targetStore.branches[activeBranchId], activeBranchId);
+    const activeBranchId = targetStore.activeBranchId || DEFAULT_CHAT_ID;
+    targetStore.branches[activeBranchId] = normalizeConversationChat(targetStore.branches[activeBranchId], activeBranchId);
     targetStore.branches[activeBranchId].sessionMarkers = {
         ...(targetStore.branches[activeBranchId].sessionMarkers || {}),
         copied_to_group_at: Date.now(),
@@ -709,7 +709,7 @@ export async function createConversationGroup(memberAvatars, { sourceAvatar = ''
     }
 
     if (sourceAvatar && copySourceGroupId !== null) {
-        copyConversationThreadToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
+        copyConversationToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
     }
 
     return group;
@@ -730,13 +730,13 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
     }
 
     hideConversationPickers();
-    closePalsRail();
-    const opened = await selectConversationThread(targetAvatar, {
+    closeConversationList();
+    const opened = await selectConversation(targetAvatar, {
         groupId: String(group.id),
         showToast: false,
     });
     if (opened) {
-        schedulePalsRailRender();
+        scheduleConversationListRender();
         toastr.success(`Opened group Conversation for ${group.name || 'this group'}`);
     }
 

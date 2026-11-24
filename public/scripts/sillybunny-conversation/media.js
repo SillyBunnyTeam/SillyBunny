@@ -2,7 +2,7 @@ import { characters, default_user_avatar, getThumbnailUrl } from '../../script.j
 import { extension_settings, modules } from '../extensions.js';
 import { DEFAULT_SETTINGS, MAX_STACKED_PARTICIPANT_AVATARS } from './constants.js';
 import {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
@@ -10,14 +10,14 @@ import {
     getCurrentCharAvatar,
     getCurrentCharName,
 } from './context.js';
-import { parseAvatarList } from './partners.js';
+import { parseAvatarList } from './members.js';
 import { getExtensionCapability } from './extension-capabilities.js';
 import { formatPromptText } from './shared-helpers.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
-import { getConversationThread } from './thread-store.js';
+import { getConversationMessages } from './conversation-store.js';
 
 function isAbortError(error, signal) {
     return signal?.aborted || error?.name === 'AbortError';
@@ -105,29 +105,29 @@ export function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
     avatars.push(avatar);
 }
 
-export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { branchId = '', includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function getConversationMemberAvatars(avatar = getCurrentCharAvatar(), settings = null, { chatId = '', includeConversationMembers = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
-    const partnerAvatars = [];
-    parseAvatarList(resolvedSettings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
+    const memberAvatars = [];
+    parseAvatarList(resolvedSettings?.multi_char_names).forEach(memberAvatar => addUniqueAvatar(memberAvatars, memberAvatar, avatar));
 
     const group = getConversationGroupById(groupId, { personaId });
     if (group?.members?.length) {
         group.members
             .filter(memberAvatar => !group.disabled_members?.includes(memberAvatar))
-            .forEach(memberAvatar => addUniqueAvatar(partnerAvatars, memberAvatar, avatar));
+            .forEach(memberAvatar => addUniqueAvatar(memberAvatars, memberAvatar, avatar));
     }
 
-    if (includeThreadPartners) {
-        getConversationThread(avatar, { branchId, create: false, groupId, personaId }).forEach((message) => {
+    if (includeConversationMembers) {
+        getConversationMessages(avatar, { chatId, create: false, groupId, personaId }).forEach((message) => {
             if (message?.role !== 'partner') {
                 return;
             }
 
-            addUniqueAvatar(partnerAvatars, message.extra?.partner_avatar, avatar);
+            addUniqueAvatar(memberAvatars, message.extra?.partner_avatar, avatar);
         });
     }
 
-    return partnerAvatars.filter(partnerAvatar => getCharacterForAvatar(partnerAvatar));
+    return memberAvatars.filter(memberAvatar => getCharacterForAvatar(memberAvatar));
 }
 
 export function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = null, options = {}) {
@@ -139,10 +139,10 @@ export function getConversationParticipants(avatar = getCurrentCharAvatar(), set
         participants.push(primary);
     }
 
-    getConversationPartnerAvatars(avatar, resolvedSettings, options).forEach((partnerAvatar) => {
-        const partner = getCharacterForAvatar(partnerAvatar);
-        if (partner?.avatar && !participants.some(participant => participant.avatar === partner.avatar)) {
-            participants.push(partner);
+    getConversationMemberAvatars(avatar, resolvedSettings, options).forEach((memberAvatar) => {
+        const member = getCharacterForAvatar(memberAvatar);
+        if (member?.avatar && !participants.some(participant => participant.avatar === member.avatar)) {
+            participants.push(member);
         }
     });
 
@@ -270,9 +270,9 @@ export function getCharacterAuthorNote(avatar = getCurrentCharAvatar()) {
 }
 
 export function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { create: false, groupId });
-    if (branch?.name && branch.name !== 'Main') {
-        return branch.name;
+    const chat = getActiveConversationChat(avatar, { create: false, groupId });
+    if (chat?.name && chat.name !== 'Main') {
+        return chat.name;
     }
 
     const names = getParticipantNamesForDisplay(getConversationParticipants(avatar, settings, { groupId }));

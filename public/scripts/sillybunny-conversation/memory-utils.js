@@ -1,4 +1,4 @@
-import { DEFAULT_BRANCH_ID, GROUP_CONVERSATION_STORE_PREFIX } from './constants.js';
+import { DEFAULT_CHAT_ID, GROUP_CONVERSATION_STORE_PREFIX } from './constants.js';
 
 function parseGroupConversationStoreKey(storeKey) {
     const value = String(storeKey || '');
@@ -17,10 +17,10 @@ function parseGroupConversationStoreKey(storeKey) {
     return groupId && avatar ? { groupId, avatar } : null;
 }
 
-function getActiveMemoryBranch(threadStore) {
-    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
-    const branchId = threadStore?.activeBranchId || DEFAULT_BRANCH_ID;
-    return branches[branchId] || branches[DEFAULT_BRANCH_ID] || null;
+function getActiveMemoryChat(conversationRecord) {
+    const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? conversationRecord.branches : {};
+    const chatId = conversationRecord?.activeBranchId || DEFAULT_CHAT_ID;
+    return branches[chatId] || branches[DEFAULT_CHAT_ID] || null;
 }
 
 export function collectSoloConversationMemorySummary(charactersStore, avatar) {
@@ -28,14 +28,14 @@ export function collectSoloConversationMemorySummary(charactersStore, avatar) {
         return null;
     }
 
-    const threadStore = charactersStore[avatar];
-    const branch = getActiveMemoryBranch(threadStore);
-    const summary = String(threadStore?.memorySummary || branch?.memorySummary || '').trim();
+    const conversationRecord = charactersStore[avatar];
+    const chat = getActiveMemoryChat(conversationRecord);
+    const summary = String(conversationRecord?.memorySummary || chat?.memorySummary || '').trim();
     if (!summary) {
         return null;
     }
 
-    const updatedAt = Number(threadStore?.memoryUpdatedAt || branch?.updatedAt || branch?.createdAt || 0);
+    const updatedAt = Number(conversationRecord?.memoryUpdatedAt || chat?.updatedAt || chat?.createdAt || 0);
     return {
         avatar,
         summary,
@@ -49,19 +49,19 @@ export function collectGroupConversationMemorySummaries(charactersStore, avatar,
     }
 
     const items = [];
-    Object.entries(charactersStore).forEach(([storeKey, threadStore]) => {
+    Object.entries(charactersStore).forEach(([storeKey, conversationRecord]) => {
         const parsed = parseGroupConversationStoreKey(storeKey);
         if (!parsed || parsed.avatar !== avatar || (excludeGroupId && parsed.groupId === String(excludeGroupId))) {
             return;
         }
 
-        const branch = getActiveMemoryBranch(threadStore);
-        const summary = String(threadStore?.memorySummary || branch?.memorySummary || '').trim();
+        const chat = getActiveMemoryChat(conversationRecord);
+        const summary = String(conversationRecord?.memorySummary || chat?.memorySummary || '').trim();
         if (!summary) {
             return;
         }
 
-        const updatedAt = Number(threadStore?.memoryUpdatedAt || branch?.updatedAt || branch?.createdAt || 0);
+        const updatedAt = Number(conversationRecord?.memoryUpdatedAt || chat?.updatedAt || chat?.createdAt || 0);
         const groupName = String(getGroupName(parsed.groupId) || '').trim();
         items.push({
             groupId: parsed.groupId,

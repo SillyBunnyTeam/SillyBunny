@@ -3,31 +3,31 @@ export function normalizeConversationUnreadCount(value) {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-export function getConversationThreadUnreadCount(threadStore) {
-    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
-    return Object.values(branches).reduce((total, branch) => total + normalizeConversationUnreadCount(branch?.unread), 0);
+export function getConversationUnreadCount(conversationRecord) {
+    const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? conversationRecord.branches : {};
+    return Object.values(branches).reduce((total, chat) => total + normalizeConversationUnreadCount(chat?.unread), 0);
 }
 
-export function setConversationThreadUnreadCount(threadStore, count, { branchId = '' } = {}) {
-    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
+export function setConversationUnreadCount(conversationRecord, count, { chatId = '' } = {}) {
+    const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? conversationRecord.branches : {};
     const unread = normalizeConversationUnreadCount(count);
-    if (branchId) {
-        if (!branches[branchId] || typeof branches[branchId] !== 'object') {
+    if (chatId) {
+        if (!branches[chatId] || typeof branches[chatId] !== 'object') {
             return false;
         }
-        branches[branchId].unread = unread;
+        branches[chatId].unread = unread;
         return true;
     }
 
-    const activeBranchId = threadStore?.activeBranchId;
+    const activeBranchId = conversationRecord?.activeBranchId;
     if (unread > 0 && activeBranchId && branches[activeBranchId]) {
         branches[activeBranchId].unread = unread;
         return true;
     }
     if (unread === 0) {
-        Object.values(branches).forEach((branch) => {
-            if (branch && typeof branch === 'object') {
-                branch.unread = 0;
+        Object.values(branches).forEach((chat) => {
+            if (chat && typeof chat === 'object') {
+                chat.unread = 0;
             }
         });
         return true;
@@ -36,31 +36,31 @@ export function setConversationThreadUnreadCount(threadStore, count, { branchId 
     return false;
 }
 
-function getUnreadBranches(store) {
+function getUnreadChats(store) {
     const characters = store?.characters && typeof store.characters === 'object' ? store.characters : {};
-    return Object.entries(characters).flatMap(([threadKey, threadStore]) => {
-        const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
+    return Object.entries(characters).flatMap(([conversationKey, conversationRecord]) => {
+        const branches = conversationRecord?.branches && typeof conversationRecord.branches === 'object' ? conversationRecord.branches : {};
         return Object.values(branches)
-            .filter(branch => branch && typeof branch === 'object')
-            .map(branch => ({ threadKey, threadStore, branch }));
+            .filter(chat => chat && typeof chat === 'object')
+            .map(chat => ({ conversationKey, conversationRecord, chat }));
     });
 }
 
-export function clearConversationUnreadStore(store, shouldClearThread = () => true) {
+export function clearConversationUnreadStore(store, shouldClearConversation = () => true) {
     let changed = false;
     let cleared = 0;
 
-    for (const { threadKey, threadStore, branch } of getUnreadBranches(store)) {
-        if (!shouldClearThread(threadKey, threadStore)) {
+    for (const { conversationKey, conversationRecord, chat } of getUnreadChats(store)) {
+        if (!shouldClearConversation(conversationKey, conversationRecord)) {
             continue;
         }
 
-        const unread = normalizeConversationUnreadCount(branch.unread);
+        const unread = normalizeConversationUnreadCount(chat.unread);
         if (unread > 0) {
             cleared += unread;
         }
-        if (branch.unread !== 0) {
-            branch.unread = 0;
+        if (chat.unread !== 0) {
+            chat.unread = 0;
             changed = true;
         }
     }
@@ -68,20 +68,20 @@ export function clearConversationUnreadStore(store, shouldClearThread = () => tr
     return { changed, cleared };
 }
 
-export function sanitizeConversationUnreadStore(store, isThreadCountable) {
+export function sanitizeConversationUnreadStore(store, isConversationCountable) {
     let changed = false;
     let cleared = 0;
 
-    for (const { threadKey, threadStore, branch } of getUnreadBranches(store)) {
-        const unread = normalizeConversationUnreadCount(branch.unread);
-        const countable = typeof isThreadCountable === 'function' ? Boolean(isThreadCountable(threadKey, threadStore)) : true;
+    for (const { conversationKey, conversationRecord, chat } of getUnreadChats(store)) {
+        const unread = normalizeConversationUnreadCount(chat.unread);
+        const countable = typeof isConversationCountable === 'function' ? Boolean(isConversationCountable(conversationKey, conversationRecord)) : true;
 
-        if (branch.unread !== unread) {
-            branch.unread = unread;
+        if (chat.unread !== unread) {
+            chat.unread = unread;
             changed = true;
         }
         if (!countable && unread > 0) {
-            branch.unread = 0;
+            chat.unread = 0;
             cleared += unread;
             changed = true;
         }

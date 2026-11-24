@@ -187,9 +187,9 @@ export async function openAuditConversation(page) {
         }
         await context.selectCharacterById(index, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
+        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const day = Date.UTC(2026, 0, 1, 12, 0, 0);
-        saveConversationThread(avatar, messages.map((text, number) => ({
+        saveConversationMessages(avatar, messages.map((text, number) => ({
             id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
             mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
         })));
@@ -207,17 +207,17 @@ export async function openAuditConversation(page) {
  * Shows one page of the Conversation workspace. A desktop window shows the rail and the chat together; the pages layout
  * of a phone shows one at a time.
  * @param {import('@playwright/test').Page} page
- * @param {'chat' | 'pals'} wanted `pals` is the rail of conversations, with the status and new-conversation buttons.
+ * @param {'chat' | 'list'} wanted `list` is the rail of conversations, with the status and new-conversation buttons.
  */
 export async function showConversationPage(page, wanted) {
     const sheld = page.locator('#sheld');
     if (await sheld.getAttribute('data-sb-conversation-layout') !== 'pages' || await sheld.getAttribute('data-sb-conversation-page') === wanted) {
         return;
     }
-    if (wanted === 'pals') {
-        await page.locator('#sb_conversation_pals_toggle').click();
+    if (wanted === 'list') {
+        await page.locator('#sb_conversation_list_toggle').click();
     } else {
-        await page.locator('.sb-conversation-pal').first().click();
+        await page.locator('.sb-conversation-list-item').first().click();
     }
     await page.waitForFunction(value => document.getElementById('sheld')?.getAttribute('data-sb-conversation-page') === value, wanted);
     await settle(page);

@@ -14,7 +14,7 @@ const CONVERSATION_MENU = '#sb_conversation_header [data-sb-conversation-action=
 const COMPOSER = '#sb_conversation_input';
 const MEMBER_MESSAGES = '#sb_conversation_timeline .sb-conversation-message:not([data-role="user"]):not([data-role="system"])';
 const ALL_MESSAGES = '#sb_conversation_timeline .sb-conversation-message';
-const GROUP_ROWS = '.sb-conversation-pal:not([data-group-id=""])';
+const GROUP_ROWS = '.sb-conversation-list-item:not([data-group-id=""])';
 const MINUTE = 60_000;
 
 /** An OpenAI-compatible model that answers every request with a short line and keeps the prompts it was sent. */

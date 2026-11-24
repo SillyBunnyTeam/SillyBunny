@@ -174,9 +174,9 @@ async function openConversationSettings(page) {
         }
         await context.selectCharacterById(index, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
+        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const day = Date.UTC(2026, 0, 1, 12, 0, 0);
-        saveConversationThread(avatar, messages.map((text, number) => ({
+        saveConversationMessages(avatar, messages.map((text, number) => ({
             id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
             mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
         })));

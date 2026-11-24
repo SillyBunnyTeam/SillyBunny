@@ -6,7 +6,7 @@ globalThis.HTMLElement = class HTMLElement {};
 let currentPersonaId = 'persona-a.png';
 const stores = new Map();
 const generateConversationRaw = jest.fn();
-const saveConversationThread = jest.fn();
+const saveConversationMessages = jest.fn();
 const scheduleTimelineRender = jest.fn();
 
 function key(personaId, avatar, groupId = '') {
@@ -20,11 +20,11 @@ function getStore(personaId, avatar = 'char.png', groupId = '') {
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ isConversationStylesheetLoading: () => false, setConversationInterfaceActive: jest.fn() }));
 await jest.unstable_mockModule('../public/script.js', () => ({ online_status: 'Connected' }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getConversationBranches: () => [],
+    getConversationChats: () => [],
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? currentPersonaId : value || ''),
-    getConversationThreadStore: (avatar, options = {}) => getStore(options.personaId || currentPersonaId, avatar, options.groupId || ''),
+    getConversationRecord: (avatar, options = {}) => getStore(options.personaId || currentPersonaId, avatar, options.groupId || ''),
     getCurrentCharacter: () => ({ avatar: 'char.png', name: 'Aster' }),
     getCurrentCharAvatar: () => 'char.png',
     getCurrentCharName: () => 'Aster',
@@ -46,13 +46,13 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifi
     clearUnreadCount: jest.fn(),
     getBadgeLabel: value => String(value || ''),
     getUnreadCount: () => 0,
-    isConversationActiveThread: (_avatar, _groupId, options = {}) => options.personaId === currentPersonaId,
+    isConversationActive: (_avatar, _groupId, options = {}) => options.personaId === currentPersonaId,
     updateConversationNotificationIndicators: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({ getConversationRailItems: () => [] }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({ getConversationRailItems: () => [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getAvailabilityCopy: () => ({ detail: '', label: 'Online' }) }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pickers.js', () => ({
-    readChimingPartnersFromList: () => '',
+    readChimingMembersFromList: () => '',
     readWeeklyScheduleFromEditor: () => '[]',
     updateUserFooter: jest.fn(),
 }));
@@ -73,12 +73,12 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
         conversationWorkspaceOpen: true,
     },
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
-    getConversationThread: (avatar, options = {}) => {
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
+    getConversationMessages: (avatar, options = {}) => {
         const store = getStore(options.personaId || currentPersonaId, avatar, options.groupId || '');
-        return store?.branches?.[options.branchId || store.activeBranchId]?.messages || [];
+        return store?.branches?.[options.chatId || store.activeBranchId]?.messages || [];
     },
-    saveConversationThread,
+    saveConversationMessages,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-render.js', () => ({
     renderConversationTimeline: jest.fn(),
@@ -126,7 +126,7 @@ describe('Conversation prose polish identity', () => {
             branches: { 'branch-b': { messages: [message('other persona')] } },
         });
         generateConversationRaw.mockReset();
-        saveConversationThread.mockClear();
+        saveConversationMessages.mockClear();
         scheduleTimelineRender.mockClear();
         globalThis.toastr = { error: jest.fn(), success: jest.fn() };
     });
@@ -144,8 +144,8 @@ describe('Conversation prose polish identity', () => {
         expect(stores.get(key('persona-a.png', 'char.png')).branches['branch-a'].messages[0].mes).toBe('polished original');
         expect(stores.get(key('persona-a.png', 'char.png')).branches['branch-b'].messages[0].mes).toBe('other branch');
         expect(stores.get(key('persona-b.png', 'char.png')).branches['branch-b'].messages[0].mes).toBe('other persona');
-        expect(saveConversationThread).toHaveBeenCalledWith('char.png', expect.any(Array), {
-            branchId: 'branch-a',
+        expect(saveConversationMessages).toHaveBeenCalledWith('char.png', expect.any(Array), {
+            chatId: 'branch-a',
             create: false,
             groupId: '',
             personaId: 'persona-a.png',
@@ -164,6 +164,6 @@ describe('Conversation prose polish identity', () => {
         await run;
 
         expect(sourceMessage.mes).toBe('edited while polishing');
-        expect(saveConversationThread).not.toHaveBeenCalled();
+        expect(saveConversationMessages).not.toHaveBeenCalled();
     });
 });

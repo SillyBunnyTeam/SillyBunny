@@ -45,16 +45,16 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
         conversationWorkspaceOpen: false,
     },
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({ safeParseThread: value => value }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({ safeParseMessages: value => value }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 
-const { getConversationThreadKey: getBrowserThreadKey } = await import('../public/scripts/sillybunny-conversation/context.js');
+const { getConversationKey: getBrowserConversationKey } = await import('../public/scripts/sillybunny-conversation/context.js');
 const { getConversationThreadKey: getBackendThreadKey } = await import('../src/endpoints/conversation-store.js');
 
 describe('Conversation thread key compatibility', () => {
     test('backend and browser helpers share raw avatar/group syntax and persona encoding', () => {
-        expect(getBackendThreadKey(avatar, '', personaId)).toBe(getBrowserThreadKey(avatar, '', { personaId }));
-        expect(getBackendThreadKey(avatar, groupId, personaId)).toBe(getBrowserThreadKey(avatar, groupId, { personaId }));
+        expect(getBackendThreadKey(avatar, '', personaId)).toBe(getBrowserConversationKey(avatar, '', { personaId }));
+        expect(getBackendThreadKey(avatar, groupId, personaId)).toBe(getBrowserConversationKey(avatar, groupId, { personaId }));
         expect(getBackendThreadKey(avatar, groupId, personaId)).toBe(
             `persona:${encodeURIComponent(personaId)}:group:${groupId}:${avatar}`,
         );

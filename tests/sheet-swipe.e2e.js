@@ -411,8 +411,8 @@ test.describe('Conversation pickers at 390×844', () => {
         });
         await expect(title).toHaveText('Create a Group DM');
         await page.evaluate(async () => {
-            const { toggleAddDmPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
-            toggleAddDmPicker(document.getElementById('qa-sheet-trigger'));
+            const { toggleStartDirectConversationPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
+            toggleStartDirectConversationPicker(document.getElementById('qa-sheet-trigger'));
         });
         await expect(title).toHaveText('Create a Solo DM');
         await expect(page.locator('.sb-picker-sheet:not([hidden])')).toHaveCount(1);

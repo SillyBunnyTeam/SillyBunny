@@ -22,11 +22,11 @@ export const conversationState = {
     imageGenerationActive: false,
     imageGenerationAbortController: null,
     lastRenderedAvatar: null,
-    lastRenderedThreadKey: '',
+    lastRenderedConversationKey: '',
     lastRenderedMessageCount: 0,
     lastTimelineFingerprint: '',
     timelineBottomScrollPending: false,
-    lastPalsRailFingerprint: '',
+    lastConversationListFingerprint: '',
     originalDocumentTitle: typeof document !== 'undefined' ? document.title : '',
     originalFaviconHref: '',
     faviconUpdateToken: 0,
@@ -37,7 +37,7 @@ export const runtimeStatusOverrides = new Map();
 export const memorySummaryBusyAvatars = new Set();
 export const memorySummaryTimers = new Map();
 export const activeTypingParticipants = new Map();
-export const partnerReplyBusyKeys = new Set();
+export const memberReplyBusyKeys = new Set();
 export const groupAsideBusyKeys = new Set();
 export const groupAsideLastSent = new Map();
 export const conversationTimeouts = new Set();

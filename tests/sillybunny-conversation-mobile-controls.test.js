@@ -66,23 +66,23 @@ describe('Conversation mobile controls', () => {
     test('the pages layout follows the layout attribute, not a viewport media query', () => {
         // The layout is decided from the #sheld width in settings-panel.js, so a viewport query here would disagree with it.
         expect(findMediaRule(query => query.includes('max-width: 768px') && !query.includes('max-height'))
-            ?.rules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_pals_rail'))).toEqual([]);
+            ?.rules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_list'))).toEqual([]);
         expect(css).not.toMatch(/@media \(max-width: 450px\)/);
     });
 
     test('mobile pages are driven by data-sb-conversation-page', () => {
         const media = ast.stylesheet;
-        expect(getDeclarations(media, `${PAGES} #sb_conversation_pals_rail`)).toMatchObject({
+        expect(getDeclarations(media, `${PAGES} #sb_conversation_list`)).toMatchObject({
             position: 'absolute',
             inset: '0',
             'grid-area': 'unset',
             transform: 'translateX(-100%)',
         });
-        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='pals'] #sb_conversation_pals_rail`)).toMatchObject({
+        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='list'] #sb_conversation_list`)).toMatchObject({
             visibility: 'visible',
             transform: 'none',
         });
-        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage)`)).toMatchObject({
+        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='list'] :is(#sb_conversation_header, #sb_conversation_stage)`)).toMatchObject({
             visibility: 'hidden',
         });
         expect(getDeclarations(media, `${PAGES} .sb-conversation-header-back`)).toMatchObject({ display: 'inline-grid' });
@@ -145,7 +145,7 @@ describe('Conversation mobile controls', () => {
     test('surfaces are opaque layers without backdrop-filter', () => {
         expect(css).not.toMatch(/backdrop-filter\s*:/);
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_header').background).toBe('var(--sb-layer-view)');
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_pals_rail').background).toBe('var(--sb-conv-sidebar-bg)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_list').background).toBe('var(--sb-conv-sidebar-bg)');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-search-bar').background).toBe('var(--sb-conv-sidebar-bg)');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer').padding).toBe('8px 12px');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['border-radius']).toBe('0');

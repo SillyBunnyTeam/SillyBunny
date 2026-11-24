@@ -2,10 +2,10 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
     clearConversationUnreadStore,
-    getConversationThreadUnreadCount,
+    getConversationUnreadCount,
     normalizeConversationUnreadCount,
     sanitizeConversationUnreadStore,
-    setConversationThreadUnreadCount,
+    setConversationUnreadCount,
 } from '../public/scripts/sillybunny-conversation/notification-utils.js';
 
 describe('sillybunny conversation notification utils', () => {
@@ -34,7 +34,7 @@ describe('sillybunny conversation notification utils', () => {
             },
         };
 
-        const result = sanitizeConversationUnreadStore(store, threadKey => threadKey !== 'stale');
+        const result = sanitizeConversationUnreadStore(store, conversationKey => conversationKey !== 'stale');
 
         expect(result).toEqual({ changed: true, cleared: 5 });
         expect(store.characters.alice.branches.main.unread).toBe(2);
@@ -86,7 +86,7 @@ describe('sillybunny conversation notification utils', () => {
     });
 
     test('counts all branches and clears only a selected branch when requested', () => {
-        const threadStore = {
+        const conversationRecord = {
             activeBranchId: 'branch-a',
             branches: {
                 'branch-a': { unread: 2 },
@@ -94,13 +94,13 @@ describe('sillybunny conversation notification utils', () => {
             },
         };
 
-        expect(getConversationThreadUnreadCount(threadStore)).toBe(5);
-        expect(setConversationThreadUnreadCount(threadStore, 0, { branchId: 'branch-a' })).toBe(true);
-        expect(threadStore.branches['branch-a'].unread).toBe(0);
-        expect(threadStore.branches['branch-b'].unread).toBe(3);
-        expect(getConversationThreadUnreadCount(threadStore)).toBe(3);
+        expect(getConversationUnreadCount(conversationRecord)).toBe(5);
+        expect(setConversationUnreadCount(conversationRecord, 0, { chatId: 'branch-a' })).toBe(true);
+        expect(conversationRecord.branches['branch-a'].unread).toBe(0);
+        expect(conversationRecord.branches['branch-b'].unread).toBe(3);
+        expect(getConversationUnreadCount(conversationRecord)).toBe(3);
 
-        setConversationThreadUnreadCount(threadStore, 0);
-        expect(getConversationThreadUnreadCount(threadStore)).toBe(0);
+        setConversationUnreadCount(conversationRecord, 0);
+        expect(getConversationUnreadCount(conversationRecord)).toBe(0);
     });
 });

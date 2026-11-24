@@ -42,10 +42,10 @@ async function seedConversation(page, { messageOverrides = [] } = {}) {
         await context.selectCharacterById(id, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
 
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
+        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const day = Date.UTC(2026, 8, 30, 12, 0, 0);
         const nextDay = Date.UTC(2026, 9, 1, 9, 0, 0);
-        saveConversationThread(character.avatar, [
+        saveConversationMessages(character.avatar, [
             { id: 'seed-0', role: 'character', name: character.name, mes: 'Good morning. The glade is quiet.', send_date: new Date(day).toISOString(), created_at: day, extra: {} },
             { id: 'seed-1', role: 'user', name: 'Tester', mes: 'Hi. I wanted to check in.', send_date: new Date(day + 60_000).toISOString(), created_at: day + 60_000, extra: {} },
             { id: 'seed-2', role: 'character', name: character.name, mes: 'Still here after a longer pause.', send_date: new Date(day + 21 * 60_000).toISOString(), created_at: day + 21 * 60_000, extra: {} },
@@ -68,7 +68,7 @@ test('desktop split view groups bubbles and keeps settings as a pane', async ({ 
     // At 1440 the chat column is about 790px wide: too narrow to dock a third column beside the rail.
     const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
     await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'overlay');
-    await expect(page.locator('#sb_conversation_pals_rail')).toBeVisible();
+    await expect(page.locator('#sb_conversation_list')).toBeVisible();
     await expect(page.locator('#sb_conversation_header')).toBeVisible();
     await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeVisible();
     await expect(page.locator('#sb_conversation_form .sb-conversation-composer-actions')).toBeVisible();
@@ -95,7 +95,7 @@ test('desktop split view groups bubbles and keeps settings as a pane', async ({ 
             return { left: rect.left, right: rect.right, width: rect.width };
         };
         return {
-            rail: box('#sb_conversation_pals_rail'),
+            rail: box('#sb_conversation_list'),
             drawer: box('#sb_conversation_settings_drawer'),
             header: box('#sb_conversation_header'),
             name: box('[data-sb-conversation-name]'),
@@ -137,7 +137,7 @@ test.describe('wide desktop', () => {
 
         // The pane is a column of the layout, as libadwaita's docked sidebar: a press on the content or the rail does not close it.
         await page.locator('#sb_conversation_timeline').click({ position: { x: 100, y: 100 } });
-        await page.locator('#sb_conversation_pals_rail').click({ position: { x: 80, y: 500 } });
+        await page.locator('#sb_conversation_list').click({ position: { x: 80, y: 500 } });
         await expect(drawer).toBeVisible();
 
         // The content stays usable beside a docked pane, so Escape elsewhere is not the pane's to take.
@@ -176,7 +176,7 @@ test('an overlay pane shades everything outside it, hides on a press anywhere th
         return {
             shade: box('#sb_conversation_settings_backdrop'),
             drawer: box('#sb_conversation_settings_drawer'),
-            rail: box('#sb_conversation_pals_rail'),
+            rail: box('#sb_conversation_list'),
             header: box('#sb_conversation_header'),
             composer: box('#sb_conversation_form'),
             sheld: box('#sheld'),
@@ -191,12 +191,12 @@ test('an overlay pane shades everything outside it, hides on a press anywhere th
     expect(boxes.sheld.bottom - boxes.shade.bottom).toBeLessThanOrEqual(2);
     expect(boxes.shadeColor, 'the shade dims, it is not transparent').not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
     expect(boxes.drawer.left, 'the pane stays beside the rail').toBeGreaterThanOrEqual(boxes.rail.right);
-    await expect(page.locator('#sb_conversation_pals_rail')).toBeVisible();
+    await expect(page.locator('#sb_conversation_list')).toBeVisible();
 
     // A press anywhere outside the pane hides it, and does not act on what lies under the shade.
     await page.evaluate(() => {
         window.__underClicks = 0;
-        for (const id of ['sb_conversation_timeline', 'sb_conversation_form', 'sb_conversation_header', 'sb_conversation_pals_rail']) {
+        for (const id of ['sb_conversation_timeline', 'sb_conversation_form', 'sb_conversation_header', 'sb_conversation_list']) {
             document.getElementById(id).addEventListener('click', () => { window.__underClicks += 1; }, true);
         }
     });
@@ -281,9 +281,9 @@ test.describe('a narrow chat area', () => {
         await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
         await expect(page.locator('#sb_conversation_header .sb-conversation-header-back')).toBeVisible();
         await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]')).toBeVisible();
-        await page.locator('#sb_conversation_pals_toggle').click();
-        await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'pals');
-        await expect(page.locator('#sb_conversation_pals_rail')).toBeVisible();
+        await page.locator('#sb_conversation_list_toggle').click();
+        await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'list');
+        await expect(page.locator('#sb_conversation_list')).toBeVisible();
     });
 
     test('opening the pane at a narrow width shows the page, not an overlay', async ({ page, isMobile }) => {
@@ -499,11 +499,11 @@ test('mobile pages keep pals, chat, and settings as full screens', async ({ page
     await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]')).toBeVisible();
     await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeHidden();
 
-    await page.locator('#sb_conversation_pals_toggle').click();
-    await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'pals');
-    await expect(page.locator('#sb_conversation_pals_rail')).toBeVisible();
+    await page.locator('#sb_conversation_list_toggle').click();
+    await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'list');
+    await expect(page.locator('#sb_conversation_list')).toBeVisible();
 
-    await page.locator('.sb-conversation-pal').first().click();
+    await page.locator('.sb-conversation-list-item').first().click();
     await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
     await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
     await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();

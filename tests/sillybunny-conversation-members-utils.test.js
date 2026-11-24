@@ -5,12 +5,12 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
 }));
 
 const {
-    getRecentlySilentMentionedPartnerFromThread,
+    getRecentlySilentMentionedMemberFromConversation,
     getSpeakerPrefixMatch,
     isCharacterMentionedInText,
     parseAvatarList,
     stripSpeakerPrefixText,
-} = await import('../public/scripts/sillybunny-conversation/partners-utils.js');
+} = await import('../public/scripts/sillybunny-conversation/members-utils.js');
 
 describe('sillybunny conversation partner utils', () => {
     test('parses configured partner avatar lists', () => {
@@ -36,16 +36,16 @@ describe('sillybunny conversation partner utils', () => {
     test('finds a recently mentioned partner who has not replied yet', () => {
         const ada = { name: 'Ada Lovelace', avatar: 'ada.png' };
         const grace = { name: 'Grace Hopper', avatar: 'grace.png' };
-        const thread = [
+        const messages = [
             { role: 'user', mes: 'Grace already answered.' },
             { role: 'character', mes: 'yep', extra: { partner_avatar: 'grace.png' } },
             { role: 'user', mes: '@Ada can you check this?' },
         ];
 
-        expect(getRecentlySilentMentionedPartnerFromThread(thread, [ada, grace], 6)).toBe(ada);
+        expect(getRecentlySilentMentionedMemberFromConversation(messages, [ada, grace], 6)).toBe(ada);
 
-        thread.push({ role: 'character', mes: 'looking now', extra: { partner_avatar: 'ada.png' } });
-        expect(getRecentlySilentMentionedPartnerFromThread(thread, [ada, grace], 6)).toBe(null);
+        messages.push({ role: 'character', mes: 'looking now', extra: { partner_avatar: 'ada.png' } });
+        expect(getRecentlySilentMentionedMemberFromConversation(messages, [ada, grace], 6)).toBe(null);
     });
 
     test('strips generated speaker prefixes line by line', () => {

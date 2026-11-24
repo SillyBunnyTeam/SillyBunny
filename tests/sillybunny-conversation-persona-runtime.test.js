@@ -3,12 +3,12 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 const handlers = new Map();
 const startConversationAutoWorker = jest.fn();
-const triggerRoleplayDM = jest.fn();
+const triggerRoleplayAside = jest.fn();
 const roleplayChat = [];
 const personaChangeOrder = [];
 const handleChatChanged = jest.fn(() => personaChangeOrder.push('handle'));
 const loadCurrentPanelSettings = jest.fn(() => personaChangeOrder.push('load'));
-const selectConversationThread = jest.fn();
+const selectConversation = jest.fn();
 const scheduleInterfaceRefresh = jest.fn();
 const windowHandlers = new Map();
 let hasUsage = false;
@@ -50,7 +50,7 @@ await jest.unstable_mockModule('../public/scripts/events.js', () => ({
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-engine.js', () => ({
     captureGroupAsideRequest: jest.fn(),
-    captureRoleplayDMRequest: options => ({ ...options, branchId: 'branch-a', roleplayContext: 'captured roleplay' }),
+    captureRoleplayAsideRequest: options => ({ ...options, chatId: 'branch-a', roleplayContext: 'captured roleplay' }),
     checkGroupChatMention: jest.fn(),
     handleChatChanged,
     startConversationAutoWorker: () => {
@@ -58,13 +58,13 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-e
         startConversationAutoWorker();
     },
     stopConversationAutoWorker: jest.fn(),
-    triggerGroupAsideDM: jest.fn(),
-    triggerRoleplayDM,
+    triggerGroupAside: jest.fn(),
+    triggerRoleplayAside,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({
     disableConversationModeForCurrentCharacter: jest.fn(),
     getDefaultConversationAvatar: () => '',
-    selectConversationThread,
+    selectConversation,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     getConversationGroupById: () => null,
@@ -78,7 +78,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifi
     sanitizeConversationUnreadCounts: jest.fn(),
     updateConversationNotificationIndicators: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     getCharacterForGroupChatMessage: () => null,
     getCurrentGroupConversationMembers: () => [],
 }));
@@ -128,12 +128,12 @@ describe('conversation persona runtime', () => {
         conversationState.conversationWorkspaceOpen = true;
         conversationState.conversationSelectedAvatar = 'conversation.png';
         roleplayChat[0] = { id: 0, role: 'character', mes: 'roleplay reply' };
-        triggerRoleplayDM.mockClear();
+        triggerRoleplayAside.mockClear();
         const random = jest.spyOn(Math, 'random').mockReturnValue(0);
 
         handlers.get('character-message-rendered')(0);
 
-        expect(triggerRoleplayDM).toHaveBeenCalledWith(expect.objectContaining({
+        expect(triggerRoleplayAside).toHaveBeenCalledWith(expect.objectContaining({
             avatar: 'roleplay.png',
             personaId: 'persona-b.png',
         }));
@@ -142,18 +142,18 @@ describe('conversation persona runtime', () => {
 
     test('passes captured persona identity through workspace-open events', () => {
         init();
-        selectConversationThread.mockClear();
+        selectConversation.mockClear();
 
         windowHandlers.get('sb:open-conversation-workspace')(new globalThis.CustomEvent({
             avatar: 'char.png',
-            branchId: 'branch-b',
+            chatId: 'branch-b',
             groupId: 'group-b',
             personaId: 'persona-c.png',
             showToast: false,
         }));
 
-        expect(selectConversationThread).toHaveBeenCalledWith('char.png', {
-            branchId: 'branch-b',
+        expect(selectConversation).toHaveBeenCalledWith('char.png', {
+            chatId: 'branch-b',
             groupId: 'group-b',
             personaId: 'persona-c.png',
             showToast: false,
@@ -162,14 +162,14 @@ describe('conversation persona runtime', () => {
 
     test('follows the newly selected roleplay character while Conversation is open', () => {
         init();
-        selectConversationThread.mockClear();
+        selectConversation.mockClear();
         conversationState.conversationWorkspaceOpen = true;
 
         windowHandlers.get('sb:roleplay-character-selected')(new globalThis.CustomEvent({
             avatar: 'new-character.png',
         }));
 
-        expect(selectConversationThread).toHaveBeenCalledWith('new-character.png', {
+        expect(selectConversation).toHaveBeenCalledWith('new-character.png', {
             showToast: false,
         });
     });

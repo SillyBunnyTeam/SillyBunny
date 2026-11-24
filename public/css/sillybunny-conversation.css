@@ -2,12 +2,12 @@
  * Conversation mode: a libadwaita split view modelled on Fractal.
  * #sheld carries two attributes set by chrome.js / settings-panel.js:
  *   data-sb-conversation-layout = split | overlay | pages (from the #sheld width: pages below 670px or in the 768px mobile layout)
- *   data-sb-conversation-page   = pals | chat | settings (navigation state; drives the mobile pages)
+ *   data-sb-conversation-page   = list | chat | settings (navigation state; drives the mobile pages)
  * Every surface is an opaque --sb-layer-* token. No backdrop-filter.
  */
 #sb_conversation_header,
-#sb_conversation_pals_toggle,
-#sb_conversation_pals_rail,
+#sb_conversation_list_toggle,
+#sb_conversation_list,
 #sb_conversation_stage,
 #sb_conversation_settings_backdrop,
 #sb_conversation_settings_drawer,
@@ -33,8 +33,8 @@
     grid-template-columns: var(--sb-conv-sidebar-width) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
-        'pals header'
-        'pals stage';
+        'list header'
+        'list stage';
     overflow: hidden;
     /* Fill the top-bar remainder; the global -1px bounce gap would flash the page under the composer. */
     height: calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
@@ -143,7 +143,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: none;
 }
 
-.sb-conversation-pals-toggle-badge {
+.sb-conversation-list-toggle-badge {
     position: absolute;
     inset-block-start: 2px;
     inset-inline-end: 0;
@@ -161,7 +161,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     line-height: 1;
 }
 
-.sb-conversation-pals-toggle-badge[hidden] {
+.sb-conversation-list-toggle-badge[hidden] {
     display: none;
 }
 
@@ -290,8 +290,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 /* ---------- Sidebar (pals rail) ---------- */
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_rail {
-    grid-area: pals;
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_list {
+    grid-area: list;
     min-block-size: 0;
     min-inline-size: 0;
     display: flex;
@@ -345,7 +345,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     padding: 8px 8px 4px;
 }
 
-.sb-conversation-pals-list {
+.sb-conversation-list-items {
     min-block-size: 0;
     display: flex;
     flex: 1 1 auto;
@@ -357,11 +357,11 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     touch-action: pan-y;
 }
 
-.sb-conversation-pal-row {
+.sb-conversation-list-row {
     min-inline-size: 0;
 }
 
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-pal {
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item {
     box-sizing: border-box;
     inline-size: 100%;
     min-inline-size: 0;
@@ -384,29 +384,29 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 
 /* libadwaita sidebar rows: neutral hover and selected fills, no border or lift. */
 @media (hover: hover) {
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-pal:hover {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item:hover {
         background: var(--sb-flat-hover-bg);
     }
 
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-pal[aria-current='true']:hover {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item[aria-current='true']:hover {
         background: var(--sb-flat-selected-hover-bg);
     }
 }
 
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-pal:active {
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item:active {
     background: var(--sb-flat-active-bg);
 }
 
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-pal[aria-current='true'] {
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item[aria-current='true'] {
     background: var(--sb-flat-selected-bg);
 }
 
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-pal:focus-visible {
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-conversation-pal-avatar {
+.sb-conversation-list-item-avatar {
     position: relative;
     display: flex;
     align-items: center;
@@ -415,36 +415,36 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     --sb-conv-dot-ring: var(--sb-conv-sidebar-bg);
 }
 
-.sb-conversation-pal-avatar .sb-conversation-participant-avatar {
+.sb-conversation-list-item-avatar .sb-conversation-participant-avatar {
     inline-size: 32px;
     block-size: 32px;
     margin-inline-start: -14px;
 }
 
-.sb-conversation-pal-avatar .sb-conversation-participant-avatar:first-child {
+.sb-conversation-list-item-avatar .sb-conversation-participant-avatar:first-child {
     margin-inline-start: 0;
 }
 
-.sb-conversation-pal-avatar .sb-conversation-participant-avatar:nth-of-type(n+3),
-.sb-conversation-pal-avatar .sb-conversation-participant-overflow {
+.sb-conversation-list-item-avatar .sb-conversation-participant-avatar:nth-of-type(n+3),
+.sb-conversation-list-item-avatar .sb-conversation-participant-overflow {
     display: none;
 }
 
-.sb-conversation-pal-copy {
+.sb-conversation-list-item-copy {
     min-inline-size: 0;
     display: flex;
     flex-direction: column;
     gap: 1px;
 }
 
-.sb-conversation-pal-name-row {
+.sb-conversation-list-item-name-row {
     min-inline-size: 0;
     display: flex;
     align-items: baseline;
     gap: 6px;
 }
 
-.sb-conversation-pal-name {
+.sb-conversation-list-item-name {
     flex: 0 1 auto;
     min-inline-size: 0;
     overflow: hidden;
@@ -455,18 +455,18 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     white-space: nowrap;
 }
 
-.sb-conversation-pal-kind {
+.sb-conversation-list-item-kind {
     flex: 0 0 auto;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-control);
 }
 
-.sb-conversation-pal-kind[hidden] {
+.sb-conversation-list-item-kind[hidden] {
     display: none;
 }
 
-.sb-conversation-pal-preview {
+.sb-conversation-list-item-preview {
     min-inline-size: 0;
     overflow: hidden;
     color: var(--sb-muted-fg);
@@ -476,12 +476,12 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     white-space: nowrap;
 }
 
-.sb-conversation-pal[data-unread='true'] .sb-conversation-pal-preview {
+.sb-conversation-list-item[data-unread='true'] .sb-conversation-list-item-preview {
     color: var(--SmartThemeBodyColor);
 }
 
 /* Unread count: a small accent pill, as in Fractal's room list. */
-.sb-conversation-pal-unread {
+.sb-conversation-list-item-unread {
     min-inline-size: 20px;
     block-size: 20px;
     box-sizing: border-box;
@@ -496,8 +496,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     line-height: 1;
 }
 
-.sb-conversation-pal-unread:empty,
-.sb-conversation-pal-unread[hidden] {
+.sb-conversation-list-item-unread:empty,
+.sb-conversation-list-item-unread[hidden] {
     display: none;
 }
 
@@ -823,8 +823,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 #sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'] {
     grid-template-columns: var(--sb-conv-sidebar-width) minmax(0, 1fr) 0px;
     grid-template-areas:
-        'pals header settings'
-        'pals stage settings';
+        'list header settings'
+        'list stage settings';
     transition: grid-template-columns var(--sb-spring-sheet-duration) var(--sb-spring-sheet);
 }
 
@@ -2356,7 +2356,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 /* Chiming partner picker */
-.sb-conversation-partner-list {
+.sb-conversation-member-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -2370,7 +2370,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     touch-action: pan-y;
 }
 
-.sb-conversation-partner-option {
+.sb-conversation-member-option {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(120px, 0.8fr);
     align-items: center;
@@ -2380,24 +2380,24 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     transition: background-color var(--sb-transition-fast);
 }
 
-.sb-conversation-partner-option:focus-within {
+.sb-conversation-member-option:focus-within {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
 }
 
 @media (hover: hover) {
-    .sb-conversation-partner-option:hover {
+    .sb-conversation-member-option:hover {
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
     }
 }
 
-.sb-conversation-partner-avatar {
+.sb-conversation-member-avatar {
     inline-size: 24px;
     block-size: 24px;
     border-radius: 50%;
     object-fit: cover;
 }
 
-.sb-conversation-partner-pick {
+.sb-conversation-member-pick {
     min-inline-size: 0;
     display: flex;
     gap: 8px;
@@ -2405,7 +2405,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     cursor: pointer;
 }
 
-.sb-conversation-partner-name {
+.sb-conversation-member-name {
     overflow: hidden;
     font-size: var(--sb-type-caption);
     text-overflow: ellipsis;
@@ -2688,7 +2688,7 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
 }
 
 /* Pals page: the sidebar becomes a full-screen page covering the chat. */
-#sheld[data-sb-conversation-layout='pages'] #sb_conversation_pals_rail {
+#sheld[data-sb-conversation-layout='pages'] #sb_conversation_list {
     position: absolute;
     inset: 0;
     grid-area: unset;
@@ -2702,7 +2702,7 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
 }
 
-#sheld[data-sb-conversation-layout='pages'][data-sb-conversation-page='pals'] #sb_conversation_pals_rail {
+#sheld[data-sb-conversation-layout='pages'][data-sb-conversation-page='list'] #sb_conversation_list {
     visibility: visible;
     transform: none;
     pointer-events: auto;
@@ -2713,7 +2713,7 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
 }
 
-#sheld[data-sb-conversation-layout='pages'][data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage) {
+#sheld[data-sb-conversation-layout='pages'][data-sb-conversation-page='list'] :is(#sb_conversation_header, #sb_conversation_stage) {
     visibility: hidden;
     transform: translateX(100%);
     transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
@@ -2723,11 +2723,11 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     padding-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
 }
 
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-pals-list {
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-list-items {
     padding: 4px max(6px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
 }
 
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-pal {
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-list-item {
     min-block-size: 60px;
     padding-block: 8px;
 }
@@ -3032,12 +3032,12 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
 @media (prefers-reduced-motion: reduce) {
     #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-message, .sb-conversation-picker, .sb-conversation-search-bar),
     .sb-conversation-typing-dots span,
-    .sb-conversation-pal[data-unread='true'] .sb-conversation-pal-unread {
+    .sb-conversation-list-item[data-unread='true'] .sb-conversation-list-item-unread {
         animation: none;
     }
 
     #sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'],
-    #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_pals_rail, #sb_conversation_header, #sb_conversation_stage, .sb-conversation-header-caret),
+    #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_list, #sb_conversation_header, #sb_conversation_stage, .sb-conversation-header-caret),
     .sb-conversation-channel-tab,
     .sb-conversation-flat-button,
     .sb-conversation-message-actions,
@@ -3053,7 +3053,7 @@ body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-
 }
 
 body.reduced-motion #sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'],
-body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_pals_rail, #sb_conversation_header, #sb_conversation_stage, .sb-conversation-header-caret),
+body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_list, #sb_conversation_header, #sb_conversation_stage, .sb-conversation-header-caret),
 body.reduced-motion .sb-conversation-flat-button,
 body.reduced-motion .sb-conversation-message-actions,
 body.reduced-motion .sb-conversation-message-action,

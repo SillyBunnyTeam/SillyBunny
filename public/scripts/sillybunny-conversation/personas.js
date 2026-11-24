@@ -14,9 +14,9 @@ import {
 import {
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getRawConversationThreadKey,
+    getRawConversationKey,
     getConversationStore,
-    getConversationThreadKey,
+    getConversationKey,
     getCurrentCharAvatar,
     isAvatarInConversationGroup,
     persistConversationStore,
@@ -106,12 +106,12 @@ export function getConversationPersonaName(personaId, fallback = 'User') {
 
 export function getConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
-    return String(getConversationThreadKey(avatar, targetGroupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    return String(getConversationKey(avatar, targetGroupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
 }
 
 function getLegacyConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
-    return String(getRawConversationThreadKey(avatar, targetGroupId, '') || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    return String(getRawConversationKey(avatar, targetGroupId, '') || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
 }
 
 function normalizeConversationPersonaAppendixSelections(descriptor) {

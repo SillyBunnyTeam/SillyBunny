@@ -26,7 +26,7 @@ import {
     getConversationMediaDisplay,
     getConversationMediaIndex,
     getConversationPromptMediaAttachments,
-} from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
+} from '../../public/scripts/sillybunny-conversation/conversation-store-utils.js';
 import {
     buildConversationGroupReferenceContext,
     compileGeechanPrompt,

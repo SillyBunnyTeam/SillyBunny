@@ -7,34 +7,34 @@ import {
 } from '../../script.js';
 import { selected_group } from '../group-chats.js';
 import { user_avatar } from '../personas.js';
-import { DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, GROUP_ASIDE_CONTEXT_LIMIT } from './constants.js';
+import { DEFAULT_CHAT_ID, DEFAULT_SETTINGS, GROUP_ASIDE_CONTEXT_LIMIT } from './constants.js';
 import {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupById,
-    getConversationGroupThreadAnchor,
+    getConversationGroupAnchor,
     getConversationGroupIdForAvatar,
     getConversationGroups,
     getConversationPersonaId,
     getConversationStore,
-    getConversationThreadKey,
+    getConversationKey,
     getCurrentCharAvatar,
-    isConversationThreadKeyForPersona,
-    normalizeConversationBranch,
-    parseConversationThreadKey,
+    isConversationKeyForPersona,
+    normalizeConversationChat,
+    parseConversationKey,
     parsePositiveInt,
 } from './context.js';
 import { getCharacterForAvatar, getCharacterIndexForAvatar, getConversationParticipants } from './media.js';
 import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
-import { getConversationSeenAt, getConversationThread } from './thread-store.js';
+import { getConversationSeenAt, getConversationMessages } from './conversation-store.js';
 import { stripPreviewText } from './typing.js';
 
 export function getConversationSettingsForCharacter(character, { groupId = getConversationGroupIdForAvatar(character?.avatar), personaId = getConversationPersonaId() } = {}) {
     return character?.avatar ? getSettings(character.avatar, { groupId, personaId }) : { ...DEFAULT_SETTINGS };
 }
 
-export function getConversationPals({ personaId = getConversationPersonaId() } = {}) {
+export function getDirectConversations({ personaId = getConversationPersonaId() } = {}) {
     if (!Array.isArray(characters)) {
         return [];
     }
@@ -48,22 +48,22 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
     const items = [];
     const seen = new Set();
     const seenGroupIds = new Set();
-    const addItem = ({ character, index, settings, groupId = '', group = null, threadStore = null }) => {
+    const addItem = ({ character, index, settings, groupId = '', group = null, conversationRecord = null }) => {
         const avatar = character?.avatar;
         if (!avatar || (!groupId && !settings?.enabled)) {
             return;
         }
 
-        const key = getConversationThreadKey(avatar, groupId || '', { personaId });
+        const key = getConversationKey(avatar, groupId || '', { personaId });
         if (!key || seen.has(key) || (groupId && seenGroupIds.has(String(groupId)))) {
             return;
         }
 
         if (groupId) {
-            const branchId = threadStore?.activeBranchId || DEFAULT_BRANCH_ID;
-            const branch = normalizeConversationBranch(threadStore?.branches?.[branchId], branchId);
-            const isEmptyThread = !branch.messages.length && !branch.unread && branch.preview === 'Conversation ready';
-            if (isEmptyThread && !group?.is_conversation_group) {
+            const chatId = conversationRecord?.activeBranchId || DEFAULT_CHAT_ID;
+            const conversationChat = normalizeConversationChat(conversationRecord?.branches?.[chatId], chatId);
+            const isEmptyConversation = !conversationChat.messages.length && !conversationChat.unread && conversationChat.preview === 'Conversation ready';
+            if (isEmptyConversation && !group?.is_conversation_group) {
                 return;
             }
         }
@@ -75,10 +75,10 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
         items.push({ character, index, settings, groupId: groupId || '', group, key });
     };
 
-    getConversationPals({ personaId }).forEach(pal => addItem({ ...pal, groupId: '' }));
+    getDirectConversations({ personaId }).forEach(conversation => addItem({ ...conversation, groupId: '' }));
 
     getConversationGroups({ personaId }).forEach((group) => {
-        const anchor = getConversationGroupThreadAnchor(group, { personaId });
+        const anchor = getConversationGroupAnchor(group, { personaId });
         const character = anchor?.character;
         if (!character?.avatar) {
             return;
@@ -92,22 +92,22 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
             settings,
             groupId,
             group,
-            threadStore: anchor.threadStore,
+            conversationRecord: anchor.conversationRecord,
         });
     });
 
     Object.entries(getConversationStore().characters || {}).forEach(([storeKey]) => {
-        if (!isConversationThreadKeyForPersona(storeKey, personaId)) {
+        if (!isConversationKeyForPersona(storeKey, personaId)) {
             return;
         }
 
-        const parsed = parseConversationThreadKey(storeKey);
+        const parsed = parseConversationKey(storeKey);
         if (!parsed.groupId || !parsed.avatar) {
             return;
         }
 
         const group = getConversationGroupById(parsed.groupId, { personaId });
-        const anchor = getConversationGroupThreadAnchor(group, { personaId });
+        const anchor = getConversationGroupAnchor(group, { personaId });
         const character = anchor?.character;
         if (!character || !group) {
             return;
@@ -121,7 +121,7 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
             settings,
             groupId: parsed.groupId,
             group,
-            threadStore: anchor.threadStore,
+            conversationRecord: anchor.conversationRecord,
         });
     });
 
@@ -140,15 +140,15 @@ function getMessageTimeMs(message) {
 }
 
 function getRailItemActivityTime(item, personaId) {
-    const branch = getActiveConversationBranch(item.character.avatar, { create: false, groupId: item.groupId, personaId });
-    const messages = Array.isArray(branch?.messages) ? branch.messages : [];
+    const conversationChat = getActiveConversationChat(item.character.avatar, { create: false, groupId: item.groupId, personaId });
+    const messages = Array.isArray(conversationChat?.messages) ? conversationChat.messages : [];
     for (let index = messages.length - 1; index >= 0; index--) {
         const time = getMessageTimeMs(messages[index]);
         if (time) {
             return time;
         }
     }
-    return Number((messages.length ? branch?.updatedAt : branch?.createdAt) || branch?.updatedAt || 0);
+    return Number((messages.length ? conversationChat?.updatedAt : conversationChat?.createdAt) || conversationChat?.updatedAt || 0);
 }
 
 export function getSelectedConversationGroup() {
@@ -238,9 +238,9 @@ export function getConversationMessageAvatar(message, avatar = getCurrentCharAva
     }
 
     if (message.role === 'partner' || message.role === 'system') {
-        const partnerAvatar = message.extra?.partner_avatar;
-        if (partnerAvatar) {
-            return getThumbnailUrl('avatar', partnerAvatar);
+        const memberAvatar = message.extra?.partner_avatar;
+        if (memberAvatar) {
+            return getThumbnailUrl('avatar', memberAvatar);
         }
     }
 
@@ -256,9 +256,9 @@ export function getConversationMessageReceipt(message, avatar = getCurrentCharAv
         return '';
     }
 
-    const thread = getConversationThread(avatar, { groupId, personaId });
-    const messageIndex = thread.findIndex(item => item.id === message.id);
-    if (messageIndex >= 0 && thread.slice(messageIndex + 1).some(item => !['user', 'system'].includes(item.role))) {
+    const conversationMessages = getConversationMessages(avatar, { groupId, personaId });
+    const messageIndex = conversationMessages.findIndex(item => item.id === message.id);
+    if (messageIndex >= 0 && conversationMessages.slice(messageIndex + 1).some(item => !['user', 'system'].includes(item.role))) {
         return 'Seen';
     }
 

@@ -5,8 +5,8 @@ export {
     getConversationWelcomeChats,
 } from './settings-store.js';
 export {
-    deleteConversationWelcomeBranch,
-    renameConversationBranch,
+    deleteConversationWelcomeChat,
+    renameConversationChat,
 } from './context.js';
 export {
     openConversationWorkspaceForAvatar,

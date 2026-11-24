@@ -93,12 +93,12 @@ export const surfaces = [
         primaryFlow: true,
     }),
     ...[
-        ['branch', 'Branches menu', 'open-branch-menu', 'chat'],
+        ['branch', 'Branches menu', 'open-chat-menu', 'chat'],
         ['overflow', 'Conversation menu', 'open-conversation-menu', 'chat'],
         // The desktop composer has an attach button of its own; the menu replaces it where the workspace is paged.
         ['composer', 'Conversation composer menu (Add to message)', 'open-composer-menu', 'chat', NARROW_VIEWPORTS],
-        ['status', 'Conversation status and persona menu', 'open-persona-menu', 'pals'],
-        ['new', 'New conversation menu', 'open-new-menu', 'pals'],
+        ['status', 'Conversation status and persona menu', 'open-persona-menu', 'list'],
+        ['new', 'New conversation menu', 'open-new-menu', 'list'],
     ].map(([id, title, action, workspacePage, viewports]) => menu({
         id: `conversation.${id}`,
         title,

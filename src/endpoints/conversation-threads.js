@@ -5,11 +5,11 @@
  */
 
 import {
-    DEFAULT_BRANCH_ID,
+    DEFAULT_CHAT_ID,
     DEFAULT_SETTINGS,
-    MAX_THREAD_MESSAGES,
+    MAX_CONVERSATION_MESSAGES,
 } from '../../public/scripts/sillybunny-conversation/constants.js';
-import { safeParseThread } from '../../public/scripts/sillybunny-conversation/thread-store-utils.js';
+import { safeParseMessages } from '../../public/scripts/sillybunny-conversation/conversation-store-utils.js';
 import {
     getObject,
     getOwnRecord,
@@ -25,7 +25,7 @@ import { getConversationThreadKey } from './conversation-store.js';
 
 const ORIGINAL_CONVERSATION_MESSAGE_ID = Symbol('originalConversationMessageId');
 
-function getSafeBranchId(value, fallback = DEFAULT_BRANCH_ID) {
+function getSafeBranchId(value, fallback = DEFAULT_CHAT_ID) {
     const branchId = String(value || '').trim();
     return branchId && branchId.length <= 256 && isSafeConversationPropertyKey(branchId) ? branchId : fallback;
 }
@@ -33,7 +33,7 @@ function getSafeBranchId(value, fallback = DEFAULT_BRANCH_ID) {
 /**
  * Create a new conversation branch
  */
-export function createConversationBranch(name = 'Main', id = DEFAULT_BRANCH_ID) {
+export function createConversationBranch(name = 'Main', id = DEFAULT_CHAT_ID) {
     const now = Date.now();
     const safeId = getSafeBranchId(id);
     return {
@@ -58,15 +58,15 @@ export function createConversationBranch(name = 'Main', id = DEFAULT_BRANCH_ID) 
 /**
  * Normalize a conversation branch
  */
-export function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
+export function normalizeConversationBranch(branch, id = DEFAULT_CHAT_ID) {
     const now = Date.now();
     const safeId = getSafeBranchId(id);
     const target = isObject(branch)
         ? getOwnRecord(branch)
-        : createConversationBranch(safeId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation', safeId);
+        : createConversationBranch(safeId === DEFAULT_CHAT_ID ? 'Main' : 'Conversation', safeId);
 
     target.id = safeId;
-    target.name = target.name || (safeId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation');
+    target.name = target.name || (safeId === DEFAULT_CHAT_ID ? 'Main' : 'Conversation');
     const messages = Array.isArray(target.messages)
         ? target.messages.map(message => {
             if (!isObject(message)) {
@@ -77,7 +77,7 @@ export function normalizeConversationBranch(branch, id = DEFAULT_BRANCH_ID) {
             return normalizedMessage;
         })
         : target.messages;
-    target.messages = repairConversationMessageIds(safeParseThread(messages));
+    target.messages = repairConversationMessageIds(safeParseMessages(messages));
     target.preview = typeof target.preview === 'string' ? target.preview : 'Conversation ready';
     target.unread = parsePositiveInt(target.unread, 0, 0);
     target.lastActivity = parsePositiveInt(target.lastActivity, now, 0);
@@ -376,7 +376,7 @@ function mergeGroupThreadStore(destination, source, sourceAvatar) {
         }
 
         const mergedMessages = mergeGroupMessages([...(destinationBranch.messages || [])], sourceBranch.messages);
-        if (mergedMessages.length > MAX_THREAD_MESSAGES) {
+        if (mergedMessages.length > MAX_CONVERSATION_MESSAGES) {
             // Keep overflow history as a branch instead of silently dropping either alias.
             const mergedBranchId = getMergedBranchId(branchId, sourceAvatar, destination.branches);
             sourceBranch.id = mergedBranchId;
@@ -489,9 +489,9 @@ export function getConversationThreadStore(store, avatar, groupId = '', { create
         store.characters[threadKey] = {
             settings: { ...DEFAULT_SETTINGS },
             schedule: null,
-            activeBranchId: DEFAULT_BRANCH_ID,
+            activeBranchId: DEFAULT_CHAT_ID,
             branches: {
-                [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID),
+                [DEFAULT_CHAT_ID]: createConversationBranch('Main', DEFAULT_CHAT_ID),
             },
         };
     }
@@ -514,7 +514,7 @@ export function getConversationThreadStore(store, avatar, groupId = '', { create
     threadStore.activeBranchId = getSafeBranchId(threadStore.activeBranchId);
     if (!hasOwn(threadStore.branches, threadStore.activeBranchId)) {
         threadStore.branches[threadStore.activeBranchId] = createConversationBranch(
-            threadStore.activeBranchId === DEFAULT_BRANCH_ID ? 'Main' : 'Conversation',
+            threadStore.activeBranchId === DEFAULT_CHAT_ID ? 'Main' : 'Conversation',
             threadStore.activeBranchId,
         );
     }

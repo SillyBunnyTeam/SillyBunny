@@ -1,47 +1,47 @@
 import { getConversationGroupIdForAvatar, getConversationPersonaId, getCurrentCharAvatar, getCurrentCharName } from './context.js';
-import { incrementUnreadCount, isConversationActiveThread, notifyNewConversationMessage } from './notifications.js';
+import { incrementUnreadCount, isConversationActive, notifyNewConversationMessage } from './notifications.js';
 import { scheduleConversationMemorySummary } from './prompt.js';
-import { scheduleInterfaceRefresh, schedulePalsRailRender } from './render-scheduler.js';
+import { scheduleInterfaceRefresh, scheduleConversationListRender } from './render-scheduler.js';
 import { conversationState } from './state.js';
-import { appendConversationThreadMessage, markConversationSeen } from './thread-store.js';
+import { appendConversationChatMessage, markConversationSeen } from './conversation-store.js';
 
-export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, branchId = '', groupId = undefined, personaId = getConversationPersonaId() } = {}, avatar = getCurrentCharAvatar()) {
+export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId() } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return null;
     }
 
     const resolvedGroupId = groupId !== undefined ? groupId : getConversationGroupIdForAvatar(avatar);
-    const message = appendConversationThreadMessage(avatar, {
+    const message = appendConversationChatMessage(avatar, {
         role,
         name,
         mes: messageText,
         extra,
-    }, { branchId, create: !branchId, groupId: resolvedGroupId, personaId });
+    }, { chatId, create: !chatId, groupId: resolvedGroupId, personaId });
     if (!message) {
         return null;
     }
 
     const isCurrentPersona = personaId === getConversationPersonaId();
     const isIncoming = !['user', 'system'].includes(role);
-    const shouldIncrementUnread = isIncoming && !isConversationActiveThread(avatar, resolvedGroupId, { branchId, personaId });
+    const shouldIncrementUnread = isIncoming && !isConversationActive(avatar, resolvedGroupId, { chatId, personaId });
     const shouldNotify = isCurrentPersona && shouldIncrementUnread;
     if (shouldIncrementUnread) {
-        incrementUnreadCount(avatar, { branchId, groupId: resolvedGroupId, personaId });
+        incrementUnreadCount(avatar, { chatId, groupId: resolvedGroupId, personaId });
     }
     if (isIncoming) {
-        markConversationSeen(avatar, Date.now(), { branchId, groupId: resolvedGroupId, personaId });
+        markConversationSeen(avatar, Date.now(), { chatId, groupId: resolvedGroupId, personaId });
     }
 
-    if (isConversationActiveThread(avatar, resolvedGroupId, { branchId, personaId })) {
+    if (isConversationActive(avatar, resolvedGroupId, { chatId, personaId })) {
         scheduleInterfaceRefresh({ syncControls: false });
     } else if (conversationState.conversationWorkspaceOpen) {
-        schedulePalsRailRender();
+        scheduleConversationListRender();
     }
 
     if (isCurrentPersona) {
-        notifyNewConversationMessage(avatar, message, shouldNotify, { branchId, groupId: resolvedGroupId, personaId });
+        notifyNewConversationMessage(avatar, message, shouldNotify, { chatId, groupId: resolvedGroupId, personaId });
     }
-    scheduleConversationMemorySummary(avatar, { branchId, groupId: resolvedGroupId, personaId });
+    scheduleConversationMemorySummary(avatar, { chatId, groupId: resolvedGroupId, personaId });
 
     return message;
 }

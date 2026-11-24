@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 const appendConversationMessage = jest.fn();
 const addConversationReminder = jest.fn();
 const generateConversationImage = jest.fn();
-const updateConversationThreadMessage = jest.fn();
+const updateConversationChatMessage = jest.fn();
 const runtimeStatusOverrides = new Map();
-const threadMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
+const chatMessages = [{ id: 'user-1', role: 'user', name: 'User', mes: 'hello', extra: {} }];
 const generateRaw = jest.fn();
 const buildConversationPromptMessages = jest.fn(async () => [{ role: 'user', content: 'Conversation transcript:' }]);
 const buildConversationSystemPrompt = jest.fn(() => 'system prompt');
@@ -36,10 +36,10 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.
     getCharacterImageDetails: () => '',
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partners.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
     stripSpeakerPrefix: value => String(value || '').trim(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partners-utils.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members-utils.js', () => ({
     getSpeakerPrefixMatch: () => null,
 }));
 const confirmConversationAction = jest.fn(async () => true);
@@ -59,14 +59,14 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedu
     parseDurationToMs: () => 60_000,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({ runtimeStatusOverrides }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     addConversationReminder,
     buildConversationMessageReplyReference: message => message ? { messageId: message.id, name: message.name, role: message.role, text: message.mes } : null,
-    getConversationThread: () => threadMessages,
+    getConversationMessages: () => chatMessages,
     getImageCooldownRemainingSeconds: () => 0,
     hasConversationMessageContent: message => Boolean(message?.id && message?.mes),
     markImageGenerated: jest.fn(),
-    updateConversationThreadMessage,
+    updateConversationChatMessage,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     splitChatroomMessages: value => String(value || '').split(/\n\s*\n+/).map(part => part.trim()).filter(Boolean),
@@ -109,7 +109,7 @@ describe('Conversation core generated reply regressions', () => {
         appendConversationMessage.mockReset().mockImplementation(async (text, options) => ({ id: `message-${appendConversationMessage.mock.calls.length}`, mes: text, ...options }));
         addConversationReminder.mockClear();
         generateConversationImage.mockClear();
-        updateConversationThreadMessage.mockClear();
+        updateConversationChatMessage.mockClear();
         runtimeStatusOverrides.clear();
         generateRaw.mockReset();
         getActiveApiResponseLength.mockClear();
@@ -128,16 +128,16 @@ describe('Conversation core generated reply regressions', () => {
 
         await expect(generateConversationReply('Reply now.', settings, {
             avatar: 'char.png',
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
             speakerAvatar: 'partner.png',
             speakerName: 'Partner',
         })).resolves.toBe('reply');
 
-        expect(getConversationWorldInfo).toHaveBeenCalledWith(threadMessages, settings, { avatar: 'partner.png', personaId: 'persona-a.png' });
-        expect(buildConversationPromptMessages).toHaveBeenCalledWith(threadMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
-        expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { threadAvatar: 'char.png', branchId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
+        expect(getConversationWorldInfo).toHaveBeenCalledWith(chatMessages, settings, { avatar: 'partner.png', personaId: 'persona-a.png' });
+        expect(buildConversationPromptMessages).toHaveBeenCalledWith(chatMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
+        expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { anchorAvatar: 'char.png', chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 100 }));
     });
 
@@ -154,7 +154,7 @@ describe('Conversation core generated reply regressions', () => {
 
     test('keeps native selfie command metadata when image generation is disabled', async () => {
         await postCharacterReply('Here you go [selfie: context="at my desk"]', settings, {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
         }, 'char.png');
@@ -169,7 +169,7 @@ describe('Conversation core generated reply regressions', () => {
     test('attaches a reply card only to the first bubble from the same speaker', async () => {
         const replyReference = { messageId: 'user-1', name: 'User', role: 'user', text: 'hello' };
         await postCharacterReply('First bubble\n\nSecond bubble\n\nThird bubble', settings, {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             extra: { conversation_reply_to: replyReference },
             groupId: '',
             personaId: 'persona-a.png',
@@ -187,7 +187,7 @@ describe('Conversation core generated reply regressions', () => {
             .mockReturnValueOnce(false);
 
         await postCharacterReply('Later [schedule_update: status="dnd" activity="working"] [reminder: 15m | check in]', settings, {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
             validateTarget,
@@ -200,7 +200,7 @@ describe('Conversation core generated reply regressions', () => {
 
     test('commits command side effects to the captured persona after append succeeds', async () => {
         await postCharacterReply('Later [schedule_update: status="dnd" activity="working"] [reminder: 15m | check in]', settings, {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: '',
             personaId: 'persona-a.png',
             validateTarget: () => true,
@@ -211,7 +211,7 @@ describe('Conversation core generated reply regressions', () => {
             status: 'dnd',
         });
         expect(addConversationReminder).toHaveBeenCalledWith('char.png', '', '15m', 'check in', {
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             personaId: 'persona-a.png',
         });
     });
@@ -254,7 +254,7 @@ describe('Conversation core generated reply regressions', () => {
             }),
             querySelectorAll: jest.fn(() => [messageElement]),
         };
-        threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
+        chatMessages.splice(0, chatMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
 
         await editConversationMessage('42');
 
@@ -265,11 +265,11 @@ describe('Conversation core generated reply regressions', () => {
         expect(messageElement.classList.remove).toHaveBeenCalledWith('is-editing');
 
         saveButton.onclick();
-        expect(updateConversationThreadMessage).not.toHaveBeenCalled();
+        expect(updateConversationChatMessage).not.toHaveBeenCalled();
 
         textarea.value = 'updated';
         saveButton.onclick();
-        expect(updateConversationThreadMessage).toHaveBeenCalledWith('char.png', 42, 'updated', null, {
+        expect(updateConversationChatMessage).toHaveBeenCalledWith('char.png', 42, 'updated', null, {
             groupId: '',
             personaId: 'persona-a.png',
         });
@@ -314,7 +314,7 @@ describe('Conversation core generated reply regressions', () => {
             })),
             querySelectorAll: jest.fn(() => [previousMessageElement]),
         };
-        threadMessages.splice(0, threadMessages.length,
+        chatMessages.splice(0, chatMessages.length,
             { id: 42, role: 'user', name: 'User', mes: 'first', extra: {} },
             { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
         );
@@ -361,7 +361,7 @@ describe('Conversation core generated reply regressions', () => {
             }),
             querySelectorAll: jest.fn(() => [messageElement]),
         };
-        threadMessages.splice(0, threadMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
+        chatMessages.splice(0, chatMessages.length, { id: 42, role: 'user', name: 'User', mes: 'hello', extra: {} });
 
         await editConversationMessage('42');
 
@@ -370,7 +370,7 @@ describe('Conversation core generated reply regressions', () => {
         textarea.value = '   ';
         saveButton.onclick();
 
-        expect(updateConversationThreadMessage).not.toHaveBeenCalled();
+        expect(updateConversationChatMessage).not.toHaveBeenCalled();
         expect(messageElement.classList.remove).toHaveBeenCalledWith('is-editing');
     });
 
@@ -420,7 +420,7 @@ describe('Conversation core generated reply regressions', () => {
             querySelectorAll: jest.fn(() => [previousMessageElement]),
         };
         confirmConversationAction.mockImplementation(async () => false);
-        threadMessages.splice(0, threadMessages.length,
+        chatMessages.splice(0, chatMessages.length,
             { id: 42, role: 'user', name: 'User', mes: 'first', extra: {} },
             { id: 43, role: 'user', name: 'User', mes: 'hello', extra: {} },
         );

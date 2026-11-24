@@ -27,13 +27,13 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
         conversationWorkspaceOpen: false,
     },
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({ safeParseThread: value => value }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({ safeParseMessages: value => value }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 
 const {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationStore,
-    getRawConversationThreadKey,
+    getRawConversationKey,
     migrateLegacyConversationStoreToPersona,
 } = await import('../public/scripts/sillybunny-conversation/context.js');
 
@@ -67,10 +67,10 @@ describe('conversation persona migration', () => {
     });
 
     test('keeps the browser raw key format compatible with persisted and backend keys', () => {
-        expect(getRawConversationThreadKey('folder/name.png', 'group id', 'persona/a.png')).toBe(
+        expect(getRawConversationKey('folder/name.png', 'group id', 'persona/a.png')).toBe(
             'persona:persona%2Fa.png:group:group id:folder/name.png',
         );
-        expect(getRawConversationThreadKey('folder/name.png', '', 'persona/a.png')).toBe(
+        expect(getRawConversationKey('folder/name.png', '', 'persona/a.png')).toBe(
             'persona:persona%2Fa.png:folder/name.png',
         );
     });
@@ -113,18 +113,18 @@ describe('conversation persona migration', () => {
     });
 
     test('reads an explicitly captured persona and branch instead of the active persona branch', () => {
-        const branchA = { id: 'branch-a', messages: [{ id: 'a' }] };
-        const branchB = { id: 'branch-b', messages: [{ id: 'b' }] };
+        const chatA = { id: 'branch-a', messages: [{ id: 'a' }] };
+        const chatB = { id: 'branch-b', messages: [{ id: 'b' }] };
         extensionSettings.sillybunny_conversation = {
             characters: {
                 'persona:persona-a.png:char.png': {
                     activeBranchId: 'branch-a',
-                    branches: { 'branch-a': branchA },
+                    branches: { 'branch-a': chatA },
                     settings: {},
                 },
                 'persona:persona-b.png:char.png': {
                     activeBranchId: 'branch-b',
-                    branches: { 'branch-b': branchB },
+                    branches: { 'branch-b': chatB },
                     settings: {},
                 },
             },
@@ -133,18 +133,18 @@ describe('conversation persona migration', () => {
             settings: {},
         };
 
-        expect(getActiveConversationBranch('char.png', {
-            branchId: 'branch-b',
+        expect(getActiveConversationChat('char.png', {
+            chatId: 'branch-b',
             create: false,
             groupId: '',
             personaId: 'persona-b.png',
-        })).toBe(branchB);
-        expect(getActiveConversationBranch('char.png', {
-            branchId: 'branch-a',
+        })).toBe(chatB);
+        expect(getActiveConversationChat('char.png', {
+            chatId: 'branch-a',
             create: false,
             groupId: '',
             personaId: 'persona-a.png',
-        })).toBe(branchA);
+        })).toBe(chatA);
     });
 
     test('does not duplicate ID-less messages when a retained collision is migrated repeatedly', () => {

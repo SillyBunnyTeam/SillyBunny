@@ -6,7 +6,7 @@ import {
     GLOBAL_CONVERSATION_SETTINGS_KEYS,
     GROUP_CONVERSATION_SETTINGS_KEYS,
     SETTINGS_FIELDS,
-    THREAD_CONVERSATION_SETTINGS_KEYS,
+    CONVERSATION_SETTINGS_KEYS,
 } from '../public/scripts/sillybunny-conversation/constants.js';
 
 describe('sillybunny conversation settings keys', () => {
@@ -21,9 +21,9 @@ describe('sillybunny conversation settings keys', () => {
             'connection_profile',
             'lorebooks_enabled',
         ]);
-        expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
-        expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
-        expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
+        expect(CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
+        expect(CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
+        expect(CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
         expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
         expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
         expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
@@ -34,21 +34,21 @@ describe('sillybunny conversation settings keys', () => {
 
     test('turns Conversation lorebooks on by default with one global switch', () => {
         expect(DEFAULT_SETTINGS.lorebooks_enabled).toBe(true);
-        expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
+        expect(CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
         expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
         expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
         expect(SETTINGS_FIELDS).toContainEqual({ id: 'sb_conv_lorebooks_enabled', key: 'lorebooks_enabled', prop: 'checked' });
     });
 
     test('keeps non-global settings available for solo thread storage', () => {
-        const threadKeys = new Set(THREAD_CONVERSATION_SETTINGS_KEYS);
+        const conversationKeys = new Set(CONVERSATION_SETTINGS_KEYS);
 
         for (const key of Object.keys(DEFAULT_SETTINGS)) {
             if (GLOBAL_CONVERSATION_SETTINGS_KEYS.includes(key)) {
                 continue;
             }
 
-            expect(threadKeys.has(key)).toBe(true);
+            expect(conversationKeys.has(key)).toBe(true);
         }
     });
 

@@ -8,25 +8,25 @@ import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, CONVERSATION_THREAD_OPENED_EVENT, DEFAULT_BRANCH_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { CHROME_IDS, CONVERSATION_OPENED_EVENT, DEFAULT_CHAT_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
-    createConversationBranchForAvatar,
-    deleteConversationBranch,
-    getConversationBranches,
+    createConversationChat,
+    deleteConversationChat,
+    getConversationChats,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadKey,
-    getConversationThreadStore,
+    getConversationKey,
+    getConversationRecord,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getRoleplayCurrentCharacter,
     isAvatarInConversationGroup,
     parsePositiveInt,
-    renameConversationBranch,
-    resetCharacterConversationBranches,
+    renameConversationChat,
+    resetCharacterConversationChats,
     saveGroupConversationSettings,
-    setActiveConversationBranch,
+    setActiveConversationChat,
 } from './context.js';
 import { editConversationMessage } from './generation.js';
 import {
@@ -37,8 +37,8 @@ import {
     updateConversationHeader,
 } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
-import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
-import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
+import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActive } from './notifications.js';
+import { getDirectConversations, getConversationRailItems, getCurrentGroupConversationMembers } from './conversation-list.js';
 import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
@@ -46,18 +46,18 @@ import {
     hideConversationPickers,
     openAddMemberPicker,
     renderConversationPersonaPicker,
-    toggleAddDmPicker,
+    toggleStartDirectConversationPicker,
     toggleConversationGroupPicker,
     togglePersonaPicker,
     toggleUserStatusPicker,
     updateUserFooter,
 } from './pickers.js';
-import { afterConversationRender, scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
+import { afterConversationRender, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
 import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
 import {
     clearConversationMemoryFromPanel,
     closeConversationSettings,
-    closePalsRail,
+    closeConversationList,
     dismissConversationSettings,
     dismissConversationSettingsOnEscape,
     forceCreateMemoryFromPanel,
@@ -69,12 +69,12 @@ import {
     renderConversationMemoryPanel,
     renderScheduleDisplay,
     syncConversationPage,
-    togglePalsRail,
+    toggleConversationList,
 } from './settings-panel.js';
 import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
-import { getConversationThread, updateLastUserActivity } from './thread-store.js';
+import { getConversationMessages, updateLastUserActivity } from './conversation-store.js';
 import {
     branchConversationFromMessage,
     clearConversationReplyTarget,
@@ -400,7 +400,7 @@ function bindConversationZoomEscape() {
     }, true);
 }
 
-export async function selectConversationThread(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
+export async function selectConversation(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
     if (!avatar) {
         return false;
     }
@@ -411,7 +411,7 @@ export async function selectConversationThread(avatar, { branchId = '', groupId 
 
     const normalizedGroupId = groupId ? String(groupId) : '';
     return openConversationWorkspaceForAvatar(avatar, {
-        branchId,
+        chatId,
         groupId: normalizedGroupId || null,
         showToast,
     });
@@ -424,7 +424,7 @@ const USER_STATUS_MENU_ITEMS = Object.freeze([
     { status: 'offline', label: 'Invisible' },
 ]);
 
-function getActiveThreadIdentity() {
+function getActiveConversationIdentity() {
     const avatar = getCurrentCharAvatar();
     return { avatar, groupId: avatar ? getConversationGroupIdForAvatar(avatar) : '' };
 }
@@ -433,38 +433,38 @@ function runFromMenu(action, data = {}, trigger = null) {
     return () => void runConversationAction(action, data, trigger);
 }
 
-function openConversationBranchMenu(trigger) {
-    const { avatar, groupId } = getActiveThreadIdentity();
+function openConversationChatMenu(trigger) {
+    const { avatar, groupId } = getActiveConversationIdentity();
     if (!avatar) {
-        togglePalsRail();
+        toggleConversationList();
         return;
     }
 
-    const activeBranchId = getConversationThreadStore(avatar, { create: false, groupId })?.activeBranchId || DEFAULT_BRANCH_ID;
-    const branches = getConversationBranches(avatar, { groupId });
-    const activeBranch = branches.find(branch => branch.id === activeBranchId);
+    const activeBranchId = getConversationRecord(avatar, { create: false, groupId })?.activeBranchId || DEFAULT_CHAT_ID;
+    const branches = getConversationChats(avatar, { groupId });
+    const activeChat = branches.find(chat => chat.id === activeBranchId);
     const identity = { avatar, groupId };
     openActionMenu({
         trigger,
         title: 'Branches',
         sections: [
             {
-                items: branches.map(branch => ({
-                    label: branch.name || 'Conversation',
-                    checked: branch.id === activeBranchId,
-                    detail: branch.unread > 0 ? String(branch.unread) : '',
-                    onSelect: runFromMenu('select-branch', { ...identity, branchId: branch.id }),
+                items: branches.map(chat => ({
+                    label: chat.name || 'Conversation',
+                    checked: chat.id === activeBranchId,
+                    detail: chat.unread > 0 ? String(chat.unread) : '',
+                    onSelect: runFromMenu('select-chat', { ...identity, chatId: chat.id }),
                 })),
             },
             {
                 items: [
-                    { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-branch', identity) },
-                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeBranch, onSelect: runFromMenu('rename-branch', { ...identity, branchId: activeBranchId }) },
+                    { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-named-chat', identity) },
+                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeChat, onSelect: runFromMenu('rename-chat', { ...identity, chatId: activeBranchId }) },
                 ],
             },
             {
                 items: [
-                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeBranch, onSelect: runFromMenu('delete-branch', { ...identity, branchId: activeBranchId }) },
+                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeChat, onSelect: runFromMenu('delete-chat', { ...identity, chatId: activeBranchId }) },
                 ],
             },
         ],
@@ -472,7 +472,7 @@ function openConversationBranchMenu(trigger) {
 }
 
 function openConversationOverflowMenu(trigger) {
-    const { avatar, groupId } = getActiveThreadIdentity();
+    const { avatar, groupId } = getActiveConversationIdentity();
     const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
     const addMemberLabel = groupId ? 'Add Member to Group…' : 'Add Member…';
     openActionMenu({
@@ -493,7 +493,7 @@ function openConversationOverflowMenu(trigger) {
             },
             {
                 items: avatar
-                    ? [{ label: 'Delete Conversation History…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-dm', { avatar, groupId }) }]
+                    ? [{ label: 'Delete Conversation History…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-conversation', { avatar, groupId }) }]
                     : [],
             },
         ],
@@ -501,18 +501,18 @@ function openConversationOverflowMenu(trigger) {
 }
 
 function openConversationComposerMenu(trigger) {
-    const hasThread = Boolean(getCurrentCharAvatar());
+    const hasConversation = Boolean(getCurrentCharAvatar());
     openActionMenu({
         trigger,
         title: 'Add to Message',
         sections: [
             {
                 items: [
-                    { label: 'Attach Files', icon: 'fa-solid fa-paperclip', disabled: !hasThread, onSelect: runFromMenu('attach-file') },
-                    { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled: !hasThread, onSelect: runFromMenu('quick-selfie') },
-                    { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled: !hasThread, onSelect: runFromMenu('quick-remind') },
-                    { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled: !hasThread, onSelect: runFromMenu('quick-summarize') },
-                    { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled: !hasThread, onSelect: runFromMenu('force-response') },
+                    { label: 'Attach Files', icon: 'fa-solid fa-paperclip', disabled: !hasConversation, onSelect: runFromMenu('attach-file') },
+                    { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled: !hasConversation, onSelect: runFromMenu('quick-selfie') },
+                    { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled: !hasConversation, onSelect: runFromMenu('quick-remind') },
+                    { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled: !hasConversation, onSelect: runFromMenu('quick-summarize') },
+                    { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled: !hasConversation, onSelect: runFromMenu('force-response') },
                 ],
             },
         ],
@@ -550,7 +550,7 @@ function openConversationNewMenu(trigger) {
         sections: [
             {
                 items: [
-                    { label: 'New DM', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-dm', {}, trigger) },
+                    { label: 'New DM', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-start-direct-conversation', {}, trigger) },
                     { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: runFromMenu('open-new-group-chat', {}, trigger) },
                 ],
             },
@@ -581,8 +581,8 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'toggle-search':
             toggleConversationSearchBar();
             break;
-        case 'open-branch-menu':
-            openConversationBranchMenu(target);
+        case 'open-chat-menu':
+            openConversationChatMenu(target);
             break;
         case 'open-conversation-menu':
             openConversationOverflowMenu(target);
@@ -596,11 +596,11 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'open-new-menu':
             openConversationNewMenu(target);
             break;
-        case 'toggle-pals':
-            togglePalsRail();
+        case 'toggle-list':
+            toggleConversationList();
             break;
-        case 'close-pals':
-            closePalsRail();
+        case 'close-list':
+            closeConversationList();
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
             break;
         case 'open-settings':
@@ -616,15 +616,15 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'open-add-member':
             openAddMemberPicker();
             break;
-        case 'open-add-dm':
-            toggleAddDmPicker(target);
+        case 'open-start-direct-conversation':
+            toggleStartDirectConversationPicker(target);
             break;
         case 'open-new-group-chat':
             toggleConversationGroupPicker({ anchor: target });
             break;
         case 'mark-all-read': {
             const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
-            schedulePalsRailRender();
+            scheduleConversationListRender();
             if (cleared > 0 || removedLegacy > 0) {
                 toastr.success('Marked all Conversation pings as read');
             } else {
@@ -661,7 +661,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             scheduleTimelineRender();
             toastr.info('Image generation stopped');
             break;
-        case 'add-character-dm': {
+        case 'start-direct-conversation': {
             const index = parsePositiveInt(data.characterIndex, -1, 0);
             if (index >= 0) {
                 const char = characters[index];
@@ -674,22 +674,22 @@ export async function runConversationAction(action, data = {}, target = null, ev
                     charSettings.enabled = true;
                     saveSettings(char.avatar, charSettings, { groupId: '' });
                     hideConversationPickers();
-                    closePalsRail();
-                    await selectConversationThread(char.avatar, {
+                    closeConversationList();
+                    await selectConversation(char.avatar, {
                         groupId: null,
                         showToast: false,
                     });
-                    schedulePalsRailRender();
+                    scheduleConversationListRender();
                 }
             }
             break;
         }
-        case 'select-branch': {
+        case 'select-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const branchId = data.branchId;
-            if (avatar && branchId) {
-                setActiveConversationBranch(avatar, branchId, { groupId });
+            const chatId = data.chatId;
+            if (avatar && chatId) {
+                setActiveConversationChat(avatar, chatId, { groupId });
                 openConversationWorkspaceForAvatar(avatar, {
                     groupId: groupId || null,
                     showToast: false,
@@ -700,14 +700,14 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'new-branch': {
+        case 'new-named-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
             const character = getCharacterForAvatar(avatar);
             if (!avatar) {
                 break;
             }
-            const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
+            const fallbackName = `Chat ${getConversationChats(avatar, { groupId }).length + 1}`;
             const enteredName = await promptConversationText({
                 title: 'New Branch',
                 text: `Name this Conversation branch for ${character?.name || 'this character'}`,
@@ -718,7 +718,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 break;
             }
             const name = enteredName.trim() || fallbackName;
-            createConversationBranchForAvatar(avatar, name, { groupId });
+            createConversationChat(avatar, name, { groupId });
             openConversationWorkspaceForAvatar(avatar, {
                 groupId: groupId || null,
                 showToast: false,
@@ -728,21 +728,21 @@ export async function runConversationAction(action, data = {}, target = null, ev
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
             break;
         }
-        case 'rename-branch': {
+        case 'rename-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const branchId = data.branchId;
-            const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
-            if (avatar && branchId && branch) {
+            const chatId = data.chatId;
+            const chat = getConversationChats(avatar, { groupId }).find(item => item.id === chatId);
+            if (avatar && chatId && chat) {
                 const name = await promptConversationText({
                     title: 'Rename Branch',
-                    defaultValue: branch.name || 'Conversation',
+                    defaultValue: chat.name || 'Conversation',
                     confirmLabel: 'Rename',
                 });
                 if (name?.trim()) {
-                    renameConversationBranch(avatar, branchId, name, { groupId });
-                    schedulePalsRailRender();
-                    if (isConversationActiveThread(avatar, groupId)) {
+                    renameConversationChat(avatar, chatId, name, { groupId });
+                    scheduleConversationListRender();
+                    if (isConversationActive(avatar, groupId)) {
                         updateConversationHeader(getSettings(avatar, { groupId }));
                         renderConversationMemoryPanel();
                     }
@@ -750,29 +750,29 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'delete-branch': {
+        case 'delete-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const branchId = data.branchId;
-            const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
-            if (avatar && branchId && branch) {
+            const chatId = data.chatId;
+            const chat = getConversationChats(avatar, { groupId }).find(item => item.id === chatId);
+            if (avatar && chatId && chat) {
                 const confirmed = await confirmConversationAction({
-                    title: `Delete the "${branch.name || 'Conversation'}" branch?`,
+                    title: `Delete the "${chat.name || 'Conversation'}" branch?`,
                     text: 'This cannot be undone',
                 });
                 if (confirmed) {
-                    deleteConversationBranch(avatar, branchId, { groupId });
-                    if (isConversationActiveThread(avatar, groupId)) {
+                    deleteConversationChat(avatar, chatId, { groupId });
+                    if (isConversationActive(avatar, groupId)) {
                         scheduleInterfaceRefresh({ syncControls: false });
                         renderConversationMemoryPanel();
                     } else {
-                        schedulePalsRailRender();
+                        scheduleConversationListRender();
                     }
                 }
             }
             break;
         }
-        case 'delete-dm': {
+        case 'delete-conversation': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
             const character = getCharacterForAvatar(avatar);
@@ -786,7 +786,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 text: 'This cannot be undone',
             });
             if (confirmed) {
-                resetCharacterConversationBranches(avatar, { groupId });
+                resetCharacterConversationChats(avatar, { groupId });
                 setLastConversationPreview(avatar, 'Conversation ready', { groupId });
                 clearUnreadCount(avatar, { groupId });
                 resetFollowupCount(avatar, { groupId });
@@ -797,12 +797,12 @@ export async function runConversationAction(action, data = {}, target = null, ev
                     saveSettings(avatar, charSettings, { groupId: '' });
                 }
 
-                if (isConversationActiveThread(avatar, groupId)) {
-                    const remainingPals = getConversationRailItems()
+                if (isConversationActive(avatar, groupId)) {
+                    const remainingConversations = getConversationRailItems()
                         .filter(item => !(item.character.avatar === avatar && item.groupId === groupId));
-                    if (remainingPals.length > 0) {
-                        const nextPal = remainingPals[0];
-                        openConversationWorkspaceForAvatar(nextPal.character.avatar, { groupId: nextPal.groupId || null, showToast: false });
+                    if (remainingConversations.length > 0) {
+                        const nextConversation = remainingConversations[0];
+                        openConversationWorkspaceForAvatar(nextConversation.character.avatar, { groupId: nextConversation.groupId || null, showToast: false });
                         scheduleInterfaceRefresh({ syncControls: true });
                     } else {
                         conversationState.conversationWorkspaceOpen = false;
@@ -810,7 +810,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         scheduleInterfaceRefresh({ syncControls: false });
                     }
                 } else {
-                    schedulePalsRailRender();
+                    scheduleConversationListRender();
                 }
                 toastr.success(`Deleted ${historyLabel}`);
             }
@@ -823,7 +823,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 break;
             }
             const groupId = getConversationGroupIdForAvatar(avatar);
-            createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
+            createConversationChat(avatar, `Chat ${getConversationChats(avatar, { groupId }).length + 1}`, { groupId });
             updateLastUserActivity(avatar, { groupId });
             scheduleInterfaceRefresh({ syncControls: false });
             renderConversationMemoryPanel();
@@ -878,15 +878,15 @@ export async function runConversationAction(action, data = {}, target = null, ev
             if (avatar) {
                 const groupId = conversationState.conversationSelectedGroupId || '';
                 const personaId = getConversationPersonaId();
-                const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-                const branchId = threadStore?.activeBranchId || '';
-                const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+                const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+                const chatId = conversationRecord?.activeBranchId || '';
+                const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
                 sendQueue.push(createForcedConversationQueueItem({
                     avatar,
-                    branchId,
+                    chatId,
                     groupId,
                     personaId,
-                    threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+                    conversationKey: getConversationKey(avatar, groupId, { personaId }),
                     createdAt: Date.now(),
                 }, messages));
                 void processSendQueue();
@@ -987,7 +987,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         saveGroupConversationSettings(groupId, genSettings, { personaId });
                     }
                     saveSettings(genAvatar, genSettings, { groupId, personaId });
-                    if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
+                    if (isConversationActive(genAvatar, groupId, { personaId })) {
                         applySettingsToPanel(genSettings);
                         renderScheduleDisplay();
                         updateConversationChrome(genSettings);
@@ -1029,10 +1029,10 @@ export function bindConversationChromeControls(sheld) {
             return;
         }
 
-        const palsRail = document.getElementById(CHROME_IDS.palsRail);
-        if (sheld.dataset.sbConversationPage === 'pals' && getCurrentCharAvatar() && palsRail instanceof HTMLElement && event.target instanceof Node && palsRail.contains(event.target)) {
+        const conversationList = document.getElementById(CHROME_IDS.conversationList);
+        if (sheld.dataset.sbConversationPage === 'list' && getCurrentCharAvatar() && conversationList instanceof HTMLElement && event.target instanceof Node && conversationList.contains(event.target)) {
             event.preventDefault();
-            void runConversationAction('close-pals');
+            void runConversationAction('close-list');
             return;
         }
 
@@ -1065,18 +1065,18 @@ export function bindConversationChromeControls(sheld) {
 
     sheld.addEventListener('click', async (event) => {
         // Message menu triggers are handled by sillybunny-conversation/message-menu.js.
-        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal') : null;
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-list-item') : null;
 
         if (!(target instanceof HTMLElement)) {
             return;
         }
 
-        if (target.classList.contains('sb-conversation-pal')) {
+        if (target.classList.contains('sb-conversation-list-item')) {
             const avatar = target.dataset.avatar || characters[parsePositiveInt(target.dataset.characterIndex, -1, 0)]?.avatar;
             const groupId = target.dataset.groupId || '';
             if (avatar) {
-                closePalsRail();
-                await selectConversationThread(avatar, {
+                closeConversationList();
+                await selectConversation(avatar, {
                     groupId: groupId || null,
                     showToast: false,
                 });
@@ -1174,22 +1174,22 @@ export function bindConversationChromeControls(sheld) {
         backdrop.dataset.sbConversationBound = 'true';
         backdrop.addEventListener('click', () => {
             dismissConversationSettings();
-            closePalsRail();
+            closeConversationList();
         });
     }
 
-    const palsSearch = document.getElementById('sb_conversation_pals_search');
-    if (palsSearch instanceof HTMLInputElement && palsSearch.dataset.sbConversationBound !== 'true') {
-        palsSearch.dataset.sbConversationBound = 'true';
-        const debouncedPalsFilter = debounce(() => {
-            const query = palsSearch.value.toLowerCase().trim();
-            const pals = document.querySelectorAll('.sb-conversation-pal');
-            pals.forEach(pal => {
-                if (pal instanceof HTMLElement) {
-                    const palName = pal.querySelector('.sb-conversation-pal-name')?.textContent?.toLowerCase() || '';
-                    const row = pal.closest('.sb-conversation-pal-row');
-                    const targetElement = row instanceof HTMLElement ? row : pal;
-                    if (palName.includes(query)) {
+    const listSearch = document.getElementById('sb_conversation_list_search');
+    if (listSearch instanceof HTMLInputElement && listSearch.dataset.sbConversationBound !== 'true') {
+        listSearch.dataset.sbConversationBound = 'true';
+        const debouncedListFilter = debounce(() => {
+            const query = listSearch.value.toLowerCase().trim();
+            const conversations = document.querySelectorAll('.sb-conversation-list-item');
+            conversations.forEach(conversation => {
+                if (conversation instanceof HTMLElement) {
+                    const conversationName = conversation.querySelector('.sb-conversation-list-item-name')?.textContent?.toLowerCase() || '';
+                    const row = conversation.closest('.sb-conversation-list-row');
+                    const targetElement = row instanceof HTMLElement ? row : conversation;
+                    if (conversationName.includes(query)) {
                         targetElement.classList.remove('sb-conversation-hidden');
                     } else {
                         targetElement.classList.add('sb-conversation-hidden');
@@ -1197,7 +1197,7 @@ export function bindConversationChromeControls(sheld) {
                 }
             });
         }, debounce_timeout.short);
-        palsSearch.addEventListener('input', debouncedPalsFilter);
+        listSearch.addEventListener('input', debouncedListFilter);
     }
 
     const personaPicker = document.getElementById(CHROME_IDS.personaPicker);
@@ -1219,10 +1219,10 @@ export function bindConversationChromeControls(sheld) {
             const selectedIds = Array.from(personaPicker.querySelectorAll('.sb-conversation-persona-note-checkbox'))
                 .filter(input => input instanceof HTMLInputElement && input.dataset.personaAvatar === avatarId && input.checked)
                 .map(input => input.value);
-            const threadAvatar = getCurrentCharAvatar();
+            const anchorAvatar = getCurrentCharAvatar();
             setActiveConversationPersonaAppendixIds(avatarId, selectedIds, {
-                avatar: threadAvatar,
-                groupId: getConversationGroupIdForAvatar(threadAvatar),
+                avatar: anchorAvatar,
+                groupId: getConversationGroupIdForAvatar(anchorAvatar),
                 personaId: avatarId,
             });
             renderConversationPersonaPicker(personaPicker);
@@ -1236,9 +1236,9 @@ export function getDefaultConversationAvatar() {
         return conversationState.conversationSelectedAvatar;
     }
 
-    const pal = getConversationPals().find(item => item.character?.avatar);
-    if (pal?.character?.avatar) {
-        return pal.character.avatar;
+    const conversation = getDirectConversations().find(item => item.character?.avatar);
+    if (conversation?.character?.avatar) {
+        return conversation.character.avatar;
     }
 
     const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
@@ -1257,26 +1257,26 @@ function emitConversationWorkspaceStateChange() {
     }));
 }
 
-export function openConversationWorkspaceForAvatar(avatar, { branchId = '', groupId = null, showToast = true, enable = false } = {}) {
+export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupId = null, showToast = true, enable = false } = {}) {
     closeConversationSettings();
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
-    if (branchId && targetAvatar && !getConversationBranches(targetAvatar, { groupId: targetGroupId }).some(branch => branch.id === String(branchId))) {
+    if (chatId && targetAvatar && !getConversationChats(targetAvatar, { groupId: targetGroupId }).some(chat => chat.id === String(chatId))) {
         return false;
     }
     const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
-    const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
+    const conversationChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
     conversationState.conversationWorkspaceOpen = true;
     emitConversationWorkspaceStateChange();
     conversationState.conversationSelectedAvatar = targetAvatar;
     conversationState.conversationSelectedGroupId = targetGroupId;
     conversationState.conversationUnavailableGroupId = null;
-    if (threadChanged) {
+    if (conversationChanged) {
         conversationState.conversationTimelineChannel = 'main';
         conversationState.conversationTimelineSearchQuery = '';
     }
-    if (!wasWorkspaceOpen || threadChanged) {
+    if (!wasWorkspaceOpen || conversationChanged) {
         conversationState.timelineBottomScrollPending = true;
     }
     ensureConversationStylesheet();
@@ -1287,10 +1287,10 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
     }
 
     // Every way into a thread ends here, and Conversation opens no chat of the app, so Home hears about it from this event (Getting Started, step 3).
-    window.dispatchEvent(new CustomEvent(CONVERSATION_THREAD_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
+    window.dispatchEvent(new CustomEvent(CONVERSATION_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
 
-    if (branchId) {
-        setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
+    if (chatId) {
+        setActiveConversationChat(targetAvatar, String(chatId), { groupId: targetGroupId });
     }
 
     const settings = getSettings(targetAvatar, { groupId: targetGroupId });
@@ -1352,11 +1352,11 @@ export function setConversationInterfaceActive(active) {
     if (!active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
         closeConversationSettings();
-        closePalsRail();
+        closeConversationList();
         hideConversationPickers();
         observeConversationLayout(false);
         chrome.sheld.removeAttribute('data-sb-conversation-page');
-        for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
+        for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.conversationList]) {
             const element = document.getElementById(id);
             if (element instanceof HTMLElement) {
                 element.hidden = true;
@@ -1369,7 +1369,7 @@ export function setConversationInterfaceActive(active) {
             timeline.removeAttribute('data-sb-conversation-fingerprint');
             conversationState.lastTimelineFingerprint = '';
             conversationState.lastRenderedAvatar = null;
-            conversationState.lastRenderedThreadKey = '';
+            conversationState.lastRenderedConversationKey = '';
             conversationState.lastRenderedMessageCount = 0;
             conversationState.timelineBottomScrollPending = false;
         }
@@ -1377,7 +1377,7 @@ export function setConversationInterfaceActive(active) {
     }
 
     chrome.sheld.dataset.sbConversationMode = 'on';
-    for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
+    for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.conversationList]) {
         const element = document.getElementById(id);
         if (element instanceof HTMLElement) {
             element.hidden = false;

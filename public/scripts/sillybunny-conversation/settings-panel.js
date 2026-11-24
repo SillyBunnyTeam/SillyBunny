@@ -7,10 +7,10 @@ import {
     WEEKDAY_LABELS,
 } from './constants.js';
 import {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
+    getConversationRecord,
     getCurrentCharAvatar,
     parsePositiveInt,
     saveGroupConversationSettings,
@@ -20,9 +20,9 @@ import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../popup.js';
 import { animateIn, animateOut, MOTION_FAST, SPRING_NAVIGATION, SPRING_SHEET } from '../sillybunny-motion.js';
 import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrome } from './interface.js';
-import { isConversationActiveThread } from './notifications.js';
-import { getScheduleEditorTargets } from './pals-rail.js';
-import { bindPartnerList, bindWeeklyScheduleEditor, updateUserFooter } from './pickers.js';
+import { isConversationActive } from './notifications.js';
+import { getScheduleEditorTargets } from './conversation-list.js';
+import { bindMemberList, bindWeeklyScheduleEditor, updateUserFooter } from './pickers.js';
 import { updateConversationMemorySummary } from './prompt.js';
 import { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 import {
@@ -34,7 +34,7 @@ import {
     saveStoredSchedule,
 } from './schedule.js';
 import { clearConversationMemorySummary, getConversationMemorySummary, getSettings, saveConversationMemorySummary, saveSettings } from './settings-store.js';
-import { getConversationThread, hasConversationMessageContent } from './thread-store.js';
+import { getConversationMessages, hasConversationMessageContent } from './conversation-store.js';
 import { ensureConversationChrome, replaceSettingsDrawerContent } from './timeline-render.js';
 
 const MOBILE_LAYOUT_QUERY = LAYOUT_MOBILE_QUERY;
@@ -67,7 +67,7 @@ function setSettingsShade(backdrop, shown) {
 export function syncConversationPage() {
     const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-    const palsRail = document.getElementById(CHROME_IDS.palsRail);
+    const conversationList = document.getElementById(CHROME_IDS.conversationList);
 
     const sheld = document.getElementById('sheld');
     if (!(sheld instanceof HTMLElement) || typeof sheld.setAttribute !== 'function') {
@@ -81,8 +81,8 @@ export function syncConversationPage() {
         && !drawer.hidden
         && drawer.dataset.closing !== 'true'
         && drawer.dataset.opening !== 'true';
-    const palsOpen = palsRail instanceof HTMLElement && palsRail.dataset.open === 'true';
-    const page = settingsOpen ? 'settings' : (palsOpen || !getCurrentCharAvatar()) ? 'pals' : 'chat';
+    const listOpen = conversationList instanceof HTMLElement && conversationList.dataset.open === 'true';
+    const page = settingsOpen ? 'settings' : (listOpen || !getCurrentCharAvatar()) ? 'list' : 'chat';
     sheld.setAttribute('data-sb-conversation-page', page);
     setSettingsShade(backdrop, settingsOpen && getConversationLayout() === 'overlay');
 }
@@ -187,29 +187,29 @@ const SETTINGS_SHEET_EXIT = [{ opacity: 1, transform: 'none' }, { opacity: 0, tr
 const SETTINGS_PAGE_ENTER = [{ transform: 'translateX(100%)' }, { transform: 'none' }];
 const SETTINGS_PAGE_EXIT = [{ transform: 'none' }, { transform: 'translateX(100%)' }];
 
-export function closePalsRail() {
-    const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (palsRail instanceof HTMLElement) {
-        palsRail.dataset.open = 'false';
+export function closeConversationList() {
+    const conversationList = document.getElementById(CHROME_IDS.conversationList);
+    if (conversationList instanceof HTMLElement) {
+        conversationList.dataset.open = 'false';
     }
     syncConversationPage();
 }
 
-export function openPalsRail() {
-    const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (palsRail instanceof HTMLElement) {
-        palsRail.dataset.open = 'true';
+export function openConversationList() {
+    const conversationList = document.getElementById(CHROME_IDS.conversationList);
+    if (conversationList instanceof HTMLElement) {
+        conversationList.dataset.open = 'true';
     }
     syncConversationPage();
 }
 
-export function togglePalsRail() {
-    const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (!(palsRail instanceof HTMLElement)) {
+export function toggleConversationList() {
+    const conversationList = document.getElementById(CHROME_IDS.conversationList);
+    if (!(conversationList instanceof HTMLElement)) {
         return;
     }
 
-    palsRail.dataset.open = palsRail.dataset.open === 'true' ? 'false' : 'true';
+    conversationList.dataset.open = conversationList.dataset.open === 'true' ? 'false' : 'true';
     syncConversationPage();
 }
 
@@ -501,7 +501,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         saveGroupConversationSettings(editGroupId, editSettings, { personaId });
     }
     saveSettings(editAvatar, editSettings, { groupId: editGroupId, personaId });
-    if (isConversationActiveThread(editAvatar, editGroupId, { personaId })) {
+    if (isConversationActive(editAvatar, editGroupId, { personaId })) {
         applySettingsToPanel(editSettings);
         renderScheduleDisplay();
         updateConversationChrome(editSettings);
@@ -580,11 +580,11 @@ export function renderConversationMemoryPanel() {
 
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const branch = avatar ? getActiveConversationBranch(avatar, { create: false, groupId }) : null;
-    const threadStore = avatar ? getConversationThreadStore(avatar, { create: false, groupId }) : null;
+    const chat = avatar ? getActiveConversationChat(avatar, { create: false, groupId }) : null;
+    const conversationRecord = avatar ? getConversationRecord(avatar, { create: false, groupId }) : null;
     const memorySummary = getConversationMemorySummary(avatar, { groupId });
-    const messageCount = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system').length : 0;
-    const summarizedCount = parsePositiveInt(threadStore?.memoryMessageCount ?? branch?.memoryMessageCount, 0, 0);
+    const messageCount = Array.isArray(chat?.messages) ? chat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system').length : 0;
+    const summarizedCount = parsePositiveInt(conversationRecord?.memoryMessageCount ?? chat?.memoryMessageCount, 0, 0);
 
     memoryInput.value = memorySummary;
     memoryInput.placeholder = messageCount
@@ -592,8 +592,8 @@ export function renderConversationMemoryPanel() {
         : 'No memory summary yet. This branch has no messages to summarize.';
 
     if (meta instanceof HTMLElement) {
-        const branchName = branch?.name || 'Current branch';
-        meta.textContent = `Persistent for this Conversation · ${branchName} has ${messageCount} message${messageCount === 1 ? '' : 's'} · summarized through ${summarizedCount}`;
+        const chatName = chat?.name || 'Current branch';
+        meta.textContent = `Persistent for this Conversation · ${chatName} has ${messageCount} message${messageCount === 1 ? '' : 's'} · summarized through ${summarizedCount}`;
     }
 }
 
@@ -617,7 +617,7 @@ export async function forceCreateMemoryFromPanel() {
     }
 
     const trimmedMemory = newMemory.trim();
-    const messages = getConversationThread(avatar, { groupId });
+    const messages = getConversationMessages(avatar, { groupId });
     saveConversationMemorySummary(avatar, trimmedMemory, messages.length, { groupId });
     toastr.success('Conversation memory updated');
     renderConversationMemoryPanel();
@@ -665,7 +665,7 @@ export function openConversationSettings() {
         return;
     }
 
-    closePalsRail();
+    closeConversationList();
     const avatar = getCurrentCharAvatar();
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
@@ -678,7 +678,7 @@ export function openConversationSettings() {
 
     applySettingsToPanel(settings);
     bindWeeklyScheduleEditor();
-    bindPartnerList('sb_conv_chiming_partner_list', 'sb_conv_multi_char_search');
+    bindMemberList('sb_conv_chiming_member_list', 'sb_conv_multi_char_search');
     renderScheduleDisplay();
     renderConversationMemoryPanel();
     updateUserFooter();

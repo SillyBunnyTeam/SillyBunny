@@ -30,7 +30,7 @@ import {
     setExpandMessageActions, startGeneration, stopGeneration,
 } from './chat-steps.js';
 import {
-    THREAD_INDEX, addConversationBranches, branchMessage, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById, openConversation,
+    MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById, openConversation,
     openConversationPicker, openConversationSettings, setConversationConnection, showConversationPage,
 } from './chat-conversation-steps.js';
 import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
@@ -255,13 +255,13 @@ const CONVERSATION_SENDABLE = '#sb_conversation_send:enabled';
 const CONVERSATION_TEXT = '#sb_conversation_input:not(:placeholder-shown)';
 
 /** The toolbar of the message of the thread that has a reaction, while the pointer is over it. */
-const HOVERED_TOOLBAR = `${conversationMessage(THREAD_INDEX.reacted)}:hover .sb-conversation-message-actions`;
+const HOVERED_TOOLBAR = `${conversationMessage(MESSAGE_INDEX.reacted)}:hover .sb-conversation-message-actions`;
 
 /** The round avatars of the header, the Pals rail and the rail footer are cut from a downscaled picture, and the status dots on them are small circles: their edge pixels differ by a few levels between runs. */
 const CONVERSATION_AVATAR_MASKS = ['.sb-conversation-participant-avatar', '.sb-conversation-status-dot', '#sb_conversation_rail_footer .sb-conversation-persona-button'];
 
 const CONVERSATION_MASKS = [
-    '.sb-conversation-message-time', '.sb-conversation-day-divider', '.sb-conversation-message-receipt', '.sb-conversation-header-status', '.sb-conversation-pal-preview', ...CONVERSATION_AVATAR_MASKS,
+    '.sb-conversation-message-time', '.sb-conversation-day-divider', '.sb-conversation-message-receipt', '.sb-conversation-header-status', '.sb-conversation-list-item-preview', ...CONVERSATION_AVATAR_MASKS,
 ];
 
 const CONVERSATION_SOURCES = [
@@ -515,8 +515,8 @@ export const surfaces = [
         root: SHELL,
         // The timeline rests on its last message, so the first one may be out of view.
         ready: ctx => [
-            '#sb_conversation_header', conversationMessage(THREAD_INDEX.last), '#sb_conversation_form',
-            ...(isPaged(ctx) ? [] : ['#sb_conversation_pals_rail .sb-conversation-pal']),
+            '#sb_conversation_header', conversationMessage(MESSAGE_INDEX.last), '#sb_conversation_form',
+            ...(isPaged(ctx) ? [] : ['#sb_conversation_list .sb-conversation-list-item']),
         ],
         open: openConversation,
         states: [
@@ -525,7 +525,7 @@ export const surfaces = [
                 id: 'hover-message-toolbar',
                 where: 'hover',
                 async open(page) {
-                    await page.locator(conversationMessage(THREAD_INDEX.reacted)).hover();
+                    await page.locator(conversationMessage(MESSAGE_INDEX.reacted)).hover();
                     await settle(page);
                 },
                 ready: [`${HOVERED_TOOLBAR} .sb-conversation-message-menu`],
@@ -535,7 +535,7 @@ export const surfaces = [
                 where: 'hover',
                 async open(page) {
                     await setExpandMessageActions(page, true);
-                    await page.locator(conversationMessage(THREAD_INDEX.reacted)).hover();
+                    await page.locator(conversationMessage(MESSAGE_INDEX.reacted)).hover();
                     await settle(page);
                 },
                 ready: [`${HOVERED_TOOLBAR} .sb-conversation-message-action[data-sb-conversation-action="delete-message"]`],
@@ -543,7 +543,7 @@ export const surfaces = [
             {
                 id: 'inline-editor',
                 async open(page) {
-                    await editConversationMessageById(page, THREAD_INDEX.ownLong);
+                    await editConversationMessageById(page, MESSAGE_INDEX.ownLong);
                 },
                 ready: ['.sb-conversation-message.is-editing .sb-conversation-message-edit-textarea', '.sb-conversation-message.is-editing .sb-conversation-message-edit-save'],
             },
@@ -561,9 +561,9 @@ export const surfaces = [
                 id: 'conversations-page',
                 where: 'paged',
                 async open(page) {
-                    await showConversationPage(page, 'pals');
+                    await showConversationPage(page, 'list');
                 },
-                ready: ['#sb_conversation_pals_rail .sb-conversation-pal', '#sb_conversation_pals_search'],
+                ready: ['#sb_conversation_list .sb-conversation-list-item', '#sb_conversation_list_search'],
             },
             {
                 id: 'persona-picker',
@@ -575,7 +575,7 @@ export const surfaces = [
             {
                 id: 'new-conversation-picker',
                 async open(page) {
-                    await openConversationPicker(page, { toggle: 'toggleAddDmPicker', root: PICKER_ROOT });
+                    await openConversationPicker(page, { toggle: 'toggleStartDirectConversationPicker', root: PICKER_ROOT });
                 },
                 ready: [PICKER_ROOT, '.sb-picker__option'],
             },
@@ -590,9 +590,9 @@ export const surfaces = [
             {
                 id: 'branches',
                 async open(page) {
-                    await addConversationBranches(page);
+                    await addConversationChats(page);
                 },
-                ready: [branchMessage(0, 0)],
+                ready: [chatMessage(0, 0)],
             },
         ],
         masks: CONVERSATION_MASKS,
@@ -646,7 +646,7 @@ export const surfaces = [
                     await page.evaluate(async (id) => {
                         const timeline = await import('/scripts/sillybunny-conversation/timeline-render.js');
                         timeline.replyToConversationMessage(id);
-                    }, conversationMessageId(THREAD_INDEX.reacted));
+                    }, conversationMessageId(MESSAGE_INDEX.reacted));
                     await page.locator('#sb_conversation_reply_preview:not([hidden])').waitFor({ state: 'visible' });
                     await settle(page);
                 },

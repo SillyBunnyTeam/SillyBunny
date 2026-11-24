@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { CHAT_COMPLETION_SOURCES, SETTINGS_FILE, TEXTGEN_TYPES } from '../src/constants.js';
 import { setConfigFilePath } from '../src/util.js';
-import { CONVERSATION_STORE_KEY, DEFAULT_BRANCH_ID } from '../public/scripts/sillybunny-conversation/constants.js';
+import { CONVERSATION_STORE_KEY, DEFAULT_CHAT_ID } from '../public/scripts/sillybunny-conversation/constants.js';
 import { validateStoreStructure } from '../src/endpoints/conversation-utils.js';
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
@@ -279,7 +279,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(response.status).toBe(200);
         const json = await response.json();
         expect(json.version).toBe(1);
-        expect(json.thread.activeBranchId).toBe(DEFAULT_BRANCH_ID);
+        expect(json.thread.activeBranchId).toBe(DEFAULT_CHAT_ID);
         expect(readSettings()._version).toBe(1);
         expect(readConversationStore().characters['nova.png']).toBeTruthy();
     });
@@ -320,7 +320,7 @@ describe('SillyBunny Conversation REST API', () => {
         const store = readConversationStore();
         expect(store.groups).toHaveLength(1);
         expect(store.groups[0].id).toBe(createJson.group.id);
-        expect(store.characters[`group:${createJson.group.id}:nova.png`].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('group-only hello');
+        expect(store.characters[`group:${createJson.group.id}:nova.png`].branches[DEFAULT_CHAT_ID].messages[0].mes).toBe('group-only hello');
         expect(fs.readdirSync(userDirectories.groups)).toEqual([]);
     });
 
@@ -443,7 +443,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(settings._version).toBe(1);
         const branch = settings.extension_settings[CONVERSATION_STORE_KEY]
             .characters['nova.png']
-            .branches[DEFAULT_BRANCH_ID];
+            .branches[DEFAULT_CHAT_ID];
         expect(branch.messages).toHaveLength(1);
         expect(branch.preview).toBe('hello from curl');
     });
@@ -476,10 +476,10 @@ describe('SillyBunny Conversation REST API', () => {
             settings: { enabled: true },
             characters: {
                 'attachment.png': {
-                    activeBranchId: DEFAULT_BRANCH_ID,
+                    activeBranchId: DEFAULT_CHAT_ID,
                     branches: {
-                        [DEFAULT_BRANCH_ID]: {
-                            id: DEFAULT_BRANCH_ID,
+                        [DEFAULT_CHAT_ID]: {
+                            id: DEFAULT_CHAT_ID,
                             messages: [{
                                 id: 'attachment-message',
                                 role: 'user',
@@ -539,10 +539,10 @@ describe('SillyBunny Conversation REST API', () => {
             characters: Object.fromEntries(Array.from({ length: 6 }, (_, threadIndex) => [
                 `character-${threadIndex}.png`,
                 {
-                    activeBranchId: DEFAULT_BRANCH_ID,
+                    activeBranchId: DEFAULT_CHAT_ID,
                     branches: {
-                        [DEFAULT_BRANCH_ID]: {
-                            id: DEFAULT_BRANCH_ID,
+                        [DEFAULT_CHAT_ID]: {
+                            id: DEFAULT_CHAT_ID,
                             messages: makeMessages(threadIndex),
                         },
                     },
@@ -562,10 +562,10 @@ describe('SillyBunny Conversation REST API', () => {
             reminders: [],
             characters: {
                 'large.png': {
-                    activeBranchId: DEFAULT_BRANCH_ID,
+                    activeBranchId: DEFAULT_CHAT_ID,
                     branches: {
-                        [DEFAULT_BRANCH_ID]: {
-                            id: DEFAULT_BRANCH_ID,
+                        [DEFAULT_CHAT_ID]: {
+                            id: DEFAULT_CHAT_ID,
                             messages: Array.from({ length: 97 }, (_, index) => ({
                                 id: `large-message-${index}`,
                                 role: 'user',
@@ -580,7 +580,7 @@ describe('SillyBunny Conversation REST API', () => {
         const largeSaveResponse = await postJson('/store/save/', { store: largeStore, version: 1 });
         expect(largeSaveResponse.status).toBe(200);
         expect((await largeSaveResponse.json()).version).toBe(2);
-        expect(readConversationStore().characters['large.png'].branches[DEFAULT_BRANCH_ID].messages).toHaveLength(97);
+        expect(readConversationStore().characters['large.png'].branches[DEFAULT_CHAT_ID].messages).toHaveLength(97);
     });
 
     test('personaId scopes solo and group Conversation storage independently', async () => {
@@ -640,9 +640,9 @@ describe('SillyBunny Conversation REST API', () => {
         expect(groupAppendJson.threadKey).toBe(`persona:riley.png:group:${createGroupJson.group.id}:nova.png`);
 
         const store = readConversationStore();
-        expect(store.characters['persona:riley.png:nova.png'].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('hello from Riley');
-        expect(store.characters['persona:morgan.png:nova.png'].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('hello from Morgan');
-        expect(store.characters[`persona:riley.png:group:${createGroupJson.group.id}:nova.png`].branches[DEFAULT_BRANCH_ID].messages[0].mes).toBe('persona-scoped group hello');
+        expect(store.characters['persona:riley.png:nova.png'].branches[DEFAULT_CHAT_ID].messages[0].mes).toBe('hello from Riley');
+        expect(store.characters['persona:morgan.png:nova.png'].branches[DEFAULT_CHAT_ID].messages[0].mes).toBe('hello from Morgan');
+        expect(store.characters[`persona:riley.png:group:${createGroupJson.group.id}:nova.png`].branches[DEFAULT_CHAT_ID].messages[0].mes).toBe('persona-scoped group hello');
         expect(store.characters['nova.png']).toBeUndefined();
     });
 
@@ -652,10 +652,10 @@ describe('SillyBunny Conversation REST API', () => {
         const groupId = 'legacy-conversation-group';
         const unscopedGroupKey = `group:${groupId}:nova.png`;
         const makeThread = (id, mes, createdAt) => ({
-            activeBranchId: DEFAULT_BRANCH_ID,
+            activeBranchId: DEFAULT_CHAT_ID,
             branches: {
-                [DEFAULT_BRANCH_ID]: {
-                    id: DEFAULT_BRANCH_ID,
+                [DEFAULT_CHAT_ID]: {
+                    id: DEFAULT_CHAT_ID,
                     messages: [{ id, role: 'user', name: 'Riley', mes, created_at: createdAt }],
                 },
             },
@@ -710,10 +710,10 @@ describe('SillyBunny Conversation REST API', () => {
         expect(store.characters['nova.png']).toBeUndefined();
         expect(store.characters[unscopedGroupKey]).toBeUndefined();
         expect(store.legacyThreadPersonaAssignments).toEqual({});
-        expect(store.characters[scopedSoloKey].branches[DEFAULT_BRANCH_ID].messages.map(message => message.id))
+        expect(store.characters[scopedSoloKey].branches[DEFAULT_CHAT_ID].messages.map(message => message.id))
             .toEqual(['legacy-solo', 'scoped-solo', 'new-solo']);
         const scopedGroupKey = `persona:${encodeURIComponent(personaId)}:${unscopedGroupKey}`;
-        expect(store.characters[scopedGroupKey].branches[DEFAULT_BRANCH_ID].messages.map(message => message.id))
+        expect(store.characters[scopedGroupKey].branches[DEFAULT_CHAT_ID].messages.map(message => message.id))
             .toEqual(['legacy-group', 'new-group']);
     });
 
@@ -744,23 +744,23 @@ describe('SillyBunny Conversation REST API', () => {
                     reminders: [],
                     characters: {
                         [alphaKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: makeBranch(DEFAULT_BRANCH_ID, 'alpha-main', 2, 100),
+                                [DEFAULT_CHAT_ID]: makeBranch(DEFAULT_CHAT_ID, 'alpha-main', 2, 100),
                                 'alpha-branch': makeBranch('alpha-branch', 'alpha-branch-message', 4, 90),
                             },
                         },
                         [betaKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: makeBranch(DEFAULT_BRANCH_ID, 'beta-main', 3, 200),
+                                [DEFAULT_CHAT_ID]: makeBranch(DEFAULT_CHAT_ID, 'beta-main', 3, 200),
                                 'beta-branch': makeBranch('beta-branch', 'beta-branch-message', 1, 180),
                             },
                         },
                         [disabledKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: makeBranch(DEFAULT_BRANCH_ID, 'disabled-main', 7, 300),
+                                [DEFAULT_CHAT_ID]: makeBranch(DEFAULT_CHAT_ID, 'disabled-main', 7, 300),
                             },
                         },
                     },
@@ -782,16 +782,16 @@ describe('SillyBunny Conversation REST API', () => {
 
         const store = readConversationStore();
         expect(store.characters[alphaKey]).toBeUndefined();
-        expect(store.characters[disabledKey].branches[DEFAULT_BRANCH_ID].messages[0].id).toBe('disabled-main');
+        expect(store.characters[disabledKey].branches[DEFAULT_CHAT_ID].messages[0].id).toBe('disabled-main');
         const canonical = store.characters[betaKey];
         expect(Object.keys(canonical.branches)).toEqual(expect.arrayContaining([
-            DEFAULT_BRANCH_ID,
+            DEFAULT_CHAT_ID,
             'alpha-branch',
             'beta-branch',
         ]));
-        expect(canonical.branches[DEFAULT_BRANCH_ID].messages.map(message => message.id))
+        expect(canonical.branches[DEFAULT_CHAT_ID].messages.map(message => message.id))
             .toEqual(['alpha-main', 'beta-main', 'new-group-message']);
-        expect(canonical.branches[DEFAULT_BRANCH_ID].unread).toBe(5);
+        expect(canonical.branches[DEFAULT_CHAT_ID].unread).toBe(5);
         expect(canonical.branches['alpha-branch'].unread).toBe(4);
         expect(canonical.branches['beta-branch'].unread).toBe(1);
 
@@ -828,10 +828,10 @@ describe('SillyBunny Conversation REST API', () => {
                     reminders: [],
                     characters: {
                         [alphaKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: {
-                                    id: DEFAULT_BRANCH_ID,
+                                [DEFAULT_CHAT_ID]: {
+                                    id: DEFAULT_CHAT_ID,
                                     messages: makeMessages('alpha', 1),
                                     unread: 4,
                                     updatedAt: 100,
@@ -839,10 +839,10 @@ describe('SillyBunny Conversation REST API', () => {
                             },
                         },
                         [betaKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: {
-                                    id: DEFAULT_BRANCH_ID,
+                                [DEFAULT_CHAT_ID]: {
+                                    id: DEFAULT_CHAT_ID,
                                     messages: makeMessages('beta', 1000),
                                     unread: 6,
                                     updatedAt: 200,
@@ -867,9 +867,9 @@ describe('SillyBunny Conversation REST API', () => {
         const store = readConversationStore();
         expect(store.characters[alphaKey]).toBeUndefined();
         const canonical = store.characters[betaKey];
-        const mergedBranchId = `${DEFAULT_BRANCH_ID}-merged-alpha.png`;
-        expect(canonical.branches[DEFAULT_BRANCH_ID].messages).toHaveLength(131);
-        expect(canonical.branches[DEFAULT_BRANCH_ID].unread).toBe(6);
+        const mergedBranchId = `${DEFAULT_CHAT_ID}-merged-alpha.png`;
+        expect(canonical.branches[DEFAULT_CHAT_ID].messages).toHaveLength(131);
+        expect(canonical.branches[DEFAULT_CHAT_ID].unread).toBe(6);
         expect(canonical.branches[mergedBranchId].messages).toHaveLength(130);
         expect(canonical.branches[mergedBranchId].unread).toBe(4);
         expect(Object.values(canonical.branches).reduce((total, branch) => total + branch.messages.length, 0)).toBe(261);
@@ -908,7 +908,7 @@ describe('SillyBunny Conversation REST API', () => {
             name: 'Riley',
             mes: 'first saved message',
         });
-        expect(readConversationStore().characters['nova.png'].branches[DEFAULT_BRANCH_ID].preview).toBe('first saved message');
+        expect(readConversationStore().characters['nova.png'].branches[DEFAULT_CHAT_ID].preview).toBe('first saved message');
     });
 
     test('thread/save persists normalized aliases and generated message metadata', async () => {
@@ -930,7 +930,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(json.messages[0].created_at).toEqual(expect.any(Number));
         expect(json.messages[0].send_date).toEqual(expect.any(String));
         expect(json.messages[0].text).toBeUndefined();
-        expect(readConversationStore().characters['nova.png'].branches[DEFAULT_BRANCH_ID].messages).toEqual(json.messages);
+        expect(readConversationStore().characters['nova.png'].branches[DEFAULT_CHAT_ID].messages).toEqual(json.messages);
     });
 
     test('message IDs are selector-safe and unique within each thread', async () => {
@@ -991,10 +991,10 @@ describe('SillyBunny Conversation REST API', () => {
             reminders: [],
             characters: {
                 'nova.png': {
-                    activeBranchId: DEFAULT_BRANCH_ID,
+                    activeBranchId: DEFAULT_CHAT_ID,
                     branches: {
-                        [DEFAULT_BRANCH_ID]: {
-                            id: DEFAULT_BRANCH_ID,
+                        [DEFAULT_CHAT_ID]: {
+                            id: DEFAULT_CHAT_ID,
                             messages: [
                                 { id: unsafeId, role: 'user', name: longName, mes: longMessage, send_date: longName, created_at: 1 },
                                 { id: 'legacy-1-0', role: 'character', name: 'Nova', mes: 'safe collision', created_at: 2 },
@@ -1021,7 +1021,7 @@ describe('SillyBunny Conversation REST API', () => {
         const readResponse = await postJson('/store/get', {});
         expect(readResponse.status).toBe(200);
         const readJson = await readResponse.json();
-        expect(readJson.store.characters['nova.png'].branches[DEFAULT_BRANCH_ID].messages[0]).toMatchObject({
+        expect(readJson.store.characters['nova.png'].branches[DEFAULT_CHAT_ID].messages[0]).toMatchObject({
             id: unsafeId,
             name: longName,
             mes: longMessage,
@@ -1039,7 +1039,7 @@ describe('SillyBunny Conversation REST API', () => {
         });
         expect(appendResponse.status).toBe(200);
 
-        const messages = readConversationStore().characters['nova.png'].branches[DEFAULT_BRANCH_ID].messages;
+        const messages = readConversationStore().characters['nova.png'].branches[DEFAULT_CHAT_ID].messages;
         expect(messages[0].name).toBe(longName);
         expect(messages[0].mes).toBe(longMessage);
         expect(new Set(messages.map(message => message.id)).size).toBe(messages.length);
@@ -1090,7 +1090,7 @@ describe('SillyBunny Conversation REST API', () => {
         const json = await response.json();
         expect(json.messages).toHaveLength(1);
         expect(json.messages[0].extra.media).toEqual([{ url: 'data:image/png;base64,YQ==', type: 'image' }]);
-        expect(readConversationStore().characters['nova.png'].branches[DEFAULT_BRANCH_ID].messages).toHaveLength(1);
+        expect(readConversationStore().characters['nova.png'].branches[DEFAULT_CHAT_ID].messages).toHaveLength(1);
     });
 
     test('legacy attachment-only messages remain readable and migrate on mutation', async () => {
@@ -1104,10 +1104,10 @@ describe('SillyBunny Conversation REST API', () => {
                     reminders: [],
                     characters: {
                         'nova.png': {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: {
-                                    id: DEFAULT_BRANCH_ID,
+                                [DEFAULT_CHAT_ID]: {
+                                    id: DEFAULT_CHAT_ID,
                                     messages: [{
                                         id: 'legacy-attachment',
                                         role: 'user',
@@ -1138,7 +1138,7 @@ describe('SillyBunny Conversation REST API', () => {
         });
         expect(appendResponse.status).toBe(200);
 
-        const messages = readConversationStore().characters['nova.png'].branches[DEFAULT_BRANCH_ID].messages;
+        const messages = readConversationStore().characters['nova.png'].branches[DEFAULT_CHAT_ID].messages;
         expect(messages).toHaveLength(2);
         expect(messages[0].extra.attachments).toBeUndefined();
         expect(messages[0].extra.media).toEqual([{ url: '/user/images/legacy.png', type: 'image', title: 'Legacy' }]);
@@ -1221,7 +1221,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(settings._version).toBe(1); // Atomic save: only one version increment
         const messages = settings.extension_settings[CONVERSATION_STORE_KEY]
             .characters['nova.png']
-            .branches[DEFAULT_BRANCH_ID]
+            .branches[DEFAULT_CHAT_ID]
             .messages;
         expect(messages.map(message => message.mes)).toEqual(['Can you say hi?', 'Hello from Nova.']);
         expect(messages[1].extra.conversation_reply_to.messageId).toBe(messages[0].id);
@@ -1305,7 +1305,7 @@ describe('SillyBunny Conversation REST API', () => {
             { version: 1, characters: {}, groups: {}, reminders: [], settings: {} },
             {
                 version: 1,
-                characters: { 'nova.png': { activeBranchId: DEFAULT_BRANCH_ID, branches: [] } },
+                characters: { 'nova.png': { activeBranchId: DEFAULT_CHAT_ID, branches: [] } },
                 groups: [],
                 reminders: [],
                 settings: {},
@@ -1314,8 +1314,8 @@ describe('SillyBunny Conversation REST API', () => {
                 version: 1,
                 characters: {
                     'nova.png': {
-                        activeBranchId: DEFAULT_BRANCH_ID,
-                        branches: { [DEFAULT_BRANCH_ID]: { id: DEFAULT_BRANCH_ID, messages: {} } },
+                        activeBranchId: DEFAULT_CHAT_ID,
+                        branches: { [DEFAULT_CHAT_ID]: { id: DEFAULT_CHAT_ID, messages: {} } },
                     },
                 },
                 groups: [],
@@ -1326,8 +1326,8 @@ describe('SillyBunny Conversation REST API', () => {
                 version: 1,
                 characters: {
                     'nova.png': {
-                        activeBranchId: DEFAULT_BRANCH_ID,
-                        branches: { [DEFAULT_BRANCH_ID]: { id: DEFAULT_BRANCH_ID, messages: [null] } },
+                        activeBranchId: DEFAULT_CHAT_ID,
+                        branches: { [DEFAULT_CHAT_ID]: { id: DEFAULT_CHAT_ID, messages: [null] } },
                     },
                 },
                 groups: [],
@@ -1338,10 +1338,10 @@ describe('SillyBunny Conversation REST API', () => {
                 version: 1,
                 characters: {
                     'nova.png': {
-                        activeBranchId: DEFAULT_BRANCH_ID,
+                        activeBranchId: DEFAULT_CHAT_ID,
                         branches: {
-                            [DEFAULT_BRANCH_ID]: {
-                                id: DEFAULT_BRANCH_ID,
+                            [DEFAULT_CHAT_ID]: {
+                                id: DEFAULT_CHAT_ID,
                                 messages: [{ id: 'bad-attachment', role: 'user', mes: 'text', extra: { files: [null] } }],
                             },
                         },
@@ -1416,19 +1416,19 @@ describe('SillyBunny Conversation REST API', () => {
                     reminders: [],
                     characters: {
                         [rawKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: {
-                                    id: DEFAULT_BRANCH_ID,
+                                [DEFAULT_CHAT_ID]: {
+                                    id: DEFAULT_CHAT_ID,
                                     messages: [{ id: 'legacy-message', role: 'user', name: 'Riley', mes: 'legacy text' }],
                                 },
                             },
                         },
                         [percentLiteralKey]: {
-                            activeBranchId: DEFAULT_BRANCH_ID,
+                            activeBranchId: DEFAULT_CHAT_ID,
                             branches: {
-                                [DEFAULT_BRANCH_ID]: {
-                                    id: DEFAULT_BRANCH_ID,
+                                [DEFAULT_CHAT_ID]: {
+                                    id: DEFAULT_CHAT_ID,
                                     messages: [{ id: 'percent-literal', role: 'user', name: 'Riley', mes: 'literal percent owner' }],
                                 },
                             },
@@ -1447,7 +1447,7 @@ describe('SillyBunny Conversation REST API', () => {
         expect(response.status).toBe(200);
         const json = await response.json();
         expect(json.threadKey).toBe(rawKey);
-        expect(readConversationStore().characters[rawKey].branches[DEFAULT_BRANCH_ID].messages.map(message => message.mes)).toEqual(['legacy text', 'new text']);
+        expect(readConversationStore().characters[rawKey].branches[DEFAULT_CHAT_ID].messages.map(message => message.mes)).toEqual(['legacy text', 'new text']);
 
         const aliasResponse = await postJson('/message/append', {
             avatar: 'alias name.png',
@@ -1457,8 +1457,8 @@ describe('SillyBunny Conversation REST API', () => {
         });
         expect(aliasResponse.status).toBe(200);
         expect((await aliasResponse.json()).threadKey).toBe('persona:riley!one.png:alias name.png');
-        expect(readConversationStore().characters[percentLiteralKey].branches[DEFAULT_BRANCH_ID].messages.map(message => message.mes)).toEqual(['literal percent owner']);
-        expect(readConversationStore().characters['persona:riley!one.png:alias name.png'].branches[DEFAULT_BRANCH_ID].messages.map(message => message.mes)).toEqual(['space owner']);
+        expect(readConversationStore().characters[percentLiteralKey].branches[DEFAULT_CHAT_ID].messages.map(message => message.mes)).toEqual(['literal percent owner']);
+        expect(readConversationStore().characters['persona:riley!one.png:alias name.png'].branches[DEFAULT_CHAT_ID].messages.map(message => message.mes)).toEqual(['space owner']);
 
         const collidingAvatarResponse = await postJson('/message/append', {
             avatar: 'nova:one.png',
@@ -1497,7 +1497,7 @@ describe('SillyBunny Conversation REST API', () => {
                 'nova.png': {
                     activeBranchId: 'constructor',
                     branches: {
-                        [DEFAULT_BRANCH_ID]: { id: DEFAULT_BRANCH_ID, messages: [] },
+                        [DEFAULT_CHAT_ID]: { id: DEFAULT_CHAT_ID, messages: [] },
                     },
                 },
             },
@@ -1771,7 +1771,7 @@ describe('SillyBunny Conversation REST API', () => {
         const sendResponse = await sendPromise;
         expect(sendResponse.status).toBe(409);
         await expect(sendResponse.json()).resolves.toEqual({ error: 'settings_conflict', version: 1 });
-        const persistedMessages = readConversationStore().characters['nova.png'].branches[DEFAULT_BRANCH_ID].messages;
+        const persistedMessages = readConversationStore().characters['nova.png'].branches[DEFAULT_CHAT_ID].messages;
         expect(persistedMessages.map(message => message.mes)).toEqual(['winning write']);
     });
 

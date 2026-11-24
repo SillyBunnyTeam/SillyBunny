@@ -10,11 +10,11 @@ import {
     TRANSCRIPT_MESSAGE_LIMIT,
 } from './constants.js';
 import {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
-    getConversationThreadKey,
+    getConversationRecord,
+    getConversationKey,
     getCurrentCharAvatar,
     getCurrentCharName,
     parsePositiveInt,
@@ -52,7 +52,7 @@ import {
     getConversationMediaIndex,
     getConversationPromptMediaAttachments,
     hasConversationMessageContent,
-} from './thread-store.js';
+} from './conversation-store.js';
 
 export function formatConversationFileSize(size) {
     const bytes = Number(size);
@@ -355,14 +355,14 @@ export function buildConversationMemoryPrompt(avatar, messages, { groupId = getC
     ].filter(Boolean).join('\n');
 }
 
-export async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false, personaId = getConversationPersonaId() } = {}) {
-    const memoryKey = `${getConversationThreadKey(avatar, groupId, { personaId })}:${branchId}`;
+export async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { chatId = '', force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false, personaId = getConversationPersonaId() } = {}) {
+    const memoryKey = `${getConversationKey(avatar, groupId, { personaId })}:${chatId}`;
     if (!avatar || !memoryKey || memorySummaryBusyAvatars.has(memoryKey)) {
         return false;
     }
 
-    const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
-    const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
+    const chat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
+    const messages = Array.isArray(chat?.messages) ? chat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
     if (!messages.length || (!force && messages.length < MEMORY_SUMMARY_MIN_MESSAGES)) {
         if (notify) {
             toastr.info(`Memory appears after at least ${MEMORY_SUMMARY_MIN_MESSAGES} messages, or when there is enough chat to summarize`);
@@ -370,8 +370,8 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         return false;
     }
 
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    const lastSummarizedCount = parsePositiveInt(branch?.memoryMessageCount ?? threadStore?.memoryMessageCount, 0, 0);
+    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+    const lastSummarizedCount = parsePositiveInt(chat?.memoryMessageCount ?? conversationRecord?.memoryMessageCount, 0, 0);
     if (!force && messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
         return false;
     }
@@ -379,7 +379,7 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
 
     memorySummaryBusyAvatars.add(memoryKey);
     try {
-        const previousSummary = getConversationMemorySummary(avatar, { branchId, groupId, personaId });
+        const previousSummary = getConversationMemorySummary(avatar, { chatId, groupId, personaId });
         const prompt = [
             previousSummary ? `Existing DM memory summary:\n${previousSummary}` : '',
             buildConversationMemoryPrompt(avatar, messages, { groupId, personaId }),
@@ -395,14 +395,14 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         }, settings);
 
         if (response?.trim()) {
-            const currentBranch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
-            const currentMessages = Array.isArray(currentBranch?.messages)
-                ? currentBranch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system')
+            const currentChat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
+            const currentMessages = Array.isArray(currentChat?.messages)
+                ? currentChat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system')
                 : [];
             if (getConversationMessagesRevision(currentMessages) !== sourceRevision) {
                 return false;
             }
-            saveConversationMemorySummary(avatar, response.trim(), messages.length, { branchId, groupId, personaId });
+            saveConversationMemorySummary(avatar, response.trim(), messages.length, { chatId, groupId, personaId });
             if (notify) {
                 toastr.success('Conversation memory refreshed');
             }
@@ -420,13 +420,13 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
     return false;
 }
 
-export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const capturedBranchId = branchId || getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-    const memoryKey = `${getConversationThreadKey(avatar, groupId, { personaId })}:${capturedBranchId}`;
+    const capturedChatId = chatId || getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const memoryKey = `${getConversationKey(avatar, groupId, { personaId })}:${capturedChatId}`;
     const existingTimer = memorySummaryTimers.get(memoryKey);
     if (existingTimer) {
         window.clearTimeout(existingTimer);
@@ -434,24 +434,24 @@ export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(
 
     const timer = window.setTimeout(() => {
         memorySummaryTimers.delete(memoryKey);
-        void updateConversationMemorySummary(avatar, { branchId: capturedBranchId, groupId, personaId });
+        void updateConversationMemorySummary(avatar, { chatId: capturedChatId, groupId, personaId });
     }, 2500);
     memorySummaryTimers.set(memoryKey, timer);
 }
 
-export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, branchId = '', groupId = getConversationGroupIdForAvatar(threadAvatar), personaId = getConversationPersonaId(), worldInfo = null } = {}) {
+export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { anchorAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId(), worldInfo = null } = {}) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const userName = getConversationPersonaName(personaId, 'User');
-    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar, { groupId, personaId });
-    const threadCharacter = threadAvatar !== avatar ? getCharacterForAvatar(threadAvatar) : null;
-    const partners = getConversationParticipants(threadAvatar, threadSettings, { branchId, groupId, personaId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
-    const partnerNames = getParticipantNamesForDisplay(partners);
+    const conversationSettings = anchorAvatar === avatar ? settings : getSettings(anchorAvatar, { groupId, personaId });
+    const conversationCharacter = anchorAvatar !== avatar ? getCharacterForAvatar(anchorAvatar) : null;
+    const members = getConversationParticipants(anchorAvatar, conversationSettings, { chatId, groupId, personaId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
+    const memberNames = getParticipantNamesForDisplay(members);
     let conversationOpening = `You are ${charName} in a private direct-message conversation with ${userName}.`;
     if (groupId) {
-        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${[userName, ...partnerNames].join(', ')}. You are one equal participant in this group DM and should reply only as ${charName}.`;
-    } else if (threadCharacter) {
-        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${userName} and ${threadCharacter.name || 'another character'}.`;
+        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${[userName, ...memberNames].join(', ')}. You are one equal participant in this group DM and should reply only as ${charName}.`;
+    } else if (conversationCharacter) {
+        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${userName} and ${conversationCharacter.name || 'another character'}.`;
     }
     const fields = [
         conversationOpening,
@@ -503,7 +503,7 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         ? `User presence: ${userName} is ${userAvailability.label.toLowerCase()}. Their Conversation status: ${userPersonaStatus}.`
         : `User presence: ${userName} is ${userAvailability.label.toLowerCase()}.`);
     const personaContext = composeConversationPersonaDescription(personaId || user_avatar, {
-        avatar: threadAvatar,
+        avatar: anchorAvatar,
         groupId,
         personaId,
     }).trim() || (personaId === getConversationPersonaId() ? String(power_user?.persona_description ?? '').trim() : '');
@@ -511,11 +511,11 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         fields.push(`User persona and active Scenario Notes:\n${formatPromptText(personaContext, 2600)}`);
     }
 
-    if (partners.length) {
-        fields.push(`${groupId ? 'Other group DM participants' : 'Group DM participants who may chime in'}: ${partnerNames.join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
+    if (members.length) {
+        fields.push(`${groupId ? 'Other group DM participants' : 'Group DM participants who may chime in'}: ${memberNames.join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
     }
 
-    const memorySummary = getConversationMemorySummary(threadAvatar, { branchId, groupId, personaId });
+    const memorySummary = getConversationMemorySummary(anchorAvatar, { chatId, groupId, personaId });
     if (memorySummary) {
         fields.push(`Long-term DM memory summary:\n${memorySummary}`);
     }

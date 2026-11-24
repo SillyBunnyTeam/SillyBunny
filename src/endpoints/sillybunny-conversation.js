@@ -3,7 +3,7 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
 
 import { getSettingsVersion } from '../settings-version.js';
 import { extractCharacterReplyCommandParts, normalizeConversationOutputText } from '../../public/scripts/sillybunny-conversation/generation-utils.js';
-import { CONVERSATION_STORE_KEY, MAX_THREAD_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
+import { CONVERSATION_STORE_KEY, MAX_CONVERSATION_MESSAGES } from '../../public/scripts/sillybunny-conversation/constants.js';
 import { getIpAddress, retryAfter } from '../express-common.js';
 import { abortOnRequestClose, getConfigValue } from '../util.js';
 
@@ -101,7 +101,7 @@ const CONVERSATION_API_INFO = {
             },
             {
                 step: 'store-thread-message',
-                file: 'public/scripts/sillybunny-conversation/thread-store.js',
+                file: 'public/scripts/sillybunny-conversation/conversation-store.js',
                 function: 'appendConversationThreadMessage',
             },
             {
@@ -288,7 +288,7 @@ function parseConversationThreadInput(input) {
         messageIds.add(validation.message.id);
         messages.push(validation.message);
     }
-    return { valid: true, messages: messages.slice(-MAX_THREAD_MESSAGES) };
+    return { valid: true, messages: messages.slice(-MAX_CONVERSATION_MESSAGES) };
 }
 
 // Routes

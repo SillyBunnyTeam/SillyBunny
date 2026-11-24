@@ -6745,7 +6745,7 @@
     },
     "settings.conversation.panel": {
       "root": "#sb_conversation_settings_drawer",
-      "skip": [".sb-conversation-partner-list"],
+      "skip": [".sb-conversation-member-list"],
       "controls": [
         {"identity":"data:data-sb-conversation-action=close-settings","identityKind":"data","kind":"button","name":"Close Conversation Settings","where":"visible"},
         {"identity":"#sb_conv_availability","identityKind":"id","kind":"select","name":"Status","group":"Presence & Availability","where":"visible","driver":"select-row","keys":["extension_settings.sillybunny_conversation.characters.persona:user-default.png:audit-character.png.settings.availability"],"selfSaves":true},

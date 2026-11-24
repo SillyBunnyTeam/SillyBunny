@@ -57,19 +57,19 @@ function openTemporaryChat(avatar) {
 /**
  * The actions of the assistant cards over the app.
  * @param {object} options
- * @param {(avatar: string, options: { branchId: string, groupId: string, enable: boolean }) => Promise<void>} options.openConversation
+ * @param {(avatar: string, options: { chatId: string, groupId: string, enable: boolean }) => Promise<void>} options.openConversation
  *   Opens a Conversation thread from Home, which hides the panel while the workspace comes up.
  */
 export function createAppAssistantActions({ openConversation }) {
     // A new Conversation is a new branch of the thread, which Recent Chats lists once the character has Conversation on.
     async function openConversationChat(avatar) {
-        const { createConversationBranchForAvatar, getConversationBranches, getConversationGroupIdForAvatar } = await import('../sillybunny-conversation/context.js');
+        const { createConversationChat, getConversationChats, getConversationGroupIdForAvatar } = await import('../sillybunny-conversation/context.js');
         const groupId = getConversationGroupIdForAvatar(avatar);
-        const branch = createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
+        const branch = createConversationChat(avatar, `Chat ${getConversationChats(avatar, { groupId }).length + 1}`, { groupId });
         if (!branch) {
             throw new Error(`No Conversation branch could be made for "${avatar}".`);
         }
-        await openConversation(avatar, { branchId: branch.id, groupId: groupId || '', enable: true });
+        await openConversation(avatar, { chatId: branch.id, groupId: groupId || '', enable: true });
         return true;
     }
 

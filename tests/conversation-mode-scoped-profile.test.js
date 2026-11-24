@@ -42,13 +42,13 @@ const actionMenuSource = normalizeSource(readFileSync(path.join(repoRoot, 'publi
 const constantsSource = readConversationSource('constants.js');
 const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
-const palsRailSource = readConversationSource('pals-rail.js');
+const conversationListSource = readConversationSource('conversation-list.js');
 const pickersSource = readConversationSource('pickers.js');
 const promptSource = readConversationSource('prompt.js');
 const sharedHelpersSource = readConversationSource('shared-helpers.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
-const threadStoreSource = readConversationSource('thread-store.js');
+const conversationStoreSource = readConversationSource('conversation-store.js');
 const timelineSource = readConversationSource('timeline-render.js');
 const conversationTtsSource = readConversationSource('tts.js');
 const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
@@ -185,13 +185,13 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('sb-conversation-switch');
         expect(timelineSource).not.toContain('sb-conversation-pref-');
         expect(timelineSource).toContain('createSettingsHiddenInput(\'sb_conv_copy_memory_to_new_branch\', \'checkbox\')');
-        expect(chromeSource).toContain('toggleAddDmPicker(target)');
+        expect(chromeSource).toContain('toggleStartDirectConversationPicker(target)');
         expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
         expect(chromeSource).toContain('togglePersonaPicker(target)');
         expect(pickersSource).toContain('preferBelow: true');
         expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
-        expect(palsRailSource).toContain('Messaging-app order: newest message first');
-        expect(palsRailSource).not.toContain('first.key === activeKey');
+        expect(conversationListSource).toContain('Messaging-app order: newest message first');
+        expect(conversationListSource).not.toContain('first.key === activeKey');
         // The menu keeps the settings entry whenever the pages layout hides the header gear, whatever the viewport width.
         expect(chromeSource).toContain('...(isConversationPagesLayout()');
         expect(chromeSource).not.toContain('LAYOUT_MOBILE_QUERY');
@@ -211,12 +211,12 @@ describe('conversation mode scoped connection profile', () => {
         expect(settingsStoreSource).toContain('const hasConversationGroups');
         expect(settingsStoreSource).toContain('getConversationGroups().forEach');
         expect(settingsStoreSource).toContain('!group.is_conversation_group');
-        expect(palsRailSource).toContain('getConversationGroups({ personaId }).forEach');
-        expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
+        expect(conversationListSource).toContain('getConversationGroups({ personaId }).forEach');
+        expect(conversationListSource).toContain('isEmptyConversation && !group?.is_conversation_group');
         expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeGreaterThanOrEqual(0);
-        expect(palsRailSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeGreaterThanOrEqual(0);
+        expect(conversationListSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeGreaterThanOrEqual(0);
         expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeLessThan(settingsStoreSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
-        expect(palsRailSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeLessThan(palsRailSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
+        expect(conversationListSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeLessThan(conversationListSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
         expect(contextSource).toContain('group.updatedAt = Date.now();');
         expect(timelineSource).toContain('group.updatedAt = Date.now();');
     });
@@ -232,11 +232,11 @@ describe('conversation mode scoped connection profile', () => {
         expect(contextSource).toContain('PERSONA_CONVERSATION_STORE_PREFIX');
         expect(contextSource).toContain('getConversationPersonaId');
         expect(contextSource).toContain('scopeConversationStorageKey');
-        expect(contextSource).toContain('isConversationThreadKeyForPersona');
+        expect(contextSource).toContain('isConversationKeyForPersona');
         expect(contextSource).toContain('migrateLegacyConversationStoreToPersona');
         expect(contextSource).toContain('personaId: getConversationPersonaId(personaId)');
-        expect(settingsStoreSource).toContain('isConversationThreadKeyForPersona(storeKey)');
-        expect(palsRailSource).toContain('isConversationThreadKeyForPersona(storeKey, personaId)');
+        expect(settingsStoreSource).toContain('isConversationKeyForPersona(storeKey)');
+        expect(conversationListSource).toContain('isConversationKeyForPersona(storeKey, personaId)');
         expect(initSource).toContain('event_types.PERSONA_CHANGED');
     });
 
@@ -258,7 +258,7 @@ describe('conversation mode scoped connection profile', () => {
     });
 
     test('lets generated character replies use message reply metadata', () => {
-        expect(threadStoreSource).toContain('export function buildConversationMessageReplyReference');
+        expect(conversationStoreSource).toContain('export function buildConversationMessageReplyReference');
         expect(timelineSource).toContain('buildConversationMessageReplyReference(context.message)');
         expect(generationSource).toContain('getGeneratedReplyReference');
         expect(generationSource).toContain('buildConversationMessageReplyReference(message)');
@@ -299,7 +299,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(conversationTtsSource).toContain('getExtensionCapability(\'tts\')');
         expect(conversationTtsSource).not.toContain('../extensions/tts/index.js');
         expect(conversationTtsSource).toContain('narrateTtsMessage(ttsMessage');
-        expect(threadStoreSource).toContain('void narrateConversationMessage(message, { isStillVisible })');
+        expect(conversationStoreSource).toContain('void narrateConversationMessage(message, { isStillVisible })');
         expect(timelineSource).toContain('action: \'speak-message\'');
         expect(timelineSource).toContain('speakConversationMessage');
         expect(chromeSource).toContain('case \'speak-message\':');

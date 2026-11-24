@@ -112,7 +112,7 @@ export const DEFAULT_GROUNDED_DIALOGUE_RULES = `### Grounded Dialogue Rules
  * Home listens for these names (Getting Started steps 3 and 4); both sides import them from here.
  */
 export const CONVERSATION_MESSAGE_SENT_EVENT = 'sb:conversation-user-message-sent';
-export const CONVERSATION_THREAD_OPENED_EVENT = 'sb:conversation-thread-opened';
+export const CONVERSATION_OPENED_EVENT = 'sb:conversation-opened';
 
 export const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 export const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
@@ -128,10 +128,10 @@ export const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
 export const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';
 
 export const SETTINGS_KEY_PREFIX = 'sb_conv_settings_';
-export const THREAD_KEY_PREFIX = 'sb_conv_thread_';
+export const CONVERSATION_KEY_PREFIX = 'sb_conv_thread_';
 export const CONVERSATION_STORE_KEY = 'sillybunny_conversation';
 export const GROUP_CONVERSATION_STORE_PREFIX = 'group:';
-export const DEFAULT_BRANCH_ID = 'main';
+export const DEFAULT_CHAT_ID = 'main';
 export const LAST_USER_ACTIVITY_PREFIX = 'sb_conv_last_user_activity_';
 export const LAST_AUTO_MESSAGE_PREFIX = 'sb_conv_last_auto_msg_';
 export const LAST_SCHEDULE_TRIGGER_PREFIX = 'sb_conv_last_trigger_';
@@ -145,7 +145,7 @@ export const AUTO_WORKER_INTERVAL_MS = 30000;
 export const AUTO_WORKER_WAIT_TIMEOUT_MS = 45000;
 export const AUTO_WORKER_WAIT_POLL_MS = 200;
 export const AUTO_WORKER_INTERVAL_GLOBAL_KEY = '__sbConversationAutoWorkerIntervalId';
-export const MAX_THREAD_MESSAGES = 250;
+export const MAX_CONVERSATION_MESSAGES = 250;
 export const TRANSCRIPT_MESSAGE_LIMIT = 32;
 export const SCHEDULE_STATUSES = Object.freeze(['online', 'idle', 'dnd', 'offline']);
 export const DEFAULT_INACTIVITY_THRESHOLD = 120;
@@ -178,8 +178,8 @@ export const CONVERSATION_ATTACHMENT_ACCEPT = [
     'image/*', 'video/*', 'audio/*',
     ...CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS,
 ].join(',');
-export const PARTNER_FOLLOWUP_RECENT_WINDOW = 6;
-export const PARALLEL_CHIME_MAX_PARTNERS = 2;
+export const MEMBER_FOLLOWUP_RECENT_WINDOW = 6;
+export const PARALLEL_CHIME_MAX_MEMBERS = 2;
 export const GROUP_MAX_CONCURRENT_SPEAKERS = 2;
 export const GROUP_SECOND_REPLY_CHANCE = 0.3;
 export const GROUP_ASIDE_CONTEXT_LIMIT = 8;
@@ -198,9 +198,9 @@ export const SCHEDULE_UPDATE_RE = /\[schedule_update:\s*([^\]]+)\]/gi;
 export const REMINDER_COMMAND_RE = /\[reminder:\s*([^|\]]+)\s*\|\s*([^\]]+)\]/gi;
 export const CHROME_IDS = Object.freeze({
     header: 'sb_conversation_header',
-    palsToggle: 'sb_conversation_pals_toggle',
-    palsRail: 'sb_conversation_pals_rail',
-    palsList: 'sb_conversation_pals_list',
+    listToggle: 'sb_conversation_list_toggle',
+    conversationList: 'sb_conversation_list',
+    listItems: 'sb_conversation_list_items',
     stage: 'sb_conversation_stage',
     timeline: 'sb_conversation_timeline',
     tools: 'sb_conversation_tools',
@@ -353,7 +353,7 @@ export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([
     'lorebooks_enabled',
 ]);
 export const GLOBAL_CONVERSATION_SETTINGS_KEY_SET = new Set(GLOBAL_CONVERSATION_SETTINGS_KEYS);
-export const THREAD_CONVERSATION_SETTINGS_KEYS = Object.freeze(
+export const CONVERSATION_SETTINGS_KEYS = Object.freeze(
     Object.keys(DEFAULT_SETTINGS).filter(key => !GLOBAL_CONVERSATION_SETTINGS_KEY_SET.has(key)),
 );
 export const CHARACTER_CONVERSATION_SETTINGS_KEYS = Object.freeze(

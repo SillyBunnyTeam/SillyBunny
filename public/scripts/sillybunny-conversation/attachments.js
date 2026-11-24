@@ -20,14 +20,14 @@ import {
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadKey,
-    getConversationThreadStore,
+    getConversationKey,
+    getConversationRecord,
     getCurrentCharAvatar,
     getCurrentCharName,
 } from './context.js';
-import { generateConversationReply, postCharacterReply, postPartnerConversationReply, reportConversationGenerationError } from './generation.js';
-import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationPartnerAvatars } from './media.js';
-import { getAllowedPartnerCharacters, getConversationPartnerSettings, isCharacterMentionedInText } from './partners.js';
+import { generateConversationReply, postCharacterReply, postMemberConversationReply, reportConversationGenerationError } from './generation.js';
+import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationMemberAvatars } from './media.js';
+import { getAllowedMemberCharacters, getConversationMemberSettings, isCharacterMentionedInText } from './members.js';
 import { getConversationPersonaName } from './personas.js';
 import { formatConversationFileSize } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
@@ -38,21 +38,21 @@ import {
     beginConversationGenerationOperation,
     conversationState,
     endConversationGenerationOperation,
-    partnerReplyBusyKeys,
+    memberReplyBusyKeys,
     sendQueue,
 } from './state.js';
 import { consumeConversationReplyTarget } from './timeline-render.js';
 import {
-    appendConversationThreadMessage,
+    appendConversationChatMessage,
     buildConversationMessageReplyReference,
     getConversationAttachmentSummary,
     getConversationFileAttachments,
     getConversationMediaAttachments,
-    getConversationThread,
+    getConversationMessages,
     getImageCooldownRemainingSeconds,
     markImageGenerated,
     updateLastUserActivity,
-} from './thread-store.js';
+} from './conversation-store.js';
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
@@ -277,27 +277,27 @@ export async function waitForRoleplayGeneration() {
     return !is_send_press;
 }
 
-function getConversationSpeakerAvatar(message, threadAvatar) {
+function getConversationSpeakerAvatar(message, anchorAvatar) {
     if (!message || ['user', 'system'].includes(message.role || '')) {
         return '';
     }
 
     return message.role === 'partner'
         ? String(message.extra?.partner_avatar || '')
-        : String(threadAvatar || '');
+        : String(anchorAvatar || '');
 }
 
 function isBroadGroupAddress(text) {
     return /\b(everyone|everybody|anyone|someone|you\s+all|you\s+guys|y['’]?all|yall|both\s+of\s+you|all\s+of\s+you)\b/i.test(String(text || ''));
 }
 
-function getImplicitGroupReplyCandidate(thread, threadAvatar, candidates, latestUserText) {
+function getImplicitGroupReplyCandidate(conversationMessages, anchorAvatar, candidates, latestUserText) {
     if (!String(latestUserText || '').trim() || isBroadGroupAddress(latestUserText)) {
         return null;
     }
 
-    for (let index = thread.length - 1; index >= 0; index--) {
-        const speakerAvatar = getConversationSpeakerAvatar(thread[index], threadAvatar);
+    for (let index = conversationMessages.length - 1; index >= 0; index--) {
+        const speakerAvatar = getConversationSpeakerAvatar(conversationMessages[index], anchorAvatar);
         const candidate = candidates.find(item => item.character.avatar === speakerAvatar);
         if (candidate) {
             return candidate;
@@ -307,7 +307,7 @@ function getImplicitGroupReplyCandidate(thread, threadAvatar, candidates, latest
     return null;
 }
 
-function getGroupReplyCandidates(threadAvatar, groupId, personaId) {
+function getGroupReplyCandidates(anchorAvatar, groupId, personaId) {
     const group = getConversationGroupById(groupId, { personaId });
     if (!group?.members?.length) {
         return [];
@@ -324,8 +324,8 @@ function getGroupReplyCandidates(threadAvatar, groupId, personaId) {
         .filter(Boolean);
 }
 
-function getGroupReplyBusyKey(threadAvatar, groupId, replyAvatar) {
-    return ['group-reply', groupId || '', threadAvatar || '', replyAvatar || ''].join(':');
+function getGroupReplyBusyKey(anchorAvatar, groupId, replyAvatar) {
+    return ['group-reply', groupId || '', anchorAvatar || '', replyAvatar || ''].join(':');
 }
 
 function addUniqueGroupReplyCandidate(candidates, candidate) {
@@ -353,8 +353,8 @@ function pickWeightedGroupReplyCandidate(candidates) {
     return candidates[candidates.length - 1] || null;
 }
 
-function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = false } = {}) {
-    const candidates = getGroupReplyCandidates(threadAvatar, groupId, queueItem?.personaId);
+function chooseGroupReplyCandidates(anchorAvatar, groupId, queueItem, { force = false } = {}) {
+    const candidates = getGroupReplyCandidates(anchorAvatar, groupId, queueItem?.personaId);
     if (!candidates.length) {
         return [];
     }
@@ -365,8 +365,8 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
     const pool = availableCandidates.length ? availableCandidates : candidates;
     const candidateCharacters = pool.map(item => item.character).filter(Boolean);
     const latestUserText = [queueItem?.text, queueItem?.attachmentContext].filter(Boolean).join('\n');
-    const thread = getConversationThread(threadAvatar, {
-        branchId: queueItem?.branchId,
+    const conversationMessages = getConversationMessages(anchorAvatar, {
+        chatId: queueItem?.chatId,
         create: false,
         groupId,
         personaId: queueItem?.personaId,
@@ -374,8 +374,8 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
 
     // Build a cache of lastSpeakerIndex for all avatars in one pass
     const lastSpeakerIndexCache = new Map();
-    for (let index = thread.length - 1; index >= 0; index--) {
-        const speakerAvatar = getConversationSpeakerAvatar(thread[index], threadAvatar);
+    for (let index = conversationMessages.length - 1; index >= 0; index--) {
+        const speakerAvatar = getConversationSpeakerAvatar(conversationMessages[index], anchorAvatar);
         if (speakerAvatar && !lastSpeakerIndexCache.has(speakerAvatar)) {
             lastSpeakerIndexCache.set(speakerAvatar, index);
         }
@@ -384,8 +384,8 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
     const weightedPool = pool.map((item) => {
         const lastSpeakerIndex = lastSpeakerIndexCache.get(item.character.avatar) ?? -1;
         const messagesSinceSpeaking = lastSpeakerIndex < 0
-            ? thread.length + 1
-            : Math.max(1, thread.length - lastSpeakerIndex);
+            ? conversationMessages.length + 1
+            : Math.max(1, conversationMessages.length - lastSpeakerIndex);
         return {
             ...item,
             lastSpeakerIndex,
@@ -404,7 +404,7 @@ function chooseGroupReplyCandidates(threadAvatar, groupId, queueItem, { force = 
     }
 
     if (!selected.length) {
-        addUniqueGroupReplyCandidate(selected, getImplicitGroupReplyCandidate(thread, threadAvatar, weightedPool, latestUserText));
+        addUniqueGroupReplyCandidate(selected, getImplicitGroupReplyCandidate(conversationMessages, anchorAvatar, weightedPool, latestUserText));
     }
 
     const drawRandomCandidate = () => {
@@ -431,7 +431,7 @@ async function waitForConversationSpeakerAvailability(queueItem, settings, avata
         }
 
         if (!groupId && await handleAvailabilityAutoResponder(settings, avatar, {
-            branchId: queueItem?.branchId,
+            chatId: queueItem?.chatId,
             groupId,
             personaId: queueItem?.personaId,
         })) {
@@ -450,18 +450,18 @@ async function waitForConversationSpeakerAvailability(queueItem, settings, avata
     return true;
 }
 
-async function processConversationSpeakerReply(queueItem, { threadAvatar, groupId, threadSettings, replyCandidate = null, skipAvailabilityWait = false } = {}) {
-    const branchId = queueItem?.branchId || '';
+async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupId, conversationSettings, replyCandidate = null, skipAvailabilityWait = false } = {}) {
+    const chatId = queueItem?.chatId || '';
     const personaId = queueItem?.personaId || '';
-    const replyCharacter = replyCandidate?.character || getCharacterForAvatar(threadAvatar);
-    const replyAvatar = replyCharacter?.avatar || threadAvatar;
-    const replySettings = replyCandidate?.settings || threadSettings;
+    const replyCharacter = replyCandidate?.character || getCharacterForAvatar(anchorAvatar);
+    const replyAvatar = replyCharacter?.avatar || anchorAvatar;
+    const replySettings = replyCandidate?.settings || conversationSettings;
     const validateTarget = () => {
-        const messages = getConversationThread(threadAvatar, { branchId, create: false, groupId, personaId });
+        const messages = getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId });
         if (resolveConversationQueueTriggerMessages(queueItem, messages) === null) {
             return false;
         }
-        const replyTarget = resolveConversationQueueReplyTarget(queueItem, messages, threadAvatar);
+        const replyTarget = resolveConversationQueueReplyTarget(queueItem, messages, anchorAvatar);
         return !replyTarget.explicit || replyTarget.valid;
     };
     if (!skipAvailabilityWait && !await waitForConversationSpeakerAvailability(queueItem, replySettings, replyAvatar, groupId)) {
@@ -471,9 +471,9 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
         return false;
     }
 
-    maybePostDelayedReplyNotice(threadAvatar, replySettings, { branchId, groupId, personaId, statusAvatar: replyAvatar });
+    maybePostDelayedReplyNotice(anchorAvatar, replySettings, { chatId, groupId, personaId, statusAvatar: replyAvatar });
 
-    const speakerName = replyCharacter?.name || (replyAvatar === threadAvatar ? getCurrentCharName() : 'Character');
+    const speakerName = replyCharacter?.name || (replyAvatar === anchorAvatar ? getCurrentCharName() : 'Character');
     const attachmentContext = formatPromptText(queueItem?.attachmentContext, 3200);
     const systemDirective = queueItem?.force
         ? '[System directive: Generate a response/reply to the user in the Conversation Mode thread.]'
@@ -486,14 +486,14 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
         replySettings,
         {
             avatar: replyAvatar,
-            threadAvatar,
+            anchorAvatar,
             speakerAvatar: replyAvatar,
             speakerName,
-            branchId,
+            chatId,
             groupId,
             personaId,
         },
-    ), threadAvatar, { branchId, groupId, personaId });
+    ), anchorAvatar, { chatId, groupId, personaId });
     if (!validateTarget()) {
         return false;
     }
@@ -504,21 +504,21 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
     };
     let posted = false;
     if (response?.trim()) {
-        if (replyAvatar === threadAvatar) {
+        if (replyAvatar === anchorAvatar) {
             const postedText = await postCharacterReply(response.trim(), replySettings, {
                 extra: {
                     ...replyExtra,
                 },
-                branchId,
+                chatId,
                 groupId,
                 personaId,
                 validateTarget,
-            }, threadAvatar);
+            }, anchorAvatar);
             posted = Boolean(postedText);
         } else {
-            posted = await postPartnerConversationReply(response.trim(), replyCharacter, replySettings, {
-                avatar: threadAvatar,
-                branchId,
+            posted = await postMemberConversationReply(response.trim(), replyCharacter, replySettings, {
+                avatar: anchorAvatar,
+                chatId,
                 extra: {
                     ...replyExtra,
                     partner_avatar: replyAvatar,
@@ -533,7 +533,7 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
     const imageKeywords = /\b(send\s*pic|selfie|photo|image|picture|show\s*me)\b/i;
     const wantsImage = replySettings.image_gen_enabled
         && (replySettings.spontaneous_selfies || imageKeywords.test(queueItem.text || ''));
-    if (wantsImage && getImageCooldownRemainingSeconds(replyAvatar, replySettings, Date.now(), { branchId, groupId, personaId }) === 0) {
+    if (wantsImage && getImageCooldownRemainingSeconds(replyAvatar, replySettings, Date.now(), { chatId, groupId, personaId }) === 0) {
         if (!validateTarget()) {
             return posted;
         }
@@ -544,20 +544,20 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
         );
         const imageUrl = await generateConversationImage(prompt, replySettings.image_gen_negative || '', { avatar: replyAvatar, character: replyCharacter });
         if (imageUrl && validateTarget()) {
-            markImageGenerated(replyAvatar, Date.now(), { branchId, groupId, personaId });
+            markImageGenerated(replyAvatar, Date.now(), { chatId, groupId, personaId });
             await appendConversationMessage('Here, I can show you.', {
                 name: speakerName,
-                role: replyAvatar === threadAvatar ? 'character' : 'partner',
+                role: replyAvatar === anchorAvatar ? 'character' : 'partner',
                 extra: {
                     conversation_mode_image: true,
                     image_url: imageUrl,
                     image_prompt: prompt,
-                    ...(replyAvatar === threadAvatar ? {} : { partner_avatar: replyAvatar }),
+                    ...(replyAvatar === anchorAvatar ? {} : { partner_avatar: replyAvatar }),
                 },
-                branchId,
+                chatId,
                 groupId,
                 personaId,
-            }, threadAvatar);
+            }, anchorAvatar);
             posted = true;
         }
     }
@@ -567,16 +567,16 @@ async function processConversationSpeakerReply(queueItem, { threadAvatar, groupI
 
 async function processGroupConversationSpeakerReply(queueItem, options) {
     const replyAvatar = options?.replyCandidate?.character?.avatar;
-    const busyKey = getGroupReplyBusyKey(options?.threadAvatar, options?.groupId, replyAvatar);
-    if (!replyAvatar || partnerReplyBusyKeys.has(busyKey)) {
+    const busyKey = getGroupReplyBusyKey(options?.anchorAvatar, options?.groupId, replyAvatar);
+    if (!replyAvatar || memberReplyBusyKeys.has(busyKey)) {
         return false;
     }
 
-    partnerReplyBusyKeys.add(busyKey);
+    memberReplyBusyKeys.add(busyKey);
     try {
         return await processConversationSpeakerReply(queueItem, options);
     } finally {
-        partnerReplyBusyKeys.delete(busyKey);
+        memberReplyBusyKeys.delete(busyKey);
     }
 }
 
@@ -591,17 +591,17 @@ export async function processQueuedConversationReply(queueItem) {
 
     const groupId = queueItem?.groupId || '';
     const personaId = queueItem?.personaId || getConversationPersonaId();
-    const branchId = queueItem?.branchId || '';
-    const threadKey = getConversationThreadKey(avatar, groupId, { personaId });
-    if (!threadKey || queueItem?.threadKey !== threadKey) {
+    const chatId = queueItem?.chatId || '';
+    const conversationKey = getConversationKey(avatar, groupId, { personaId });
+    if (!conversationKey || queueItem?.conversationKey !== conversationKey) {
         return;
     }
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    if (!branchId || !threadStore?.branches?.[branchId]) {
+    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+    if (!chatId || !conversationRecord?.branches?.[chatId]) {
         return;
     }
-    const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-    const triggerMessages = resolveConversationQueueTriggerMessages(queueItem, branchMessages);
+    const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+    const triggerMessages = resolveConversationQueueTriggerMessages(queueItem, chatMessages);
     if (!triggerMessages) {
         return;
     }
@@ -612,25 +612,25 @@ export async function processQueuedConversationReply(queueItem) {
         return CONVERSATION_QUEUE_RETRY;
     }
 
-    const currentBranchMessages = getConversationThread(avatar, {
-        branchId,
+    const currentChatMessages = getConversationMessages(avatar, {
+        chatId,
         create: false,
         groupId,
         personaId,
     });
-    const currentTriggerMessages = resolveConversationQueueTriggerMessages(queueItem, currentBranchMessages);
+    const currentTriggerMessages = resolveConversationQueueTriggerMessages(queueItem, currentChatMessages);
     if (!currentTriggerMessages) {
         return;
     }
-    const triggeringUserMessage = getLastConversationQueueUserMessage(queueItem, currentBranchMessages);
+    const triggeringUserMessage = getLastConversationQueueUserMessage(queueItem, currentChatMessages);
     queueItem.replyReference = buildConversationMessageReplyReference(triggeringUserMessage);
-    const replyTarget = resolveConversationQueueReplyTarget(queueItem, currentBranchMessages, avatar);
+    const replyTarget = resolveConversationQueueReplyTarget(queueItem, currentChatMessages, avatar);
     if (replyTarget.explicit && !replyTarget.valid) {
         return;
     }
 
-    const threadSettings = getSettings(avatar, { groupId, personaId });
-    if (!threadSettings.enabled) {
+    const conversationSettings = getSettings(avatar, { groupId, personaId });
+    if (!conversationSettings.enabled) {
         return;
     }
 
@@ -642,25 +642,25 @@ export async function processQueuedConversationReply(queueItem) {
             const replyCandidate = groupId
                 ? getGroupReplyCandidates(avatar, groupId, personaId).find(candidate => candidate.character.avatar === replyTarget.speakerAvatar)
                 : replyTarget.speakerAvatar === avatar
-                    ? { character: getCharacterForAvatar(avatar), settings: threadSettings }
-                    : getAllowedPartnerCharacters(threadSettings.multi_char_names, avatar, threadSettings, {
-                        branchId,
+                    ? { character: getCharacterForAvatar(avatar), settings: conversationSettings }
+                    : getAllowedMemberCharacters(conversationSettings.multi_char_names, avatar, conversationSettings, {
+                        chatId,
                         groupId,
-                        includeThreadPartners: true,
+                        includeConversationMembers: true,
                         personaId,
                     }).filter(character => character.avatar === replyTarget.speakerAvatar)
                         .map(character => ({
                             character,
-                            settings: getConversationPartnerSettings(character.avatar, threadSettings, { groupId, personaId }),
+                            settings: getConversationMemberSettings(character.avatar, conversationSettings, { groupId, personaId }),
                         }))[0];
             if (!replyCandidate?.character?.avatar) {
                 return;
             }
 
             if (groupId) {
-                await processGroupConversationSpeakerReply(queueItem, { threadAvatar: avatar, groupId, threadSettings, replyCandidate });
+                await processGroupConversationSpeakerReply(queueItem, { anchorAvatar: avatar, groupId, conversationSettings, replyCandidate });
             } else {
-                await processConversationSpeakerReply(queueItem, { threadAvatar: avatar, groupId, threadSettings, replyCandidate });
+                await processConversationSpeakerReply(queueItem, { anchorAvatar: avatar, groupId, conversationSettings, replyCandidate });
             }
             return;
         }
@@ -668,9 +668,9 @@ export async function processQueuedConversationReply(queueItem) {
         if (groupId) {
             const replyCandidates = chooseGroupReplyCandidates(avatar, groupId, queueItem, { force: Boolean(queueItem?.force) });
             await Promise.allSettled(replyCandidates.map(replyCandidate => processGroupConversationSpeakerReply(queueItem, {
-                threadAvatar: avatar,
+                anchorAvatar: avatar,
                 groupId,
-                threadSettings,
+                conversationSettings,
                 replyCandidate,
             }).catch((error) => {
                 reportConversationGenerationError('group reply', error);
@@ -679,25 +679,25 @@ export async function processQueuedConversationReply(queueItem) {
             return;
         }
 
-        if (!await waitForConversationSpeakerAvailability(queueItem, threadSettings, avatar, groupId)) {
+        if (!await waitForConversationSpeakerAvailability(queueItem, conversationSettings, avatar, groupId)) {
             return;
         }
 
-        const partnerChimePromise = getConversationPartnerAvatars(avatar, threadSettings, { branchId, groupId, includeThreadPartners: true, personaId }).length
-            ? checkMultiCharacterChime(avatar, threadSettings, Date.now(), { branchId, groupId, personaId }).catch((error) => {
+        const memberChimePromise = getConversationMemberAvatars(avatar, conversationSettings, { chatId, groupId, includeConversationMembers: true, personaId }).length
+            ? checkMultiCharacterChime(avatar, conversationSettings, Date.now(), { chatId, groupId, personaId }).catch((error) => {
                 console.error('Conversation partner chime error:', error);
                 return false;
             })
             : Promise.resolve(false);
 
         await processConversationSpeakerReply(queueItem, {
-            threadAvatar: avatar,
+            anchorAvatar: avatar,
             groupId,
-            threadSettings,
+            conversationSettings,
             skipAvailabilityWait: true,
         });
 
-        await partnerChimePromise;
+        await memberChimePromise;
     } catch (error) {
         reportConversationGenerationError('reply', error);
     } finally {
@@ -766,8 +766,8 @@ export async function submitConversationInput() {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const threadStore = getConversationThreadStore(avatar, { groupId, personaId });
-    const branchId = threadStore?.activeBranchId || '';
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    const chatId = conversationRecord?.activeBranchId || '';
     const settings = getSettings(avatar, { groupId, personaId });
     const text = input.value.trim();
     const pendingFiles = getValidatedConversationPendingFiles({ notify: true });
@@ -779,19 +779,19 @@ export async function submitConversationInput() {
     }
 
     if (!text && !pendingFiles.length) {
-        const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-        if (!branchMessages.some(message => message?.role === 'user')) {
+        const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+        if (!chatMessages.some(message => message?.role === 'user')) {
             return;
         }
 
         sendQueue.push(createForcedConversationQueueItem({
             avatar,
-            branchId,
+            chatId,
             groupId,
             personaId,
-            threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+            conversationKey: getConversationKey(avatar, groupId, { personaId }),
             createdAt: Date.now(),
-        }, branchMessages));
+        }, chatMessages));
         void processSendQueue();
         return;
     }
@@ -802,7 +802,7 @@ export async function submitConversationInput() {
     }
 
     if (text.startsWith('/') && !pendingFiles.length) {
-        const handled = await handleConversationSlashAction(text, { avatar, branchId, settings, groupId, personaId });
+        const handled = await handleConversationSlashAction(text, { avatar, chatId, settings, groupId, personaId });
         if (handled) {
             input.value = '';
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -841,25 +841,25 @@ export async function submitConversationInput() {
                 return;
             }
 
-            const replyTarget = consumeConversationReplyTarget(avatar, { branchId, groupId, personaId });
+            const replyTarget = consumeConversationReplyTarget(avatar, { chatId, groupId, personaId });
             if (replyTarget) {
                 messageInput.extra.conversation_reply_to = replyTarget;
             }
-            const message = appendConversationThreadMessage(avatar, messageInput, { branchId, create: false, groupId, personaId });
+            const message = appendConversationChatMessage(avatar, messageInput, { chatId, create: false, groupId, personaId });
             if (message?.id) {
                 messageIds.push(message.id);
                 triggerMessages.push(message);
             }
         } else {
-            const replyTarget = consumeConversationReplyTarget(avatar, { branchId, groupId, personaId });
+            const replyTarget = consumeConversationReplyTarget(avatar, { chatId, groupId, personaId });
             let includeReplyTarget = true;
             for (const messageText of splitChatroomMessages(text)) {
-                const message = appendConversationThreadMessage(avatar, {
+                const message = appendConversationChatMessage(avatar, {
                     role: 'user',
                     name: userName,
                     mes: messageText,
                     extra: buildConversationUserMessageExtra(includeReplyTarget ? replyTarget : null),
-                }, { branchId, create: false, groupId, personaId });
+                }, { chatId, create: false, groupId, personaId });
                 if (message?.id) {
                     messageIds.push(message.id);
                     triggerMessages.push(message);
@@ -871,22 +871,22 @@ export async function submitConversationInput() {
         input.value = '';
         input.dispatchEvent(new Event('input', { bubbles: true }));
         clearConversationAttachmentInput();
-        updateLastUserActivity(avatar, { branchId, groupId, personaId });
+        updateLastUserActivity(avatar, { chatId, groupId, personaId });
         scheduleInterfaceRefresh({ syncControls: false });
         // Conversation mode has no MESSAGE_SENT, so Home hears about the first message here (Getting Started, step 4).
         window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_SENT_EVENT));
 
         const queuedText = text || attachmentContextParts.join('\n') || 'Sent an attachment.';
-        const branchMessages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+        const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
         sendQueue.push(createConversationQueueItem({
             avatar,
-            branchId,
+            chatId,
             groupId,
             messageIds,
             messageRevisions: createConversationMessageRevisionEntries(triggerMessages),
             personaId,
-            replyTarget: createConversationQueueReplyTarget(triggerMessages, branchMessages),
-            threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+            replyTarget: createConversationQueueReplyTarget(triggerMessages, chatMessages),
+            conversationKey: getConversationKey(avatar, groupId, { personaId }),
             text: queuedText,
             attachmentContext: attachmentContextParts.join('\n'),
             createdAt: Date.now(),
@@ -910,23 +910,23 @@ if (typeof window !== 'undefined') {
         const createdAt = Number(detail.createdAt);
         const personaId = String(detail.personaId || getConversationPersonaId()).trim();
         const groupId = detail.groupId || '';
-        const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-        const branchId = String(detail.branchId || threadStore?.activeBranchId || '').trim();
-        if (!branchId) {
+        const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+        const chatId = String(detail.chatId || conversationRecord?.activeBranchId || '').trim();
+        if (!chatId) {
             return;
         }
         const messageIds = Array.isArray(detail.messageIds) ? detail.messageIds.filter(Boolean) : [];
-        const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+        const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
         const triggerMessages = messageIds.map(messageId => messages.find(message => message?.id === messageId)).filter(Boolean);
         sendQueue.push(createConversationQueueItem({
             avatar,
-            branchId,
+            chatId,
             groupId,
             messageIds,
             messageRevisions: createConversationMessageRevisionEntries(triggerMessages),
             personaId,
             replyTarget: createConversationQueueReplyTarget(triggerMessages, messages),
-            threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+            conversationKey: getConversationKey(avatar, groupId, { personaId }),
             text,
             attachmentContext: String(detail.attachmentContext || '').trim(),
             createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),

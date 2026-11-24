@@ -1,12 +1,12 @@
 import { online_status } from '../../script.js';
 import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
-import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
+import { CHROME_IDS, DEFAULT_CHAT_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
 import {
-    getConversationBranches,
+    getConversationChats,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
+    getConversationRecord,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
@@ -21,50 +21,50 @@ import {
     clearUnreadCount,
     getBadgeLabel,
     getUnreadCount,
-    isConversationActiveThread,
+    isConversationActive,
     updateConversationNotificationIndicators,
 } from './notifications.js';
-import { getConversationRailItems } from './pals-rail.js';
+import { getConversationRailItems } from './conversation-list.js';
 import { getAvailabilityCopy } from './personas.js';
-import { readChimingPartnersFromList, readWeeklyScheduleFromEditor, updateUserFooter } from './pickers.js';
+import { readChimingMembersFromList, readWeeklyScheduleFromEditor, updateUserFooter } from './pickers.js';
 import { clamp, getConversationReplyMaxTokens, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState } from './state.js';
-import { getConversationThread, saveConversationThread } from './thread-store.js';
+import { getConversationMessages, saveConversationMessages } from './conversation-store.js';
 import { renderConversationTimeline, updateConversationNotificationSettingsVisibility } from './timeline-render.js';
 import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
 import { createSpinner, createStatusPage } from '../sillybunny-editor/status-page.js';
 
-function buildBranchListFingerprint(characterStore, activeBranchId) {
+function buildChatListFingerprint(characterStore, activeBranchId) {
     return Object.entries(characterStore?.branches || {})
-        .map(([id, branch]) => [
-            branch?.id || id,
-            branch?.name || '',
-            branch?.preview || '',
-            branch?.updatedAt || '',
-            branch?.unread || 0,
-            (branch?.id || id) === activeBranchId ? '1' : '0',
+        .map(([id, chat]) => [
+            chat?.id || id,
+            chat?.name || '',
+            chat?.preview || '',
+            chat?.updatedAt || '',
+            chat?.unread || 0,
+            (chat?.id || id) === activeBranchId ? '1' : '0',
         ].join('\u001f'))
         .join('\u001e');
 }
 
-function buildPalsRailFingerprint(pals) {
+function buildConversationListFingerprint(conversations) {
     const personaId = getConversationPersonaId();
-    const parts = [String(pals.length), personaId, conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
-    for (const { character, index, settings, groupId, group } of pals) {
+    const parts = [String(conversations.length), personaId, conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
+    for (const { character, index, settings, groupId, group } of conversations) {
         const avatar = character?.avatar || '';
         const unreadCount = getUnreadCount(avatar, { groupId, personaId });
-        const characterStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-        const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
+        const characterStore = getConversationRecord(avatar, { create: false, groupId, personaId });
+        const activeBranchId = characterStore?.activeBranchId || DEFAULT_CHAT_ID;
         const participants = getConversationParticipants(avatar, settings, { groupId })
             .map((participant) => {
                 const participantSettings = participant?.avatar === avatar ? settings : getSettings(participant?.avatar, { groupId });
                 return `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, participantSettings)}`;
             })
             .join(',');
-        const branches = buildBranchListFingerprint(characterStore, activeBranchId);
+        const branches = buildChatListFingerprint(characterStore, activeBranchId);
 
         parts.push([
             avatar,
@@ -78,7 +78,7 @@ function buildPalsRailFingerprint(pals) {
             getConversationDisplayName(avatar, settings, { groupId }),
             getLastConversationPreview(avatar, { groupId, personaId }),
             unreadCount,
-            isConversationActiveThread(avatar, groupId, { personaId }) ? '1' : '0',
+            isConversationActive(avatar, groupId, { personaId }) ? '1' : '0',
             activeBranchId,
             participants,
             branches,
@@ -121,57 +121,57 @@ function renderHeaderParticipantStack(container, participants, options = {}) {
     renderConversationParticipantStack(container, participants, options);
 }
 
-export function renderPalsRail() {
-    const list = document.getElementById(CHROME_IDS.palsList);
+export function renderConversationList() {
+    const list = document.getElementById(CHROME_IDS.listItems);
     if (!(list instanceof HTMLElement)) {
         return;
     }
 
-    const pals = getConversationRailItems();
+    const conversations = getConversationRailItems();
     const personaId = getConversationPersonaId();
-    const fingerprint = buildPalsRailFingerprint(pals);
-    if (fingerprint === conversationState.lastPalsRailFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
+    const fingerprint = buildConversationListFingerprint(conversations);
+    if (fingerprint === conversationState.lastConversationListFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
         return;
     }
 
-    conversationState.lastPalsRailFingerprint = fingerprint;
+    conversationState.lastConversationListFingerprint = fingerprint;
     list.dataset.sbConversationFingerprint = fingerprint;
     list.textContent = '';
 
-    if (!pals.length) {
+    if (!conversations.length) {
         list.appendChild(createStatusPage({ state: 'empty', icon: 'comments', title: 'Use + to start a DM with a character.', compact: true }).element);
         updateConversationNotificationIndicators();
         return;
     }
 
-    for (const { character, index, settings, groupId, group } of pals) {
+    for (const { character, index, settings, groupId, group } of conversations) {
         const unreadCount = getUnreadCount(character.avatar, { groupId, personaId });
         const row = document.createElement('div');
-        row.className = 'sb-conversation-pal-row';
+        row.className = 'sb-conversation-list-row';
         row.dataset.groupId = groupId || '';
 
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'sb-conversation-pal';
+        button.className = 'sb-conversation-list-item';
         button.dataset.characterIndex = String(index);
         button.dataset.avatar = character.avatar;
         button.dataset.groupId = groupId || '';
         button.dataset.unread = String(unreadCount > 0);
-        button.setAttribute('aria-current', String(isConversationActiveThread(character.avatar, groupId, { personaId })));
+        button.setAttribute('aria-current', String(isConversationActive(character.avatar, groupId, { personaId })));
         button.innerHTML = `
-            <span class="sb-conversation-pal-avatar"></span>
-            <span class="sb-conversation-pal-copy">
-                <span class="sb-conversation-pal-name-row"><span class="sb-conversation-pal-name"></span><span class="sb-conversation-pal-kind"></span></span>
-                <span class="sb-conversation-pal-preview"></span>
+            <span class="sb-conversation-list-item-avatar"></span>
+            <span class="sb-conversation-list-item-copy">
+                <span class="sb-conversation-list-item-name-row"><span class="sb-conversation-list-item-name"></span><span class="sb-conversation-list-item-kind"></span></span>
+                <span class="sb-conversation-list-item-preview"></span>
             </span>
-            <span class="sb-conversation-pal-unread" aria-hidden="true"></span>
+            <span class="sb-conversation-list-item-unread" aria-hidden="true"></span>
         `;
 
-        const avatarStack = button.querySelector('.sb-conversation-pal-avatar');
-        const name = button.querySelector('.sb-conversation-pal-name');
-        const kind = button.querySelector('.sb-conversation-pal-kind');
-        const preview = button.querySelector('.sb-conversation-pal-preview');
-        const unreadBadge = button.querySelector('.sb-conversation-pal-unread');
+        const avatarStack = button.querySelector('.sb-conversation-list-item-avatar');
+        const name = button.querySelector('.sb-conversation-list-item-name');
+        const kind = button.querySelector('.sb-conversation-list-item-kind');
+        const preview = button.querySelector('.sb-conversation-list-item-preview');
+        const unreadBadge = button.querySelector('.sb-conversation-list-item-unread');
 
         renderConversationParticipantStack(avatarStack, getConversationParticipants(character.avatar, settings, { groupId }), {
             status: getEffectiveConversationStatus(character.avatar, settings),
@@ -242,7 +242,7 @@ export function updateConversationHeader(settings = getSettings()) {
     }
 
     const participants = getConversationParticipants(avatar, settings, { groupId });
-    const partnerCount = Math.max(0, participants.length - 1);
+    const memberCount = Math.max(0, participants.length - 1);
     renderHeaderParticipantStack(participantsContainer, participants, {
         status: effectiveStatus,
         groupId,
@@ -252,8 +252,8 @@ export function updateConversationHeader(settings = getSettings()) {
         name.textContent = getConversationDisplayName(avatar, settings);
     }
     if (status instanceof HTMLElement) {
-        const activeBranchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || DEFAULT_BRANCH_ID;
-        const branchName = getConversationBranches(avatar, { groupId }).find(branch => branch.id === activeBranchId)?.name || 'Main';
+        const activeBranchId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || DEFAULT_CHAT_ID;
+        const chatName = getConversationChats(avatar, { groupId }).find(chat => chat.id === activeBranchId)?.name || 'Main';
         const typingParticipants = getActiveTypingParticipants(avatar, { groupId, personaId });
         let statusText;
         if (typingParticipants.length) {
@@ -268,14 +268,14 @@ export function updateConversationHeader(settings = getSettings()) {
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
             const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
-            const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
-            statusText = `${currentCopy.label} · ${current.activity}${delayedNotice}${partnerNotice}`;
+            const memberNotice = memberCount ? ` · ${memberCount} pal${memberCount === 1 ? '' : 's'} can chime in` : '';
+            statusText = `${currentCopy.label} · ${current.activity}${delayedNotice}${memberNotice}`;
         } else {
-            const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
-            statusText = `${statusCopy.label}${partnerNotice}`;
+            const memberNotice = memberCount ? ` · ${memberCount} pal${memberCount === 1 ? '' : 's'} can chime in` : '';
+            statusText = `${statusCopy.label}${memberNotice}`;
             status.title = statusCopy.detail;
         }
-        status.textContent = `${branchName} · ${statusText}`;
+        status.textContent = `${chatName} · ${statusText}`;
         if (current || typingParticipants.length) {
             status.title = statusText;
         }
@@ -284,7 +284,7 @@ export function updateConversationHeader(settings = getSettings()) {
 
 export function updateConversationChrome(settings = getSettings()) {
     updateConversationHeader(settings);
-    renderPalsRail();
+    renderConversationList();
 }
 
 export function refreshConversationInterface({ syncControls = false } = {}) {
@@ -303,8 +303,8 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
     if (active) {
         if (avatar) {
-            const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-            clearUnreadCount(avatar, { branchId, groupId, personaId });
+            const chatId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+            clearUnreadCount(avatar, { chatId, groupId, personaId });
             updateLastPreviewFromConversation(avatar, { groupId, personaId });
         }
         renderConversationTimeline();
@@ -378,7 +378,7 @@ export function saveCurrentPanelSettings(options = {}) {
     }
     const chimingInput = document.getElementById('sb_conv_multi_char_names');
     if (chimingInput instanceof HTMLInputElement) {
-        chimingInput.value = readChimingPartnersFromList();
+        chimingInput.value = readChimingMembersFromList();
     }
 
     const settings = readSettingsFromPanel(avatar, { groupId, personaId });
@@ -450,12 +450,12 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
 
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-    if (!branchId) {
+    const chatId = getConversationRecord(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    if (!chatId) {
         return;
     }
-    const thread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-    const msg = thread.find(m => String(m.id) === String(messageId));
+    const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+    const msg = messages.find(m => String(m.id) === String(messageId));
     if (!msg || !msg.mes) {
         return;
     }
@@ -480,15 +480,15 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         }, settings);
 
         if (response?.trim()) {
-            const targetThread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-            const targetMessage = targetThread.find(message => String(message.id) === String(messageId));
+            const targetMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+            const targetMessage = targetMessages.find(message => String(message.id) === String(messageId));
             if (!targetMessage || getConversationMessageRevision(targetMessage) !== sourceRevision) {
                 return;
             }
             targetMessage.mes = normalizeConversationOutputText(response.trim());
-            saveConversationThread(avatar, targetThread, { branchId, create: false, groupId, personaId });
-            updateLastPreviewFromConversation(avatar, { branchId, groupId, personaId });
-            if (isConversationActiveThread(avatar, groupId, { branchId, personaId })) {
+            saveConversationMessages(avatar, targetMessages, { chatId, create: false, groupId, personaId });
+            updateLastPreviewFromConversation(avatar, { chatId, groupId, personaId });
+            if (isConversationActive(avatar, groupId, { chatId, personaId })) {
                 scheduleTimelineRender();
             }
             globalThis.toastr?.success?.('Character reply polished successfully!');
@@ -506,5 +506,5 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
     }
 }
 
-registerConversationRenderer('palsRail', renderPalsRail);
+registerConversationRenderer('conversationList', renderConversationList);
 registerConversationRenderer('interface', refreshConversationInterface);

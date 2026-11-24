@@ -1,18 +1,18 @@
 import { playMessageSound } from '../power-user.js';
-import { selectConversationThread } from './chrome.js';
+import { selectConversation } from './chrome.js';
 import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getConversationStore,
-    getConversationThreadStore,
-    getConversationThreadKey,
+    getConversationRecord,
+    getConversationKey,
     getCurrentCharAvatar,
-    isConversationThreadKeyForPersona,
-    parseConversationThreadKey,
+    isConversationKeyForPersona,
+    parseConversationKey,
     parsePositiveInt,
     persistConversationStore,
     shouldSurfaceConversationNotification,
@@ -20,48 +20,48 @@ import {
 import { getCharacterForAvatar } from './media.js';
 import {
     clearConversationUnreadStore,
-    getConversationThreadUnreadCount,
+    getConversationUnreadCount,
     sanitizeConversationUnreadStore,
-    setConversationThreadUnreadCount,
+    setConversationUnreadCount,
 } from './notification-utils.js';
 import { getSettings, isConversationModeEnabled } from './settings-store.js';
 import { conversationState } from './state.js';
 import { stripPreviewText } from './typing.js';
 
-export function getUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (branchId) {
-        return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
+export function getUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    if (chatId) {
+        return parsePositiveInt(getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId })?.unread, 0, 0);
     }
 
-    return getConversationThreadUnreadCount(getConversationThreadStore(avatar, { create: false, groupId, personaId }));
+    return getConversationUnreadCount(getConversationRecord(avatar, { create: false, groupId, personaId }));
 }
 
-export function setUnreadCount(avatar, count, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    if (!threadStore) {
+export function setUnreadCount(avatar, count, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+    if (!conversationRecord) {
         return;
     }
 
-    if (!setConversationThreadUnreadCount(threadStore, count, { branchId })) {
+    if (!setConversationUnreadCount(conversationRecord, count, { chatId })) {
         return;
     }
     persistConversationStore();
 }
 
-export function clearUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    setUnreadCount(avatar, 0, { branchId, groupId, personaId });
+export function clearUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    setUnreadCount(avatar, 0, { chatId, groupId, personaId });
 }
 
-export function incrementUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function incrementUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const currentUnread = parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
-    setUnreadCount(avatar, currentUnread + 1, { branchId, groupId, personaId });
+    const currentUnread = parsePositiveInt(getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId })?.unread, 0, 0);
+    setUnreadCount(avatar, currentUnread + 1, { chatId, groupId, personaId });
 }
 
-function isUnreadThreadCountable(avatar, groupId) {
+function isUnreadConversationCountable(avatar, groupId) {
     if (!avatar || !getCharacterForAvatar(avatar)) {
         return false;
     }
@@ -76,8 +76,8 @@ function isUnreadThreadCountable(avatar, groupId) {
     return isConversationModeEnabled(avatar, { groupId });
 }
 
-function getUnreadThreadIdentity(threadKey) {
-    const parsed = parseConversationThreadKey(threadKey);
+function getUnreadConversationIdentity(conversationKey) {
+    const parsed = parseConversationKey(conversationKey);
     return {
         avatar: parsed.avatar,
         groupId: parsed.groupId || '',
@@ -85,13 +85,13 @@ function getUnreadThreadIdentity(threadKey) {
 }
 
 export function sanitizeConversationUnreadCounts() {
-    const result = sanitizeConversationUnreadStore(getConversationStore(), (threadKey) => {
-        if (!isConversationThreadKeyForPersona(threadKey)) {
+    const result = sanitizeConversationUnreadStore(getConversationStore(), (conversationKey) => {
+        if (!isConversationKeyForPersona(conversationKey)) {
             return true;
         }
 
-        const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
-        return isUnreadThreadCountable(avatar, groupId);
+        const { avatar, groupId } = getUnreadConversationIdentity(conversationKey);
+        return isUnreadConversationCountable(avatar, groupId);
     });
 
     if (result.changed) {
@@ -101,7 +101,7 @@ export function sanitizeConversationUnreadCounts() {
 }
 
 export function clearAllConversationUnreadCounts() {
-    const storeResult = clearConversationUnreadStore(getConversationStore(), threadKey => isConversationThreadKeyForPersona(threadKey));
+    const storeResult = clearConversationUnreadStore(getConversationStore(), conversationKey => isConversationKeyForPersona(conversationKey));
     const removedLegacy = clearLegacyConversationUnreadStorage();
     const changed = storeResult.changed || removedLegacy > 0;
 
@@ -116,17 +116,17 @@ export function clearAllConversationUnreadCounts() {
 }
 
 export function getTotalUnreadCount() {
-    return Object.entries(getConversationStore().characters || {}).reduce((sum, [threadKey, threadStore]) => {
-        if (!isConversationThreadKeyForPersona(threadKey)) {
+    return Object.entries(getConversationStore().characters || {}).reduce((sum, [conversationKey, conversationRecord]) => {
+        if (!isConversationKeyForPersona(conversationKey)) {
             return sum;
         }
 
-        const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
-        if (!isUnreadThreadCountable(avatar, groupId)) {
+        const { avatar, groupId } = getUnreadConversationIdentity(conversationKey);
+        if (!isUnreadConversationCountable(avatar, groupId)) {
             return sum;
         }
 
-        return sum + getConversationThreadUnreadCount(threadStore);
+        return sum + getConversationUnreadCount(conversationRecord);
     }, 0);
 }
 
@@ -217,8 +217,8 @@ export function updateConversationFaviconBadge(totalUnread = getTotalUnreadCount
     image.src = sourceHref;
 }
 
-export function updatePalsToggleBadge(totalUnread = getTotalUnreadCount()) {
-    const badge = document.querySelector(`#${CHROME_IDS.palsToggle} .sb-conversation-pals-toggle-badge`);
+export function updateListToggleBadge(totalUnread = getTotalUnreadCount()) {
+    const badge = document.querySelector(`#${CHROME_IDS.listToggle} .sb-conversation-list-toggle-badge`);
     if (!(badge instanceof HTMLElement)) {
         return;
     }
@@ -267,42 +267,42 @@ export function updateCharactersDrawerBadge(totalUnread = getTotalUnreadCount())
 
 export function updateConversationNotificationIndicators() {
     const totalUnread = getTotalUnreadCount();
-    updatePalsToggleBadge(totalUnread);
+    updateListToggleBadge(totalUnread);
     updateConversationTitleBadge(totalUnread);
     updateConversationFaviconBadge(totalUnread);
     updateConversationTabBadge(totalUnread);
     updateCharactersDrawerBadge(totalUnread);
 }
 
-export function getActiveConversationThreadKey() {
+export function getActiveConversationKey() {
     if (!conversationState.conversationWorkspaceOpen) {
         return '';
     }
 
-    return getConversationThreadKey(getCurrentCharAvatar(), conversationState.conversationSelectedGroupId || '');
+    return getConversationKey(getCurrentCharAvatar(), conversationState.conversationSelectedGroupId || '');
 }
 
-export function isConversationActiveThread(avatar, groupId = getConversationGroupIdForAvatar(avatar), { branchId = '', personaId = getConversationPersonaId() } = {}) {
+export function isConversationActive(avatar, groupId = getConversationGroupIdForAvatar(avatar), { chatId = '', personaId = getConversationPersonaId() } = {}) {
     const currentPersonaId = getConversationPersonaId();
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
     return Boolean(
         conversationState.conversationWorkspaceOpen
         && avatar
         && personaId === currentPersonaId
-        && getConversationThreadKey(avatar, groupId || '', { personaId }) === getActiveConversationThreadKey()
-        && (!branchId || branchId === threadStore?.activeBranchId),
+        && getConversationKey(avatar, groupId || '', { personaId }) === getActiveConversationKey()
+        && (!chatId || chatId === conversationRecord?.activeBranchId),
     );
 }
 
 export function isConversationActiveForAvatar(avatar) {
-    return isConversationActiveThread(avatar);
+    return isConversationActive(avatar);
 }
 
-export async function openConversationFromNotification(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
-    return selectConversationThread(avatar, { branchId, groupId, personaId, showToast: false });
+export async function openConversationFromNotification(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
+    return selectConversation(avatar, { chatId, groupId, personaId, showToast: false });
 }
 
-export function showConversationToast(avatar, message, { branchId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
+export function showConversationToast(avatar, message, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
     const toastr = globalThis.toastr;
     if (!toastr?.info) {
         return;
@@ -314,11 +314,11 @@ export function showConversationToast(avatar, message, { branchId = '', groupId 
     toastr.info(preview, title, {
         ...SAFE_TOAST_OPTIONS,
         timeOut: 6000,
-        onclick: () => void openConversationFromNotification(avatar, { branchId, groupId, personaId }),
+        onclick: () => void openConversationFromNotification(avatar, { chatId, groupId, personaId }),
     });
 }
 
-export function notifyNewConversationMessage(avatar, message, shouldNotify, { branchId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
+export function notifyNewConversationMessage(avatar, message, shouldNotify, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
     updateConversationNotificationIndicators();
     if (!shouldNotify || !message || message.role === 'user' || message.role === 'system') {
         return;
@@ -335,5 +335,5 @@ export function notifyNewConversationMessage(avatar, message, shouldNotify, { br
         console.warn('Conversation Mode: notification sound failed', error);
     }
 
-    showConversationToast(avatar, message, { branchId, groupId, personaId });
+    showConversationToast(avatar, message, { chatId, groupId, personaId });
 }

@@ -1,6 +1,6 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
-import { resolveConversationReminderBranchId } from '../public/scripts/sillybunny-conversation/thread-store-utils.js';
+import { resolveConversationReminderChatId } from '../public/scripts/sillybunny-conversation/conversation-store-utils.js';
 
 const persistConversationStore = jest.fn();
 const generateConversationReply = jest.fn();
@@ -18,11 +18,11 @@ const reminder = {
 await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], is_send_press: false, name1: 'User' }));
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getActiveConversationBranch: () => null,
+    getActiveConversationChat: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-a.png' : value || ''),
     getConversationStore: () => ({ reminders: [reminder] }),
-    getConversationThreadStore: () => ({
+    getConversationRecord: () => ({
         activeBranchId: 'main',
         branches: { main: { id: 'main' } },
     }),
@@ -36,7 +36,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
     generateConversationReply,
     postCharacterReply: jest.fn(),
-    postPartnerConversationReply: jest.fn(),
+    postMemberConversationReply: jest.fn(),
     reportConversationGenerationError: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/interface.js', () => ({ loadCurrentPanelSettings: jest.fn() }));
@@ -46,19 +46,19 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.
     getCharacterForAvatar: () => ({ avatar: 'char.png', name: 'Aster' }),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     buildGroupChatContext: () => '',
     getConversationRailItems: () => [],
     getCurrentGroupConversationMembers: () => [],
     getGroupAsideKey: () => '',
     getSelectedConversationGroup: () => null,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partners.js', () => ({
-    chooseConversationPartner: () => null,
-    getAllowedPartnerCharacters: () => [],
-    getConversationPartnerSettings: (_avatar, settings) => settings,
-    getLeastRecentPartner: () => null,
-    getRecentlySilentMentionedPartner: () => null,
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
+    chooseConversationMember: () => null,
+    getAllowedMemberCharacters: () => [],
+    getConversationMemberSettings: (_avatar, settings) => settings,
+    getLeastRecentMember: () => null,
+    getRecentlySilentMentionedMember: () => null,
     isCharacterMentionedInText: () => false,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({
@@ -74,7 +74,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedu
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({ buildConversationRoleplayContext: () => '' }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getAutoCharacterChatCooldownMs: () => 0,
-    getConversationBranchActivityTime: () => 0,
+    getConversationChatActivityTime: () => 0,
     getConversationSessionMarker: () => '',
     getFollowupCount: () => 0,
     getLastAutoCharacterChatTime: () => 0,
@@ -88,18 +88,18 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
     conversationState: {},
     groupAsideBusyKeys: new Set(),
     groupAsideLastSent: new Map(),
-    partnerReplyBusyKeys: new Set(),
+    memberReplyBusyKeys: new Set(),
     sendQueue: [],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timers.js', () => ({
     clearConversationTimeouts: jest.fn(),
     setConversationTimeout: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
-    getConversationThread: () => [],
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
+    getConversationMessages: () => [],
     getImageCooldownRemainingSeconds: () => 0,
     markImageGenerated: jest.fn(),
-    resolveConversationReminderBranchId,
+    resolveConversationReminderChatId,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getConversationActivityContext: () => ({ activity: '', source: 'manual', status: 'online' }),

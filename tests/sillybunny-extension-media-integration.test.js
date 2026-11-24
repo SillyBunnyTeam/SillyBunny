@@ -93,7 +93,7 @@ async function importConversationMedia({ characters, currentAvatar, state, rende
         MAX_STACKED_PARTICIPANT_AVATARS: 4,
     }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-        getActiveConversationBranch: jest.fn(() => null),
+        getActiveConversationChat: jest.fn(() => null),
         getConversationGroupById: jest.fn(() => null),
         getConversationGroupIdForAvatar: jest.fn(() => null),
         getConversationPersonaId: jest.fn(() => 'persona-a'),
@@ -101,7 +101,7 @@ async function importConversationMedia({ characters, currentAvatar, state, rende
         getCurrentCharAvatar: jest.fn(() => currentAvatar),
         getCurrentCharName: jest.fn(() => characters.find(character => character.avatar === currentAvatar)?.name || 'Character'),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/partners.js', () => ({
+    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
         parseAvatarList: jest.fn(() => []),
     }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
@@ -120,8 +120,8 @@ async function importConversationMedia({ characters, currentAvatar, state, rende
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
         conversationState: state,
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
-        getConversationThread: jest.fn(() => []),
+    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
+        getConversationMessages: jest.fn(() => []),
     }));
     return import('../public/scripts/sillybunny-conversation/media.js');
 }

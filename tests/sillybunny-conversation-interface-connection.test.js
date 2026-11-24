@@ -31,11 +31,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome
     setConversationInterfaceActive: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getConversationBranches: () => [],
+    getConversationChats: () => [],
     getConversationGroupById: id => id ? { name: 'Group DM' } : null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: () => 'persona.png',
-    getConversationThreadStore: () => null,
+    getConversationRecord: () => null,
     getCurrentCharacter: () => currentAvatar ? { avatar: currentAvatar, name: 'Aster' } : null,
     getCurrentCharAvatar: () => currentAvatar,
     getCurrentCharName: () => 'Aster',
@@ -60,17 +60,17 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifi
     clearUnreadCount: jest.fn(),
     getBadgeLabel: value => String(value || ''),
     getUnreadCount: () => 0,
-    isConversationActiveThread: () => false,
+    isConversationActive: () => false,
     updateConversationNotificationIndicators: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     getConversationRailItems: () => [],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({
     getAvailabilityCopy: () => ({ detail: '', label: 'Online' }),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pickers.js', () => ({
-    readChimingPartnersFromList: () => '',
+    readChimingMembersFromList: () => '',
     readWeeklyScheduleFromEditor: () => '[]',
     updateUserFooter: jest.fn(),
 }));
@@ -85,9 +85,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
     saveSettings: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({ conversationState }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
-    getConversationThread: () => [],
-    saveConversationThread: jest.fn(),
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
+    getConversationMessages: () => [],
+    saveConversationMessages: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-render.js', () => ({
     renderConversationTimeline: jest.fn(),

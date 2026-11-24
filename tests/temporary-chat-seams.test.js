@@ -389,24 +389,24 @@ describe('Conversation reactions to the open roleplay', () => {
         const context = createContext({
             getCurrentCharAvatar: () => 'bunny.png',
             getConversationPersonaId: () => 'persona.png',
-            getConversationThreadStore: () => ({ activeBranchId: 'main' }),
+            getConversationRecord: () => ({ activeBranchId: 'main' }),
             buildConversationRoleplayContext: () => 'The scene so far.',
             getRoleplaySourceMessageRevision: () => 'revision',
             ...overrides,
         });
-        loadFunctions(context, ['captureRoleplayDMRequest'], AUTO_ENGINE_URL);
+        loadFunctions(context, ['captureRoleplayAsideRequest'], AUTO_ENGINE_URL);
         return context;
     }
 
     test('captures the scene of a normal roleplay chat for a reaction, as before', () => {
         const context = captureContext();
 
-        expect(context.captureRoleplayDMRequest()).toMatchObject({ avatar: 'bunny.png', branchId: 'main', roleplayContext: 'The scene so far.' });
+        expect(context.captureRoleplayAsideRequest()).toMatchObject({ avatar: 'bunny.png', chatId: 'main', roleplayContext: 'The scene so far.' });
     });
 
     test('captures nothing from a temporary chat, so no reaction is written into the Conversation store', () => {
         const context = captureContext({ isTemporaryChat: jest.fn(() => true) });
 
-        expect(context.captureRoleplayDMRequest()).toBeNull();
+        expect(context.captureRoleplayAsideRequest()).toBeNull();
     });
 });

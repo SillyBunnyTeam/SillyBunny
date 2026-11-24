@@ -61,10 +61,10 @@ export function isCharacterMentionedInText(character, text, candidates = []) {
         .some(part => hasMentionBoundaryMatch(messageText, part));
 }
 
-export function getLastPartnerMessageIndex(thread, partner) {
-    for (let index = thread.length - 1; index >= 0; index--) {
-        const message = thread[index];
-        if (message?.extra?.partner_avatar === partner.avatar) {
+export function getLastMemberMessageIndex(messages, member) {
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (message?.extra?.partner_avatar === member.avatar) {
             return index;
         }
     }
@@ -72,21 +72,21 @@ export function getLastPartnerMessageIndex(thread, partner) {
     return -1;
 }
 
-export function getRecentlySilentMentionedPartnerFromThread(thread, partners, recentWindow) {
-    const recentMessages = thread.slice(-recentWindow);
-    const mentionedPartner = partners.find(partner => recentMessages.some(message => isCharacterMentionedInText(partner, message?.mes || '', partners)));
-    if (!mentionedPartner) {
+export function getRecentlySilentMentionedMemberFromConversation(messages, members, recentWindow) {
+    const recentMessages = messages.slice(-recentWindow);
+    const mentionedMember = members.find(member => recentMessages.some(message => isCharacterMentionedInText(member, message?.mes || '', members)));
+    if (!mentionedMember) {
         return null;
     }
 
     const lastMentionIndex = recentMessages.reduce((lastIndex, message, index) => {
-        return isCharacterMentionedInText(mentionedPartner, message?.mes || '', partners) ? index : lastIndex;
+        return isCharacterMentionedInText(mentionedMember, message?.mes || '', members) ? index : lastIndex;
     }, -1);
     const spokeAfterMention = recentMessages.slice(lastMentionIndex + 1).some((message) => {
-        const isPartnerMessage = message?.extra?.partner_avatar === mentionedPartner.avatar;
-        return isPartnerMessage && !['user', 'system'].includes(message.role);
+        const isMemberMessage = message?.extra?.partner_avatar === mentionedMember.avatar;
+        return isMemberMessage && !['user', 'system'].includes(message.role);
     });
-    return spokeAfterMention ? null : mentionedPartner;
+    return spokeAfterMention ? null : mentionedMember;
 }
 
 export function stripSpeakerPrefixText(messageText, speakerName, normalize = value => value) {

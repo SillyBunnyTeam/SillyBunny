@@ -11,20 +11,20 @@ const conversationState = {
 };
 
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ playMessageSound: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ selectConversationThread: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({ CHROME_IDS: { palsToggle: 'pals-toggle' }, SAFE_TOAST_OPTIONS: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ selectConversation: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({ CHROME_IDS: { listToggle: 'list-toggle' }, SAFE_TOAST_OPTIONS: {} }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     clearLegacyConversationUnreadStorage: () => 0,
-    getActiveConversationBranch: () => ({}),
+    getActiveConversationChat: () => ({}),
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: () => '',
     getConversationStore: () => ({ characters: {} }),
-    getConversationThreadKey: () => '',
-    getConversationThreadStore: () => ({ branches: {} }),
+    getConversationKey: () => '',
+    getConversationRecord: () => ({ branches: {} }),
     getCurrentCharAvatar: () => '',
-    isConversationThreadKeyForPersona: () => true,
-    parseConversationThreadKey: () => ({}),
+    isConversationKeyForPersona: () => true,
+    parseConversationKey: () => ({}),
     parsePositiveInt: (value, fallback) => fallback,
     persistConversationStore: jest.fn(),
     shouldSurfaceConversationNotification: () => false,

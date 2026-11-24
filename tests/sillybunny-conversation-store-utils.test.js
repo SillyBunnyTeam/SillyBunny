@@ -6,9 +6,9 @@ import {
     getConversationMediaIndex,
     getConversationPromptMediaAttachments,
     normalizeConversationStoredMessage,
-    resolveConversationReminderBranchId,
-    safeParseThread,
-} from '../public/scripts/sillybunny-conversation/thread-store-utils.js';
+    resolveConversationReminderChatId,
+    safeParseMessages,
+} from '../public/scripts/sillybunny-conversation/conversation-store-utils.js';
 
 describe('sillybunny conversation thread store utils', () => {
     test('normalizes legacy messages with deterministic ids', () => {
@@ -21,14 +21,14 @@ describe('sillybunny conversation thread store utils', () => {
     });
 
     test('safely parses and filters stored thread content', () => {
-        const thread = safeParseThread(JSON.stringify([
+        const messages = safeParseMessages(JSON.stringify([
             { id: 'empty', role: 'user', mes: '' },
             { id: 'text', role: 'user', mes: 'hello' },
             { id: 'media', role: 'character', mes: '', extra: { media: [{ url: 'image.png', type: 'image' }] } },
         ]));
 
-        expect(thread.map(message => message.id)).toEqual(['text', 'media']);
-        expect(safeParseThread('{not-json')).toEqual([]);
+        expect(messages.map(message => message.id)).toEqual(['text', 'media']);
+        expect(safeParseMessages('{not-json')).toEqual([]);
     });
 
     test('summarizes media, file, and generated image attachments', () => {
@@ -61,13 +61,13 @@ describe('sillybunny conversation thread store utils', () => {
     });
 
     test('resolves only existing reminder branches', () => {
-        const threadStore = {
+        const conversationRecord = {
             activeBranchId: 'main',
             branches: { main: { id: 'main' } },
         };
-        expect(resolveConversationReminderBranchId({ branchId: 'main' }, threadStore)).toBe('main');
-        expect(resolveConversationReminderBranchId({ branchId: 'deleted' }, threadStore)).toBe('');
-        expect(resolveConversationReminderBranchId({}, threadStore)).toBe('main');
-        expect(resolveConversationReminderBranchId({}, null)).toBe('');
+        expect(resolveConversationReminderChatId({ branchId: 'main' }, conversationRecord)).toBe('main');
+        expect(resolveConversationReminderChatId({ branchId: 'deleted' }, conversationRecord)).toBe('');
+        expect(resolveConversationReminderChatId({}, conversationRecord)).toBe('main');
+        expect(resolveConversationReminderChatId({}, null)).toBe('');
     });
 });
