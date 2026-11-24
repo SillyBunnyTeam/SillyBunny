@@ -50,7 +50,7 @@ import {
 } from './users.js';
 
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
-import { FRONTEND_ASSET_PREFIX, rewriteFrontendHtml } from './frontend-assets.js';
+import { FRONTEND_ASSET_PREFIX, readRewrittenFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
 import getResponseCompressionMiddleware from './middleware/response-compression.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
@@ -374,10 +374,9 @@ app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
 
     if (shouldServeFrontendAssets()) {
         const indexPath = path.join(serverDirectory, 'public', 'index.html');
-        const indexHtml = safeReadFileSync(indexPath);
         response.type('html');
         response.set('Cache-Control', 'no-cache');
-        return response.send(rewriteFrontendHtml(indexHtml));
+        return response.send(readRewrittenFrontendHtml(indexPath));
     }
 
     response.set('Cache-Control', 'no-cache');

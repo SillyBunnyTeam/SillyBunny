@@ -5,7 +5,38 @@
 import lodash from 'lodash';
 import Fuse from 'fuse.js';
 import DOMPurify from 'dompurify';
-import hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/core';
+import hljsBash from 'highlight.js/lib/languages/bash';
+import hljsC from 'highlight.js/lib/languages/c';
+import hljsCpp from 'highlight.js/lib/languages/cpp';
+import hljsCsharp from 'highlight.js/lib/languages/csharp';
+import hljsCss from 'highlight.js/lib/languages/css';
+import hljsDiff from 'highlight.js/lib/languages/diff';
+import hljsDockerfile from 'highlight.js/lib/languages/dockerfile';
+import hljsDos from 'highlight.js/lib/languages/dos';
+import hljsGo from 'highlight.js/lib/languages/go';
+import hljsGraphql from 'highlight.js/lib/languages/graphql';
+import hljsIni from 'highlight.js/lib/languages/ini';
+import hljsJava from 'highlight.js/lib/languages/java';
+import hljsJavascript from 'highlight.js/lib/languages/javascript';
+import hljsJson from 'highlight.js/lib/languages/json';
+import hljsKotlin from 'highlight.js/lib/languages/kotlin';
+import hljsLua from 'highlight.js/lib/languages/lua';
+import hljsMakefile from 'highlight.js/lib/languages/makefile';
+import hljsMarkdown from 'highlight.js/lib/languages/markdown';
+import hljsPhp from 'highlight.js/lib/languages/php';
+import hljsPlaintext from 'highlight.js/lib/languages/plaintext';
+import hljsPowershell from 'highlight.js/lib/languages/powershell';
+import hljsPython from 'highlight.js/lib/languages/python';
+import hljsRuby from 'highlight.js/lib/languages/ruby';
+import hljsRust from 'highlight.js/lib/languages/rust';
+import hljsScss from 'highlight.js/lib/languages/scss';
+import hljsShell from 'highlight.js/lib/languages/shell';
+import hljsSql from 'highlight.js/lib/languages/sql';
+import hljsSwift from 'highlight.js/lib/languages/swift';
+import hljsTypescript from 'highlight.js/lib/languages/typescript';
+import hljsXml from 'highlight.js/lib/languages/xml';
+import hljsYaml from 'highlight.js/lib/languages/yaml';
 import localforage from 'localforage';
 import Handlebars from 'handlebars';
 import css from '@adobe/css-tools';
@@ -29,6 +60,85 @@ import yaml from 'yaml';
 import * as chevrotain from 'chevrotain';
 import { gzipSync, gzip } from 'fflate';
 import { sha256 } from 'js-sha256';
+
+const HLJS_LANGUAGES = [
+    ['javascript', hljsJavascript],
+    ['typescript', hljsTypescript],
+    ['python', hljsPython],
+    ['json', hljsJson],
+    ['bash', hljsBash],
+    ['shell', hljsShell],
+    ['xml', hljsXml],
+    ['css', hljsCss],
+    ['scss', hljsScss],
+    ['sql', hljsSql],
+    ['yaml', hljsYaml],
+    ['markdown', hljsMarkdown],
+    ['c', hljsC],
+    ['cpp', hljsCpp],
+    ['csharp', hljsCsharp],
+    ['java', hljsJava],
+    ['kotlin', hljsKotlin],
+    ['go', hljsGo],
+    ['rust', hljsRust],
+    ['ruby', hljsRuby],
+    ['php', hljsPhp],
+    ['swift', hljsSwift],
+    ['diff', hljsDiff],
+    ['ini', hljsIni],
+    ['plaintext', hljsPlaintext],
+    ['lua', hljsLua],
+    ['dockerfile', hljsDockerfile],
+    ['powershell', hljsPowershell],
+    ['makefile', hljsMakefile],
+    ['graphql', hljsGraphql],
+    ['dos', hljsDos],
+];
+
+for (const [languageName, languageDefinition] of HLJS_LANGUAGES) {
+    hljs.registerLanguage(languageName, languageDefinition);
+}
+
+hljs.registerAliases(['regex', 'regexp'], { languageName: 'plaintext' });
+
+// Fall back to plaintext instead of throwing when a fence tag names an unloaded language.
+hljs.addPlugin({
+    'before:highlight'(context) {
+        if (!context.language || !hljs.getLanguage(context.language)) {
+            context.language = 'plaintext';
+        }
+    },
+});
+
+const originalHighlightElement = hljs.highlightElement.bind(hljs);
+hljs.highlightElement = function highlightElementWithFallback(element) {
+    if (!element) {
+        return;
+    }
+
+    const className = typeof element.className === 'string' ? element.className : '';
+    const langMatch = className.match(/\b(?:lang|language)-([^\s]+)/i);
+    const requestedLang = langMatch?.[1];
+
+    if (
+        requestedLang
+        && !/^no-?highlight$/i.test(requestedLang)
+        && !hljs.getLanguage(requestedLang)
+    ) {
+        if (element.dataset?.highlighted) {
+            return;
+        }
+        const result = hljs.highlight(element.textContent ?? '', { language: 'plaintext', ignoreIllegals: true });
+        element.innerHTML = result.value;
+        if (element.dataset) {
+            element.dataset.highlighted = 'yes';
+        }
+        element.classList?.add?.('hljs');
+        return;
+    }
+
+    return originalHighlightElement(element);
+};
 
 /**
  * Expose the libraries to the 'window' object.
