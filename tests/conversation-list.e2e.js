@@ -33,6 +33,8 @@ async function openSeededList(page, baseURL) {
     const made = await seedConversationList(page);
     await openConversationList(page);
     await expect(page.locator(`${LIST} ${ROW}`)).toHaveCount(ALL_NAMES.length);
+    // The unread count of the first row comes with the list that the seed asks the page to read again, so it marks a list that has settled.
+    await expect(rowNamed(page, 'Assistant Reisen').locator('.sb-conversation-list-item-unread')).toHaveText('2');
     return made;
 }
 
