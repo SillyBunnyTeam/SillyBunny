@@ -61,6 +61,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
      * @type {import('express').RequestHandler}
      */
     function devMiddleware(req, res, next) {
+        // SillyBunny: fast-path non-lib.js requests without parsing path or resolving config.
         if (req.method !== 'GET' || req.path !== '/lib.js') {
             return next();
         }

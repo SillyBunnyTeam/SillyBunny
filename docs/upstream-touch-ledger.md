@@ -2267,16 +2267,30 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### simple-git named imports
 | Field | Value |
 | --- | --- |
-| File | `plugins.js`, `src/plugin-loader.js`, `src/util.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
-| Area | Git integration for server plugins, extensions, the git backend client and version info. |
+| File | `plugins.js`, `src/plugin-loader.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
+| Area | Git integration for server plugins, extensions and the git backend client. |
 | Divergence reason | SillyBunny must import simple-git by its named `simpleGit` export, because simple-git 4 removes the default export. The named export exists since 3.10, so the change also works on 3.x. |
 | Target seam | None; the import statement is the whole divergence. |
-| Adapter shape | Each file imports the named `simpleGit` export instead of the default export and keeps its local name: `git` in `plugins.js` and `src/plugin-loader.js`, `simpleGit` in the others. |
-| Protecting tests | `tests/plugin-loader.test.js` mocks the named export. `tests/extensions-discover.test.js` loads `src/endpoints/extensions.js` and `src/git/client.js` without mocks, and most server suites load `src/util.js`, so these suites fail at import if the export is missing. No test loads `plugins.js`. |
+| Adapter shape | Each file imports the named `simpleGit` export instead of the default export and keeps its local name: `git` in `plugins.js` and `src/plugin-loader.js`, `simpleGit` in the others. `src/util.js` dropped its `simple-git` import in PR #1031 in favor of direct `execFile('git', ...)` calls. |
+| Protecting tests | `tests/plugin-loader.test.js` mocks the named export. `tests/extensions-discover.test.js` loads `src/endpoints/extensions.js` and `src/git/client.js` without mocks. No test loads `plugins.js`. |
 | Validation | `npm run lint`, `npm run test:unit --prefix tests -- plugin-loader.test.js connection-state-checker.test.js`, the full `npm run test:unit`. Manual checks on Windows with Bun and Node: extension install with and without a branch, per user and global, then version, branches, switch, update and delete; `plugins.js install` and `update`; server plugin auto-update at startup; server update, auto-stash update and branch switch in a disposable checkout; version info with `GIT_DIR` set in the server environment; an extension install with the `builtin` backend. |
-| Rollback path | Restore the default import in each file: `import { default as git, CheckRepoActions } from 'simple-git'` in `plugins.js` and `src/plugin-loader.js`, `import { default as simpleGit } from 'simple-git'` in `src/util.js`, `import { CheckRepoActions, default as simpleGit } from 'simple-git'` in `src/endpoints/extensions.js`, and `import simpleGit from 'simple-git'` in `src/git/client.js`. simple-git 4 removes the default export, so do this only on simple-git 3. No saved data changes. |
-| Last reviewed | 2026-10-24 simple-git 4 upgrade. |
+| Rollback path | Restore the default import in each file: `import { default as git, CheckRepoActions } from 'simple-git'` in `plugins.js` and `src/plugin-loader.js`, `import { CheckRepoActions, default as simpleGit } from 'simple-git'` in `src/endpoints/extensions.js`, and `import simpleGit from 'simple-git'` in `src/git/client.js`. simple-git 4 removes the default export, so do this only on simple-git 3. No saved data changes. |
+| Last reviewed | 2026-11-26 PR #1031 (`src/util.js` removed from this entry). |
 | Owner | Server runtime integrator. |
+
+### Startup build cache, memoized version info, and Node V8 compile cache
+| Field | Value |
+| --- | --- |
+| File | `server.js`, `src/server-main.js`, `src/util.js`, `webpack.config.js`, `src/middleware/webpack-serve.js`, `start.sh`, `Start.bat`, `Start-Node.bat`. |
+| Area | Backend startup latency, lazy webpack bundle build, git version lookup, in-memory LRU caching, Firefox image revalidation, HTTP keep-alive timeouts, and Node V8 compile cache. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `src/node-compile-cache.js` for Node V8 compile cache enable/flush; `webpack.config.js` and `src/middleware/webpack-serve.js` for lazy webpack loading, minimizer parallelism capping, and moment locale trimming; `src/util.js` for memoized `getVersion()`, `MemoryLimitedMap` O(1) LRU, and `invalidateFirefoxCache()`. |
+| Adapter shape | `server.js` invokes `enableNodeCompileCache()` before dynamic-importing `src/server-supervisor.js`. `src/server-main.js` calls `flushNodeCompileCache()` after listen, applies `headersTimeout = 66_000` / `keepAliveTimeout = 65_000`, caches `sessionTimeout` inside the Bun middleware setup, and caches `shouldServeFrontendAssets()`. `src/middleware/webpack-serve.js` fast-paths `req.path !== '/lib.js'` and dynamic-imports `webpack` only on bundle cache misses. `webpack.config.js` reads package versions from JSON, memoizes cache metadata per process, sets `cache: false`, caps minimizer `parallel` (`false` on Android APK/Termux, `2` on desktop) across `minimizer-webpack-plugin` and `terser-webpack-plugin`, and filters moment locales with `ContextReplacementPlugin` to the UI locales in `public/locales/lang.json` plus regional English/Portuguese fallbacks (21 locale files). `src/util.js` memoizes `getVersion()` with `.git/HEAD`/worktree/reftable stat fingerprinting, <=2 parallel `git` calls (`--no-show-signature`), 30s TTL, and generation-guarded `invalidateVersionCache()`, upgrades `MemoryLimitedMap` to O(1) `Map`-ordered LRU, switches `invalidateFirefoxCache` to `Cache-Control: no-cache`, and re-exports the compile-cache helpers. `start.sh`, `Start.bat`, and `Start-Node.bat` export default `NODE_COMPILE_CACHE`. |
+| Protecting tests | `tests/perf-startup-webpack-version.test.js`, `tests/prompt-caching.test.js`, `tests/util-pure.test.js`, `tests/util.test.js`, `tests/frontend-assets.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/thumbnails-endpoint.test.js`. |
+| Validation | 2026-11-26 (PR #1031): `npm run lint`, `npm run lint --prefix tests`, Jest unit suites (`perf-startup-webpack-version.test.js`, `prompt-caching.test.js`, `util-pure.test.js`, `util.test.js`, `util-fs.test.js`, `frontend-assets.test.js`, `sillybunny-launcher-smol.test.js`, `thumbnails-endpoint.test.js`, `check-copy-placeholders.test.js`), CRLF/LF audit, and Bun 1.4.4 / Node 24.22.1 smoke checks. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26 PR #1031. |
+| Owner | `TODO(copy)` |
 
 ### Upstream test harness and dependency metadata
 | Field | Value |

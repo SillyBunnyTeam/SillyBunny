@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import chalk from 'chalk';
 import isDocker from 'is-docker';
-import { isBunRuntime } from './src/runtime.js';
+import { isBunRuntime, isNativeTermuxEnvironment } from './src/runtime.js';
 import { serverDirectory } from './src/server-directory.js';
 
 const color = chalk;
@@ -163,8 +163,18 @@ export function resolveTerserPluginPath(options = {}) {
     return resolveWebpackMinimizerSpec(options)?.pluginPath ?? null;
 }
 
+function isTermuxEnv(env) {
+    if (env === process.env) {
+        return isNativeTermuxEnvironment();
+    }
+    return Boolean(env?.TERMUX_VERSION)
+        || env?.PREFIX === '/data/data/com.termux/files/usr'
+        || (typeof env?.HOME === 'string' && env.HOME.startsWith('/data/data/com.termux/files/home'));
+}
+
 export function buildPublicLibMinimizer({
     env = process.env,
+    platform = process.platform,
     resolveMinimizerSpec = () => {
         if (cachedMinimizerSpec === undefined) {
             cachedMinimizerSpec = resolveWebpackMinimizerSpec();
@@ -190,17 +200,21 @@ export function buildPublicLibMinimizer({
         return ['...'];
     }
 
-    const parallel = env.SILLYBUNNY_ANDROID_APP === '1' ? false : 2;
+    const isAndroidHost = env.SILLYBUNNY_ANDROID_APP === '1'
+        || platform === 'android'
+        || isTermuxEnv(env);
+    const parallel = isAndroidHost ? false : 2;
     return [
         {
             apply(compiler) {
                 let MinimizerPlugin;
                 try {
                     MinimizerPlugin = loadPlugin(spec.pluginPath);
-                } catch {
+                } catch (error) {
+                    console.warn(`Failed to load webpack minimizer plugin at ${spec.pluginPath}; continuing without custom minimizer.`, error);
                     return;
                 }
-                // SillyBunny: cap worker fan-out on desktop and run in-process on Android to prevent memory spikes.
+                // SillyBunny: cap worker fan-out on desktop and run in-process on Android (APK and Termux) to prevent memory spikes.
                 const pluginOptions = spec.kind === 'minimizer-webpack-plugin'
                     ? {
                         parallel,
@@ -384,7 +398,8 @@ function getOutputDirectory(webpackRoot, cacheVersion) {
  */
 export function getPublicLibCacheInfo({ forceDist = false } = {}) {
     const webpackRoot = getWebpackRoot({ forceDist });
-    const memoKey = `${Boolean(forceDist)}:${webpackRoot}`;
+    const runtimeKey = isBunRuntime() ? BUN_LIB_BUNDLE_SIGNATURE : 'default';
+    const memoKey = `${Boolean(forceDist)}:${runtimeKey}:${webpackRoot}`;
     const cached = publicLibCacheInfoMemo.get(memoKey);
     if (cached) {
         return { ...cached };

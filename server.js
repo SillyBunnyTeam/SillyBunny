@@ -1,18 +1,8 @@
 #!/usr/bin/env bun
-import nodeModule from 'node:module';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 // SillyBunny: enable Node's V8 bytecode cache before loading application modules so warm restarts skip reparsing.
-if (!process.versions.bun && typeof nodeModule.enableCompileCache === 'function') {
-    try {
-        const compileCacheDir = process.env.NODE_COMPILE_CACHE?.trim()
-            || path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules', '.cache', 'sillybunny-v8');
-        nodeModule.enableCompileCache(compileCacheDir);
-    } catch {
-        // Read-only filesystems continue without persistent bytecode caching.
-    }
-}
+import { enableNodeCompileCache } from './src/node-compile-cache.js';
+
+enableNodeCompileCache();
 
 const { runSupervisor, shouldSupervise } = await import('./src/server-supervisor.js');
 

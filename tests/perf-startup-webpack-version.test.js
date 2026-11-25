@@ -17,12 +17,17 @@ import {
     MemoryLimitedMap,
     enableNodeCompileCache,
     flushNodeCompileCache,
+    getConfig,
     getConfigValue,
     getVersion,
     invalidateFirefoxCache,
     invalidateVersionCache,
     setConfigFilePath,
 } from '../src/util.js';
+import {
+    enableNodeCompileCache as directEnableNodeCompileCache,
+    flushNodeCompileCache as directFlushNodeCompileCache,
+} from '../src/node-compile-cache.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const defaultConfigPath = path.join(repoRoot, 'default', 'config.yaml');
@@ -124,9 +129,22 @@ describe('lazy webpack configuration and middleware', () => {
                 }
                 apply() {}
             };
-            buildPublicLibMinimizer({ env: {}, loadPlugin: captureLoader })[0].apply({});
-            buildPublicLibMinimizer({ env: { SILLYBUNNY_ANDROID_APP: '1' }, loadPlugin: captureLoader })[0].apply({});
-            expect(seenParallel).toEqual([2, false]);
+            buildPublicLibMinimizer({ env: {}, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: { SILLYBUNNY_ANDROID_APP: '1' }, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: {}, platform: 'android', loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: { TERMUX_VERSION: '0.118.0' }, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
+            expect(seenParallel).toEqual([2, false, false, false]);
+
+            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            buildPublicLibMinimizer({
+                env: {},
+                platform: 'linux',
+                loadPlugin: () => { throw new Error('broken plugin'); },
+            })[0].apply({});
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to load webpack minimizer plugin'),
+                expect.any(Error),
+            );
         } finally {
             if (previousAndroid === undefined) {
                 delete process.env.SILLYBUNNY_ANDROID_APP;
@@ -352,6 +370,7 @@ describe('memoized getVersion and util hotfixes', () => {
 
         const version = await getVersion({ baseDir: tempDir, execGit });
         expect(calls.length).toBeLessThanOrEqual(2);
+        expect(calls[0]).toContain('--no-show-signature');
         expect(version).toEqual({
             agent: 'SillyBunny:2.0.0-test:fork',
             pkgVersion: '2.0.0-test',
@@ -360,6 +379,29 @@ describe('memoized getVersion and util hotfixes', () => {
             commitDate: '2026-11-24 10:00:00 +0000',
             isLatest: false,
         });
+    });
+
+    test('falls back to git rev-parse for branch name on git reftable HEAD sentinels', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-reftable' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git', 'reftable'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/.invalid\n', 'utf8');
+        fs.writeFileSync(path.join(tempDir, '.git', 'reftable', 'tables.list'), '0x0001.ref\n', 'utf8');
+
+        const calls = [];
+        const execGit = async (_dir, args) => {
+            calls.push(args);
+            if (args[0] === 'show') {
+                return '1234abcd0\n2026-11-24 12:00:00 +0000\n1234abcd00000000000000000000000000000000\n';
+            }
+            if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+                return 'staging\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        const version = await getVersion({ baseDir: tempDir, execGit });
+        expect(version.gitBranch).toBe('staging');
+        expect(calls).toContainEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
     });
 
     test('keeps branch and revision with isLatest=true when no upstream branch is configured', async () => {
@@ -438,23 +480,97 @@ describe('memoized getVersion and util hotfixes', () => {
         expect(updated.gitRevision).not.toBe(first.gitRevision);
     });
 
-    test('reloads cached config.yaml automatically when file mtime or size changes', () => {
-        const cfgPath = path.join(tempDir, 'config.yaml');
-        fs.writeFileSync(cfgPath, 'port: 8123\n', 'utf8');
+    test('does not poison version cache across concurrent ref changes or mid-flight invalidation', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-race' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git', 'refs', 'heads'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf8');
+        const mainRefPath = path.join(tempDir, '.git', 'refs', 'heads', 'main');
+        fs.writeFileSync(mainRefPath, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n', 'utf8');
+
+        let releaseFirst;
+        const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+        let showCalls = 0;
+
+        const execGit = async (_dir, args) => {
+            if (args[0] === 'show') {
+                showCalls += 1;
+                if (showCalls === 1) {
+                    await firstGate;
+                    return 'aaaaaaa11\n2026-11-24 10:00:00 +0000\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n';
+                }
+                if (showCalls === 2) {
+                    return 'bbbbbbb22\n2026-11-24 10:05:00 +0000\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n';
+                }
+                return 'ccccccc33\n2026-11-24 10:10:00 +0000\ncccccccccccccccccccccccccccccccccccccccc\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        // Case 1: ref advances on disk while Call 1 is in flight -> Call 1 must not cache stale data under new fingerprint.
+        const pendingFirst = getVersion({ baseDir: tempDir, execGit, useCache: true });
+        fs.writeFileSync(mainRefPath, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nchanged\n', 'utf8');
+        const bumped = new Date(Date.now() + 5_000);
+        fs.utimesSync(mainRefPath, bumped, bumped);
+        releaseFirst();
+
+        const firstResult = await pendingFirst;
+        expect(firstResult.gitRevision).toBe('aaaaaaa11');
+
+        const secondResult = await getVersion({ baseDir: tempDir, execGit, useCache: true });
+        expect(secondResult.gitRevision).toBe('bbbbbbb22');
+        expect(showCalls).toBe(2);
+
+        // Case 2: invalidateVersionCache() while Call 3 is in flight -> Call 3 must not repopulate cache.
+        invalidateVersionCache();
+        let releaseThird;
+        const thirdGate = new Promise((resolve) => { releaseThird = resolve; });
+        let genCalls = 0;
+        const execGitGen = async (_dir, args) => {
+            if (args[0] === 'show') {
+                genCalls += 1;
+                if (genCalls === 1) {
+                    await thirdGate;
+                    return 'stale0001\n2026-11-24 10:15:00 +0000\n0000000000000000000000000000000000000001\n';
+                }
+                return 'fresh0002\n2026-11-24 10:20:00 +0000\n0000000000000000000000000000000000000002\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        const pendingThird = getVersion({ baseDir: tempDir, execGit: execGitGen, useCache: true });
+        invalidateVersionCache();
+        releaseThird();
+        expect((await pendingThird).gitRevision).toBe('stale0001');
+
+        const afterInvalidate = await getVersion({ baseDir: tempDir, execGit: execGitGen, useCache: true });
+        expect(afterInvalidate.gitRevision).toBe('fresh0002');
+        expect(genCalls).toBe(2);
+    });
+
+    test('getConfig preserves zero-syscall singleton identity until setConfigFilePath switches files', () => {
+        const cfgPathA = path.join(tempDir, 'config-a.yaml');
+        const cfgPathB = path.join(tempDir, 'config-b.yaml');
+        fs.writeFileSync(cfgPathA, 'port: 8123\n', 'utf8');
+        fs.writeFileSync(cfgPathB, 'port: 9456\nextraFlag: true\n', 'utf8');
         jest.spyOn(console, 'error').mockImplementation(() => {});
         try {
-            setConfigFilePath(cfgPath);
+            setConfigFilePath(cfgPathA);
 
+            const firstConfig = getConfig();
             expect(getConfigValue('port', 8000, 'number')).toBe(8123);
 
+            const statSpy = jest.spyOn(fs, 'statSync');
             const readSpy = jest.spyOn(fs, 'readFileSync');
+
+            // Modifying config.yaml on disk must not replace the cached singleton object or trigger statSync per read.
+            fs.writeFileSync(cfgPathA, 'port: 7777\n', 'utf8');
+            expect(getConfig()).toBe(firstConfig);
             expect(getConfigValue('port', 8000, 'number')).toBe(8123);
+            expect(statSpy).not.toHaveBeenCalled();
             expect(readSpy).not.toHaveBeenCalled();
 
-            fs.writeFileSync(cfgPath, 'port: 9456\nextraFlag: true\n', 'utf8');
-            const bumpedTime = new Date(Date.now() + 5_000);
-            fs.utimesSync(cfgPath, bumpedTime, bumpedTime);
-
+            // Switching to another path resets the cached singleton.
+            setConfigFilePath(cfgPathB);
             expect(getConfigValue('port', 8000, 'number')).toBe(9456);
             expect(getConfigValue('extraFlag', false, 'boolean')).toBe(true);
         } finally {
@@ -558,6 +674,9 @@ describe('Node V8 compile cache and launcher hygiene', () => {
             ['flush'],
         ]);
 
+        expect(enableNodeCompileCache).toBe(directEnableNodeCompileCache);
+        expect(flushNodeCompileCache).toBe(directFlushNodeCompileCache);
+
         const throwingModule = {
             enableCompileCache: () => { throw Object.assign(new Error('EROFS'), { code: 'EROFS' }); },
             flushCompileCache: () => { throw Object.assign(new Error('EROFS'), { code: 'EROFS' }); },
@@ -571,18 +690,23 @@ describe('Node V8 compile cache and launcher hygiene', () => {
         const serverMainSource = fs.readFileSync(path.join(repoRoot, 'src', 'server-main.js'), 'utf8');
         const startShSource = fs.readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
         const startBatSource = fs.readFileSync(path.join(repoRoot, 'Start.bat'), 'utf8');
+        const startNodeBatSource = fs.readFileSync(path.join(repoRoot, 'Start-Node.bat'), 'utf8');
 
         expect(serverSource.startsWith('#!/usr/bin/env bun')).toBe(true);
-        expect(serverSource.indexOf('enableCompileCache')).toBeGreaterThan(0);
-        expect(serverSource.indexOf('enableCompileCache')).toBeLessThan(serverSource.indexOf('server-supervisor.js'));
+        expect(serverSource).toContain('./src/node-compile-cache.js');
+        expect(serverSource.indexOf('enableNodeCompileCache()')).toBeGreaterThan(0);
+        expect(serverSource.indexOf('enableNodeCompileCache()')).toBeLessThan(serverSource.indexOf('server-supervisor.js'));
 
         expect(serverMainSource).toContain('keepAliveTimeout = 65_000');
         expect(serverMainSource).toContain('headersTimeout = 66_000');
+        expect(serverMainSource).toContain('./node-compile-cache.js');
         expect(serverMainSource).toContain('flushNodeCompileCache()');
         expect(serverMainSource).toContain('cachedShouldServeFrontendAssets = null');
+        expect(serverMainSource.indexOf('if (isBunRuntime())')).toBeLessThan(serverMainSource.indexOf('sessionTimeoutSeconds'));
 
         expect(startShSource).toContain('NODE_COMPILE_CACHE="$SCRIPT_DIR/node_modules/.cache/sillybunny-v8"');
         expect(startShSource).not.toMatch(/\bexec\s+"\$RUNTIME_CMD"/);
         expect(startBatSource).toContain('if not defined NODE_COMPILE_CACHE set "NODE_COMPILE_CACHE=%~dp0node_modules\\.cache\\sillybunny-v8"');
+        expect(startNodeBatSource).toContain('if not defined NODE_COMPILE_CACHE set "NODE_COMPILE_CACHE=%~dp0node_modules\\.cache\\sillybunny-v8"');
     });
 });

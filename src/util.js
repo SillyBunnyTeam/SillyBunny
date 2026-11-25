@@ -1,7 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import process from 'node:process';
-import nodeModule from 'node:module';
 import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { promises as dnsPromise } from 'node:dns';
@@ -23,13 +22,17 @@ import { pollSocketConnection } from './connection-state-checker.js';
 import { isRequestCancellationError, observeRequestCancellation } from './request-cancellation.js';
 import { getResumableGeneration } from './resumable-generations.js';
 import { isBunRuntime } from './runtime.js';
+// SillyBunny: re-export Node V8 compile cache helpers from the lightweight dependency-free module.
+export { enableNodeCompileCache, flushNodeCompileCache } from './node-compile-cache.js';
 
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
 const VERSION_CACHE_TTL_MS = 30_000;
 const GIT_VERSION_TIMEOUT_MS = 5_000;
 
-/** @type {{ path: string, mtimeMs: number, ctimeMs: number, size: number, config: any } | null} */
-let CACHED_CONFIG_ENTRY = null;
+/**
+ * Parsed config object.
+ */
+let CACHED_CONFIG = null;
 let CONFIG_PATH = null;
 
 /**
@@ -38,55 +41,9 @@ let CONFIG_PATH = null;
 
 /** @type {Map<string, { fingerprint: string, expiresAt: number, value: VersionInfo }>} */
 const VERSION_CACHE = new Map();
-/** @type {Map<string, Promise<VersionInfo>>} */
+/** @type {Map<string, { fingerprint: string, promise: Promise<VersionInfo> }>} */
 const VERSION_IN_FLIGHT = new Map();
-
-/**
- * Enables Node's V8 bytecode compile cache outside git-tracked paths when supported by the runtime.
- * @param {{ moduleApi?: typeof nodeModule, env?: NodeJS.ProcessEnv, versions?: NodeJS.ProcessVersions, repoDir?: string }} [options]
- * @returns {string | null} Active cache directory when enabled, or null when skipped or unsupported.
- */
-export function enableNodeCompileCache({
-    moduleApi = nodeModule,
-    env = process.env,
-    versions = process.versions,
-    repoDir = serverDirectory,
-} = {}) {
-    if (versions?.bun || typeof moduleApi?.enableCompileCache !== 'function') {
-        return null;
-    }
-
-    const cacheDir = env?.NODE_COMPILE_CACHE?.trim()
-        || path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8');
-
-    try {
-        moduleApi.enableCompileCache(cacheDir);
-        return cacheDir;
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Flushes pending V8 compile cache entries to disk so abrupt termination retains startup bytecode.
- * @param {{ moduleApi?: typeof nodeModule, versions?: NodeJS.ProcessVersions }} [options]
- * @returns {boolean} True when flush ran without throwing.
- */
-export function flushNodeCompileCache({
-    moduleApi = nodeModule,
-    versions = process.versions,
-} = {}) {
-    if (versions?.bun || typeof moduleApi?.flushCompileCache !== 'function') {
-        return false;
-    }
-
-    try {
-        moduleApi.flushCompileCache();
-        return true;
-    } catch {
-        return false;
-    }
-}
+let versionCacheGeneration = 0;
 
 /**
  * Converts a configuration key to an environment variable key.
@@ -102,9 +59,10 @@ export const keyToEnv = (key) => 'SILLYTAVERN_' + String(key).toUpperCase().repl
  */
 export function setConfigFilePath(configFilePath) {
     const nextPath = path.resolve(configFilePath);
+    // SillyBunny: clear cached config only when switching to a different config file path (e.g. between tests).
     if (CONFIG_PATH !== null && CONFIG_PATH !== nextPath) {
         console.error(color.red('Config file path already set. Please restart the server to change the config file path.'));
-        CACHED_CONFIG_ENTRY = null;
+        CACHED_CONFIG = null;
     }
     CONFIG_PATH = nextPath;
 }
@@ -119,41 +77,18 @@ export function getConfig() {
         console.error(color.red('No config file path set. Please set the config file path using setConfigFilePath().'));
         process.exit(1);
     }
-
-    let stat;
-    try {
-        stat = fs.statSync(CONFIG_PATH);
-    } catch (error) {
-        if (error?.code === 'ENOENT') {
-            console.error(color.red('No config file found. Please create a config.yaml file. The default config file can be found in the /default folder.'));
-            console.error(color.red('The program will now exit.'));
-            process.exit(1);
-        }
-        console.error(color.red('FATAL: Failed to read config.yaml. Please check the file for syntax errors.'));
-        console.error(error.message);
-        process.exit(1);
+    if (CACHED_CONFIG) {
+        return CACHED_CONFIG;
     }
-
-    // SillyBunny: invalidate cached config automatically when config.yaml changes on disk or in tests.
-    if (
-        CACHED_CONFIG_ENTRY !== null
-        && CACHED_CONFIG_ENTRY.path === CONFIG_PATH
-        && CACHED_CONFIG_ENTRY.mtimeMs === stat.mtimeMs
-        && CACHED_CONFIG_ENTRY.ctimeMs === stat.ctimeMs
-        && CACHED_CONFIG_ENTRY.size === stat.size
-    ) {
-        return CACHED_CONFIG_ENTRY.config;
+    if (!fs.existsSync(CONFIG_PATH)) {
+        console.error(color.red('No config file found. Please create a config.yaml file. The default config file can be found in the /default folder.'));
+        console.error(color.red('The program will now exit.'));
+        process.exit(1);
     }
 
     try {
         const config = yaml.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-        CACHED_CONFIG_ENTRY = {
-            path: CONFIG_PATH,
-            mtimeMs: stat.mtimeMs,
-            ctimeMs: stat.ctimeMs,
-            size: stat.size,
-            config,
-        };
+        CACHED_CONFIG = config;
         return config;
     } catch (error) {
         console.error(color.red('FATAL: Failed to read config.yaml. Please check the file for syntax errors.'));
@@ -202,6 +137,7 @@ export function getBasicAuthHeader(auth) {
     return `Basic ${encoded}`;
 }
 
+// SillyBunny: fingerprint .git/HEAD, refs, and worktree metadata to memoize getVersion() without repeated git spawns.
 function statSignature(filePath) {
     try {
         const stat = fs.statSync(filePath);
@@ -271,12 +207,18 @@ function readGitStateSnapshot(baseDir) {
     let refSig = 'detached';
     if (headRaw.startsWith('ref:')) {
         const refTarget = headRaw.slice(4).trim();
-        headBranch = refTarget.startsWith('refs/heads/')
-            ? refTarget.slice('refs/heads/'.length)
-            : (refTarget.replace(/^refs\/(?:remotes|tags)\//, '') || 'HEAD');
-        const gitRefPath = path.join(dirs.gitDir, refTarget);
-        const commonRefPath = path.join(dirs.commonDir, refTarget);
-        refSig = `${statSignature(gitRefPath)}|${commonRefPath === gitRefPath ? 'same' : statSignature(commonRefPath)}`;
+        if (refTarget === 'refs/heads/.invalid') {
+            // SillyBunny: git reftable repositories place a sentinel ref in HEAD; fall back to git for the real branch name.
+            headBranch = null;
+            refSig = statSignature(path.join(dirs.commonDir, 'reftable', 'tables.list'));
+        } else {
+            headBranch = refTarget.startsWith('refs/heads/')
+                ? refTarget.slice('refs/heads/'.length)
+                : (refTarget.replace(/^refs\/(?:remotes|tags)\//, '') || 'HEAD');
+            const gitRefPath = path.join(dirs.gitDir, refTarget);
+            const commonRefPath = path.join(dirs.commonDir, refTarget);
+            refSig = `${statSignature(gitRefPath)}|${commonRefPath === gitRefPath ? 'same' : statSignature(commonRefPath)}`;
+        }
     }
 
     const packedRefsSig = statSignature(path.join(dirs.commonDir, 'packed-refs'));
@@ -305,21 +247,25 @@ function runGitCommand(baseDir, args) {
     });
 }
 
+// SillyBunny: expose explicit cache invalidation and bump a generation counter so in-flight calls cannot repopulate stale entries.
 export function invalidateVersionCache() {
+    versionCacheGeneration += 1;
     VERSION_CACHE.clear();
+    VERSION_IN_FLIGHT.clear();
 }
 
 /**
  * Returns the version of the running instance. Get the version from the package.json file and the git revision.
  * Also returns the agent string for the Horde API.
- * @param {{ baseDir?: string, execGit?: (baseDir: string, args: string[]) => Promise<string> }} [options]
+ * @param {{ baseDir?: string, execGit?: (baseDir: string, args: string[]) => Promise<string>, useCache?: boolean }} [options]
  * @returns {Promise<VersionInfo>} Version info object
  */
 export async function getVersion(options = undefined) {
     const baseDir = typeof options?.baseDir === 'string' ? path.resolve(options.baseDir) : serverDirectory;
     const execGit = typeof options?.execGit === 'function' ? options.execGit : runGitCommand;
-    const useMemo = execGit === runGitCommand;
+    const useMemo = typeof options?.useCache === 'boolean' ? options.useCache : execGit === runGitCommand;
     const snapshot = readGitStateSnapshot(baseDir);
+    const generation = versionCacheGeneration;
     const now = Date.now();
 
     if (useMemo) {
@@ -329,8 +275,8 @@ export async function getVersion(options = undefined) {
         }
 
         const inFlight = VERSION_IN_FLIGHT.get(baseDir);
-        if (inFlight) {
-            const shared = await inFlight;
+        if (inFlight && inFlight.fingerprint === snapshot.fingerprint) {
+            const shared = await inFlight.promise;
             return { ...shared };
         }
     }
@@ -351,7 +297,7 @@ export async function getVersion(options = undefined) {
             // SillyBunny: run at most two parallel git calls and catch ENOENT directly instead of probing PATH synchronously.
             if (snapshot.hasGit) {
                 const [headShowResult, upstreamResult] = await Promise.allSettled([
-                    execGit(baseDir, ['show', '-s', '--format=%h%n%ci%n%H', 'HEAD']),
+                    execGit(baseDir, ['show', '-s', '--no-show-signature', '--format=%h%n%ci%n%H', 'HEAD']),
                     execGit(baseDir, ['rev-parse', '@{u}']),
                 ]);
 
@@ -389,13 +335,15 @@ export async function getVersion(options = undefined) {
             isLatest,
         };
 
-        if (useMemo) {
+        if (useMemo && generation === versionCacheGeneration) {
             const postSnapshot = readGitStateSnapshot(baseDir);
-            VERSION_CACHE.set(baseDir, {
-                fingerprint: postSnapshot.fingerprint,
-                expiresAt: Date.now() + VERSION_CACHE_TTL_MS,
-                value: result,
-            });
+            if (postSnapshot.fingerprint === snapshot.fingerprint) {
+                VERSION_CACHE.set(baseDir, {
+                    fingerprint: snapshot.fingerprint,
+                    expiresAt: Date.now() + VERSION_CACHE_TTL_MS,
+                    value: result,
+                });
+            }
         }
 
         return result;
@@ -406,12 +354,13 @@ export async function getVersion(options = undefined) {
         return { ...value };
     }
 
-    VERSION_IN_FLIGHT.set(baseDir, computePromise);
+    const inFlightEntry = { fingerprint: snapshot.fingerprint, promise: computePromise };
+    VERSION_IN_FLIGHT.set(baseDir, inFlightEntry);
     try {
         const value = await computePromise;
         return { ...value };
     } finally {
-        if (VERSION_IN_FLIGHT.get(baseDir) === computePromise) {
+        if (VERSION_IN_FLIGHT.get(baseDir) === inFlightEntry) {
             VERSION_IN_FLIGHT.delete(baseDir);
         }
     }

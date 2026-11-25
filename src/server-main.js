@@ -76,8 +76,9 @@ import {
     setupLogLevel,
     setWindowTitle,
     getConfigValue,
-    flushNodeCompileCache,
 } from './util.js';
+// SillyBunny: flush Node's V8 bytecode compile cache via the lightweight shared helper.
+import { flushNodeCompileCache } from './node-compile-cache.js';
 import { isBenignStreamAbort } from './stream-disconnect-guard.js';
 import { answerWithErrorMessage, forwardAsyncRouteErrors, handleRouteError } from './route-errors.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
@@ -172,9 +173,9 @@ app.use(cookieSession({
     secret: getCookieSecret(globalThis.DATA_ROOT),
 }));
 
-// SillyBunny: read sessionTimeout once at startup instead of re-querying config on every Bun request.
-const sessionTimeoutSeconds = getConfigValue('sessionTimeout', -1, 'number');
 if (isBunRuntime()) {
+    // SillyBunny: read sessionTimeout once at startup instead of re-querying config on every Bun request.
+    const sessionTimeoutSeconds = getConfigValue('sessionTimeout', -1, 'number');
     app.use((req, _res, next) => {
         // Bun 1.3.11 overflows large millisecond cookie ages via Date.now(),
         // so we provide a concrete expiry date on each request instead.
