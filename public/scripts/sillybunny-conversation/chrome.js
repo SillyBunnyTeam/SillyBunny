@@ -32,11 +32,16 @@ import {
 import { editConversationMessage } from './generation.js';
 import {
     applySettingsToPanel,
+    getConversationListEntries,
     handleCharacterMessagePolish,
     saveCurrentPanelSettings,
     updateConversationChrome,
     updateConversationHeader,
 } from './interface.js';
+import { bindConversationListControls } from './conversation-list-controls.js';
+import { buildMainMenuSections, buildNewMenuSections } from './conversation-list-menu.js';
+import { setConversationListQuery } from './conversation-list-view.js';
+import { openConversationSurface } from './conversation-surface.js';
 import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
 import { getDirectConversations, getCurrentGroupConversationMembers } from './conversation-list.js';
@@ -100,7 +105,7 @@ import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { ensureDetailsStyles } from './details/styles.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125c';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125d';
 const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261125a';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
@@ -578,20 +583,25 @@ function openConversationPersonaMenu(trigger) {
 function openConversationNewMenu(trigger) {
     openActionMenu({
         trigger,
-        title: 'New Conversation',
-        sections: [
-            {
-                items: [
-                    { label: 'New DM', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-start-direct-conversation', {}, trigger) },
-                    { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: runFromMenu('open-new-group-chat', {}, trigger) },
-                ],
-            },
-            {
-                items: [
-                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
-                ],
-            },
-        ],
+        title: 'New',
+        sections: buildNewMenuSections({
+            newConversation: runFromMenu('open-start-direct-conversation', {}, trigger),
+            newGroup: runFromMenu('open-new-group-chat', {}, trigger),
+            markAllRead: runFromMenu('mark-all-read'),
+        }),
+        alignment: 'end',
+    });
+}
+
+function openConversationMainMenu(trigger) {
+    openActionMenu({
+        trigger,
+        title: 'Main Menu',
+        sections: buildMainMenuSections({
+            openPreferences: () => void openConversationSurface('openConversationPreferences'),
+            openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp()),
+        }),
+        alignment: 'end',
     });
 }
 
@@ -627,6 +637,9 @@ export async function runConversationAction(action, data = {}, target = null, ev
             break;
         case 'open-new-menu':
             openConversationNewMenu(target);
+            break;
+        case 'open-main-menu':
+            openConversationMainMenu(target);
             break;
         case 'toggle-list':
             toggleConversationList();
@@ -1157,22 +1170,20 @@ export function bindConversationChromeControls(sheld) {
     if (listSearch instanceof HTMLInputElement && listSearch.dataset.sbConversationBound !== 'true') {
         listSearch.dataset.sbConversationBound = 'true';
         const debouncedListFilter = debounce(() => {
-            const query = listSearch.value.toLowerCase().trim();
-            const conversations = document.querySelectorAll('.sb-conversation-list-item');
-            conversations.forEach(conversation => {
-                if (conversation instanceof HTMLElement) {
-                    const conversationName = conversation.querySelector('.sb-conversation-list-item-name')?.textContent?.toLowerCase() || '';
-                    const row = conversation.closest('.sb-conversation-list-row');
-                    const targetElement = row instanceof HTMLElement ? row : conversation;
-                    if (conversationName.includes(query)) {
-                        targetElement.classList.remove('sb-conversation-hidden');
-                    } else {
-                        targetElement.classList.add('sb-conversation-hidden');
-                    }
-                }
-            });
+            if (setConversationListQuery(listSearch.value)) {
+                scheduleConversationListRender();
+            }
         }, debounce_timeout.short);
         listSearch.addEventListener('input', debouncedListFilter);
+    }
+
+    const listItems = document.getElementById(CHROME_IDS.listItems);
+    if (listItems instanceof HTMLElement) {
+        bindConversationListControls(listItems, {
+            getEntries: getConversationListEntries,
+            runAction: runConversationAction,
+            render: scheduleConversationListRender,
+        });
     }
 
     const personaPicker = document.getElementById(CHROME_IDS.personaPicker);
