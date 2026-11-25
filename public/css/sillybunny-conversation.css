@@ -2061,7 +2061,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-schedule-display[data-empty='true'] {
     align-items: center;
     justify-content: center;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 48%, transparent);
+    color: var(--sb-muted-fg);
     background: transparent;
 }
 
