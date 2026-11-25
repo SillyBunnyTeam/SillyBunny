@@ -1,6 +1,5 @@
 /**
  * Shared conversation prompt and normalization helpers.
- * Used by both browser code and REST API endpoint.
  * @module sillybunny-conversation/shared-helpers
  */
 
