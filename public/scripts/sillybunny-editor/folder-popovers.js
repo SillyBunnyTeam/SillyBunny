@@ -8,6 +8,7 @@ import { t } from '../i18n.js';
 import { openPopover } from '../sillybunny-action-menu.js';
 
 export const DEFAULT_FOLDER_COLOR = 'rgba(128, 128, 128, 1)';
+export const PLACEHOLDER_COPY = 'TODO(copy)';
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -32,17 +33,19 @@ export function parseFolderName(value) {
  * @param {string} options.title The label of the field, which is also the popover's name.
  * @param {string} options.submitLabel
  * @param {string} [options.value] What the field holds when it opens.
+ * @param {number} [options.maxLength] The most characters that the field takes.
  * @param {(value: string) => { ok: true, name: string } | { ok: false, error: string }} [options.parse]
  * @param {(name: string) => void | false | { focus?: () => void } | Promise<void | false | { focus?: () => void }>} options.onSubmit
  * Runs with the parsed name. `false` keeps the popover open; an object with `focus` is called after the popover closed.
  * @returns {{ close: () => void, readonly isOpen: boolean }}
  */
-export function openFolderNamePopover({ trigger, bounds = null, title, submitLabel, value = '', parse = parseFolderName, onSubmit }) {
+export function openFolderNamePopover({ trigger, bounds = null, title, submitLabel, value = '', maxLength = 0, parse = parseFolderName, onSubmit }) {
     const content = element('div', 'sb-manager-name-popover');
     const label = element('strong', 'sb-manager-name-popover__label', title);
     const input = element('input', 'text_pole sb-dialog__entry sb-manager-name-popover__input');
     input.type = 'text';
     input.value = value;
+    if (maxLength > 0) input.maxLength = maxLength;
     label.id = 'sb-folder-manager-new-label';
     const error = element('small', 'sb-folder-manager__error sb-manager-name-popover__error');
     error.hidden = true;
@@ -61,6 +64,9 @@ export function openFolderNamePopover({ trigger, bounds = null, title, submitLab
     const showError = (message) => {
         error.textContent = message;
         error.hidden = false;
+        // A message that is not written yet says so in markup, as the other placeholders do.
+        if (message === PLACEHOLDER_COPY) error.setAttribute('data-sb-copy-placeholder', 'true');
+        else error.removeAttribute('data-sb-copy-placeholder');
     };
     const finish = (result) => {
         if (result === false) return;

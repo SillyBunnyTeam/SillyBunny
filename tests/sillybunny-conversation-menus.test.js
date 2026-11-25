@@ -4,6 +4,7 @@ const {
     buildComposerMenuSections,
     buildHeaderMenuSections,
     buildMainMenuSections,
+    buildMoveToFolderSections,
     buildNewMenuSections,
     buildRowMenuSections,
 } = await import('../public/scripts/sillybunny-conversation/conversation-menus.js');
@@ -15,6 +16,7 @@ const makeActions = () => ({
     markUnread: jest.fn(),
     setFavorite: jest.fn(),
     setMuted: jest.fn(),
+    moveToFolder: jest.fn(),
     openDetails: jest.fn(),
     remove: jest.fn(),
 });
@@ -23,12 +25,12 @@ const labels = sections => sections.map(section => section.items.map(item => ite
 const find = (sections, label) => sections.flatMap(section => section.items).find(item => item.label === label);
 
 describe('the menu of a row', () => {
-    test('offers Mark as Unread, Add to Favorites and Mute for a read row, then Details, then Delete in a section of its own', () => {
+    test('offers Mark as Unread, Add to Favorites, Move to Folder and Mute for a read row, then Details, then Delete in a section of its own', () => {
         const sections = buildRowMenuSections(entry(), makeActions());
 
         expect(labels(sections)).toEqual([
             ['Mark as Unread'],
-            ['Add to Favorites', 'Mute'],
+            ['Add to Favorites', 'Move to Folder…', 'Mute'],
             ['Details'],
             ['Delete'],
         ]);
@@ -39,7 +41,7 @@ describe('the menu of a row', () => {
 
         expect(labels(sections)).toEqual([
             ['Mark as Read'],
-            ['Remove From Favorites', 'Unmute'],
+            ['Remove From Favorites', 'Move to Folder…', 'Unmute'],
             ['Details'],
             ['Delete'],
         ]);
@@ -48,7 +50,7 @@ describe('the menu of a row', () => {
     test('leaves out the read item, and its section, when the row has no message to mark, as the open conversation has none', () => {
         const sections = buildRowMenuSections(entry({ active: true }), makeActions());
 
-        expect(labels(sections)).toEqual([['Add to Favorites', 'Mute'], ['Details'], ['Delete']]);
+        expect(labels(sections)).toEqual([['Add to Favorites', 'Move to Folder…', 'Mute'], ['Details'], ['Delete']]);
     });
 
     test('Delete is a danger item, every item has an icon, and no item is disabled', () => {
@@ -68,10 +70,12 @@ describe('the menu of a row', () => {
         find(sections, 'Mark as Read').onSelect();
         find(sections, 'Add to Favorites').onSelect();
         find(sections, 'Mute').onSelect();
+        find(sections, 'Move to Folder…').onSelect();
         find(sections, 'Details').onSelect();
         find(sections, 'Delete').onSelect();
 
         expect(actions.markRead).toHaveBeenCalledWith(row);
+        expect(actions.moveToFolder).toHaveBeenCalledWith(row);
         expect(actions.setFavorite).toHaveBeenCalledWith(row, true);
         expect(actions.setMuted).toHaveBeenCalledWith(row, true);
         expect(actions.openDetails).toHaveBeenCalledWith(row);
@@ -90,6 +94,47 @@ describe('the menu of a row', () => {
         expect(actions.markUnread).toHaveBeenCalledWith(row);
         expect(actions.setFavorite).toHaveBeenCalledWith(row, false);
         expect(actions.setMuted).toHaveBeenCalledWith(row, false);
+    });
+});
+
+describe('the menu that moves a row to a folder', () => {
+    const folders = [{ id: 'f1', name: 'Work' }, { id: 'f2', name: 'Friends' }];
+    const makeMove = () => ({ setFolder: jest.fn(), newFolder: jest.fn() });
+
+    test('offers No Folder and each folder as one radio choice, then New Folder in a group of its own', () => {
+        const sections = buildMoveToFolderSections(entry(), folders, makeMove());
+
+        expect(labels(sections)).toEqual([['No Folder', 'Work', 'Friends'], ['New Folder…']]);
+    });
+
+    test('checks the folder that holds the row, or No Folder for a row in none', () => {
+        const checked = sections => sections[0].items.filter(item => item.checked).map(item => item.label);
+
+        expect(checked(buildMoveToFolderSections(entry(), folders, makeMove()))).toEqual(['No Folder']);
+        expect(checked(buildMoveToFolderSections(entry({ folderId: 'f2' }), folders, makeMove()))).toEqual(['Friends']);
+        expect(buildMoveToFolderSections(entry({ folderId: 'f2' }), folders, makeMove())[0].items.every(item => item.kind === 'radio')).toBe(true);
+    });
+
+    test('checks the stored folder of a favourite, which is where it returns', () => {
+        const sections = buildMoveToFolderSections(entry({ favorite: true, folderId: 'f1' }), folders, makeMove());
+
+        expect(sections[0].items.filter(item => item.checked).map(item => item.label)).toEqual(['Work']);
+    });
+
+    test('runs the choice with the folder id, an empty one for No Folder, and New Folder with no argument', () => {
+        const actions = makeMove();
+        const sections = buildMoveToFolderSections(entry({ folderId: 'f1' }), folders, actions);
+
+        find(sections, 'Friends').onSelect();
+        find(sections, 'No Folder').onSelect();
+        find(sections, 'New Folder…').onSelect();
+
+        expect(actions.setFolder.mock.calls).toEqual([['f2'], ['']]);
+        expect(actions.newFolder).toHaveBeenCalledTimes(1);
+    });
+
+    test('still offers New Folder when the persona has no folder', () => {
+        expect(labels(buildMoveToFolderSections(entry(), [], makeMove()))).toEqual([['No Folder'], ['New Folder…']]);
     });
 });
 

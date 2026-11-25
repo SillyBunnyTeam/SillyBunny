@@ -173,7 +173,7 @@ test.describe('the menu of a row', () => {
         await openSeededList(page, baseURL);
 
         await openRowMenuByRightClick(page, 'Seraphina');
-        await expect(page.getByRole('menuitem')).toHaveText(['Mark as Unread', 'Add to Favorites', 'Mute', 'Details', 'Delete']);
+        await expect(page.getByRole('menuitem')).toHaveText(['Mark as Unread', 'Add to Favorites', 'Move to Folder…', 'Mute', 'Details', 'Delete']);
         await page.keyboard.press('Escape');
 
         await expect(page.getByRole('menuitem')).toHaveCount(0);
@@ -301,7 +301,7 @@ test.describe('the menu of a row', () => {
         await expect(rowNamed(page, 'Seraphina').locator(ITEM)).toBeFocused();
 
         await page.keyboard.press('ContextMenu');
-        await expect(page.getByRole('menuitem')).toHaveText(['Mark as Unread', 'Add to Favorites', 'Mute', 'Details', 'Delete']);
+        await expect(page.getByRole('menuitem')).toHaveText(['Mark as Unread', 'Add to Favorites', 'Move to Folder…', 'Mute', 'Details', 'Delete']);
         await expect(page.getByRole('menuitem').first()).toBeFocused();
     });
 
@@ -629,7 +629,7 @@ test.describe('the list by touch on a phone', () => {
         await expect(rowNamed(page, 'Seraphina')).toHaveClass(/is-lifted/);
         await touchPoint(client, 'touchEnd', 0, 0);
 
-        await expect(page.getByRole('menuitem')).toHaveText(['Mark as Unread', 'Add to Favorites', 'Mute', 'Details', 'Delete']);
+        await expect(page.getByRole('menuitem')).toHaveText(['Mark as Unread', 'Add to Favorites', 'Move to Folder…', 'Mute', 'Details', 'Delete']);
         await expect(rowNamed(page, 'Seraphina')).not.toHaveClass(/is-lifted/);
         // The menu is a bottom sheet on a phone: as wide as the screen and attached to its lower edge.
         const menu = page.getByRole('menu');
@@ -639,7 +639,7 @@ test.describe('the list by touch on a phone', () => {
             return 844 - (box.y + box.height);
         }).toBeLessThan(24);
         await wait(900);
-        await expect(page.getByRole('menuitem')).toHaveCount(5);
+        await expect(page.getByRole('menuitem')).toHaveCount(6);
         await expectNames(page, 'favorites', []);
         await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-page', 'list');
         await expect(page.getByRole('menuitem').first()).toBeVisible();

@@ -30,7 +30,7 @@ const LIFT_VIBRATION_MS = 10;
  * @param {() => HTMLElement} [options.getGhostHost] The element the ghost row lives in; the row styles are scoped to it.
  */
 export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSectionOfRow, onDrop, onMenu, onHoldOver, onDragEnd, announce, getGhostHost = () => list.closest('#sheld') ?? document.body }) {
-    /** @type {null | { pointerId: number, row: HTMLElement, gesture: ReturnType<typeof createRowGesture>, cancelled: boolean, ghost: HTMLElement | null, offsetX: number, offsetY: number, lastY: number, from: string, holdTimer: number, scrollFrame: number }} */
+    /** @type {null | { pointerId: number, row: HTMLElement, gesture: ReturnType<typeof createRowGesture>, cancelled: boolean, ghost: HTMLElement | null, offsetX: number, offsetY: number, lastY: number, from: string, holdKey: string, holdTimer: number, scrollFrame: number }} */
     let session = null;
     let swallowUntil = 0;
 
@@ -145,12 +145,13 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
             session.lastY = y;
             const target = targetOf(x, y);
             setDropTarget(target);
+            // The rest is timed for the section that the pointer is over now: crossing other sections on the way to a closed one
+            // must not leave the timer of the first of them to fire in its place.
             const holdKey = target?.dataset.section ?? '';
-            if (holdKey && !session.holdTimer) {
-                session.holdTimer = window.setTimeout(() => onHoldOver(holdKey), HOLD_EXPAND_MS);
-            } else if (!holdKey) {
+            if (holdKey !== session.holdKey) {
                 clearTimeout(session.holdTimer);
-                session.holdTimer = 0;
+                session.holdKey = holdKey;
+                session.holdTimer = holdKey ? window.setTimeout(() => onHoldOver(holdKey), HOLD_EXPAND_MS) : 0;
             }
         },
         drop(x, y) {
@@ -234,7 +235,7 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
         if (!(row instanceof HTMLElement) || !list.contains(row)) {
             return;
         }
-        const state = { pointerId: event.pointerId, row, cancelled: false, ghost: null, offsetX: 0, offsetY: 0, lastY: 0, from: getSectionOfRow(row), holdTimer: 0, scrollFrame: 0 };
+        const state = { pointerId: event.pointerId, row, cancelled: false, ghost: null, offsetX: 0, offsetY: 0, lastY: 0, from: getSectionOfRow(row), holdKey: '', holdTimer: 0, scrollFrame: 0 };
         session = { ...state, gesture: createRowGesture({ pointerType: event.pointerType, x: event.clientX, y: event.clientY, on: callbacks }) };
         window.addEventListener('pointermove', onPointerMove, true);
         window.addEventListener('pointerup', onPointerUp, true);

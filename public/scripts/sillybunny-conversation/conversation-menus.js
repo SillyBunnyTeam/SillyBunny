@@ -25,6 +25,7 @@ export function buildRowMenuSections(entry, actions) {
                 entry.favorite
                     ? { label: 'Remove From Favorites', icon: 'fa-regular fa-star', onSelect: () => actions.setFavorite(entry, false) }
                     : { label: 'Add to Favorites', icon: 'fa-solid fa-star', onSelect: () => actions.setFavorite(entry, true) },
+                { label: 'Move to Folder…', icon: 'fa-solid fa-folder', onSelect: () => actions.moveToFolder(entry) },
                 entry.muted
                     ? { label: 'Unmute', icon: 'fa-solid fa-bell', onSelect: () => actions.setMuted(entry, false) }
                     : { label: 'Mute', icon: 'fa-solid fa-bell-slash', onSelect: () => actions.setMuted(entry, true) },
@@ -32,6 +33,26 @@ export function buildRowMenuSections(entry, actions) {
         },
         { items: [{ label: 'Details', icon: 'fa-solid fa-circle-info', onSelect: () => actions.openDetails(entry) }] },
         { items: [{ label: 'Delete', icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => actions.remove(entry) }] },
+    ];
+}
+
+/**
+ * The menu that "Move to Folder" opens: a radio choice of No Folder and each folder of the persona, with the one that holds
+ * the row checked, then New Folder. A favourite shows its stored folder, which is where it returns, because the choice
+ * changes the folder only.
+ * @param {import('./conversation-list-model.js').ListEntry} entry
+ * @param {{ id: string, name: string }[]} folders In their stored order.
+ * @param {{ setFolder: (folderId: string) => void, newFolder: () => void }} actions `setFolder` gets an empty string for No Folder.
+ */
+export function buildMoveToFolderSections(entry, folders, { setFolder, newFolder }) {
+    return [
+        {
+            items: [
+                { label: 'No Folder', kind: 'radio', checked: !entry.folderId, onSelect: () => setFolder('') },
+                ...folders.map(folder => ({ label: folder.name, kind: 'radio', checked: entry.folderId === folder.id, onSelect: () => setFolder(folder.id) })),
+            ],
+        },
+        { items: [{ label: 'New Folder…', icon: 'fa-solid fa-folder-plus', onSelect: newFolder }] },
     ];
 }
 

@@ -30,6 +30,7 @@ import {
     highlightMovedRow,
     setTemporaryOpen,
 } from './conversation-list-view.js';
+import { createListFolderActions } from './conversation-list-folders.js';
 import { markConversationRead } from './notifications.js';
 
 const ROW_SELECTOR = '.sb-conversation-list-row';
@@ -96,9 +97,33 @@ export function bindConversationListControls(list, { getEntries, runAction, open
         }
     }
 
+    /**
+     * The section that the last Alt move opened for now, and the row that moved into it. A closed section that a row enters
+     * by an Alt key shows open so that the row stays in sight, and closes again when the same row leaves it by the next Alt
+     * key, so that stepping a row through closed folders leaves them as they were. Anything else that happens makes the row
+     * stay, and the open is stored (`commitKeyOpen`).
+     * @type {{ rowId: string, key: string } | null}
+     */
+    let keyOpened = null;
+
+    function commitKeyOpen() {
+        if (!keyOpened) {
+            return;
+        }
+        const { key } = keyOpened;
+        keyOpened = null;
+        storeSectionOpen(key, true);
+        setTemporaryOpen(key, false);
+        render();
+    }
+
     function toggleSection(key) {
+        if (keyOpened && keyOpened.key !== key) {
+            commitKeyOpen();
+        }
         if (getTemporaryOpenKeys().includes(key)) {
             // What shows open is not what is stored: a click closes what the user sees.
+            keyOpened = keyOpened?.key === key ? null : keyOpened;
             setTemporaryOpen(key, false);
         } else {
             storeSectionOpen(key, !isSectionOpen(key));
@@ -111,16 +136,29 @@ export function bindConversationListControls(list, { getEntries, runAction, open
      * folder change together, as `planSectionMove()` says.
      * @returns {boolean} False when the row is there already, or the change could not be made.
      */
-    function moveToSection(entry, targetKey) {
+    function moveToSection(entry, targetKey, { byKey = false } = {}) {
         const plan = planSectionMove(entry, targetKey);
         if (!plan) {
             return false;
+        }
+        // The next Alt move of the row that a key moved into a closed section takes it out again, and the section closes as it was.
+        const leaving = byKey && keyOpened?.rowId === entry.id && keyOpened.key === getEntrySectionKey(entry) ? keyOpened.key : '';
+        if (!byKey || (keyOpened && !leaving)) {
+            commitKeyOpen();
         }
         if (plan.favorite !== entry.favorite && !setConversationFavorite(conversationData, entry.id, plan.favorite)) {
             return false;
         }
         if (plan.folderId !== entry.folderId && !setConversationFolder(folders, getPersonaId(), entry.id, plan.folderId)) {
             return false;
+        }
+        if (leaving) {
+            setTemporaryOpen(leaving, false);
+            keyOpened = null;
+        }
+        if (byKey && !isSectionOpen(targetKey)) {
+            setTemporaryOpen(targetKey, true);
+            keyOpened = { rowId: entry.id, key: targetKey };
         }
         highlightMovedRow(list, entry.id);
         announce(describeSectionMove(entry, plan, getLayout().folders));
@@ -169,6 +207,10 @@ export function bindConversationListControls(list, { getEntries, runAction, open
         }
     }
 
+    const folderActions = createListFolderActions({
+        list, aside, folders, getPersonaId, getLayout, announce, render, isSectionOpen, storeSectionOpen, commitKeyOpen,
+    });
+
     const rowActions = {
         markRead: entry => void markConversationRead(entry.avatar, { groupId: entry.groupId }),
         markUnread: entry => void markConversationUnread(conversationData, entry.id),
@@ -187,8 +229,17 @@ export function bindConversationListControls(list, { getEntries, runAction, open
         if (!entry || !trigger) {
             return;
         }
-        openActionMenu({ trigger, title: entry.name, sections: buildRowMenuSections(entry, rowActions), point, keyboard, bounds: aside });
+        const actions = { ...rowActions, moveToFolder: chosen => folderActions.openMoveMenu(row, chosen, { keyboard }) };
+        openActionMenu({ trigger, title: entry.name, sections: buildRowMenuSections(entry, actions), point, keyboard, bounds: aside });
     }
+
+    // Whatever the user does after a key moved a row into a closed section, except moving that row again, makes the row stay.
+    document.addEventListener('focusin', (event) => {
+        if (keyOpened && !(event.target instanceof Element && event.target.closest(`[data-conversation-id="${keyOpened.rowId}"]`))) {
+            commitKeyOpen();
+        }
+    });
+    list.addEventListener('pointerdown', () => commitKeyOpen(), true);
 
     // Alt with an arrow is the fork's move key (DESIGN.md, Reordering). The sections sort themselves, so a move is a
     // change of section: to the one above or below in the order of the list, or with Home and End to the first or the last.
@@ -201,7 +252,7 @@ export function bindConversationListControls(list, { getEntries, runAction, open
                 return false;
             }
             const target = adjacentSectionKey(getSectionKeys(getLayout().folders), getEntrySectionKey(entry), direction);
-            return target ? moveToSection(entry, target) : false;
+            return target ? moveToSection(entry, target, { byKey: true }) : false;
         },
     });
 
