@@ -2944,28 +2944,28 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/middleware/webpack-serve.js`. |
 | Area | Frontend vendor bundle (`lib.js`) startup caching. |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Upstream compiles `public/lib.js` with Webpack on the first boot of every fresh install or version bump, which is slow and memory-intensive on Android/Termux and low-power machines. SillyBunny verifies a reproducible release-built `dist/lib/lib.js` against `inputsHash` and SHA-256 and seeds the existing Webpack output directory before invoking Webpack, falling back automatically to live compilation on any mismatch. |
 | Target seam | `src/prebuilt-lib.js` (`computePublicLibInputsHash()`, `trySeedPrebuiltPublicLib()`). |
 | Adapter shape | One marked import and one marked `trySeedPrebuiltPublicLib()` call ahead of the existing `Reusing precompiled frontend libraries...` check in `compilePublicLib()`, falling back cleanly to live Webpack compilation on any missing, stale, symlinked, or corrupted artifact. |
 | Protecting tests | `tests/perf-prebuilt-lib-and-zip.test.js`. |
 | Validation | 2026-11-25: root and `tests/` lint, `npm run test:unit --prefix tests -- --maxWorkers=2 perf-prebuilt-lib-and-zip.test.js`, and Bun 1.4.4 + Node 24.22.1 seeding parity checks. |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Remove the marked `trySeedPrebuiltPublicLib()` import and call from `src/middleware/webpack-serve.js`, delete `src/prebuilt-lib.js` and `scripts/build-prebuilt-lib.js`, and remove the prebuilt-lib step from `.github/workflows/release.yml`. `webpack-serve.js` resumes live Webpack compilation with no user data changes. |
 | Last reviewed | 2026-11-25, PR `#1040`. |
-| Owner | `TODO(copy)` |
+| Owner | Runtime and release integrator. |
 
 ### `src/users.js` - lazy streaming fflate backup ZIP with ZIP64 fallback
 | Field | Value |
 | --- | --- |
 | File | `src/users.js`. |
 | Area | Full account data backup export (`POST /api/users/backup`, `createBackupArchive()`). |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Upstream eagerly imports `archiver` (81 transitive packages) at server startup via `src/users.js`, adding cold-boot latency and ~12 MB RSS even when users never export a backup. SillyBunny streams routine account backups with lazy-loaded `fflate` (STORE for already-compressed media, clamped DOS mtimes) and falls back to lazy `archiver` only when ZIP64 limits are exceeded. |
 | Target seam | none yet (self-contained streaming backup helpers inside `src/users.js`). |
 | Adapter shape | Top-level `import archiver from 'archiver'` removed; `createBackupArchive()` streams regular files via lazy `import('fflate')` (`Zip`, `ZipDeflate` for compressible files, `ZipPassThrough` STORE for already-compressed media, clamped DOS mtimes, 64 KiB backpressured reads, symlink and secret exclusions, `ENOENT` tolerance), and falls back to lazy `import('archiver')` with `forceZip64: true` when entry counts or sizes exceed ZIP32 limits. Marked with `SillyBunny:` comments. |
 | Protecting tests | `tests/perf-prebuilt-lib-and-zip.test.js`, `tests/users-private-routes.test.js`, `tests/users-folder-guards.test.js`, `tests/users-backup-zip-failures.test.js`. |
 | Validation | 2026-11-25: root and `tests/` lint, `npm run test:unit --prefix tests -- --maxWorkers=2 perf-prebuilt-lib-and-zip.test.js users-*.test.js`, and Bun 1.4.4 + Node 24.22.1 ZIP roundtrip, pre-1980 mtime, ZIP64 fallback, and mid-stream failure checks. |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Restore the top-level `archiver` import and prior `createBackupArchive()` body in `src/users.js` and remove the backup ZIP tests from `tests/perf-prebuilt-lib-and-zip.test.js`. Exported backup ZIP format stays standard ZIP/ZIP64 and no saved user data changes. |
 | Last reviewed | 2026-11-25, PR `#1040`. |
-| Owner | `TODO(copy)` |
+| Owner | Server and data compatibility integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
