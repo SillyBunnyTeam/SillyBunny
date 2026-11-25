@@ -18,7 +18,9 @@ const TEXT_CONTRAST = 4.5;
 /**
  * The pairs that fail on the theme tokens as they are. The gap is in `--sb-input-placeholder` (the body colour at 78% over
  * the theme's tint), which every list of the app uses or, with `--sb-muted-fg`, a weaker one; no rule of the mode can
- * raise it without a token of its own, which is a change of the shared tokens for the maintainers to decide. The test
+ * raise it without a token of its own, which is a change of the shared tokens for the maintainers to decide. The count on
+ * Accent is the same kind of gap: `--sb-on-solid-accent` on `--sb-accent` is under 4.5:1 in the light themes that are listed,
+ * and it is the pair that the unread counts of the list use too. The test
  * stays green and lists them: a pair that stops failing makes its theme's test fail until the theme is taken out here,
  * and a new failure fails until it is fixed or added.
  */
@@ -90,6 +92,25 @@ const BELOW_THE_FLOOR = {
         'Sonokai Maia Light',
         'Tokyo Night Day',
     ],
+    'unread count on Accent': [
+        'Catppuccin Latte',
+        'Dracula Light',
+        'Everforest Light',
+        'Gruvbox Light',
+        'Hacker-Terminal-Light',
+        'Libadwaita Light',
+        'Nord Light',
+        'Rosé Pine Dawn',
+        'Solarized Light',
+        'Sonokai Andromeda Light',
+        'Sonokai Atlantis Light',
+        'Sonokai Default Light',
+        'Sonokai Espresso Light',
+        'Sonokai Maia Light',
+        'Sonokai Shusia Light',
+        'Tokyo Night Day',
+        'Verdant Light',
+    ],
     'details secondary text on a row': [
         'Cerulean',
         'Dracula Light',
@@ -131,6 +152,8 @@ function pairsOf(theme) {
     const view = displayed(token('--sb-layer-view'));
     const windowLayer = displayed(token('--sb-layer-window'));
     const row = paint(token('--sb-card-fill'), windowLayer);
+    const accent = displayed(token('--sb-accent'));
+    const onAccent = token('--sb-on-solid-accent');
     const ratio = (colour, surface) => contrastRatio(paint(colour, surface), surface);
     return [
         ['list name', ratio(ink, sidebar)],
@@ -141,6 +164,8 @@ function pairsOf(theme) {
         ['details row text', ratio(ink, row)],
         ['details secondary text on the window layer', ratio(secondary, windowLayer)],
         ['details secondary text on a row', ratio(secondary, row)],
+        // The count on the chat mode button and the counts of the list are the ink of a solid Accent fill on Accent.
+        ['unread count on Accent', ratio(onAccent, accent)],
     ];
 }
 

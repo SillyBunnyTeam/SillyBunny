@@ -16,7 +16,7 @@ import {
     startConversationWorker,
     stopConversationWorker,
 } from './lazy-parts.js';
-import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
+import { getActiveConversationKey, updateConversationNotificationIndicators, updateModeToggleUnread } from './notifications.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { hasAnyConversationModeUsage } from './settings-store.js';
 import { conversationState, sendQueue, setExternalConversationGenerationActive } from './state.js';
@@ -137,6 +137,8 @@ export function init() {
     });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
+    // The badge on the chat mode button shows only while the workspace is closed, so it follows the workspace opening and closing.
+    window.addEventListener('sb:conversation-workspace-state-changed', () => updateModeToggleUnread());
     window.addEventListener('beforeunload', stopConversationWorker);
     bindWorkspacePrefetch(window);
 

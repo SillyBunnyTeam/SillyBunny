@@ -13,6 +13,8 @@ await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ playM
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/lazy-parts.js', () => ({ selectConversation: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
     CHROME_IDS: { listToggle: 'list-toggle' },
+    CONVERSATION_UNREAD_CHANGED_EVENT: 'sb:conversation-unread-changed',
+    CONVERSATION_UNREAD_DATASET: { text: 'sbConversationUnread', name: 'sbConversationUnreadName' },
     SAFE_TOAST_OPTIONS: {},
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({

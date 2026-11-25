@@ -1,5 +1,5 @@
 import { playMessageSound } from '../power-user.js';
-import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
+import { CHROME_IDS, CONVERSATION_UNREAD_CHANGED_EVENT, CONVERSATION_UNREAD_DATASET, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
     getCharacterForAvatar,
@@ -167,19 +167,40 @@ export function updateListToggleBadge(totalUnread = getTotalUnreadCount()) {
     badge.hidden = totalUnread <= 0;
 }
 
-export function updateConversationTabBadge(totalUnread = getTotalUnreadCount()) {
-    const modeButton = document.querySelector('#sb_character_mode_toggle [data-sb-character-mode="conversation"]');
-    if (!(modeButton instanceof HTMLElement)) {
+/**
+ * The unread badge of the control for the chat mode: the count and its accessible name, or null when none shows. A user in
+ * Conversation Mode does not need it, because the list there holds the counts.
+ * @param {number} totalUnread
+ * @param {boolean} workspaceOpen
+ * @returns {{ text: string, name: string }|null}
+ */
+export function describeModeToggleUnread(totalUnread, workspaceOpen) {
+    if (workspaceOpen || !(totalUnread > 0)) {
+        return null;
+    }
+
+    const text = getBadgeLabel(totalUnread);
+    return { text, name: `${text} Unread` };
+}
+
+/** Publishes the badge of `describeModeToggleUnread()` for the top bar, and sends the event when it changes. */
+export function updateModeToggleUnread(totalUnread = getTotalUnreadCount()) {
+    const badge = describeModeToggleUnread(totalUnread, Boolean(conversationState.conversationWorkspaceOpen));
+    const text = badge?.text ?? '';
+    const name = badge?.name ?? '';
+    const { dataset } = document.documentElement;
+    if ((dataset[CONVERSATION_UNREAD_DATASET.text] ?? '') === text && (dataset[CONVERSATION_UNREAD_DATASET.name] ?? '') === name) {
         return;
     }
-    let badge = modeButton.querySelector('.sb-tab-notification-badge');
-    if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'sb-tab-notification-badge';
-        modeButton.appendChild(badge);
+
+    if (badge) {
+        dataset[CONVERSATION_UNREAD_DATASET.text] = text;
+        dataset[CONVERSATION_UNREAD_DATASET.name] = name;
+    } else {
+        delete dataset[CONVERSATION_UNREAD_DATASET.text];
+        delete dataset[CONVERSATION_UNREAD_DATASET.name];
     }
-    badge.textContent = getBadgeLabel(totalUnread);
-    badge.style.display = totalUnread > 0 ? 'inline-flex' : 'none';
+    window.dispatchEvent(new CustomEvent(CONVERSATION_UNREAD_CHANGED_EVENT, { detail: { text, name } }));
 }
 
 export function updateCharactersDrawerBadge(totalUnread = getTotalUnreadCount()) {
@@ -210,7 +231,7 @@ export function updateConversationNotificationIndicators() {
     updateListToggleBadge(totalUnread);
     updateConversationTitleBadge(totalUnread);
     updateConversationFaviconBadge(totalUnread);
-    updateConversationTabBadge(totalUnread);
+    updateModeToggleUnread(totalUnread);
     updateCharactersDrawerBadge(totalUnread);
 }
 

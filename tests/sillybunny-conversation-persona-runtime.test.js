@@ -7,6 +7,7 @@ const triggerRoleplayAside = jest.fn();
 const roleplayChat = [];
 const dispatchedEvents = [];
 const selectConversation = jest.fn();
+const updateModeToggleUnread = jest.fn();
 const scheduleInterfaceRefresh = jest.fn();
 const windowHandlers = new Map();
 let hasUsage = false;
@@ -83,6 +84,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
     getActiveConversationKey: () => '',
     updateConversationNotificationIndicators: jest.fn(),
+    updateModeToggleUnread,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     getCharacterForGroupChatMessage: () => null,
@@ -178,6 +180,15 @@ describe('conversation persona runtime', () => {
             personaId: 'persona-c.png',
             showToast: false,
         });
+    });
+
+    test('works out the badge of the chat mode button again when the workspace opens or closes, because it shows only while the workspace is closed', () => {
+        init();
+        updateModeToggleUnread.mockClear();
+
+        windowHandlers.get('sb:conversation-workspace-state-changed')();
+
+        expect(updateModeToggleUnread).toHaveBeenCalledTimes(1);
     });
 
     test('watches for the pointer, the focus and the touch that reach the mode toggle once the page is ready', () => {

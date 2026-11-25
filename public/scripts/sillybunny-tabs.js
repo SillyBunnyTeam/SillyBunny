@@ -46,6 +46,8 @@ import {
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import {
+    CONVERSATION_UNREAD_CHANGED_EVENT,
+    CONVERSATION_UNREAD_DATASET,
     PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
     PERSONA_APPENDICES_SELECTIONS_KEY,
 } from './sillybunny-conversation/constants.js';
@@ -14138,9 +14140,43 @@ function syncModeToggleButton() {
     if (label) {
         label.textContent = mode.label;
     }
-    const title = `Chat Mode: ${mode.label} (Ctrl+M)`;
+    // SillyBunny: the unread count of Conversation Mode, which the page publishes while the workspace is closed
+    // (`updateModeToggleUnread()` in `sillybunny-conversation/notifications.js`). The name carries the count, because the badge is drawn only.
+    const unread = getModeUnread();
+    const title = `Chat Mode: ${mode.label} (Ctrl+M)${unread ? `, ${unread.name}` : ''}`;
     modeToggleBtn.title = title;
     modeToggleBtn.setAttribute('aria-label', title);
+    modeToggleBtn.querySelector(':scope > .sb-mode-badge')?.remove();
+    if (unread) {
+        const badge = createElement('small', { className: 'sb-mode-badge', attrs: { 'aria-hidden': 'true' } });
+        badge.textContent = unread.text;
+        modeToggleBtn.append(badge);
+    }
+}
+
+/** The badge that Conversation Mode publishes for the chat mode control, or null while none shows. */
+function getModeUnread() {
+    const { dataset } = document.documentElement;
+    const text = dataset[CONVERSATION_UNREAD_DATASET.text];
+    return text ? { text, name: dataset[CONVERSATION_UNREAD_DATASET.name] || text } : null;
+}
+
+/** Puts the badge on the item of the chat mode menu for Conversation, or takes it off. The item is named by its content, so the badge names itself. */
+function syncModeMenuUnread(item) {
+    const unread = getModeUnread();
+    item.querySelector(':scope > .sb-mode-badge')?.remove();
+    if (!unread || item.dataset.sbMode !== 'conversation') {
+        return;
+    }
+
+    const badge = createElement('small', { className: 'sb-mode-badge', attrs: { role: 'img', 'aria-label': unread.name } });
+    badge.textContent = unread.text;
+    item.append(badge);
+}
+
+function syncModeUnread() {
+    syncModeToggleButton();
+    document.querySelectorAll('#sb-mode-menu .sb-mode-menu-item').forEach(syncModeMenuUnread);
 }
 
 function setModeMenuOpenState(isOpen) {
@@ -14199,6 +14235,8 @@ function openModeDropdown() {
             },
         });
         item.innerHTML = `<i class="fa-solid ${mode.icon} sb-mode-menu-icon" aria-hidden="true"></i><span class="sb-mode-menu-label">${mode.label}</span><span class="sb-mode-menu-desc">${mode.description}</span><i class="fa-solid fa-check sb-mode-menu-check" aria-hidden="true"></i>`;
+        item.dataset.sbMode = mode.id;
+        syncModeMenuUnread(item);
         item.addEventListener('click', () => {
             closeModeDropdown({ restoreFocus: true });
             enterChatMode(mode.id);
@@ -14265,6 +14303,7 @@ function initModeToggle() {
     }
     document.documentElement.dataset.sbModeToggleBound = 'true';
     window.addEventListener('sb:conversation-workspace-state-changed', syncModeToggleButton);
+    window.addEventListener(CONVERSATION_UNREAD_CHANGED_EVENT, syncModeUnread);
     document.addEventListener(HOME_STATE_CHANGED_EVENT, syncModeToggleButton);
     document.addEventListener(CHAT_MODE_CHANGED_EVENT, syncModeToggleButton);
     syncModeToggleButton();

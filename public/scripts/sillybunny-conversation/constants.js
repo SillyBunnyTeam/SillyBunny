@@ -115,6 +115,13 @@ export const CONVERSATION_MESSAGE_SENT_EVENT = 'sb:conversation-user-message-sen
 export const CONVERSATION_OPENED_EVENT = 'sb:conversation-opened';
 /** Asks the details window, when it is open, to close: the conversation that it shows belongs to the persona that has just changed. */
 export const CONVERSATION_DETAILS_CLOSE_EVENT = 'sb:conversation-details-close';
+/**
+ * What the control for the chat mode in the top bar (`sillybunny-tabs.js`) shows of the unread messages: the page keeps the
+ * text of the badge and the accessible name on the root element, as `dataset` keys, only while a badge is to show, and
+ * sends the event when either changes. `notifications.js` writes them and the bar reads them.
+ */
+export const CONVERSATION_UNREAD_DATASET = Object.freeze({ text: 'sbConversationUnread', name: 'sbConversationUnreadName' });
+export const CONVERSATION_UNREAD_CHANGED_EVENT = 'sb:conversation-unread-changed';
 
 export const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 export const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
