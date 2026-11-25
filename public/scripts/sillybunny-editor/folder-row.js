@@ -2,8 +2,9 @@ import { createEntityRow } from './entity-row.js';
 import { t } from '../i18n.js';
 import { MOTION_SLOW, play, prefersReducedMotion } from '../sillybunny-motion.js';
 
-/** Member count for a folder in the Characters, Groups, Personas or Backgrounds scope. */
+/** Member count for a folder in the Characters, Groups, Personas, Backgrounds or Conversations scope. */
 export function folderCountLabel(count, scope) {
+    if (scope === 'conversations') return count === 1 ? t`1 conversation` : t`${count} conversations`;
     if (scope === 'groups') return count === 1 ? t`1 group` : t`${count} groups`;
     if (scope === 'personas') return count === 1 ? t`1 persona` : t`${count} personas`;
     if (scope === 'backgrounds') return count === 1 ? t`1 background` : t`${count} backgrounds`;

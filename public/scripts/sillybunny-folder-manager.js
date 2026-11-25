@@ -8,22 +8,11 @@ import { openPicker } from './sillybunny-editor/picker.js';
 import { openAlert, openDialog, createIconButton } from './sillybunny-editor/dialog.js';
 import { announceReorder, LONG_LIST, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
-import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
+import { openActionMenu } from './sillybunny-action-menu.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
-import {
-    createFolder,
-    deleteFolder,
-    getFolderMembers,
-    getFolders,
-    moveFolder,
-    removeFromFolder,
-    renameFolder,
-    setFolder,
-    setFolderColor,
-    setFolderExpanded,
-    subscribe,
-} from './sillybunny-folders.js';
+import * as settingsFolderStore from './sillybunny-folders.js';
+import { DEFAULT_FOLDER_COLOR, createFolderColorPicker, openFolderNamePopover, parseFolderName } from './sillybunny-editor/folder-popovers.js';
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261125a', id: 'deferred-editor-shell-css' },
@@ -31,13 +20,14 @@ const STYLESHEETS = [
     { href: 'css/sillybunny-folder-manager.css?v=20261117h', id: 'deferred-folder-manager-css' },
 ];
 
-const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona', backgrounds: 'background' });
+const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona', backgrounds: 'background', conversations: 'conversation' });
+const SCOPES = Object.freeze(Object.keys(MEMBER_KINDS));
 const PLACEHOLDER_COPY = 'TODO(copy)';
 
 let activeManager = null;
 let opening = null;
 
-/** Persona and background wording is not written yet, so it shows the placeholder and says so in markup. */
+/** Persona, background and conversation wording is not written yet, so it shows the placeholder and says so in markup. */
 function scopeCopy(scope) {
     if (scope === 'groups') {
         return {
@@ -46,7 +36,7 @@ function scopeCopy(scope) {
             deleteBody: t`The groups in this folder stay in your library. They are no longer in a folder.`,
         };
     }
-    if (scope === 'personas' || scope === 'backgrounds') return { empty: PLACEHOLDER_COPY, noMembers: PLACEHOLDER_COPY, deleteBody: PLACEHOLDER_COPY };
+    if (scope === 'personas' || scope === 'backgrounds' || scope === 'conversations') return { empty: PLACEHOLDER_COPY, noMembers: PLACEHOLDER_COPY, deleteBody: PLACEHOLDER_COPY };
     return {
         empty: t`Create a folder to sort characters in the list.`,
         noMembers: t`Add characters to this folder to list them under it.`,
@@ -87,10 +77,7 @@ function rowButton(label, glyph, action, className = '') {
     return node;
 }
 
-function folderName(value) {
-    const name = String(value ?? '').trim();
-    return name ? { ok: true, name } : { ok: false, error: t`Enter a folder name.` };
-}
+const folderName = parseFolderName;
 
 function countLabel(count, scope) {
     return folderCountLabel(count, scope);
@@ -161,16 +148,15 @@ function renderColor(dot, color) {
     else dot.style.removeProperty('--sb-folder-color');
 }
 
-function colorPicker(entry, folder, refresh) {
+function colorPicker(entry, folder, refresh, store) {
     if (!entry.picker) {
         const wrapper = element('div', 'sb-folder-manager__colors');
-        const picker = element('toolcool-color-picker');
-        picker.setAttribute('aria-label', t`Folder Colour`);
-        picker.setAttribute('color', folder.color || 'rgba(128, 128, 128, 1)');
-        picker.addEventListener('change', event => {
-            const color = event.detail?.rgba ?? event.detail?.color ?? picker.color ?? picker.getAttribute('color') ?? '';
-            setFolderColor(entry.scope, folder.id, String(color));
-            refresh();
+        const picker = createFolderColorPicker({
+            value: folder.color,
+            onChange: color => {
+                store.setFolderColor(entry.scope, folder.id, color);
+                refresh();
+            },
         });
         const close = rowButton(t`Close`, 'xmark', () => wrapper.hidden = true);
         wrapper.append(picker, close);
@@ -178,7 +164,7 @@ function colorPicker(entry, folder, refresh) {
         entry.picker = picker;
         entry.colors = wrapper;
     }
-    const value = folder.color || 'rgba(128, 128, 128, 1)';
+    const value = folder.color || DEFAULT_FOLDER_COLOR;
     if (entry.picker.getAttribute('color') !== value) entry.picker.setAttribute('color', value);
     entry.colors.hidden = false;
     requestAnimationFrame(() => {
@@ -190,9 +176,15 @@ function colorPicker(entry, folder, refresh) {
 /**
  * Creates the Folder Manager surface. The adapter is intentionally small so the
  * folder UI can be exercised with an in-memory entity source as well as the app.
+ * `adapter.store` is where the folders live: the eleven functions of `sillybunny-folders.js` (`getFolders`,
+ * `getFolderMembers`, `createFolder`, `renameFolder`, `deleteFolder`, `moveFolder` by a delta, `setFolderColor`,
+ * `setFolderExpanded`, `setFolder`, `removeFromFolder`, `subscribe`), each taking the scope first. It defaults to that
+ * module, which keeps the folders of characters, groups, personas and backgrounds in the settings; the conversations
+ * keep theirs on the server and pass their own.
  */
 export function createFolderManager(scope, adapter) {
-    if (!['characters', 'groups', 'personas', 'backgrounds'].includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
+    if (!SCOPES.includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
+    const store = adapter?.store ?? settingsFolderStore;
     const layout = window.matchMedia?.(LAYOUT_MOBILE_QUERY) ?? { matches: false };
     const cache = new Map();
     const entries = new Map();
@@ -224,7 +216,7 @@ export function createFolderManager(scope, adapter) {
     /** Settings keep a membership for a persona or character that was removed outside the app, so the count follows what still exists, like the members page. */
     function liveMemberCount(folderId) {
         const existing = new Set(currentItems().map(item => String(adapter.getKey(item))));
-        return getFolderMembers(scope, folderId).filter(key => existing.has(key)).length;
+        return store.getFolderMembers(scope, folderId).filter(key => existing.has(key)).length;
     }
 
     function currentItems() {
@@ -238,7 +230,7 @@ export function createFolderManager(scope, adapter) {
         const avatar = adapter.getAvatar?.(item) ?? null;
         // A member may be in several folders (a background); Remove takes it out of this one only.
         const remove = rowButton(t`Remove`, 'minus', () => {
-            removeFromFolder(scope, [key], members?.folderId);
+            store.removeFromFolder(scope, [key], members?.folderId);
             refresh();
         }, 'sb-folder-manager__remove');
         const entity = createEntityRow({
@@ -254,14 +246,14 @@ export function createFolderManager(scope, adapter) {
     }
 
     function folderMenu(trigger, folder) {
-        const folders = getFolders(scope);
+        const folders = store.getFolders(scope);
         const index = folders.findIndex(candidate => candidate.id === folder.id);
         const sections = [{ items: [
             { label: t`Rename`, icon: 'fa-solid fa-pen', onSelect: () => entries.get(folder.id)?.input?.focus() },
-            { label: t`Colour`, icon: 'fa-solid fa-palette', onSelect: () => colorPicker(entries.get(folder.id), folder, refresh) },
+            { label: t`Colour`, icon: 'fa-solid fa-palette', onSelect: () => colorPicker(entries.get(folder.id), folder, refresh, store) },
         ] }, { items: [
             { label: t`Expanded by Default`, icon: 'fa-solid fa-arrows-up-down', kind: 'check', checked: folder.expanded,
-                onSelect: () => { setFolderExpanded(scope, folder.id, !folder.expanded); refresh(); } },
+                onSelect: () => { store.setFolderExpanded(scope, folder.id, !folder.expanded); refresh(); } },
         ] }, { items: reorderMenuItems({
             index,
             count: folders.length,
@@ -270,7 +262,7 @@ export function createFolderManager(scope, adapter) {
             // The row keeps the folder object it was created with, so a rename shows only in the store's copy.
             name: folders[index]?.name ?? folder.name,
             move: to => {
-                const moved = moveFolder(scope, folder.id, to - index);
+                const moved = store.moveFolder(scope, folder.id, to - index);
                 refresh();
                 return moved;
             },
@@ -330,7 +322,7 @@ export function createFolderManager(scope, adapter) {
             }
             error.hidden = true;
             input.removeAttribute('aria-invalid');
-            if (parsed.name !== getFolders(scope).find(candidate => candidate.id === folder.id)?.name) renameFolder(scope, folder.id, parsed.name);
+            if (parsed.name !== store.getFolders(scope).find(candidate => candidate.id === folder.id)?.name) store.renameFolder(scope, folder.id, parsed.name);
             input.value = parsed.name;
             return true;
         };
@@ -347,7 +339,7 @@ export function createFolderManager(scope, adapter) {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 event.stopPropagation();
-                input.value = getFolders(scope).find(candidate => candidate.id === folder.id)?.name ?? '';
+                input.value = store.getFolders(scope).find(candidate => candidate.id === folder.id)?.name ?? '';
                 error.hidden = true;
                 input.removeAttribute('aria-invalid');
             }
@@ -367,7 +359,7 @@ export function createFolderManager(scope, adapter) {
 
     function renderFolders() {
         if (disposed || dragging) return;
-        const folders = getFolders(scope);
+        const folders = store.getFolders(scope);
         reconciling = true;
         try {
             reconcileRows({
@@ -416,7 +408,7 @@ export function createFolderManager(scope, adapter) {
     }
 
     async function deleteSelected(keys) {
-        const live = new Set(getFolders(scope).map(folder => folder.id));
+        const live = new Set(store.getFolders(scope).map(folder => folder.id));
         const ids = keys.filter(id => live.has(id));
         if (!ids.length || bulkBusy) return;
         bulkBusy = true;
@@ -426,7 +418,7 @@ export function createFolderManager(scope, adapter) {
             const text = `${PLACEHOLDER_COPY} (${ids.length}) ${scopeCopy(scope).deleteBody}`;
             if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete`, copyPlaceholder: true }) || disposed) return;
             // The same removal as one folder's Delete: its members stay and leave the folder.
-            for (const id of ids) deleteFolder(scope, id);
+            for (const id of ids) store.deleteFolder(scope, id);
             selection.exit();
             refresh();
         } finally {
@@ -437,7 +429,7 @@ export function createFolderManager(scope, adapter) {
 
     function renderMemberList(folder) {
         const itemMap = new Map(currentItems().map(item => [String(adapter.getKey(item)), item]));
-        const rows = getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean).map(itemRow);
+        const rows = store.getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean).map(itemRow);
         if (!rows.length) rows.push(markCopyPlaceholder(createStatusPage({
             state: 'empty',
             icon: 'users',
@@ -451,7 +443,7 @@ export function createFolderManager(scope, adapter) {
 
     /** The members view is a page in the frame, so its header returns to the folder list. */
     function openMembers(folderId) {
-        const folder = getFolders(scope).find(candidate => candidate.id === folderId);
+        const folder = store.getFolders(scope).find(candidate => candidate.id === folderId);
         if (!folder || !frame || members) return;
         const add = createIconButton(t`Add`, 'plus', 'sb-folder-manager__add-member');
         add.addEventListener('click', () => addMember(folder));
@@ -471,7 +463,7 @@ export function createFolderManager(scope, adapter) {
     }
 
     function addMember(folder) {
-        const assigned = new Set(getFolderMembers(scope, folder.id));
+        const assigned = new Set(store.getFolderMembers(scope, folder.id));
         const items = currentItems().map(item => {
             const key = String(adapter.getKey(item));
             return { value: key, label: String(adapter.getName(item) ?? key), subtitle: assigned.has(key) ? t`In this folder` : undefined };
@@ -484,7 +476,7 @@ export function createFolderManager(scope, adapter) {
             searchLabel: t`Search`,
             emptyText: t`No Results`,
             bounds: frame?.surface ?? null,
-            onSelect: key => { setFolder(scope, [key], folder.id); refresh(); },
+            onSelect: key => { store.setFolder(scope, [key], folder.id); refresh(); },
         });
     }
 
@@ -500,46 +492,29 @@ export function createFolderManager(scope, adapter) {
         });
         if (response !== 'delete' || disposed) return;
         const showing = members?.folderId === folder.id ? members : null;
-        deleteFolder(scope, folder.id);
+        store.deleteFolder(scope, folder.id);
         if (showing) showing.page.forceClose();
         else refresh();
     }
 
-    async function createPending(input, error, popover) {
-        const parsed = folderName(input.value);
-        if (!parsed.ok) {
-            error.textContent = parsed.error;
-            error.hidden = false;
-            input.setAttribute('aria-invalid', 'true');
-            input.focus({ preventScroll: true });
-            return;
-        }
+    /** Makes the folder that the popover asked for, and answers what the popover does once it has closed. */
+    function createFromName(name) {
+        const make = (options) => {
+            if (disposed) return false;
+            const folder = store.createFolder(scope, name, options);
+            refresh();
+            return { focus: () => entries.get(folder.id)?.input.focus({ preventScroll: true }) };
+        };
         // A scope whose folders live on the server gets the folder's id from the server before anything refers to the folder.
-        let options = {};
-        if (adapter?.createFolder) {
-            input.disabled = true;
-            try {
-                options = { id: (await adapter.createFolder(parsed.name))?.id };
-            } catch (failure) {
-                error.textContent = String(failure?.message ?? failure);
-                error.hidden = false;
-                return;
-            } finally {
-                input.disabled = false;
-            }
-            if (disposed) return;
-        }
-        const folder = createFolder(scope, parsed.name, options);
-        refresh();
-        popover.close();
-        entries.get(folder.id)?.input.focus({ preventScroll: true });
+        if (adapter?.createFolder) return Promise.resolve(adapter.createFolder(name)).then(created => make({ id: created?.id }));
+        return make({});
     }
 
     function refresh() {
         if (disposed) return;
         renderFolders();
         if (!members) return;
-        const folder = getFolders(scope).find(candidate => candidate.id === members.folderId);
+        const folder = store.getFolders(scope).find(candidate => candidate.id === members.folderId);
         if (!folder) {
             members.page.forceClose();
             return;
@@ -564,34 +539,7 @@ export function createFolderManager(scope, adapter) {
     }
 
     function openCreatePopover(trigger) {
-        const content = element('div', 'sb-manager-name-popover');
-        const label = element('strong', 'sb-manager-name-popover__label', t`New Folder`);
-        const input = element('input', 'text_pole sb-dialog__entry sb-manager-name-popover__input');
-        input.type = 'text';
-        label.id = 'sb-folder-manager-new-label';
-        const error = element('small', 'sb-folder-manager__error sb-manager-name-popover__error');
-        error.hidden = true;
-        input.setAttribute('aria-describedby', error.id = 'sb-folder-manager-new-error');
-        const create = element('button', 'menu_button sb-dialog__response is-suggested menu_button_primary sb-manager-name-popover__create', t`Create`);
-        create.type = 'button';
-        create.disabled = true;
-        const updateValidity = () => {
-            const parsed = folderName(input.value);
-            create.disabled = !parsed.ok;
-            error.textContent = parsed.ok ? '' : parsed.error;
-            error.hidden = parsed.ok || !input.value;
-            input.setAttribute('aria-invalid', String(!parsed.ok && Boolean(input.value)));
-        };
-        create.addEventListener('click', () => createPending(input, error, popup));
-        input.addEventListener('input', updateValidity);
-        input.addEventListener('keydown', event => {
-            if (event.isComposing || event.keyCode === 229) return;
-            if (event.key !== 'Enter') return;
-            updateValidity();
-            if (!create.disabled) { event.preventDefault(); create.click(); }
-        });
-        content.append(label, input, error, create);
-        const popup = openPopover({ trigger, content, title: t`New Folder`, titleLabel: label, titleInput: input, bounds: frame?.surface ?? null, initialFocus: () => input });
+        openFolderNamePopover({ trigger, bounds: frame?.surface ?? null, title: t`New Folder`, submitLabel: t`Create`, onSubmit: createFromName });
     }
     unbindKeyboard = bindListKeyboard(list, {
         rowSelector: '.sb-folder-manager__folder-row',
@@ -600,11 +548,11 @@ export function createFolderManager(scope, adapter) {
         onMove: (row, direction) => {
             if (selection?.isActive || frame?.search?.query.trim()) return false;
             const id = row.dataset.folderId;
-            const folders = getFolders(scope);
+            const folders = store.getFolders(scope);
             const index = folders.findIndex(folder => folder.id === id);
             // An infinite direction (Alt+Home, Alt+End) goes to the first or last place.
             const to = Math.max(0, Math.min(folders.length - 1, index + direction));
-            if (index < 0 || to === index || !moveFolder(scope, id, to - index)) return;
+            if (index < 0 || to === index || !store.moveFolder(scope, id, to - index)) return;
             refresh();
             announceReorder({ name: folders[index].name, position: to + 1, count: folders.length });
             entries.get(id)?.row.focus({ preventScroll: true });
@@ -618,13 +566,13 @@ export function createFolderManager(scope, adapter) {
         update: () => {
             const desired = [...list.children].map(row => row.dataset.folderId);
             for (let index = 0; index < desired.length; index++) {
-                const current = getFolders(scope).findIndex(folder => folder.id === desired[index]);
-                if (current >= 0 && current !== index) moveFolder(scope, desired[index], index - current);
+                const current = store.getFolders(scope).findIndex(folder => folder.id === desired[index]);
+                if (current >= 0 && current !== index) store.moveFolder(scope, desired[index], index - current);
             }
         },
         stop: () => { dragging = false; refresh(); },
     });
-    unsubscribe = subscribe(({ scope: changedScope }) => { if (!changedScope || changedScope === scope) refresh(); });
+    unsubscribe = store.subscribe(({ scope: changedScope }) => { if (!changedScope || changedScope === scope) refresh(); });
     refresh();
 
     return {
@@ -644,7 +592,7 @@ export function createFolderManager(scope, adapter) {
                 content,
                 search: { placeholder: t`Search…`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
                 menu: trigger => [{ items: [{
-                    label: t`Select`, icon: 'fa-solid fa-check-double', disabled: bulkBusy || !getFolders(scope).length,
+                    label: t`Select`, icon: 'fa-solid fa-check-double', disabled: bulkBusy || !store.getFolders(scope).length,
                     onSelect: () => selection.enter(null, trigger),
                 }] }],
                 menuLabel: t`Folders`,
@@ -662,7 +610,7 @@ export function createFolderManager(scope, adapter) {
                 root: frame.surface, list, rowSelector: '.sb-folder-manager__folder-row', getKey: row => row.dataset.folderId,
                 keySourceSelector: '.drag-handle', range: true, iconOnlyAtNarrow: true, headerSlots: slots, actionBar: selectionBar,
                 getAllKeys: () => visibleIds,
-                canEnter: () => !bulkBusy && getFolders(scope).length > 0,
+                canEnter: () => !bulkBusy && store.getFolders(scope).length > 0,
                 actions: [
                     { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: keys => deleteSelected(keys) },
                 ],
