@@ -36,7 +36,8 @@ export async function isolateConversations(page) {
             return;
         }
         const { response, body: buffer } = fetched;
-        if (!String(response.headers()['content-type'] ?? '').includes('json')) {
+        // `application/x-ndjson`, the type of an exported chat, holds the word but is not one JSON value.
+        if (!/^application\/(?:[\w.-]+\+)?json\s*(?:;|$)/i.test(String(response.headers()['content-type'] ?? ''))) {
             return route.fulfill({ response, body: buffer });
         }
         let json = JSON.parse(buffer.toString());
