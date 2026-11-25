@@ -23,7 +23,6 @@ await jest.unstable_mockModule('../public/script.js', () => ({ is_send_press: fa
 await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ pageId: PAGE }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-connection-notices.js', () => ({ notifyNotConnected: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-engine.js', () => ({
-    checkMultiCharacterChime: jest.fn(async () => false),
     handleAvailabilityAutoResponder: jest.fn(async () => false),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({

@@ -1,7 +1,7 @@
 /**
  * Runs the automatic worker's tick on an interval, in the one tab that leads (`worker-lock.js`), and never two ticks at
- * once. A tick can take minutes (it waits for a model), and an interval that fires again meanwhile used to start a second
- * tick that sent the same message to the same chat before the first one had written its marker.
+ * once. A tick can take minutes (it waits for a model), and an interval that fires again meanwhile would start a second
+ * tick that sends the same message to the same chat before the first one has written its marker.
  *
  * Everything that belongs to the page comes in through the parameters, so that tests fire the interval by hand.
  */

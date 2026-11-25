@@ -127,7 +127,7 @@ describe('normalizeCommitPlan for a conversation reply', () => {
         }
     });
 
-    test('has no origin for a member that chimes in: the mode no longer sends one', () => {
+    test('refuses the origin chime, which no message of the mode has', () => {
         expect(normalizeCommitPlan(withReply({ origin: 'chime' }))).toBeNull();
     });
 
