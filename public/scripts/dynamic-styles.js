@@ -15,6 +15,15 @@ function getAbsoluteAssetUrl(href) {
     }
 }
 
+function matchesLinkHref(link, absoluteHref) {
+    const candidates = [
+        link.getAttribute('href') ? link.href : '',
+        link.getAttribute('data-sb-href') || '',
+        link.getAttribute('data-sb-source-href') || '',
+    ];
+    return candidates.some(candidate => candidate && getAbsoluteAssetUrl(candidate) === absoluteHref);
+}
+
 function findStylesheetLink(absoluteHref, id = '') {
     if (id) {
         const existingById = document.getElementById(id);
@@ -23,9 +32,9 @@ function findStylesheetLink(absoluteHref, id = '') {
         }
     }
 
-    // SillyBunny: adopt deferred style preloads instead of duplicating them
-    return Array.from(document.querySelectorAll('link[rel~="stylesheet"], link[rel~="preload"][as="style"][data-sb-deferred-style]'))
-        .find(link => link instanceof HTMLLinkElement && getAbsoluteAssetUrl(link.href) === absoluteHref) ?? null;
+    // SillyBunny: adopt deferred stylesheet placeholders (preload or data-sb-href/data-sb-source-href) in place to preserve <head> cascade order before user.css.
+    return Array.from(document.querySelectorAll('link[rel~="stylesheet"], link[rel~="preload"][as="style"][data-sb-deferred-style], link[data-sb-deferred-style][data-sb-href], link[data-sb-deferred-style][data-sb-source-href]'))
+        .find(link => link instanceof HTMLLinkElement && matchesLinkHref(link, absoluteHref)) ?? null;
 }
 
 function waitForStylesheetLink(link, media = 'all') {
@@ -95,9 +104,18 @@ export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
     }
 
     if (existing) {
-        // SillyBunny: identify adopted links for retry cleanup and activate them before awaiting
+        // SillyBunny: identify adopted links for retry cleanup and activate deferred placeholders in place before awaiting.
         if (id && !existing.id) existing.id = id;
-        if (existing.relList.contains('preload') && existing.hasAttribute('data-sb-deferred-style')) {
+        const isDeferredPlaceholder = existing.hasAttribute('data-sb-deferred-style')
+            && !existing.relList.contains('stylesheet');
+        if (isDeferredPlaceholder) {
+            const targetHref = existing.getAttribute('href')
+                || existing.getAttribute('data-sb-href')
+                || existing.getAttribute('data-sb-source-href')
+                || href;
+            if (!existing.getAttribute('href') && targetHref) {
+                existing.setAttribute('href', targetHref);
+            }
             existing.dataset.sbStyleActivated = 'true';
             existing.media = 'print';
             const loading = waitForStylesheetLink(existing, media);

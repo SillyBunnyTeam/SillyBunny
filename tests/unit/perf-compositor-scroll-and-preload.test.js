@@ -46,9 +46,9 @@ function extractTailFromMarker(source, marker) {
     return source.slice(start);
 }
 
-describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation boot', () => {
+describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation boot', () => {
     describe('addLongPressEvent shared passive delegation (utils.js)', () => {
-        test('registers one shared passive listener set and preserves long-press + click suppression', () => {
+        test('registers one shared passive listener set and preserves long-press + click suppression (incl. iOS Text nodes)', () => {
             jest.useFakeTimers();
             try {
                 const utilsSource = readPublic('scripts', 'utils.js');
@@ -92,6 +92,7 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
                     closest: selector => (selector === '#persona_lore_button' ? buttonEl : null),
                     contains: node => node === buttonEl,
                 };
+                const textNodeChild = { nodeType: 3, parentElement: buttonEl };
                 const preventDefaultTouch = jest.fn();
                 const startEvent = { target: buttonEl, preventDefault: preventDefaultTouch };
 
@@ -127,6 +128,12 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
                 };
                 clickHandler(secondClickEvent);
                 expect(secondClickEvent.preventDefault).not.toHaveBeenCalled();
+
+                // iOS WebKit Text-node touchstart target resolves through parentElement.
+                touchStartHandler({ target: textNodeChild, preventDefault: jest.fn() });
+                jest.advanceTimersByTime(500);
+                expect(loreCallback).toHaveBeenCalledTimes(2);
+                expect(loreCallback.mock.instances[1]).toBe(buttonEl);
             } finally {
                 jest.useRealTimers();
             }
@@ -322,6 +329,8 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
             expect(numberInput.dispatched).toHaveLength(1);
 
             activeRef.current = null;
+            // Even if step was removed while focused, focusout detaches unconditionally.
+            numberInput.step = '';
             docListeners.get('focusout')({ target: numberInput });
             expect(numberInput.listeners.has('wheel')).toBe(false);
             expect(slider.listeners.has('wheel')).toBe(false);
@@ -344,7 +353,7 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
             expect(greetingArtSource).toContain('chatElement.addEventListener(\'scroll\', onScroll, { passive: true })');
         });
 
-        test('replaces color-picker body MutationObserver with delegated capture hook and passive listeners', () => {
+        test('replaces color-picker body MutationObserver with delegated capture hook, enhances pre-connected pickers, and re-runs placement after stylesheet load', async () => {
             const colorPickerSource = readPublic('scripts', 'sillybunny-color-picker.js');
 
             expect(colorPickerSource).not.toContain('MutationObserver');
@@ -353,15 +362,189 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
             expect(colorPickerSource).toContain('document.addEventListener(\'click\', handleDelegatedPickerActivation, true)');
             expect(colorPickerSource).toContain('document.addEventListener(\'keydown\', handleDelegatedPickerActivation, true)');
             expect(colorPickerSource).toContain('css/sillybunny-color-picker.css?v=');
+
+            class FakeElement {
+                constructor(tagName, { id = '', className = '', insideChat = false } = {}) {
+                    this.tagName = tagName.toUpperCase();
+                    this.id = id;
+                    this.className = className;
+                    this.insideChat = insideChat;
+                    this.isConnected = true;
+                    this.attributes = new Map();
+                    this.dataset = {};
+                    this.style = {
+                        setProperty: (k, v) => { this.style[k] = v; },
+                    };
+                    this.children = [];
+                    this.listeners = new Map();
+                    this.focused = false;
+                }
+
+                getAttribute(name) { return this.attributes.get(name) ?? null; }
+                setAttribute(name, value) { this.attributes.set(name, String(value)); }
+                removeAttribute(name) { this.attributes.delete(name); }
+                matches(selector) {
+                    if (selector === 'toolcool-color-picker') return this.tagName === 'TOOLCOOL-COLOR-PICKER';
+                    if (selector === '.button') return this.className.split(/\s+/).includes('button');
+                    return false;
+                }
+                closest(selector) {
+                    if (selector === '#chat') return this.insideChat ? { id: 'chat' } : null;
+                    if (selector === 'toolcool-color-picker') return this.tagName === 'TOOLCOOL-COLOR-PICKER' ? this : null;
+                    return null;
+                }
+                append(...nodes) { this.children.push(...nodes); }
+                prepend(...nodes) { this.children.unshift(...nodes); }
+                remove() { this.isConnected = false; }
+                contains(node) { return node === this || this.children.some(child => child.contains?.(node)); }
+                querySelector(selector) {
+                    if (selector === '[data-sb-color-picker-style]') {
+                        return this.children.find(child => child.dataset?.sbColorPickerStyle !== undefined) ?? null;
+                    }
+                    if (selector === '.button') {
+                        return this.children.find(child => child.matches?.('.button')) ?? null;
+                    }
+                    return null;
+                }
+                addEventListener(type, handler) { this.listeners.set(type, handler); }
+                removeEventListener(type, handler) {
+                    if (this.listeners.get(type) === handler) this.listeners.delete(type);
+                }
+                focus() { this.focused = true; }
+                getClientRects() { return [{ width: 52, height: 40 }]; }
+                getBoundingClientRect() {
+                    if (this.className === 'sb-color-picker-menu') {
+                        return stylesheetSettled
+                            ? { left: 0, top: 0, width: 344, height: 320, right: 344, bottom: 320 }
+                            : { left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 };
+                    }
+                    return { left: 500, top: 100, width: 52, height: 40, right: 552, bottom: 140 };
+                }
+            }
+
+            class FakePicker extends FakeElement {
+                constructor({ id = '', insideChat = false } = {}) {
+                    super('toolcool-color-picker', { id, insideChat });
+                    this.button = new FakeElement('button', { className: 'button' });
+                    this.shadowRoot = new FakeElement('shadow');
+                    this.shadowRoot.append(this.button);
+                    this.hex = '#3584E4';
+                    this.rgba = 'rgba(53, 132, 228, 1)';
+                    this.color = {
+                        toHsv: () => ({ h: 212, s: 0.77, v: 0.89, a: 1 }),
+                        toRgb: () => ({ r: 53, g: 132, b: 228, a: 1 }),
+                    };
+                    this.opened = false;
+                }
+                connectedCallback() {}
+                disconnectedCallback() {}
+            }
+
+            let stylesheetSettled = false;
+            let resolveStylesheet = null;
+            const loadStylesheetAsync = jest.fn(() => new Promise((resolve) => {
+                resolveStylesheet = () => {
+                    stylesheetSettled = true;
+                    resolve();
+                };
+            }));
+
+            const preconnectedPicker = new FakePicker({ id: 'preconnected' });
+            const chatPicker = new FakePicker({ id: 'chat-picker', insideChat: true });
+            const docListeners = new Map();
+            let hostedMenu = null;
+            const docStub = {
+                activeElement: null,
+                querySelectorAll: selector => (selector === 'toolcool-color-picker' ? [preconnectedPicker, chatPicker] : []),
+                getElementById: () => null,
+                createElement: tag => new FakeElement(tag),
+                addEventListener: (type, handler) => docListeners.set(type, handler),
+            };
+            const winStub = {
+                innerWidth: 1280,
+                innerHeight: 800,
+                visualViewport: null,
+                matchMedia: () => ({ matches: false }),
+                addEventListener: jest.fn(),
+            };
+            const context = vm.createContext({
+                Element: FakeElement,
+                document: docStub,
+                window: winStub,
+                customElements: {
+                    whenDefined: () => Promise.resolve(),
+                    get: () => FakePicker,
+                },
+                SillyBunnyAssets: { loadStylesheetAsync },
+                requestAnimationFrame: cb => { cb(); return 1; },
+                queueMicrotask,
+            });
+            context.globalThis = context;
+
+            const module = new vm.SourceTextModule(colorPickerSource, { context });
+            const motionStub = new vm.SyntheticModule(['animateIn', 'MOTION_FAST'], function () {
+                this.setExport('animateIn', jest.fn());
+                this.setExport('MOTION_FAST', 120);
+            }, { context });
+            const sheetStub = new vm.SyntheticModule(['blockUpstreamDrawerClose'], function () {
+                this.setExport('blockUpstreamDrawerClose', jest.fn());
+            }, { context });
+            const bpStub = new vm.SyntheticModule(['MENU_SHEET_QUERY'], function () {
+                this.setExport('MENU_SHEET_QUERY', '(max-width: 768px), (max-height: 360px)');
+            }, { context });
+            const overlayStub = new vm.SyntheticModule(['hostOverlayLayer'], function () {
+                this.setExport('hostOverlayLayer', (el) => { hostedMenu = el; });
+            }, { context });
+            const dialogStub = new vm.SyntheticModule(['openDialog'], function () {
+                this.setExport('openDialog', jest.fn());
+            }, { context });
+
+            await module.link((specifier) => {
+                if (specifier === './sillybunny-motion.js') return motionStub;
+                if (specifier === './sillybunny-sheet.js') return sheetStub;
+                if (specifier === './sillybunny-editor/breakpoints.js') return bpStub;
+                if (specifier === './sillybunny-editor/overlay-host.js') return overlayStub;
+                if (specifier === './sillybunny-editor/dialog.js') return dialogStub;
+                throw new Error(`Unexpected import: ${specifier}`);
+            });
+            await module.evaluate();
+            await module.namespace.initializeColorPickers();
+
+            // Pre-connected picker outside #chat is enhanced immediately; picker inside #chat is left untouched.
+            expect(preconnectedPicker.button.getAttribute('aria-haspopup')).toBe('dialog');
+            expect(preconnectedPicker.shadowRoot.querySelector('[data-sb-color-picker-style]')).not.toBeNull();
+            expect(chatPicker.button.getAttribute('aria-haspopup')).toBeNull();
+
+            // Clicking before stylesheet finishes holds popover hidden and places it after CSS settles.
+            docListeners.get('click')({
+                type: 'click',
+                target: preconnectedPicker,
+                composedPath: () => [preconnectedPicker.button, preconnectedPicker],
+                preventDefault: jest.fn(),
+                stopImmediatePropagation: jest.fn(),
+            });
+            expect(loadStylesheetAsync).toHaveBeenCalledTimes(1);
+            expect(hostedMenu).not.toBeNull();
+            expect(hostedMenu.style.visibility).toBe('hidden');
+            expect(hostedMenu.style.left).toBeUndefined();
+
+            resolveStylesheet();
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            // Post-CSS placement uses 344px width -> anchor.right (552) - 344 = 208px.
+            expect(hostedMenu.style.visibility).toBe('');
+            expect(hostedMenu.style.left).toBe('208px');
+            expect(hostedMenu.style.top).toBe('148px');
         });
     });
 
-    describe('index.html deferred CSS priority, font-display:swap, prefetch, and --doc-height coalescing', () => {
+    describe('index.html deferred CSS priority, font-display:swap, in-place adoption, and --doc-height coalescing', () => {
         const indexHtml = readPublic('index.html');
 
-        test('gates sillybunny-mobile-navigation.css to mobile width and eliminates preload-as-style socket starvation', () => {
-            expect(indexHtml).toMatch(/<link\b[^>]*href="css\/sillybunny-mobile-navigation\.css\?v=[^"]+"[^>]*media="\(max-width: 768px\)"/);
+        test('gates sillybunny-mobile-navigation.css to BOTTOM_BAR_COMPACT_QUERY, eliminates preload-as-style socket starvation, and leaves boot prefetch to PR 10', () => {
+            expect(indexHtml).toMatch(/<link\b[^>]*href="css\/sillybunny-mobile-navigation\.css\?v=[^"]+"[^>]*media="\(max-width: 768px\), \(pointer: coarse\) and \(max-height: 450px\)"/);
             expect(indexHtml).not.toMatch(/<link\b[^>]*rel="preload"[^>]*data-sb-deferred-style/);
+            expect(indexHtml).not.toContain('window.__sbBootPrefetch');
 
             for (const panelSheet of [
                 'css/sillybunny-entity-list.css',
@@ -374,19 +557,114 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
             expect(indexHtml).toContain('data-sb-deferred-style data-sb-href="css/brands.min.css"');
         });
 
+        test('dynamic-styles.js adopts data-sb-panel-style data-sb-href and data-sb-source-href placeholders in place before css/user.css', async () => {
+            const dynamicStylesSource = readPublic('scripts', 'dynamic-styles.js');
+
+            class FakeLinkElement {
+                constructor(attrs = {}) {
+                    this.tagName = 'LINK';
+                    this.attributes = new Map(Object.entries(attrs));
+                    this.dataset = {};
+                    this.sheet = null;
+                    this.listeners = new Map();
+                    this.isConnected = true;
+                }
+                get id() { return this.attributes.get('id') ?? ''; }
+                set id(val) { this.attributes.set('id', String(val)); }
+                get rel() { return this.attributes.get('rel') ?? ''; }
+                set rel(val) { this.attributes.set('rel', String(val)); }
+                get relList() {
+                    const tokens = new Set(this.rel.split(/\s+/).filter(Boolean));
+                    return { contains: token => tokens.has(token) };
+                }
+                get href() {
+                    const raw = this.attributes.get('href');
+                    return raw ? new URL(raw, 'http://localhost/').href : '';
+                }
+                set href(val) { this.attributes.set('href', String(val)); }
+                get media() { return this.attributes.get('media') ?? ''; }
+                set media(val) { this.attributes.set('media', String(val)); }
+                getAttribute(name) { return this.attributes.get(name) ?? null; }
+                setAttribute(name, value) { this.attributes.set(name, String(value)); }
+                hasAttribute(name) { return this.attributes.has(name); }
+                addEventListener(type, fn) { this.listeners.set(type, fn); }
+                removeEventListener(type, fn) { if (this.listeners.get(type) === fn) this.listeners.delete(type); }
+                dispatch(type) { this.listeners.get(type)?.({ type }); }
+                remove() { this.isConnected = false; }
+            }
+
+            const entityPlaceholder = new FakeLinkElement({
+                'data-sb-deferred-style': '',
+                'data-sb-panel-style': '',
+                'data-sb-href': 'css/sillybunny-entity-list.css?v=20261118zza',
+                'data-sb-media': 'all',
+            });
+            const hashedPlaceholder = new FakeLinkElement({
+                'data-sb-deferred-style': '',
+                'data-sb-panel-style': '',
+                'data-sb-href': '/frontend-assets/css/sillybunny-character-list-abcdef123456.css',
+                'data-sb-source-href': 'css/sillybunny-character-list.css?v=20261122g',
+                'data-sb-media': 'all',
+            });
+            const userCss = new FakeLinkElement({ rel: 'stylesheet', href: 'css/user.css' });
+            const headChildren = [entityPlaceholder, hashedPlaceholder, userCss];
+
+            const docStub = {
+                baseURI: 'http://localhost/',
+                styleSheets: [],
+                head: {
+                    children: headChildren,
+                    appendChild: node => { headChildren.push(node); return node; },
+                },
+                getElementById: id => headChildren.find(link => link.id === id) ?? null,
+                querySelectorAll: () => headChildren,
+                createElement: () => new FakeLinkElement(),
+            };
+            const context = vm.createContext({
+                document: docStub,
+                window: {},
+                HTMLLinkElement: FakeLinkElement,
+                MutationObserver: class { observe() {} },
+                URL,
+                Event: class { constructor(type) { this.type = type; } },
+            });
+            context.globalThis = context;
+
+            const module = new vm.SourceTextModule(dynamicStylesSource, { context });
+            await module.link(() => { throw new Error('dynamic-styles.js has no static imports'); });
+            await module.evaluate();
+
+            const { loadStylesheetAsync } = module.namespace;
+
+            const entityPromise = loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261118zza', { id: 'deferred-entity-list-css' });
+            expect(headChildren).toEqual([entityPlaceholder, hashedPlaceholder, userCss]);
+            expect(entityPlaceholder.id).toBe('deferred-entity-list-css');
+            expect(entityPlaceholder.getAttribute('href')).toBe('css/sillybunny-entity-list.css?v=20261118zza');
+            expect(entityPlaceholder.rel).toBe('stylesheet');
+            expect(entityPlaceholder.media).toBe('print');
+            entityPlaceholder.dispatch('load');
+            await entityPromise;
+            expect(entityPlaceholder.media).toBe('all');
+            expect(entityPlaceholder.dataset.sbStyleState).toBe('loaded');
+
+            // Compatible with data-sb-source-href (rewritten frontend-assets URLs) too.
+            const listPromise = loadStylesheetAsync('css/sillybunny-character-list.css?v=20261122g', { id: 'deferred-character-list-css' });
+            expect(headChildren).toEqual([entityPlaceholder, hashedPlaceholder, userCss]);
+            expect(hashedPlaceholder.getAttribute('href')).toBe('/frontend-assets/css/sillybunny-character-list-abcdef123456.css');
+            expect(hashedPlaceholder.rel).toBe('stylesheet');
+            hashedPlaceholder.dispatch('load');
+            await listPromise;
+            expect(headChildren.indexOf(entityPlaceholder)).toBeLessThan(headChildren.indexOf(userCss));
+            expect(headChildren.indexOf(hashedPlaceholder)).toBeLessThan(headChildren.indexOf(userCss));
+        });
+
         test('switches solid.min.css from font-display:block to font-display:swap', () => {
             const solidCss = readPublic('css', 'solid.min.css');
             expect(solidCss).toContain('font-display:swap');
             expect(solidCss).not.toContain('font-display:block');
         });
 
-        test('starts guarded early boot prefetches in <head> and coalesces --doc-height resize writes into one rAF', () => {
-            expect(indexHtml).toContain('window.__sbBootPrefetch = {');
-            expect(indexHtml).toContain('csrf: fetch(\'/csrf-token\').catch(() => null)');
-            expect(indexHtml).toContain('version: fetch(\'/version\').catch(() => null)');
-            expect(indexHtml).toContain('lang: fetch(\'/locales/lang.json\').catch(() => null)');
-            expect(indexHtml).toContain('extensionsDiscover: fetch(\'/api/extensions/discover?manifests=1\').catch(() => null)');
-
+        test('coalesces --doc-height resize writes into one rAF', () => {
             const docHeightScript = indexHtml.match(/<script>\s*\(\(\) => \{\s*let frameId = 0;[\s\S]*?<\/script>/)?.[0] ?? '';
             expect(docHeightScript).not.toBe('');
             const body = docHeightScript.replace(/^<script>/, '').replace(/<\/script>$/, '');
@@ -618,6 +896,94 @@ describe('PR 7 compositor scroll, deferred CSS priority, and lazy conversation b
             await ensureConversationModuleLoaded();
             await ensureConversationModuleLoaded();
             expect(dynamicImports).toEqual(['./sillybunny-conversation.js']);
+        });
+
+        test('retries transient import failures, coalesces rapid lazy open events, and guards welcome-screen cold boot', async () => {
+            const welcomeSource = readPublic('scripts', 'welcome-screen.js');
+            expect(welcomeSource).toContain('import { hasStoredConversationBootUsage } from \'./sillybunny-conversation-boot.js\'');
+            expect(welcomeSource).toMatch(/const getConversationChats = async \(\) => \{\s*\/\/[^\n]*\n\s*if \(!hasStoredConversationBootUsage\(\)\) \{\s*return \[\];\s*\}/);
+
+            const bootSource = readPublic('scripts', 'sillybunny-conversation-boot.js');
+            const windowListeners = new Map();
+            const dispatched = [];
+            const consoleError = jest.fn();
+            class FakeCustomEvent {
+                constructor(type, init) {
+                    this.type = type;
+                    this.detail = init?.detail ?? null;
+                }
+            }
+            const context = vm.createContext({
+                window: {
+                    addEventListener: (type, handler) => windowListeners.set(type, handler),
+                    dispatchEvent: event => dispatched.push(event),
+                },
+                CustomEvent: FakeCustomEvent,
+                console: { error: consoleError },
+            });
+            context.globalThis = context;
+
+            const eventsStub = new vm.SyntheticModule(['event_types', 'eventSource'], function () {
+                this.setExport('event_types', { APP_READY: 'app_ready', PERSONA_CHANGED: 'persona_changed' });
+                this.setExport('eventSource', { on: jest.fn() });
+            }, { context });
+            const extensionsStub = new vm.SyntheticModule(['extension_settings'], function () {
+                this.setExport('extension_settings', {});
+            }, { context });
+            const constantsStub = new vm.SyntheticModule(['CONVERSATION_STORE_KEY'], function () {
+                this.setExport('CONVERSATION_STORE_KEY', 'sillybunny_conversation');
+            }, { context });
+            const stateObj = { initialized: false, conversationWorkspaceOpen: false };
+            const stateStub = new vm.SyntheticModule(['conversationState'], function () {
+                this.setExport('conversationState', stateObj);
+            }, { context });
+            const conversationStub = new vm.SyntheticModule([], () => {}, { context });
+            await conversationStub.link(() => {});
+            await conversationStub.evaluate();
+
+            let attempt = 0;
+            let resolveSecondAttempt = null;
+            const module = new vm.SourceTextModule(bootSource, {
+                context,
+                importModuleDynamically: async (specifier) => {
+                    expect(specifier).toBe('./sillybunny-conversation.js');
+                    attempt += 1;
+                    if (attempt === 1) {
+                        throw new Error('transient network error');
+                    }
+                    await new Promise((resolve) => { resolveSecondAttempt = resolve; });
+                    stateObj.initialized = true;
+                    return conversationStub;
+                },
+            });
+
+            await module.link((specifier) => {
+                if (specifier === './events.js') return eventsStub;
+                if (specifier === './extensions.js') return extensionsStub;
+                if (specifier === './sillybunny-conversation/constants.js') return constantsStub;
+                if (specifier === './sillybunny-conversation/state.js') return stateStub;
+                throw new Error(`Unexpected static import: ${specifier}`);
+            });
+            await module.evaluate();
+
+            const openHandler = windowListeners.get('sb:open-conversation-workspace');
+
+            // First attempt fails -> logs cleanly, clears cached promise, does not dispatch.
+            openHandler(new FakeCustomEvent('sb:open-conversation-workspace', { detail: { avatar: 'first.png' } }));
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(attempt).toBe(1);
+            expect(consoleError).toHaveBeenCalledTimes(1);
+            expect(dispatched).toHaveLength(0);
+
+            // Second & third rapid opens while loading coalesce into ONE re-dispatched event with latest detail.
+            openHandler(new FakeCustomEvent('sb:open-conversation-workspace', { detail: { avatar: 'stale.png' } }));
+            openHandler(new FakeCustomEvent('sb:open-conversation-workspace', { detail: { avatar: 'latest.png' } }));
+            await Promise.resolve();
+            expect(attempt).toBe(2);
+            resolveSecondAttempt();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(dispatched).toHaveLength(1);
+            expect(dispatched[0].detail).toEqual({ avatar: 'latest.png' });
         });
     });
 });

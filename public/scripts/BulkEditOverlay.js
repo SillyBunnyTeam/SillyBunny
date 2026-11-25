@@ -653,6 +653,7 @@ class BulkEditOverlay {
         this.browseState();
 
         const elements = this.#getEnabledElements();
+        // SillyBunny: mark non-canceling long-press touch listeners passive so compositor scrolling stays unblocked.
         elements.forEach(element => element.addEventListener('touchstart', this.handleHold, { passive: true }));
         elements.forEach(element => element.addEventListener('mousedown', this.handleHold));
         elements.forEach(element => element.addEventListener('contextmenu', this.handleDefaultContextMenu));
@@ -738,6 +739,7 @@ class BulkEditOverlay {
 
         const cancelHold = (event) => cancel = true;
         this.container.addEventListener('mouseup', cancelHold);
+        // SillyBunny: cancelHold never calls preventDefault(); keep container touchend passive.
         this.container.addEventListener('touchend', cancelHold, { passive: true });
 
         this.isLongPress = true;

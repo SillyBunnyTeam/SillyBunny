@@ -46,6 +46,7 @@ function handleInputWheel() {
     }
 
     const updateValueThrottled = throttle(updateValue, minInterval);
+    // SillyBunny: scope non-passive wheel handling to focused step number inputs via focusin/focusout so document scroll stays compositor-driven.
     /** @type {(() => void) | null} */
     let unbindActiveWheel = null;
 
@@ -92,9 +93,7 @@ function handleInputWheel() {
         };
     });
 
-    document.addEventListener('focusout', (event) => {
-        if (event.target instanceof HTMLInputElement && event.target.matches('input[type="number"][step]')) {
-            detachActiveWheel();
-        }
+    document.addEventListener('focusout', () => {
+        detachActiveWheel();
     });
 }

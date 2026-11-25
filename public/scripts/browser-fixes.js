@@ -401,9 +401,8 @@ function applyBrowserFixes() {
         window.addEventListener('sb-mobile-viewport-reset', handleMobileViewportReset);
 
         // SillyBunny: Firefox mobile ignores touch-action CSS and user-scalable=no
-        // in the viewport meta for pinch-zoom. Intercept multi-touch events at the
-        // touch level and preventDefault to block the browser's zoom gesture before
-        // it can change visualViewport.scale and drift the app layout.
+        // in the viewport meta for pinch-zoom. Gate the non-passive document
+        // multi-touch zoom block strictly to Firefox so Chromium/WebKit keep compositor scroll.
         const blockMultiTouchZoom = (event) => {
             if (event.touches.length > 1) {
                 event.preventDefault();

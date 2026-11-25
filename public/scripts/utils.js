@@ -3141,6 +3141,7 @@ export function createTimeout(ms, errorMessage = '') {
     });
 }
 
+// SillyBunny: share one delegated passive touch listener set across addLongPressEvent callers and drop the dead setTimeout preventDefault.
 /** @type {{ selector: string, callback: Function, delay: number }[]} */
 const longPressRegistrations = [];
 /** @type {ReturnType<typeof setTimeout>[]} */
@@ -3166,12 +3167,15 @@ function ensureLongPressDelegatedListeners() {
         clearLongPressTimers();
         longPressFiredTarget = null;
         const rawTarget = event.target;
-        if (!rawTarget || typeof rawTarget.closest !== 'function') {
+        const targetElement = rawTarget && typeof rawTarget.closest === 'function'
+            ? rawTarget
+            : rawTarget?.parentElement;
+        if (!targetElement || typeof targetElement.closest !== 'function') {
             return;
         }
 
         for (const registration of longPressRegistrations) {
-            const el = rawTarget.closest(registration.selector);
+            const el = targetElement.closest(registration.selector);
             if (!el) {
                 continue;
             }

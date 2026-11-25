@@ -7,6 +7,8 @@ const LEGACY_CONVERSATION_STORAGE_PREFIX = 'sb_conv_';
 
 /** @type {Promise<typeof import('./sillybunny-conversation.js')> | null} */
 let conversationModulePromise = null;
+/** @type {Map<string, { detail: unknown }>} */
+const pendingLazyWindowEvents = new Map();
 
 function threadHasStoredUsage(storeKey, threadStore) {
     if (!threadStore || typeof threadStore !== 'object') {
@@ -80,6 +82,7 @@ export function hasStoredConversationBootUsage({
 
 /**
  * Dynamically loads and initializes the Conversation Mode module graph once.
+ * Resets its cached promise on failure so transient network errors stay retryable.
  * @returns {Promise<typeof import('./sillybunny-conversation.js')>}
  */
 export function ensureConversationModuleLoaded() {
@@ -89,6 +92,9 @@ export function ensureConversationModuleLoaded() {
             init();
         }
         return mod;
+    }).catch((error) => {
+        conversationModulePromise = null;
+        throw error;
     });
     return conversationModulePromise;
 }
@@ -99,14 +105,29 @@ function forwardLazyConversationWindowEvent(eventName, event) {
     }
 
     const detail = typeof CustomEvent === 'function' && event instanceof CustomEvent ? event.detail : event?.detail ?? null;
+    const alreadyQueued = pendingLazyWindowEvents.has(eventName);
+    pendingLazyWindowEvents.set(eventName, { detail });
+    if (alreadyQueued) {
+        return;
+    }
+
     void ensureConversationModuleLoaded().then(() => {
-        window.dispatchEvent(new CustomEvent(eventName, { detail }));
+        const pending = pendingLazyWindowEvents.get(eventName);
+        pendingLazyWindowEvents.delete(eventName);
+        if (pending) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: pending.detail }));
+        }
+    }).catch((error) => {
+        pendingLazyWindowEvents.delete(eventName);
+        console.error(`Failed to load Conversation Mode for ${eventName}`, error);
     });
 }
 
 function checkConversationBootActivation() {
     if (!conversationState.initialized && hasStoredConversationBootUsage()) {
-        void ensureConversationModuleLoaded();
+        void ensureConversationModuleLoaded().catch((error) => {
+            console.error('Failed to auto-load Conversation Mode on boot', error);
+        });
     }
 }
 

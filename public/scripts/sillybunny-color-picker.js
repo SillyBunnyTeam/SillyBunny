@@ -327,11 +327,23 @@ function firstControl(state) {
     return window.matchMedia('(pointer: coarse)').matches ? state.saturation : state.inputs.hex;
 }
 
+let stylesheetPromise = null;
+let stylesheetLoaded = false;
+
 function ensureColorPickerStylesheet() {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
-    if (typeof loader === 'function') {
-        void Promise.resolve(loader(COLOR_PICKER_STYLESHEET.href, { id: COLOR_PICKER_STYLESHEET.id })).catch(() => {});
+    if (typeof loader !== 'function') {
+        stylesheetLoaded = true;
+        return Promise.resolve();
     }
+    stylesheetPromise ??= Promise.resolve(loader(COLOR_PICKER_STYLESHEET.href, { id: COLOR_PICKER_STYLESHEET.id }))
+        .then(() => {
+            stylesheetLoaded = true;
+        })
+        .catch(() => {
+            stylesheetPromise = null;
+        });
+    return stylesheetPromise;
 }
 
 function openColorMenu(picker, button) {
@@ -339,7 +351,7 @@ function openColorMenu(picker, button) {
         closeColorMenu();
         return;
     }
-    ensureColorPickerStylesheet();
+    const stylesheetReady = ensureColorPickerStylesheet();
     closeColorMenu({ restoreFocus: false });
     picker.opened = false;
     const state = buildMenu(picker, button);
@@ -382,6 +394,11 @@ function openColorMenu(picker, button) {
         dialog.closed.then(() => {
             if (active === state) closeColorMenu({ commitPending: false, restoreFocus: false });
         });
+        if (!stylesheetLoaded) {
+            void stylesheetReady.then(() => {
+                if (active === state) syncPlacement();
+            });
+        }
     } else {
         // Popover's top layer escapes clipped cards. WebKit 16.4 falls back inside any open modal.
         hostOverlayLayer(state.menu);
@@ -389,8 +406,19 @@ function openColorMenu(picker, button) {
             state.menu.setAttribute('popover', 'manual');
             state.menu.showPopover();
         }
-        syncPlacement();
-        animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
+        const presentPopover = () => {
+            if (active !== state) return;
+            state.menu.style.visibility = '';
+            syncPlacement();
+            animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
+            firstControl(state).focus({ preventScroll: true });
+        };
+        if (stylesheetLoaded) {
+            presentPopover();
+        } else {
+            state.menu.style.visibility = 'hidden';
+            void stylesheetReady.then(presentPopover);
+        }
     }
     const surface = state.dialog?.root ?? state.menu;
     surface.addEventListener('sb-overlay-host-closing', () => {
@@ -401,7 +429,6 @@ function openColorMenu(picker, button) {
     state.unlink = linkChildLayer(surface, picker, () => {
         if (active === state) closeColorMenu({ restoreFocus: false });
     });
-    if (!state.dialog) firstControl(state).focus({ preventScroll: true });
 }
 
 function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
@@ -500,12 +527,15 @@ function handleDelegatedPickerPrepare(event) {
     const picker = findEligiblePicker(event.target);
     if (!picker) return;
     enhancePicker(picker);
-    ensureColorPickerStylesheet();
+    void ensureColorPickerStylesheet();
 }
 
 export function initializeColorPickers() {
     initialization ??= customElements.whenDefined(PICKER_SELECTOR).then(() => {
         installPickerLifecycleHook();
+        for (const picker of document.querySelectorAll(PICKER_SELECTOR)) {
+            enhancePicker(picker);
+        }
         document.addEventListener('click', handleDelegatedPickerActivation, true);
         document.addEventListener('keydown', handleDelegatedPickerActivation, true);
         document.addEventListener('focusin', handleDelegatedPickerPrepare, { capture: true, passive: true });

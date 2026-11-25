@@ -99,18 +99,20 @@ export function extractHtmlAssetReferences(source) {
 
     for (const tag of htmlTags(normalizedSource)) {
         if (tag.name !== 'link' && tag.name !== 'script') continue;
-        const attribute = tag.name === 'script' ? 'src' : 'href';
-        const value = tag.attributes.get(attribute)?.trim();
+        const attributes = tag.name === 'script' ? ['src'] : ['href', 'data-sb-href'];
+        for (const attribute of attributes) {
+            const value = tag.attributes.get(attribute)?.trim();
 
-        if (!value || isExternalAsset(value)) {
-            continue;
+            if (!value || isExternalAsset(value)) {
+                continue;
+            }
+
+            references.push({
+                attribute,
+                value,
+                line: tag.line,
+            });
         }
-
-        references.push({
-            attribute,
-            value,
-            line: tag.line,
-        });
     }
 
     return references;

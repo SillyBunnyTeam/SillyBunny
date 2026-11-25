@@ -40,6 +40,8 @@ import { openChatMenu } from './sillybunny-home/menu.js';
 import { resolveRecentChatTarget } from './sillybunny-home/recent-chat.js';
 // SillyBunny: declining to leave a temporary chat is not a failure to open a recent chat.
 import { leaveTemporaryChat } from './sillybunny-temporary-chat.js';
+// SillyBunny: skip dynamically importing the 44-module Conversation runtime on Home when no Conversation Mode data exists.
+import { hasStoredConversationBootUsage } from './sillybunny-conversation-boot.js';
 // SillyBunny: the bundled assistants are one registry that Home, Getting Started and Bundled Extras read as well.
 import { ASSISTANT_POINTER_KEY, ASSISTANTS, getAssistant } from './sillybunny-home/assistant-registry.js';
 // SillyBunny: the Welcome Page Assistant moves to Reisen once, when her card exists.
@@ -1460,6 +1462,10 @@ async function getRecentChats({ onRequestFailed = () => {} } = {}) {
             pinned: PinnedChatsManager.isPinned(recentChat),
         }));
     const getConversationChats = async () => {
+        // SillyBunny: avoid loading the 44-module Conversation runtime on Home when no Conversation Mode data exists.
+        if (!hasStoredConversationBootUsage()) {
+            return [];
+        }
         try {
             const conversationModule = await import('./sillybunny-conversation.js');
             // SillyBunny: the list of conversations is read from the server once the page has started, so Home waits for it, for a short time at most.

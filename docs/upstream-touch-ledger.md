@@ -682,14 +682,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `public/scripts/browser-fixes.js` - mobile viewport reset guard
 | Field | Value |
 | --- | --- |
-| Area | Mobile shell. |
+| Area | Mobile shell and compositor scroll. |
 | Divergence reason | SillyBunny must restore scroll and avoid re-pinning the root while mobile keyboard close/reset events are still settling. |
-| Target seam | No separate seam yet; this file owns browser-specific viewport patches. |
-| Adapter shape | Keep reset scheduling, transient fixed-position cleanup, scroll restoration, and reapply suppression in the mobile browser fix helper. |
-| Protecting tests | `tests/mobile-shell-lifecycle-wiring.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- mobile-shell-lifecycle-wiring.test.js`, `node --check public/scripts/browser-fixes.js`, `node --check public/scripts/sillybunny-tabs.js`, mobile smoke for search close/focus. |
+| Target seam | `public/scripts/mobile-shell-lifecycle/index.js` (`MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR`, `createMobileDocumentPanTouchStart`, `shouldBlockMobileDocumentPan`). |
+| Adapter shape | Keep reset scheduling, transient fixed-position cleanup, scroll restoration, and reapply suppression in the mobile browser fix helper. Gate `blockMultiTouchZoom` (`{ passive: false }`) strictly to `isFirefox()`, bind `blockDocumentPanFromShellGaps` only to fixed chrome surfaces (`MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR`) with precomputed `touchstart` scroll ancestry, and skip `html { position: fixed }` on modern iOS WebKit while an editable field is focused. |
+| Protecting tests | `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/unit/perf-compositor-scroll-and-preload.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- mobile-shell-lifecycle-wiring.test.js unit/perf-compositor-scroll-and-preload.test.js`. |
 | Rollback path | Restore the prior reset timeout and remove scroll restoration/reapply suppression if mobile viewport behavior regresses. |
-| Last reviewed | 2026-06-06 Bug 2 mobile search viewport reset. |
+| Last reviewed | 2026-11-26, PR #1033 (compositor scroll & modern iOS WebKit guard). |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/index.html` and `public/script.js` - message actions
@@ -830,13 +830,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/index.html` |
 | Area | Characters and Groups list stylesheet boot. |
-| Divergence reason | SillyBunny loads the Characters and Groups list stylesheet after startup, which upstream's static links do not do. The preload and both loader URLs must carry the same cache key, or the browser keeps a stale stylesheet. |
+| Divergence reason | SillyBunny loads the Characters and Groups list stylesheet after startup, which upstream's static links do not do. The placeholder and both loader URLs must carry the same cache key, or the browser keeps a stale stylesheet. |
 | Target seam | `public/scripts/dynamic-styles.js`, `public/scripts/sillybunny-character-list.js`, and `public/scripts/sillybunny-tabs.js`. |
-| Adapter shape | Keep the preload and both deferred loader URLs on the same cache version because `loadStylesheetAsync` adopts the preloaded link by ID. |
-| Protecting tests | `tests/character-list.e2e.js` (`Groups filter toolbar avoids extra vertical padding` at desktop and mobile widths). |
-| Validation | Focused Characters/Groups E2E and `npm run check:frontend-budgets`. 2026-10-27 (`820589f4d`): the preload and both loaders moved to `?v=20261027a` together, and a repo-wide grep shows one key for the file. |
-| Rollback path | Remove the preload `<link>` for `sillybunny-character-list.css` and its `SillyBunny:` comments from `public/index.html`. The stylesheet then loads only through the loader entries in `sillybunny-character-list.js` and `sillybunny-tabs.js`. Keep those two keys equal when you bump them. |
-| Last reviewed | 2026-10-27, PR #870 (paths and markers re-checked). |
+| Adapter shape | Keep the `<link data-sb-deferred-style data-sb-panel-style data-sb-href="...">` placeholder and both deferred loader URLs on the same cache version so `loadStylesheetAsync` adopts the placeholder in place before `css/user.css`. |
+| Protecting tests | `tests/character-list.e2e.js` (`Groups filter toolbar avoids extra vertical padding` at desktop and mobile widths); `tests/unit/perf-compositor-scroll-and-preload.test.js`; `tests/unit/stylesheet-cache-keys.test.js`. |
+| Validation | Focused unit tests, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, and `tests/unit/stylesheet-cache-keys.test.js`. |
+| Rollback path | Remove the deferred `<link>` for `sillybunny-character-list.css` and its `SillyBunny:` comments from `public/index.html`. The stylesheet then loads only through the loader entries in `sillybunny-character-list.js` and `sillybunny-tabs.js`. Keep those two keys equal when you bump them. |
+| Last reviewed | 2026-11-26, PR #1033 (replaced `rel="preload" as="style"` with `data-sb-panel-style data-sb-href` in-place adoption). |
 | Owner | UI overhaul integrator. |
 
 ### `public/index.html` - mobile stylesheet media gates
@@ -2060,12 +2060,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `public/index.html` |
 | Area | Head stylesheets: `css/sillybunny-character-editor.css`, the editor chrome sheet. |
 | Divergence reason | `TODO(copy)` |
-| Target seam | `loadListEditorStyles()`, `loadEditorChromeStyles()` and `holdEditorsUntilStyled()` in `public/scripts/sillybunny-editor/list-shell.js`; `loadStylesheetAsync()` in `public/scripts/dynamic-styles.js` adopts the preload in place, so the sheet keeps its place in the cascade. |
-| Adapter shape | The blocking `<link rel="stylesheet">` is a `<link rel="preload" as="style" data-sb-deferred-style>` at the same place, marked `SillyBunny:`; its key matches `EDITOR_CHROME_STYLESHEET` and the loader lists. Every editor and window that uses the sheet waits for it before it shows; the static character and group editors are held invisible until it applies. |
-| Protecting tests | `tests/editor-styles-first-frame.e2e.js`; `tests/unit/sillybunny-editor-styles-gate.test.js`; `tests/frontend-performance.e2e.js`; `npm run check:frontend-budgets`. |
-| Validation | 2026-11-14: root and tests lint, the full unit run, budgets, the e2e specs that open the editors, the first-frame spec. |
+| Target seam | `loadListEditorStyles()`, `loadEditorChromeStyles()` and `holdEditorsUntilStyled()` in `public/scripts/sillybunny-editor/list-shell.js`; `loadStylesheetAsync()` in `public/scripts/dynamic-styles.js` adopts the `data-sb-deferred-style data-sb-panel-style data-sb-href` placeholder in place, so the sheet keeps its place in the cascade before `css/user.css`. |
+| Adapter shape | The blocking `<link rel="stylesheet">` is a `<link data-sb-deferred-style data-sb-panel-style data-sb-href="..." data-sb-media="all">` placeholder at the same place, marked `SillyBunny:`; its key matches `EDITOR_CHROME_STYLESHEET` and the loader lists. Every editor and window that uses the sheet waits for it before it shows; the static character and group editors are held invisible until it applies. |
+| Protecting tests | `tests/editor-styles-first-frame.e2e.js`; `tests/unit/sillybunny-editor-styles-gate.test.js`; `tests/unit/perf-compositor-scroll-and-preload.test.js`; `tests/frontend-performance.e2e.js`; `npm run check:frontend-budgets`; `npm run check:frontend-contracts`. |
+| Validation | 2026-11-26: root and tests lint, focused unit suites, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`. |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-14, UI polish sweep (task 2.18). |
+| Last reviewed | 2026-11-26, PR #1033 (replaced `rel="preload" as="style"` with `data-sb-panel-style data-sb-href` in-place adoption). |
 | Owner | `TODO(copy)` |
 
 ### `public/scripts/chats.js` - Data Bank Add menu as a sheet
@@ -2937,6 +2937,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | 2026-11-27: root lint and `tests/` lint; `npm run test:unit --prefix tests -- users-admin-routes.test.js conversation-index.test.js`; `bun test ./tests/conversation-index.test.js`. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
+| Owner | `TODO(copy)` |
+
+### `public/css/solid.min.css`, `public/scripts/utils.js`, `public/scripts/dom-handlers.js`, `public/scripts/BulkEditOverlay.js`, `public/scripts/dynamic-styles.js`, `public/scripts/welcome-screen.js`, and `public/index.html` - compositor scroll, deferred CSS priority, and lazy Conversation Mode boot
+| Field | Value |
+| --- | --- |
+| File | `public/css/solid.min.css`; `public/scripts/utils.js`; `public/scripts/dom-handlers.js`; `public/scripts/BulkEditOverlay.js`; `public/scripts/dynamic-styles.js`; `public/scripts/welcome-screen.js`; `public/index.html`. |
+| Area | Compositor scrolling, deferred stylesheet priority/cascade, icon font swap, and lazy Conversation Mode boot. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/performance-loader.js`; `public/scripts/sillybunny-conversation-boot.js`; `public/scripts/dynamic-styles.js`; `public/scripts/mobile-shell-lifecycle/index.js`. |
+| Adapter shape | `solid.min.css`: marked `font-display:swap` for Font Awesome solid icons. `utils.js`: `addLongPressEvent()` shares one delegated `{ passive: true }` touch listener set without the dead `setTimeout` `preventDefault()` while preserving capture click suppression and iOS `Text`-node parent fallback. `dom-handlers.js`: scopes `{ passive: false }` `wheel` handling dynamically via `focusin`/`focusout` to focused `input[type="number"][step]`. `BulkEditOverlay.js`: marks non-canceling long-press touch listeners `{ passive: true }`. `dynamic-styles.js`: `findStylesheetLink()` and `loadStylesheetAsync()` adopt `<link data-sb-deferred-style data-sb-href|data-sb-source-href>` placeholders in place before `css/user.css`. `index.html`: gates `sillybunny-mobile-navigation.css` to `media="(max-width: 768px), (pointer: coarse) and (max-height: 450px)"`, replaces High-priority `rel="preload" as="style"` on deferred font/brands and panel sheets with `data-sb-deferred-style` + `data-sb-href` (`data-sb-panel-style` for on-demand panels), swaps `sillybunny-conversation.js` for `sillybunny-conversation-boot.js`, and coalesces `--doc-height` resize updates into a single rAF. `welcome-screen.js`: guards `getConversationChats()` with `hasStoredConversationBootUsage()` so default Home cold boot skips importing the 44-module Conversation runtime. |
+| Protecting tests | `tests/unit/perf-compositor-scroll-and-preload.test.js`; `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/persona-management-ui.test.js`; `tests/frontend-contract-audit.test.js`; `tests/mobile-css-budgets.test.js`; `tests/unit/stylesheet-cache-keys.test.js`; `tests/conversation-mode-scoped-profile.test.js`. |
+| Validation | 2026-11-26: `npm run lint`, `npm run lint --prefix tests`, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest unit suites (`--maxWorkers=2`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1033. |
 | Owner | `TODO(copy)` |
 
 ## Review Checklist
