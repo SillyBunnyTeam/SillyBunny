@@ -124,14 +124,16 @@ test.describe('the list at a desktop width', () => {
         await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeVisible();
     });
 
-    test('the Main Menu holds Mark All as Read, Preferences and Help, and Help opens the help window', async ({ page, baseURL }) => {
+    test('the Main Menu holds Mark All as Read, Preferences and Help, and Help opens at the first Conversations topic', async ({ page, baseURL }) => {
         await openSeededList(page, baseURL);
 
         await page.locator(MAIN_MENU).click();
         await expect(page.getByRole('menuitem')).toHaveText(['Mark All as Read', 'Preferences', 'Help']);
         await chooseMenuItem(page, 'Help');
 
-        await expect(page.getByRole('dialog', { name: 'Help' })).toBeVisible();
+        const help = page.getByRole('dialog', { name: 'Help' });
+        await expect(help).toBeVisible();
+        await expect(help.getByRole('heading', { name: 'Start a Conversation' })).toBeVisible();
     });
 
     test('Mark All as Read, in the Main Menu, clears the badge of every row', async ({ page, baseURL }) => {

@@ -388,7 +388,7 @@ function openConversationMainMenu(trigger) {
         sections: buildMainMenuSections({
             markAllRead: runFromMenu('mark-all-read'),
             openPreferences: () => void openConversationPreferences(),
-            openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp()),
+            openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp({ topic: 'start-a-conversation' })),
         }),
         alignment: 'end',
     });
