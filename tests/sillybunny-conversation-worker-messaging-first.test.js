@@ -128,7 +128,7 @@ describe('with messaging first on, in a direct conversation', () => {
 
         await tick();
 
-        expect(world.log.indexOf('generate')).toBeGreaterThan(world.log.indexOf('claim:followupCount'));
+        expect(world.log.indexOf('generate')).toBeGreaterThan(world.log.indexOf('patch:followupCount'));
         expect(world.log.indexOf('generate')).toBeGreaterThan(world.log.indexOf('patch:lastAutoMessageAt'));
         expect(world.entryOf(view)).toMatchObject({ followupCount: 1, lastAutoMessageAt: NOW });
     });

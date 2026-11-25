@@ -13,6 +13,10 @@ export const MINUTE = 60_000;
 export function createWorld(jest) {
     const world = {
         views: new Map(),
+        /** The persona that the page has on; a conversation is made for it unless the test says otherwise. */
+        personaId: PERSONA,
+        /** A real data module (`createConversationData()` on a test server) to use in place of the fake one; see `useData()`. */
+        data: null,
         railItems: [],
         cards: new Map(),
         /** Messages of each chat, by `conversationId/chatId`. */
@@ -36,6 +40,8 @@ export function createWorld(jest) {
     };
 
     world.reset = () => {
+        world.data = null;
+        world.personaId = PERSONA;
         world.views.clear();
         world.railItems = [];
         world.cards.clear();
@@ -64,6 +70,18 @@ export function createWorld(jest) {
         world.spies.reloadConversationChat.mockImplementation(async () => null);
     };
 
+    /**
+     * Makes the worker read and write through a real data module. The views of the module are the world's views, by
+     * reference, so call it again when the module has replaced a view (after a refresh).
+     */
+    world.useData = (data) => {
+        world.data = data;
+        world.views.clear();
+        for (const view of data.list()) {
+            world.views.set(view.id, view);
+        }
+    };
+
     world.findView = groupId => [...world.views.values()].find(view => (groupId ? view.id === groupId : view.kind === 'direct')) ?? null;
 
     /** A character card and the status that it has now. */
@@ -85,7 +103,7 @@ export function createWorld(jest) {
         const view = {
             id,
             kind,
-            personaId: PERSONA,
+            personaId: world.personaId,
             characters,
             extras: [],
             settings: { inactivity_threshold: 60, ...settings },
@@ -141,7 +159,7 @@ export async function installAutoEngineMocks(jest, world) {
             return entry ? { conversationId: view.id, chatId: entry.id } : null;
         },
         getConversationGroupIdForAvatar: () => '',
-        getConversationPersonaId: value => String(typeof value === 'undefined' ? PERSONA : value || ''),
+        getConversationPersonaId: value => String(typeof value === 'undefined' ? world.personaId : value || ''),
         getConversationRecord: (_avatar, { groupId = '' } = {}) => viewFor(groupId),
         getCurrentCharAvatar: () => 'char.png',
         getCurrentCharName: () => 'Aster',
@@ -149,39 +167,45 @@ export async function installAutoEngineMocks(jest, world) {
         getRoleplayGroupById: () => null,
         parsePositiveInt: (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
-        conversationData: {
-            list: ({ personaId } = {}) => [...world.views.values()].filter(view => personaId === undefined || view.personaId === personaId),
-            get: id => world.views.get(id) ?? null,
-            patchConversation: jest.fn((id, patch) => {
-                const view = world.views.get(id);
-                if (!view) {
-                    return false;
-                }
-                for (const [chatId, state] of Object.entries(patch.chats ?? {})) {
-                    Object.assign(view.chats.find(item => item.id === chatId) ?? {}, state);
-                    world.log.push(`patch:${Object.keys(state).join(',')}`);
-                }
-                return true;
-            }),
-            patchReminder: jest.fn((id, reminderId, change) => {
-                const view = world.views.get(id);
-                const reminder = view?.reminders.find(item => item.id === reminderId);
-                if (!reminder) {
-                    return false;
-                }
-                for (const [key, value] of Object.entries(change)) {
-                    if (value === null) {
-                        delete reminder[key];
-                    } else {
-                        reminder[key] = value;
-                    }
-                }
-                world.log.push(`reminder:${Object.keys(change).join(',')}`);
-                return true;
-            }),
+    const fakeData = {
+        list: ({ personaId } = {}) => [...world.views.values()].filter(view => personaId === undefined || view.personaId === personaId),
+        get: id => world.views.get(id) ?? null,
+        patchConversation: (id, patch) => {
+            const view = world.views.get(id);
+            if (!view) {
+                return false;
+            }
+            for (const [chatId, state] of Object.entries(patch.chats ?? {})) {
+                Object.assign(view.chats.find(item => item.id === chatId) ?? {}, state);
+                world.log.push(`patch:${Object.keys(state).join(',')}`);
+            }
+            return true;
         },
-    }));
+        patchReminder: (id, reminderId, change) => {
+            const view = world.views.get(id);
+            const reminder = view?.reminders.find(item => item.id === reminderId);
+            if (!reminder) {
+                return false;
+            }
+            for (const [key, value] of Object.entries(change)) {
+                if (value === null) {
+                    delete reminder[key];
+                } else {
+                    reminder[key] = value;
+                }
+            }
+            world.log.push(`reminder:${Object.keys(change).join(',')}`);
+            return true;
+        },
+    };
+    const live = () => world.data ?? fakeData;
+    const conversationData = {
+        list: (...args) => live().list(...args),
+        get: (...args) => live().get(...args),
+        patchConversation: (...args) => live().patchConversation(...args),
+        patchReminder: (...args) => live().patchReminder(...args),
+    };
+    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({ conversationData }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
         generateConversationReply: spies.generateConversationReply,
         postCharacterReply: spies.postCharacterReply,
@@ -224,8 +248,7 @@ export async function installAutoEngineMocks(jest, world) {
         setFollowupCount: (_avatar, count, { groupId = '' } = {}) => {
             const view = viewFor(groupId);
             if (view) {
-                world.entryOf(view).followupCount = count;
-                world.log.push('claim:followupCount');
+                conversationData.patchConversation(view.id, { chats: { [view.activeChatId]: { followupCount: count } } });
             }
         },
     }));
@@ -245,7 +268,13 @@ export async function installAutoEngineMocks(jest, world) {
             ensureConversationChatLoaded: spies.ensureConversationChatLoaded,
             getConversationMessages: (_avatar, { chatId = '', groupId = '' } = {}) => {
                 const view = viewFor(groupId);
-                return view ? (world.messages.get(`${view.id}/${chatId || view.activeChatId}`) ?? []) : [];
+                if (!view) {
+                    return [];
+                }
+                if (world.data) {
+                    return world.data.chat({ conversationId: view.id, chatId: chatId || view.activeChatId })?.messages ?? [];
+                }
+                return world.messages.get(`${view.id}/${chatId || view.activeChatId}`) ?? [];
             },
             getImageCooldownRemainingSeconds: () => 0,
             markImageGenerated: jest.fn(),
