@@ -39,10 +39,6 @@ const viewState = { query: '', favoritesCollapsed: false, movedId: '', movedTime
 /** @type {WeakMap<HTMLElement, { rows: Map<string, HTMLElement>, sections: Record<string, HTMLElement>, empty: HTMLElement, status: HTMLElement }>} */
 const parts = new WeakMap();
 
-export function getConversationListQuery() {
-    return viewState.query;
-}
-
 /** @returns {boolean} Whether the query changed. */
 export function setConversationListQuery(query) {
     if (viewState.query === query) {
