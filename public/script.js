@@ -16,7 +16,7 @@ import {
     lodash,
 } from './lib.js';
 
-import { humanizedDateTime, favsToHotswap, getMessageTimeStamp, dragElement, isMobile, initRossMods } from './scripts/RossAscends-mods.js';
+import { humanizedDateTime, favsToHotswap, getMessageTimeStamp, isMobile, initRossMods } from './scripts/RossAscends-mods.js';
 import { userStatsHandler, statMesProcess, initStats } from './scripts/stats.js';
 import {
     generateKoboldWithStreaming,
@@ -111,7 +111,6 @@ import {
     fixMarkdown,
     power_user,
     persona_description_positions,
-    loadMovingUIState,
     getCustomStoppingStrings,
     MAX_CONTEXT_DEFAULT,
     MAX_RESPONSE_DEFAULT,
@@ -19408,75 +19407,22 @@ jQuery(async function () {
         const thumbURL = avatarImage.attr('data-thumbnail-src') || avatarImage.attr('src') || fullAvatarURL;
         const avatarSource = parseAvatarSource(thumbURL) || parseAvatarSource(fullAvatarURL);
         const targetAvatarImg = avatarSource?.file || '';
-        const charname = targetAvatarImg.replace('.png', '');
         const isValidCharacter = avatarSource?.type === 'avatar' && characters.some(x => x.avatar === targetAvatarImg);
 
-        // Remove existing zoomed avatars for characters that are not the clicked character when moving UI is not enabled
-        if (!power_user.movingUI) {
-            $('.zoomed_avatar').each(function () {
-                const currentForChar = $(this).attr('forChar');
-                if (currentForChar !== charname && typeof currentForChar !== 'undefined') {
-                    console.debug(`Removing zoomed avatar for character: ${currentForChar}`);
-                    $(this).remove();
-                }
-            });
+        let zoomedSrc = '';
+        if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
+            //handle user and system avatars
+            const isValidPersona = targetAvatarImg in power_user.personas;
+            zoomedSrc = isValidPersona ? originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg) : thumbURL;
+        } else if (messageElement.attr('is_user') == 'false') { //handle char avatars
+            zoomedSrc = avatarSource?.original || fullAvatarURL || thumbURL;
         }
 
-        const avatarSrc = avatarSource?.original || fullAvatarURL || thumbURL;
-        if ($(`.zoomed_avatar[forChar="${charname}"]`).length) {
-            console.debug('removing container as it already existed');
-            $(`.zoomed_avatar[forChar="${charname}"]`).fadeOut(animation_duration, () => {
-                $(`.zoomed_avatar[forChar="${charname}"]`).remove();
-            });
-        } else {
-            console.debug('making new container from template');
-            const template = $('#zoomed_avatar_template').html();
-            const newElement = $(template);
-            newElement.attr('forChar', charname);
-            newElement.attr('id', `zoomFor_${charname}`);
-            newElement.addClass('draggable');
-            newElement.find('.drag-grabber').attr('id', `zoomFor_${charname}header`);
-
-            $('body').append(newElement);
-            newElement.fadeIn(animation_duration);
-            const zoomedAvatarImgElement = $(`.zoomed_avatar[forChar="${charname}"] img`);
-            if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
-                //handle user and system avatars
-                const isValidPersona = targetAvatarImg in power_user.personas;
-                if (isValidPersona) {
-                    const personaSrc = originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg);
-                    zoomedAvatarImgElement.attr('src', personaSrc);
-                    zoomedAvatarImgElement.attr('data-izoomify-url', personaSrc);
-                } else {
-                    zoomedAvatarImgElement.attr('src', thumbURL);
-                    zoomedAvatarImgElement.attr('data-izoomify-url', thumbURL);
-                }
-            } else if (messageElement.attr('is_user') == 'false') { //handle char avatars
-                zoomedAvatarImgElement.attr('src', avatarSrc);
-                zoomedAvatarImgElement.attr('data-izoomify-url', avatarSrc);
-            }
-            loadMovingUIState();
-            $(`.zoomed_avatar[forChar="${charname}"]`).css('display', 'flex');
-            dragElement(newElement);
-
-            if (power_user.zoomed_avatar_magnification) {
-                $('.zoomed_avatar_container').izoomify();
-            }
-
-            $('.zoomed_avatar, .zoomed_avatar .dragClose').on('click touchend', (e) => {
-                if (e.target.closest('.dragClose')) {
-                    $(`.zoomed_avatar[forChar="${charname}"]`).fadeOut(animation_duration, () => {
-                        $(`.zoomed_avatar[forChar="${charname}"]`).remove();
-                    });
-                }
-            });
-
-            zoomedAvatarImgElement.on('dragstart', (e) => {
-                console.log('saw drag on avatar!');
-                e.preventDefault();
-                return false;
-            });
-        }
+        // SillyBunny: sillybunny-avatar-viewer.js opens, toggles and closes the zoomed avatar for roleplay and for conversation mode, so this handler only reads which picture the message shows.
+        if (!zoomedSrc) return;
+        import('./scripts/sillybunny-avatar-viewer.js')
+            .then(({ toggleZoomedAvatar }) => toggleZoomedAvatar({ file: targetAvatarImg, src: zoomedSrc }))
+            .catch(error => console.error('Could not open the zoomed avatar', error));
     });
 
     document.addEventListener('click', function (e) {

@@ -2882,6 +2882,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-25, conversation mode rework, task 3C. |
 | Owner | `TODO(copy)` |
 
+### `public/script.js` - the zoomed avatar opens through the avatar viewer
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (the `$(document).on('click', '.mes .avatar', …)` handler; `dragElement` and `loadMovingUIState`, which only that handler used, leave the import lists); `public/index.html` (the cache key of `css/sillybunny-theme.css` only). |
+| Area | The zoomed avatar of a message in roleplay, which conversation mode now opens through the same code. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-avatar-viewer.js` (`toggleZoomedAvatar`, `getZoomedAvatarKey`), on `#zoomed_avatar_template`, `dragElement` and `loadMovingUIState`. |
+| Adapter shape | The handler keeps its DOM reading (the message's `is_user` and `is_system` attributes, the picture and thumbnail sources, the persona and character checks) and, in place of the code that built the window, calls `toggleZoomedAvatar({ file, src })` through a dynamic `import()`, so that the module is no part of the start-up. The key, the `zoomFor_<key>` id, the `forChar` attribute, the removal of other windows without Moving UI, the fade, `loadMovingUIState()`, `dragElement()` and the magnifier moved into the module unchanged, so a position that Moving UI saved before the change is still used. A message that gives no picture opens nothing, where upstream opened an empty window. The Close keydown handler above the click handler and the Escape handling of `RossAscends-mods.js` are unchanged. `chrome.js` of conversation mode calls the same function with the avatar file alone, which gives the card's own picture; the window has no class of its own there, and no rule of `sillybunny-conversation.css` places it, so roleplay's rules in `style.css` and `sillybunny-theme.css` do in both modes. |
+| Protecting tests | `tests/avatar-viewer.e2e.js`; `tests/sillybunny-avatar-viewer.test.js`; `tests/android-avatar-resource-budget.test.js` (the handler's reading and its call); `tests/has-scope.e2e.js`; `tests/picture-overlays.e2e.js`; the `panel.moving.zoomed-avatar` audit surface. |
+| Validation | `TODO(validation)` |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-25, conversation mode rework, task 7. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

@@ -47,6 +47,10 @@ describe('Android avatar resource budget', () => {
         expect(zoomClickHandler).toContain('const fullAvatarURL = originalAvatarURL || avatarImage.attr(\'src\');');
         expect(zoomClickHandler).toContain('avatarImage.attr(\'data-thumbnail-src\') || avatarImage.attr(\'src\') || fullAvatarURL');
         expect(zoomClickHandler).toContain('originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg)');
+        // The handler only reads which picture the message shows; the viewer owns the window, which conversation mode shares.
+        expect(zoomClickHandler).toContain('import(\'./scripts/sillybunny-avatar-viewer.js\')');
+        expect(zoomClickHandler).toContain('toggleZoomedAvatar({ file: targetAvatarImg, src: zoomedSrc })');
+        expect(zoomClickHandler).not.toContain('#zoomed_avatar_template');
     });
 
     test('avatar refresh cache busts both desktop and mobile thumbnail sources', () => {
