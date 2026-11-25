@@ -610,6 +610,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Server runtime integrator. |
 
+### `src/electron/` - Electron launcher removal
+| Field | Value |
+| --- | --- |
+| File | `src/electron/Start.bat`, `src/electron/package.json` and `src/electron/package-lock.json`, removed. SillyTavern also ships `src/electron/index.js` and `src/electron/start.sh`, which SillyBunny never adopted. |
+| Area | Packaging and launchers. |
+| Divergence reason | SillyBunny must not ship an Electron launcher package that cannot start: `package.json` names an `index.js` that SillyBunny never adopted, and `Start.bat` installs with `--ignore-scripts`, which skips the Electron binary download. The package's lockfile also carries npm audit advisories that no script, test or workflow covers. |
+| Target seam | None. The root launchers start `server.js`, and SillyBunny ships no Electron entry point. |
+| Adapter shape | None. A SillyTavern sync that changes `src/electron/**` leaves those changes out. |
+| Protecting tests | None. |
+| Validation | `git grep -n -i "src/electron"` finds no code, test or workflow reference. `.github/pr-auto-labels-by-files.yml` parses as YAML. |
+| Rollback path | Revert the commit that removed the package (`git log --diff-filter=D -- src/electron/package.json`), which restores the three files at electron 41.1.1. The launcher still does not start until `src/electron/index.js` comes from SillyTavern, because `package.json` names it as `main`, and until the Electron binary is installed, because `Start.bat` installs with `--ignore-scripts` and the electron package downloads its binary only in its `postinstall` script. |
+| Last reviewed | 2026-11-26, backport to release. |
+| Owner | Release integrator. |
+
+### simple-git named imports
+| Field | Value |
+| --- | --- |
+| File | `plugins.js`, `src/plugin-loader.js`, `src/util.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
+| Area | Git integration for server plugins, extensions, the git backend client and version info. |
+| Divergence reason | SillyBunny must import simple-git by its named `simpleGit` export, because simple-git 4 removes the default export. The named export exists since 3.10, so the change also works on 3.x. |
+| Target seam | None; the import statement is the whole divergence. |
+| Adapter shape | Each file imports the named `simpleGit` export instead of the default export and keeps its local name: `git` in `plugins.js` and `src/plugin-loader.js`, `simpleGit` in the others. |
+| Protecting tests | `tests/plugin-loader.test.js` mocks the named export. `tests/extensions-discover.test.js` loads `src/endpoints/extensions.js` and `src/git/client.js` without mocks, and most server suites load `src/util.js`, so these suites fail at import if the export is missing. No test loads `plugins.js`. |
+| Validation | `npm run lint`, `npm run test:unit --prefix tests -- plugin-loader.test.js connection-state-checker.test.js`, the full `npm run test:unit`, `node plugins.js` and `bun plugins.js` (usage output). |
+| Rollback path | Restore the default import in each file: `import { default as git, CheckRepoActions } from 'simple-git'` in `plugins.js` and `src/plugin-loader.js`, `import { default as simpleGit } from 'simple-git'` in `src/util.js`, `import { CheckRepoActions, default as simpleGit } from 'simple-git'` in `src/endpoints/extensions.js`, and `import simpleGit from 'simple-git'` in `src/git/client.js`. simple-git 4 removes the default export, so do this only on simple-git 3. No saved data changes. |
+| Last reviewed | 2026-11-26, backport to release. |
+| Owner | Server runtime integrator. |
+
 ### Upstream test harness and dependency metadata
 | Field | Value |
 | --- | --- |
