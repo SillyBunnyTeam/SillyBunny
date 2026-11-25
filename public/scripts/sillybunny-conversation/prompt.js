@@ -22,6 +22,7 @@ import {
 import { generateConversationRaw } from './generation.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { isPendingServerReply } from './pending-reply.js';
+import { buildReactionsContext } from './reaction-prompt.js';
 import { getCharacterAuthorNote, getCharacterForAvatar, getConversationParticipants, getParticipantNamesForDisplay } from './media.js';
 import {
     composeConversationPersonaDescription,
@@ -334,6 +335,19 @@ export async function buildConversationPromptMessages(messages, directive, speak
         });
     }
 
+    const reactionsContext = buildReactionsContext(sliceMessages, {
+        speakerName,
+        userName: getConversationPersonaName(personaId, 'User'),
+        getCharacterName: avatar => getCharacterForAvatar(avatar)?.name || '',
+    });
+    if (reactionsContext) {
+        promptMessages.push({
+            role: 'system',
+            content: reactionsContext,
+            identifier: 'conversation-reactions-context',
+        });
+    }
+
     promptMessages.push({
         role: 'user',
         content: [directive, `${speakerName}:`].filter(Boolean).join('\n\n'),
@@ -547,6 +561,9 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     }
     if (settings.schedule_command_enabled) {
         commandHints.push('To change what you are doing right now, embed [schedule_update: status="online|idle|dnd|offline", activity="short description", duration="1h30m"]. Use this when your situation shifts (you got off work, went to sleep, etc.).');
+    }
+    if (settings.characters_react) {
+        commandHints.push('To react to the user\'s latest message with an emoji, embed [react: <emoji>] once anywhere in your reply, for example [react: 😂]. It is stripped from the visible message and shown as a reaction on their message. Use one standard emoji, and only when a real person would react that way.');
     }
     commandHints.push('To schedule a reminder for the user at their request, embed [reminder: delay_or_time | memo] anywhere in your reply. delay_or_time can be durations (e.g. "2h", "15m", "30s") or explicit clock times (e.g. "14:30"). memo is what you are reminding them about (e.g. "wash the dishes"). This command is stripped from the visible message.');
     if (commandHints.length) {
