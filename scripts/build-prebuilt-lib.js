@@ -216,12 +216,6 @@ export async function buildPrebuiltPublicLib({
     const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
     const manifestBuffer = Buffer.from(manifestJson, 'utf8');
 
-    fs.mkdirSync(resolvedOutDir, { recursive: true });
-    const bundlePath = path.join(resolvedOutDir, PREBUILT_LIB_FILENAME);
-    const manifestPath = path.join(resolvedOutDir, PREBUILT_LIB_MANIFEST_FILENAME);
-    fs.writeFileSync(bundlePath, bundleBuffer);
-    fs.writeFileSync(manifestPath, manifestBuffer);
-
     if (verify) {
         const verifyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-prebuilt-lib-verify-'));
         let verifyBuffer;
@@ -239,6 +233,12 @@ export async function buildPrebuiltPublicLib({
         }
         console.log(`Verified reproducible prebuilt lib.js (sha256=${sha256}, bytes=${bundleBuffer.byteLength}).`);
     }
+
+    fs.mkdirSync(resolvedOutDir, { recursive: true });
+    const bundlePath = path.join(resolvedOutDir, PREBUILT_LIB_FILENAME);
+    const manifestPath = path.join(resolvedOutDir, PREBUILT_LIB_MANIFEST_FILENAME);
+    fs.writeFileSync(bundlePath, bundleBuffer);
+    fs.writeFileSync(manifestPath, manifestBuffer);
 
     let resolvedTarballPath = null;
     if (tarballPath) {

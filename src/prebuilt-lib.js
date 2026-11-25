@@ -10,6 +10,7 @@ export const PREBUILT_LIB_FILENAME = 'lib.js';
 export const PREBUILT_LIB_MANIFEST_FILENAME = 'lib.manifest.json';
 export const PREBUILT_LIB_INPUT_FILES = Object.freeze([
     'public/lib.js',
+    'webpack.config.js',
     'package.json',
     'package-lock.json',
     'bun.lock',
@@ -151,13 +152,25 @@ export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash 
     const sourceBundlePath = path.join(resolvedPrebuiltDir, PREBUILT_LIB_FILENAME);
     let sourceStat;
     try {
-        sourceStat = fs.statSync(sourceBundlePath);
+        sourceStat = fs.lstatSync(sourceBundlePath);
     } catch {
         return false;
     }
 
-    if (!sourceStat.isFile() || sourceStat.size !== manifest.bundleBytes) {
-        console.warn('Prebuilt frontend library bundle size mismatch; falling back to local Webpack build.');
+    if (sourceStat.isSymbolicLink() || !sourceStat.isFile() || sourceStat.size !== manifest.bundleBytes) {
+        console.warn('Prebuilt frontend library bundle validation failed; falling back to local Webpack build.');
+        return false;
+    }
+
+    let verifiedBuffer;
+    try {
+        verifiedBuffer = fs.readFileSync(sourceBundlePath);
+    } catch {
+        return false;
+    }
+
+    if (verifiedBuffer.byteLength !== manifest.bundleBytes || sha256Hex(verifiedBuffer) !== manifest.sha256) {
+        console.warn('Prebuilt frontend library bundle integrity check failed; falling back to local Webpack build.');
         return false;
     }
 
@@ -167,21 +180,8 @@ export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash 
 
     try {
         fs.mkdirSync(outputDir, { recursive: true });
-
-        // Prefer a zero-copy hard link when on the same filesystem; fall back to copy across mounts.
-        try {
-            fs.linkSync(sourceBundlePath, tempPath);
-        } catch {
-            fs.copyFileSync(sourceBundlePath, tempPath);
-        }
-
-        const stagedBuffer = fs.readFileSync(tempPath);
-        if (stagedBuffer.byteLength !== manifest.bundleBytes || sha256Hex(stagedBuffer) !== manifest.sha256) {
-            fs.rmSync(tempPath, { force: true });
-            console.warn('Prebuilt frontend library bundle integrity check failed; falling back to local Webpack build.');
-            return false;
-        }
-
+        // Write the verified bytes to a fresh inode so later rebuilds of dist/lib/lib.js cannot mutate the cache in place.
+        fs.writeFileSync(tempPath, verifiedBuffer);
         fs.renameSync(tempPath, outputPath);
         if (cacheVersion) {
             console.debug(`Seeded prebuilt frontend library bundle for cache version ${cacheVersion}.`);

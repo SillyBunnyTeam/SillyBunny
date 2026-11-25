@@ -5,6 +5,7 @@ import getPublicLibConfig, {
     getPublicLibCacheInfo,
     prunePublicLibCache,
 } from '../../webpack.config.js';
+// SillyBunny: seed a verified prebuilt vendor bundle before falling back to local Webpack compilation.
 import {
     computePublicLibInputsHash,
     trySeedPrebuiltPublicLib,
@@ -89,6 +90,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
         const publicLibConfig = resolvePublicLibConfig({ forceDist: overrideForceDist });
         const compiledOutputPath = getCompiledOutputPath(publicLibConfig);
 
+        // SillyBunny: atomically seed dist/lib/lib.js into the active cache dir when verified against current inputs.
         if (compiledOutputPath && !fs.existsSync(compiledOutputPath)) {
             trySeedPrebuiltPublicLib({
                 cacheVersion: cacheInfo.cacheVersion,

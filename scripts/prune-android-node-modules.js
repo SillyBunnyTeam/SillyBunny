@@ -358,7 +358,7 @@ function pruneNodeModulesContainer(containerDir, dryRun, stats, skipTopLevelPack
  * @param {object} [options] Pruning options.
  * @param {string} [options.nodeModulesDir] Path to `node_modules` (defaults to `<repo>/node_modules`).
  * @param {boolean} [options.dryRun=false] When true, reports savings without deleting any files.
- * @param {boolean} [options.includeUnused=false] When true, also removes verified-unused `html2canvas` and `archiver` directories.
+ * @param {boolean} [options.includeUnused=false] When true, also removes `html2canvas` (vendored in `public/lib/`) and optional ZIP64 backup fallback `archiver` (only used when a backup exceeds 4 GiB or 65,535 files).
  * @returns {{ removedFiles: number, removedDirectories: number, savedBytes: number, removedDuplicateWasms: string[], removedUnusedPackages: string[], dryRun: boolean }} Pruning summary.
  */
 export function pruneAndroidNodeModules({
@@ -447,7 +447,8 @@ function parseArgs(argv) {
                 throw new Error('--node-modules requires a directory path.');
             }
         } else if (arg === '--help' || arg === '-h') {
-            console.log('Usage: node scripts/prune-android-node-modules.mjs [--node-modules <dir>] [--dry-run] [--include-unused] [--json]');
+            console.log('Usage: node scripts/prune-android-node-modules.js [--node-modules <dir>] [--dry-run] [--include-unused] [--json]');
+            console.log('  --include-unused  Also remove html2canvas (vendored) and optional archiver ZIP64 fallback (>4 GiB or >65,535 files).');
             process.exit(0);
         } else {
             throw new Error(`Unknown argument: ${arg}`);

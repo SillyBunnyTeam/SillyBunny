@@ -25,14 +25,14 @@ import {
 import {
     DUPLICATE_ORT_WASM_FILES,
     pruneAndroidNodeModules,
-} from '../scripts/prune-android-node-modules.mjs';
+} from '../scripts/prune-android-node-modules.js';
 import getWebpackServeMiddleware from '../src/middleware/webpack-serve.js';
 import { getPublicLibCacheInfo } from '../webpack.config.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
-const { createBackupArchive } = await import('../src/users.js');
+const { clampZipEntryMtime, createBackupArchive } = await import('../src/users.js');
 
 jest.setTimeout(60000);
 
@@ -130,18 +130,20 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
         }
     });
 
-    test('computePublicLibInputsHash is portable across CRLF/LF and reacts to input changes', () => {
+    test('computePublicLibInputsHash is portable across CRLF/LF and reacts to input and webpack.config.js changes', () => {
         const rootLf = makeTempDir('sb-inputs-lf-');
         const rootCrlf = makeTempDir('sb-inputs-crlf-');
 
         writeFiles(rootLf, {
             'public/lib.js': 'export const a = 1;\nexport const b = 2;\n',
+            'webpack.config.js': 'export default function getPublicLibConfig() { return {}; }\n',
             'package.json': '{"name":"sillybunny"}\n',
             'package-lock.json': '{"lockfileVersion":3}\n',
             'bun.lock': '{\n  "lockfileVersion": 1\n}\n',
         });
         writeFiles(rootCrlf, {
             'public/lib.js': 'export const a = 1;\r\nexport const b = 2;\r\n',
+            'webpack.config.js': 'export default function getPublicLibConfig() { return {}; }\r\n',
             'package.json': '{"name":"sillybunny"}\r\n',
             'package-lock.json': '{"lockfileVersion":3}\r\n',
             'bun.lock': '{\r\n  "lockfileVersion": 1\r\n}\r\n',
@@ -153,9 +155,13 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
         expect(hashLf).toMatch(/^[0-9a-f]{64}$/);
         expect(hashCrlf).toBe(hashLf);
 
+        fs.writeFileSync(path.join(rootLf, 'webpack.config.js'), 'export default function getPublicLibConfig() { return { mode: "production" }; }\n', 'utf8');
+        const webpackChangedHash = computePublicLibInputsHash({ rootDir: rootLf });
+        expect(webpackChangedHash).not.toBe(hashLf);
+
         fs.writeFileSync(path.join(rootLf, 'public', 'lib.js'), 'export const a = 2;\n', 'utf8');
         const changedHash = computePublicLibInputsHash({ rootDir: rootLf });
-        expect(changedHash).not.toBe(hashLf);
+        expect(changedHash).not.toBe(webpackChangedHash);
     });
 
     test('trySeedPrebuiltPublicLib seeds verified bundle and rejects missing, mismatched, or corrupted artifacts', () => {
@@ -207,7 +213,7 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
         })).toBe(false);
         expect(fs.existsSync(staleTarget)).toBe(false);
 
-        // 4. Same-length corrupted lib.js -> sha256 check fails, cleans temp file, returns false.
+        // 4. Same-length corrupted lib.js -> sha256 check fails before writing output or creating outputDir.
         const corruptedContent = Buffer.from('export default { ok: false};\n', 'utf8');
         expect(corruptedContent.byteLength).toBe(bundleContent.byteLength);
         fs.writeFileSync(path.join(prebuiltDir, PREBUILT_LIB_FILENAME), corruptedContent);
@@ -220,7 +226,72 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
             prebuiltDir,
         })).toBe(false);
         expect(fs.existsSync(corruptTarget)).toBe(false);
-        expect(fs.readdirSync(path.dirname(corruptTarget))).toEqual([]);
+        expect(fs.existsSync(path.dirname(corruptTarget))).toBe(false);
+
+        // 5. Post-seed mutation isolation: overwriting source dist/lib/lib.js in place must NOT mutate seeded output (no shared hard-link inode).
+        expect(fs.readFileSync(validTarget)).toEqual(bundleContent);
+        expect(fs.lstatSync(validTarget).isSymbolicLink()).toBe(false);
+    });
+
+    test('trySeedPrebuiltPublicLib rejects symlinked source bundles even when target bytes match manifest', () => {
+        const prebuiltDir = makeTempDir('sb-prebuilt-symlink-src-');
+        const outsideDir = makeTempDir('sb-prebuilt-symlink-outside-');
+        const outputDir = makeTempDir('sb-prebuilt-symlink-out-');
+        const bundleContent = Buffer.from('export default { symlinked: true };\n', 'utf8');
+        const inputsHash = sha256Hex('inputs-symlink');
+        const outsideBundle = path.join(outsideDir, 'real-lib.js');
+
+        fs.writeFileSync(outsideBundle, bundleContent);
+        fs.writeFileSync(
+            path.join(prebuiltDir, PREBUILT_LIB_MANIFEST_FILENAME),
+            JSON.stringify({
+                schemaVersion: PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
+                cacheVersion: 'fedcba9876543210',
+                inputsHash,
+                sha256: sha256Hex(bundleContent),
+                webpackVersion: '5.105.4',
+                bundleBytes: bundleContent.byteLength,
+                builtWithNode: true,
+            }),
+        );
+
+        const sourceSymlink = path.join(prebuiltDir, PREBUILT_LIB_FILENAME);
+        let symlinkCreated = false;
+        try {
+            fs.symlinkSync(outsideBundle, sourceSymlink);
+            symlinkCreated = true;
+        } catch {
+            // Symlink creation may require elevation on some Windows setups; fall back to lstat spy.
+        }
+
+        const symlinkTarget = path.join(outputDir, 'symlink', 'lib.js');
+        let lstatSpy = null;
+        if (!symlinkCreated) {
+            fs.writeFileSync(sourceSymlink, bundleContent);
+            const realLstat = fs.lstatSync;
+            lstatSpy = jest.spyOn(fs, 'lstatSync').mockImplementation((targetPath, ...args) => {
+                if (path.resolve(String(targetPath)) === path.resolve(sourceSymlink)) {
+                    return {
+                        isSymbolicLink: () => true,
+                        isFile: () => false,
+                        size: bundleContent.byteLength,
+                    };
+                }
+                return realLstat(targetPath, ...args);
+            });
+        }
+
+        try {
+            expect(trySeedPrebuiltPublicLib({
+                cacheVersion: 'fedcba9876543210',
+                inputsHash,
+                outputPath: symlinkTarget,
+                prebuiltDir,
+            })).toBe(false);
+            expect(fs.existsSync(symlinkTarget)).toBe(false);
+        } finally {
+            lstatSpy?.mockRestore();
+        }
     });
 
     test('webpack-serve middleware seeds from SILLYBUNNY_PREBUILT_LIB_DIR and skips local Webpack compilation', async () => {
@@ -477,6 +548,156 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
             },
         });
         await expect(createBackupArchive(errorHandle, failingStream)).rejects.toThrow('disk full');
+    });
+
+    test('clamps pre-1980 and post-2099 mtimes cleanly instead of throwing FlateError InvalidDate', async () => {
+        expect(clampZipEntryMtime(new Date(0)).getFullYear()).toBe(1980);
+        expect(clampZipEntryMtime(new Date(2150, 5, 1)).getFullYear()).toBe(2099);
+        expect(Number.isNaN(clampZipEntryMtime(new Date(NaN)).getTime())).toBe(false);
+
+        const handle = `zip-old-mtime-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        writeFiles(userRoot, {
+            'epoch0.txt': 'from-1970-tarball',
+            'characters/ancient.png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]),
+        });
+        fs.utimesSync(path.join(userRoot, 'epoch0.txt'), new Date(0), new Date(0));
+        fs.utimesSync(path.join(userRoot, 'characters', 'ancient.png'), new Date(0), new Date(0));
+
+        const chunks = [];
+        const output = new PassThrough();
+        output.on('data', chunk => chunks.push(chunk));
+
+        await createBackupArchive(handle, output);
+
+        const zipBuffer = Buffer.concat(chunks);
+        const yauzlEntries = await inspectZipWithYauzl(zipBuffer);
+        expect(yauzlEntries.get('epoch0.txt')?.content.toString('utf8')).toBe('from-1970-tarball');
+        expect(yauzlEntries.get('characters/ancient.png')?.compressionMethod).toBe(0);
+
+        const unzipped = unzipSync(new Uint8Array(zipBuffer));
+        expect(Buffer.from(unzipped['epoch0.txt']).toString('utf8')).toBe('from-1970-tarball');
+    });
+
+    test('falls back to lazy archiver with ZIP64 when ZIP32 thresholds are exceeded and fails loudly if archiver is missing', async () => {
+        const handle = `zip-zip64-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 8, 7, 6]);
+        writeFiles(userRoot, {
+            'settings.json': '{"zip64":true,"payload":"' + 'x'.repeat(256) + '"}',
+            'characters/card.png': pngBytes,
+            'secrets.json': '{"api_key":"must-exclude"}',
+        });
+
+        // 1. Total-size threshold triggers real lazy archiver ZIP64 fallback.
+        const chunks = [];
+        const output = new PassThrough();
+        let attachedName = null;
+        output.attachment = (name) => {
+            attachedName = name;
+        };
+        output.on('data', chunk => chunks.push(chunk));
+
+        await createBackupArchive(handle, output, {
+            zip64Thresholds: { maxTotalBytes: 32 },
+        });
+
+        expect(attachedName).toMatch(new RegExp(`^${handle}-.+\\.zip$`));
+        const zipBuffer = Buffer.concat(chunks);
+        // ZIP64 End of Central Directory signature (0x06064b50) confirms ZIP64 headers were emitted.
+        expect(zipBuffer.includes(Buffer.from([0x50, 0x4b, 0x06, 0x06]))).toBe(true);
+
+        const yauzlEntries = await inspectZipWithYauzl(zipBuffer);
+        expect(yauzlEntries.get('settings.json')?.content.toString('utf8')).toContain('"zip64":true');
+        expect(yauzlEntries.get('settings.json')?.compressionMethod).toBe(8);
+        expect(yauzlEntries.get('characters/card.png')?.content).toEqual(pngBytes);
+        expect(yauzlEntries.get('characters/card.png')?.compressionMethod).toBe(0);
+        expect(yauzlEntries.has('secrets.json')).toBe(false);
+
+        // 2. Entry-count threshold with missing archiver (e.g. pruned on Android) fails loudly before writing bytes.
+        const missingChunks = [];
+        const missingOutput = new PassThrough();
+        missingOutput.on('data', chunk => missingChunks.push(chunk));
+
+        await expect(createBackupArchive(handle, missingOutput, {
+            zip64Thresholds: { maxEntries: 1 },
+            loadArchiver: () => Promise.reject(Object.assign(new Error('Cannot find package \'archiver\''), { code: 'ERR_MODULE_NOT_FOUND' })),
+        })).rejects.toThrow(/ZIP64 fallback/i);
+        expect(missingChunks).toHaveLength(0);
+    });
+
+    test('destroys PassThrough response without emitting an unhandled error after headers are sent', async () => {
+        const handle = `zip-midstream-err-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        writeFiles(userRoot, {
+            'a-first.png': Buffer.alloc(4096, 0x55),
+            'b-second.txt': 'will-fail-on-open',
+        });
+
+        const output = new PassThrough();
+        output.headersSent = false;
+        const originalWrite = output.write.bind(output);
+        output.write = (...args) => {
+            output.headersSent = true;
+            return originalWrite(...args);
+        };
+        output.resume();
+
+        const realOpen = fs.promises.open;
+        const openSpy = jest.spyOn(fs.promises, 'open').mockImplementation((targetPath, ...args) => {
+            if (String(targetPath).endsWith('b-second.txt')) {
+                return Promise.reject(Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }));
+            }
+            return realOpen(targetPath, ...args);
+        });
+
+        const uncaughtErrors = [];
+        const onUncaught = (err) => uncaughtErrors.push(err);
+        process.on('uncaughtException', onUncaught);
+
+        try {
+            await expect(createBackupArchive(handle, output)).resolves.toBeUndefined();
+            await new Promise(resolve => setImmediate(resolve));
+            expect(output.destroyed).toBe(true);
+            expect(uncaughtErrors).toEqual([]);
+        } finally {
+            process.off('uncaughtException', onUncaught);
+            openSpy.mockRestore();
+        }
+    });
+
+    test('skips files that vanish with ENOENT between directory walk and open without aborting backup', async () => {
+        const handle = `zip-enoent-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        writeFiles(userRoot, {
+            'a-keep.json': '{"keep":true}',
+            'b-vanish.tmp': 'transient-temp-file',
+            'c-after.json': '{"after":true}',
+        });
+
+        const vanishPath = path.join(userRoot, 'b-vanish.tmp');
+        const realOpen = fs.promises.open;
+        const openSpy = jest.spyOn(fs.promises, 'open').mockImplementation((targetPath, ...args) => {
+            if (String(targetPath).endsWith('a-keep.json') && fs.existsSync(vanishPath)) {
+                fs.unlinkSync(vanishPath);
+            }
+            return realOpen(targetPath, ...args);
+        });
+
+        const chunks = [];
+        const output = new PassThrough();
+        output.on('data', chunk => chunks.push(chunk));
+
+        try {
+            await createBackupArchive(handle, output);
+        } finally {
+            openSpy.mockRestore();
+        }
+
+        const unzipped = unzipSync(new Uint8Array(Buffer.concat(chunks)));
+        expect(Buffer.from(unzipped['a-keep.json']).toString('utf8')).toBe('{"keep":true}');
+        expect(Buffer.from(unzipped['c-after.json']).toString('utf8')).toBe('{"after":true}');
+        expect(unzipped['b-vanish.tmp']).toBeUndefined();
     });
 });
 
