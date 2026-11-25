@@ -3,7 +3,6 @@ import { getConversationGroupIdForAvatar, getConversationPersonaId, getConversat
 import { generateSelfieFromContext } from './generation.js';
 import { updateConversationMemorySummary } from './prompt.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
-import { openScheduleEditorModal, renderConversationMemoryPanel } from './settings-panel.js';
 import { getSettings } from './settings-store.js';
 import { addConversationReminder, appendConversationChatMessage } from './conversation-store.js';
 
@@ -67,7 +66,6 @@ export async function quickConversationSummarize({ avatar = getCurrentCharAvatar
 
     const capturedChatId = chatId || getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     await updateConversationMemorySummary(avatar, { chatId: capturedChatId, force: true, groupId, notify: true, personaId });
-    renderConversationMemoryPanel();
 }
 
 export async function handleConversationSlashAction(text, { avatar = getCurrentCharAvatar(), chatId = '', settings = null, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -80,7 +78,7 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
 
     switch (parsed.command) {
         case 'selfie': {
-            const context = parsed.args || 'a casual selfie in the current DM conversation';
+            const context = parsed.args || 'a casual selfie in the current conversation';
             await generateSelfieFromContext(context, resolvedSettings, avatar, { chatId: capturedChatId, groupId, personaId, force: true, notify: true });
             return true;
         }
@@ -94,9 +92,15 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
             addConversationReminder(avatar, groupId, reminder.delay, reminder.memo, { chatId: capturedChatId, personaId });
             return true;
         }
-        case 'schedule':
-            openScheduleEditorModal(avatar);
+        case 'schedule': {
+            // The routine is edited on the profile page of its character; a group lists its members first.
+            const conversationId = getConversationRecord(avatar, { groupId, personaId })?.id;
+            if (conversationId) {
+                const { openConversationDetails } = await import('./chrome.js');
+                await openConversationDetails(conversationId, groupId ? { page: 'members' } : { page: 'profile', avatar });
+            }
             return true;
+        }
         case 'summarize':
             await quickConversationSummarize({ avatar, chatId: capturedChatId, groupId, personaId });
             return true;

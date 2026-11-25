@@ -113,10 +113,11 @@ export const DEFAULT_GROUNDED_DIALOGUE_RULES = `### Grounded Dialogue Rules
  */
 export const CONVERSATION_MESSAGE_SENT_EVENT = 'sb:conversation-user-message-sent';
 export const CONVERSATION_OPENED_EVENT = 'sb:conversation-opened';
+/** Asks the details window, when it is open, to close: the conversation that it shows belongs to the persona that has just changed. */
+export const CONVERSATION_DETAILS_CLOSE_EVENT = 'sb:conversation-details-close';
 
 export const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 export const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
-export const CONVERSATION_TIMELINE_CHANNELS = Object.freeze(['main', 'pinned', 'selfies', 'media', 'ooc', 'memories']);
 export const CONVERSATION_REACTION_LABELS = Object.freeze({
     heart: '❤️',
     spark: '✨',
@@ -197,16 +198,13 @@ export const CHROME_IDS = Object.freeze({
     attachmentPreview: 'sb_conversation_attachment_preview',
     replyPreview: 'sb_conversation_reply_preview',
     send: 'sb_conversation_send',
-    composerPolish: 'sb_conversation_composer_polish',
-    settingsBackdrop: 'sb_conversation_settings_backdrop',
-    settingsDrawer: 'sb_conversation_settings_drawer',
     railFooter: 'sb_conversation_rail_footer',
     personaPicker: 'sb_conversation_persona_picker',
     userStatusPicker: 'sb_conversation_user_status_picker',
     pickerBackdrop: 'sb_conversation_picker_backdrop',
 });
 export const AVAILABILITY_COPY = Object.freeze({
-    online: { label: 'Online', detail: 'Available for live DM replies.' },
+    online: { label: 'Online', detail: 'Available for live replies.' },
     idle: { label: 'Idle', detail: 'May follow up after a quiet stretch.' },
     dnd: { label: 'Do Not Disturb', detail: 'Auto-responder answers new messages.' },
     offline: { label: 'Offline', detail: 'Auto-responder answers while away.' },
@@ -242,34 +240,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
     image_gen_cooldown: 10,
     spontaneous_selfies: false,
 });
-
-export const SETTINGS_FIELDS = Object.freeze([
-    { id: 'sb_conv_availability', key: 'availability', prop: 'value' },
-    { id: 'sb_conv_offline_message', key: 'offline_message', prop: 'value' },
-    { id: 'sb_conv_proactive_messaging', key: 'proactive_messaging', prop: 'checked' },
-    { id: 'sb_conv_inactivity_threshold', key: 'inactivity_threshold', prop: 'value', type: 'number', fallback: DEFAULT_INACTIVITY_THRESHOLD, min: MIN_INACTIVITY_THRESHOLD },
-    { id: 'sb_conv_max_followups', key: 'max_followups', prop: 'value', type: 'number', fallback: DEFAULT_MAX_FOLLOWUPS, min: 1 },
-    { id: 'sb_conv_include_related_memory', key: 'include_related_memory', prop: 'checked' },
-    { id: 'sb_conv_selfie_command_enabled', key: 'selfie_command_enabled', prop: 'checked' },
-    { id: 'sb_conv_schedule_command_enabled', key: 'schedule_command_enabled', prop: 'checked' },
-    { id: 'sb_conv_geechan_chatroom_prompt', key: 'geechan_chatroom_prompt', prop: 'value' },
-    { id: 'sb_conv_custom_instructions', key: 'custom_instructions', prop: 'value' },
-    { id: 'sb_conv_grounded_dialogue_rules_enabled', key: 'grounded_dialogue_rules_enabled', prop: 'checked' },
-    { id: 'sb_conv_grounded_dialogue_rules', key: 'grounded_dialogue_rules', prop: 'value' },
-    { id: 'sb_conv_multi_char_names', key: 'multi_char_names', prop: 'value' },
-    { id: 'sb_conv_roleplay_reactions', key: 'roleplay_reactions', prop: 'checked' },
-    { id: 'sb_conv_lorebooks_enabled', key: 'lorebooks_enabled', prop: 'checked' },
-    { id: 'sb_conv_lorebook_override', key: 'lorebook_override', prop: 'value' },
-    { id: 'sb_conv_connection_profile', key: 'connection_profile', prop: 'value' },
-    { id: 'sb_conv_authors_note', key: 'authors_note', prop: 'value' },
-    { id: 'sb_conv_notifications_muted', key: 'notifications_muted', prop: 'checked' },
-    { id: 'sb_conv_prose_polisher', key: 'prose_polisher', prop: 'checked' },
-    { id: 'sb_conv_image_gen_enabled', key: 'image_gen_enabled', prop: 'checked' },
-    { id: 'sb_conv_image_gen_prompt_template', key: 'image_gen_prompt_template', prop: 'value' },
-    { id: 'sb_conv_image_gen_negative', key: 'image_gen_negative', prop: 'value' },
-    { id: 'sb_conv_image_gen_cooldown', key: 'image_gen_cooldown', prop: 'value', type: 'number', fallback: 10, min: 0 },
-    { id: 'sb_conv_spontaneous_selfies', key: 'spontaneous_selfies', prop: 'checked' },
-]);
 
 /** Settings of the mode, not of a conversation: they are kept in `settings.json`, and every conversation reads the same value. */
 export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([

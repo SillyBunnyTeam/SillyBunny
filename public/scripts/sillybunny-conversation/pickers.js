@@ -20,7 +20,6 @@ import {
     makeConversationGroup,
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
-import { saveCurrentPanelSettings } from './interface.js';
 import { getCharacterForAvatar } from './media.js';
 import {
     getActiveConversationPersonaAppendixIds,
@@ -30,27 +29,7 @@ import {
     getUserStatus,
 } from './personas.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
-import { closeConversationList } from './settings-panel.js';
-import { conversationState } from './state.js';
-
-export function readMembersFromList(listId) {
-    const list = document.getElementById(listId);
-    if (!(list instanceof HTMLElement)) {
-        return '';
-    }
-
-    const checked = [];
-    list.querySelectorAll('.sb-conversation-member-checkbox:checked').forEach((cb) => {
-        if (cb instanceof HTMLInputElement && cb.value) {
-            checked.push(cb.value);
-        }
-    });
-    return checked.join(', ');
-}
-
-export function readChimingMembersFromList() {
-    return readMembersFromList('sb_conv_chiming_member_list');
-}
+import { closeConversationList } from './conversation-pages.js';
 
 // Pickers are bottom sheets under the menu condition, like every other menu (sillybunny-conversation.css repeats it).
 const PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;
@@ -437,39 +416,6 @@ export function togglePersonaPicker(anchor = getPickerAnchor('[data-sb-conversat
     (picker.querySelector('[aria-selected="true"]') || picker.querySelector('button'))?.focus?.({ preventScroll: true });
 }
 
-export function bindMemberList(listId, searchId) {
-    const list = document.getElementById(listId);
-    if (!(list instanceof HTMLElement) || list.dataset.sbConversationBound === 'true') {
-        return;
-    }
-
-    list.dataset.sbConversationBound = 'true';
-    list.addEventListener('change', (event) => {
-        const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('.sb-conversation-member-checkbox')) {
-            saveCurrentPanelSettings();
-        }
-    });
-
-    const searchInput = document.getElementById(searchId);
-    if (searchInput instanceof HTMLInputElement) {
-        searchInput.addEventListener('input', () => {
-            const query = searchInput.value.toLowerCase().trim();
-            const options = list.querySelectorAll('.sb-conversation-member-option');
-            options.forEach(opt => {
-                if (opt instanceof HTMLElement) {
-                    const charName = opt.dataset.charName || '';
-                    if (charName.includes(query)) {
-                        opt.style.display = '';
-                    } else {
-                        opt.style.display = 'none';
-                    }
-                }
-            });
-        });
-    }
-}
-
 const START_PICKER_ANCHOR = '[data-sb-conversation-action="open-new-menu"]';
 let activeStartPicker = null;
 
@@ -529,7 +475,7 @@ function getCharacterPickerItems() {
 
 export function toggleStartDirectConversationPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
     openStartPicker('solo', anchor, {
-        title: 'Create a Solo DM',
+        title: 'New Conversation',
         items: getCharacterPickerItems(),
         onSelect: index => void runConversationAction('start-direct-conversation', { characterIndex: String(index) }),
     });
@@ -645,7 +591,7 @@ export async function addMembersToConversation(avatars, { sourceAvatar, sourceGr
         return openNewConversationGroup(getConversationGroupById(result.conversation.id), sourceAvatar);
     }
     hideConversationPickers();
-    scheduleInterfaceRefresh({ syncControls: true });
+    scheduleInterfaceRefresh();
     scheduleConversationListRender();
     toastr.success('Members added');
     return true;
@@ -660,29 +606,19 @@ export function getCurrentGroupMemberAvatars(groupId) {
     return group.members.filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
 }
 
-export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '', anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
-    const normalizedSourceGroupId = sourceGroupId || '';
-    const sourceMembers = normalizedSourceGroupId ? getCurrentGroupMemberAvatars(normalizedSourceGroupId) : [];
-    const lockedMembers = new Set(sourceAvatar ? (sourceMembers.length ? sourceMembers : [sourceAvatar]) : []);
-    const selectedMembers = new Set(lockedMembers);
+export function toggleConversationGroupPicker({ anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
+    const selectedMembers = new Set();
     const avatarOf = index => characters[index]?.avatar;
-    const items = getCharacterPickerItems().map(item => ({ ...item, muted: lockedMembers.has(avatarOf(item.value)) }));
-    // A group needs two members, and Add Member needs one that is not in the conversation yet.
-    const neededSelection = Math.max(2, lockedMembers.size + 1);
 
-    const title = sourceAvatar
-        ? (normalizedSourceGroupId ? 'Add Members to This Group' : 'Start a Group')
-        : 'Create a Group DM';
-
-    openStartPicker(`group:${sourceAvatar || ''}:${normalizedSourceGroupId}`, anchor, {
-        title,
-        items,
+    openStartPicker('group', anchor, {
+        title: 'New Group',
+        items: getCharacterPickerItems(),
         multiple: true,
         getItemState: index => (selectedMembers.has(avatarOf(index)) ? 'selected' : null),
         selectionCount: () => `${selectedMembers.size} selected`,
         onSelect: index => {
             const avatar = avatarOf(index);
-            if (!avatar || lockedMembers.has(avatar)) {
+            if (!avatar) {
                 return;
             }
             if (selectedMembers.has(avatar)) {
@@ -692,26 +628,11 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
             }
         },
         footer: [{
-            label: sourceAvatar && normalizedSourceGroupId ? 'Add to Group' : 'Create Group',
+            label: 'Create Group',
             icon: 'fa-solid fa-user-group',
-            disabled: () => selectedMembers.size < neededSelection,
-            onSelect: () => void (sourceAvatar
-                ? addMembersToConversation([...selectedMembers].filter(avatar => !lockedMembers.has(avatar)), { sourceAvatar, sourceGroupId: normalizedSourceGroupId })
-                : createAndOpenConversationGroup([...selectedMembers])),
+            // A group needs two members.
+            disabled: () => selectedMembers.size < 2,
+            onSelect: () => void createAndOpenConversationGroup([...selectedMembers]),
         }],
-    });
-}
-
-export function openAddMemberPicker() {
-    const avatar = getCurrentCharAvatar();
-    if (!avatar) {
-        toastr.warning('Open a Conversation before adding members');
-        return;
-    }
-
-    toggleConversationGroupPicker({
-        sourceAvatar: avatar,
-        sourceGroupId: conversationState.conversationSelectedGroupId || '',
-        anchor: getPickerAnchor(`#${CHROME_IDS.header} [data-sb-conversation-action="open-conversation-menu"]`),
     });
 }

@@ -1,9 +1,8 @@
 import { online_status } from '../../script.js';
 import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
-import { CHROME_IDS, DEFAULT_CHAT_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
+import { CHROME_IDS } from './constants.js';
 import {
     getActiveConversationChat,
-    getConversationChats,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
@@ -11,11 +10,11 @@ import {
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
-    parsePositiveInt,
 } from './context.js';
 import { generateConversationRaw, normalizeConversationOutputText } from './generation.js';
 import { getConversationMessageRevision } from './message-identity-utils.js';
 import { getConversationDisplayName, getConversationParticipants, getEffectiveConversationStatus, renderConversationParticipantStack } from './media.js';
+import { describeHeaderSubtitle } from './conversation-list-model.js';
 import {
     clearUnreadCount,
     getBadgeLabel,
@@ -26,25 +25,21 @@ import {
 import { conversationData } from './conversation-data-browser.js';
 import { getConversationRailItems } from './conversation-list.js';
 import { getAvailabilityCopy } from './personas.js';
-import { readChimingMembersFromList, updateUserFooter } from './pickers.js';
-import { clamp, getCharacterStatus } from './schedule.js';
-import { getSettings, saveSettings } from './settings-store.js';
+import { updateUserFooter } from './pickers.js';
+import { getCharacterStatus } from './schedule.js';
+import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationMessages, saveConversationMessages } from './conversation-store.js';
-import { renderConversationTimeline, syncSettingsDrawerRows } from './timeline-render.js';
+import { renderConversationTimeline } from './timeline-render.js';
 import { getActiveTypingParticipants, getLastConversationPreview } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
 import { createSpinner } from '../sillybunny-editor/status-page.js';
 import { getConversationListViewKey, renderConversationListView } from './conversation-list-view.js';
 
-/** The name the conversation was given, else its members' names (a direct conversation: the character's own). */
+/** The name of a row is the name that the header shows. */
 function getListRowName({ name, character, settings, groupId }) {
-    if (name) {
-        return name;
-    }
-    const members = getConversationParticipants(character.avatar, settings, { groupId });
-    return groupId && members.length ? members.map(member => member?.name || 'Character').join(', ') : character.name || 'Character';
+    return getConversationDisplayName(character.avatar, settings, { groupId, name });
 }
 
 function buildListEntry(item, personaId) {
@@ -156,7 +151,6 @@ export function updateConversationHeader(settings = getSettings()) {
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
     const participantsContainer = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-participants]`);
-    const statusCopy = getAvailabilityCopy(settings.availability);
     const current = avatar ? getCharacterStatus(avatar, new Date(), { personaId }) : null;
     const effectiveStatus = current ? current.status : settings.availability;
 
@@ -174,7 +168,8 @@ export function updateConversationHeader(settings = getSettings()) {
         if (status instanceof HTMLElement) {
             status.textContent = unavailableGroup
                 ? 'No eligible Conversation members are available in this group yet.'
-                : 'Pick or start a DM from the Pals rail.';
+                : 'Pick or start a conversation from the list.';
+            status.title = status.textContent;
         }
         return;
     }
@@ -184,43 +179,28 @@ export function updateConversationHeader(settings = getSettings()) {
     }
 
     const participants = getConversationParticipants(avatar, settings, { groupId });
-    const memberCount = Math.max(0, participants.length - 1);
     renderHeaderParticipantStack(participantsContainer, participants, {
         status: effectiveStatus,
         groupId,
         zoomable: true,
     });
     if (name instanceof HTMLElement) {
-        name.textContent = getConversationDisplayName(avatar, settings);
+        name.textContent = getConversationDisplayName(avatar, settings, { groupId, personaId });
     }
     if (status instanceof HTMLElement) {
-        const activeChatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || DEFAULT_CHAT_ID;
-        const chatName = getConversationChats(avatar, { groupId }).find(chat => chat.id === activeChatId)?.name || 'Main';
-        const typingParticipants = getActiveTypingParticipants(avatar, { groupId, personaId });
-        let statusText;
-        if (typingParticipants.length) {
-            const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
-            if (typingNames.length > 2) {
-                statusText = 'Several People Are Typing…';
-            } else if (typingNames.length > 1) {
-                statusText = `${typingNames.join(', ')} Are Writing…`;
-            } else {
-                statusText = `${typingNames[0] || 'Character'} Is Writing…`;
-            }
-        } else if (current && current.source !== 'manual') {
-            const currentCopy = getAvailabilityCopy(current.status);
-            const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
-            const memberNotice = memberCount ? ` · ${memberCount} pal${memberCount === 1 ? '' : 's'} can chime in` : '';
-            statusText = `${currentCopy.label} · ${current.activity}${delayedNotice}${memberNotice}`;
-        } else {
-            const memberNotice = memberCount ? ` · ${memberCount} pal${memberCount === 1 ? '' : 's'} can chime in` : '';
-            statusText = `${statusCopy.label}${memberNotice}`;
-            status.title = statusCopy.detail;
-        }
-        status.textContent = `${chatName} · ${statusText}`;
-        if ((current && current.source !== 'manual') || typingParticipants.length) {
-            status.title = statusText;
-        }
+        const typingNames = getActiveTypingParticipants(avatar, { groupId, personaId }).map(participant => participant?.name || 'Character');
+        const hasRoutineActivity = current.source !== 'manual';
+        status.textContent = describeHeaderSubtitle({
+            typingNames,
+            isGroup: Boolean(groupId),
+            description: getConversationGroupById(groupId)?.description ?? '',
+            status: {
+                label: getAvailabilityCopy(current.status).label,
+                activity: hasRoutineActivity ? current.activity : '',
+                delayed: ['dnd', 'offline'].includes(current.status),
+            },
+        });
+        status.title = status.textContent;
     }
 }
 
@@ -229,7 +209,7 @@ export function updateConversationChrome(settings = getSettings()) {
     renderConversationList();
 }
 
-export function refreshConversationInterface({ syncControls = false } = {}) {
+export function refreshConversationInterface() {
     const avatar = getCurrentCharAvatar();
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
@@ -239,10 +219,6 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
     setConversationInterfaceActive(active);
 
-    if (syncControls && avatar) {
-        applySettingsToPanel(settings);
-    }
-
     if (active) {
         if (avatar) {
             const record = getConversationRecord(avatar, { groupId, personaId });
@@ -250,7 +226,7 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
             const address = record && chatId ? { conversationId: record.id, chatId } : null;
             conversationData.setOpen(address);
             if (address && !conversationData.chat(address)) {
-                void conversationData.loadChat(address).then(() => scheduleInterfaceRefresh({ syncControls: false }), () => {});
+                void conversationData.loadChat(address).then(() => scheduleInterfaceRefresh(), () => {});
             } else {
                 void clearUnreadCount(avatar, { chatId, groupId, personaId });
             }
@@ -275,12 +251,12 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
                     ? 'Type your message…'
                     : unavailableGroup
                         ? 'This group has no eligible Conversation members yet…'
-                        : 'Pick or start a DM from the Pals rail…';
+                        : 'Pick or start a conversation from the list…';
         }
         if (send instanceof HTMLButtonElement) {
             send.disabled = !avatar || chatLoading || !isConnected || conversationState.conversationUploadActive;
         }
-        document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-quick`).forEach((button) => {
+        document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-tool`).forEach((button) => {
             if (button instanceof HTMLButtonElement) {
                 button.disabled = !avatar;
             }
@@ -288,93 +264,6 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
     }
 
     updateProsePolisherButtonVisibility();
-}
-
-export function readSettingsFromPanel(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const settings = getSettings(avatar, { groupId, personaId });
-
-    for (const field of SETTINGS_FIELDS) {
-        const element = document.getElementById(field.id);
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        if (field.prop === 'checked') {
-            settings[field.key] = Boolean(element.checked);
-        } else if (field.type === 'number') {
-            const parsed = parsePositiveInt(element.value, field.fallback, field.min);
-            settings[field.key] = typeof field.max === 'number' ? clamp(parsed, field.min, field.max) : parsed;
-        } else {
-            settings[field.key] = element.value ?? '';
-        }
-    }
-
-    return settings;
-}
-
-export function saveCurrentPanelSettings(options = {}) {
-    const avatar = options?.avatar || getCurrentCharAvatar();
-    if (!avatar) {
-        return;
-    }
-
-    const groupId = Object.prototype.hasOwnProperty.call(options, 'groupId') ? options.groupId || '' : getConversationGroupIdForAvatar(avatar);
-    const personaId = options?.personaId || getConversationPersonaId();
-
-    // Sync dynamic editor state into hidden backing inputs before reading
-    const chimingInput = document.getElementById('sb_conv_multi_char_names');
-    if (chimingInput instanceof HTMLInputElement) {
-        chimingInput.value = readChimingMembersFromList();
-    }
-
-    const settings = readSettingsFromPanel(avatar, { groupId, personaId });
-    saveSettings(avatar, settings, { groupId, personaId });
-    if (personaId === getConversationPersonaId()) {
-        scheduleInterfaceRefresh({ syncControls: false });
-    }
-    updateGroupMembersVisibility();
-}
-
-export function applySettingsToPanel(settings) {
-    for (const field of SETTINGS_FIELDS) {
-        const element = document.getElementById(field.id);
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        if (field.prop === 'checked') {
-            element.checked = Boolean(settings[field.key]);
-        } else {
-            element.value = settings[field.key] ?? '';
-        }
-    }
-    updateGroupMembersVisibility();
-    syncSettingsDrawerRows();
-}
-
-/** The list of extras is shown while the conversation has any. */
-export function updateGroupMembersVisibility() {
-    const names = document.getElementById('sb_conv_multi_char_names');
-    const wrapper = document.getElementById('sb_conv_group_members_wrapper');
-    if (names instanceof HTMLInputElement && wrapper instanceof HTMLElement) {
-        wrapper.hidden = !names.value;
-    }
-}
-
-export function loadCurrentPanelSettings() {
-    const avatar = getCurrentCharAvatar();
-    const personaId = getConversationPersonaId();
-
-    if (!avatar) {
-        applySettingsToPanel(DEFAULT_SETTINGS);
-        scheduleInterfaceRefresh({ syncControls: false });
-        return;
-    }
-
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId, personaId });
-    applySettingsToPanel(settings);
-    scheduleInterfaceRefresh({ syncControls: false });
 }
 
 export function updateProsePolisherButtonVisibility() {

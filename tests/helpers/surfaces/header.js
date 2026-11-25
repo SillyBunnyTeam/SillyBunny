@@ -207,18 +207,6 @@ async function openConversationSidebar(page) {
     await settle(page);
 }
 
-async function openConversationSettingsHeader(page) {
-    await openConversation(page);
-    if (await isConversationPages(page)) {
-        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
-        await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-    } else {
-        await page.locator('[data-sb-conversation-action="open-settings"]').click();
-    }
-    await shown(page, '#sb_conversation_settings_drawer');
-    await settle(page);
-}
-
 // ---------------------------------------------------------------------------------------------------------------------
 // Editor and list headers
 // ---------------------------------------------------------------------------------------------------------------------
@@ -464,22 +452,6 @@ export const surfaces = [
         close: closeConversation,
         needs: ['character'],
         sources: [`${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${CSS}/sillybunny-conversation.css`],
-    },
-    {
-        id: 'header.conversation.settings',
-        family: 'header',
-        owner: 'A',
-        title: 'Conversation: settings header',
-        root: '#sb_conversation_settings_drawer .sb-conversation-settings-header',
-        ready: ['#sb_conversation_settings_drawer .sb-conversation-settings-title', '#sb_conversation_settings_drawer .sb-conversation-settings-close'],
-        overlay: true,
-        open: openConversationSettingsHeader,
-        async close(page) {
-            await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
-            await gone(page, '#sb_conversation_settings_drawer');
-        },
-        needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/settings-panel.js`, `${CSS}/sillybunny-conversation.css`],
     },
     {
         id: 'header.side-panel.authors-note',

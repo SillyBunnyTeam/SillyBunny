@@ -49,10 +49,10 @@ export const MESSAGE_INDEX = Object.freeze({
 
 const CHAT_NAMES = Object.freeze(['Rainy evening', 'Another ending']);
 
-/** The id of the Nth message of a branch that `addConversationChats` makes, counting the branches and the messages from 0. */
-export const chatMessageId = (chat, number) => `branch-${chat}-${number}`;
+/** The id of the Nth message of a chat that `addConversationChats` makes, counting the chats and the messages from 0. */
+export const chatMessageId = (chat, number) => `chat-${chat}-${number}`;
 
-/** The message of a branch, in the timeline. */
+/** The message of a chat, in the timeline. */
 export const chatMessage = (chat, number) => `#sb_conversation_timeline .sb-conversation-message[data-message-id="${chatMessageId(chat, number)}"]`;
 
 /**
@@ -90,14 +90,6 @@ export async function setConversationConnection(page, connected) {
         && document.getElementById('sb_conversation_send').disabled === !connected, connected);
 }
 
-/** Closes the settings column or page if it is open. */
-export async function closeConversationSettingsPane(page) {
-    if (await page.locator('#sb_conversation_settings_drawer').isVisible()) {
-        await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
-        await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'hidden' });
-    }
-}
-
 /** Puts the workspace back to the page of the chat with nothing open: no editor, search, reply, picker, text or attachment. */
 async function resetConversation(page) {
     await closeOverlays(page);
@@ -117,7 +109,6 @@ async function resetConversation(page) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         document.activeElement?.blur?.();
     });
-    await closeConversationSettingsPane(page);
     await showConversationPage(page, 'chat');
     await page.mouse.move(0, 0);
 }
@@ -170,7 +161,7 @@ export async function openConversation(page) {
     await settle(page);
 }
 
-/** Selects the main conversation again when a branch is open, as the branch list of the header does. */
+/** Selects the first chat of the conversation again when another chat is open. */
 async function showMainChat(page) {
     if (await page.locator(conversationMessage(0)).count()) {
         return;
@@ -180,22 +171,6 @@ async function showMainChat(page) {
         await selectConversation(avatar, { chatId: '' });
     }, FIXTURES.character.avatar);
     await page.locator(conversationMessage(0)).waitFor({ state: 'attached' });
-}
-
-/**
- * Shows the settings of the workspace: a column beside the chat from 1200px up, a drawer over it below that, and on a phone
- * (`(max-width: 768px)`) a page of its own, where the Conversation menu holds the entry.
- */
-export async function openConversationSettings(page) {
-    const layout = await page.locator('#sheld').getAttribute('data-sb-conversation-layout');
-    if (layout === 'pages') {
-        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
-        await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-    } else {
-        await page.locator('[data-sb-conversation-action="open-settings"]').click();
-    }
-    await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'visible' });
-    await settle(page);
 }
 
 /** Opens the inline editor of a message. From `foundation/conversation-mode.e2e.js` ("inline message editor"). */
@@ -261,7 +236,7 @@ export async function closeConversationDetails(page) {
     }
 }
 
-/** Adds two conversations to the thread of the character, so that the workspace has branches, and opens the first of them. */
+/** Adds two conversations to the thread of the character, so that the workspace has chats, and opens the first of them. */
 export async function addConversationChats(page) {
     await page.evaluate(async ({ avatar, texts, names, characterName, userName }) => {
         const context = await import('/scripts/sillybunny-conversation/context.js');
@@ -273,7 +248,7 @@ export async function addConversationChats(page) {
             const chat = context.createConversationChat(avatar, name);
             const start = Date.UTC(2026, 0, 2 + index, 18, 0, 0);
             saveConversationMessages(avatar, texts.map((text, number) => ({
-                id: `branch-${index}-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? characterName : userName,
+                id: `chat-${index}-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? characterName : userName,
                 mes: text, send_date: new Date(start + number * 60_000).toISOString(), created_at: start + number * 60_000, extra: {},
             })), { chatId: chat.id });
             // The chats start read, as the conversation of the thread does, so that the surfaces show no unread badge.

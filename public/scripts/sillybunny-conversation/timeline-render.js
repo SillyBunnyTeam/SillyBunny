@@ -1,27 +1,13 @@
 import {
-    characters,
     default_user_avatar,
     getThumbnailUrl,
     messageFormatting,
     name1,
 } from '../../script.js';
-import { world_names } from '../world-info.js';
-import {
-    createButtonRow,
-    createEntryRow,
-    createPrefGroup,
-    createRow,
-    createSpinRow,
-    createSwitchRow,
-    createTextAreaField,
-    releaseRowIds,
-} from '../sillybunny-editor/rows.js';
-import { createSelectRow } from '../sillybunny-editor/select-row.js';
 import {
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ACCEPT,
     CONVERSATION_REACTION_LABELS,
-    CONVERSATION_TIMELINE_CHANNELS,
     SELFIE_COMMAND_RE,
 } from './constants.js';
 import { truncateConversationReplyPreview } from './preview-utils.js';
@@ -42,11 +28,10 @@ import { dropQueueItemsOfDeletedMessages, removeChatMessages } from './message-d
 import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './conversation-list.js';
-import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './members.js';
-import { getConnectionProfiles } from './personas.js';
+import { escapeRegExp, getCharacterMentionHandles } from './members.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
-import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
+import { escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getSettings } from './settings-store.js';
 import {
     beginConversationGenerationOperation,
@@ -130,7 +115,6 @@ function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings
         avatar || '',
         groupId || '',
         chatId || '',
-        conversationState.conversationTimelineChannel || '',
         conversationState.conversationTimelineSearchQuery || '',
         allMessages.length,
         messages.length,
@@ -868,7 +852,7 @@ export function renderConversationTimeline() {
                 title: 'No Conversation Members Available',
                 description: `${unavailableGroup.name || 'This group'} does not currently have any eligible Conversation members. Add or enable a member, then try again.`,
             }
-            : { state: 'empty', icon: 'comments', title: 'Choose a DM to Begin' }));
+            : { state: 'empty', icon: 'comments', title: 'Choose a Conversation' }));
         conversationState.lastRenderedAvatar = null;
         conversationState.lastRenderedConversationKey = '';
         conversationState.lastRenderedMessageCount = 0;
@@ -925,7 +909,7 @@ export function renderConversationTimeline() {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'empty',
             icon: 'message',
-            title: 'No DM Messages Yet',
+            title: 'No Messages Yet',
             description: 'Type a message to begin chatting with this character!',
         }));
         conversationState.lastRenderedAvatar = avatar;
@@ -945,7 +929,6 @@ export function renderConversationTimeline() {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'no-results',
             title: 'No Matching Messages',
-            description: 'Clear search or switch back to Main to see the full Conversation',
         }));
         conversationState.lastRenderedAvatar = avatar;
         conversationState.lastRenderedConversationKey = renderConversationKey;
@@ -1013,65 +996,6 @@ export function renderConversationTimeline() {
     }
 }
 
-export function buildLorebookOptions(selected) {
-    const options = ['<option value="">Character default (no override)</option>'];
-    for (const worldName of (Array.isArray(world_names) ? world_names : [])) {
-        const safe = escapeHtmlAttribute(worldName);
-        options.push(`<option value="${safe}"${worldName === selected ? ' selected' : ''}>${escapeHtmlText(worldName)}</option>`);
-    }
-    return options.join('');
-}
-
-export function buildConnectionProfileOptions(selected) {
-    const options = ['<option value="">Use current connection</option>'];
-    for (const profile of getConnectionProfiles()) {
-        if (!profile?.name) {
-            continue;
-        }
-        const safe = escapeHtmlAttribute(profile.name);
-        options.push(`<option value="${safe}"${profile.name === selected ? ' selected' : ''}>${escapeHtmlText(profile.name)}</option>`);
-    }
-    return options.join('');
-}
-
-export function buildMemberOptions(selectedNames, emptyText = 'Enable more characters to pick partners.') {
-    const selectedSet = new Set(parseAvatarList(selectedNames));
-    const currentAvatar = getCurrentCharAvatar();
-    const rows = [];
-    (Array.isArray(characters) ? characters : []).forEach((character) => {
-        if (!character?.avatar || character.avatar === currentAvatar) {
-            return;
-        }
-        const charName = character.name || 'Character';
-        const charAvatar = character.avatar;
-        const checked = selectedSet.has(charAvatar) ? ' checked' : '';
-        const thumbUrl = getThumbnailUrl('avatar', charAvatar);
-        rows.push(`
-            <div class="sb-conversation-member-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
-                <label class="sb-conversation-member-pick">
-                    <input type="checkbox" class="sb-conversation-member-checkbox" value="${escapeHtmlAttribute(charAvatar)}"${checked} />
-                    <img class="sb-conversation-member-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
-                    <span class="sb-conversation-member-name">${escapeHtmlText(charName)}</span>
-                </label>
-            </div>
-        `);
-    });
-    if (!rows.length) {
-        return `<div class="sb-conversation-empty">${escapeHtmlText(emptyText)}</div>`;
-    }
-    return rows.join('');
-}
-
-export function buildChimingMemberOptions(selectedNames) {
-    return buildMemberOptions(selectedNames, 'Enable more characters to pick chiming partners.');
-}
-
-export function setConversationTimelineChannel(channel) {
-    conversationState.conversationTimelineChannel = CONVERSATION_TIMELINE_CHANNELS.includes(channel) ? channel : 'main';
-    updateConversationToolsState();
-    scheduleTimelineRender();
-}
-
 export function updateConversationToolsState() {
     renderConversationComposerReplyPreview();
 
@@ -1088,14 +1012,6 @@ export function updateConversationToolsState() {
         searchToggle.setAttribute('aria-pressed', String(searchOpen));
     }
 
-    tools.querySelectorAll('[data-channel]').forEach((button) => {
-        if (button instanceof HTMLButtonElement) {
-            const active = button.dataset.channel === conversationState.conversationTimelineChannel;
-            button.setAttribute('aria-pressed', String(active));
-            button.dataset.active = String(active);
-        }
-    });
-
     const searchInput = document.getElementById(CHROME_IDS.search);
     if (searchInput instanceof HTMLInputElement && searchInput.value !== conversationState.conversationTimelineSearchQuery) {
         searchInput.value = conversationState.conversationTimelineSearchQuery;
@@ -1103,9 +1019,7 @@ export function updateConversationToolsState() {
 }
 
 export function isConversationSearchBarOpen() {
-    return Boolean(conversationState.conversationSearchOpen)
-        || conversationState.conversationTimelineChannel !== 'main'
-        || Boolean(conversationState.conversationTimelineSearchQuery);
+    return Boolean(conversationState.conversationSearchOpen) || Boolean(conversationState.conversationTimelineSearchQuery);
 }
 
 export function toggleConversationSearchBar(open = !isConversationSearchBarOpen()) {
@@ -1116,7 +1030,6 @@ export function toggleConversationSearchBar(open = !isConversationSearchBarOpen(
         if (searchInput instanceof HTMLInputElement) {
             searchInput.value = '';
         }
-        conversationState.conversationTimelineChannel = 'main';
         updateConversationToolsState();
         scheduleTimelineRender();
         return;
@@ -1292,7 +1205,7 @@ export async function regenerateConversationMessage(messageId) {
     const sourceRevision = getConversationMessagesRevision(sourceMessages);
     regenerationBusyKeys.add(operationKey);
     const operation = beginConversationGenerationOperation();
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
 
     try {
         const transcript = sourceMessages.slice(0, -1);
@@ -1367,7 +1280,7 @@ export async function regenerateConversationMessage(messageId) {
     } finally {
         regenerationBusyKeys.delete(operationKey);
         endConversationGenerationOperation(operation);
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
 }
 
@@ -1426,7 +1339,7 @@ export async function branchConversationFromMessage(messageId) {
 export async function quickConversationSelfie() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        globalThis.toastr?.warning?.('Pick a DM first');
+        globalThis.toastr?.warning?.('Pick a conversation first');
         return;
     }
 
@@ -1437,7 +1350,7 @@ export async function quickConversationSelfie() {
     const context = await promptConversationText({
         title: 'Send a Selfie',
         text: 'Describe the selfie context',
-        defaultValue: 'a casual selfie in the current DM conversation',
+        defaultValue: 'a casual selfie in the current conversation',
         confirmLabel: 'Generate',
     });
     if (typeof context !== 'string') {
@@ -1596,309 +1509,6 @@ export function highlightConversationMentions(container, avatar = getCurrentChar
     }
 }
 
-let settingsSelectRows = [];
-
-function settingsFieldName(id) {
-    return id.replace(/^sb_conv_/, '').replace(/_/g, '-');
-}
-
-function createSettingsControl(tagName, id, attributes = {}) {
-    const control = document.createElement(tagName);
-    control.id = id;
-    for (const [name, value] of Object.entries(attributes)) {
-        control.setAttribute(name, value === true ? '' : String(value));
-    }
-    return control;
-}
-
-function appendSettingScope(label) {
-    const chip = document.createElement('span');
-    chip.className = 'sb-conversation-setting-scope';
-    chip.textContent = 'Global';
-    label.append(' ', chip);
-}
-
-function markSettingScope(controller) {
-    appendSettingScope(controller.row.querySelector('.ds-row-label'));
-    return controller;
-}
-
-function createSettingsSwitch({ id, label, subtitle, title, scope = false, onChange }) {
-    const controller = createSwitchRow({ id, field: settingsFieldName(id), label, subtitle, onChange });
-    if (title) {
-        controller.row.title = title;
-    }
-    return scope ? markSettingScope(controller) : controller;
-}
-
-function createSettingsSpin({ id, label, subtitle, min, max, step, value }) {
-    const input = createSettingsControl('input', id, { type: 'number', class: 'text_pole', min, max, step, value });
-    return createSpinRow({ normalize: false, input, label, subtitle, field: settingsFieldName(id) });
-}
-
-function createSettingsEntry({ id, label, placeholder }) {
-    const input = createSettingsControl('input', id, { type: 'text' });
-    return createEntryRow({ floating: true, input, label, placeholder, field: settingsFieldName(id) });
-}
-
-function createSettingsSelect({ id, label, subtitle, optionsHtml, scope = false }) {
-    const select = createSettingsControl('select', id);
-    select.innerHTML = optionsHtml;
-    const controller = createSelectRow({ select, label, subtitle, field: settingsFieldName(id) });
-    settingsSelectRows.push(controller);
-    return scope ? markSettingScope(controller) : controller;
-}
-
-function createSettingsTextArea({ id, label, subtitle, placeholder, rows, scope = false, readOnly = false }) {
-    const attributes = { class: readOnly ? 'text_pole textarea_compact' : 'text_pole textarea_compact autoSetHeight', placeholder };
-    if (readOnly) {
-        attributes.readonly = true;
-    }
-    const controller = createTextAreaField({
-        input: createSettingsControl('textarea', id, attributes),
-        field: settingsFieldName(id),
-        label,
-        subtitle,
-        rows,
-        expand: !readOnly,
-        expandLabel: 'Expand the Editor',
-    });
-    if (scope) {
-        appendSettingScope(controller.labelRow.querySelector('.ds-row-textarea__label'));
-    }
-    return controller;
-}
-
-function createSettingsAction({ action, label, icon, danger = false }) {
-    const controller = createButtonRow({ label, icon, danger, field: action });
-    controller.row.dataset.sbConversationAction = action;
-    return controller;
-}
-
-function createSettingsHiddenInput(id, type, value) {
-    return createSettingsControl('input', id, value === undefined ? { type, hidden: true } : { type, value });
-}
-
-function createSettingsGroup({ title, subtitle, field, rows, hidden = [] }) {
-    // Level 4: the theme boxes every h3 outside a dialog, and a group heading takes no box.
-    const group = createPrefGroup({ title, subtitle, field, rows, headingLevel: 4 });
-    group.section.append(...hidden);
-    return group.section;
-}
-
-function createSettingsDrawerHeader(drawerTitle) {
-    const header = document.createElement('div');
-    header.className = 'sb-conversation-settings-header';
-    header.innerHTML = `
-        <button type="button" class="sb-conversation-flat-button sb-conversation-settings-close" data-sb-conversation-action="close-settings" title="Close Conversation Settings" aria-label="Close Conversation Settings">
-            <i class="fa-solid fa-xmark sb-conversation-settings-close-x" aria-hidden="true"></i>
-            <i class="fa-solid fa-arrow-left sb-conversation-settings-close-back" aria-hidden="true"></i>
-        </button>
-        <div>
-            <div class="sb-conversation-settings-kicker">Conversation Mode</div>
-            <div class="sb-conversation-settings-title">${escapeHtmlText(drawerTitle)}</div>
-        </div>
-    `;
-    return header;
-}
-
-/** The extras of a direct conversation. The user can take one away and cannot add one, and an extra no longer speaks. */
-function createExtrasWrapper(settings) {
-    const search = createSettingsControl('input', 'sb_conv_multi_char_search', {
-        type: 'text',
-        class: 'text_pole textarea_compact sb-conversation-member-search',
-        placeholder: 'Search group members…',
-    });
-    const list = createSettingsControl('div', 'sb_conv_chiming_member_list', { class: 'sb-conversation-member-list' });
-    list.innerHTML = buildChimingMemberOptions(settings.multi_char_names);
-    const field = document.createElement('div');
-    field.className = 'sb-conversation-members-field';
-    field.append(search, list);
-
-    const members = createRow({
-        label: 'Group DM Members',
-        field: 'group-members',
-        stacked: true,
-        suffix: field,
-    });
-
-    const wrapper = createSettingsControl('div', 'sb_conv_group_members_wrapper', { class: 'sb-conversation-members-wrapper' });
-    wrapper.hidden = !settings.multi_char_names;
-    wrapper.append(members.row);
-    return wrapper;
-}
-
-/**
- * Builds the settings drawer from the shared boxed-list rows. The drawer is a live store for
- * applySettingsToPanel and saveCurrentPanelSettings, so it is built whole and synchronously.
- */
-export function buildSettingsDrawerContent() {
-    const avatar = getCurrentCharAvatar();
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
-    const isGroupConversation = Boolean(groupId);
-    settingsSelectRows = [];
-
-    const presence = createSettingsGroup({
-        title: 'Presence & Availability',
-        field: 'presence',
-        rows: [
-            createSettingsSelect({
-                id: 'sb_conv_availability',
-                label: 'Status',
-                optionsHtml: '<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>',
-            }),
-            createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-Responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
-            createSettingsSwitch({
-                id: 'sb_conv_notifications_muted',
-                label: 'Mute This DM',
-                subtitle: 'Unread badges still update while muted or inside quiet hours',
-                title: 'Keep unread badges but suppress sounds and popups for this Conversation.',
-            }),
-        ],
-    });
-
-    const schedule = createSettingsGroup({
-        title: 'Character Schedule',
-        subtitle: 'Auto-generate a weekly schedule using the current active connection profile and selected model. This informs when the character is available to chat.',
-        field: 'schedule',
-        rows: [
-            createSettingsAction({ action: 'generate-schedule', label: 'Generate Schedule', icon: 'wand-magic-sparkles' }),
-            createSettingsAction({ action: 'edit-schedule', label: 'Edit Schedule', icon: 'pencil' }),
-        ],
-    });
-    const scheduleDisplay = createSettingsControl('div', 'sb_conv_schedule_display', { class: 'sb-conversation-schedule-display', 'aria-live': 'polite' });
-    schedule.append(scheduleDisplay);
-
-    const proactiveRows = [
-        createSettingsSwitch({
-            id: 'sb_conv_proactive_messaging',
-            label: isGroupConversation ? 'Let Group Members Message me First' : 'Let This Character Message me First',
-            subtitle: isGroupConversation
-                ? 'Let group members message you first based on the group schedule and mood'
-                : 'Let the character message you first based on their schedule and mood',
-        }),
-        createSettingsSpin({ id: 'sb_conv_inactivity_threshold', label: 'Patience (Mins)', min: 15, max: 360, step: 5, value: 120 }),
-        createSettingsSpin({ id: 'sb_conv_max_followups', label: 'Max Follow-Ups', min: 1, max: 3, step: 1, value: 3 }),
-        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies Through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
-        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character Status Updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now', title: 'Let the character update its current availability/activity through [schedule_update]' }),
-    ];
-    const proactive = createSettingsGroup({
-        title: 'Proactive Messaging',
-        subtitle: isGroupConversation ? 'These proactive controls apply only to this group Conversation, not solo DMs.' : undefined,
-        field: 'proactive',
-        rows: proactiveRows,
-    });
-
-    const memorySummary = createSettingsTextArea({
-        id: 'sb_conv_memory_summary',
-        label: 'Conversation Memory',
-        placeholder: 'No memory summary yet. It appears after enough messages, or you can refresh it manually once this Conversation has chat history.',
-        rows: 5,
-        readOnly: true,
-    });
-    const memoryMeta = createSettingsControl('small', 'sb_conv_memory_meta', { class: 'ds-row-subtitle ds-row-textarea__caption sb-conversation-memory-meta' });
-    memorySummary.row.append(memoryMeta);
-    memorySummary.control.setAttribute('aria-describedby', memoryMeta.id);
-    const memory = createSettingsGroup({
-        title: 'Chat Memories',
-        subtitle: 'Persistent notes the LLM writes for continuity. They survive deleted chats and only clear when you use Clear memory.',
-        field: 'memory',
-        rows: [
-            memorySummary,
-            createSettingsAction({ action: 'create-memory', label: 'Create Memory', icon: 'plus' }),
-            createSettingsAction({ action: 'refresh-memory', label: 'Refresh Memory', icon: 'rotate' }),
-            createSettingsAction({ action: 'clear-memory', label: 'Clear Memory', icon: 'eraser', danger: true }),
-            createSettingsSwitch({
-                id: 'sb_conv_include_related_memory',
-                label: isGroupConversation ? 'Remember Solo DMs in This Group DM' : 'Remember Group DMs in This Solo DM',
-                subtitle: isGroupConversation
-                    ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
-                    : 'When enabled, this solo DM can reference saved memory from group DMs that include this character',
-                title: 'Share saved memory summaries between this character\'s solo and group Conversation threads',
-            }),
-        ],
-    });
-    const memoryNote = document.createElement('p');
-    memoryNote.className = 'ds-row-subtitle sb-conversation-section-note';
-    memoryNote.textContent = 'Memory is kept across new chats and deleted histories until you clear it.';
-    memory.append(memoryNote);
-
-    const prompts = createSettingsGroup({
-        title: 'Prompts & Formats',
-        field: 'prompts',
-        rows: [
-            createSettingsTextArea({ id: 'sb_conv_geechan_chatroom_prompt', label: 'Geechan Chatroom System Prompt', placeholder: 'Type the chatroom system prompt here…', rows: 3 }),
-            createSettingsAction({ action: 'reset-prompt', label: 'Reset to Default', icon: 'rotate-left' }),
-            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM', placeholder: 'Type any custom instructions or guidelines here…', rows: 3, scope: true }),
-            createSettingsSwitch({
-                id: 'sb_conv_grounded_dialogue_rules_enabled',
-                label: 'Grounded Dialogue Rules',
-                subtitle: 'Optional anti-cliché style guard. Use the pencil to edit the full rules without expanding this drawer.',
-                title: 'Apply the global Grounded Dialogue Rules block to Conversation Mode prompts.',
-                scope: true,
-            }),
-            createSettingsAction({ action: 'edit-grounded-dialogue-rules', label: 'Edit Grounded Dialogue Rules', icon: 'pencil' }),
-            createExtrasWrapper(settings),
-            createSettingsSwitch({ id: 'sb_conv_roleplay_reactions', label: 'React to Current Roleplay', subtitle: 'Allow this character to privately react to the current roleplay or group chat' }),
-        ],
-        hidden: [
-            createSettingsControl('textarea', 'sb_conv_grounded_dialogue_rules', { hidden: true }),
-            createSettingsHiddenInput('sb_conv_multi_char_names', 'hidden', settings.multi_char_names),
-        ],
-    });
-
-    const context = createSettingsGroup({
-        title: 'Context Overrides',
-        field: 'context',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_lorebooks_enabled', label: 'Use Character Lorebooks', subtitle: 'When off, Conversation replies use no lorebooks at all, including the override below', scope: true }),
-            createSettingsSelect({ id: 'sb_conv_lorebook_override', label: 'Lorebook Override', optionsHtml: buildLorebookOptions(settings.lorebook_override) }),
-            createSettingsSelect({ id: 'sb_conv_connection_profile', label: 'Connection Profile', subtitle: 'Used for all Conversation Mode generations unless left on the current active connection', optionsHtml: buildConnectionProfileOptions(settings.connection_profile), scope: true }),
-            createSettingsTextArea({ id: 'sb_conv_authors_note', label: 'Author\'s Note Override', placeholder: '[Author\'s Note: Keep responses short, direct, and conversational as if chatting in a DM.]', rows: 2 }),
-        ],
-    });
-
-    const images = createSettingsGroup({
-        title: 'Image Generation',
-        field: 'images',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_image_gen_enabled', label: 'Enable Chatroom Image Generation', subtitle: 'Enable in-chat image generation' }),
-            createSettingsEntry({ id: 'sb_conv_image_gen_prompt_template', label: 'Image Prompt Template', placeholder: 'a photo of {{char}}, {{scene}}' }),
-            createSettingsEntry({ id: 'sb_conv_image_gen_negative', label: 'Negative Prompt', placeholder: 'blurry, distorted' }),
-            createSettingsSpin({ id: 'sb_conv_image_gen_cooldown', label: 'Image Cooldown (Minutes)', min: 0, max: 1440, step: 1, value: 10 }),
-            createSettingsSwitch({ id: 'sb_conv_spontaneous_selfies', label: 'Enable Spontaneous Selfies', subtitle: 'Character spontaneously generates selfies during the conversation' }),
-        ],
-    });
-
-    const tweaks = createSettingsGroup({
-        title: 'DM Tweaks',
-        field: 'tweaks',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_prose_polisher', label: 'Character Prose Polisher', subtitle: 'Enable a magic wand icon on character replies to polish and refine their outputs' }),
-        ],
-    });
-
-    const body = document.createElement('div');
-    body.className = 'sb-conversation-settings-body';
-    body.append(presence, schedule, proactive, memory, prompts, context, images, tweaks);
-
-    const fragment = document.createDocumentFragment();
-    fragment.append(createSettingsDrawerHeader(isGroupConversation ? 'Group Controls' : 'DM Controls'), body);
-    return fragment;
-}
-
-export function replaceSettingsDrawerContent(drawer) {
-    releaseRowIds(drawer);
-    drawer.replaceChildren(buildSettingsDrawerContent());
-}
-
-export function syncSettingsDrawerRows() {
-    for (const row of settingsSelectRows) {
-        row.sync();
-    }
-}
-
 function bindConversationChromeControlsAsync(sheld) {
     void import('./chrome.js')
         .then(({ bindConversationChromeControls }) => bindConversationChromeControls(sheld))
@@ -1924,19 +1534,15 @@ export function ensureConversationChrome() {
                 <span class="sb-conversation-list-toggle-badge" hidden></span>
             </button>
             <div class="sb-conversation-header-avatar" data-sb-conversation-participants></div>
-            <button type="button" class="sb-conversation-header-title" data-sb-conversation-action="open-chat-menu" aria-haspopup="menu" title="Branches">
+            <button type="button" class="sb-conversation-header-title" data-sb-conversation-action="open-details" aria-haspopup="dialog" title="Details">
                 <span class="sb-conversation-header-copy">
                     <span class="sb-conversation-header-name" data-sb-conversation-name>Conversation</span>
                     <span class="sb-conversation-header-status" data-sb-conversation-status></span>
                 </span>
-                <i class="fa-solid fa-chevron-down sb-conversation-header-caret" aria-hidden="true"></i>
             </button>
             <div class="sb-conversation-header-actions">
                 <button type="button" class="sb-conversation-flat-button sb-conversation-header-search" data-sb-conversation-action="toggle-search" title="Search" aria-label="Search" aria-pressed="false" aria-controls="${CHROME_IDS.tools}">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-header-settings" data-sb-conversation-action="open-settings" title="Conversation Settings" aria-label="Conversation Settings">
-                    <i class="fa-solid fa-gear" aria-hidden="true"></i>
                 </button>
                 <button type="button" class="sb-conversation-flat-button sb-conversation-header-menu" data-sb-conversation-action="open-conversation-menu" title="Conversation Menu" aria-label="Conversation Menu" aria-haspopup="menu">
                     <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
@@ -1957,16 +1563,8 @@ export function ensureConversationChrome() {
                 <label class="sb-conversation-search-wrap" for="${CHROME_IDS.search}">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     <span class="sr-only">Search Conversation Messages</span>
-                    <input id="${CHROME_IDS.search}" class="sb-conversation-search-entry" type="search" placeholder="Search this DM" autocomplete="off" />
+                    <input id="${CHROME_IDS.search}" class="sb-conversation-search-entry" type="search" placeholder="Search this conversation" autocomplete="off" />
                 </label>
-                <div class="sb-conversation-channel-tabs" role="toolbar" aria-label="Conversation Filters">
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="main" aria-pressed="true">Main</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="pinned" aria-pressed="false">Pins</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="selfies" aria-pressed="false">Selfies</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="media" aria-pressed="false">Files</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="ooc" aria-pressed="false">OOC</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="memories" aria-pressed="false">Memories</button>
-                </div>
             </div>
             <div id="${CHROME_IDS.timeline}" class="sb-conversation-timeline" role="log" aria-live="polite"></div>
             <div id="${CHROME_IDS.dropHint}" class="sb-conversation-drop-hint" hidden>Drop files to attach</div>
@@ -1974,29 +1572,15 @@ export function ensureConversationChrome() {
                 <div id="${CHROME_IDS.replyPreview}" class="sb-conversation-reply-preview" hidden></div>
                 <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-row">
-                    <button type="button" class="sb-conversation-flat-button sb-conversation-composer-more" data-sb-conversation-action="open-composer-menu" title="Attach and More" aria-label="Attach and More" aria-haspopup="menu">
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    </button>
-                    <button id="${CHROME_IDS.attach}" type="button" class="sb-conversation-flat-button sb-conversation-composer-attach sb-conversation-composer-quick" data-sb-conversation-action="attach-file" title="Attach Files" aria-label="Attach Files">
+                    <button id="${CHROME_IDS.attach}" type="button" class="sb-conversation-flat-button sb-conversation-composer-tool sb-conversation-composer-attach" data-sb-conversation-action="attach-file" title="Attach Files" aria-label="Attach Files">
                         <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-composer-tool sb-conversation-composer-more" data-sb-conversation-action="open-composer-menu" title="Add to Message" aria-label="Add to Message" aria-haspopup="menu">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
                     </button>
                     <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation Attachments" />
                     <label class="sr-only" for="${CHROME_IDS.input}">Conversation Message</label>
                     <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message…"></textarea>
-                    <div class="sb-conversation-composer-actions" role="group" aria-label="Message Tools">
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-selfie" title="Send a Selfie" aria-label="Send a Selfie">
-                            <i class="fa-solid fa-camera" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-remind" title="Remind Me" aria-label="Remind Me">
-                            <i class="fa-solid fa-bell" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-summarize" title="Summarize Memory" aria-label="Summarize Memory">
-                            <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="force-response" title="Force a Reply" aria-label="Force a Reply">
-                            <i class="fa-solid fa-bolt" aria-hidden="true"></i>
-                        </button>
-                    </div>
                     <button id="${CHROME_IDS.send}" type="submit" class="sb-conversation-send-button" title="Send Conversation Message" aria-label="Send Conversation Message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                     </button>
@@ -2088,26 +1672,8 @@ export function ensureConversationChrome() {
         sheld.appendChild(statusPicker);
     }
 
-    let backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
-    if (!(backdrop instanceof HTMLElement)) {
-        backdrop = document.createElement('div');
-        backdrop.id = CHROME_IDS.settingsBackdrop;
-        backdrop.hidden = true;
-        sheld.appendChild(backdrop);
-    }
-
-    let drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-    if (!(drawer instanceof HTMLElement)) {
-        drawer = document.createElement('aside');
-        drawer.id = CHROME_IDS.settingsDrawer;
-        drawer.hidden = true;
-        drawer.setAttribute('aria-label', 'Conversation Settings');
-        replaceSettingsDrawerContent(drawer);
-        sheld.appendChild(drawer);
-    }
-
     bindConversationChromeControlsAsync(sheld);
-    return { sheld, header, stage, conversationList, backdrop, drawer };
+    return { sheld, header, stage, conversationList };
 }
 
 registerConversationRenderer('timeline', renderConversationTimeline);

@@ -6,18 +6,16 @@ import {
     captureGroupAsideRequest,
     captureRoleplayAsideRequest,
     checkGroupChatMention,
-    handleChatChanged,
     startConversationAutoWorker,
     stopConversationAutoWorker,
     triggerGroupAside,
     triggerRoleplayAside,
 } from './auto-engine.js';
 import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, selectConversation } from './chrome.js';
-import { CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
+import { CONVERSATION_DETAILS_CLOSE_EVENT, CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById } from './context.js';
 import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
 import { generationTargets, installPageLeaveEffects, installRemovalEffects } from './deletion-guards.js';
-import { loadCurrentPanelSettings } from './interface.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
 import { installReplyEvents } from './reply-events-browser.js';
@@ -25,7 +23,6 @@ import { installReplyFinalizer } from './reply-finalizer-browser.js';
 import { installRoundResume } from './round-resume-browser.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './conversation-list.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
-import { closeConversationSettings } from './settings-panel.js';
 import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
 import { conversationState, sendQueue, setExternalConversationGenerationActive } from './state.js';
 import { setConversationTimeout } from './timers.js';
@@ -36,7 +33,7 @@ function hasConversationRuntimeUsage() {
 
 function scheduleInterfaceRefreshIfOpen() {
     if (conversationState.conversationWorkspaceOpen) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
 }
 
@@ -151,18 +148,16 @@ export function init() {
     eventSource.on(event_types.ONLINE_STATUS_CHANGED, scheduleInterfaceRefreshIfOpen);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         if (conversationState.conversationWorkspaceOpen) {
-            handleChatChanged();
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     });
     eventSource.on(event_types.CHAT_LOADED, () => {
         if (conversationState.conversationWorkspaceOpen) {
-            handleChatChanged();
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     });
     eventSource.on(event_types.PERSONA_CHANGED, () => {
-        closeConversationSettings();
+        window.dispatchEvent(new CustomEvent(CONVERSATION_DETAILS_CLOSE_EVENT));
         conversationState.conversationReplyTarget = null;
         updateConversationNotificationIndicators();
         ensureConversationRuntimeStarted();
@@ -170,9 +165,7 @@ export function init() {
             if (conversationState.conversationSelectedGroupId && !getConversationGroupById(conversationState.conversationSelectedGroupId)) {
                 conversationState.conversationSelectedGroupId = null;
             }
-            handleChatChanged();
-            loadCurrentPanelSettings();
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     });
 
@@ -209,7 +202,7 @@ export function init() {
         updateConversationNotificationIndicators();
         if (hasAnyConversationModeUsage()) {
             ensureConversationRuntimeStarted();
-            loadCurrentPanelSettings();
+            scheduleInterfaceRefresh();
         }
     });
 }

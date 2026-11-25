@@ -2,7 +2,6 @@ import { characters, getThumbnailUrl } from '../../script.js';
 import {
     DEFAULT_SETTINGS,
     GLOBAL_CONVERSATION_SETTINGS_KEYS,
-    CONVERSATION_SETTINGS_KEYS,
 } from './constants.js';
 import {
     getActiveConversationChat,
@@ -15,20 +14,14 @@ import {
     getConversationStore,
     getCurrentCharAvatar,
     parsePositiveInt,
-    persistConversationStore,
-    pickConversationSettings,
     safeParseSettings,
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
 import { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary } from './memory-utils.js';
-import { renderConversationMemoryPanel } from './settings-panel.js';
 
 export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
 const MAX_RELATED_MEMORY_CONVERSATIONS = 4;
-const STATUS_VALUES = Object.freeze(['online', 'idle', 'dnd', 'offline']);
-// Values that the conversation file has no key for: the status is the character's, and the extras are a list of their own.
-const NOT_STORED_IN_CONVERSATION = new Set(['availability', 'multi_char_names']);
 
 /** Whether the current persona has any conversation, which decides whether the worker and the badges start. */
 export function hasAnyConversationModeUsage() {
@@ -163,53 +156,6 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
         .slice(0, Number.isFinite(max) ? max : undefined);
 }
 
-/**
- * Saves the settings panel of a conversation. A mode-wide setting goes to `settings.json`, the status of the character
- * to its own state, and the rest to the conversation, as the values that differ from the defaults.
- */
-export function saveSettings(avatar, settings, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!avatar) {
-        return;
-    }
-
-    const view = getConversationRecord(avatar, { groupId, personaId });
-    const normalizedSettings = safeParseSettings(settings);
-    const store = getConversationStore();
-    store.settings = normalizeGlobalConversationSettings(normalizedSettings, store.settings);
-    persistConversationStore();
-    if (!view) {
-        return;
-    }
-
-    if (STATUS_VALUES.includes(normalizedSettings.availability) && normalizedSettings.availability !== (conversationData.characterState(avatar).statusOverride ?? 'online')) {
-        conversationData.patchCharacter(avatar, { statusOverride: normalizedSettings.availability === 'online' ? null : normalizedSettings.availability });
-    }
-    const picked = pickConversationSettings(normalizedSettings, CONVERSATION_SETTINGS_KEYS);
-    const patch = {};
-    for (const [key, value] of Object.entries(picked)) {
-        const name = key === 'geechan_chatroom_prompt' ? 'system_prompt' : key;
-        if (NOT_STORED_IN_CONVERSATION.has(key) || value === undefined) {
-            continue;
-        }
-        const isDefault = JSON.stringify(value) === JSON.stringify(DEFAULT_SETTINGS[key]);
-        if (isDefault) {
-            if (Object.hasOwn(view.settings, name)) {
-                patch[name] = null;
-            }
-        } else if (['string', 'number', 'boolean'].includes(typeof value)) {
-            patch[name] = value;
-        }
-    }
-    if (Object.keys(patch).length) {
-        conversationData.patchConversation(view.id, { settings: patch });
-    }
-    // Extras can be taken away, never added.
-    const wanted = String(normalizedSettings.multi_char_names || '').split(',').map(item => item.trim()).filter(Boolean);
-    if (view.extras.length && wanted.length < view.extras.length) {
-        conversationData.patchConversation(view.id, { extras: view.extras.filter(extra => wanted.includes(extra)) });
-    }
-}
-
 function chatPatch(avatar, { chatId = '', groupId, personaId }, state) {
     const address = getConversationAddress(avatar, { chatId, groupId, personaId });
     if (!address) {
@@ -314,7 +260,6 @@ export function saveConversationMemorySummary(avatar, summary, messageCount, { c
             memory_updated_at: Date.now(),
         };
     });
-    renderConversationMemoryPanel();
 }
 
 export function clearConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -329,7 +274,6 @@ export function clearConversationMemorySummary(avatar = getCurrentCharAvatar(), 
             draft.header.chat_metadata.sb_conversation = { ...draft.header.chat_metadata.sb_conversation, memory_summary: '', memory_message_count: 0, memory_updated_at: cleared };
         });
     }
-    renderConversationMemoryPanel();
     return loaded.length > 0;
 }
 

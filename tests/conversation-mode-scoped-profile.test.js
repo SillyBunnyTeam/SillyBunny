@@ -139,40 +139,14 @@ describe('conversation mode scoped connection profile', () => {
     test('adds compact editable Grounded Dialogue Rules as an optional global prompt block', () => {
         expect(constantsSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled: false');
-        expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules_enabled\', key: \'grounded_dialogue_rules_enabled\', prop: \'checked\' }');
-        expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules\', key: \'grounded_dialogue_rules\', prop: \'value\' }');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled');
         expect(constantsSource).toContain('grounded_dialogue_rules');
-        expect(timelineSource).toContain('action: \'edit-grounded-dialogue-rules\'');
-        expect(timelineSource).toContain('createSettingsControl(\'textarea\', \'sb_conv_grounded_dialogue_rules\', { hidden: true })');
-        expect(chromeSource).toContain('openGroundedDialogueRulesEditor');
-        expect(chromeSource).toContain('case \'edit-grounded-dialogue-rules\':');
-        expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
         expect(promptSource).toContain('from \'./shared-helpers.js\'');
         expect(promptSource).toContain('fields.push(groundedRules)');
     });
 
-    test('settings booleans are switch rows and picker menus pass their trigger', () => {
-        const switchIds = [
-            'sb_conv_notifications_muted',
-            'sb_conv_proactive_messaging',
-            'sb_conv_selfie_command_enabled',
-            'sb_conv_schedule_command_enabled',
-            'sb_conv_include_related_memory',
-            'sb_conv_grounded_dialogue_rules_enabled',
-            'sb_conv_roleplay_reactions',
-            'sb_conv_image_gen_enabled',
-            'sb_conv_spontaneous_selfies',
-            'sb_conv_prose_polisher',
-        ];
-        for (const id of switchIds) {
-            expect(timelineSource).toContain(`id: '${id}'`);
-        }
-        // The pane's rows are the shared switch rows, not a Conversation-only checkbox class.
-        expect(timelineSource).toContain('createSwitchRow(');
-        expect(timelineSource).not.toContain('sb-conversation-switch');
-        expect(timelineSource).not.toContain('sb-conversation-pref-');
+    test('picker menus pass their trigger, and the composer and the timeline are the markup that the actions read', () => {
         expect(chromeSource).toContain('toggleStartDirectConversationPicker(target)');
         expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
         expect(chromeSource).toContain('togglePersonaPicker(target)');
@@ -181,19 +155,19 @@ describe('conversation mode scoped connection profile', () => {
         expect(conversationListSource).toContain('conversationData.list({ personaId })');
         expect(conversationListSource).not.toContain('.sort(');
         expect(conversationListSource).not.toContain('first.key === activeKey');
-        // The menu keeps the settings entry whenever the pages layout hides the header gear, whatever the viewport width.
-        expect(chromeSource).toContain('...(isConversationPagesLayout()');
         expect(chromeSource).not.toContain('LAYOUT_MOBILE_QUERY');
+        // Attach is a button of its own and the "+" menu holds the other four tools, so the four quick buttons are not in the markup.
         expect(timelineSource).toContain('sb-conversation-composer-attach');
-        expect(timelineSource).toContain('sb-conversation-composer-actions');
         expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');
-        expect(timelineSource).toContain('data-sb-conversation-action="quick-selfie"');
+        expect(timelineSource).toContain('data-sb-conversation-action="open-composer-menu"');
+        expect(timelineSource).not.toContain('sb-conversation-composer-actions');
+        expect(timelineSource).not.toContain('data-sb-conversation-action="quick-selfie"');
         expect(timelineSource).toContain('content.append(bubble, actionBar)');
         expect(timelineSource).toContain('item.append(avatarWrap, body, mobileTrigger)');
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');
         expect(actionMenuSource).toContain('maxLeft < minLeft');
-        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261125d');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261125e');
     });
 
     // Behaviour that these three tests used to pin in the source (a group without messages, the forced group settings,

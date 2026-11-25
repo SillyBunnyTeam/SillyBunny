@@ -116,7 +116,7 @@ export const surfaces = [
         id: 'conversation.row',
         title: 'Conversation row menu (secondary click)',
         needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-list-menu.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-controls.js`, ACTION_MENU],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-controls.js`, ACTION_MENU],
         async open(page) {
             await openAuditConversation(page);
             await showConversationPage(page, 'list');

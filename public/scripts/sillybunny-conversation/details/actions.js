@@ -9,9 +9,9 @@ import { selectConversation } from '../chrome.js';
 import { getConversationGroupAnchor, ensureDirectConversation, getConversationPersonaId, setActiveConversationChat } from '../context.js';
 import { getCharacterIndexForAvatar } from '../media.js';
 import { addMembersToConversation } from '../pickers.js';
-import { closeConversationList } from '../settings-panel.js';
+import { closeConversationList } from '../conversation-pages.js';
 import { conversationState } from '../state.js';
-import { setConversationTimelineChannel, updateConversationSearchQuery } from '../timeline-render.js';
+import { updateConversationSearchQuery } from '../timeline-render.js';
 
 /** The names under which the rest of the mode addresses a conversation: a character, and the group id for a group. */
 export function identityOf(view) {
@@ -76,12 +76,11 @@ export async function openCharacterEditor(avatar, { field = '' } = {}) {
     return true;
 }
 
-/** Shows a message in the timeline of the conversation, with the filters cleared, and flashes it. */
+/** Shows a message in the timeline of the conversation, with the search cleared, and flashes it. */
 export async function showMessageInTimeline(view, chatId, messageId) {
     if (!await openConversation(view, { chatId })) {
         return false;
     }
-    setConversationTimelineChannel('main');
     updateConversationSearchQuery('');
     for (let attempt = 0; attempt < 20; attempt++) {
         const node = document.querySelector(`#sb_conversation_timeline .sb-conversation-message[data-message-id="${CSS.escape(messageId)}"]`);

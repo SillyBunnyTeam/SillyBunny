@@ -52,7 +52,7 @@ export async function waitForReplyDelay(messageText, settings, avatar, { chatId 
     }
 
     if (isConversationActive(avatar, groupId, { chatId, personaId })) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
     await waitForDelay(delay);
 }
@@ -100,7 +100,7 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
 
     const isActive = isConversationActive(anchorAvatar, groupId, { chatId, personaId });
     if (isActive) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
     try {
         return await task();
@@ -119,7 +119,7 @@ export async function withTypingParticipant(participant, task, avatar = getCurre
             }
         }
         if (isConversationActive(anchorAvatar, groupId, { chatId, personaId })) {
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     }
 }

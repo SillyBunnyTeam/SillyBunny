@@ -14,7 +14,7 @@
  *   rail open, disconnected and connected, and with the bottom chat bar hidden. The composer with the Quick Reply bar is its own entry.
  * - The bottom chat bar, which is a row of controls on a desktop window and a chip with an actions sheet on a phone.
  * - The group chat: the speaker controls and the transcript with several speakers, with the speaker bar hidden.
- * - Conversation mode: the timeline with its message toolbar, editor, search, branches and settings column, and the composer.
+ * - Conversation mode: the timeline with its message toolbar, editor, search and chats, the details window, and the composer.
  *
  * Message timestamps, token counts and generation timers differ between runs, so each entry masks them.
  *
@@ -30,8 +30,8 @@ import {
     setExpandMessageActions, startGeneration, stopGeneration,
 } from './chat-steps.js';
 import {
-    DETAILS_WINDOW, MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationDetails, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById,
-    openConversation, openConversationDetailsAt, openConversationPicker, openConversationSettings, setConversationConnection, showConversationPage,
+    DETAILS_WINDOW, MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationDetails, conversationMessage, conversationMessageId, editConversationMessageById,
+    openConversation, openConversationDetailsAt, openConversationPicker, setConversationConnection, showConversationPage,
 } from './chat-conversation-steps.js';
 import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
 import { settle } from './steps.js';
@@ -554,7 +554,7 @@ export const surfaces = [
                     await page.locator('#sb_conversation_tools .sb-conversation-search-entry').waitFor({ state: 'visible' });
                     await settle(page);
                 },
-                ready: ['#sb_conversation_tools .sb-conversation-search-entry', '#sb_conversation_tools .sb-conversation-channel-tab'],
+                ready: ['#sb_conversation_tools .sb-conversation-search-entry'],
             },
             {
                 // A wide window shows the rail beside the chat at rest; only the mobile layout (`(max-width: 768px)`) has it as a page.
@@ -580,15 +580,7 @@ export const surfaces = [
                 ready: [PICKER_ROOT, '.sb-picker__option'],
             },
             {
-                id: 'settings-open',
-                async open(page) {
-                    await closeConversationSettingsPane(page);
-                    await openConversationSettings(page);
-                },
-                ready: ['#sb_conversation_settings_drawer', '#sb_conversation_settings_drawer .sb-conversation-settings-header'],
-            },
-            {
-                id: 'branches',
+                id: 'chats',
                 async open(page) {
                     await addConversationChats(page);
                 },

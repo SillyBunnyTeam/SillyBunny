@@ -148,7 +148,7 @@ describe('the effects of an incoming message', () => {
 
         expect(markConversationRead).toHaveBeenCalledWith('Nova.png', { chatId: 'main', groupId: '', personaId: PERSONA });
         expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', incoming, false, expect.anything());
-        expect(scheduleInterfaceRefresh).toHaveBeenCalledWith({ syncControls: false });
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
     });
 
     test('leave a message of the user alone: no read marker, no notification', () => {

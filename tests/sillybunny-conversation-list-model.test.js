@@ -5,10 +5,12 @@ const {
     SECTION_FAVORITES,
     buildListSections,
     describeConversationRow,
+    describeHeaderSubtitle,
     getReadToggle,
     getSectionForMove,
     getUnreadMarkerFor,
     isFavoriteSection,
+    resolveConversationName,
 } = await import('../public/scripts/sillybunny-conversation/conversation-list-model.js');
 
 const entry = (id, overrides = {}) => ({ id, name: id, favorite: false, muted: false, unread: 0, lastMessageRole: 'character', active: false, ...overrides });
@@ -125,5 +127,52 @@ describe('the read marker that makes the last message unread', () => {
         expect(getUnreadMarkerFor([message('m1'), message('m2', 'user')])).toBeNull();
         expect(getUnreadMarkerFor([message('m1'), { id: 'm2', role: 'system', mes: 'x' }])).toBeNull();
         expect(getUnreadMarkerFor([])).toBeNull();
+    });
+});
+
+describe('the name of a conversation, which the list and the header both show', () => {
+    test('a conversation that has a name shows it, whatever its members are called', () => {
+        expect(resolveConversationName({ name: 'Weekend plans', isGroup: true, memberNames: ['Tewi', 'Reisen'], characterName: 'Tewi' })).toBe('Weekend plans');
+    });
+
+    test('a group without a name shows its members\' names, in the order of the group', () => {
+        expect(resolveConversationName({ name: '', isGroup: true, memberNames: ['Tewi', 'Reisen', 'Seraphina'], characterName: 'Tewi' })).toBe('Tewi, Reisen, Seraphina');
+    });
+
+    test('a direct conversation without a name shows the character, not the name of its active chat', () => {
+        expect(resolveConversationName({ name: '', isGroup: false, memberNames: ['Tewi'], characterName: 'Tewi' })).toBe('Tewi');
+    });
+
+    test('a group that lists no member falls back to its character, and a card with no name to "Character"', () => {
+        expect(resolveConversationName({ name: '', isGroup: true, memberNames: [], characterName: 'Tewi' })).toBe('Tewi');
+        expect(resolveConversationName({ name: '', isGroup: false, memberNames: [], characterName: '' })).toBe('Character');
+    });
+});
+
+describe('the line under the name in the header', () => {
+    const online = { label: 'Online', activity: '', delayed: false };
+
+    test('a group shows its description, and nothing when it has none', () => {
+        expect(describeHeaderSubtitle({ isGroup: true, description: 'Planning the trip', status: online })).toBe('Planning the trip');
+        expect(describeHeaderSubtitle({ isGroup: true, description: '  ', status: online })).toBe('');
+    });
+
+    test('a direct conversation shows the status of the character, with what the character is doing', () => {
+        expect(describeHeaderSubtitle({ isGroup: false, status: online })).toBe('Online');
+        expect(describeHeaderSubtitle({ isGroup: false, status: { label: 'Idle', activity: 'free time', delayed: false } })).toBe('Idle · free time');
+    });
+
+    test('a status that delays replies says so after the activity', () => {
+        expect(describeHeaderSubtitle({ isGroup: false, status: { label: 'Do Not Disturb', activity: 'in a meeting', delayed: true } })).toBe('Do Not Disturb · in a meeting · replies may be delayed');
+    });
+
+    test('someone who is writing replaces the line, for one, two and more people', () => {
+        expect(describeHeaderSubtitle({ isGroup: false, typingNames: ['Tewi'], status: online })).toBe('Tewi Is Writing…');
+        expect(describeHeaderSubtitle({ isGroup: true, typingNames: ['Tewi', 'Reisen'], description: 'Trip', status: online })).toBe('Tewi, Reisen Are Writing…');
+        expect(describeHeaderSubtitle({ isGroup: true, typingNames: ['A', 'B', 'C'], description: 'Trip', status: online })).toBe('Several People Are Typing…');
+    });
+
+    test('a conversation with no status to show has no line', () => {
+        expect(describeHeaderSubtitle({ isGroup: false, status: null })).toBe('');
     });
 });

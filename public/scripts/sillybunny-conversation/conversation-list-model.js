@@ -1,7 +1,8 @@
 /**
  * What the conversation list shows and what its actions decide, with no DOM and no page imports, so that tests run it
  * as it is. The list has two sections: Favorites (kept only while it holds a row) and Conversations. Each keeps the
- * order the data module gives, newest message first, so a row never has a place of its own to drop into.
+ * order the data module gives, newest message first, so a row never has a place of its own to drop into. The name of a
+ * conversation and the line under it in the header are decided here too, so that the list and the header cannot differ.
  */
 
 import { isPendingServerReply } from './pending-reply.js';
@@ -54,6 +55,42 @@ export function getSectionForMove(direction) {
 
 export function isFavoriteSection(section) {
     return section === SECTION_FAVORITES;
+}
+
+/**
+ * The name of a conversation: the one it was given, else its members' names (a group), else its character. The active
+ * chat's name is not the name of the conversation.
+ * @param {{ name?: string, isGroup: boolean, memberNames: string[], characterName: string }} source
+ */
+export function resolveConversationName({ name, isGroup, memberNames, characterName }) {
+    if (name) {
+        return name;
+    }
+    return isGroup && memberNames.length ? memberNames.join(', ') : characterName || 'Character';
+}
+
+/**
+ * The line under the name in the conversation header. Someone writing replaces it; otherwise a group shows its
+ * description and a direct conversation shows what its character is doing.
+ * @param {{ typingNames?: string[], isGroup: boolean, description?: string, status?: { label: string, activity?: string, delayed?: boolean } | null }} source
+ */
+export function describeHeaderSubtitle({ typingNames = [], isGroup, description = '', status = null }) {
+    if (typingNames.length > 2) {
+        return 'Several People Are Typing…';
+    }
+    if (typingNames.length === 2) {
+        return `${typingNames.join(', ')} Are Writing…`;
+    }
+    if (typingNames.length === 1) {
+        return `${typingNames[0]} Is Writing…`;
+    }
+    if (isGroup) {
+        return description.trim();
+    }
+    if (!status) {
+        return '';
+    }
+    return [status.label, status.activity, status.delayed ? 'replies may be delayed' : ''].filter(Boolean).join(' · ');
 }
 
 /** The name that a screen reader reads for a row: the name, then what the row shows only by a badge or an icon. */

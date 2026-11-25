@@ -1,6 +1,7 @@
 /**
- * The sections of the three menus of the conversation list, as `openActionMenu` takes them. Each builder only decides
- * which items there are and what they say; the page gives it the actions, so that tests read the result as it is.
+ * The sections of the menus of the conversation surfaces (the list, the header and the composer), as `openActionMenu`
+ * takes them. Each builder only decides which items there are and what they say; the page gives it the actions, so that
+ * tests read the result as it is.
  */
 
 import { getReadToggle } from './conversation-list-model.js';
@@ -57,6 +58,56 @@ export function buildMainMenuSections({ markAllRead, openPreferences, openHelp }
             items: [
                 { label: 'Preferences', icon: 'fa-solid fa-sliders', onSelect: openPreferences },
                 { label: 'Help', icon: 'fa-solid fa-circle-question', onSelect: openHelp },
+            ],
+        },
+    ];
+}
+
+/**
+ * The menu of the conversation header (HIG Menus, a secondary menu for the item that the view shows). An item that does
+ * not apply is left out, and the deletes sit last in a section of their own.
+ * @param {{ muted: boolean, hasMessages: boolean, hasChat: boolean }} state
+ * @param {object} actions `setMuted` is called with the state that the item sets; the others with no argument.
+ */
+export function buildHeaderMenuSections({ muted, hasMessages, hasChat }, actions) {
+    const toggles = [
+        muted
+            ? { label: 'Unmute', icon: 'fa-solid fa-bell', onSelect: () => actions.setMuted(false) }
+            : { label: 'Mute', icon: 'fa-solid fa-bell-slash', onSelect: () => actions.setMuted(true) },
+        ...(hasMessages ? [{ label: 'Select Messages', icon: 'fa-solid fa-square-check', onSelect: actions.selectMessages }] : []),
+    ];
+    return [
+        {
+            items: [
+                { label: 'Details', icon: 'fa-solid fa-circle-info', onSelect: actions.openDetails },
+                { label: 'New Chat', icon: 'fa-solid fa-message', onSelect: actions.newChat },
+                { label: 'Add Member', icon: 'fa-solid fa-user-plus', onSelect: actions.addMember },
+            ],
+        },
+        { items: toggles },
+        {
+            items: [
+                ...(hasChat ? [{ label: 'Delete Chat', icon: 'fa-solid fa-trash-can', danger: true, onSelect: actions.deleteChat }] : []),
+                { label: 'Delete Conversation', icon: 'fa-solid fa-trash-can', danger: true, onSelect: actions.deleteConversation },
+            ],
+        },
+    ];
+}
+
+/**
+ * The "+" menu of the composer: what the user can add to the conversation besides a message. Attach is a button of its
+ * own beside the field, so it is not here.
+ * @param {{ enabled: boolean }} state Whether a conversation is open.
+ */
+export function buildComposerMenuSections({ enabled }, { selfie, remind, summarize, forceReply }) {
+    const disabled = !enabled;
+    return [
+        {
+            items: [
+                { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled, onSelect: selfie },
+                { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled, onSelect: remind },
+                { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled, onSelect: summarize },
+                { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled, onSelect: forceReply },
             ],
         },
     ];

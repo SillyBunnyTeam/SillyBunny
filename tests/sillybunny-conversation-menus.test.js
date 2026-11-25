@@ -1,10 +1,12 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 const {
+    buildComposerMenuSections,
+    buildHeaderMenuSections,
     buildMainMenuSections,
     buildNewMenuSections,
     buildRowMenuSections,
-} = await import('../public/scripts/sillybunny-conversation/conversation-list-menu.js');
+} = await import('../public/scripts/sillybunny-conversation/conversation-menus.js');
 
 const entry = (overrides = {}) => ({ id: 'conv_1', name: 'Seraphina', favorite: false, muted: false, unread: 0, lastMessageRole: 'character', active: false, ...overrides });
 
@@ -123,5 +125,104 @@ describe('the Main Menu', () => {
 
         expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
         expect(items.some(item => item.disabled)).toBe(false);
+    });
+});
+
+const makeHeaderActions = () => ({
+    openDetails: jest.fn(),
+    newChat: jest.fn(),
+    addMember: jest.fn(),
+    setMuted: jest.fn(),
+    selectMessages: jest.fn(),
+    deleteChat: jest.fn(),
+    deleteConversation: jest.fn(),
+});
+const headerState = (overrides = {}) => ({ muted: false, hasMessages: true, hasChat: true, ...overrides });
+
+describe('the menu of the conversation header', () => {
+    test('offers Details, New Chat and Add Member, then Mute and Select Messages, then the two deletes in a section of their own', () => {
+        const sections = buildHeaderMenuSections(headerState(), makeHeaderActions());
+
+        expect(labels(sections)).toEqual([
+            ['Details', 'New Chat', 'Add Member'],
+            ['Mute', 'Select Messages'],
+            ['Delete Chat', 'Delete Conversation'],
+        ]);
+    });
+
+    test('says Unmute for a muted conversation', () => {
+        const sections = buildHeaderMenuSections(headerState({ muted: true }), makeHeaderActions());
+
+        expect(labels(sections)[1]).toEqual(['Unmute', 'Select Messages']);
+    });
+
+    test('leaves out Select Messages when there is no message, and Delete Chat when there is no chat, instead of disabling them', () => {
+        const sections = buildHeaderMenuSections(headerState({ hasMessages: false, hasChat: false }), makeHeaderActions());
+        const items = sections.flatMap(section => section.items);
+
+        expect(labels(sections)).toEqual([['Details', 'New Chat', 'Add Member'], ['Mute'], ['Delete Conversation']]);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+
+    test('has no gear, no Branches and no Edit Schedule, and no item that the Main Menu has', () => {
+        const all = buildHeaderMenuSections(headerState(), makeHeaderActions()).flatMap(section => section.items.map(item => item.label));
+
+        expect(all).not.toContain('Conversation Settings');
+        expect(all.some(label => /branch/i.test(label))).toBe(false);
+        expect(all).not.toContain('Edit Schedule…');
+        expect(all).not.toContain('Mark All as Read');
+    });
+
+    test('both deletes are danger items, every item has an icon', () => {
+        const sections = buildHeaderMenuSections(headerState(), makeHeaderActions());
+        const items = sections.flatMap(section => section.items);
+
+        expect(find(sections, 'Delete Chat').danger).toBe(true);
+        expect(find(sections, 'Delete Conversation').danger).toBe(true);
+        expect(items.filter(item => item.danger)).toHaveLength(2);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+    });
+
+    test('each item runs its action; Mute and Unmute pass the state that they set', () => {
+        const actions = makeHeaderActions();
+        const sections = buildHeaderMenuSections(headerState(), actions);
+
+        for (const label of ['Details', 'New Chat', 'Add Member', 'Mute', 'Select Messages', 'Delete Chat', 'Delete Conversation']) {
+            find(sections, label).onSelect();
+        }
+        const unmute = buildHeaderMenuSections(headerState({ muted: true }), actions);
+        find(unmute, 'Unmute').onSelect();
+
+        expect(actions.openDetails).toHaveBeenCalledTimes(1);
+        expect(actions.newChat).toHaveBeenCalledTimes(1);
+        expect(actions.addMember).toHaveBeenCalledTimes(1);
+        expect(actions.setMuted.mock.calls).toEqual([[true], [false]]);
+        expect(actions.selectMessages).toHaveBeenCalledTimes(1);
+        expect(actions.deleteChat).toHaveBeenCalledTimes(1);
+        expect(actions.deleteConversation).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the "+" menu of the composer', () => {
+    test('holds Selfie, Remind, Summarize and Force Reply, and not Attach, which has a button of its own', () => {
+        const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn() };
+        const sections = buildComposerMenuSections({ enabled: true }, actions);
+
+        expect(labels(sections)).toEqual([['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']]);
+        for (const item of sections[0].items) {
+            item.onSelect();
+        }
+        expect(actions.selfie).toHaveBeenCalledTimes(1);
+        expect(actions.remind).toHaveBeenCalledTimes(1);
+        expect(actions.summarize).toHaveBeenCalledTimes(1);
+        expect(actions.forceReply).toHaveBeenCalledTimes(1);
+    });
+
+    test('disables every item while no conversation is open, and gives each an icon', () => {
+        const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn() };
+        const items = buildComposerMenuSections({ enabled: false }, actions).flatMap(section => section.items);
+
+        expect(items.every(item => item.disabled === true)).toBe(true);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
     });
 });

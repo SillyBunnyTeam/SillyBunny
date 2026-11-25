@@ -2,14 +2,15 @@ import { characters, default_user_avatar, getThumbnailUrl } from '../../script.j
 import { extension_settings, modules } from '../extensions.js';
 import { DEFAULT_SETTINGS, MAX_STACKED_PARTICIPANT_AVATARS } from './constants.js';
 import {
-    getActiveConversationChat,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
+    getConversationRecord,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
 } from './context.js';
+import { resolveConversationName } from './conversation-list-model.js';
 import { parseAvatarList } from './members.js';
 import { getExtensionCapability } from './extension-capabilities.js';
 import { formatPromptText } from './shared-helpers.js';
@@ -264,14 +265,21 @@ export function getCharacterAuthorNote(avatar = getCurrentCharAvatar()) {
     return String(character?.data?.extensions?.depth_prompt?.prompt || '').trim();
 }
 
-export function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const chat = getActiveConversationChat(avatar, { create: false, groupId });
-    if (chat?.name && chat.name !== 'Main') {
-        return chat.name;
-    }
-
-    const names = getParticipantNamesForDisplay(getConversationParticipants(avatar, settings, { groupId }));
-    return names.length ? names.join(', ') : 'Conversation';
+/**
+ * The name that the list and the header both show for a conversation. `name` is the one the conversation was given; it is
+ * read from the conversation when the caller does not have it.
+ */
+export function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), {
+    groupId = getConversationGroupIdForAvatar(avatar),
+    personaId = getConversationPersonaId(),
+    name = getConversationRecord(avatar, { groupId, personaId })?.name ?? '',
+} = {}) {
+    return resolveConversationName({
+        name,
+        isGroup: Boolean(groupId),
+        memberNames: getParticipantNamesForDisplay(getConversationParticipants(avatar, settings, { groupId, personaId })),
+        characterName: getCharacterForAvatar(avatar)?.name || '',
+    });
 }
 
 export function buildCharacterImagePrompt(template, scene = 'the current DM conversation', avatar = getCurrentCharAvatar()) {

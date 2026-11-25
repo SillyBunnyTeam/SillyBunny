@@ -13,7 +13,6 @@ export const conversationState = {
     conversationSelectedAvatar: null,
     conversationSelectedGroupId: null,
     conversationUnavailableGroupId: null,
-    conversationTimelineChannel: 'main',
     conversationTimelineSearchQuery: '',
     conversationSearchOpen: false,
     conversationReplyTarget: null,

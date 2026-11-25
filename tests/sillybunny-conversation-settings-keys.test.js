@@ -3,7 +3,6 @@ import { describe, expect, test } from '@jest/globals';
 import {
     DEFAULT_SETTINGS,
     GLOBAL_CONVERSATION_SETTINGS_KEYS,
-    SETTINGS_FIELDS,
     CONVERSATION_SETTINGS_KEYS,
 } from '../public/scripts/sillybunny-conversation/constants.js';
 
@@ -19,7 +18,7 @@ const KEPT_MODE_WIDE = [
     'quiet_hours_start', 'quiet_hours_end', 'simulate_reply_delay',
 ];
 const MOVED_TO_THE_CHARACTER = ['availability'];
-// Not a setting: the extras of a direct conversation are a list of their own that the settings show as a read-only value.
+// Not a setting: the extras of a direct conversation are a list of their own that the settings read as a derived value.
 const DERIVED = ['multi_char_names'];
 const REMOVED = [
     'enabled', 'idle_followup', 'idle_spontaneous', 'idle_action', 'idle_limit', 'cooldown', 'auto_message', 'weekly_schedule',
@@ -36,15 +35,6 @@ describe('sillybunny conversation settings keys', () => {
         }
     });
 
-    test('have a control only for a key that is kept', () => {
-        const kept = new Set(Object.keys(DEFAULT_SETTINGS));
-
-        for (const field of SETTINGS_FIELDS) {
-            expect(kept.has(field.key)).toBe(true);
-        }
-        expect(SETTINGS_FIELDS.map(field => field.key)).toEqual(expect.not.arrayContaining(REMOVED));
-    });
-
     test('keep the mode-wide values in settings.json and the others in the conversation', () => {
         expect([...GLOBAL_CONVERSATION_SETTINGS_KEYS].sort()).toEqual([...KEPT_MODE_WIDE].sort());
         expect(CONVERSATION_SETTINGS_KEYS.filter(key => GLOBAL_CONVERSATION_SETTINGS_KEYS.includes(key))).toEqual([]);
@@ -56,7 +46,6 @@ describe('sillybunny conversation settings keys', () => {
     test('turn Conversation lorebooks on by default with one global switch', () => {
         expect(DEFAULT_SETTINGS.lorebooks_enabled).toBe(true);
         expect(CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
-        expect(SETTINGS_FIELDS).toContainEqual({ id: 'sb_conv_lorebooks_enabled', key: 'lorebooks_enabled', prop: 'checked' });
     });
 
     test('turn the reply delay on, and messaging first off, until the user chooses', () => {

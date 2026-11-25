@@ -1,16 +1,14 @@
 /*
  * Conversation mode: a libadwaita split view modelled on Fractal.
- * #sheld carries two attributes set by chrome.js / settings-panel.js:
- *   data-sb-conversation-layout = split | overlay | pages (from the #sheld width: pages below 670px or in the 768px mobile layout)
- *   data-sb-conversation-page   = list | chat | settings (navigation state; drives the mobile pages)
+ * #sheld carries two attributes set by conversation-pages.js:
+ *   data-sb-conversation-layout = panes | pages (from the #sheld width: pages below 670px or in the 768px mobile layout)
+ *   data-sb-conversation-page   = list | chat (navigation state of the pages layout)
  * Every surface is an opaque --sb-layer-* token. No backdrop-filter.
  */
 #sb_conversation_header,
 #sb_conversation_list_toggle,
 #sb_conversation_list,
 #sb_conversation_stage,
-#sb_conversation_settings_backdrop,
-#sb_conversation_settings_drawer,
 #sb_conversation_picker_backdrop,
 .sb-conversation-picker {
     display: none;
@@ -18,9 +16,6 @@
 
 #sheld[data-sb-conversation-mode='on'] {
     --sb-conv-sidebar-width: clamp(220px, 25%, 280px);
-    --sb-conv-pane-width: 360px;
-    /* The pane's shadow is that of an overlay sidebar's (slide-shade.js), over the shade. */
-    --sb-conv-pane-shadow: 0 0 56px var(--sb-dialog-backdrop);
     --sb-conv-column-width: 100%;
     --sb-conv-headerbar-height: 56px;
     --sb-conv-button-size: max(40px, var(--sb-density-floor));
@@ -200,15 +195,13 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     font-size: 0.68rem;
 }
 
-/* Title button: libadwaita window title used as a menu button (name, subtitle, caret). */
-/* Desktop: the button hugs the name so only the title opens the branch menu, and the menu anchors under it. */
+/* Title button: the name and its subtitle, which open the details. The button hugs the text so that the avatars and the buttons beside it keep their own targets. */
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title {
     flex: 0 1 auto;
     min-inline-size: 0;
     min-block-size: var(--sb-conv-button-size);
     display: flex;
     align-items: center;
-    gap: 8px;
     margin: 0;
     padding: 4px 10px;
     border: 0;
@@ -232,10 +225,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title:active {
     background: var(--sb-flat-active-bg);
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title[aria-expanded='true'] {
-    background: var(--sb-flat-selected-bg);
 }
 
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title:focus-visible {
@@ -262,7 +251,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 
 .sb-conversation-header-status {
     overflow: hidden;
-    color: var(--sb-muted-fg);
+    /* DESIGN.md: secondary text takes the placeholder token, which keeps 4.5:1 where the muted foreground does not. */
+    color: var(--sb-input-placeholder);
     font-size: calc(var(--mainFontSize) * 0.8);
     font-weight: 400;
     line-height: var(--sb-line-compact);
@@ -272,17 +262,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 
 .sb-conversation-header-status:empty {
     display: none;
-}
-
-.sb-conversation-header-caret {
-    flex: 0 0 auto;
-    color: var(--sb-muted-fg);
-    font-size: 0.72em;
-    transition: transform var(--sb-transition-fast);
-}
-
-.sb-conversation-header-title[aria-expanded='true'] .sb-conversation-header-caret {
-    transform: rotate(180deg);
 }
 
 .sb-conversation-header-actions {
@@ -819,74 +798,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     flex: 1 1 220px;
 }
 
-.sb-conversation-channel-tabs {
-    min-inline-size: 0;
-    display: flex;
-    flex: 0 1 auto;
-    flex-wrap: nowrap;
-    gap: 4px;
-    align-items: center;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
-}
-
-.sb-conversation-channel-tabs::-webkit-scrollbar {
-    display: none;
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab {
-    position: relative;
-    flex: 0 0 auto;
-    block-size: 32px;
-    min-block-size: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0;
-    padding: 0 12px;
-    border: 0;
-    border-radius: var(--sb-radius-pill);
-    background: transparent;
-    color: var(--sb-muted-fg);
-    cursor: pointer;
-    font-size: calc(var(--mainFontSize) * 0.86);
-    font-weight: var(--sb-weight-control);
-    line-height: 1;
-    white-space: nowrap;
-    -webkit-tap-highlight-color: transparent;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-@media (hover: hover) {
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--SmartThemeBodyColor);
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab[aria-pressed='true']:hover {
-        background: var(--sb-flat-selected-hover-bg);
-    }
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab:active {
-    background: var(--sb-flat-active-bg);
-    color: var(--SmartThemeBodyColor);
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab[aria-pressed='true'] {
-    background: var(--sb-flat-selected-bg);
-    color: var(--SmartThemeBodyColor);
-    font-weight: var(--sb-weight-title);
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab:focus-visible {
-    outline: none;
-    color: var(--SmartThemeBodyColor);
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 /* Timeline: a centred reading column. */
 .sb-conversation-timeline {
     --sb-conv-bubble-own-bg: color-mix(in srgb, var(--sb-accent) 22%, var(--sb-layer-view));
@@ -907,7 +818,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     touch-action: pan-y;
 }
 
-/* ---------- Composer: desktop [attach] [entry] [tools] [send]; mobile [+] [entry] [send] ---------- */
+/* ---------- Composer: [attach] [+] [entry] [send] ---------- */
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer {
     flex: 0 0 auto;
     display: flex;
@@ -923,17 +834,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: flex;
     align-items: flex-end;
     gap: 6px;
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-more {
-    display: none;
-}
-
-.sb-conversation-composer-actions {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: flex-end;
-    gap: 2px;
 }
 
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer textarea {
@@ -1016,185 +916,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     outline: 2px solid var(--sb-focus-ring-color);
     outline-offset: 1px;
     box-shadow: none;
-}
-
-/* ---------- Settings pane ---------- */
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 0;
-    z-index: calc(var(--sb-z-raised) + 4);
-    box-sizing: border-box;
-    inline-size: min(var(--sb-conv-pane-width), 100%);
-    min-block-size: 0;
-    display: flex;
-    flex-direction: column;
-    border-inline-start: 1px solid var(--sb-shell-border);
-    background: var(--sb-layer-drawer);
-    box-shadow: var(--sb-conv-pane-shadow);
-}
-
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer[hidden] {
-    display: none;
-}
-
-/* An overlay pane dims everything in the workspace outside it (rail, header, timeline and composer) with the page transition
-   shade (half the dialog backdrop), as the shield of an overlay split view does. A press on the shade only hides the pane. A
-   docked (split) pane is a column of the layout and has no shade. */
-#sheld[data-sb-conversation-layout='overlay'] #sb_conversation_settings_backdrop {
-    position: absolute;
-    inset: 0;
-    z-index: calc(var(--sb-z-raised) + 3);
-    background: color-mix(in srgb, var(--sb-dialog-backdrop) 50%, transparent);
-}
-
-#sheld[data-sb-conversation-layout='overlay'] #sb_conversation_settings_backdrop:not([hidden]) {
-    display: block;
-}
-
-/* Wide #sheld: keep a third grid track so the pane can tuck instead of snapping the layout. */
-#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'] {
-    grid-template-columns: var(--sb-conv-sidebar-width) minmax(0, 1fr) 0px;
-    grid-template-areas:
-        'list header settings'
-        'list stage settings';
-    transition: grid-template-columns var(--sb-spring-sheet-duration) var(--sb-spring-sheet);
-}
-
-#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'][data-sb-conversation-page='settings'] {
-    grid-template-columns: var(--sb-conv-sidebar-width) minmax(0, 1fr) var(--sb-conv-pane-width);
-}
-
-#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'] #sb_conversation_settings_drawer {
-    position: relative;
-    inset: auto;
-    z-index: auto;
-    grid-area: settings;
-    inline-size: auto;
-    min-inline-size: 0;
-    overflow: hidden;
-    border-inline-start: var(--sb-headerbar-shade);
-    box-shadow: none;
-}
-
-#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'] #sb_conversation_settings_drawer > * {
-    min-inline-size: var(--sb-conv-pane-width);
-}
-
-/* An overlay pane stays beside the rail, so it never covers the conversation list and the header keeps its full width. */
-#sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='overlay'] #sb_conversation_settings_drawer {
-    inline-size: min(var(--sb-conv-pane-width), calc(100% - var(--sb-conv-sidebar-width)));
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header {
-    flex: 0 0 auto;
-    box-sizing: border-box;
-    min-block-size: var(--sb-conv-headerbar-height);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px;
-    padding-block: var(--sb-conv-headerbar-pad-block);
-    border-block-end: var(--sb-headerbar-shade);
-    background: var(--sb-layer-drawer);
-}
-
-.sb-conversation-settings-header > div {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    padding-inline-start: 10px;
-    order: -1;
-}
-
-.sb-conversation-settings-kicker {
-    display: none;
-}
-
-.sb-conversation-settings-title {
-    overflow: hidden;
-    color: var(--SmartThemeBodyColor);
-    font-size: calc(var(--mainFontSize) * 1.02);
-    font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-title);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sb-conversation-settings-close-back {
-    display: none;
-}
-
-.sb-conversation-settings-body {
-    min-block-size: 0;
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    gap: var(--sb-settings-group-gap);
-    padding: var(--sb-settings-inset-top) var(--sb-settings-inset) var(--sb-settings-inset);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-}
-
-/* The shared group header sits inside the section above its box; the page rules that remove its row padding are page-scoped. */
-.sb-conversation-settings-body .ds-pref-group-header > :is(.ds-pref-group-heading, .ds-pref-group-subtitle) {
-    margin: 0;
-    padding: 0;
-}
-
-.sb-conversation-settings-body .ds-pref-group-header > .ds-pref-group-heading {
-    min-block-size: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    line-height: 1.3;
-}
-
-.sb-conversation-settings-body .ds-pref-group-subtitle {
-    color: var(--sb-muted-fg);
-}
-
-/* The shared dimmed title of an empty entry row is 55% ink, below 4.5:1 on the dark row fill. */
-.sb-conversation-settings-body .ds-row-entry--floating .ds-row-entry__title {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
-}
-
-/* Rows below the group box: the schedule card and the memory note. */
-.sb-conversation-settings-body .sb-conversation-section-note {
-    padding: var(--sb-settings-heading-gap) 4px 0;
-}
-
-.sb-conversation-settings-body .sb-conversation-schedule-display {
-    margin-block-start: var(--sb-settings-heading-gap);
-}
-
-/* The member list belongs to the group box: its rows stay direct rows of the box. */
-.sb-conversation-members-wrapper:not([hidden]) {
-    display: contents;
-}
-
-.sb-conversation-members-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sb-density-row-gap);
-}
-
-.sb-conversation-members-field .sb-conversation-member-search {
-    margin: 0;
-}
-
-/* "Global" marks a setting shared by every Conversation; a neutral chip, not a colour. */
-.sb-conversation-setting-scope {
-    display: inline-block;
-    margin-inline-start: 4px;
-    padding: 0 6px;
-    border-radius: var(--sb-radius-pill);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-    color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
-    font-size: var(--sb-type-caption);
-    font-weight: var(--sb-weight-control);
-    line-height: 1.5;
 }
 
 /* ---------- Pickers: popovers on desktop, bottom sheets on mobile ---------- */
@@ -1354,13 +1075,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     position: absolute;
     inset-block-end: -2px;
     inset-inline-end: -2px;
-}
-
-.sb-conversation-empty {
-    padding: 14px;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 64%, transparent);
-    font-size: var(--sb-type-control);
-    line-height: var(--sb-line-body);
 }
 
 .sb-conversation-drop-hint {
@@ -2222,168 +1936,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 46%, transparent);
 }
 
-/* libadwaita pill buttons inside the settings sheet: borderless raised fill. */
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button {
-    border-color: transparent;
-    border-radius: var(--sb-radius-pill);
-    background: var(--sb-raised-bg);
-    box-shadow: none;
-    transform: none;
-    transition: background-color var(--sb-transition-fast);
-}
-
-@media (hover: hover) {
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button:not(:disabled):hover {
-        background: var(--sb-raised-hover-bg);
-    }
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button:not(:disabled):active {
-    background: var(--sb-raised-active-bg);
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body .menu_button:focus-visible {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 2px;
-    box-shadow: none;
-}
-
-.sb-conversation-field-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.sb-conversation-field-stack[hidden],
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body [hidden] {
-    display: none !important;
-}
-
-.sb-conversation-field-stack > label,
-.sb-conversation-field-label {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
-    font-size: var(--sb-type-meta);
-    font-weight: var(--sb-weight-control);
-    line-height: var(--sb-line-compact);
-}
-
-.sb-conversation-member-search {
-    margin-block-end: 8px;
-}
-
-/* Schedule display */
-.sb-conversation-field-hint {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
-    font-size: var(--sb-type-meta);
-    line-height: var(--sb-line-prose);
-    margin-block: 0;
-}
-
-.sb-conversation-schedule-display {
-    border: 0;
-    border-radius: var(--sb-radius-button);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    padding: 10px 12px;
-    font-size: var(--sb-type-meta);
-    min-block-size: 40px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.sb-conversation-schedule-display[data-empty='true'] {
-    align-items: center;
-    justify-content: center;
-    color: var(--sb-muted-fg);
-    background: transparent;
-}
-
-.sb-conversation-schedule-empty {
-    margin: 0;
-}
-
-.sb-conversation-schedule-now {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: var(--sb-weight-title, 600);
-    padding: 6px 8px;
-    border-radius: var(--sb-radius-sm);
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
-}
-
-.sb-conversation-schedule-label {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
-    font-size: var(--sb-type-meta);
-    font-weight: var(--sb-weight-control, 500);
-    margin: 4px 0 2px;
-}
-
-.sb-conversation-schedule-blocks {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.sb-conversation-schedule-block {
-    display: grid;
-    grid-template-columns: 110px 1fr auto;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 6px;
-    border-radius: var(--sb-radius-sm);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 80%, transparent);
-}
-
-.sb-conversation-schedule-block.is-current {
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
-    color: var(--SmartThemeBodyColor);
-    font-weight: var(--sb-weight-control, 500);
-}
-
-.sb-conversation-schedule-time {
-    font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
-    font-size: 0.875em;
-}
-
-.sb-conversation-schedule-block.is-current .sb-conversation-schedule-time {
-    color: var(--SmartThemeBodyColor);
-}
-
-.sb-conversation-schedule-activity {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sb-conversation-schedule-status {
-    font-size: 0.8em;
-    font-weight: var(--sb-weight-control, 500);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 56%, transparent);
-}
-
-.sb-conversation-schedule-status[data-status='online'] {
-    color: var(--sb-color-success);
-}
-
-.sb-conversation-schedule-status[data-status='idle'] {
-    color: var(--sb-color-warning);
-}
-
-.sb-conversation-schedule-status[data-status='dnd'] {
-    color: var(--sb-color-danger);
-}
-
-.sb-conversation-schedule-meta {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 46%, transparent);
-    font-size: 0.82em;
-    margin-block-start: 2px;
-}
-
 .sb-conversation-persona-option,
 .sb-conversation-status-option {
     display: flex;
@@ -2502,63 +2054,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-persona-note-checkbox {
     flex: 0 0 auto;
     margin-block-start: 1px;
-}
-
-/* Chiming partner picker */
-.sb-conversation-member-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px;
-    border: 0;
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    max-block-size: 200px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-}
-
-.sb-conversation-member-option {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(120px, 0.8fr);
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-radius: var(--sb-radius-sm);
-    transition: background-color var(--sb-transition-fast);
-}
-
-.sb-conversation-member-option:focus-within {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-}
-
-@media (hover: hover) {
-    .sb-conversation-member-option:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    }
-}
-
-.sb-conversation-member-avatar {
-    inline-size: 24px;
-    block-size: 24px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.sb-conversation-member-pick {
-    min-inline-size: 0;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    cursor: pointer;
-}
-
-.sb-conversation-member-name {
-    overflow: hidden;
-    font-size: var(--sb-type-caption);
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* Fix persona option img scaling */
@@ -2721,18 +2216,9 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab {
-        block-size: var(--sb-mobile-touch-target, 44px);
-        min-block-size: var(--sb-mobile-touch-target, 44px);
-    }
-
-    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display) {
+    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
         min-inline-size: var(--sb-mobile-touch-target, 44px);
-    }
-
-    #sb_conversation_schedule_modal .sb-schedule-modal-row :is(input, select) {
-        height: var(--sb-mobile-touch-target, 44px);
     }
 
     /* A touch screen has no hover: the toolbar gives way to a trigger beside the bubble that opens the message's actions. */
@@ -2827,10 +2313,6 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     display: inline-grid;
 }
 
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-header-settings {
-    display: none;
-}
-
 #sheld[data-sb-conversation-layout='pages'] .sb-conversation-header-avatar {
     margin-inline-start: 0;
 }
@@ -2840,7 +2322,7 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     padding-inline: 6px;
 }
 
-/* Pals page: the sidebar becomes a full-screen page covering the chat. */
+/* List page: the sidebar becomes a full-screen page covering the chat. */
 #sheld[data-sb-conversation-layout='pages'] #sb_conversation_list {
     position: absolute;
     inset: 0;
@@ -2901,22 +2383,13 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
 /* Keyboard: #sheld already contracts to the visual viewport, so the composer stays above it.
    Match Roleplay's #send_form 6px floor (Conversation's own chrome is 8px) plus the real
    safe-area; do not reuse --sb-mobile-safe-area-bottom's 34px home-indicator token. */
-/* Composer row ([+], entry, send) shares Roleplay's mobile composer size tokens from
+/* Composer row (attach, [+], entry, send) shares Roleplay's mobile composer size tokens from
    sillybunny-mobile-shell.css, so both send buttons follow compact mode and the bar scale. */
 #sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer {
     --sb-conv-button-size: var(--sb-mobile-composer-action-size, var(--sb-mobile-touch-target, 44px));
     --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size, 16px);
     padding-block-end: max(8px, env(safe-area-inset-bottom, 0px));
     padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right));
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer-more {
-    display: inline-grid;
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer-attach,
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer-actions {
-    display: none;
 }
 
 /* Centre one line (1.35em) inside the shared button height, minus the 2px border, so the
@@ -2929,35 +2402,6 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
 :where(#sheld[data-sb-conversation-layout='pages']) .sb-conversation-drop-hint {
     inset-inline: 10px;
     inset-block-end: 116px;
-}
-
-/* Settings page: a full-screen pushed page with a back arrow. */
-#sheld[data-sb-conversation-layout='pages'] #sb_conversation_settings_drawer {
-    inset: 0;
-    z-index: var(--sb-z-raised);
-    inline-size: 100%;
-    border-inline-start: 0;
-    box-shadow: none;
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-header {
-    padding-inline-start: max(6px, env(safe-area-inset-left));
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-header > div {
-    order: 0;
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-close-x {
-    display: none;
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-close-back {
-    display: inline-block;
-}
-
-#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-body {
-    padding-block-end: max(16px, env(safe-area-inset-bottom));
 }
 
 #sheld[data-sb-conversation-layout='pages'] .sb-conversation-persona-note-option {
@@ -2981,7 +2425,6 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     block-size: var(--sb-conv-avatar-size);
     flex-basis: var(--sb-conv-avatar-size);
 }
-
 
 /* Menu rule (sillybunny-editor/breakpoints.js MENU_SHEET_QUERY): pickers become bottom sheets in the mobile layout
    and in a window too short for a popover. */
@@ -3033,83 +2476,11 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
         display: none;
     }
 
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab {
-        padding-inline: 10px;
-    }
-
     .sb-conversation-reaction-button {
         max-inline-size: 54px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-    }
-}
-
-/* Pop-out Schedule Editor Modal Overlay & Controls */
-.sb-schedule-modal-tab {
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-/* libadwaita dialog controls. The overlay ID outranks the shared .menu_button border and fill. */
-#sb_conversation_schedule_modal .menu_button {
-    border-color: transparent;
-    border-radius: var(--sb-radius-pill);
-    background: var(--sb-raised-bg);
-    box-shadow: none;
-    transform: none;
-}
-
-#sb_conversation_schedule_modal .menu_button_icon {
-    background: transparent;
-}
-
-@media (hover: hover) {
-    #sb_conversation_schedule_modal .menu_button:not(:disabled):hover {
-        background: var(--sb-raised-hover-bg);
-    }
-
-    #sb_conversation_schedule_modal .menu_button_icon:not(:disabled):hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-#sb_conversation_schedule_modal .menu_button:not(:disabled):active {
-    background: var(--sb-raised-active-bg);
-}
-
-#sb_conversation_schedule_modal .menu_button:focus-visible {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 2px;
-    box-shadow: none;
-}
-
-#sb_conversation_schedule_modal .sb-schedule-modal-tab {
-    background: transparent;
-}
-
-#sb_conversation_schedule_modal .sb-schedule-modal-tab.is-selected {
-    background: var(--sb-flat-selected-bg);
-    font-weight: var(--sb-weight-control);
-}
-
-/* The base button is `width: min-content`, which wraps a label-only button's words one per line. */
-#sb_conversation_schedule_modal .sb-schedule-modal-add {
-    width: fit-content;
-    white-space: nowrap;
-}
-
-.sb-schedule-modal-row input,
-.sb-schedule-modal-row select {
-    font-size: var(--sb-type-caption, 0.9em);
-    padding: 6px 8px;
-    height: 32px;
-}
-.sb-schedule-modal-delete {
-    color: var(--sb-color-danger);
-}
-@media (hover: hover) {
-    .sb-schedule-modal-delete:hover {
-        background-color: color-mix(in srgb, var(--sb-color-danger) 15%, transparent);
     }
 }
 @keyframes sb-message-appear {
@@ -3189,14 +2560,11 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
         animation: none;
     }
 
-    #sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'],
-    #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_list, #sb_conversation_header, #sb_conversation_stage, .sb-conversation-header-caret),
-    .sb-conversation-channel-tab,
-    .sb-conversation-flat-button,
-    .sb-conversation-message-actions,
-    .sb-conversation-message-action,
-    .sb-conversation-reaction-button,
-    .sb-conversation-mobile-menu-trigger {
+        .sb-conversation-flat-button,
+.sb-conversation-message-actions,
+.sb-conversation-message-action,
+.sb-conversation-reaction-button,
+.sb-conversation-mobile-menu-trigger {
         transition: none;
     }
 }
@@ -3252,8 +2620,6 @@ body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-
     animation: none;
 }
 
-body.reduced-motion #sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'],
-body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_list, #sb_conversation_header, #sb_conversation_stage, .sb-conversation-header-caret),
 body.reduced-motion .sb-conversation-flat-button,
 body.reduced-motion .sb-conversation-message-actions,
 body.reduced-motion .sb-conversation-message-action,

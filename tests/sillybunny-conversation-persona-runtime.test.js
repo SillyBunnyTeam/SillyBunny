@@ -5,9 +5,7 @@ const handlers = new Map();
 const startConversationAutoWorker = jest.fn();
 const triggerRoleplayAside = jest.fn();
 const roleplayChat = [];
-const personaChangeOrder = [];
-const handleChatChanged = jest.fn(() => personaChangeOrder.push('handle'));
-const loadCurrentPanelSettings = jest.fn(() => personaChangeOrder.push('load'));
+const dispatchedEvents = [];
 const selectConversation = jest.fn();
 const scheduleInterfaceRefresh = jest.fn();
 const windowHandlers = new Map();
@@ -24,10 +22,12 @@ const conversationState = {
 
 globalThis.window = {
     addEventListener: (event, handler) => windowHandlers.set(event, handler),
+    dispatchEvent: event => dispatchedEvents.push(event),
 };
 globalThis.CustomEvent = class CustomEvent {
-    constructor(detail) {
-        this.detail = detail;
+    constructor(type, init) {
+        this.type = type;
+        this.detail = init?.detail ?? type;
     }
 };
 
@@ -61,7 +61,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-e
     captureGroupAsideRequest: jest.fn(),
     captureRoleplayAsideRequest: options => ({ ...options, chatId: 'branch-a', roleplayContext: 'captured roleplay' }),
     checkGroupChatMention: jest.fn(),
-    handleChatChanged,
     startConversationAutoWorker: () => {
         conversationState.autoWorkerStarted = true;
         startConversationAutoWorker();
@@ -81,7 +80,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getRoleplayCurrentCharacter: () => ({ avatar: 'roleplay.png', name: 'Roleplay' }),
     getRoleplayGroupById: () => null,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/interface.js', () => ({ loadCurrentPanelSettings }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
     getActiveConversationKey: () => '',
     updateConversationNotificationIndicators: jest.fn(),
@@ -91,9 +89,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
     getCurrentGroupConversationMembers: () => [],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleConversationListRender: jest.fn(), scheduleInterfaceRefresh }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-panel.js', () => ({
-    closeConversationSettings: () => personaChangeOrder.push('close'),
-}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getSettings: avatar => ({ roleplay_reactions: avatar === 'roleplay.png' }),
     hasAnyConversationModeUsage: () => hasUsage,
@@ -122,13 +117,23 @@ describe('conversation persona runtime', () => {
 
         hasUsage = true;
         conversationState.conversationWorkspaceOpen = true;
-        personaChangeOrder.length = 0;
+        dispatchedEvents.length = 0;
+        scheduleInterfaceRefresh.mockClear();
         handlers.get('persona-changed')();
 
         expect(startConversationAutoWorker).toHaveBeenCalledTimes(1);
         expect(conversationState.autoWorkerStarted).toBe(true);
         expect(conversationState.conversationReplyTarget).toBeNull();
-        expect(personaChangeOrder).toEqual(['close', 'handle', 'load']);
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('asks the details window to close when the persona changes, because its conversation belongs to the old persona', () => {
+        init();
+        dispatchedEvents.length = 0;
+
+        handlers.get('persona-changed')();
+
+        expect(dispatchedEvents.map(event => event.type)).toContain('sb:conversation-details-close');
     });
 
     test('targets the originating roleplay character instead of Conversation selection', () => {
@@ -193,6 +198,6 @@ describe('conversation persona runtime', () => {
 
         conversationState.conversationWorkspaceOpen = true;
         handlers.get('online-status-changed')('Connected');
-        expect(scheduleInterfaceRefresh).toHaveBeenCalledWith({ syncControls: false });
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
     });
 });

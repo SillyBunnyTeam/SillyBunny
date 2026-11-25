@@ -154,7 +154,6 @@ describe('surface registry lookups', () => {
             'settings.worldinfo.global',
             'settings.persona.global',
             'settings.characters.import',
-            'settings.conversation.panel',
         ]);
     });
 

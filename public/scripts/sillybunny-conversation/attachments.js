@@ -638,7 +638,7 @@ export async function processQueuedConversationReply(queueItem) {
     const conversationSettings = getSettings(avatar, { groupId, personaId });
 
     const operation = beginConversationGenerationOperation();
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
 
     try {
         // A reply to the message of an extra of a direct conversation is a message to the character: extras do not speak.
@@ -680,7 +680,7 @@ export async function processQueuedConversationReply(queueItem) {
         reportConversationGenerationError('reply', error);
     } finally {
         endConversationGenerationOperation(operation);
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
 }
 
@@ -891,7 +891,7 @@ export async function submitConversationInput() {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         clearConversationAttachmentInput();
         updateLastUserActivity(avatar, { chatId, groupId, personaId });
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
         // Conversation mode has no MESSAGE_SENT, so Home hears about the first message here (Getting Started, step 4).
         window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_SENT_EVENT));
 
@@ -913,7 +913,7 @@ export async function submitConversationInput() {
         void processSendQueue();
     } finally {
         conversationState.conversationUploadActive = false;
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
 }
 

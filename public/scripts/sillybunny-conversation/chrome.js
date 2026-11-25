@@ -3,12 +3,11 @@ import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { getUserAvatar } from '../personas.js';
-import { POPUP_RESULT, POPUP_TYPE, Popup } from '../popup.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, CONVERSATION_OPENED_EVENT, DEFAULT_CHAT_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { CHROME_IDS, CONVERSATION_OPENED_EVENT } from './constants.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
     createConversationChat,
@@ -16,12 +15,10 @@ import {
     deleteConversationChat,
     ensureDirectConversation,
     getConversationChats,
-    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getConversationKey,
     getConversationRecord,
-    getCurrentCharacter,
     getCurrentCharAvatar,
     getRoleplayCurrentCharacter,
     isAvatarInConversationGroup,
@@ -31,24 +28,20 @@ import {
 } from './context.js';
 import { editConversationMessage } from './generation.js';
 import {
-    applySettingsToPanel,
     getConversationListEntries,
     handleCharacterMessagePolish,
-    saveCurrentPanelSettings,
-    updateConversationChrome,
     updateConversationHeader,
 } from './interface.js';
 import { bindConversationListControls } from './conversation-list-controls.js';
-import { buildMainMenuSections, buildNewMenuSections } from './conversation-list-menu.js';
+import { buildComposerMenuSections, buildHeaderMenuSections, buildMainMenuSections, buildNewMenuSections } from './conversation-menus.js';
 import { setConversationListQuery } from './conversation-list-view.js';
 import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
-import { getDirectConversations, getCurrentGroupConversationMembers } from './conversation-list.js';
+import { getDirectConversations } from './conversation-list.js';
 import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
     hideConversationPickers,
-    openAddMemberPicker,
     renderConversationPersonaPicker,
     toggleStartDirectConversationPicker,
     toggleConversationGroupPicker,
@@ -57,29 +50,20 @@ import {
     updateUserFooter,
 } from './pickers.js';
 import { afterConversationRender, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
-import { regenerateRoutine } from './schedule.js';
 import {
-    clearConversationMemoryFromPanel,
-    closeConversationSettings,
     closeConversationList,
-    dismissConversationSettings,
-    dismissConversationSettingsOnEscape,
-    forceCreateMemoryFromPanel,
-    isConversationPagesLayout,
     observeConversationLayout,
     openConversationList,
-    openConversationSettings,
-    openScheduleEditorModal,
-    refreshConversationMemoryFromPanel,
-    renderConversationMemoryPanel,
-    renderScheduleDisplay,
     syncConversationPage,
     toggleConversationList,
-} from './settings-panel.js';
+} from './conversation-pages.js';
 import { getSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
 import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
+import { conversationData } from './conversation-data-browser.js';
+import { setConversationMuted } from './conversation-list-actions.js';
+import { getConversationDisplayName } from './media.js';
 import { enterConversationSelection, initializeConversationSelection } from './selection.js';
 import {
     branchConversationFromMessage,
@@ -94,7 +78,6 @@ import {
     reactConversationMessage,
     regenerateConversationMessage,
     replyToConversationMessage,
-    setConversationTimelineChannel,
     toggleConversationSearchBar,
     speakConversationMessage,
     toggleConversationMessagePin,
@@ -104,7 +87,7 @@ import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { ensureDetailsStyles } from './details/styles.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125d';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125e';
 const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261125a';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
@@ -166,7 +149,7 @@ function revealConversationWorkspaceAfterStylesheet() {
     }
 
     conversationState.timelineBottomScrollPending = true;
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
 }
 
 function ensureConversationStylesheet() {
@@ -176,8 +159,8 @@ function ensureConversationStylesheet() {
 
     conversationStylesheetStatus = 'loading';
     insertConversationStylesheetLink();
-    // The settings pane is built from shared rows whose button, text-area and insensitive styles live in the editor shell.
-    // The details window's sheet loads here too, so that it is there before the window's first page draws.
+    // The details window is built from shared rows whose button, text-area and insensitive styles live in the editor shell,
+    // and its own sheet loads here too, so that both are there before the window's first page draws.
     Promise.all([
         loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID }),
         loadStylesheetAsync(EDITOR_SHELL_STYLESHEET_HREF, { id: EDITOR_SHELL_STYLESHEET_ID }),
@@ -204,60 +187,6 @@ function ensureConversationStylesheet() {
 
 function requestConversationRuntimeStart() {
     window.dispatchEvent(new CustomEvent('sb:conversation-runtime-needed'));
-}
-
-async function openGroundedDialogueRulesEditor() {
-    const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
-    if (!(backingInput instanceof HTMLTextAreaElement)) {
-        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules');
-        return;
-    }
-
-    const content = document.createElement('div');
-    content.id = 'sb_conversation_grounded_rules_modal';
-    content.className = 'sb-conversation-grounded-rules-editor';
-
-    const title = document.createElement('h3');
-    title.id = 'sb_conversation_grounded_rules_title';
-    title.textContent = 'Grounded Dialogue Rules';
-
-    const hint = document.createElement('p');
-    hint.className = 'sb-conversation-field-hint';
-    hint.textContent = 'This global block is added to Conversation Mode prompts only when the Grounded Dialogue Rules toggle is on.';
-
-    const editor = document.createElement('textarea');
-    editor.className = 'text_pole textarea_compact wide100p sb-conversation-grounded-rules-input';
-    editor.rows = 18;
-    editor.value = backingInput.value || DEFAULT_GROUNDED_DIALOGUE_RULES;
-    editor.setAttribute('aria-labelledby', title.id);
-    content.append(title, hint, editor);
-
-    const popup = new Popup(content, POPUP_TYPE.TEXT, null, {
-        okButton: 'Save',
-        cancelButton: 'Cancel',
-        wider: true,
-        leftAlign: true,
-        allowVerticalScrolling: true,
-        customButtons: [{
-            text: 'Reset to Default',
-            classes: ['sb-conversation-dialog-reset'],
-            action: () => {
-                editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
-                editor.focus({ preventScroll: true });
-            },
-        }],
-        onOpen: () => editor.focus({ preventScroll: true }),
-    });
-    popup.dlg.classList.add('sb-conversation-dialog', 'sb-conversation-grounded-rules-dialog');
-    popup.dlg.setAttribute('aria-labelledby', title.id);
-    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) {
-        return;
-    }
-
-    backingInput.value = editor.value;
-    backingInput.dispatchEvent(new Event('input', { bubbles: true }));
-    saveCurrentPanelSettings();
-    toastr.success('Grounded Dialogue Rules updated');
 }
 
 function focusConversationInput({ skipIOS = false } = {}) {
@@ -453,8 +382,8 @@ const USER_STATUS_MENU_ITEMS = Object.freeze([
 // TODO(copy): the body of the alerts that ask before a chat or a conversation is deleted is a placeholder.
 const DELETE_ALERT_BODY = 'TODO(copy)';
 
-function getConversationDisplayName(avatar, groupId) {
-    return (groupId ? getConversationGroupById(groupId)?.name : getCharacterForAvatar(avatar)?.name) || 'this character';
+function getNameOfConversation(avatar, groupId) {
+    return getConversationDisplayName(avatar, getSettings(avatar, { groupId }), { groupId });
 }
 
 function isConversationSelectedInWorkspace(avatar, groupId) {
@@ -470,88 +399,52 @@ function runFromMenu(action, data = {}, trigger = null) {
     return () => void runConversationAction(action, data, trigger);
 }
 
-function openConversationChatMenu(trigger) {
+function getOpenConversationId() {
     const { avatar, groupId } = getActiveConversationIdentity();
-    if (!avatar) {
-        toggleConversationList();
-        return;
-    }
-
-    const activeChatId = getConversationRecord(avatar, { create: false, groupId })?.activeChatId || DEFAULT_CHAT_ID;
-    const chats = getConversationChats(avatar, { groupId });
-    const activeChat = chats.find(chat => chat.id === activeChatId);
-    const identity = { avatar, groupId };
-    openActionMenu({
-        trigger,
-        title: 'Branches',
-        sections: [
-            {
-                items: chats.map(chat => ({
-                    label: chat.name || 'Conversation',
-                    checked: chat.id === activeChatId,
-                    detail: chat.unread > 0 ? String(chat.unread) : '',
-                    onSelect: runFromMenu('select-chat', { ...identity, chatId: chat.id }),
-                })),
-            },
-            {
-                items: [
-                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeChat, onSelect: runFromMenu('rename-chat', { ...identity, chatId: activeChatId }) },
-                ],
-            },
-        ],
-    });
+    return avatar ? getConversationRecord(avatar, { create: false, groupId })?.id ?? '' : '';
 }
 
 function openConversationOverflowMenu(trigger) {
     const { avatar, groupId } = getActiveConversationIdentity();
-    const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
-    const hasMessages = Boolean(avatar) && getConversationMessageCount(avatar, { groupId }) > 0;
-    const activeChatId = avatar ? getConversationRecord(avatar, { create: false, groupId })?.activeChatId || '' : '';
+    const conversationId = getOpenConversationId();
+    if (!avatar || !conversationId) {
+        return;
+    }
+
+    const activeChatId = getConversationRecord(avatar, { create: false, groupId })?.activeChatId || '';
+    const settings = getSettings(avatar, { groupId });
     openActionMenu({
         trigger,
         title: 'Conversation',
-        sections: [
-            {
-                items: [
-                    ...(avatar ? [{ label: 'Add Member…', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
-                    { label: 'New Chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
-                    { label: 'Select Messages', icon: 'fa-solid fa-square-check', disabled: !hasMessages, onSelect: runFromMenu('select-messages', {}, trigger) },
-                    { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
-                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
-                    // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.
-                    ...(isConversationPagesLayout()
-                        ? [{ label: 'Conversation Settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
-                        : []),
-                ],
+        sections: buildHeaderMenuSections({
+            muted: Boolean(settings.notifications_muted),
+            hasMessages: getConversationMessageCount(avatar, { groupId }) > 0,
+            hasChat: Boolean(activeChatId),
+        }, {
+            openDetails: () => void openConversationDetails(conversationId),
+            newChat: runFromMenu('new-chat'),
+            addMember: () => void openConversationDetails(conversationId, { page: 'add-member' }),
+            setMuted: (muted) => {
+                setConversationMuted(conversationData, conversationId, muted);
+                scheduleConversationListRender();
             },
-            {
-                items: avatar
-                    ? [
-                        { label: 'Delete Chat…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeChatId, onSelect: runFromMenu('delete-chat', { avatar, groupId, chatId: activeChatId }) },
-                        { label: 'Delete Conversation…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-conversation', { avatar, groupId }) },
-                    ]
-                    : [],
-            },
-        ],
+            selectMessages: runFromMenu('select-messages', {}, trigger),
+            deleteChat: runFromMenu('delete-chat', { avatar, groupId, chatId: activeChatId }),
+            deleteConversation: runFromMenu('delete-conversation', { avatar, groupId }),
+        }),
     });
 }
 
 function openConversationComposerMenu(trigger) {
-    const hasConversation = Boolean(getCurrentCharAvatar());
     openActionMenu({
         trigger,
         title: 'Add to Message',
-        sections: [
-            {
-                items: [
-                    { label: 'Attach Files', icon: 'fa-solid fa-paperclip', disabled: !hasConversation, onSelect: runFromMenu('attach-file') },
-                    { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled: !hasConversation, onSelect: runFromMenu('quick-selfie') },
-                    { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled: !hasConversation, onSelect: runFromMenu('quick-remind') },
-                    { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled: !hasConversation, onSelect: runFromMenu('quick-summarize') },
-                    { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled: !hasConversation, onSelect: runFromMenu('force-response') },
-                ],
-            },
-        ],
+        sections: buildComposerMenuSections({ enabled: Boolean(getCurrentCharAvatar()) }, {
+            selfie: runFromMenu('quick-selfie'),
+            remind: runFromMenu('quick-remind'),
+            summarize: runFromMenu('quick-summarize'),
+            forceReply: runFromMenu('force-response'),
+        }),
     });
 }
 
@@ -622,9 +515,13 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'toggle-search':
             toggleConversationSearchBar();
             break;
-        case 'open-chat-menu':
-            openConversationChatMenu(target);
+        case 'open-details': {
+            const conversationId = getOpenConversationId();
+            if (conversationId) {
+                await openConversationDetails(conversationId);
+            }
             break;
+        }
         case 'open-conversation-menu':
             openConversationOverflowMenu(target);
             break;
@@ -647,18 +544,8 @@ export async function runConversationAction(action, data = {}, target = null, ev
             closeConversationList();
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
             break;
-        case 'open-settings':
-            hideConversationPickers();
-            openConversationSettings();
-            break;
-        case 'close-settings':
-            closeConversationSettings();
-            break;
         case 'polish-character-message':
             await handleCharacterMessagePolish(data.messageId, target);
-            break;
-        case 'open-add-member':
-            openAddMemberPicker();
             break;
         case 'open-start-direct-conversation':
             toggleStartDirectConversationPicker(target);
@@ -689,15 +576,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'clear-reply-target':
             clearConversationReplyTarget();
             break;
-        case 'create-memory':
-            await forceCreateMemoryFromPanel();
-            break;
-        case 'refresh-memory':
-            await refreshConversationMemoryFromPanel();
-            break;
-        case 'clear-memory':
-            await clearConversationMemoryFromPanel();
-            break;
         case 'stop-image-generation':
             conversationState.imageGenerationAbortController?.abort?.();
             conversationState.imageGenerationActive = false;
@@ -726,22 +604,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'select-chat': {
-            const avatar = data.avatar;
-            const groupId = data.groupId || '';
-            const chatId = data.chatId;
-            if (avatar && chatId) {
-                setActiveConversationChat(avatar, chatId, { groupId });
-                openConversationWorkspaceForAvatar(avatar, {
-                    groupId: groupId || null,
-                    showToast: false,
-                });
-                scheduleInterfaceRefresh({ syncControls: false });
-                renderConversationMemoryPanel();
-                document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-            }
-            break;
-        }
         case 'rename-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
@@ -758,7 +620,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
                     scheduleConversationListRender();
                     if (isConversationActive(avatar, groupId)) {
                         updateConversationHeader(getSettings(avatar, { groupId }));
-                        renderConversationMemoryPanel();
                     }
                 }
             }
@@ -784,8 +645,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         break;
                     }
                     if (isConversationActive(avatar, groupId)) {
-                        scheduleInterfaceRefresh({ syncControls: true });
-                        renderConversationMemoryPanel();
+                        scheduleInterfaceRefresh();
                     } else {
                         scheduleConversationListRender();
                     }
@@ -801,7 +661,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 break;
             }
             const confirmed = await confirmConversationAction({
-                title: `Delete the conversation with ${getConversationDisplayName(avatar, groupId)}?`,
+                title: `Delete the conversation with ${getNameOfConversation(avatar, groupId)}?`,
                 text: DELETE_ALERT_BODY,
             });
             if (!confirmed) {
@@ -831,8 +691,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const groupId = getConversationGroupIdForAvatar(avatar);
             createConversationChat(avatar, `Chat ${getConversationChats(avatar, { groupId }).length + 1}`, { groupId });
             updateLastUserActivity(avatar, { groupId });
-            scheduleInterfaceRefresh({ syncControls: false });
-            renderConversationMemoryPanel();
+            scheduleInterfaceRefresh();
             toastr.success('New chat started');
             break;
         }
@@ -905,28 +764,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'set-channel':
-            setConversationTimelineChannel(data.channel);
-            break;
-        case 'edit-schedule': {
-            const avatar = getCurrentCharAvatar();
-            if (avatar || getCurrentGroupConversationMembers().length) {
-                openScheduleEditorModal(avatar);
-            }
-            break;
-        }
-        case 'reset-prompt': {
-            const area = document.getElementById('sb_conv_geechan_chatroom_prompt');
-            if (area instanceof HTMLTextAreaElement) {
-                area.value = GEECHAN_DEFAULT_PROMPT;
-                area.dispatchEvent(new Event('input', { bubbles: true }));
-                toastr.success('System prompt reset to default Geechan preset');
-            }
-            break;
-        }
-        case 'edit-grounded-dialogue-rules':
-            openGroundedDialogueRulesEditor();
-            break;
         case 'set-user-status': {
             const status = data.status;
             if (status) {
@@ -959,38 +796,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'generate-schedule': {
-            if (conversationState.scheduleGenerationBusy) {
-                break;
-            }
-            const character = getCurrentCharacter();
-            const genAvatar = getCurrentCharAvatar();
-            if (!character || !genAvatar) {
-                toastr.warning('No character selected');
-                break;
-            }
-            conversationState.scheduleGenerationBusy = true;
-            const genBtn = target instanceof HTMLElement ? target : document.createElement('button');
-            const personaId = getConversationPersonaId();
-            genBtn.setAttribute('disabled', '');
-            toastr.info(`Generating schedule for ${character.name}…`);
-            try {
-                const groupId = getConversationGroupIdForAvatar(genAvatar);
-                await regenerateRoutine(genAvatar, { character, groupId, personaId });
-                if (isConversationActive(genAvatar, groupId, { personaId })) {
-                    renderScheduleDisplay();
-                    updateConversationChrome(getSettings(genAvatar, { groupId, personaId }));
-                }
-                toastr.success(`Schedule generated for ${character.name}`);
-            } catch (err) {
-                console.error('Schedule generation error:', err);
-                toastr.error('Schedule generation failed');
-            } finally {
-                conversationState.scheduleGenerationBusy = false;
-                genBtn.removeAttribute('disabled');
-            }
-            break;
-        }
         default:
             break;
     }
@@ -1009,13 +814,6 @@ export function bindConversationChromeControls(sheld) {
             return;
         }
 
-        const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-        if (drawer instanceof HTMLElement && !drawer.hidden && event.target instanceof Node && drawer.contains(event.target)) {
-            event.preventDefault();
-            dismissConversationSettings();
-            return;
-        }
-
         const conversationList = document.getElementById(CHROME_IDS.conversationList);
         if (sheld.dataset.sbConversationPage === 'list' && getCurrentCharAvatar() && conversationList instanceof HTMLElement && event.target instanceof Node && conversationList.contains(event.target)) {
             event.preventDefault();
@@ -1028,12 +826,6 @@ export function bindConversationChromeControls(sheld) {
             event.preventDefault();
             toggleConversationSearchBar(false);
             document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="toggle-search"]`)?.focus?.({ preventScroll: true });
-        }
-    });
-    // After the handlers above, so an open search or the rail still takes its Escape first.
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !event.isComposing && !event.defaultPrevented && dismissConversationSettingsOnEscape(event.target)) {
-            event.preventDefault();
         }
     });
     sheld.addEventListener('keydown', (event) => {
@@ -1113,12 +905,6 @@ export function bindConversationChromeControls(sheld) {
         fileInput.addEventListener('change', updateConversationAttachmentPreview);
     }
 
-    const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-    if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
-        drawer.dataset.sbConversationBound = 'true';
-        drawer.addEventListener('change', saveCurrentPanelSettings);
-    }
-
     const searchInput = document.getElementById(CHROME_IDS.search);
     if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbConversationBound !== 'true') {
         searchInput.dataset.sbConversationBound = 'true';
@@ -1153,15 +939,6 @@ export function bindConversationChromeControls(sheld) {
             if (files.length) {
                 addConversationFilesToInput(files);
             }
-        });
-    }
-
-    const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
-    if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
-        backdrop.dataset.sbConversationBound = 'true';
-        backdrop.addEventListener('click', () => {
-            dismissConversationSettings();
-            closeConversationList();
         });
     }
 
@@ -1249,7 +1026,6 @@ function emitConversationWorkspaceStateChange() {
  * @returns {Promise<boolean>} False when there is no such character, chat or conversation to open.
  */
 export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupId = null, showToast = true, enable = false } = {}) {
-    closeConversationSettings();
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
@@ -1273,7 +1049,7 @@ export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupI
     ensureConversationStylesheet();
 
     if (!targetAvatar) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
         return Promise.resolve(false);
     }
 
@@ -1285,10 +1061,8 @@ export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupI
         if (chatId) {
             setActiveConversationChat(targetAvatar, String(chatId), { groupId: targetGroupId });
         }
-        const settings = getSettings(targetAvatar, { groupId: targetGroupId });
         requestConversationRuntimeStart();
-        applySettingsToPanel(settings);
-        scheduleInterfaceRefresh({ syncControls: true });
+        scheduleInterfaceRefresh();
         if (showToast && enable && !wasEnabled) {
             toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
         }
@@ -1296,7 +1070,7 @@ export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupI
         return true;
     };
     if (enable && !targetGroupId && !wasEnabled) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
         return ensureDirectConversation(targetAvatar).then(finish, (error) => {
             console.error('Conversation Mode: the conversation could not be made', error);
             return false;
@@ -1323,10 +1097,6 @@ export function getRoleplayAvatarForWelcome() {
 }
 
 export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {
-    const avatar = getCurrentCharAvatar();
-    const personaId = getConversationPersonaId();
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    closeConversationSettings({ avatar, groupId, personaId });
     conversationState.conversationWorkspaceOpen = false;
     conversationState.conversationSelectedAvatar = null;
     conversationState.conversationSelectedGroupId = null;
@@ -1334,7 +1104,7 @@ export function disableConversationModeForCurrentCharacter({ focusRoleplay = tru
     conversationState.conversationTimelineChannel = 'main';
     conversationState.conversationTimelineSearchQuery = '';
     emitConversationWorkspaceStateChange();
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
     if (focusRoleplay) {
         document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
     }
@@ -1348,7 +1118,6 @@ export function setConversationInterfaceActive(active) {
 
     if (!active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
-        closeConversationSettings();
         closeConversationList();
         hideConversationPickers();
         observeConversationLayout(false);

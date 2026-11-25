@@ -49,7 +49,7 @@ function createPeopleGroup(view, nav) {
     list.setAttribute('role', 'list');
     list.setAttribute('aria-label', 'Members');
     list.append(...view.characters.map(avatar => createPersonRow({ conversationId: view.id, avatar, kind: 'member', nav })));
-    const add = createButtonRow({ label: 'Add Member', icon: 'user-plus', field: 'add-member', arrow: true, onActivate: () => nav.push('add-member') });
+    const add = createButtonRow({ label: 'Add Member', icon: 'user-plus', field: 'add-member', onActivate: () => nav.push('add-member') });
     return createGroup({ title: 'Members', rows: [list, add], field: 'members' });
 }
 

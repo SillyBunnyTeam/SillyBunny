@@ -253,16 +253,6 @@ export function safeParseSettings(stored) {
     }
 }
 
-export function pickConversationSettings(settings, keys) {
-    const source = settings && typeof settings === 'object' ? settings : {};
-    return [...keys].reduce((picked, key) => {
-        if (Object.prototype.hasOwnProperty.call(source, key)) {
-            picked[key] = source[key];
-        }
-        return picked;
-    }, {});
-}
-
 // ---------------------------------------------------------------------------------------------------------------------
 // The mode's own settings in settings.json: the mode-wide settings and the status of the user. Conversations are not here.
 

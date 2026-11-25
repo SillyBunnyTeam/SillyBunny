@@ -24,7 +24,6 @@ import {
 import { conversationData } from './conversation-data-browser.js';
 import { createTargetCheck } from './deletion-guards.js';
 import { generateConversationReply, postCharacterReply, postMemberConversationReply, reportConversationGenerationError } from './generation.js';
-import { loadCurrentPanelSettings } from './interface.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar } from './media.js';
 import { appendConversationMessage } from './message-writer.js';
 import {
@@ -769,8 +768,4 @@ export async function handleAvailabilityAutoResponder(settings = getSettings(), 
         personaId,
     }, avatar);
     return true;
-}
-
-export function handleChatChanged() {
-    loadCurrentPanelSettings();
 }

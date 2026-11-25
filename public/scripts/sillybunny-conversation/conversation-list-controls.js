@@ -10,7 +10,7 @@ import { CHROME_IDS } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
 import { bindRowDrag } from './conversation-list-drag.js';
 import { markConversationUnread, setConversationFavorite, setConversationMuted } from './conversation-list-actions.js';
-import { buildRowMenuSections } from './conversation-list-menu.js';
+import { buildRowMenuSections } from './conversation-menus.js';
 import { SECTION_FAVORITES, getSectionForMove, isFavoriteSection } from './conversation-list-model.js';
 import {
     findRow,

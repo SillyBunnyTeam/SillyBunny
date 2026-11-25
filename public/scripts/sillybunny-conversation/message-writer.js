@@ -66,7 +66,7 @@ export function afterIncomingMessage(avatar, message, { address, chatId = '', gr
     }
 
     if (isActive) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     } else if (conversationState.conversationWorkspaceOpen) {
         scheduleConversationListRender();
     }

@@ -376,7 +376,6 @@ describe('rules', () => {
 
     test('the data-driven lists of a page are skipped by selector, and nothing is skipped by a control name', () => {
         expect(skipSelectorsFor('settings.customize.appearance')).toEqual(['.bg_list']);
-        expect(skipSelectorsFor('settings.conversation.panel')).toEqual(['.sb-conversation-member-list']);
         expect(skipSelectorsFor('extension:qr_container')).toEqual(['.qr--setList', '.qr--set-qrListContents']);
         expect(skipSelectorsFor('settings.backend.sampling')).toEqual(['.openai_logit_bias_list', '.logit_bias_list']);
         expect(skipSelectorsFor('settings.customize.interface')).toEqual([]);

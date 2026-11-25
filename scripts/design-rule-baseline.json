@@ -32,12 +32,12 @@
             "spacing-off-scale": 6
         },
         "public/css/sillybunny-conversation.css": {
-            "radius-literal": 10,
+            "radius-literal": 9,
             "shadow-literal": 1,
             "duration-literal": 3,
-            "important": 5,
+            "important": 4,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 95
+            "spacing-off-scale": 74
         },
         "public/css/sillybunny-editor-shell.css": {
             "radius-literal": 2,

@@ -8,6 +8,7 @@
  */
 
 import { openDialog } from '../../sillybunny-editor/dialog.js';
+import { CONVERSATION_DETAILS_CLOSE_EVENT } from '../constants.js';
 import { releaseRowIds } from '../../sillybunny-editor/rows.js';
 import { getView } from './access.js';
 import { el } from './page-kit.js';
@@ -211,9 +212,11 @@ export async function openConversationPreferences() {
     return Boolean(await open({ conversationId: '', path: [{ id: 'preferences' }] }));
 }
 
-// The app leaving conversation mode takes the conversation that the window shows with it.
-window.addEventListener('sb:close-conversation-workspace', () => {
-    if (session?.dialog.isOpen) {
-        session.dialog.forceClose();
-    }
-});
+// The app leaving conversation mode, or a change of persona, takes the conversation that the window shows with it.
+for (const eventName of ['sb:close-conversation-workspace', CONVERSATION_DETAILS_CLOSE_EVENT]) {
+    window.addEventListener(eventName, () => {
+        if (session?.dialog.isOpen) {
+            session.dialog.forceClose();
+        }
+    });
+}

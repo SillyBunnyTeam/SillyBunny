@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
-import { PERSONA, seedConversations, settle, startConversationServer } from './util/conversation-data-fixture.js';
+import { PERSONA, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
 
 const extensionSettings = {};
 const knownCharacters = [];
@@ -24,7 +24,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     getCharacterForAvatar: avatar => knownCharacters.find(character => character.avatar === avatar) ?? null,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-panel.js', () => ({ renderConversationMemoryPanel: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
     conversationState: { conversationSelectedAvatar: null, conversationSelectedGroupId: null, conversationWorkspaceOpen: false },
 }));
@@ -36,11 +35,11 @@ const {
     getSettings,
     hasAnyConversationModeUsage,
     isConversationModeEnabled,
-    saveSettings,
     setConversationSessionMarker,
     setLastUserActivity,
 } = await import('../public/scripts/sillybunny-conversation/settings-store.js');
 const { DEFAULT_SETTINGS } = await import('../public/scripts/sillybunny-conversation/constants.js');
+const { getConversationStore, persistConversationStore } = await import('../public/scripts/sillybunny-conversation/context.js');
 
 let server;
 
@@ -127,37 +126,13 @@ describe('getSettings', () => {
     });
 });
 
-describe('saveSettings', () => {
-    test('writes only the values that differ from the defaults, and removes a value that went back to its default', async () => {
+describe('the mode-wide settings', () => {
+    test('are written to the object of the mode in settings.json, without the old parts of the store', async () => {
         await startData([DIRECT]);
 
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), inactivity_threshold: 90, geechan_chatroom_prompt: 'Be kind.' }, { groupId: '' });
-        await data.flush();
-
-        expect(data.get('conv_1_direct01').settings).toMatchObject({ inactivity_threshold: 90, system_prompt: 'Be kind.' });
-        expect(Object.keys(data.get('conv_1_direct01').settings)).not.toContain('geechan_chatroom_prompt');
-
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), inactivity_threshold: DEFAULT_SETTINGS.inactivity_threshold }, { groupId: '' });
-        await data.flush();
-
-        expect(Object.hasOwn(data.get('conv_1_direct01').settings, 'inactivity_threshold')).toBe(false);
-    });
-
-    test('writes a status other than online to the character, and online clears it', async () => {
-        await startData([DIRECT]);
-
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), availability: 'idle' }, { groupId: '' });
-        expect(data.characterState('Nova.png').statusOverride).toBe('idle');
-
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), availability: 'online' }, { groupId: '' });
-        expect(data.characterState('Nova.png').statusOverride ?? null).toBeNull();
-        await data.flush();
-    });
-
-    test('never writes the old parts of the store into the object of the mode in settings.json', async () => {
-        await startData([DIRECT]);
-
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), custom_instructions: 'be brief' }, { groupId: '' });
+        const store = getConversationStore();
+        store.settings = { ...store.settings, custom_instructions: 'be brief' };
+        persistConversationStore();
         await data.flush();
 
         const written = JSON.parse(JSON.stringify(extensionSettings.sillybunny_conversation));
@@ -168,15 +143,6 @@ describe('saveSettings', () => {
         expect(written.settings.custom_instructions).toBe('be brief');
         expect(Object.hasOwn(data.get('conv_1_direct01').settings, 'custom_instructions')).toBe(false);
         expect(saveSettingsDebounced).toHaveBeenCalled();
-    });
-
-    test('does nothing for a character without a conversation except for the mode-wide values', async () => {
-        await startData([]);
-
-        saveSettings('Nova.png', { ...DEFAULT_SETTINGS, inactivity_threshold: 12 }, { groupId: '' });
-        await settle();
-
-        expect(data.list()).toHaveLength(0);
     });
 });
 
