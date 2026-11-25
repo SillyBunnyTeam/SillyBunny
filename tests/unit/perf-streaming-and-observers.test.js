@@ -51,12 +51,72 @@ function createDomEnvironment() {
             .replace(/>/g, '&gt;');
     }
 
+    class FakeNamedNodeMap extends Array {}
+
     class DomNode {
-        constructor(nodeType, ownerDocument) {
-            this.nodeType = nodeType;
-            this.ownerDocument = ownerDocument;
+        constructor(nodeType, ownerDocument, nodeName = '') {
+            this._nodeType = nodeType;
+            this._ownerDocument = ownerDocument;
+            this._nodeName = nodeName;
+            this._data = '';
             this._parentNode = null;
             this._childNodes = [];
+        }
+
+        get nodeType() {
+            return this._nodeType;
+        }
+
+        get ownerDocument() {
+            return this._ownerDocument;
+        }
+
+        set ownerDocument(val) {
+            this._ownerDocument = val;
+        }
+
+        get nodeName() {
+            return this._nodeName;
+        }
+
+        get data() {
+            return this._data;
+        }
+
+        set data(val) {
+            this._data = String(val ?? '');
+        }
+
+        get nodeValue() {
+            return this._nodeType === TEXT_NODE || this._nodeType === COMMENT_NODE ? this._data : null;
+        }
+
+        set nodeValue(val) {
+            if (this._nodeType === TEXT_NODE || this._nodeType === COMMENT_NODE) {
+                this._data = String(val ?? '');
+            }
+        }
+
+        get textContent() {
+            if (this._nodeType === TEXT_NODE || this._nodeType === COMMENT_NODE) {
+                return this._data;
+            }
+            let out = '';
+            for (const child of this._childNodes) out += child.textContent;
+            return out;
+        }
+
+        set textContent(val) {
+            const str = String(val ?? '');
+            if (this._nodeType === TEXT_NODE || this._nodeType === COMMENT_NODE) {
+                this._data = str;
+                return;
+            }
+            for (const child of this._childNodes) child.parentNode = null;
+            this._childNodes = [];
+            if (str.length > 0) {
+                this.appendChild(new DomText(str, this._ownerDocument));
+            }
         }
 
         get parentNode() {
@@ -226,18 +286,8 @@ function createDomEnvironment() {
 
     class DomText extends DomNode {
         constructor(data, ownerDocument) {
-            super(TEXT_NODE, ownerDocument);
-            this.data = String(data ?? '');
-        }
-
-        get nodeName() { return '#text'; }
-        get nodeValue() { return this.data; }
-        set nodeValue(val) { this.data = String(val ?? ''); }
-        get textContent() { return this.data; }
-        set textContent(val) { this.data = String(val ?? ''); }
-
-        cloneNode() {
-            return new DomText(this.data, this.ownerDocument);
+            super(TEXT_NODE, ownerDocument, '#text');
+            this._data = String(data ?? '');
         }
 
         isEqualNode(other) {
@@ -247,17 +297,8 @@ function createDomEnvironment() {
 
     class DomComment extends DomNode {
         constructor(data, ownerDocument) {
-            super(COMMENT_NODE, ownerDocument);
-            this.data = String(data ?? '');
-        }
-
-        get nodeName() { return '#comment'; }
-        get nodeValue() { return this.data; }
-        set nodeValue(val) { this.data = String(val ?? ''); }
-        get textContent() { return this.data; }
-
-        cloneNode() {
-            return new DomComment(this.data, this.ownerDocument);
+            super(COMMENT_NODE, ownerDocument, '#comment');
+            this._data = String(data ?? '');
         }
 
         isEqualNode(other) {
@@ -267,19 +308,18 @@ function createDomEnvironment() {
 
     class DomFragment extends DomNode {
         constructor(ownerDocument) {
-            super(DOCUMENT_FRAGMENT_NODE, ownerDocument);
+            super(DOCUMENT_FRAGMENT_NODE, ownerDocument, '#document-fragment');
         }
-
-        get nodeName() { return '#document-fragment'; }
     }
 
     class DomElement extends DomNode {
         constructor(tagName, ownerDocument) {
-            super(ELEMENT_NODE, ownerDocument);
-            this.localName = String(tagName).toLowerCase();
-            this.tagName = this.localName.toUpperCase();
-            this.nodeName = this.tagName;
-            this.namespaceURI = 'http://www.w3.org/1999/xhtml';
+            const localName = String(tagName).toLowerCase();
+            const upperTagName = localName.toUpperCase();
+            super(ELEMENT_NODE, ownerDocument, upperTagName);
+            this._localName = localName;
+            this._tagName = upperTagName;
+            this._namespaceURI = 'http://www.w3.org/1999/xhtml';
             this._attrs = new Map();
             this._listeners = new Map();
             this.style = { display: '' };
@@ -331,6 +371,10 @@ function createDomEnvironment() {
             return raw ? raw.trim().split(/\s+/).filter(Boolean) : [];
         }
 
+        get localName() { return this._localName; }
+        get tagName() { return this._tagName; }
+        get namespaceURI() { return this._namespaceURI; }
+
         get id() { return this._attrs.get('id') ?? ''; }
         set id(val) { this.setAttribute('id', val); }
 
@@ -350,7 +394,7 @@ function createDomEnvironment() {
         }
 
         get attributes() {
-            const list = [];
+            const list = new FakeNamedNodeMap();
             for (const [name, value] of this._attrs.entries()) {
                 list.push({ name, value, namespaceURI: null });
             }
@@ -380,21 +424,6 @@ function createDomEnvironment() {
                 if (n.nodeType === ELEMENT_NODE) return n;
             }
             return null;
-        }
-
-        get textContent() {
-            let out = '';
-            for (const child of this.childNodes) out += child.textContent;
-            return out;
-        }
-
-        set textContent(val) {
-            for (const child of this.childNodes) child.parentNode = null;
-            this.childNodes = [];
-            const str = String(val ?? '');
-            if (str.length > 0) {
-                this.appendChild(new DomText(str, this.ownerDocument));
-            }
         }
 
         get innerHTML() {
@@ -711,7 +740,6 @@ function createDomEnvironment() {
         }
     }
 
-    class FakeNamedNodeMap {}
     class FakeHTMLFormElement extends DomElement {}
 
     const windowObj = {
@@ -1075,23 +1103,34 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
     });
 
     describe('Differential parity: splitStreamingBlocks & incremental formatting vs full formatting', () => {
-        function createFormattingHarness() {
+        async function createFormattingHarness() {
             const cssParseSpy = jest.fn(cssText => parseCss(cssText));
             let externalMediaAllowed = false;
-            const dom = createDomEnvironment();
-            const DOMPurify = createDOMPurify(dom.window);
+
+            // Prefer real JSDOM when installed (matches CI's dompurify 3.4.18+ WebIDL getter contract);
+            // fall back to createDomEnvironment() (which also exposes Node/Element prototype getters).
+            let jsdomInstance = null;
+            let domWindow;
+            try {
+                const { JSDOM } = await import('jsdom');
+                jsdomInstance = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://127.0.0.1:4444/' });
+                domWindow = jsdomInstance.window;
+            } catch {
+                domWindow = createDomEnvironment().window;
+            }
+            const DOMPurify = createDOMPurify(domWindow);
 
             const chatsContext = vm.createContext({
                 css: { parse: cssParseSpy, stringify: stringifyCss },
                 removeUnscopableCss,
                 isExternalMediaAllowed: jest.fn(() => externalMediaAllowed),
                 DOMPurify,
-                HTMLUnknownElement: class {},
-                HTMLMediaElement: class {},
-                Element: dom.Element,
-                NodeFilter: dom.NodeFilter,
-                document: dom.document,
-                window: dom.window,
+                HTMLUnknownElement: domWindow.HTMLUnknownElement ?? class {},
+                HTMLMediaElement: domWindow.HTMLMediaElement ?? class {},
+                Element: domWindow.Element,
+                NodeFilter: domWindow.NodeFilter,
+                document: domWindow.document,
+                window: domWindow,
                 console: { warn: jest.fn() },
                 getCurrentEntityId: () => 'char-1',
                 accountStorage: { getItem: () => 'shown', setItem: () => {} },
@@ -1145,118 +1184,123 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 cssParseSpy,
                 isExternalMediaAllowedSpy: chatsContext.isExternalMediaAllowed,
                 setExternalMediaAllowed: (v) => { externalMediaAllowed = v; },
+                cleanup: () => { jsdomInstance?.window?.close?.(); },
             };
         }
 
-        test('guarantees 100% final parity and sanitizes every interim tail across fences, OOC, refs, <style>, and XSS', () => {
+        test('guarantees 100% final parity and sanitizes every interim tail across fences, OOC, refs, <style>, and XSS', async () => {
             const { splitStreamingBlocks, createIncrementalBlockFormatter } = loadStreamFadeInModule();
-            const { fullFormat } = createFormattingHarness();
-            const incremental = createIncrementalBlockFormatter(fullFormat);
+            const { fullFormat, cleanup } = await createFormattingHarness();
+            try {
+                const incremental = createIncrementalBlockFormatter(fullFormat);
 
-            const corpora = [
-                // 1. Multi-paragraph prose + fenced code blocks with internal blank lines
-                [
-                    'First paragraph with **bold** and *italic* prose.',
-                    '',
-                    '```js',
-                    'function greet(name) {',
-                    '',
-                    '    return `Hello ${name}`;',
-                    '}',
-                    '```',
-                    '',
-                    '~~~python',
-                    'def calc():',
-                    '',
-                    '    return 42',
-                    '~~~',
-                    '',
-                    'Closing summary paragraph.',
-                ].join('\n'),
+                const corpora = [
+                    // 1. Multi-paragraph prose + fenced code blocks with internal blank lines
+                    [
+                        'First paragraph with **bold** and *italic* prose.',
+                        '',
+                        '```js',
+                        'function greet(name) {',
+                        '',
+                        '    return `Hello ${name}`;',
+                        '}',
+                        '```',
+                        '',
+                        '~~~python',
+                        'def calc():',
+                        '',
+                        '    return 42',
+                        '~~~',
+                        '',
+                        'Closing summary paragraph.',
+                    ].join('\n'),
 
-                // 2. Balanced and nested multi-paragraph OOC blocks + XSS inside OOC
-                [
-                    'Visible opener before note.',
-                    '',
-                    '((Outer OOC paragraph one',
-                    '',
-                    '((nested <img src=x onerror=alert(1)> inner)) still in OOC))',
-                    '',
-                    'Character continues speaking normally.',
-                ].join('\n'),
+                    // 2. Balanced and nested multi-paragraph OOC blocks + XSS inside OOC
+                    [
+                        'Visible opener before note.',
+                        '',
+                        '((Outer OOC paragraph one',
+                        '',
+                        '((nested <img src=x onerror=alert(1)> inner)) still in OOC))',
+                        '',
+                        'Character continues speaking normally.',
+                    ].join('\n'),
 
-                // 3. Late Markdown reference-style link definitions
-                [
-                    'Read the [official guide][guide-link] before continuing.',
-                    '',
-                    'Another middle paragraph with plain text.',
-                    '',
-                    '[guide-link]: https://example.com/guide',
-                ].join('\n'),
+                    // 3. Late Markdown reference-style link definitions
+                    [
+                        'Read the [official guide][guide-link] before continuing.',
+                        '',
+                        'Another middle paragraph with plain text.',
+                        '',
+                        '[guide-link]: https://example.com/guide',
+                    ].join('\n'),
 
-                // 4. Scoped <style> & uppercase <STYLE> blocks + hostile </style><script> breakout attempt
-                [
-                    '<style>.badge { color: #ff5500; } :is(.card, .pill) { padding: 4px; }</style>',
-                    '',
-                    '<div class="badge">\n\nMulti-line HTML card body\n\n</div>',
-                    '',
-                    '<STYLE>.banner { background: url(https://evil.example/track.png); border: 1px solid red; }</STYLE>',
-                    '',
-                    'Final paragraph.',
-                ].join('\n'),
+                    // 4. Scoped <style> & uppercase <STYLE> blocks + hostile </style><script> breakout attempt
+                    [
+                        '<style>.badge { color: #ff5500; } :is(.card, .pill) { padding: 4px; }</style>',
+                        '',
+                        '<div class="badge">\n\nMulti-line HTML card body\n\n</div>',
+                        '',
+                        '<STYLE>.banner { background: url(https://evil.example/track.png); border: 1px solid red; }</STYLE>',
+                        '',
+                        'Final paragraph.',
+                    ].join('\n'),
 
-                // 5. Hostile XSS payloads across prefix and active streaming tail
-                [
-                    'Safe intro <script>alert("prefix-xss")</script> paragraph.',
-                    '',
-                    'Middle block with <img src="x" onerror="alert(2)"> and [trap](javascript:alert(3)).',
-                    '',
-                    'Tail block with <svg onload="evil()"><iframe src="https://evil.example"></iframe></svg> end.',
-                ].join('\n'),
-            ];
+                    // 5. Hostile XSS payloads across prefix and active streaming tail
+                    [
+                        'Safe intro <script>alert("prefix-xss")</script> paragraph.',
+                        '',
+                        'Middle block with <img src="x" onerror="alert(2)"> and [trap](javascript:alert(3)).',
+                        '',
+                        'Tail block with <svg onload="evil()"><iframe src="https://evil.example"></iframe></svg> end.',
+                    ].join('\n'),
+                ];
 
-            const checkDomEnv = createDomEnvironment();
-            const findLiveXssViolations = (htmlFragment) => {
-                const violations = [];
-                const probe = checkDomEnv.document.createElement('div');
-                probe.innerHTML = htmlFragment;
-                for (const badTag of probe.querySelectorAll('script, iframe')) {
-                    violations.push(`tag:${badTag.localName}`);
-                }
-                const visit = (node) => {
-                    for (const child of node.childNodes) {
-                        if (child.nodeType === 1) {
-                            for (const { name, value } of child.attributes) {
-                                if (name.startsWith('on')) {
-                                    violations.push(`attr:${name}`);
-                                }
-                                if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value)) {
-                                    violations.push(`url:${name}=${value}`);
-                                }
-                            }
-                            visit(child);
-                        }
+                const checkDomEnv = createDomEnvironment();
+                const findLiveXssViolations = (htmlFragment) => {
+                    const violations = [];
+                    const probe = checkDomEnv.document.createElement('div');
+                    probe.innerHTML = htmlFragment;
+                    for (const badTag of probe.querySelectorAll('script, iframe')) {
+                        violations.push(`tag:${badTag.localName}`);
                     }
+                    const visit = (node) => {
+                        for (const child of node.childNodes) {
+                            if (child.nodeType === 1) {
+                                for (const { name, value } of child.attributes) {
+                                    if (name.startsWith('on')) {
+                                        violations.push(`attr:${name}`);
+                                    }
+                                    if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value)) {
+                                        violations.push(`url:${name}=${value}`);
+                                    }
+                                }
+                                visit(child);
+                            }
+                        }
+                    };
+                    visit(probe);
+                    return violations;
                 };
-                visit(probe);
-                return violations;
-            };
 
-            for (const documentText of corpora) {
-                incremental.reset();
-                // Stream in 19-char chunks to hit mid-tag, mid-fence, mid-OOC, and mid-XSS boundaries
-                for (let cursor = 1; cursor < documentText.length; cursor += 19) {
-                    const slice = documentText.slice(0, cursor);
-                    const split = splitStreamingBlocks(slice, { isFinal: false });
-                    expect(split.prefix + split.tail).toBe(slice);
+                for (const documentText of corpora) {
+                    incremental.reset();
+                    // Stream in 19-char chunks to hit mid-tag, mid-fence, mid-OOC, and mid-XSS boundaries
+                    for (let cursor = 1; cursor < documentText.length; cursor += 19) {
+                        const slice = documentText.slice(0, cursor);
+                        const split = splitStreamingBlocks(slice, { isFinal: false });
+                        expect(split.prefix + split.tail).toBe(slice);
 
-                    const interimHtml = incremental.format(slice, { isFinal: false });
-                    expect(findLiveXssViolations(interimHtml)).toEqual([]);
+                        const interimHtml = incremental.format(slice, { isFinal: false });
+                        expect(findLiveXssViolations(interimHtml)).toEqual([]);
+                    }
+
+                    const finalIncremental = incremental.format(documentText, { isFinal: true });
+                    const finalReference = fullFormat(documentText);
+                    expect(finalIncremental).toBe(finalReference);
                 }
-
-                const finalIncremental = incremental.format(documentText, { isFinal: true });
-                const finalReference = fullFormat(documentText);
-                expect(finalIncremental).toBe(finalReference);
+            } finally {
+                cleanup();
             }
         });
 
@@ -1302,7 +1346,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(indentedSplit.tail).toBe('Outro.');
         });
 
-        test('LRU-caches sanitized <style> blocks, encodes mixed-case <sTyLe>, and safely caches isExternalMediaAllowed against real DOMPurify across disallowed tags', () => {
+        test('LRU-caches sanitized <style> blocks, encodes mixed-case <sTyLe>, and safely caches isExternalMediaAllowed against real DOMPurify across disallowed tags', async () => {
             const {
                 encodeStyleTags,
                 decodeStyleTags,
@@ -1311,80 +1355,92 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 cssParseSpy,
                 isExternalMediaAllowedSpy,
                 setExternalMediaAllowed,
-            } = createFormattingHarness();
+                cleanup,
+            } = await createFormattingHarness();
 
-            expect(DOMPurify.isSupported).toBe(true);
+            try {
+                expect(DOMPurify.isSupported).toBe(true);
 
-            // Fast-path when no <style> / <custom-style> is present
-            expect(encodeStyleTags('<p>Plain paragraph</p>')).toBe('<p>Plain paragraph</p>');
-            expect(decodeStyleTags('<p>Plain paragraph</p>')).toBe('<p>Plain paragraph</p>');
-            expect(cssParseSpy).not.toHaveBeenCalled();
+                // Verify fallback createDomEnvironment() also satisfies DOMPurify 3.4.18+ prototype lookupGetter contract.
+                const fallbackDom = createDomEnvironment();
+                const nodeNameGetter = Object.getOwnPropertyDescriptor(fallbackDom.Node.prototype, 'nodeName')?.get;
+                expect(typeof nodeNameGetter).toBe('function');
+                expect(nodeNameGetter.call(fallbackDom.document.createElement('img'))).toBe('IMG');
+                expect(nodeNameGetter.call(fallbackDom.document.createTextNode('hi'))).toBe('#text');
 
-            // Mixed-case <sTyLe> must not bypass encodeStyleTags fast-path
-            const mixedEncoded = encodeStyleTags('<sTyLe>.hero { color: blue; }</sTyLe><p>Ok</p>');
-            expect(mixedEncoded).toContain('<custom-style>');
-            expect(decodeStyleTags(mixedEncoded, { prefix: '.mes_text ' })).toContain('.mes_text .custom-hero');
-            cssParseSpy.mockClear();
+                // Fast-path when no <style> / <custom-style> is present
+                expect(encodeStyleTags('<p>Plain paragraph</p>')).toBe('<p>Plain paragraph</p>');
+                expect(decodeStyleTags('<p>Plain paragraph</p>')).toBe('<p>Plain paragraph</p>');
+                expect(cssParseSpy).not.toHaveBeenCalled();
 
-            // Repeated streaming ticks with identical <style> block hit the LRU cache
-            const encoded = encodeStyleTags('<style>.box { color: green; background: url(https://img.example/a.png); }</style><p>Body</p>');
-            const first = decodeStyleTags(encoded, { prefix: '.mes_text ' });
-            const second = decodeStyleTags(encoded, { prefix: '.mes_text ' });
-            expect(second).toBe(first);
-            expect(cssParseSpy).toHaveBeenCalledTimes(1);
-            expect(first).not.toContain('https://img.example/a.png');
+                // Mixed-case <sTyLe> must not bypass encodeStyleTags fast-path
+                const mixedEncoded = encodeStyleTags('<sTyLe>.hero { color: blue; }</sTyLe><p>Ok</p>');
+                expect(mixedEncoded).toContain('<custom-style>');
+                expect(decodeStyleTags(mixedEncoded, { prefix: '.mes_text ' })).toContain('.mes_text .custom-hero');
+                cssParseSpy.mockClear();
 
-            // Toggling external media invalidates via cache key and preserves external URL
-            setExternalMediaAllowed(true);
-            const third = decodeStyleTags(encoded, { prefix: '.mes_text ' });
-            expect(cssParseSpy).toHaveBeenCalledTimes(2);
-            expect(third).toContain('https://img.example/a.png');
+                // Repeated streaming ticks with identical <style> block hit the LRU cache
+                const encoded = encodeStyleTags('<style>.box { color: green; background: url(https://img.example/a.png); }</style><p>Body</p>');
+                const first = decodeStyleTags(encoded, { prefix: '.mes_text ' });
+                const second = decodeStyleTags(encoded, { prefix: '.mes_text ' });
+                expect(second).toBe(first);
+                expect(cssParseSpy).toHaveBeenCalledTimes(1);
+                expect(first).not.toContain('https://img.example/a.png');
 
-            // Verify real DOMPurify with addDOMPurifyHooks():
-            addDOMPurifyHooks();
-            const sharedConfig = { MESSAGE_SANITIZE: true, ADD_TAGS: ['custom-style'] };
+                // Toggling external media invalidates via cache key and preserves external URL
+                setExternalMediaAllowed(true);
+                const third = decodeStyleTags(encoded, { prefix: '.mes_text ' });
+                expect(cssParseSpy).toHaveBeenCalledTimes(2);
+                expect(third).toContain('https://img.example/a.png');
 
-            // 1. Prose-only message with 50 non-media elements must NOT call isExternalMediaAllowed() at all.
-            isExternalMediaAllowedSpy.mockClear();
-            const proseHtml = Array.from({ length: 50 }, (_, i) => `<p><span>Line ${i}</span></p>`).join('');
-            DOMPurify.sanitize(proseHtml, sharedConfig);
-            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(0);
+                // Verify real DOMPurify with addDOMPurifyHooks():
+                addDOMPurifyHooks();
+                const sharedConfig = { MESSAGE_SANITIZE: true, ADD_TAGS: ['custom-style'] };
 
-            // 2. Message with disallowed tags (<script>, <status>) + multiple <img> while allowed=true:
-            //    caches once per pass, strips disallowed tags, preserves <img>, and NEVER leaks stale state.
-            setExternalMediaAllowed(true);
-            isExternalMediaAllowedSpy.mockClear();
-            const allowedPass = DOMPurify.sanitize(
-                '<script>alert(1)</script><status>hp:10</status><img src="https://evil.example/1.png"><img src="https://evil.example/2.png">',
-                sharedConfig,
-            );
-            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
-            expect(allowedPass).not.toContain('<script');
-            expect(allowedPass).not.toContain('<status');
-            expect(allowedPass).toContain('https://evil.example/1.png');
-            expect(allowedPass).toContain('https://evil.example/2.png');
+                // 1. Prose-only message with 50 non-media elements must NOT call isExternalMediaAllowed() at all.
+                isExternalMediaAllowedSpy.mockClear();
+                const proseHtml = Array.from({ length: 50 }, (_, i) => `<p><span>Line ${i}</span></p>`).join('');
+                DOMPurify.sanitize(proseHtml, sharedConfig);
+                expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(0);
 
-            // 3. Switching to untrusted character (externalMediaAllowed=false) even with the SAME config object
-            //    must STILL block external <img> tags (regression guard against depth-counter latch bug!).
-            setExternalMediaAllowed(false);
-            isExternalMediaAllowedSpy.mockClear();
-            const blockedPass = DOMPurify.sanitize(
-                '<script>alert(2)</script><status>hp:5</status><img src="https://evil.example/tracker.png"><p>Safe</p>',
-                sharedConfig,
-            );
-            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
-            expect(blockedPass).not.toContain('https://evil.example/tracker.png');
-            expect(blockedPass).toContain('<p>Safe</p>');
+                // 2. Message with disallowed tags (<script>, <status>) + multiple <img> while allowed=true:
+                //    caches once per pass, strips disallowed tags, preserves <img>, and NEVER leaks stale state.
+                setExternalMediaAllowed(true);
+                isExternalMediaAllowedSpy.mockClear();
+                const allowedPass = DOMPurify.sanitize(
+                    '<script>alert(1)</script><status>hp:10</status><img src="https://evil.example/1.png"><img src="https://evil.example/2.png">',
+                    sharedConfig,
+                );
+                expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
+                expect(allowedPass).not.toContain('<script');
+                expect(allowedPass).not.toContain('<status');
+                expect(allowedPass).toContain('https://evil.example/1.png');
+                expect(allowedPass).toContain('https://evil.example/2.png');
 
-            // 4. Switching back to allowed=true after a blocked pass with disallowed tags must re-allow external media.
-            setExternalMediaAllowed(true);
-            isExternalMediaAllowedSpy.mockClear();
-            const reAllowedPass = DOMPurify.sanitize(
-                '<img src="https://good.example/art.png">',
-                sharedConfig,
-            );
-            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
-            expect(reAllowedPass).toContain('https://good.example/art.png');
+                // 3. Switching to untrusted character (externalMediaAllowed=false) even with the SAME config object
+                //    must STILL block external <img> tags (regression guard against depth-counter latch bug!).
+                setExternalMediaAllowed(false);
+                isExternalMediaAllowedSpy.mockClear();
+                const blockedPass = DOMPurify.sanitize(
+                    '<script>alert(2)</script><status>hp:5</status><img src="https://evil.example/tracker.png"><p>Safe</p>',
+                    sharedConfig,
+                );
+                expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
+                expect(blockedPass).not.toContain('https://evil.example/tracker.png');
+                expect(blockedPass).toContain('<p>Safe</p>');
+
+                // 4. Switching back to allowed=true after a blocked pass with disallowed tags must re-allow external media.
+                setExternalMediaAllowed(true);
+                isExternalMediaAllowedSpy.mockClear();
+                const reAllowedPass = DOMPurify.sanitize(
+                    '<img src="https://good.example/art.png">',
+                    sharedConfig,
+                );
+                expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
+                expect(reAllowedPass).toContain('https://good.example/art.png');
+            } finally {
+                cleanup();
+            }
         });
     });
 
