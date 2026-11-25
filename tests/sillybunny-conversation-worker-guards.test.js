@@ -300,6 +300,20 @@ describe('an automatic reply whose chat is deleted while it is generated', () =>
         expect(postMemberConversationReply).toHaveBeenCalledTimes(2);
     });
 
+    test('is not written into a conversation of the same character that was made after the first one was deleted', async () => {
+        const view = makeView('conv_1_direct');
+        generateConversationReply.mockImplementation(async () => {
+            views.delete(view.id);
+            makeView('conv_9_direct99');
+            return 'Hello there.';
+        });
+
+        const triggered = await triggerAutoMessage('[directive]', SETTINGS, {}, 'char.png', { chatId: 'main', personaId: PERSONA });
+
+        expect(postCharacterReply).not.toHaveBeenCalled();
+        expect(triggered).toBe(false);
+    });
+
     test('is not started for a chat that does not exist', async () => {
         makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'] });
         member = MEMBER;
