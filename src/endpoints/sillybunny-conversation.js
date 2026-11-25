@@ -13,6 +13,7 @@
  * | `not_found` | 404 |
  * | `corrupt` | 422 |
  * | `exists`, `integrity`, `destructive` | 409 (`destructive` also carries a `reason`) |
+ * | `conversion_failed` | 500, when removing a member could not convert the group; the group is as it was |
  * | `migration_failed` | 503, from every route but `/migration/status`, which says why |
  *
  * The first request of a user to any route here moves that user's conversations out of `settings.json` (see
@@ -25,6 +26,7 @@ import express from 'express';
 
 import { ensureMigrated, importLegacyThreads } from '../conversation-migration.js';
 import {
+    addMembers,
     ConversationStoreError,
     createChat,
     createChatFromMessages,
@@ -38,6 +40,8 @@ import {
     readCharacterState,
     readConversation,
     removeConversationAvatar,
+    removeExtra,
+    removeMember,
     renameChat,
     saveChat,
     setConversationAvatar,
@@ -57,6 +61,7 @@ const STATUS_BY_CODE = Object.freeze({
     integrity: 409,
     destructive: 409,
     unavailable: 500,
+    conversion_failed: 500,
     migration_failed: 503,
 });
 const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description'];
@@ -233,6 +238,36 @@ router.post('/chat/export', route((user, body, _request, response) => {
     response.attachment(fileName);
     response.set({ 'Content-Type': 'application/x-ndjson; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
     response.send(data);
+}));
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Members and extras
+
+/**
+ * `{ id, characters }`: avatar file names of cards that exist. On a group they join it and read the history as it is;
+ * on a direct conversation they start a new group with its character, and the direct conversation stays as it is.
+ * Answers `{ conversation, created }`, where `conversation` is the group.
+ */
+router.post('/members/add', route((user, body) => {
+    onlyFields(body, ['id', 'characters'], 'members/add');
+    return addMembers(user, body.id, body.characters);
+}));
+
+/**
+ * `{ id, avatar }`. The past messages stay. Answers `{ conversation, converted: false }` while the group keeps two
+ * members or more. Removing the second-to-last member converts the group into the direct conversation of the member that
+ * is left and answers `{ conversation, converted: true, removedId }`, where `conversation` is the direct conversation to
+ * show and `removedId` the deleted group. `conversion_failed` (500) means that the group is as it was.
+ */
+router.post('/members/remove', route((user, body) => {
+    onlyFields(body, ['id', 'avatar'], 'members/remove');
+    return removeMember(user, body.id, body.avatar);
+}));
+
+/** `{ id, avatar }` on a direct conversation. There is no route to add an extra. Answers `{ conversation }`. */
+router.post('/extras/remove', route((user, body) => {
+    onlyFields(body, ['id', 'avatar'], 'extras/remove');
+    return removeExtra(user, body.id, body.avatar);
 }));
 
 // ---------------------------------------------------------------------------------------------------------------------

@@ -11,8 +11,6 @@
  * `settings.json` is changed, and `skipped` in the report counts what stays only there and why.
  */
 
-import crypto from 'node:crypto';
-
 import {
     buildLegacyThreadKey,
     canonicalizeLegacyGroupThread,
@@ -30,7 +28,8 @@ import {
     mapConversationSettings,
     mapGlobalSettings,
 } from './conversation-migration-settings.js';
-import { createChatId, createConversationId, isChatId } from './conversation-paths.js';
+import { chooseChatId, nameChatAfterGroup } from './conversation-conversion-rules.js';
+import { createConversationId } from './conversation-paths.js';
 import {
     isSafeName,
     MAX_GROUP_MEMBERS,
@@ -82,10 +81,6 @@ const PINNED_CONVERSATION_KEY = /^conversation_(group|char)_(.*)_branch_(.*)$/;
 
 function isObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function sha1Token(text, length) {
-    return crypto.createHash('sha1').update(String(text)).digest('hex').slice(0, length);
 }
 
 function cleanText(value, maxLength) {
@@ -373,24 +368,6 @@ function buildHeader(branch, thread, isActive) {
     };
 }
 
-function chooseChatId(branchId, branch, used) {
-    const base = isChatId(branchId) ? branchId : createChatId(Number(branch.createdAt) || 0, sha1Token(branchId, 6));
-    let id = base;
-    for (let suffix = 2; used.has(id); suffix++) {
-        id = `${base.slice(0, 60)}_${suffix}`;
-    }
-    used.add(id);
-    return id;
-}
-
-function getChatName(branch, { nameAfter, isDefaultName }) {
-    const name = cleanText(branch.name || 'Main', MAX_NAME_LENGTH);
-    if (!nameAfter) {
-        return name;
-    }
-    return isDefaultName(name) ? nameAfter : cleanText(`${nameAfter} - ${name}`, MAX_NAME_LENGTH);
-}
-
 /**
  * Adds the chats of a thread to a conversation under construction.
  * Row 17 and R5-22: an empty chat stays in the backup, except the active chat of the thread that the conversation is
@@ -413,7 +390,7 @@ function appendChats(draft, thread, { primary, threadIsGroup, anchorAvatar, name
 
     const idMap = new Map();
     for (const { branchId, branch } of kept) {
-        idMap.set(branchId, chooseChatId(branchId, branch, draft.usedChatIds));
+        idMap.set(branchId, chooseChatId(branchId, Number(branch.createdAt) || 0, draft.usedChatIds));
     }
 
     for (const { branchId, branch } of kept) {
@@ -425,7 +402,7 @@ function appendChats(draft, thread, { primary, threadIsGroup, anchorAvatar, name
         stats.droppedMarkers += Object.keys(markers).length - Object.keys(sessionMarkers).length;
         const entry = {
             id: chatId,
-            name: getChatName(branch, { nameAfter, isDefaultName: name => name === 'Main' || !name }) + nameSuffix,
+            name: nameChatAfterGroup(branch.name, nameAfter) + nameSuffix,
             createdAt: Number(branch.createdAt) || 0,
             readThrough: computeReadThrough(messages, Number(branch.unread) || 0, stats),
             followupCount: Number(branch.followupCount) || 0,

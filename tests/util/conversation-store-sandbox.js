@@ -33,6 +33,8 @@ export function createSandboxUser(handle = `store-test-user-${++sandboxCount}`) 
     const directories = {
         root,
         conversations: path.join(root, 'conversations'),
+        characters: path.join(root, 'characters'),
+        avatars: path.join(root, 'User Avatars'),
         backups: path.join(root, 'backups'),
         chats: path.join(root, 'chats'),
         groupChats: path.join(root, 'group chats'),
@@ -51,6 +53,13 @@ export function createSandboxUser(handle = `store-test-user-${++sandboxCount}`) 
             fs.rmSync(root, { recursive: true, force: true });
         },
     };
+}
+
+/** Puts a card file for each avatar in the user's characters folder, so that the store finds the character. */
+export function addCharacters(user, avatars) {
+    for (const avatar of avatars) {
+        fs.writeFileSync(path.join(user.directories.characters, avatar), 'card');
+    }
 }
 
 /** The header line that a chat file starts with. */

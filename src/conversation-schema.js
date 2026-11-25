@@ -705,6 +705,14 @@ export function parseCharacterAvatar(avatar) {
 }
 
 /**
+ * @param {unknown} avatars The characters to add to a conversation, as avatar file names.
+ * @returns {string[]} At least one name, none twice, none that reads as a path.
+ */
+export function parseMemberAvatars(avatars) {
+    return parseNameList(avatars, 'characters', { min: 1 });
+}
+
+/**
  * @param {Record<string, any>} current The stored state of one character.
  * @param {unknown} patch `routine` merges field by field, `statusOverride` replaces; null clears either.
  * @returns {Record<string, any>} The new state of the character, without the fields that are cleared.

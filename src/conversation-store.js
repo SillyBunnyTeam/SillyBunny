@@ -33,6 +33,7 @@ import {
     readChatJsonlStrict,
     runChatRecoveryBestEffort,
 } from './chat-recovery.js';
+import { chooseChatId, nameChatAfterGroup } from './conversation-conversion-rules.js';
 import { conversationIndex } from './conversation-index.js';
 import {
     ConversationPathError,
@@ -55,12 +56,14 @@ import {
     ConversationStoreError,
     getAvatarContentType,
     MAX_AVATAR_IMAGE_BYTES,
+    MAX_REMINDERS,
     normalizeStoredCharacterState,
     normalizeStoredConversation,
     parseChatInput,
     parseChatRecords,
     parseCharacterAvatar,
     parseCreateInput,
+    parseMemberAvatars,
     parseNewChatMessages,
     parseNewChatMetadata,
     sniffImageType,
@@ -860,6 +863,325 @@ export function exportChat(user, conversationId, chatId) {
     }
     const baseName = sanitize(entry.name).trim() || entry.id;
     return { fileName: `${baseName}.jsonl`, data: Buffer.from(result.data).toString('utf8') };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Members, extras and the conversion of a group
+
+/** A character is a card in the user's characters folder. Only its name is kept, so a link in the folder is not followed for anything. */
+function requireCharacterCards(user, avatars) {
+    const folder = user.directories?.characters;
+    if (typeof folder !== 'string') {
+        throw new ConversationStoreError('unavailable', 'Characters are not available.');
+    }
+    for (const avatar of avatars) {
+        const isCard = path.extname(avatar).toLowerCase() === '.png' && fs.statSync(path.join(folder, avatar), { throwIfNoEntry: false })?.isFile() === true;
+        if (!isCard) {
+            throw new ConversationStoreError('invalid_input', 'characters must name character cards that exist.');
+        }
+    }
+}
+
+/**
+ * Adds characters to a group, which then read the history as it is: nothing is written to the chats. On a direct
+ * conversation it starts a new group of that conversation's character and the chosen ones, and leaves the direct
+ * conversation as it is.
+ * @param {StoreUser} user
+ * @param {string} id
+ * @param {string[]} avatars Avatar file names of cards that exist, none twice, none that is a member already.
+ * @returns {{ conversation: Record<string, any>, created: boolean }} The group, and whether it is a new one.
+ */
+export function addMembers(user, id, avatars) {
+    const chosen = guard(() => parseMemberAvatars(avatars));
+    requireCharacterCards(user, chosen);
+    const current = readConversation(user, id);
+    if (current.kind === 'direct') {
+        const { conversation } = createConversation(user, { kind: 'group', personaId: current.personaId, characters: [current.characters[0], ...chosen] });
+        return { conversation, created: true };
+    }
+    const conversation = mutateConversation(user, id, latest => guard(() => applyUpdatePatch(latest, { characters: [...latest.characters, ...chosen] }, { now: Date.now() })));
+    return { conversation, created: false };
+}
+
+/**
+ * Takes a member out of a group. The past messages stay. A group that keeps at least two members is changed in place;
+ * a group that falls to one member is converted: its chats go to the direct conversation of the member that is left,
+ * and the group is deleted (`convertGroupToDirect()`).
+ * @param {StoreUser} user
+ * @param {string} id
+ * @param {string} avatar
+ * @returns {{ conversation: Record<string, any>, converted: boolean, removedId?: string }} `conversation` is the group, or
+ * after a conversion the direct conversation that the user is to be shown, and `removedId` is the id of the deleted group.
+ * @throws {ConversationStoreError} `not_found` when the character is not a member, `invalid_input` for a direct conversation
+ * or the last member, `conversion_failed` when the conversion failed and the group is as it was.
+ */
+export function removeMember(user, id, avatar) {
+    const name = guard(() => parseCharacterAvatar(avatar));
+    const current = readConversation(user, id);
+    if (current.kind !== 'group') {
+        throw new ConversationStoreError('invalid_input', 'A direct conversation has no members to remove.');
+    }
+    if (!current.characters.includes(name)) {
+        throw notFound('The member');
+    }
+    const remaining = current.characters.filter(member => member !== name);
+    if (remaining.length === 0) {
+        throw new ConversationStoreError('invalid_input', 'The last member cannot be removed. Delete the conversation instead.');
+    }
+    if (remaining.length === 1) {
+        return convertGroupToDirect(user, id, remaining[0]);
+    }
+    const conversation = mutateConversation(user, id, latest => guard(() => applyUpdatePatch(latest, { characters: latest.characters.filter(member => member !== name) }, { now: Date.now() })));
+    return { conversation, converted: false };
+}
+
+/**
+ * Takes an extra, a character that the old store listed beside the one of a direct conversation, off the list. There is
+ * no way to add one. The messages of that character stay.
+ * @param {StoreUser} user
+ * @param {string} id
+ * @param {string} avatar
+ * @returns {{ conversation: Record<string, any> }}
+ */
+export function removeExtra(user, id, avatar) {
+    const name = guard(() => parseCharacterAvatar(avatar));
+    const current = readConversation(user, id);
+    if (current.kind !== 'direct') {
+        throw new ConversationStoreError('invalid_input', 'Only a direct conversation has extras.');
+    }
+    if (!current.extras.includes(name)) {
+        throw notFound('The extra');
+    }
+    const conversation = mutateConversation(user, id, latest => guard(() => applyUpdatePatch(latest, { extras: latest.extras.filter(extra => extra !== name) }, { now: Date.now() })));
+    return { conversation };
+}
+
+const CONVERSION_FAILED = 'The group could not be converted, and it is as it was.';
+
+function withoutSlug(records) {
+    const metadata = { ...records[0].chat_metadata };
+    delete metadata.integrity;
+    return [{ ...records[0], chat_metadata: metadata }, ...records.slice(1)];
+}
+
+/** A chat of the group as the conversion copies it: its records without the slug, so that the first save of the copy assigns one. A listed chat whose file is gone is carried as a blank chat. */
+function readChatForConversion(user, groupId, chatId) {
+    try {
+        return withoutSlug(loadChat(user, groupId, chatId));
+    } catch (error) {
+        if (error instanceof ConversationStoreError && error.code === 'not_found') {
+            return [{ chat_metadata: {}, user_name: 'unused', character_name: 'unused' }];
+        }
+        throw error;
+    }
+}
+
+function verifyCopies(user, conversationId, copies) {
+    for (const { entry, records } of copies) {
+        const result = readChatJsonlStrict(getChatFilePath(user.directories, conversationId, entry.id));
+        if (result.status !== 'ok' || JSON.stringify(result.records) !== JSON.stringify(records)) {
+            throw new Error(`The copy of the chat "${entry.id}" does not match the original.`);
+        }
+    }
+}
+
+function removeWrittenCopies(user, conversationId, chatIds) {
+    for (const chatId of chatIds) {
+        const filePath = getChatFilePath(user.directories, conversationId, chatId);
+        fs.rmSync(filePath, { force: true });
+        conversationIndex.delete(filePath);
+    }
+}
+
+/**
+ * Plans the chats that the direct conversation takes in: the id and name of each, the markers and reminders that name
+ * a chat, and the chat that the user is to land in.
+ * @param {Record<string, any>} group
+ * @param {string[]} taken The chat ids that the direct conversation has, listed or not.
+ * @param {object[]} existingReminders The reminders that the direct conversation has.
+ */
+function planConvertedChats(group, taken, existingReminders) {
+    const used = new Set(taken);
+    const ordered = group.chats.map((entry, index) => ({ entry, index })).sort((left, right) => left.entry.createdAt - right.entry.createdAt || left.index - right.index);
+    const idMap = new Map(ordered.map(({ entry }) => [entry.id, chooseChatId(entry.id, entry.createdAt, used)]));
+    const chats = ordered.map(({ entry }) => ({
+        sourceId: entry.id,
+        entry: {
+            id: idMap.get(entry.id),
+            name: nameChatAfterGroup(entry.name, group.name),
+            createdAt: entry.createdAt,
+            readThrough: entry.readThrough,
+            followupCount: entry.followupCount,
+            lastAutoMessageAt: entry.lastAutoMessageAt,
+            lastActivity: entry.lastActivity,
+            sessionMarkers: Object.fromEntries(Object.entries(entry.sessionMarkers).map(([key, value]) => [key, key === 'memory_copied_from' && idMap.has(value) ? idMap.get(value) : value])),
+            legacyId: `${group.id}/${entry.id}`,
+        },
+    }));
+    const knownReminders = new Set(existingReminders.map(reminder => reminder.id));
+    const reminders = group.reminders
+        .filter(reminder => !knownReminders.has(reminder.id))
+        .map(reminder => (reminder.chatId && idMap.has(reminder.chatId) ? { ...reminder, chatId: idMap.get(reminder.chatId) } : reminder));
+    return { chats, reminders, activeChatId: idMap.get(group.activeChatId) ?? chats[0].entry.id };
+}
+
+/**
+ * Converts a group that is left with one member into the direct conversation of that member (plan S4). Its chats are
+ * appended to the direct conversation that the member has with the group's persona, each named after the group; the
+ * direct conversation is created when there is none. The reminders of the group go with the chats, and a new direct
+ * conversation also takes the group's settings and favourite.
+ *
+ * The group is never half deleted. The copies are written and read back first. Only then is the group's folder
+ * renamed out of the id namespace, which is the one step that cannot be taken back, and the renamed folder is removed
+ * after it. A failure before the rename restores the direct conversation (or removes the one that was created) and
+ * leaves the group untouched, and `conversion_failed` is thrown. A crash between the two steps leaves the copies and
+ * the group, and the next conversion of the group replaces the copies, which carry `<groupId>/<chatId>` as their
+ * `legacyId`, so that none is repeated.
+ *
+ * Everything runs inside one synchronous section with the folder locks of the group and of the direct conversation.
+ * The backups of the group's chats stay in `backups/`; the copies get theirs at their first save.
+ * @param {StoreUser} user
+ * @param {string} groupId
+ * @param {string} remaining The avatar of the member that is left.
+ * @returns {{ conversation: Record<string, any>, converted: true, removedId: string }}
+ */
+function convertGroupToDirect(user, groupId, remaining) {
+    const groupDirectory = conversationDirectory(user, groupId);
+    const release = acquireChatFileLock(groupDirectory);
+    try {
+        const group = readConversation(user, groupId);
+        if (group.kind !== 'group' || group.characters.length !== 2 || !group.characters.includes(remaining)) {
+            throw new ConversationStoreError('invalid_input', 'The group has changed.');
+        }
+        const recordsBySource = new Map(group.chats.map(entry => [entry.id, readChatForConversion(user, groupId, entry.id)]));
+        const target = findDirectConversation(user, group.personaId, remaining);
+        let outcome;
+        try {
+            outcome = target
+                ? appendCopiesAndRetire(user, group, groupDirectory, target, recordsBySource)
+                : createDirectAndRetire(user, group, groupDirectory, remaining, recordsBySource);
+        } catch (error) {
+            console.error(`Converting the group ${groupId} failed; the group was left as it was.`, error);
+            throw new ConversationStoreError('conversion_failed', CONVERSION_FAILED);
+        }
+        finishRetiredGroup(user, groupId, group.chats.map(entry => entry.id), groupDirectory, outcome.retiredPath);
+        return { conversation: outcome.conversation, converted: true, removedId: groupId };
+    } finally {
+        release();
+    }
+}
+
+/**
+ * Renames the folder of a group to a name that is no conversation id, so that no list, id or path finds it. This is
+ * the commit of a conversion.
+ * @returns {string} Where the folder is now.
+ */
+function retireGroup(groupDirectory) {
+    const retiredPath = path.join(path.dirname(groupDirectory), `.${path.basename(groupDirectory)}.deleted-${process.pid}-${Date.now()}`);
+    fs.renameSync(groupDirectory, retiredPath);
+    return retiredPath;
+}
+
+/** What follows the commit of a conversion. None of it can undo the conversion, so a failure is logged and the rest goes on. */
+function finishRetiredGroup(user, groupId, chatIds, groupDirectory, retiredPath) {
+    for (const chatId of chatIds) {
+        forgetChatRecoveryState(user, groupId, chatId);
+    }
+    runBestEffort(() => fs.rmSync(retiredPath, { recursive: true, force: true }), `The converted group ${groupId} could not be removed from disk and was left as ${path.basename(retiredPath)}.`);
+    runBestEffort(() => conversationIndex.deleteFolder(path.join(groupDirectory, CHATS_DIRECTORY_NAME)), `The index rows of the converted group ${groupId} were not dropped.`);
+    for (const chatId of chatIds) {
+        clearChatRecoveryStateAfterDelete(user, groupId, chatId);
+    }
+}
+
+function chatFileIds(user, conversationId) {
+    try {
+        return fs.readdirSync(path.join(conversationDirectory(user, conversationId), CHATS_DIRECTORY_NAME)).filter(name => name.endsWith('.jsonl')).map(name => name.slice(0, -'.jsonl'.length));
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return [];
+        }
+        throw error;
+    }
+}
+
+function attachRecords(plan, recordsBySource) {
+    return plan.chats.map(({ sourceId, entry }) => ({ entry, records: recordsBySource.get(sourceId) }));
+}
+
+function appendCopiesAndRetire(user, group, groupDirectory, target, recordsBySource) {
+    return withConversationLock(user, target.id, () => {
+        const jsonPath = guard(() => getConversationJsonPath(user.directories, target.id));
+        const previousText = fs.readFileSync(jsonPath, 'utf8');
+        const current = readConversation(user, target.id);
+        const earlierCopies = current.chats.filter(chat => chat.legacyId?.startsWith(`${group.id}/`));
+        const plan = planConvertedChats(group, [...current.chats.map(chat => chat.id), ...chatFileIds(user, target.id)], current.reminders);
+        const copies = attachRecords(plan, recordsBySource);
+        const written = [];
+        let listed = false;
+        try {
+            for (const copy of copies) {
+                writeNewChatFile(user, target.id, copy.entry, copy.records);
+                written.push(copy.entry.id);
+            }
+            verifyCopies(user, target.id, copies);
+            writeJson(jsonPath, {
+                ...current,
+                chats: [...current.chats.filter(chat => !earlierCopies.includes(chat)), ...plan.chats.map(({ entry }) => entry)],
+                activeChatId: plan.activeChatId,
+                reminders: [...current.reminders, ...plan.reminders].slice(0, MAX_REMINDERS),
+                updatedAt: Math.max(Date.now(), current.updatedAt),
+            });
+            listed = true;
+            const retiredPath = retireGroup(groupDirectory);
+            runBestEffort(() => removeWrittenCopies(user, target.id, earlierCopies.map(chat => chat.id)), 'Could not remove the copies that an earlier conversion left.');
+            return { conversation: readConversation(user, target.id), retiredPath };
+        } catch (error) {
+            runBestEffort(() => {
+                if (listed) {
+                    tryWriteFileSync(jsonPath, previousText, 'utf8', { durable: true });
+                }
+                removeWrittenCopies(user, target.id, written);
+            }, `Could not restore the conversation ${target.id} after a failed conversion.`);
+            throw error;
+        }
+    });
+}
+
+function createDirectAndRetire(user, group, groupDirectory, remaining, recordsBySource) {
+    const plan = planConvertedChats(group, [], []);
+    const copies = attachRecords(plan, recordsBySource);
+    const { conversation } = createConversation(user, {
+        kind: 'direct',
+        personaId: group.personaId,
+        characters: [remaining],
+        favorite: group.favorite,
+        settings: group.settings,
+        reminders: plan.reminders.slice(0, MAX_REMINDERS),
+        createdAt: group.createdAt,
+        updatedAt: Math.max(Date.now(), group.updatedAt),
+        activeChatId: plan.activeChatId,
+        chats: copies.map(({ entry, records }) => ({ ...entry, records })),
+    });
+    try {
+        verifyCopies(user, conversation.id, copies);
+        return { conversation, retiredPath: retireGroup(groupDirectory) };
+    } catch (error) {
+        runBestEffort(() => {
+            const directory = conversationDirectory(user, conversation.id);
+            fs.rmSync(directory, { recursive: true, force: true });
+            conversationIndex.deleteFolder(path.join(directory, CHATS_DIRECTORY_NAME));
+        }, `Could not remove the conversation ${conversation.id} after a failed conversion.`);
+        throw error;
+    }
+}
+
+function runBestEffort(work, message) {
+    try {
+        work();
+    } catch (error) {
+        console.error(message, error);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
