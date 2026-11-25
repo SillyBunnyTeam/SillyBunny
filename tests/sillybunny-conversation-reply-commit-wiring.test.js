@@ -89,7 +89,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage }));
 
-const { enqueueConversationReply, processQueuedConversationReply } = await import('../public/scripts/sillybunny-conversation/attachments.js');
+const { enqueueConversationReply, processQueuedConversationReply, queueForcedConversationReply } = await import('../public/scripts/sillybunny-conversation/attachments.js');
 const { sendQueue } = await import('../public/scripts/sillybunny-conversation/state.js');
 
 const USER_MESSAGE = { id: 'u1', role: 'user', name: 'You', mes: 'hello', created_at: 2, extra: {} };
@@ -468,5 +468,45 @@ describe('a reply that is put in the queue and waited for', () => {
         answerWith('claimed', '');
 
         await expect(enqueueConversationReply(queueItem({ groupId: CONVERSATION, text: 'Birch, hello', coalesced: true, messageIds: ['gone'] }))).resolves.toBeUndefined();
+    });
+});
+
+describe('a forced reply', () => {
+    beforeEach(() => {
+        globalThis.document = { getElementById: () => null };
+        globalThis.HTMLTextAreaElement = class {};
+        sendQueue.length = 0;
+        group = { id: CONVERSATION, members: ['char.png', 'member.png', 'third.png'], disabled_members: [] };
+        jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    });
+
+    afterEach(() => {
+        delete globalThis.document;
+        delete globalThis.HTMLTextAreaElement;
+        jest.restoreAllMocks();
+    });
+
+    test('is queued for the last message of the user, and does nothing in a chat where the user has written nothing', async () => {
+        messages = [messages[0]];
+        expect(queueForcedConversationReply('char.png', { chatId: 'main', groupId: '', personaId: PERSONA })).toBe(false);
+        expect(generateConversationReply).not.toHaveBeenCalled();
+
+        messages = [messages[0], USER_MESSAGE];
+        answerWith('claimed');
+        expect(queueForcedConversationReply('char.png', { chatId: 'main', groupId: '', personaId: PERSONA })).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(generateConversationReply).toHaveBeenCalledTimes(1);
+    });
+
+    test('carries on with the members that it is given for a group, from the start that it is given', async () => {
+        const seen = answerWith('claimed');
+
+        queueForcedConversationReply('char.png', { chatId: 'main', groupId: CONVERSATION, personaId: PERSONA, round: { remaining: ['member.png', 'third.png'], started: 9 } });
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(seen.map(item => item.profile.reply.speaker)).toEqual(['member.png', 'third.png']);
+        expect(seen[0].profile.reply.round_started).toBe(9);
+        expect(seen[0].profile.round).toEqual(['third.png']);
     });
 });

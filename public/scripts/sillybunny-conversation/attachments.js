@@ -849,6 +849,36 @@ export function enqueueConversationReply(queueItem) {
     });
 }
 
+/**
+ * Asks the conversation to answer the last message of the user again: the composer sends this when it is empty, and a
+ * reply that a server restart lost is offered again through it.
+ * @param {string} avatar The avatar that names the conversation.
+ * @param {object} target
+ * @param {string} target.chatId
+ * @param {string} [target.groupId]
+ * @param {string} target.personaId
+ * @param {{ remaining: string[], started: number }|null} [target.round] The members of a group that answer, in this order, instead of the ones that are chosen.
+ * @returns {boolean} False when the user has written nothing in the chat that a reply could answer.
+ */
+export function queueForcedConversationReply(avatar, { chatId, groupId = '', personaId, round = null }) {
+    const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+    if (!chatMessages.some(message => message?.role === 'user')) {
+        return false;
+    }
+
+    sendQueue.push(createForcedConversationQueueItem({
+        avatar,
+        chatId,
+        groupId,
+        personaId,
+        conversationKey: getConversationKey(avatar, groupId, { personaId }),
+        createdAt: Date.now(),
+        ...(round ? { round } : {}),
+    }, chatMessages));
+    void processSendQueue();
+    return true;
+}
+
 export async function submitConversationInput() {
     if (online_status === 'no_connection') {
         notifyNotConnected();
@@ -892,20 +922,7 @@ export async function submitConversationInput() {
     const settings = getSettings(avatar, { groupId, personaId });
 
     if (!text && !pendingFiles.length) {
-        const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
-        if (!chatMessages.some(message => message?.role === 'user')) {
-            return;
-        }
-
-        sendQueue.push(createForcedConversationQueueItem({
-            avatar,
-            chatId,
-            groupId,
-            personaId,
-            conversationKey: getConversationKey(avatar, groupId, { personaId }),
-            createdAt: Date.now(),
-        }, chatMessages));
-        void processSendQueue();
+        queueForcedConversationReply(avatar, { chatId, groupId, personaId });
         return;
     }
 

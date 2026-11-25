@@ -20,6 +20,7 @@ import { generationTargets, installRemovalEffects } from './deletion-guards.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
+import { installReplyEvents } from './reply-events-browser.js';
 import { installReplyFinalizer } from './reply-finalizer-browser.js';
 import { installRoundResume } from './round-resume-browser.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './conversation-list.js';
@@ -57,6 +58,7 @@ export function init() {
     installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
     installReplyFinalizer();
     installRoundResume();
+    installReplyEvents();
     conversationData.subscribe((event) => {
         if (event.type === 'list' || event.type === 'status') {
             updateConversationNotificationIndicators();

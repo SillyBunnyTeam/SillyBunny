@@ -37,7 +37,8 @@ export function cleanUpServerReply(route, text) {
     return removeReasoningFromString(text);
 }
 
-function acknowledgeGenerations(ids) {
+/** Tells the server that this page has seen the outcome of these generations, so that it stops reporting them. */
+export function acknowledgeGenerations(ids) {
     if (!ids.length) {
         return;
     }
