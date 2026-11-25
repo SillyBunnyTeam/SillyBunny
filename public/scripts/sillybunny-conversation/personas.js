@@ -5,7 +5,6 @@ import { user_avatar } from '../personas.js';
 import { power_user } from '../power-user.js';
 import {
     AVAILABILITY_COPY,
-    CHROME_IDS,
     PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
     PERSONA_APPENDICES_SELECTIONS_KEY,
     USER_STATUS_OPTIONS,
@@ -21,8 +20,6 @@ import {
     isAvatarInConversationGroup,
     persistConversationStore,
 } from './context.js';
-import { promptConversationText } from './dialogs.js';
-import { updateUserFooter } from './pickers.js';
 
 export function getAvailabilityCopy(status) {
     return AVAILABILITY_COPY[status] ?? AVAILABILITY_COPY.online;
@@ -51,22 +48,6 @@ export function setUserStatus(status) {
 export function setUserPersonaStatus(statusText) {
     getConversationStore().userPersonaStatus = normalizeUserPersonaStatus(statusText);
     persistConversationStore();
-}
-
-export async function editUserPersonaStatus() {
-    const nextStatus = await promptConversationText({
-        title: 'Status Message',
-        text: 'Leave blank to clear it',
-        defaultValue: getUserPersonaStatus(),
-    });
-    if (typeof nextStatus !== 'string') {
-        return;
-    }
-
-    setUserPersonaStatus(nextStatus);
-    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
-    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
-    updateUserFooter();
 }
 
 export function getConnectionProfiles() {

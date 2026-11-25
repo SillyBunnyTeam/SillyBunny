@@ -11,7 +11,7 @@ const finalizePendingReplies = jest.fn(async () => []);
 const sendQueue = [];
 const cards = new Set(['Orion.png']);
 
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/attachments.js', () => ({ enqueueConversationReply }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/send-queue.js', () => ({ enqueueConversationReply }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({ getConversationPersonaId: () => PERSONA }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({ conversationData }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: avatar => (cards.has(avatar) ? { avatar } : null) }));

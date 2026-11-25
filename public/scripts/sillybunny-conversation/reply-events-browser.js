@@ -4,7 +4,7 @@
  */
 
 import { getActiveGenerationIds, onActiveGenerationsChange, pageId } from '../resumable-generation.js';
-import { queueForcedConversationReply } from './attachments.js';
+import { queueForcedConversationReply } from './send-queue.js';
 import { SAFE_TOAST_OPTIONS } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';

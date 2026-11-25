@@ -4,7 +4,7 @@
  * that chat are landed as bubbles.
  */
 
-import { enqueueConversationReply } from './attachments.js';
+import { enqueueConversationReply } from './send-queue.js';
 import { getConversationPersonaId } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';

@@ -26,6 +26,10 @@ export function getRoleplayCurrentCharacter() {
     return characters[this_chid] ?? null;
 }
 
+export function getRoleplayAvatarForWelcome() {
+    return conversationState.conversationSelectedAvatar || getRoleplayCurrentCharacter()?.avatar || null;
+}
+
 export function getRoleplayGroupById(groupId) {
     return Array.isArray(groups) ? groups.find(group => String(group?.id || '') === String(groupId || '')) || null : null;
 }

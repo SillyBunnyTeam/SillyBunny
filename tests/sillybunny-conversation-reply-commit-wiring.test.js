@@ -89,7 +89,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage }));
 
-const { enqueueConversationReply, processQueuedConversationReply, queueForcedConversationReply } = await import('../public/scripts/sillybunny-conversation/attachments.js');
+const { enqueueConversationReply, processQueuedConversationReply, queueForcedConversationReply } = await import('../public/scripts/sillybunny-conversation/send-queue.js');
 const { sendQueue } = await import('../public/scripts/sillybunny-conversation/state.js');
 
 const USER_MESSAGE = { id: 'u1', role: 'user', name: 'You', mes: 'hello', created_at: 2, extra: {} };

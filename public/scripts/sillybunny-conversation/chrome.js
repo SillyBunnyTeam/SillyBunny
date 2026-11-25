@@ -6,7 +6,7 @@ import { getUserAvatar } from '../personas.js';
 import { loadMovingUIState, power_user } from '../power-user.js';
 import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
-import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
+import { addConversationFilesToInput, clearConversationAttachmentInput, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { CHROME_IDS, CONVERSATION_OPENED_EVENT } from './constants.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
@@ -39,8 +39,9 @@ import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
 import { getDirectConversations } from './conversation-list.js';
 import { switchConversationPersona } from './persona-switch.js';
-import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
+import { getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
+    editUserPersonaStatus,
     hideConversationPickers,
     renderConversationPersonaPicker,
     toggleStartDirectConversationPicker,
@@ -59,6 +60,7 @@ import {
 } from './conversation-pages.js';
 import { getSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
+import { processSendQueue } from './send-queue.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
 import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
 import { conversationData } from './conversation-data-browser.js';
@@ -1090,10 +1092,6 @@ export function openConversationWorkspaceFromWelcome() {
 
     void openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false });
     return true;
-}
-
-export function getRoleplayAvatarForWelcome() {
-    return conversationState.conversationSelectedAvatar || getRoleplayCurrentCharacter()?.avatar || null;
 }
 
 export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {

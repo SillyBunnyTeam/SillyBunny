@@ -36,6 +36,7 @@ function getFunctionSource(source, name) {
 
 const generationSource = readConversationSource('generation.js');
 const attachmentsSource = readConversationSource('attachments.js');
+const sendQueueSource = readConversationSource('send-queue.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
 const actionMenuSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-action-menu.js'), 'utf8'));
@@ -123,7 +124,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(sharedHelpersSource).toContain('last non-user speaker before it');
         expect(sharedHelpersSource).toContain('do not assume every you means');
         expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo })');
-        expect(attachmentsSource).toContain('chooseGroupSpeakers');
+        expect(sendQueueSource).toContain('chooseGroupSpeakers');
         expect(readConversationSource('speaker-selection.js')).toContain('isBroadGroupAddress');
     });
 
@@ -287,7 +288,7 @@ describe('conversation mode scoped connection profile', () => {
 
     test('waits around five seconds for rapid follow-up messages before replying', () => {
         expect(constantsSource).toContain('SEND_QUEUE_COALESCE_MS = 5000');
-        expect(attachmentsSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
+        expect(sendQueueSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
         expect(readConversationSource('send-queue-utils.js')).toContain('DEFAULT_COALESCE_WINDOW_MS = 5000');
     });
 });

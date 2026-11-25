@@ -1,5 +1,4 @@
 import { playMessageSound } from '../power-user.js';
-import { selectConversation } from './chrome.js';
 import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
@@ -11,6 +10,7 @@ import {
     shouldSurfaceConversationNotification,
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
+import { selectConversation } from './lazy-parts.js';
 import { getCharacterForAvatar } from './media.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';

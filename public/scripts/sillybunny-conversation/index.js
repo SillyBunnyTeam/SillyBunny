@@ -7,11 +7,11 @@ export {
 } from './settings-store.js';
 export {
     deleteConversationWelcomeChat,
+    getRoleplayAvatarForWelcome,
     renameConversationChat,
 } from './context.js';
 export {
+    disableConversationModeForCurrentCharacter,
     openConversationWorkspaceForAvatar,
     openConversationWorkspaceFromWelcome,
-    getRoleplayAvatarForWelcome,
-    disableConversationModeForCurrentCharacter,
-} from './chrome.js';
+} from './lazy-parts.js';

@@ -110,6 +110,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timers
 
 const { init } = await import('../public/scripts/sillybunny-conversation/init.js');
 
+// The workspace loads with a dynamic import, so a request for it reaches `selectConversation` a few ticks later.
+const settleWorkspaceLoad = () => new Promise(resolve => setTimeout(resolve, 0));
+
 describe('conversation persona runtime', () => {
     test('starts autonomous runtime and clears context-bound reply UI after persona change', () => {
         init();
@@ -154,7 +157,7 @@ describe('conversation persona runtime', () => {
         random.mockRestore();
     });
 
-    test('passes captured persona identity through workspace-open events', () => {
+    test('passes captured persona identity through workspace-open events', async () => {
         init();
         selectConversation.mockClear();
 
@@ -165,6 +168,7 @@ describe('conversation persona runtime', () => {
             personaId: 'persona-c.png',
             showToast: false,
         }));
+        await settleWorkspaceLoad();
 
         expect(selectConversation).toHaveBeenCalledWith('char.png', {
             chatId: 'branch-b',
@@ -174,7 +178,7 @@ describe('conversation persona runtime', () => {
         });
     });
 
-    test('follows the newly selected roleplay character while Conversation is open', () => {
+    test('follows the newly selected roleplay character while Conversation is open', async () => {
         init();
         selectConversation.mockClear();
         conversationState.conversationWorkspaceOpen = true;
@@ -182,6 +186,7 @@ describe('conversation persona runtime', () => {
         windowHandlers.get('sb:roleplay-character-selected')(new globalThis.CustomEvent({
             avatar: 'new-character.png',
         }));
+        await settleWorkspaceLoad();
 
         expect(selectConversation).toHaveBeenCalledWith('new-character.png', {
             showToast: false,

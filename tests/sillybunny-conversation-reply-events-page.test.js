@@ -28,7 +28,7 @@ await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () =
     },
     pageId: 'page-under-test',
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/attachments.js', () => ({ queueForcedConversationReply }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/send-queue.js', () => ({ queueForcedConversationReply }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({ SAFE_TOAST_OPTIONS: { escapeHtml: true } }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({ conversationData: data }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: avatar => (avatar === 'Orion.png' ? { avatar } : null) }));

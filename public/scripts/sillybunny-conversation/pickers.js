@@ -12,6 +12,7 @@ import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
 import { AVAILABILITY_COPY, CHROME_IDS } from './constants.js';
+import { promptConversationText } from './dialogs.js';
 import {
     getConversationGroupById,
     getConversationGroupIdForAvatar,
@@ -27,6 +28,7 @@ import {
     getPersonaOptions,
     getUserPersonaStatus,
     getUserStatus,
+    setUserPersonaStatus,
 } from './personas.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { closeConversationList } from './conversation-pages.js';
@@ -307,6 +309,22 @@ export function updateUserFooter() {
         personaButton.title = label;
         personaButton.setAttribute('aria-label', label);
     }
+}
+
+export async function editUserPersonaStatus() {
+    const nextStatus = await promptConversationText({
+        title: 'Status Message',
+        text: 'Leave blank to clear it',
+        defaultValue: getUserPersonaStatus(),
+    });
+    if (typeof nextStatus !== 'string') {
+        return;
+    }
+
+    setUserPersonaStatus(nextStatus);
+    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
+    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
+    updateUserFooter();
 }
 
 export function toggleUserStatusPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]')) {

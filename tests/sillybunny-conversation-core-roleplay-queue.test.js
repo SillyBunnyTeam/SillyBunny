@@ -74,7 +74,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage: jest.fn() }));
 
-const { processQueuedConversationReply } = await import('../public/scripts/sillybunny-conversation/attachments.js');
+const { processQueuedConversationReply } = await import('../public/scripts/sillybunny-conversation/send-queue.js');
 
 describe('Conversation queue during roleplay generation', () => {
     test('returns a retry result instead of consuming the queued DM', async () => {

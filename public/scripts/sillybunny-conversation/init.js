@@ -11,12 +11,12 @@ import {
     triggerGroupAside,
     triggerRoleplayAside,
 } from './auto-engine.js';
-import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, selectConversation } from './chrome.js';
 import { CONVERSATION_DETAILS_CLOSE_EVENT, CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById } from './context.js';
 import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
 import { generationTargets, installPageLeaveEffects, installRemovalEffects } from './deletion-guards.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
+import { disableConversationModeForCurrentCharacter, openConversationWorkspaceFromRequest, selectConversation } from './lazy-parts.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
 import { installReplyEvents } from './reply-events-browser.js';
 import { installReplyFinalizer } from './reply-finalizer-browser.js';
@@ -170,12 +170,7 @@ export function init() {
     });
 
     window.addEventListener('sb:open-conversation-workspace', (event) => {
-        const detail = event instanceof CustomEvent ? event.detail : null;
-        const avatar = detail?.avatar || getDefaultConversationAvatar();
-        const chatId = detail?.chatId || '';
-        const groupId = detail?.groupId || null;
-        const personaId = detail?.personaId || getConversationPersonaId();
-        void selectConversation(avatar, { chatId, groupId, personaId, showToast: detail?.showToast !== false });
+        void openConversationWorkspaceFromRequest(event instanceof CustomEvent ? event.detail : null);
     });
     window.addEventListener('sb:roleplay-character-selected', (event) => {
         if (!conversationState.conversationWorkspaceOpen) {
