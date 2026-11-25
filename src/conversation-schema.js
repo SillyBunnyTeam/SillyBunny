@@ -274,6 +274,48 @@ export function parseChatRecords(records) {
     return records;
 }
 
+const MEMORY_FIELDS = ['memory_summary', 'memory_message_count', 'memory_updated_at'];
+
+/**
+ * @param {unknown} value The `chat_metadata` of a chat that is created with its first messages: `{ sb_conversation }`
+ * holding the memory summary of the chat it was branched from, or nothing.
+ * @returns {object} The `chat_metadata` of the new header. No other key reaches the header: the slug is the server's.
+ */
+export function parseNewChatMetadata(value) {
+    if (value === undefined) {
+        return {};
+    }
+    parseKnownKeys(value, ['sb_conversation'], 'chat_metadata');
+    if (value.sb_conversation === undefined) {
+        return {};
+    }
+    const memory = parseKnownKeys(value.sb_conversation, MEMORY_FIELDS, 'chat_metadata.sb_conversation');
+    const parsed = {};
+    if (memory.memory_summary !== undefined) {
+        parsed.memory_summary = parseText(memory.memory_summary, 'chat_metadata.sb_conversation.memory_summary', MAX_SETTING_STRING_LENGTH);
+    }
+    for (const key of ['memory_message_count', 'memory_updated_at']) {
+        if (memory[key] !== undefined) {
+            parsed[key] = parseCounter(memory[key], `chat_metadata.sb_conversation.${key}`);
+        }
+    }
+    return { sb_conversation: parsed };
+}
+
+/**
+ * @param {unknown} messages The rows of a chat without its header.
+ * @returns {object[]} The same rows. A row that is a header, or carries `chat_metadata`, is refused: the header is the server's to write.
+ */
+export function parseNewChatMessages(messages) {
+    if (!Array.isArray(messages) || !messages.every(isPlainObject)) {
+        throw invalid('records must be a list of messages.');
+    }
+    if (messages.some(message => Object.hasOwn(message, 'chat_metadata'))) {
+        throw invalid('records holds messages only, with no header.');
+    }
+    return messages;
+}
+
 const CHAT_STATE_FIELDS = ['name', 'readThrough', 'followupCount', 'lastAutoMessageAt', 'lastActivity', 'sessionMarkers'];
 
 function parseReadThrough(value, field) {

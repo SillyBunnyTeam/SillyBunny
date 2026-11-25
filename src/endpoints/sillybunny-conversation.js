@@ -27,6 +27,7 @@ import { ensureMigrated, importLegacyThreads } from '../conversation-migration.j
 import {
     ConversationStoreError,
     createChat,
+    createChatFromMessages,
     createConversation,
     deleteChat,
     deleteConversation,
@@ -59,7 +60,7 @@ const STATUS_BY_CODE = Object.freeze({
     migration_failed: 503,
 });
 const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description'];
-const CREATE_CHAT_FIELDS = ['id', 'chatId', 'name', 'activate'];
+const CREATE_CHAT_FIELDS = ['id', 'chatId', 'name', 'activate', 'readThrough', 'records', 'chat_metadata'];
 const MAX_IMAGE_TEXT_LENGTH = Math.ceil(MAX_AVATAR_IMAGE_BYTES / 3) * 4;
 const IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpeg|gif|webp);base64,/i;
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -199,12 +200,17 @@ router.get('/avatar', (request, response) => {
 // ---------------------------------------------------------------------------------------------------------------------
 // Chats
 
-router.post('/chat/create', route((user, body) => {
+router.post('/chat/create', route(async (user, body) => {
     onlyFields(body, CREATE_CHAT_FIELDS, 'chat/create');
     // `id` names the conversation. A chat id from the client lets the browser list a new chat before the server answers;
     // the store checks it like every other id and refuses one that exists. A conversation id is never taken from the client.
-    const { id, chatId, ...input } = body;
-    return createChat(user, id, chatId === undefined ? input : { ...input, id: chatId });
+    const { id, chatId, records, chat_metadata: chatMetadata, ...input } = body;
+    const chat = chatId === undefined ? input : { ...input, id: chatId };
+    if (records === undefined && chatMetadata === undefined) {
+        return createChat(user, id, chat);
+    }
+    // A chat that starts with messages is the first save of that chat, so the answer carries the slug that its next save needs.
+    return createChatFromMessages(user, id, { ...chat, messages: records ?? [], chatMetadata });
 }));
 
 router.post('/chat/get', route((user, body) => ({ chat: loadChat(user, body.id, body.chatId) })));

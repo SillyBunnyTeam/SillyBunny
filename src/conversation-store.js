@@ -61,6 +61,8 @@ import {
     parseChatRecords,
     parseCharacterAvatar,
     parseCreateInput,
+    parseNewChatMessages,
+    parseNewChatMetadata,
     sniffImageType,
     summarizeChatRecords,
 } from './conversation-schema.js';
@@ -567,6 +569,96 @@ export function createChat(user, conversationId, input = {}) {
 }
 
 /**
+ * Adds a chat that starts with messages, such as a branch of another chat. The messages are written by
+ * `trySaveChat()`, as the first save of the chat, so that they get the slug, the backups and the recovery copy of any
+ * save. The file is written before the chat is listed, so that a crash leaves an unlisted file and never a listed chat
+ * with nothing in it.
+ *
+ * The write is awaited, so no lock is held across it: the id is checked under the lock before the write and again when
+ * the chat is listed.
+ * @param {StoreUser} user
+ * @param {string} conversationId
+ * @param {object} input `messages` (rows without a header) is needed. `id`, `name`, `readThrough`, `activate`, and
+ * `chatMetadata` (`{ sb_conversation }`, the memory summary of the source chat) are optional.
+ * @returns {Promise<{ conversation: Record<string, any>, chat: Record<string, any>, integrity: string }>} `integrity`
+ * is the slug that the file carries; the first save of the browser has to send it.
+ * @throws {ConversationStoreError} `exists` when the chat is listed already or its file is there.
+ */
+export async function createChatFromMessages(user, conversationId, input) {
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+        throw new ConversationStoreError('invalid_input', 'The chat must be an object.');
+    }
+    const { activate = false, messages, chatMetadata, records, ...chatInput } = input;
+    if (records !== undefined) {
+        throw new ConversationStoreError('invalid_input', 'records is for createChat(); this takes messages.');
+    }
+    if (typeof activate !== 'boolean') {
+        throw new ConversationStoreError('invalid_input', 'activate must be true or false.');
+    }
+    const { entry: parsedEntry } = guard(() => parseChatInput(chatInput, { now: Date.now() }));
+    const savedRecords = [
+        { chat_metadata: guard(() => parseNewChatMetadata(chatMetadata)), user_name: 'unused', character_name: 'unused' },
+        ...guard(() => parseNewChatMessages(messages)),
+    ];
+    const entry = { ...parsedEntry, id: parsedEntry.id || createChatId() };
+    const target = guard(() => resolveConversationChatTarget(user.directories, { conversationId, chatId: entry.id }, maxRecoveryStates));
+    if (!target) {
+        throw new ConversationStoreError('invalid_id', 'Not a chat of this conversation.');
+    }
+    if (!directoryExists(conversationDirectory(user, conversationId))) {
+        throw notFound('The conversation');
+    }
+
+    withConversationLock(user, conversationId, () => {
+        if (readConversation(user, conversationId).chats.some(item => item.id === entry.id) || fs.existsSync(target.filePath)) {
+            throw new ConversationStoreError('exists', `The chat "${entry.id}" already exists.`);
+        }
+    });
+
+    let integrity;
+    try {
+        ({ integrity } = await trySaveChat(savedRecords, target.filePath, false, user.profile.handle, target.cardName, user.directories.backups, { recoveryTarget: target.recoveryTarget }));
+    } catch (error) {
+        // A file that appeared since the check above is another writer's chat of the same id, so it stays.
+        throw error instanceof IntegrityMismatchError ? new ConversationStoreError('exists', `The chat "${entry.id}" already exists.`) : translateSaveError(error);
+    }
+
+    try {
+        const conversation = mutateConversation(user, conversationId, (current) => {
+            if (current.chats.some(item => item.id === entry.id)) {
+                throw new ConversationStoreError('exists', `The chat "${entry.id}" already exists.`);
+            }
+            return {
+                ...current,
+                chats: [...current.chats, entry],
+                activeChatId: activate ? entry.id : current.activeChatId,
+                updatedAt: Math.max(Date.now(), current.updatedAt),
+            };
+        });
+        recordChatSummary(user, conversationId, entry, savedRecords, integrity);
+        return { conversation, chat: entry, integrity };
+    } catch (error) {
+        discardUnlistedChat(user, conversationId, entry.id);
+        throw error;
+    }
+}
+
+/** Takes back a chat file that was written and then not listed, with its recovery copy. A conversation that is gone took the file with it. */
+function discardUnlistedChat(user, conversationId, chatId) {
+    try {
+        forgetChatRecoveryState(user, conversationId, chatId);
+        if (directoryExists(conversationDirectory(user, conversationId))) {
+            const filePath = guard(() => getChatFilePath(user.directories, conversationId, chatId));
+            fs.rmSync(filePath, { force: true });
+            conversationIndex.delete(filePath);
+        }
+        clearChatRecoveryStateAfterDelete(user, conversationId, chatId);
+    } catch (cleanupError) {
+        console.warn(`Could not take back the unlisted chat "${chatId}" of a conversation.`, cleanupError);
+    }
+}
+
+/**
  * @param {StoreUser} user
  * @param {string} conversationId
  * @param {string} chatId
@@ -619,17 +711,22 @@ export async function saveChat(user, conversationId, chatId, records, { allowShr
         recordChatSummary(user, conversationId, entry, records, result.integrity);
         return { integrity: result.integrity };
     } catch (error) {
-        if (error instanceof IntegrityMismatchError) {
-            throw new ConversationStoreError('integrity', 'The chat changed since it was loaded.');
-        }
-        if (error instanceof DestructiveChatSaveError) {
-            throw new ConversationStoreError('destructive', 'The save would remove most of the chat.', { reason: error.reason });
-        }
-        if (error instanceof InvalidChatDataError) {
-            throw new ConversationStoreError('invalid_input', error.message);
-        }
-        throw error;
+        throw translateSaveError(error);
     }
+}
+
+/** What `trySaveChat()` refuses becomes a store error; anything else is returned as it is. */
+function translateSaveError(error) {
+    if (error instanceof IntegrityMismatchError) {
+        return new ConversationStoreError('integrity', 'The chat changed since it was loaded.');
+    }
+    if (error instanceof DestructiveChatSaveError) {
+        return new ConversationStoreError('destructive', 'The save would remove most of the chat.', { reason: error.reason });
+    }
+    if (error instanceof InvalidChatDataError) {
+        return new ConversationStoreError('invalid_input', error.message);
+    }
+    return error;
 }
 
 const MAX_HEADER_BYTES = 1024 * 1024;

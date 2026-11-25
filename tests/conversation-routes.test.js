@@ -275,7 +275,7 @@ describe('the chats of a conversation', () => {
         expect((await post('/get', { id: conversation.id })).json.conversation.chats.map(item => item.id)).toEqual(['main']);
     });
 
-    test('create does not take records from the client', async () => {
+    test('create does not take a header from the client: records are messages', async () => {
         const { status } = await post('/chat/create', { id: conversation.id, chatId: 'mine', records: [header(), line('a', 'x')] });
 
         expect(status).toBe(400);
