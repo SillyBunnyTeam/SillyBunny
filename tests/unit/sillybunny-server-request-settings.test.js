@@ -181,6 +181,7 @@ describe('the rows of Presets', () => {
     let controller;
     let shown;
     let source;
+    let admin;
 
     const reply = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body) });
     const fakeFetch = async (url, init) => {
@@ -217,6 +218,7 @@ describe('the rows of Presets', () => {
             notify,
             getSource: () => source,
             isShown: () => shown,
+            isAdmin: async () => admin,
             ...options,
         });
     }
@@ -234,6 +236,7 @@ describe('the rows of Presets', () => {
         notify = jest.fn();
         shown = true;
         source = 'claude';
+        admin = true;
     });
 
     test('waits for the page to show before the first read, and reads again when the page is shown', async () => {
@@ -445,6 +448,18 @@ describe('the rows of Presets', () => {
         await settle();
         expect(document.getElementById('sb-openai-prompt-caching')).toBeNull();
         expect(document.querySelectorAll('[data-source]')).toHaveLength(0);
+        expect(document.getElementById('sb-config-claude-adaptive-thinking')).toBeNull();
+        expect(notify).not.toHaveBeenCalled();
+        controller.destroy();
+    });
+
+    test('asks the server nothing and shows none of the rows for a user who is not an admin', async () => {
+        admin = false;
+        routes[GET] = () => reply({ settings: settings() });
+        build();
+        await settle();
+        expect(requests).toHaveLength(0);
+        expect(document.getElementById('sb-openai-prompt-caching')).toBeNull();
         expect(document.getElementById('sb-config-claude-adaptive-thinking')).toBeNull();
         expect(notify).not.toHaveBeenCalled();
         controller.destroy();

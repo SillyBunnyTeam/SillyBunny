@@ -243,6 +243,7 @@ function directChild(body, selector) {
  * @param {(message: string, title: string) => void} [options.notify]
  * @param {() => string} [options.getSource]  The chosen Chat Completion source.
  * @param {() => boolean} [options.isShown]  Whether the Presets page is on screen. The first read waits for it, so that a search which builds the page reaches no admin route.
+ * @param {() => Promise<boolean>} [options.isAdmin]  Whether the user may read the server config. The routes are for admins only, and the server logs every request that it refuses.
  */
 export function createServerRequestSettings({
     request,
@@ -253,6 +254,7 @@ export function createServerRequestSettings({
     getHeaders = async () => (await import('../script.js')).getRequestHeaders(),
     notify = (message, title) => globalThis.toastr?.error(message, title),
     getSource = () => /** @type {HTMLSelectElement|null} */ (document.getElementById('chat_completion_source'))?.value ?? '',
+    isAdmin = async () => (await import('./user.js')).isAdmin(),
     isShown = () => {
         const panel = request.closest('[data-sb-panel]');
         return panel?.getAttribute('aria-hidden') === 'false' && panel.checkVisibility();
@@ -453,6 +455,11 @@ export function createServerRequestSettings({
         if (state.reading || queue.busy) return;
         state.reading = true;
         try {
+            if (!await isAdmin()) {
+                state.available = false;
+                if (unplace()) onPlacementChange();
+                return;
+            }
             const reply = await post(GET_ENDPOINT, {}, transport);
             if (queue.busy) return;
             adopt(reply);
