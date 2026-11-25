@@ -26,16 +26,36 @@ export async function appendConversationMessage(messageText, { name = getCurrent
         return null;
     }
 
+    afterIncomingMessage(avatar, message, { chatId, groupId: resolvedGroupId, personaId, address });
+    return message;
+}
+
+/**
+ * What the page does once a message is in its loaded chat: the read marker, the time it was seen, the redraw, the
+ * notification and the memory summary. A message that arrives in the open chat counts as read; one that arrives
+ * elsewhere stays unread until the chat is opened. The live path runs this after each bubble it writes. A reply that
+ * the server wrote lands as several bubbles at once, so its caller notifies for the last bubble only and schedules the
+ * memory summary once, through `notify` and `scheduleMemory`.
+ * @param {string} avatar The avatar that names the conversation.
+ * @param {{ role?: string }} message The message that was added.
+ * @param {object} context
+ * @param {{ chatId: string }} context.address The chat that holds the message.
+ * @param {string} [context.chatId] The chat id as the caller named it; empty for the active chat.
+ * @param {string} [context.groupId]
+ * @param {string} [context.personaId]
+ * @param {boolean} [context.notify] Whether a message in a chat that is not open raises a sound and a toast.
+ * @param {boolean} [context.scheduleMemory]
+ */
+export function afterIncomingMessage(avatar, message, { address, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), notify = true, scheduleMemory = true }) {
     const isCurrentPersona = personaId === getConversationPersonaId();
-    const isIncoming = !['user', 'system'].includes(role);
-    const isActive = isConversationActive(avatar, resolvedGroupId, { chatId, personaId });
-    const shouldNotify = isCurrentPersona && isIncoming && !isActive;
-    // A message that arrives in the chat that is open counts as read; one that arrives elsewhere stays unread until it is opened.
+    const isIncoming = !['user', 'system'].includes(message.role);
+    const isActive = isConversationActive(avatar, groupId, { chatId, personaId });
+    const shouldNotify = notify && isCurrentPersona && isIncoming && !isActive;
     if (isIncoming && isActive) {
-        void markConversationRead(avatar, { chatId: address.chatId, groupId: resolvedGroupId, personaId });
+        void markConversationRead(avatar, { chatId: address.chatId, groupId, personaId });
     }
     if (isIncoming) {
-        markConversationSeen(avatar, Date.now(), { chatId, groupId: resolvedGroupId, personaId });
+        markConversationSeen(avatar, Date.now(), { chatId, groupId, personaId });
     }
 
     if (isActive) {
@@ -45,9 +65,9 @@ export async function appendConversationMessage(messageText, { name = getCurrent
     }
 
     if (isCurrentPersona) {
-        notifyNewConversationMessage(avatar, message, shouldNotify, { chatId, groupId: resolvedGroupId, personaId });
+        notifyNewConversationMessage(avatar, message, shouldNotify, { chatId, groupId, personaId });
     }
-    scheduleConversationMemorySummary(avatar, { chatId, groupId: resolvedGroupId, personaId });
-
-    return message;
+    if (scheduleMemory) {
+        scheduleConversationMemorySummary(avatar, { chatId, groupId, personaId });
+    }
 }

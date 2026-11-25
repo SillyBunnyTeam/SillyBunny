@@ -8,6 +8,10 @@ let data;
 
 const conversationData = new Proxy({}, { get: (_target, key) => data[key] });
 const notifyNewConversationMessage = jest.fn();
+const markConversationRead = jest.fn();
+const isConversationActive = jest.fn(() => false);
+const scheduleInterfaceRefresh = jest.fn();
+const scheduleConversationMemorySummary = jest.fn();
 
 await jest.unstable_mockModule('../public/script.js', () => ({ characters: [], saveSettingsDebounced: jest.fn(), this_chid: undefined }));
 await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: {} }));
@@ -26,13 +30,13 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
     conversationState: { conversationSelectedAvatar: null, conversationSelectedGroupId: null, conversationWorkspaceOpen: false },
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
-    isConversationActive: () => false,
-    markConversationRead: jest.fn(),
+    isConversationActive,
+    markConversationRead,
     notifyNewConversationMessage,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     scheduleConversationListRender: jest.fn(),
-    scheduleInterfaceRefresh: jest.fn(),
+    scheduleInterfaceRefresh,
     scheduleTimelineRender: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
@@ -43,16 +47,19 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/tts.js', () => ({ narrateConversationMessage: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({ scheduleConversationMemorySummary: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({ scheduleConversationMemorySummary }));
 
-const { appendConversationMessage } = await import('../public/scripts/sillybunny-conversation/message-writer.js');
+const { afterIncomingMessage, appendConversationMessage } = await import('../public/scripts/sillybunny-conversation/message-writer.js');
 
 let server;
 
 beforeEach(async () => {
     server = await startConversationServer();
     charactersByAvatar.set('Nova.png', { avatar: 'Nova.png', name: 'Nova' });
-    notifyNewConversationMessage.mockClear();
+    for (const mock of [notifyNewConversationMessage, markConversationRead, scheduleInterfaceRefresh, scheduleConversationMemorySummary]) {
+        mock.mockClear();
+    }
+    isConversationActive.mockReset().mockReturnValue(false);
 });
 
 afterEach(async () => {
@@ -108,5 +115,53 @@ describe('a reply that finds its target deleted', () => {
 
         expect(await reply('never-existed')).toBeNull();
         expect(data.get('conv_1_direct01').messageCount).toBe(2);
+    });
+});
+
+describe('the effects of an incoming message', () => {
+    const address = { conversationId: 'conv_1_direct01', chatId: 'main' };
+    const context = { chatId: 'main', groupId: '', personaId: PERSONA, address };
+    const incoming = { id: 'm1', role: 'character', name: 'Nova', mes: 'hi', extra: {} };
+
+    test('are the same for a reply that is written live as for one that lands after the page was away', async () => {
+        await startData([TWO_CHATS]);
+
+        const message = await reply('main', 'A live reply.');
+
+        expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', message, true, { chatId: 'main', groupId: '', personaId: PERSONA });
+        expect(scheduleConversationMemorySummary).toHaveBeenCalledTimes(1);
+        notifyNewConversationMessage.mockClear();
+        scheduleConversationMemorySummary.mockClear();
+
+        afterIncomingMessage('Nova.png', incoming, context);
+
+        expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', incoming, true, { chatId: 'main', groupId: '', personaId: PERSONA });
+        expect(scheduleConversationMemorySummary).toHaveBeenCalledTimes(1);
+    });
+
+    test('mark a message that arrives in the open chat as read, and do not notify for it', () => {
+        isConversationActive.mockReturnValue(true);
+
+        afterIncomingMessage('Nova.png', incoming, context);
+
+        expect(markConversationRead).toHaveBeenCalledWith('Nova.png', { chatId: 'main', groupId: '', personaId: PERSONA });
+        expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', incoming, false, expect.anything());
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledWith({ syncControls: false });
+    });
+
+    test('leave a message of the user alone: no read marker, no notification', () => {
+        isConversationActive.mockReturnValue(true);
+
+        afterIncomingMessage('Nova.png', { ...incoming, role: 'user' }, context);
+
+        expect(markConversationRead).not.toHaveBeenCalled();
+        expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', expect.anything(), false, expect.anything());
+    });
+
+    test('can leave the notification and the memory summary to the caller, which runs them once for a reply of several bubbles', () => {
+        afterIncomingMessage('Nova.png', incoming, { ...context, notify: false, scheduleMemory: false });
+
+        expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', incoming, false, expect.anything());
+        expect(scheduleConversationMemorySummary).not.toHaveBeenCalled();
     });
 });
