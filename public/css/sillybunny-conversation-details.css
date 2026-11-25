@@ -100,6 +100,9 @@
 }
 
 /* ---------- The page ---------- */
+/* The page pads its own content as a libadwaita preferences page does, so the dialog body adds none. */
+:is(.sb-details-window, .sb-details-frame) .sb-dialog__body { padding: 0; }
+
 .sb-details-page {
     box-sizing: border-box;
     padding: 24px 12px max(24px, env(safe-area-inset-bottom));

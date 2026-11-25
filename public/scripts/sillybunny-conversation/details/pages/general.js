@@ -50,7 +50,7 @@ function createPeopleGroup(view, nav) {
     return createGroup({ title: 'Members', rows, field: 'members' });
 }
 
-function createPageLinks(view, nav, counts) {
+function createPageLinks(view, nav) {
     const rows = [];
     if (view.kind === 'direct') {
         rows.push(createNavRow({ label: 'Profile', field: 'profile', onActivate: () => nav.push('profile', { avatar: view.characters[0] }) }));
@@ -67,15 +67,17 @@ function createPageLinks(view, nav, counts) {
         createNavRow({ label: 'Files', count: '', field: 'files', onActivate: () => nav.push('files') }),
         createNavRow({ label: 'Pinned', count: '', field: 'pinned', onActivate: () => nav.push('pinned') }),
     ];
-    counts.rows = { media: shared[0], files: shared[1], pinned: shared[2] };
-    return [
-        createGroup({ label: 'People and chats', rows, field: 'people-and-chats' }),
-        createGroup({ label: 'Shared in this conversation', rows: shared, field: 'shared' }),
-    ];
+    return {
+        groups: [
+            createGroup({ label: 'People and chats', rows, field: 'people-and-chats' }),
+            createGroup({ label: 'Shared in this conversation', rows: shared, field: 'shared' }),
+        ],
+        sharedRows: { media: shared[0], files: shared[1], pinned: shared[2] },
+    };
 }
 
 /** The count of the Media, Files and Pinned pages is of the open chat, and appears once that chat is loaded. */
-async function fillSharedCounts(conversationId, counts) {
+async function fillSharedCounts(conversationId, rows) {
     const view = conversationData.get(conversationId);
     if (!view?.activeChatId) {
         return;
@@ -90,9 +92,10 @@ async function fillSharedCounts(conversationId, counts) {
         }
     }
     const shared = collectSharedItems(loaded?.messages);
-    for (const [name, row] of Object.entries(counts.rows ?? {})) {
+    // A row of an earlier draw is no longer on the page, and writing to it does no harm.
+    for (const [name, row] of Object.entries(rows)) {
         const count = row.row.querySelector('[data-sb-details-count]');
-        if (count?.isConnected) {
+        if (count) {
             count.textContent = String(shared[name].length);
         }
     }
@@ -101,8 +104,8 @@ async function fillSharedCounts(conversationId, counts) {
 export function buildGeneral({ conversationId, nav }) {
     requireView(conversationId);
     const { page, clamp } = createPage('sb-details-page--general');
-    const counts = { rows: null };
     let notifications = null;
+    let sharedRows = {};
 
     const draw = () => {
         const view = requireView(conversationId);
@@ -113,10 +116,11 @@ export function buildGeneral({ conversationId, nav }) {
             value: view.settings?.notifications_muted === true,
             onChange: muted => writeSetting(requireView(conversationId), 'notifications_muted', muted),
         });
+        const links = createPageLinks(view, nav);
         clamp.replaceChildren(
             createHero(view, nav),
             ...[createPeopleGroup(view, nav)].filter(Boolean).map(group => group.section),
-            ...createPageLinks(view, nav, counts).map(group => group.section),
+            ...links.groups.map(group => group.section),
             createGroup({ label: 'Notifications', rows: [notifications], field: 'notifications' }).section,
             createGroup({
                 label: 'Conversation settings',
@@ -127,13 +131,20 @@ export function buildGeneral({ conversationId, nav }) {
                 field: 'settings-pages',
             }).section,
         );
-        void fillSharedCounts(conversationId, counts);
+        sharedRows = links.sharedRows;
+        void fillSharedCounts(conversationId, sharedRows);
     };
     draw();
 
-    const stopDrawing = watchConversation(conversationId, getGeneralSignature, { onChange: draw, onGone: () => nav.close() });
+    const stopDrawing = watchConversation(conversationId, getGeneralSignature, { onChange: draw, onGone: () => nav.gone() });
     const stopNotifications = watchConversation(conversationId, view => String(view.settings?.notifications_muted === true), {
         onChange: view => notifications?.setValue(view.settings?.notifications_muted === true),
+    });
+    // A pin or a new picture changes what the pages under Shared hold while this page is covered by one of them.
+    const stopCounts = conversationData.subscribe((event) => {
+        if (event.type === 'chat' && event.address?.conversationId === conversationId) {
+            void fillSharedCounts(conversationId, sharedRows);
+        }
     });
     return {
         title: getPageTitle('general'),
@@ -141,6 +152,7 @@ export function buildGeneral({ conversationId, nav }) {
         dispose() {
             stopDrawing();
             stopNotifications();
+            stopCounts();
         },
     };
 }

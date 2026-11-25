@@ -65,7 +65,7 @@ function createSharedPage({ conversationId, nav, className, title, pick, draw })
     const stop = conversationData.subscribe((event) => {
         if ((event.type === 'chat' && event.address?.conversationId === conversationId) || (event.type === 'list' && (!event.id || event.id === conversationId))) {
             if (!conversationData.get(conversationId)) {
-                nav.close();
+                nav.gone();
                 return;
             }
             render();

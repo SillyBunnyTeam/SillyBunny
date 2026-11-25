@@ -20,6 +20,9 @@ import { ensureDetailsStyles } from './styles.js';
  * @property {string} conversationId Empty for Preferences, which belongs to no conversation.
  * @property {{ handle: any, spec: any }[]} pages The pushed pages, bottom first.
  * @property {any} rootSpec
+ * @property {string} rootId
+ * @property {ReturnType<typeof createNavigation>} nav
+ * @property {boolean} replacing True while another conversation is about to take the place of the one that is shown.
  */
 
 /** The pages that belong to a conversation; Preferences and its rules editor belong to the mode. */
@@ -38,6 +41,16 @@ function createNavigation(current) {
         pop: () => void current.pages.at(-1)?.handle.close(),
         popToRoot: () => popToRoot(current),
         close: () => current.dialog.close(),
+        // The conversation that the window shows is gone. A page calls this, and the window closes unless another conversation
+        // is about to take its place (a group that became a direct conversation).
+        gone: () => {
+            if (!current.replacing) {
+                void current.dialog.close();
+            }
+        },
+        replacing: (on) => {
+            current.replacing = on;
+        },
         toast: message => globalThis.toastr?.info?.(message),
         viewPicture: picture => pushPicture(current, picture),
         reroot: (conversationId, pageId = 'general') => reroot(current, conversationId, pageId),
@@ -130,6 +143,7 @@ function drawRoot(current, id, args) {
 function reroot(current, conversationId, pageId) {
     popToRoot(current);
     current.conversationId = conversationId;
+    current.replacing = false;
     current.dialog.surface.dataset.sbDetailsConversation = conversationId;
     drawRoot(current, pageId, {});
 }
@@ -144,7 +158,7 @@ async function open({ conversationId, path }) {
         session.dialog.forceClose();
     }
     /** @type {OpenSession} */
-    const current = { dialog: /** @type {any} */ (null), conversationId, pages: [], rootSpec: null, rootId: path[0].id, nav: null };
+    const current = { dialog: /** @type {any} */ (null), conversationId, pages: [], rootSpec: null, rootId: path[0].id, nav: null, replacing: false };
     current.nav = createNavigation(current);
     let rootSpec;
     try {

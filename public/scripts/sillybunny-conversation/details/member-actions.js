@@ -31,7 +31,7 @@ function reportFailure(message, error) {
 
 /**
  * The Remove button of a member row of a group.
- * @param {{ conversationId: string, avatar: string, nav: { reroot: Function, toast: Function } }} options
+ * @param {{ conversationId: string, avatar: string, nav: { reroot: Function, toast: Function, replacing: Function } }} options
  */
 export async function removeGroupMember({ conversationId, avatar, nav }) {
     const view = getView(conversationId);
@@ -45,10 +45,13 @@ export async function removeGroupMember({ conversationId, avatar, nav }) {
         if (!await confirmRemoval(name)) {
             return;
         }
+        // The group is deleted by the conversion, which the window must not take for the end of what it shows.
+        nav.replacing(true);
         let result;
         try {
             result = await conversationData.removeMember(conversationId, avatar);
         } catch (error) {
+            nav.replacing(false);
             reportFailure(`${name} could not be removed`, error);
             return;
         }

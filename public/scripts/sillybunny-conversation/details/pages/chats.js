@@ -92,6 +92,6 @@ export function buildChats({ conversationId, nav }) {
     action.append(createPillButton('New Chat', { onClick: () => void newChat() }));
     clamp.append(list, action);
 
-    const stop = watchConversation(conversationId, getChatsSignature, { onChange: draw, onGone: () => nav.close() });
+    const stop = watchConversation(conversationId, getChatsSignature, { onChange: draw, onGone: () => nav.gone() });
     return { title: getPageTitle('chats'), content: page, dispose: stop };
 }

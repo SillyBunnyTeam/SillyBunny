@@ -43,6 +43,6 @@ export function buildMembers({ conversationId, nav }) {
         clamp.append(copyPlaceholder('p', 'sb-details-note'));
     }
 
-    const stop = watchConversation(conversationId, getGeneralSignature, { onChange: draw, onGone: () => nav.close() });
+    const stop = watchConversation(conversationId, getGeneralSignature, { onChange: draw, onGone: () => nav.gone() });
     return { title: info.title, content: page, dispose: stop };
 }

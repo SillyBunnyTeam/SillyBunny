@@ -178,7 +178,7 @@ export function buildAdvanced({ conversationId, nav }) {
             memory.draw();
         }
     });
-    const stop = watchConversation(conversationId, signature, { onChange: memory.draw, onGone: () => nav.close() });
+    const stop = watchConversation(conversationId, signature, { onChange: memory.draw, onGone: () => nav.gone() });
     return {
         title: getPageTitle('advanced'),
         content: page,

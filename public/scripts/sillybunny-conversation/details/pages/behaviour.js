@@ -144,6 +144,6 @@ export function buildBehaviour({ conversationId, nav }) {
     );
 
     const signature = current => JSON.stringify(current.reminders.map(item => [item.id, item.text, item.triggerAt, item.fired, item.skippedAt, item.invalidAt]));
-    const stop = watchConversation(conversationId, signature, { onChange: reminders.draw, onGone: () => nav.close() });
+    const stop = watchConversation(conversationId, signature, { onChange: reminders.draw, onGone: () => nav.gone() });
     return { title: getPageTitle('behaviour'), content: page, dispose: stop };
 }
