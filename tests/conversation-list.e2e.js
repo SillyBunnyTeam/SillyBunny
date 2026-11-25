@@ -137,17 +137,17 @@ test.describe('the list at a desktop width', () => {
         page.on('pageerror', error => errors.push(error.message));
         page.on('console', message => message.type() === 'warning' && warnings.push(message.text()));
         await openSeededList(page, baseURL);
-        const answered = name => expect.poll(async () => (await page.locator('dialog[open]').count()) > 0 || warnings.some(text => text.includes(name)));
+        const expectAnswer = name => expect.poll(async () => (await page.locator('dialog[open]').count()) > 0 || warnings.some(text => text.includes(name))).toBe(true);
 
         await page.locator(MAIN_MENU).click();
         await chooseMenuItem(page, 'Preferences');
-        await answered('openConversationPreferences').toBe(true);
+        await expectAnswer('openConversationPreferences');
         await page.keyboard.press('Escape');
         await expect(page.locator('dialog[open]')).toHaveCount(0);
 
         await openRowMenuByRightClick(page, 'Seraphina');
         await chooseMenuItem(page, 'Details');
-        await answered('openConversationDetails').toBe(true);
+        await expectAnswer('openConversationDetails');
         await page.keyboard.press('Escape');
         await expect(page.locator('dialog[open]')).toHaveCount(0);
 
