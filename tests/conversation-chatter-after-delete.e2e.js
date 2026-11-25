@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
-import { resetConversations, uniquePersona } from './helpers/conversation-seed.js';
+import { resetConversations, seedConversation, uniquePersona } from './helpers/conversation-seed.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { MockServer } from './util/mock-server.js';
 
-// A `test.fail` below pins a defect that is not fixed yet. It passes while the defect exists and fails once the defect is
-// fixed, which is the signal to delete the mark. The tests without a mark are controls: they prove that the harness can
-// see the thing the pinned tests say must not happen, and they stay valid after the fix.
+// A group must not keep talking after the user deletes its chat or the conversation, a new group must stay silent until
+// the user writes, and Add Member must keep the group. The tests without a `test.fail` mark are the controls that prove
+// that the harness can see what the other tests say must not happen.
 test.use({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 120_000 });
 
@@ -16,6 +16,7 @@ const COMPOSER = '#sb_conversation_input';
 const MEMBER_MESSAGES = '#sb_conversation_timeline .sb-conversation-message:not([data-role="user"]):not([data-role="system"])';
 const ALL_MESSAGES = '#sb_conversation_timeline .sb-conversation-message';
 const GROUP_ROWS = '.sb-conversation-list-item:not([data-group-id=""])';
+const DIRECT_ROWS = '.sb-conversation-list-item[data-group-id=""]';
 const MINUTE = 60_000;
 
 /** An OpenAI-compatible model that answers every request with a short line and keeps the prompts it was sent. */
@@ -109,11 +110,7 @@ async function openApp(page) {
  * @param {string[]} members Character names
  */
 async function createGroup(page, members) {
-    await page.evaluate(async () => {
-        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        openConversationWorkspaceForAvatar(null, { showToast: false });
-    });
-    await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
+    await openWorkspace(page);
     await page.locator(NEW_MENU).click();
     await page.getByRole('menuitem', { name: 'New Group', exact: true }).click();
     const picker = page.locator('.sb-picker--multiple');
@@ -124,6 +121,18 @@ async function createGroup(page, members) {
     await picker.getByRole('button', { name: 'Create Group' }).click();
     await expect(page.locator(COMPOSER)).toBeVisible();
     await expect(page.locator(GROUP_ROWS)).toHaveCount(1);
+}
+
+/**
+ * Opens the Conversations workspace with no conversation chosen.
+ * @param {import('@playwright/test').Page} page
+ */
+async function openWorkspace(page) {
+    await page.evaluate(async () => {
+        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
+        openConversationWorkspaceForAvatar(null, { showToast: false });
+    });
+    await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
 }
 
 /**
@@ -142,27 +151,44 @@ async function sendAndWaitForAnswer(page, text) {
     await advance(page, 20_000, 5_000);
 }
 
-async function deleteHistory(page) {
+/**
+ * Deletes the open chat through the header menu and its alert. The user stays in the conversation, in a new empty chat.
+ * @param {import('@playwright/test').Page} page
+ */
+async function deleteChat(page) {
     await page.locator(CONVERSATION_MENU).click();
-    await page.getByRole('menuitem', { name: /Delete Conversation History/ }).click();
+    await page.getByRole('menuitem', { name: /Delete Chat/ }).click();
     const confirm = page.locator('dialog.sb-conversation-dialog[open]');
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(confirm).toHaveCount(0);
+    await expect(page.locator(ALL_MESSAGES)).toHaveCount(0);
+    await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
+    await expect(page.locator(COMPOSER)).toBeEnabled();
+}
+
+/**
+ * Deletes the open conversation through the header menu and its alert. The user goes to the list, not Home.
+ * @param {import('@playwright/test').Page} page
+ */
+async function deleteConversation(page) {
+    await page.locator(CONVERSATION_MENU).click();
+    await page.getByRole('menuitem', { name: /Delete Conversation/ }).click();
+    const confirm = page.locator('dialog.sb-conversation-dialog[open]');
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
+    await expect(page.locator(GROUP_ROWS)).toHaveCount(0);
     await expect(page.locator(ALL_MESSAGES)).toHaveCount(0);
 }
 
 /**
  * Opens the first group of the list the way a user does after the workspace closed: the Conversations workspace, then the
- * row. Deleting the history of the only conversation closes the workspace.
+ * row.
  * @param {import('@playwright/test').Page} page
  * @returns {Promise<boolean>} Whether the list has a group to open
  */
 async function openFirstGroup(page) {
-    await page.evaluate(async () => {
-        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        openConversationWorkspaceForAvatar(null, { showToast: false });
-    });
-    await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
+    await openWorkspace(page);
     await advance(page, 2_000, 1_000);
     const row = page.locator(GROUP_ROWS).first();
     if (!await row.count()) {
@@ -200,6 +226,18 @@ async function holdGenerations(page) {
     return { held, release };
 }
 
+/**
+ * Moves the clock until a member starts a message on its own, which the held request shows.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ held: string[] }} generations
+ */
+async function waitForMemberToStartTalking(page, generations) {
+    await expect.poll(async () => {
+        await page.clock.fastForward(30_000);
+        return generations.held.length;
+    }, { message: 'a member starts a message on its own', timeout: 60_000, intervals: [100] }).toBeGreaterThan(0);
+}
+
 test('the members answer a message from the user', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
@@ -221,7 +259,7 @@ test('a reminder fires into its chat when the chat is left alone', async ({ page
     }, { message: 'the reminder reaches the model', timeout: 60_000, intervals: [100] }).toBe(true);
 });
 
-test('a forced reply queued behind a user message is dropped by a deletion', async ({ page }) => {
+test('a forced reply queued behind a user message is dropped by Delete Chat', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
@@ -229,7 +267,7 @@ test('a forced reply queued behind a user message is dropped by a deletion', asy
     try {
         await page.locator('#sb_conversation_form [data-sb-conversation-action="force-response"]').click();
         await expect.poll(() => generations.held.length, { message: 'the forced reply is being generated', timeout: 20_000 }).toBeGreaterThan(0);
-        await deleteHistory(page);
+        await deleteChat(page);
         generations.release();
         await advance(page, 30_000, 5_000);
 
@@ -239,11 +277,11 @@ test('a forced reply queued behind a user message is dropped by a deletion', asy
     }
 });
 
-test.fail('after the history is deleted the members stay silent until the user writes again', async ({ page }) => {
+test('after Delete Chat the members stay silent until the user writes again', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
-    await deleteHistory(page);
+    await deleteChat(page);
 
     const requestsBeforeDelay = model.prompts.length;
     await advance(page, 16 * MINUTE);
@@ -252,7 +290,20 @@ test.fail('after the history is deleted the members stay silent until the user w
     expect(await memberMessagesWaitingInGroup(page), 'messages from members after the delete').toBe(0);
 });
 
-test.fail('a new group stays silent until the user writes the first message', async ({ page }) => {
+test('after Delete Conversation the list has no group and nothing asks the model', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
+    await deleteConversation(page);
+
+    const requestsBeforeDelay = model.prompts.length;
+    await advance(page, 16 * MINUTE);
+
+    expect(model.prompts.length - requestsBeforeDelay, 'requests to the model after the delete').toBe(0);
+    await expect(page.locator(GROUP_ROWS), 'groups in the list').toHaveCount(0);
+});
+
+test('a new group stays silent until the user writes the first message', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
 
@@ -262,7 +313,7 @@ test.fail('a new group stays silent until the user writes the first message', as
     expect(await memberMessagesWaitingInGroup(page), 'messages from members before the user wrote').toBe(0);
 });
 
-test.fail('Add Member keeps the group and its history instead of starting a second group', async ({ page }) => {
+test('Add Member keeps the group and its history instead of starting a second group', async ({ page }) => {
     const names = await openApp(page);
     await createGroup(page, names.slice(0, 2));
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
@@ -271,28 +322,59 @@ test.fail('Add Member keeps the group and its history instead of starting a seco
     await page.getByRole('menuitem', { name: /Add Member/ }).click();
     const picker = page.locator('.sb-picker--multiple');
     await picker.getByRole('option', { name: names[2] }).click();
-    await picker.getByRole('button', { name: 'Create Group' }).click();
+    await picker.getByRole('button', { name: 'Add to Group' }).click();
     await expect(picker).toHaveCount(0);
     // The list and the open chat are redrawn on the clock's next frames.
     await advance(page, 5_000, 1_000);
 
     await expect(page.locator(GROUP_ROWS), 'groups in the list').toHaveCount(1);
     await expect(page.locator(ALL_MESSAGES).first(), 'the open group keeps its history').toContainText('Anyone free this weekend?');
+    const members = await page.evaluate(async () => {
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        return conversationData.list().find(view => view.kind === 'group')?.characters.length;
+    });
+    expect(members, 'members of the group').toBe(3);
 });
 
-test.fail('a reply that was being generated when the history was deleted is dropped', async ({ page }) => {
+test('Add Member on a direct conversation starts a group and leaves the direct conversation as it is', async ({ page }) => {
+    const names = await openApp(page);
+    const avatars = await page.evaluate(wanted => window.SillyTavern.getContext().characters.filter(character => wanted.includes(character.name)).map(character => character.avatar), names.slice(0, 2));
+    await seedConversation(page, { avatar: avatars[0], chats: [{ messages: [{ mes: 'Hello', role: 'character' }, { mes: 'Hi there', role: 'user' }] }] });
+    await page.evaluate(async (avatar) => {
+        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
+        await openConversationWorkspaceForAvatar(avatar, { showToast: false });
+    }, avatars[0]);
+    await expect(page.locator(ALL_MESSAGES).first()).toContainText('Hello');
+
+    await page.locator(CONVERSATION_MENU).click();
+    await page.getByRole('menuitem', { name: /Add Member/ }).click();
+    const picker = page.locator('.sb-picker--multiple');
+    await picker.getByRole('option', { name: names[1] }).click();
+    await picker.getByRole('button', { name: 'Create Group' }).click();
+    await expect(picker).toHaveCount(0);
+    await advance(page, 5_000, 1_000);
+
+    await expect(page.locator(GROUP_ROWS), 'groups in the list').toHaveCount(1);
+    await expect(page.locator(DIRECT_ROWS), 'direct conversations in the list').toHaveCount(1);
+    const direct = await page.evaluate(async () => {
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const view = conversationData.list().find(item => item.kind === 'direct');
+        return { characters: view.characters, messages: view.messageCount };
+    });
+    expect(direct.characters, 'the direct conversation keeps its character only').toHaveLength(1);
+    expect(direct.messages, 'the direct conversation keeps its messages').toBe(2);
+});
+
+test('a reply that was being generated when the chat was deleted is dropped', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     const generations = await holdGenerations(page);
     try {
         // The members start talking on their own after a pause; that request is held.
-        await expect.poll(async () => {
-            await page.clock.fastForward(30_000);
-            return generations.held.length;
-        }, { message: 'a member starts a message on its own', timeout: 60_000, intervals: [100] }).toBeGreaterThan(0);
+        await waitForMemberToStartTalking(page, generations);
 
-        await deleteHistory(page);
+        await deleteChat(page);
         generations.release();
         await advance(page, 20_000, 5_000);
 
@@ -302,31 +384,62 @@ test.fail('a reply that was being generated when the history was deleted is drop
     }
 });
 
-test('a reminder set before the history was deleted does not fire into the emptied chat', async ({ page }) => {
+test('a reply that was being generated when the conversation was deleted is dropped', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
+    const generations = await holdGenerations(page);
+    try {
+        await waitForMemberToStartTalking(page, generations);
+
+        await deleteConversation(page);
+        generations.release();
+        await advance(page, 20_000, 5_000);
+
+        await expect(page.locator(GROUP_ROWS), 'groups in the list').toHaveCount(0);
+        await expect(page.locator('.toast-error'), 'a reply for the deleted conversation was written and refused').toHaveCount(0);
+    } finally {
+        generations.release();
+    }
+});
+
+test('a reminder set before Delete Chat does not fire into the new chat', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     await page.locator(COMPOSER).fill('/remind 10m | water the plants');
     await page.locator(COMPOSER).press('Enter');
-    await deleteHistory(page);
+    await deleteChat(page);
 
     await advance(page, 12 * MINUTE);
 
     expect(model.prompts.some(prompt => prompt.includes('water the plants')), 'the reminder reached the model').toBe(false);
 });
 
-test.fail('a forced reply queued in an empty chat does not survive a deletion', async ({ page }) => {
+test('a reminder set before Delete Conversation does not fire', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
-    // The empty chat has no user message for the queued reply to depend on.
-    await deleteHistory(page);
-    expect(await openFirstGroup(page), 'the emptied group can be opened again').toBe(true);
+    await page.locator(COMPOSER).fill('/remind 10m | water the plants');
+    await page.locator(COMPOSER).press('Enter');
+    await deleteConversation(page);
+
+    await advance(page, 12 * MINUTE);
+
+    expect(model.prompts.some(prompt => prompt.includes('water the plants')), 'the reminder reached the model').toBe(false);
+});
+
+test('a forced reply queued in an empty chat does not survive Delete Chat', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
+    // The new chat has no user message for the queued reply to depend on.
+    await deleteChat(page);
     const generations = await holdGenerations(page);
     try {
         await page.locator('#sb_conversation_form [data-sb-conversation-action="force-response"]').click();
         await expect.poll(() => generations.held.length, { message: 'the forced reply is being generated', timeout: 20_000 }).toBeGreaterThan(0);
-        await deleteHistory(page);
+        await deleteChat(page);
         generations.release();
         await advance(page, 30_000, 5_000);
 
