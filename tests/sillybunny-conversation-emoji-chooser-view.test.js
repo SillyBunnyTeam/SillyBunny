@@ -525,6 +525,39 @@ describe('skin tones', () => {
         expect(calls.picked).toEqual([]);
     });
 
+    test('keep only the click that ends the long press from picking, and not a tap on a tone right after it', () => {
+        jest.useFakeTimers();
+        const { root, calls } = makeView();
+        flush();
+        const wave = cellOf(root, '👋');
+        const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 });
+        Object.defineProperty(down, 'pointerType', { value: 'touch' });
+        wave.dispatchEvent(down);
+        jest.advanceTimersByTime(400);
+        wave.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+        wave.click();
+        expect(calls.picked).toEqual([]);
+        const tone = [...root.querySelectorAll('.sb-emoji-variants [role="option"]')].find(option => option.dataset.emoji === '👋🏽');
+        tone.click();
+        expect(calls.picked).toEqual([['👋🏽', { name: 'winkende Hand: mittel', keepOpen: false }]]);
+    });
+
+    test('forget a click that never came, when the finger left the cell before it lifted', () => {
+        jest.useFakeTimers();
+        const { root, calls } = makeView();
+        flush();
+        const wave = cellOf(root, '👋');
+        const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 });
+        Object.defineProperty(down, 'pointerType', { value: 'touch' });
+        wave.dispatchEvent(down);
+        jest.advanceTimersByTime(400);
+        wave.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+        jest.advanceTimersByTime(150);
+        const tone = [...root.querySelectorAll('.sb-emoji-variants [role="option"]')].find(option => option.dataset.emoji === '👋🏽');
+        tone.click();
+        expect(calls.picked).toHaveLength(1);
+    });
+
     test('do not open when the finger moves before the long press, or lifts early', () => {
         jest.useFakeTimers();
         const { root } = makeView();

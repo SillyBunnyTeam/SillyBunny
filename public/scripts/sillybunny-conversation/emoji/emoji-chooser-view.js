@@ -20,7 +20,8 @@ export const SECTION_CHUNK = 96;
 const SEARCH_LIMIT = 200;
 const LONG_PRESS_MS = 380;
 const LONG_PRESS_MOVE_PX = 8;
-const CLICK_SWALLOW_MS = 600;
+/** A click comes in the same task as the pointerup that ends a long press; a flag that is still set after this was for a click that never came (the finger left the cell). */
+const CLICK_AFTER_RELEASE_MS = 100;
 const SKIN_TONE_FIRST = 0x1F3FB;
 const SKIN_TONE_LAST = 0x1F3FF;
 const FALLBACK_COLUMNS = 8;
@@ -90,7 +91,8 @@ export function createChooserView({
         variants: null,
         pressTimer: 0,
         pressOrigin: null,
-        swallowUntil: 0,
+        swallowClick: false,
+        swallowTimer: 0,
         disposed: false,
     };
 
@@ -649,7 +651,7 @@ export function createChooserView({
         state.pressOrigin = { x: event.clientX, y: event.clientY };
         state.pressTimer = setTimeout(() => {
             state.pressTimer = 0;
-            state.swallowUntil = Date.now() + CLICK_SWALLOW_MS;
+            state.swallowClick = true;
             openVariants(cell);
         }, LONG_PRESS_MS);
     }
@@ -661,7 +663,8 @@ export function createChooserView({
     }
 
     function onClick(event) {
-        if (Date.now() < state.swallowUntil) {
+        if (state.swallowClick) {
+            state.swallowClick = false;
             event.preventDefault();
             event.stopPropagation();
             return;
@@ -716,7 +719,15 @@ export function createChooserView({
     root.addEventListener('pointerdown', onPointerDown);
     root.addEventListener('pointermove', onPointerMove);
     for (const type of ['pointerup', 'pointercancel']) {
-        root.addEventListener(type, cancelPress);
+        root.addEventListener(type, () => {
+            cancelPress();
+            if (state.swallowClick) {
+                clearTimeout(state.swallowTimer);
+                state.swallowTimer = setTimeout(() => {
+                    state.swallowClick = false;
+                }, CLICK_AFTER_RELEASE_MS);
+            }
+        });
     }
     scroller.addEventListener('scroll', onScroll, { passive: true });
     searchEntry.addEventListener('input', () => runSearch(searchEntry.value));
@@ -774,7 +785,7 @@ export function createChooserView({
 
         categories.replaceChildren(...state.sections.map((section, index) => {
             const group = section.key === 'recent' ? null : Number(section.key);
-            const button = el('button', 'sb-emoji-category', { 'type': 'button', 'aria-label': section.label, 'tabindex': index === 0 ? '0' : '-1' });
+            const button = el('button', 'sb-emoji-category', { 'type': 'button', 'aria-label': section.label, 'title': section.label, 'tabindex': index === 0 ? '0' : '-1' });
             button.append(icon(group === null ? 'clock-rotate-left' : (GROUP_ICONS[group] ?? 'icons')));
             return button;
         }));
@@ -806,6 +817,7 @@ export function createChooserView({
     function dispose() {
         state.disposed = true;
         cancelPress();
+        clearTimeout(state.swallowTimer);
         resizeObserver?.disconnect();
     }
 
