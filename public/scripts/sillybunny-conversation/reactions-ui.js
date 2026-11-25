@@ -30,7 +30,7 @@ const CHIP_SELECTOR = '.sb-conversation-message-reaction-chip';
 const OPEN_CLASS = 'has-open-menu';
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_SLOP_PX = 10;
-const CLICK_SWALLOW_MS = 700;
+const CLICK_SWALLOW_MS = 350;
 const CHOOSER_MODULE = './emoji/emoji-chooser.js';
 const MORE_REACTIONS_LABEL = 'More Reactions';
 const YOU_LABEL = 'You';
@@ -259,6 +259,8 @@ function createChip(messageId, chip) {
     button.dataset.sbConversationAction = 'react-message';
     button.dataset.messageId = messageId;
     button.dataset.reaction = chip.emoji;
+    // The long press of a chip opens the list of who reacted; the selection mode must not take the same press.
+    button.dataset.sbOwnLongPress = '';
 
     const emoji = document.createElement('span');
     emoji.className = 'sb-conversation-reaction-emoji';
@@ -339,13 +341,24 @@ const getChip = target => (target instanceof Element ? target.closest(CHIP_SELEC
  */
 export function bindReactionChips() {
     let press = null;
+    // The list was opened by a press that the finger has not left yet.
+    let longPressActive = false;
+    // The click that ends a long press comes right after the release, and would toggle the reaction that the list is about.
     let swallowClicksUntil = 0;
+    const isEndOfLongPress = () => longPressActive || Date.now() < swallowClicksUntil;
 
     const cancelPress = () => {
         if (press) {
             clearTimeout(press.timer);
             press = null;
         }
+    };
+    const releasePress = () => {
+        if (longPressActive) {
+            longPressActive = false;
+            swallowClicksUntil = Date.now() + CLICK_SWALLOW_MS;
+        }
+        cancelPress();
     };
 
     document.addEventListener('contextmenu', (event) => {
@@ -355,7 +368,7 @@ export function bindReactionChips() {
         }
         event.preventDefault();
         // A long press opens the list by its own timer, and the browser then sends this event too: opening again would close it.
-        if (Date.now() >= swallowClicksUntil) {
+        if (!isEndOfLongPress()) {
             openReactionPeople(chip);
         }
     });
@@ -382,7 +395,7 @@ export function bindReactionChips() {
             y: event.clientY,
             timer: setTimeout(() => {
                 press = null;
-                swallowClicksUntil = Date.now() + CLICK_SWALLOW_MS;
+                longPressActive = true;
                 openReactionPeople(chip);
             }, LONG_PRESS_MS),
         };
@@ -393,13 +406,15 @@ export function bindReactionChips() {
             cancelPress();
         }
     }, { passive: true });
-    for (const type of ['pointerup', 'pointercancel']) {
-        document.addEventListener(type, cancelPress, { passive: true });
-    }
+    document.addEventListener('pointerup', releasePress, { passive: true });
+    // A cancelled press sends no click, so nothing is left to swallow.
+    document.addEventListener('pointercancel', () => {
+        longPressActive = false;
+        cancelPress();
+    }, { passive: true });
 
-    // The click that ends a long press would toggle the reaction that the list is about.
     window.addEventListener('click', (event) => {
-        if (Date.now() < swallowClicksUntil && getChip(event.target)) {
+        if (isEndOfLongPress() && getChip(event.target)) {
             event.preventDefault();
             event.stopImmediatePropagation();
         }

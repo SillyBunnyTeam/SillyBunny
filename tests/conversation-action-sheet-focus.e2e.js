@@ -148,21 +148,23 @@ test('mobile action sheet reaction chip returns focus to the message trigger bef
     const sheet = await openSheet(page, trigger);
     // The reaction re-renders the message row, so the order of events is recorded on the
     // original trigger node instead of reading focus back after the row has been replaced.
-    await trigger.evaluate(node => {
+    // The data module announces the reaction as it is written, which is when focus must be back on the trigger.
+    await trigger.evaluate(async (node) => {
         window.__sbFocusLog = [];
         node.addEventListener('focusin', () => window.__sbFocusLog.push('focus:trigger'));
-        document.addEventListener('click', event => {
-            if (event.target instanceof Element && event.target.closest('.sb-conversation-message-actions .sb-conversation-reaction-button')) {
-                window.__sbFocusLog.push(document.activeElement === node ? 'click:reaction:trigger-focused' : 'click:reaction:trigger-blurred');
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        conversationData.subscribe((event) => {
+            if (event.type === 'chat' && event.local) {
+                window.__sbFocusLog.push(document.activeElement === node ? 'reaction:trigger-focused' : 'reaction:trigger-blurred');
             }
-        }, true);
+        });
     });
     await page.screenshot({ path: testInfo.outputPath('chip-open.png') });
     await getMenu(page).getByRole('menuitemcheckbox').first().click();
     await expect(sheet).toBeHidden();
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect.poll(() => page.evaluate(() => window.__sbFocusLog)).toEqual(['focus:trigger', 'click:reaction:trigger-focused']);
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => window.__sbFocusLog)).toEqual(['focus:trigger', 'reaction:trigger-focused']);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath('chip-closed.png') });
 });
 
@@ -175,7 +177,7 @@ test('mobile action sheet reaction chip leaves the re-rendered message trigger f
     await getMenu(page).getByRole('menuitemcheckbox').first().click();
     await expect(sheet).toBeHidden();
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
     await expect(trigger).toBeFocused();
 });
 
@@ -194,7 +196,7 @@ test.describe('with a mouse', () => {
         await menu.getByRole('menuitemcheckbox').first().click();
         await expect(menu).toBeHidden();
         await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-        await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+        await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
         await expect(trigger).toBeFocused();
     });
 });
@@ -215,7 +217,7 @@ test('a delayed reaction render preserves focus moved to the composer', async ({
     await expect(sheet).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__sbPendingTimelineRender)).toBe(true);
     await expect(trigger).toBeFocused();
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(0);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(0);
     const composer = page.locator('#sb_conversation_input');
     await composer.focus();
     await page.evaluate(async () => {
@@ -224,6 +226,6 @@ test('a delayed reaction render preserves focus moved to the composer', async ({
         registerConversationRenderer('timeline', renderConversationTimeline);
         renderConversationTimeline();
     });
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
     await expect(composer).toBeFocused();
 });

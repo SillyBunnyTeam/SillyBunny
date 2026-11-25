@@ -552,6 +552,22 @@ describe('selection mode', () => {
         expect(selection.isActive).toBe(false);
     });
 
+    test('a control inside a row that has a long press of its own does not start the long press of the row', () => {
+        jest.useFakeTimers();
+        const { selection, rows } = makeSelection();
+        const chip = document.createElement('button');
+        chip.dataset.sbOwnLongPress = '';
+        rows[0].append(chip);
+
+        pointer(chip, 'pointerdown');
+        jest.advanceTimersByTime(500);
+        expect(selection.isActive).toBe(false);
+
+        pointer(rows[0], 'pointerdown');
+        jest.advanceTimersByTime(500);
+        expect(selection.isActive).toBe(true);
+    });
+
     test('mouse pointerdown does not start a long press', () => {
         jest.useFakeTimers();
         const { selection, rows } = makeSelection();

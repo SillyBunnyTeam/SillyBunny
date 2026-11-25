@@ -457,7 +457,8 @@ export function createSelectionMode({
             return;
         }
         const row = rowFrom(event.target);
-        if (!row) {
+        // A control with a long press of its own (`data-sb-own-long-press`) keeps the press, so that one finger does not do both.
+        if (!row || event.target.closest('[data-sb-own-long-press]')) {
             return;
         }
         stopLongPress();
