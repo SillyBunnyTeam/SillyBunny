@@ -52,6 +52,42 @@ export const conversationWorkspace = createLazyPart(async () => {
     return workspace;
 });
 
+// The top bar's button for the chat mode and the menu that it opens: a pointer, a finger or the focus on them is the user on the way to the workspace.
+const WORKSPACE_INTENT_SELECTOR = '#sb-mode-toggle, #sb-mode-menu';
+const INTENT_EVENTS = ['pointerover', 'focusin', 'touchstart'];
+
+/** Starts loading the workspace and the runtime without opening anything, so that the open that follows finds them. A failed load is tried again by the next call. */
+export function prefetchConversationWorkspace() {
+    if (conversationWorkspace.loaded) {
+        return;
+    }
+    conversationWorkspace.load().catch(error => console.warn('Conversation Mode: the workspace could not be loaded ahead', error));
+}
+
+/**
+ * Prefetches the workspace when the pointer, the focus or a touch reaches the control for the chat mode. It listens on
+ * the target, so the control may be built after this call, and it starts nothing until the user comes near the control:
+ * the start-up resource limit counts what a page fetches before then.
+ * @param {EventTarget} target The window.
+ * @returns {() => void} Removes the listeners.
+ */
+export function bindWorkspacePrefetch(target) {
+    const prefetchNearControl = (event) => {
+        if (event.target?.closest?.(WORKSPACE_INTENT_SELECTOR)) {
+            prefetchConversationWorkspace();
+        }
+    };
+    const options = { capture: true, passive: true };
+    for (const type of INTENT_EVENTS) {
+        target.addEventListener(type, prefetchNearControl, options);
+    }
+    return () => {
+        for (const type of INTENT_EVENTS) {
+            target.removeEventListener(type, prefetchNearControl, options);
+        }
+    };
+}
+
 // A close that arrives while the workspace loads ends the open that waits for it, as it would have ended an open that had finished.
 let closeRequests = 0;
 

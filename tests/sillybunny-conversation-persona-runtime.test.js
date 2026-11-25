@@ -180,6 +180,14 @@ describe('conversation persona runtime', () => {
         });
     });
 
+    test('watches for the pointer, the focus and the touch that reach the mode toggle once the page is ready', () => {
+        init();
+
+        for (const type of ['pointerover', 'focusin', 'touchstart']) {
+            expect(windowHandlers.has(type)).toBe(true);
+        }
+    });
+
     test('follows the newly selected roleplay character while Conversation is open', async () => {
         init();
         selectConversation.mockClear();

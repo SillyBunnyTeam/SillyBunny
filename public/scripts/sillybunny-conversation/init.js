@@ -6,6 +6,7 @@ import { conversationData, installConversationDataHooks } from './conversation-d
 import { generationTargets, installPageLeaveEffects, installRemovalEffects } from './deletion-guards.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
 import {
+    bindWorkspacePrefetch,
     disableConversationModeForCurrentCharacter,
     handleRoleplayCharacterMessage,
     handleRoleplayUserMessage,
@@ -137,6 +138,7 @@ export function init() {
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
     window.addEventListener('beforeunload', stopConversationWorker);
+    bindWorkspacePrefetch(window);
 
     // The page does not wait for the conversations: the rest of the mode starts when the list has arrived.
     void conversationData.whenReady().then(async () => {

@@ -76,4 +76,67 @@ test.describe('the parts of Conversation Mode that load after the page has start
             expect(modules).toContain(name);
         }
     });
+
+    test.describe('the approach to the mode toggle', () => {
+        const TOGGLE = '#sb-mode-toggle';
+
+        async function bootSettledPage(page, baseURL) {
+            await keepEveryFetch(page);
+            await bootConversationPage(page, baseURL);
+            await waitForStart(page);
+            await expect(page.locator(TOGGLE)).toBeVisible();
+        }
+
+        /** The approach prefetches the parts; it does not open the workspace or change what the page says is open. */
+        async function expectNothingOpened(page) {
+            await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-conversation-mode', 'on');
+            expect(await page.evaluate(async () => (await import('/scripts/sillybunny-conversation/state.js')).conversationState.conversationWorkspaceOpen)).toBe(false);
+        }
+
+        const BOTH_PARTS = expect.arrayContaining([...WORKSPACE_MODULES, ...RUNTIME_MODULES]);
+
+        test('hovering it fetches the workspace and the runtime and opens nothing', async ({ page, baseURL }) => {
+            await bootSettledPage(page, baseURL);
+            expect(await fetchedModules(page)).not.toContain('chrome.js');
+
+            await page.locator(TOGGLE).hover();
+
+            await expect.poll(() => fetchedModules(page)).toEqual(BOTH_PARTS);
+            await expectNothingOpened(page);
+        });
+
+        test('moving the focus to it does the same', async ({ page, baseURL }) => {
+            await bootSettledPage(page, baseURL);
+
+            await page.locator(TOGGLE).focus();
+
+            await expect.poll(() => fetchedModules(page)).toEqual(BOTH_PARTS);
+            await expectNothingOpened(page);
+        });
+
+        test('a touch on it does the same', async ({ page, baseURL }) => {
+            await bootSettledPage(page, baseURL);
+
+            await page.locator(TOGGLE).dispatchEvent('touchstart');
+
+            await expect.poll(() => fetchedModules(page)).toEqual(BOTH_PARTS);
+            await expectNothingOpened(page);
+        });
+
+        test('hovering it again fetches nothing twice, and the open that follows finds the workspace loaded', async ({ page, baseURL }) => {
+            await bootSettledPage(page, baseURL);
+            const { seraphina } = await getCharacterAvatars(page);
+
+            await page.locator(TOGGLE).hover();
+            await expect.poll(() => fetchedModules(page)).toEqual(BOTH_PARTS);
+            await page.mouse.move(0, 0);
+            await page.locator(TOGGLE).hover();
+            await page.evaluate(avatar => window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', { detail: { avatar, showToast: false } })), seraphina);
+            await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
+
+            const modules = await fetchedModules(page);
+            expect(modules.filter(name => name === 'chrome.js')).toHaveLength(1);
+            expect(modules.filter(name => name === 'runtime.js')).toHaveLength(1);
+        });
+    });
 });
