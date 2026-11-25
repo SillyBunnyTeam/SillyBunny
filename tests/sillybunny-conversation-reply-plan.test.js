@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 
 import { encodeCommitPlan, hashCommitText, normalizeCommitPlan } from '../public/scripts/generation-commit-plan.js';
 import { getConversationMessageRevision } from '../public/scripts/sillybunny-conversation/message-identity-utils.js';
-import { createConversationReplyPlan, createReplyToken } from '../public/scripts/sillybunny-conversation/reply-commit-plan.js';
+import { createAutomaticReplyPlan, createAutomaticSlotToken, createConversationReplyPlan, createReplyToken } from '../public/scripts/sillybunny-conversation/reply-commit-plan.js';
 
 const NOW = Date.UTC(2026, 10, 25, 12, 0, 0);
 const TOKEN = '0123456789abcdef';
@@ -144,5 +144,77 @@ describe('the token of a reply', () => {
 
         expect(first).toMatch(/^[0-9a-f]{16}$/);
         expect(second).not.toBe(first);
+    });
+});
+
+describe('the commit plan of an automatic message', () => {
+    function buildAutomatic(overrides = {}) {
+        return createAutomaticReplyPlan({
+            address: ADDRESS,
+            speaker: { avatar: 'Nova.png', name: 'Nova' },
+            anchorAvatar: 'Nova.png',
+            origin: 'auto',
+            route: 'profile',
+            messages: MESSAGES,
+            token: TOKEN,
+            pageId: 'page-a',
+            now: NOW,
+            ...overrides,
+        });
+    }
+
+    test('is a plan that the server accepts: no message that it answers, and a user message needed in the chat', () => {
+        const plan = buildAutomatic();
+
+        expect(normalizeCommitPlan(plan)).not.toBeNull();
+        expect(plan).toMatchObject({
+            chat: { conversation: ADDRESS.conversationId },
+            file: 'main',
+            kind: 'reply',
+            index: 3,
+            round: [],
+            reply: { token: TOKEN, speaker: 'Nova.png', anchor: 'Nova.png', origin: 'auto', route: 'profile', triggers: [], target: null, needs_user: true, round_started: NOW },
+        });
+        expect(plan.reply).not.toHaveProperty('reminder');
+    });
+
+    test('a member of a group that talks to the others is a plan of the origin auto_chat from that member', () => {
+        const plan = buildAutomatic({ origin: 'auto_chat', speaker: { avatar: 'Orion.png', name: 'Orion' } });
+
+        expect(plan.reply).toMatchObject({ origin: 'auto_chat', speaker: 'Orion.png', anchor: 'Nova.png', needs_user: true });
+        expect(plan.message).toMatchObject({ name: 'Orion', original_avatar: 'Orion.png' });
+    });
+
+    test('a reminder names the reminder, and needs no message from the user, because the user asked for it', () => {
+        const plan = buildAutomatic({ origin: 'reminder', reminderId: 'rem_1_aaaaaa' });
+
+        expect(normalizeCommitPlan(plan)).not.toBeNull();
+        expect(plan.reply).toMatchObject({ origin: 'reminder', reminder: 'rem_1_aaaaaa', needs_user: false });
+    });
+
+    test('is null for a plan that the server would drop, so that the page writes the message itself', () => {
+        expect(buildAutomatic({ origin: 'reminder' })).toBeNull();
+        expect(buildAutomatic({ origin: 'reply' })).toBeNull();
+        expect(buildAutomatic({ token: 'not hex' })).toBeNull();
+    });
+});
+
+describe('the token of an automatic message', () => {
+    const slot = { conversationId: ADDRESS.conversationId, chatId: 'main', lastUserActivity: NOW - 7_200_000, sentCount: 0 };
+
+    test('is 16 hex characters, the same for the same place in the chat on every page', () => {
+        const token = createAutomaticSlotToken(slot);
+
+        expect(token).toMatch(/^[0-9a-f]{16}$/);
+        expect(createAutomaticSlotToken({ ...slot })).toBe(token);
+    });
+
+    test('differs for the next message, for a chat that the user wrote in again, and for another chat', () => {
+        const token = createAutomaticSlotToken(slot);
+
+        expect(createAutomaticSlotToken({ ...slot, sentCount: 1 })).not.toBe(token);
+        expect(createAutomaticSlotToken({ ...slot, lastUserActivity: NOW })).not.toBe(token);
+        expect(createAutomaticSlotToken({ ...slot, chatId: 'other' })).not.toBe(token);
+        expect(createAutomaticSlotToken({ ...slot, conversationId: 'conv_9_other' })).not.toBe(token);
     });
 });
