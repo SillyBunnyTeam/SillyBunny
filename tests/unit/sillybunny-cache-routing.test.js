@@ -26,12 +26,22 @@ describe('shouldForwardChatId', () => {
         expect(shouldForwardChatId(source, 'impersonate', 'main')).toBe(true);
     });
 
-    test.each(FORWARDING_SOURCES)('keeps the chat id out of quiet requests and of other cache scopes for %s', (source) => {
-        expect(shouldForwardChatId(source, 'quiet', 'main')).toBe(false);
-        expect(shouldForwardChatId(source, 'quiet', undefined)).toBe(false);
-        expect(shouldForwardChatId(source, 'normal', 'auxiliary')).toBe(false);
-        expect(shouldForwardChatId(source, 'normal', 'conversation-mode')).toBe(false);
+    test.each(FORWARDING_SOURCES.filter(source => source !== CHAT_COMPLETION_SOURCES.FIREWORKS))('forwards the chat id of quiet requests and of other cache scopes for %s', (source) => {
+        expect(shouldForwardChatId(source, 'quiet', 'auxiliary')).toBe(true);
+        expect(shouldForwardChatId(source, 'quiet', undefined)).toBe(true);
+        expect(shouldForwardChatId(source, 'quiet', 'conversation-mode')).toBe(true);
+        expect(shouldForwardChatId(source, 'normal', 'auxiliary')).toBe(true);
+    });
+
+    test('keeps the chat id out of quiet Fireworks requests, as upstream does', () => {
+        expect(shouldForwardChatId(CHAT_COMPLETION_SOURCES.FIREWORKS, 'quiet', 'auxiliary')).toBe(false);
+        expect(shouldForwardChatId(CHAT_COMPLETION_SOURCES.FIREWORKS, 'quiet', undefined)).toBe(false);
+        expect(shouldForwardChatId(CHAT_COMPLETION_SOURCES.FIREWORKS, 'normal', 'auxiliary')).toBe(true);
+    });
+
+    test.each(FORWARDING_SOURCES)('keeps the chat id out of requests that opt out of caching for %s', (source) => {
         expect(shouldForwardChatId(source, 'normal', 'none')).toBe(false);
+        expect(shouldForwardChatId(source, 'quiet', 'none')).toBe(false);
     });
 
     test.each([

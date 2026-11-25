@@ -150,7 +150,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(page.locator(IDS.depth)).toBeEnabled();
             await expect(page.locator(IDS.ttl)).toBeEnabled();
             await expect.poll(() => server.saves.length).toBe(1);
-            expect(server.saves[0]).toEqual({ settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } } });
+            expect(server.saves[0]).toEqual({ settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } } });
             await expect(page.locator(IDS.depth)).toHaveValue('0');
             await expect(page.getByRole('alertdialog')).toHaveCount(0);
         });
@@ -169,7 +169,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(page.locator(IDS.depth)).toBeDisabled();
             await toggle(page, IDS.master);
             await expect.poll(() => server.saves.length).toBe(2);
-            expect(server.saves[1]).toEqual({ settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 2 }, gemini: { enableSystemPromptCache: true } } });
+            expect(server.saves[1]).toEqual({ settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 2 } } });
             await expect(page.locator(IDS.depth)).toHaveValue('2');
         });
 

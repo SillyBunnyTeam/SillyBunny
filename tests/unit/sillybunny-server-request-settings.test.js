@@ -67,13 +67,13 @@ describe('what the master switch writes', () => {
         });
     });
 
-    test('turning it on sets both flags, and depth 0 when there is no depth to write back', () => {
-        expect(masterSwitchPatch(true)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } });
-        expect(masterSwitchPatch(true, -1)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } });
+    test('turning it on sets the Claude flag and leaves the Gemini flag alone, with depth 0 when there is no depth to write back', () => {
+        expect(masterSwitchPatch(true)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
+        expect(masterSwitchPatch(true, -1)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
     });
 
     test('turning it on writes back the remembered depth', () => {
-        expect(masterSwitchPatch(true, 2)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 2 }, gemini: { enableSystemPromptCache: true } });
+        expect(masterSwitchPatch(true, 2)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 2 } });
         expect(masterSwitchPatch(true, 0).claude.cachingAtDepth).toBe(0);
     });
 
@@ -308,7 +308,7 @@ describe('the rows of Presets', () => {
         controller.destroy();
     });
 
-    test('a first enable saves both system flags and depth 0 and nothing else, with no restart', async () => {
+    test('a first enable saves the Claude flag and depth 0 and nothing else, with no restart', async () => {
         await ready();
         control('sb-config-prompt-caching-enabled').click();
         expect(control('sb-config-claude-caching-depth').value).toBe('0');
@@ -316,7 +316,7 @@ describe('the rows of Presets', () => {
         expect(requests.filter(call => call.url === SAVE)).toEqual([{
             url: SAVE,
             method: 'POST',
-            body: { settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } } },
+            body: { settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } } },
         }]);
         expect(control('sb-config-claude-caching-depth').value).toBe('0');
         controller.destroy();
@@ -332,7 +332,7 @@ describe('the rows of Presets', () => {
         expect(control('sb-config-claude-caching-depth').disabled).toBe(true);
         control('sb-config-prompt-caching-enabled').click();
         await settle();
-        expect(requests.at(-1).body).toEqual({ settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 2 }, gemini: { enableSystemPromptCache: true } } });
+        expect(requests.at(-1).body).toEqual({ settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 2 } } });
         expect(control('sb-config-claude-caching-depth').value).toBe('2');
         controller.destroy();
     });

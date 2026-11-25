@@ -211,16 +211,17 @@ describe('upstream provider request integration', () => {
         });
     }
 
-    test.each(['fireworks', 'openrouter', 'openai', 'openai_responses', 'xai', 'mistralai', 'azure_openai'])('createGenerationParameters sends chat_id for %s on a main turn only', async (source) => {
+    test.each(['fireworks', 'openrouter', 'openai', 'openai_responses', 'xai', 'mistralai', 'azure_openai'])('createGenerationParameters sends chat_id for %s unless the request opts out of caching', async (source) => {
         const runtime = makeRuntime({ chat_completion_source: source });
         const messages = [{ role: 'user', content: 'Hello' }];
 
         for (const type of ['normal', 'swipe', 'continue', 'impersonate']) {
             expect((await runtime.build('model-x', type, messages)).generate_data.chat_id).toBe('parity-chat');
         }
-        expect((await runtime.build('model-x', 'quiet', messages)).generate_data).not.toHaveProperty('chat_id');
-        expect((await runtime.build('model-x', 'normal', messages, { cacheScope: 'auxiliary' })).generate_data).not.toHaveProperty('chat_id');
+        expect((await runtime.build('model-x', 'normal', messages, { cacheScope: 'auxiliary' })).generate_data.chat_id).toBe('parity-chat');
         expect((await runtime.build('model-x', 'normal', messages, { cacheScope: 'none' })).generate_data).not.toHaveProperty('chat_id');
+        const quiet = (await runtime.build('model-x', 'quiet', messages)).generate_data;
+        expect(quiet.chat_id).toBe(source === 'fireworks' ? undefined : 'parity-chat');
     });
 
     test.each(['claude', 'custom', 'deepseek', 'makersuite'])('createGenerationParameters never sends chat_id for %s', async (source) => {

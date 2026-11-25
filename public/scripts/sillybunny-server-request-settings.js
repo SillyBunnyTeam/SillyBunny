@@ -83,7 +83,9 @@ export function isPromptCachingOn(settings) {
 export const FIRST_ENABLE_DEPTH = 0;
 
 /**
- * The keys that the master switch writes.
+ * The keys that the master switch writes. Turning it on leaves the Gemini flag as it is: on OpenRouter a Gemini marker
+ * caches the system prompt only and stops Gemini's own caching of the chat history, which costs more in a long chat.
+ * Turning it off clears the flag, so that no marker stays behind a switch that reads off.
  * @param {boolean} on
  * @param {number|null} [restoredDepth]  The depth to write back when the switch turns on again.
  */
@@ -92,7 +94,7 @@ export function masterSwitchPatch(on, restoredDepth = null) {
         return { claude: { enableSystemPromptCache: false, cachingAtDepth: -1 }, gemini: { enableSystemPromptCache: false } };
     }
     const depth = Number.isInteger(restoredDepth) && /** @type {number} */ (restoredDepth) >= 0 ? restoredDepth : FIRST_ENABLE_DEPTH;
-    return { claude: { enableSystemPromptCache: true, cachingAtDepth: depth }, gemini: { enableSystemPromptCache: true } };
+    return { claude: { enableSystemPromptCache: true, cachingAtDepth: depth } };
 }
 
 /**

@@ -72,15 +72,17 @@ export const CHAT_ID_FORWARDING_SOURCES = Object.freeze([
 
 /**
  * Decides whether a generation request carries the current chat id to the server.
- * Only requests of the main cache lane that are not quiet carry it.
+ * A quiet request that repeats the chat prefix, such as a summary, needs the key of its chat: without it a router can
+ * send the request to a provider that holds no cache entry for that prefix, and the request then pays for a new one.
  * @param {string | undefined} source Chat Completion source
  * @param {string} type Generation type
  * @param {string | null | undefined} cacheScope Prompt cache lane of the request
  * @returns {boolean}
  */
 export function shouldForwardChatId(source, type, cacheScope) {
-    if (!CHAT_ID_FORWARDING_SOURCES.includes(String(source)) || type === 'quiet') {
+    if (!CHAT_ID_FORWARDING_SOURCES.includes(String(source)) || cacheScope === 'none') {
         return false;
     }
-    return !cacheScope || cacheScope === 'main';
+    // Fireworks keeps upstream's rule, which sends no chat id with a quiet request.
+    return source !== 'fireworks' || type !== 'quiet';
 }
