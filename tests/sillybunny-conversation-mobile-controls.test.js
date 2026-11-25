@@ -209,7 +209,8 @@ describe('Conversation mobile controls', () => {
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer')).toMatchObject({ container: 'sb-conv-composer / inline-size' });
         // 360px less the 8px of padding on each side in the pages layout: the entry keeps 144px beside four buttons.
         const folded = findContainerRule('sb-conv-composer (max-width: 343px)');
-        expect(getDeclarations(folded, '.sb-conversation-composer-emoji')).toEqual({ display: 'none' });
+        // The selector has to outrank the flat-button rule that sets display: inline-grid.
+        expect(getDeclarations(folded, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-emoji')).toEqual({ display: 'none' });
         expect(findContainerRule('sb-conv-composer (max-width: 359px)')).toBeUndefined();
     });
 

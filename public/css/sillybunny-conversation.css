@@ -864,7 +864,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
    item of the "+" menu (chrome.js reads display). The query measures the row, which is the composer less its 8px of padding on
    each side in the pages layout, so 343px is a 360px-wide composer: the entry keeps 144px with the button and 154px without at 320px. */
 @container sb-conv-composer (max-width: 343px) {
-    .sb-conversation-composer-emoji {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-emoji {
         display: none;
     }
 }
