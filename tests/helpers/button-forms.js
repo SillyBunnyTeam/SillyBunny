@@ -11,7 +11,6 @@ import { readFileSync } from 'node:fs';
 export const BUTTON_FORMS = [
     { file: 'index.html', form: 'label', selectors: ['#clear_all_cache_button', '#clear_cookies_cache_button', '#movingUIreset', '#chat_tools_cancel', '#chat_cleanup_preview', '#chat_cleanup_run', '#group_add_greeting', '#group_speaker_now', '#group_speaker_hide'] },
     { file: 'index.html', form: 'icon', selectors: ['.open_alternate_greetings', '#sb_character_add_group_greeting'] },
-    { file: 'scripts/openai.js', form: 'label', selectors: ['#sb-chat-completion-config-reload', '#sb-chat-completion-config-save', '#sb-chat-completion-config-save-restart'] },
     { file: 'scripts/sillybunny-conversation/settings-panel.js', form: 'label', selectors: ['.sb-schedule-modal-add'] },
     { file: 'scripts/extensions/in-chat-agents/pathfinder/prompts/prompt-editor-ui.js', form: 'label', selectors: ['#pf-prompt-save'] },
     { file: 'scripts/extensions/in-chat-agents/companion/companion-panel.js', form: 'label', selectors: ['[data-action="panel-hide-before"]'] },

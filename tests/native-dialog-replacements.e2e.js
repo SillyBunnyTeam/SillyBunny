@@ -10,9 +10,8 @@ const readOnlyPosts = new Set([
     '/api/settings/get', '/api/presets/defaults', '/api/avatars/get',
     '/api/backgrounds/folders', '/api/image-metadata/all', '/api/tokenizers/openai/count',
     '/api/server-admin/install-type', '/api/server-admin/config/get',
-    '/api/server-admin/config/thumbnail-settings/get', '/api/server-admin/config/chat-completions/get',
+    '/api/server-admin/config/thumbnail-settings/get',
 ]);
-let chatCompletionConfigReads = 0;
 
 async function expectAlert(page) {
     const alert = page.getByRole('alertdialog');
@@ -30,7 +29,6 @@ async function expectDestructiveAlert(page, responseId) {
 
 test.beforeEach(async ({ page, baseURL }) => {
     test.setTimeout(120000);
-    chatCompletionConfigReads = 0;
     const origin = new URL(baseURL).origin;
     await page.context().route('**/*', route => {
         const request = route.request();
@@ -45,10 +43,6 @@ test.beforeEach(async ({ page, baseURL }) => {
     });
     await protectMaintainerServer(page);
     await page.route('**/api/server-admin/status', route => route.fulfill({ json: {} }));
-    await page.route('**/api/server-admin/config/chat-completions/get', route => {
-        chatCompletionConfigReads++;
-        return route.fulfill({ json: { settings: {}, lastModifiedMs: 1 } });
-    });
     await page.route(/\/api\/(?:characters\/all|groups\/all|chats\/(?:group\/)?get|in-chat-agents\/groups\/list)$/, route => route.fulfill({ json: [] }));
     await page.route('**/api/backgrounds/all', route => route.fulfill({ json: { images: [], config: {} } }));
     await page.route('**/api/quick-replies/save', route => route.fulfill({ body: 'ok' }));
@@ -347,36 +341,6 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await alert.locator('[data-response="delete"]').click();
             await expect(page.locator('#speecht5_tts_speaker option')).toHaveCount(1);
             await expect(page.locator('#speecht5_tts_speaker')).toHaveValue('fixture-speaker-two');
-        });
-
-        test('OpenAI server config reload discards a draft only after the destructive Alert response', async ({ page }) => {
-            await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'prompting'));
-            await page.evaluate(() => {
-                $('#main_api').val('openai').trigger('change');
-                $('#chat_completion_source').val('claude').trigger('change');
-            });
-            const setting = page.locator('#sb-config-claude-system-prompt-cache');
-            await expect(setting).toBeVisible();
-            const initialReads = chatCompletionConfigReads;
-            await setting.check();
-            const reload = page.locator('#sb-chat-completion-config-reload');
-            await reload.evaluate(element => element.scrollIntoView({ block: 'center' }));
-            await reload.click();
-
-            let alert = await expectDestructiveAlert(page, 'discard');
-            await expect(alert).toContainText('Discard your unsaved server config edits and reload from config.yaml?');
-            expect(chatCompletionConfigReads).toBe(initialReads);
-            await alert.locator('[data-response="cancel"]').click();
-            await expect(alert).toHaveCount(0);
-            expect(chatCompletionConfigReads).toBe(initialReads);
-
-            await setting.uncheck();
-            await setting.check();
-            await reload.evaluate(element => element.scrollIntoView({ block: 'center' }));
-            await reload.dispatchEvent('click');
-            alert = await expectDestructiveAlert(page, 'discard');
-            await alert.locator('[data-response="discard"]').click();
-            await expect.poll(() => chatCompletionConfigReads).toBe(initialReads + 1);
         });
     });
 }

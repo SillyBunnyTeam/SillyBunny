@@ -125,7 +125,7 @@
             "important": 186,
             "hover-ungated": 4,
             "focus-outline": 1,
-            "spacing-off-scale": 165,
+            "spacing-off-scale": 157,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

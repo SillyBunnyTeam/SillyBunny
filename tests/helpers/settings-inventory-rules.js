@@ -98,6 +98,11 @@ export const EXCEPTION_RULES = Object.freeze([
         lands: 'a request to the server admin API (/api/server-admin/switch-branch), not the settings',
     },
     {
+        identity: /^#sb-config-(?:prompt-caching-enabled|claude-extended-ttl|claude-caching-depth|claude-adaptive-thinking|gemini-api-version|gemini-thought-signatures)$/,
+        reason: 'changing a server config flag saves it at once to config.yaml through the server admin API rather than to browser settings',
+        lands: 'a request to the server admin API (/api/server-admin/config/chat-completions/save), not the settings',
+    },
+    {
         identity: /^#themes$/,
         kinds: ['select'],
         reason: 'picking a theme applies its whole set of colours, fonts and blur at once',

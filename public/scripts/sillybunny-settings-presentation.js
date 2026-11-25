@@ -612,7 +612,8 @@ export function bindDependentSets(scope) {
         const enablerRow = enabler.closest('.ds-row');
         const sync = () => {
             for (const row of body.children) {
-                if (row instanceof HTMLElement && row !== enablerRow && row.matches('.ds-row, .ds-row-expander')) setRowInsensitive(row, !enabler.checked);
+                // A row that carries `data-sb-sensitivity-owned` has an owner that also holds it insensitive for another reason.
+                if (row instanceof HTMLElement && row !== enablerRow && !row.hasAttribute('data-sb-sensitivity-owned') && row.matches('.ds-row, .ds-row-expander')) setRowInsensitive(row, !enabler.checked);
             }
         };
         if (!sbDependentBodies.has(body)) {
