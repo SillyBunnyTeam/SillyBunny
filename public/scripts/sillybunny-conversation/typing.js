@@ -159,13 +159,7 @@ export function stripPreviewText(messageText) {
         .slice(0, 130);
 }
 
-export function splitChatroomMessages(text) {
-    const parts = String(text || '')
-        .split(/\n\s*\n+/)
-        .map(part => part.trim())
-        .filter(Boolean);
-    return parts.length ? parts : [String(text || '').trim()].filter(Boolean);
-}
+export { splitChatroomMessages } from './generation-utils.js';
 
 /** The preview of a conversation in the list: what the list shows for its active chat, which the server and the cache work out from the last message. */
 export function getLastConversationPreview(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {

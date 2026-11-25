@@ -109,8 +109,10 @@ describe('conversation mode scoped connection profile', () => {
     });
 
     test('routes explicitly prefixed group replies to the named participant', () => {
-        expect(generationSource).toContain('getSpeakerPrefixMatch');
-        expect(generationSource).toContain('resolveConversationReplySpeaker');
+        const replyStepsSource = readConversationSource('reply-steps.js');
+        expect(replyStepsSource).toContain('getSpeakerPrefixMatch');
+        expect(replyStepsSource).toContain('resolveReplySpeaker');
+        expect(generationSource).toContain('buildReplySteps');
         expect(generationSource).toContain('resolvedExtra.member_avatar = speakerAvatar');
     });
 

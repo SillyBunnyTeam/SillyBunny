@@ -77,6 +77,19 @@ export function extractCharacterReplyCommandParts(rawText, settings = {}) {
     return { text, selfieRequests, scheduleUpdates, reminders };
 }
 
+/** Splits a reply into chat bubbles at its blank lines. Lives here, with the other pure text rules, so that the reply planner does not import the page. */
+export function splitChatroomMessages(text) {
+    const parts = String(text || '')
+        .split(/\n\s*\n+/)
+        .map(part => part.trim())
+        .filter(Boolean);
+    return parts.length ? parts : [String(text || '').trim()].filter(Boolean);
+}
+
+export function hasCharacterReplyCommandSideEffects(commandParts) {
+    return Boolean(commandParts?.scheduleUpdates?.length || commandParts?.reminders?.length);
+}
+
 export function getCharacterReplyCommandMetadata(commandParts) {
     const commands = {};
     if (Array.isArray(commandParts?.selfieRequests) && commandParts.selfieRequests.length) {

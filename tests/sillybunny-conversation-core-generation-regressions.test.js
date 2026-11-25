@@ -41,15 +41,16 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/messag
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
     stripSpeakerPrefix: value => String(value || '').trim(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members-utils.js', () => ({
-    getSpeakerPrefixMatch: () => null,
-}));
 const confirmConversationAction = jest.fn(async () => true);
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({ confirmConversationAction }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles: () => [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({
     buildConversationPromptMessages,
     buildConversationSystemPrompt,
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members-utils.js', () => ({
+    getSpeakerPrefixMatch: () => null,
+    stripSpeakerPrefixText: value => String(value || '').trim(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     formatPromptText: value => String(value || ''),
