@@ -620,6 +620,7 @@ export function initBackgroundGallery() {
 async function start() {
     container = document.getElementById('bg_menu_content');
     if (!container || !document.getElementById('bg-header-fixed')) return;
+    flatCells.clear();
     query = String(document.getElementById('bg-filter')?.value ?? '').trim().toLowerCase();
     stylesReady = loadStyles();
     const host = {

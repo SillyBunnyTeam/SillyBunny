@@ -1,4 +1,4 @@
-/* eslint-disable playwright/no-standalone-expect -- Jest unit tests for PR 10 shell deferral, CSS isolation, and chat-list caching. */
+/* eslint-disable playwright/no-standalone-expect -- Jest unit tests for PR 7 shell deferral, CSS isolation, and chat-list caching. */
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -69,7 +69,7 @@ function extractFunctionSource(source, name) {
     throw new Error(`Unbalanced braces in ${name}`);
 }
 
-describe('PR 10 shell boot diet & topbar layout', () => {
+describe('PR 7 shell boot diet & topbar layout', () => {
     test('initAll drops eager drag listeners, Select2 reinit, and formatting drawer grouping, and sets icons-only before buildTopBar', () => {
         const initSource = extractFunctionSource(tabsSource, 'initAll');
         expect(initSource).not.toContain('bindTopbarDragEvents()');
@@ -162,7 +162,7 @@ describe('PR 10 shell boot diet & topbar layout', () => {
     });
 });
 
-describe('PR 10 fitBottomChatBar single-read width cache & observer diet', () => {
+describe('PR 7 fitBottomChatBar single-read width cache & observer diet', () => {
     test('observes only data-sb-mobile-ui-mode on documentElement and fits in 1 read pass with cached button widths', () => {
         const observedFilters = [];
         class FakeResizeObserver {
@@ -251,6 +251,14 @@ describe('PR 10 fitBottomChatBar single-read width cache & observer diet', () =>
             return { minWidth: el._minWidth || '0px' };
         };
 
+        const rootInlineProps = new Map();
+        const mockDocumentElement = {
+            dataset: {},
+            style: {
+                getPropertyValue: prop => rootInlineProps.get(prop) ?? '',
+            },
+        };
+
         const harness = new Function(
             'window',
             'document',
@@ -271,7 +279,7 @@ describe('PR 10 fitBottomChatBar single-read width cache & observer diet', () =>
         )(
             { requestAnimationFrame: cb => { cb(); return 0; } },
             {
-                documentElement: { dataset: {} },
+                documentElement: mockDocumentElement,
                 getElementById: id => (id === 'sb-bottom-chat-bar' ? bar : null),
             },
             FakeElement,
@@ -308,11 +316,16 @@ describe('PR 10 fitBottomChatBar single-read width cache & observer diet', () =>
         harness.fitBottomChatBar();
         expect(rectReads + styleReads).toBe(readsAfterCold);
         expect(allButtons.filter(b => !b.hidden).length).toBe(keptOnNarrow);
+
+        // Changing --fontScale / --mainFontSize invalidates the cache key and re-measures once.
+        rootInlineProps.set('--fontScale', '1.4');
+        harness.fitBottomChatBar();
+        expect(rectReads + styleReads).toBeGreaterThan(readsAfterCold);
     });
 });
 
-describe('PR 10 chat-list fetch dedupe, invalidation & 0-chat no-poll', () => {
-    test('dedupes concurrent getChatFilesForContext calls, ignores MESSAGE_RECEIVED, invalidates on CHAT_CREATED, and stops polling on valid []', async () => {
+describe('PR 7 chat-list fetch dedupe, invalidation & 0-chat no-poll', () => {
+    test('dedupes concurrent getChatFilesForContext calls, marks stale on MESSAGE_SENT/MESSAGE_RECEIVED, invalidates on CHAT_CREATED and sb:chat-list-mutated, and stops polling on valid []', async () => {
         const listeners = new Map();
         const eventSource = {
             on(name, fn) {
@@ -332,6 +345,7 @@ describe('PR 10 chat-list fetch dedupe, invalidation & 0-chat no-poll', () => {
             GROUP_CHAT_CREATED: 'group_chat_created',
             CHAT_DELETED: 'chat_deleted',
             GROUP_CHAT_DELETED: 'group_chat_deleted',
+            MESSAGE_SENT: 'message_sent',
             MESSAGE_RECEIVED: 'message_received',
             MESSAGE_UPDATED: 'message_updated',
             MESSAGE_EDITED: 'message_edited',
@@ -339,6 +353,19 @@ describe('PR 10 chat-list fetch dedupe, invalidation & 0-chat no-poll', () => {
             MESSAGE_SWIPED: 'message_swiped',
             MESSAGE_SWIPE_DELETED: 'message_swipe_deleted',
         };
+
+        const windowListeners = new Map();
+        const fakeWindow = {
+            addEventListener(type, fn) {
+                if (!windowListeners.has(type)) windowListeners.set(type, []);
+                windowListeners.get(type).push(fn);
+            },
+            dispatchEvent(event) {
+                for (const fn of windowListeners.get(event.type) ?? []) fn(event);
+            },
+        };
+        const previousWindow = global.window;
+        global.window = fakeWindow;
 
         let fetchCount = 0;
         let nextPayload = [];
@@ -376,85 +403,102 @@ describe('PR 10 chat-list fetch dedupe, invalidation & 0-chat no-poll', () => {
         const cacheMatch = tabsSource.match(/const SB_CHAT_FILES_FOCUS_STALE_MS[\s\S]*?const sbChatFilesCache = \{[\s\S]*?\};/);
         expect(cacheMatch).not.toBeNull();
 
-        const harness = new Function(
-            'fetch',
-            'document',
-            'HTMLSelectElement',
-            'sbState',
-            'getChatUiContext',
-            'getAuthorizedRequestHeadersOrNull',
-            'normalizeChatInfo',
-            'sortChatFiles',
-            'setButtonDisabled',
-            'describeChatName',
-            'formatChatSelectorLabel',
-            'isMobileViewport',
-            'scheduleBottomChatBarRefresh',
-            [
-                cacheMatch[0],
-                extractFunctionSource(tabsSource, 'fetchCharacterChatFiles'),
-                'async function fetchGroupChatFiles() { return []; }',
-                extractFunctionSource(tabsSource, 'getChatFilesCacheKey'),
-                extractFunctionSource(tabsSource, 'invalidateChatFilesCache'),
-                extractFunctionSource(tabsSource, 'markChatFilesCacheStale'),
-                extractFunctionSource(tabsSource, 'invalidateChatFilesCacheIfOlderThan'),
-                extractFunctionSource(tabsSource, 'loadChatFilesForContext'),
-                extractFunctionSource(tabsSource, 'getChatFilesForContext'),
-                extractFunctionSource(tabsSource, 'bindChatFilesCacheInvalidation'),
-                extractFunctionSource(tabsSource, 'writeBottomChatOptions'),
-                'function getBottomChatBarState() { return sbState.bottomChatBar; }',
-                extractFunctionSource(tabsSource, 'refreshBottomChatSelect'),
-                'return { getChatFilesForContext, bindChatFilesCacheInvalidation, refreshBottomChatSelect };',
-            ].join('\n'),
-        )(
-            mockFetch,
-            { createElement: () => ({ value: '', textContent: '', selected: false }) },
-            FakeSelect,
-            sbState,
-            () => chatContext,
-            async () => ({ 'Content-Type': 'application/json' }),
-            item => ({ fileName: item.file_name, sortTimestamp: 1, tokenEstimate: 0 }),
-            list => list,
-            () => {},
-            name => name,
-            name => name,
-            () => false,
-            delay => scheduledRetries.push(delay),
-        );
+        try {
+            const harness = new Function(
+                'fetch',
+                'document',
+                'HTMLSelectElement',
+                'sbState',
+                'getChatUiContext',
+                'getAuthorizedRequestHeadersOrNull',
+                'normalizeChatInfo',
+                'sortChatFiles',
+                'setButtonDisabled',
+                'describeChatName',
+                'formatChatSelectorLabel',
+                'isMobileViewport',
+                'scheduleBottomChatBarRefresh',
+                [
+                    cacheMatch[0],
+                    extractFunctionSource(tabsSource, 'fetchCharacterChatFiles'),
+                    'async function fetchGroupChatFiles() { return []; }',
+                    extractFunctionSource(tabsSource, 'getChatFilesCacheKey'),
+                    extractFunctionSource(tabsSource, 'invalidateChatFilesCache'),
+                    extractFunctionSource(tabsSource, 'markChatFilesCacheStale'),
+                    extractFunctionSource(tabsSource, 'invalidateChatFilesCacheIfOlderThan'),
+                    extractFunctionSource(tabsSource, 'loadChatFilesForContext'),
+                    extractFunctionSource(tabsSource, 'getChatFilesForContext'),
+                    extractFunctionSource(tabsSource, 'bindChatFilesCacheInvalidation'),
+                    extractFunctionSource(tabsSource, 'writeBottomChatOptions'),
+                    'function getBottomChatBarState() { return sbState.bottomChatBar; }',
+                    extractFunctionSource(tabsSource, 'refreshBottomChatSelect'),
+                    'return { getChatFilesForContext, bindChatFilesCacheInvalidation, refreshBottomChatSelect };',
+                ].join('\n'),
+            )(
+                mockFetch,
+                { createElement: () => ({ value: '', textContent: '', selected: false }) },
+                FakeSelect,
+                sbState,
+                () => chatContext,
+                async () => ({ 'Content-Type': 'application/json' }),
+                item => ({ fileName: item.file_name, sortTimestamp: 1, tokenEstimate: 0 }),
+                list => list,
+                () => {},
+                name => name,
+                name => name,
+                () => false,
+                delay => scheduledRetries.push(delay),
+            );
 
-        harness.bindChatFilesCacheInvalidation(eventSource, eventTypes);
+            harness.bindChatFilesCacheInvalidation(eventSource, eventTypes);
 
-        // Concurrent calls from sidebar + bottom chat bar share 1 in-flight POST and do NOT retry on valid empty []!
-        const [firstList] = await Promise.all([
-            harness.getChatFilesForContext(chatContext),
-            harness.refreshBottomChatSelect(),
-        ]);
-        expect(firstList).toEqual([]);
-        expect(fetchCount).toBe(1);
-        expect(scheduledRetries).toEqual([]);
-        expect(sbState.bottomChatBarRefreshAttempts).toBe(0);
+            // Concurrent calls from sidebar + bottom chat bar share 1 in-flight POST and do NOT retry on valid empty []!
+            const [firstList] = await Promise.all([
+                harness.getChatFilesForContext(chatContext),
+                harness.refreshBottomChatSelect(),
+            ]);
+            expect(firstList).toEqual([]);
+            expect(fetchCount).toBe(1);
+            expect(scheduledRetries).toEqual([]);
+            expect(sbState.bottomChatBarRefreshAttempts).toBe(0);
 
-        // MESSAGE_RECEIVED only marks stale without invalidating or refetching
-        eventSource.emit(eventTypes.MESSAGE_RECEIVED);
-        await harness.getChatFilesForContext(chatContext);
-        expect(fetchCount).toBe(1);
+            // MESSAGE_SENT and MESSAGE_RECEIVED mark stale without invalidating or refetching
+            eventSource.emit(eventTypes.MESSAGE_SENT);
+            await harness.getChatFilesForContext(chatContext);
+            expect(fetchCount).toBe(1);
 
-        // Explicit refreshStale (opening dropdown/sidebar) refetches once
-        nextPayload = [{ file_name: 'chat-1' }];
-        const refreshed = await harness.getChatFilesForContext(chatContext, { refreshStale: true });
-        expect(fetchCount).toBe(2);
-        expect(refreshed.map(c => c.fileName)).toEqual(['chat-1']);
+            // Explicit refreshStale (opening dropdown/sidebar) refetches once
+            nextPayload = [{ file_name: 'chat-1' }];
+            const refreshed = await harness.getChatFilesForContext(chatContext, { refreshStale: true });
+            expect(fetchCount).toBe(2);
+            expect(refreshed.map(c => c.fileName)).toEqual(['chat-1']);
 
-        // CHAT_CREATED invalidates cache so next call refetches
-        nextPayload = [{ file_name: 'chat-1' }, { file_name: 'chat-2' }];
-        eventSource.emit(eventTypes.CHAT_CREATED);
-        const afterCreate = await harness.getChatFilesForContext(chatContext);
-        expect(fetchCount).toBe(3);
-        expect(afterCreate.map(c => c.fileName)).toEqual(['chat-1', 'chat-2']);
+            // CHAT_CREATED invalidates cache so next call refetches
+            nextPayload = [{ file_name: 'chat-1' }, { file_name: 'chat-2' }];
+            eventSource.emit(eventTypes.CHAT_CREATED);
+            const afterCreate = await harness.getChatFilesForContext(chatContext);
+            expect(fetchCount).toBe(3);
+            expect(afterCreate.map(c => c.fileName)).toEqual(['chat-1', 'chat-2']);
+
+            // sb:chat-list-mutated (import / checkpoint / branch) immediately invalidates cache
+            nextPayload = [{ file_name: 'chat-1' }, { file_name: 'chat-2' }, { file_name: 'imported-chat' }];
+            fakeWindow.dispatchEvent({ type: 'sb:chat-list-mutated', detail: { reason: 'import' } });
+            const afterImport = await harness.getChatFilesForContext(chatContext);
+            expect(fetchCount).toBe(4);
+            expect(afterImport.map(c => c.fileName)).toEqual(['chat-1', 'chat-2', 'imported-chat']);
+
+            // Verify upstream callers dispatch sb:chat-list-mutated on import & checkpoint/branch writes
+            const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
+            const bookmarksSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'bookmarks.js'), 'utf8');
+            expect(scriptSource).toContain('sb:chat-list-mutated');
+            expect(bookmarksSource).toContain('sb:chat-list-mutated');
+        } finally {
+            global.window = previousWindow;
+        }
     });
 });
 
-describe('PR 10 drawer persistence guard, narrowed shell search & settings scroll preservation', () => {
+describe('PR 7 drawer persistence guard, narrowed shell search & settings scroll preservation', () => {
     test('bindInlineDrawerPersistence skips localStorage reads when already bound', () => {
         class FakeElement {}
         const boundDrawer = Object.assign(new FakeElement(), { dataset: { sbDrawerPersistenceBound: 'true' } });
@@ -523,21 +567,26 @@ describe('PR 10 drawer persistence guard, narrowed shell search & settings scrol
         expect(rightReady).toHaveBeenCalledTimes(1);
     });
 
-    test('openSettingsPage/closeSettingsPage toggle body.sb-settings-page-open and preserve #chat.scrollTop safely', () => {
+    test('openSettingsPage/closeSettingsPage defer body.sb-settings-page-open until open animation finishes and guard #chat.scrollTop against new messages', () => {
         const openSource = extractFunctionSource(tabsSource, 'openSettingsPage');
         const closeSource = extractFunctionSource(tabsSource, 'closeSettingsPage');
+        const scrollKeySource = extractFunctionSource(tabsSource, 'getActiveChatScrollKey');
 
-        expect(openSource).toContain('document.body?.classList.add(\'sb-settings-page-open\')');
         expect(openSource).toContain('sbSettingsState.savedChatScrollTop = chatEl ? chatEl.scrollTop : null;');
-        expect(openSource.indexOf('classList.add(\'sb-settings-page-open\')')).toBeLessThan(openSource.indexOf('mountShellRootInSettingsPage'));
+        // Body isolation class is added in animateSettingsPage onFinish so #sheld never flashes blank during the 250ms open animation.
+        expect(openSource).toMatch(/animateSettingsPage\(page,\s*'in'[\s\S]*if\s*\(sbSettingsState\.open\)\s*\{\s*document\.body\?\.classList\.add\('sb-settings-page-open'\);/);
 
         expect(closeSource).toContain('document.body?.classList.remove(\'sb-settings-page-open\')');
         expect(closeSource).toContain('if (savedKey === getActiveChatScrollKey())');
         expect(closeSource).toContain('chatEl.scrollTop = savedScrollTop;');
+
+        // Scroll key tracks message count & last message id so background messages while Settings is open prevent snapping scrollTop backward.
+        expect(scrollKeySource).toContain('childElementCount');
+        expect(scrollKeySource).toContain('mesid');
     });
 });
 
-describe('PR 10 ConnectionsPanel deferMount & body state classes', () => {
+describe('PR 7 ConnectionsPanel deferMount & body state classes', () => {
     test('sillybunny-connections-panel supports deferMount and avoids double mount()', () => {
         const panelSource = readFileSync(
             path.join(repoRoot, 'public', 'scripts', 'sillybunny-connections-panel.js'),
@@ -602,5 +651,75 @@ describe('PR 10 ConnectionsPanel deferMount & body state classes', () => {
         slideShown = true;
         sync();
         expect([...activeClasses].sort()).toEqual(['sb-drawer-maximized', 'sb-drawer-open', 'sb-slide-toggle-shown']);
+    });
+
+    test('bindBodyStateClassObservers observes descendant data-slide-toggle mutations without childList subtree thrash', () => {
+        class FakeElement {}
+        const activeClasses = new Set();
+        const body = Object.assign(new FakeElement(), {
+            classList: {
+                toggle: (cls, force) => {
+                    if (force) activeClasses.add(cls);
+                    else activeClasses.delete(cls);
+                },
+            },
+        });
+        const topHolder = Object.assign(new FakeElement(), { querySelector: () => null });
+        const formSheld = new FakeElement();
+        let slideShown = false;
+
+        const observed = [];
+        class MockMutationObserver {
+            constructor(cb) {
+                this.cb = cb;
+            }
+            observe(target, options) {
+                observed.push({ target, options, cb: this.cb });
+            }
+        }
+
+        const sbState = { bodyStateClassObserversBound: false };
+        const bind = new Function(
+            'window',
+            'document',
+            'HTMLElement',
+            'MutationObserver',
+            'sbState',
+            [
+                extractFunctionSource(tabsSource, 'syncBodyStateClasses'),
+                extractFunctionSource(tabsSource, 'bindBodyStateClassObservers'),
+                'return bindBodyStateClassObservers;',
+            ].join('\n'),
+        )(
+            { requestAnimationFrame: cb => { cb(); return 0; } },
+            {
+                body,
+                getElementById: id => (id === 'top-settings-holder' ? topHolder : id === 'form_sheld' ? formSheld : null),
+                querySelector: sel => (sel === '[data-slide-toggle="shown"]' && slideShown ? {} : null),
+            },
+            FakeElement,
+            MockMutationObserver,
+            sbState,
+        );
+
+        bind();
+        const bodySlideObserver = observed.find(entry => entry.target === body);
+        expect(bodySlideObserver).toBeDefined();
+        expect(bodySlideObserver.options).toEqual({
+            attributes: true,
+            attributeFilter: ['data-slide-toggle'],
+            subtree: true,
+        });
+        expect(activeClasses.has('sb-slide-toggle-shown')).toBe(false);
+
+        // Descendant sets data-slide-toggle="shown" -> observer callback toggles body.sb-slide-toggle-shown on
+        slideShown = true;
+        bodySlideObserver.cb([{ type: 'attributes', attributeName: 'data-slide-toggle', target: new FakeElement() }]);
+        expect(activeClasses.has('sb-slide-toggle-shown')).toBe(true);
+
+        // Descendant hides data-slide-toggle="hidden" -> toggles class off
+        slideShown = false;
+        bodySlideObserver.cb([{ type: 'attributes', attributeName: 'data-slide-toggle', target: new FakeElement() }]);
+        expect(activeClasses.has('sb-slide-toggle-shown')).toBe(false);
     });
 });

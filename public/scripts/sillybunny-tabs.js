@@ -4708,6 +4708,7 @@ const sbChatFilesCache = {
     generation: 0,
     stale: false,
     boundEventSource: null,
+    boundWindow: null,
 };
 
 function getChatFilesCacheKey(chatContext) {
@@ -4788,6 +4789,12 @@ async function getChatFilesForContext(chatContext = getChatUiContext(), options 
 }
 
 function bindChatFilesCacheInvalidation(eventSource, eventTypes) {
+    const win = globalThis.window;
+    if (win && typeof win.addEventListener === 'function' && sbChatFilesCache.boundWindow !== win) {
+        sbChatFilesCache.boundWindow = win;
+        win.addEventListener('sb:chat-list-mutated', invalidateChatFilesCache);
+    }
+
     if (sbChatFilesCache.boundEventSource === eventSource) {
         return;
     }
@@ -4803,6 +4810,7 @@ function bindChatFilesCacheInvalidation(eventSource, eventTypes) {
         eventTypes.CHAT_LOADED,
     ].filter(Boolean);
     const messageEvents = [
+        eventTypes.MESSAGE_SENT,
         eventTypes.MESSAGE_RECEIVED,
         eventTypes.MESSAGE_UPDATED,
         eventTypes.MESSAGE_EDITED,
@@ -5916,6 +5924,10 @@ function bindChatbarWindowEvents() {
 
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
     window.addEventListener('focus', refreshWithContext, { passive: true });
+    window.addEventListener('sb:chat-list-mutated', () => {
+        invalidateChatFilesCache();
+        scheduleChatbarRefresh(0);
+    });
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             refreshWithContext();
@@ -12648,7 +12660,10 @@ function fitBottomChatBar() {
         return;
     }
 
-    const cacheKey = `${sbState.bottomBarScale}:${sbState.desktopButtonScale}:${sbState.compactMode}:${Boolean(fitState.searchOpen)}:${buttons.length}`;
+    const rootInlineStyle = document.documentElement.style;
+    const fontScale = rootInlineStyle?.getPropertyValue?.('--fontScale')?.trim() ?? '';
+    const mainFontSize = rootInlineStyle?.getPropertyValue?.('--mainFontSize')?.trim() ?? '';
+    const cacheKey = `${sbState.bottomBarScale}:${sbState.desktopButtonScale}:${sbState.compactMode}:${Boolean(fitState.searchOpen)}:${buttons.length}:${fontScale}:${mainFontSize}`;
     const cache = fitState.widthCache?.key === cacheKey
         ? fitState.widthCache
         : measureBottomChatBarThresholds(bar, buttons, overflow, cacheKey);
@@ -13031,6 +13046,10 @@ function bindBottomChatBarWindowEvents() {
     window.addEventListener('pageshow', refreshWithContext, { passive: true });
     window.addEventListener('focus', refreshWithContext, { passive: true });
     window.addEventListener('resize', syncWithWindow, { passive: true });
+    window.addEventListener('sb:chat-list-mutated', () => {
+        invalidateChatFilesCache();
+        scheduleBottomChatBarRefresh(0);
+    });
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
             refreshWithContext();
@@ -13480,12 +13499,12 @@ function bindBodyStateClassObservers() {
         }).observe(topHolder, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
     }
 
-    // `attributeFilter: ['data-slide-toggle']` wakes only when an extension toggles that attribute, never during chat streaming.
+    // `attributeFilter: ['data-slide-toggle']` with `subtree: true` and no `childList` wakes only when
+    // an extension toggles that attribute on any descendant, never during chat streaming.
     new MutationObserver(schedule).observe(document.body, {
         attributes: true,
         attributeFilter: ['data-slide-toggle'],
-        childList: true,
-        subtree: false,
+        subtree: true,
     });
     const formSheld = document.getElementById('form_sheld');
     if (formSheld instanceof HTMLElement) {
@@ -13497,7 +13516,11 @@ function bindBodyStateClassObservers() {
 
 function getActiveChatScrollKey() {
     const chatContext = getChatUiContext();
-    return `${chatContext.group?.id ?? ''}:${chatContext.character?.avatar ?? ''}:${chatContext.chatId}`;
+    const chatEl = getChatScrollElement();
+    const domCount = chatEl ? chatEl.childElementCount : 0;
+    const lastMesId = chatEl?.lastElementChild?.getAttribute?.('mesid') ?? '';
+    const chatLen = Array.isArray(chatContext.context?.chat) ? chatContext.context.chat.length : '';
+    return `${chatContext.group?.id ?? ''}:${chatContext.character?.avatar ?? ''}:${chatContext.chatId}:${chatLen}:${domCount}:${lastMesId}`;
 }
 
 function initAll() {
@@ -13903,7 +13926,6 @@ function openSettingsPage(shellKey, tabId = null) {
         const chatEl = getChatScrollElement();
         sbSettingsState.savedChatScrollTop = chatEl ? chatEl.scrollTop : null;
         sbSettingsState.savedChatScrollKey = getActiveChatScrollKey();
-        document.body?.classList.add('sb-settings-page-open');
     }
 
     sbSettingsState.open = true;
@@ -13947,7 +13969,12 @@ function openSettingsPage(shellKey, tabId = null) {
 
     page.hidden = false;
     syncSettingsPaneInert();
-    animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
+    animateSettingsPage(page, 'in', () => {
+        page.classList.remove('sb-settings-page--opening');
+        if (sbSettingsState.open) {
+            document.body?.classList.add('sb-settings-page-open');
+        }
+    });
 
     // The pane that is off screen on a phone is inert and cannot take focus, so a restored page shows content and focuses Close.
     const entry = () => (isMobileViewport() && !sbSettingsState.mobileContentView
@@ -14290,6 +14317,9 @@ function setSettingsMobileContentView(showContent) {
     syncSettingsPaneInert();
     if (showContent) {
         scheduleBackgroundGalleryMount();
+        document.dispatchEvent(new CustomEvent('sb:settings-content-revealed', {
+            detail: { shellKey: sbSettingsState.activeShell, tabId: sbSettingsState.activeTabId },
+        }));
     } else {
         cancelScheduledBackgroundGalleryMount();
     }

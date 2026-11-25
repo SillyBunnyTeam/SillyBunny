@@ -16337,6 +16337,12 @@ export async function importCharacterChat(formData, { refresh = true } = {}) {
 
     if (fetchResult.ok) {
         const data = await fetchResult.json();
+        // SillyBunny: invalidate the shared chat-list cache when character chats are imported without emitting CHAT_CREATED.
+        if ((data.res || (Array.isArray(data?.fileNames) && data.fileNames.length > 0))
+            && typeof globalThis.window?.dispatchEvent === 'function'
+            && typeof globalThis.CustomEvent === 'function') {
+            globalThis.window.dispatchEvent(new globalThis.CustomEvent('sb:chat-list-mutated', { detail: { reason: 'import' } }));
+        }
         if (data.res && refresh) {
             await displayPastChats();
         }

@@ -20,7 +20,7 @@ function extractRuleBlock(css, selectorPattern) {
     return match ? match[1] : null;
 }
 
-describe('PR 10 CSS diet regressions', () => {
+describe('PR 7 CSS diet regressions', () => {
     const styleCss = readPublic('style.css');
     const tabsCss = readPublic('css', 'sillybunny-tabs.css');
     const themeCss = readPublic('css', 'sillybunny-theme.css');
@@ -297,6 +297,14 @@ describe('dynamic-styles.js deferral, batching, and hover-free skipping', () => 
                     return webfontRulesGetter();
                 },
             };
+            const hashedWebfontRulesGetter = jest.fn(() => []);
+            const hashedWebfontSheet = {
+                href: 'http://localhost:8000/assets/frontend/abc123.css',
+                ownerNode: { dataset: { sbSourceHref: 'webfonts/AdwaitaMono/stylesheet.css' } },
+                get cssRules() {
+                    return hashedWebfontRulesGetter();
+                },
+            };
             const appRulesGetter = jest.fn(() => [
                 new env.MockCSSStyleRule('.btn:hover', 'color: red;'),
                 new env.MockCSSStyleRule('.chip:hover', 'opacity: 1;'),
@@ -310,7 +318,7 @@ describe('dynamic-styles.js deferral, batching, and hover-free skipping', () => 
                 },
             };
 
-            env.mockDocument.styleSheets = [fontAwesomeSheet, webfontSheet, appSheet];
+            env.mockDocument.styleSheets = [fontAwesomeSheet, webfontSheet, hashedWebfontSheet, appSheet];
 
             const mod = await import(`../../public/scripts/dynamic-styles.js?test=${Date.now()}`);
             expect(typeof mod.initDynamicStyles).toBe('function');
@@ -332,6 +340,7 @@ describe('dynamic-styles.js deferral, batching, and hover-free skipping', () => 
             env.mockDocument.dispatchKeydown('Tab');
             expect(fontAwesomeRulesGetter).not.toHaveBeenCalled();
             expect(webfontRulesGetter).not.toHaveBeenCalled();
+            expect(hashedWebfontRulesGetter).not.toHaveBeenCalled();
             expect(appRulesGetter).toHaveBeenCalledTimes(1);
             expect(env.headChildren).toHaveLength(1);
 
@@ -351,12 +360,18 @@ describe('dynamic-styles.js deferral, batching, and hover-free skipping', () => 
                 href: 'http://localhost:8000/css/sillybunny-world-info-editor.css',
                 cssRules: [new env.MockCSSStyleRule('.row-b:hover', 'background: yellow;')],
             };
+            const hashedExtSheet = {
+                href: 'http://localhost:8000/assets/frontend/ext-def456.css',
+                ownerNode: { dataset: { sbSourceHref: 'scripts/extensions/quick-reply/style.css' } },
+                cssRules: [new env.MockCSSStyleRule('.ext-btn:hover', 'color: purple;')],
+            };
             const linkA = new env.MockLinkElement(tabSheetA.href, tabSheetA);
             const linkB = new env.MockLinkElement(tabSheetB.href, tabSheetB);
+            const linkExt = new env.MockLinkElement(hashedExtSheet.href, hashedExtSheet);
 
             env.observers[0].emit([
                 { type: 'childList', target: styleEl, addedNodes: [styleEl] },
-                { type: 'childList', target: env.mockDocument.head, addedNodes: [linkA, linkB] },
+                { type: 'childList', target: env.mockDocument.head, addedNodes: [linkA, linkB, linkExt] },
             ]);
             expect(styleEl.textWrites).toBe(1);
 
@@ -364,6 +379,9 @@ describe('dynamic-styles.js deferral, batching, and hover-free skipping', () => 
             expect(styleEl.textWrites).toBe(2);
             expect(styleEl.textContent).toContain('.row-a:focus-visible { background: green; }');
             expect(styleEl.textContent).toContain('.row-b:focus-visible { background: yellow; }');
+            const extStyleEl = env.headChildren.find(el => el.id === 'dynamic-extension-styles');
+            expect(extStyleEl).toBeDefined();
+            expect(extStyleEl.textContent).toContain('.ext-btn:focus-visible { color: purple; }');
         } finally {
             Object.assign(global, saved);
         }

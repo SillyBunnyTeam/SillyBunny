@@ -1,3 +1,4 @@
+// SillyBunny: keep <style> elements instead of CSSStyleSheet handles so generated focus rules can be written in one batched textContent update.
 /** @type {HTMLStyleElement|null} */
 let dynamicStyleElement = null;
 /** @type {HTMLStyleElement|null} */
@@ -207,9 +208,10 @@ window.SillyBunnyAssets = Object.assign(window.SillyBunnyAssets ?? {}, {
     prefetchAsset,
 });
 
+// SillyBunny: batch :focus-visible rule mirrors into one idle-time flush per burst of stylesheet loads, skipping icon/webfont sheets.
 const DYNAMIC_STYLE_ELEMENT_IDS = new Set(['dynamic-styles', 'dynamic-extension-styles']);
 // SillyBunny: icon and webfont sheets carry thousands of rules and no :hover, so walking them only costs startup time.
-const HOVER_FREE_STYLESHEET_PATTERN = /\/webfonts\/|fontawesome|\/(?:solid|brands|regular)(?:\.min)?\.css/i;
+const HOVER_FREE_STYLESHEET_PATTERN = /(?:^|\/)webfonts\/|fontawesome|(?:^|\/)(?:solid|brands|regular)(?:\.min)?\.css/i;
 
 /** @type {Set<CSSStyleSheet>} */
 const pendingStyleSheets = new Set();
@@ -221,8 +223,14 @@ let flushHandle = null;
 let flushHandleIsIdle = false;
 let initialScanPending = false;
 
+function getStyleSheetSourceHref(styleSheet) {
+    // SillyBunny: prefer original source path when a flattened/hashed asset link records data-sb-source-href.
+    return styleSheet?.ownerNode?.dataset?.sbSourceHref || styleSheet?.href || '';
+}
+
 function isHoverFreeStyleSheet(styleSheet) {
-    return Boolean(styleSheet?.href) && HOVER_FREE_STYLESHEET_PATTERN.test(styleSheet.href);
+    const href = getStyleSheetSourceHref(styleSheet);
+    return Boolean(href) && HOVER_FREE_STYLESHEET_PATTERN.test(href);
 }
 
 function isOwnDynamicStyleNode(node) {
@@ -267,7 +275,7 @@ function queueStyleSheet(styleSheet) {
 }
 
 function isExtensionStyleSheet(styleSheet) {
-    return styleSheet?.href?.toLowerCase().includes('scripts/extensions') === true;
+    return getStyleSheetSourceHref(styleSheet).toLowerCase().includes('scripts/extensions');
 }
 
 function flushPendingStyleSheets() {
@@ -317,7 +325,7 @@ function flushPendingStyleSheets() {
 const observer = new MutationObserver(mutations => {
     mutations.forEach(mutation => {
         if (mutation.type !== 'childList') return;
-        // Our own generated <style> rewrites must never trigger another scan.
+        // SillyBunny: our own generated <style> rewrites must never trigger another scan; queue added links for one batched flush.
         if (isOwnDynamicStyleNode(mutation.target)) return;
 
         mutation.addedNodes.forEach(node => {
@@ -512,6 +520,7 @@ function applyDynamicFocusStyles(styleSheet) {
  * @param {object} options - The options object
  * @param {boolean} [options.fromExtension=false] - Indicates whether the rules are coming from extensions
  */
+// SillyBunny: write all generated focus rules in one textContent pass instead of per-rule insertRule().
 function writeDynamicStyleSheet({ fromExtension = false } = {}) {
     const id = fromExtension ? 'dynamic-extension-styles' : 'dynamic-styles';
     let styleSheetElement = fromExtension ? dynamicExtensionStyleElement : dynamicStyleElement;
@@ -538,8 +547,7 @@ function onFirstKeyboardNavigation(event) {
  * Initializes dynamic styles for ST
  */
 export function initDynamicStyles() {
-    // Only observe direct children of <head>: stylesheet <link> elements live there, and subtree: false
-    // avoids waking the observer whenever any <style> element updates its textContent.
+    // SillyBunny: only observe direct children of <head> so <style> textContent writes never wake the observer.
     observer.observe(document.head, {
         childList: true,
         subtree: false,

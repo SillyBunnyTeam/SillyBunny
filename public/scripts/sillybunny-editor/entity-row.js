@@ -125,7 +125,9 @@ function fitTagStrips(entries) {
     const pending = [];
     // One probe per distinct "+N" label per pass; later rows reuse the cached width instead of appending probes.
     const probes = new Map();
-    const rootFontSize = getComputedStyle(document.documentElement).fontSize;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const bodyStyle = document.body ? getComputedStyle(document.body) : rootStyle;
+    const fontKey = `${bodyStyle.fontSize}|${bodyStyle.fontFamily}|${document.documentElement.dataset?.sbCompactMode ?? ''}|${rootStyle.getPropertyValue('--sb-density-scale').trim()}`;
     for (const { target: container, contentRect } of entries) {
         const strip = tagStrips.get(container);
         if (!strip || !container.isConnected) {
@@ -142,7 +144,7 @@ function fitTagStrips(entries) {
         for (let visible = 0; visible <= candidates.length; visible++) {
             const hidden = strip.names.length - visible;
             if (!hidden) continue;
-            const key = `${rootFontSize}|${container.className}|${hidden}`;
+            const key = `${fontKey}|${container.className}|${hidden}`;
             overflowKeys.set(visible, key);
             if (overflowWidthCache.has(key) || probes.has(key)) continue;
             const probe = createTagOverflow(hidden);

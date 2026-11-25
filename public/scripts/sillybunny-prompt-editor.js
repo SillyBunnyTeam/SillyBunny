@@ -284,6 +284,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     let syncPending = false;
     let tokensPending = false;
     let visibilityObserver = null;
+    let observedAncestors = [];
     let tokenizerKey = '';
     const contentCounts = new Map();
     const contentRequests = new Map();
@@ -1689,13 +1690,24 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     }
 
     function ensureVisibilityObserver() {
-        if (visibilityObserver || !column.isConnected) return;
+        if (!column.isConnected) return;
+        const ancestors = [];
+        for (let ancestor = column; ancestor && ancestor !== document.documentElement; ancestor = ancestor.parentElement) {
+            ancestors.push(ancestor);
+        }
+        if (visibilityObserver
+            && ancestors.length === observedAncestors.length
+            && ancestors.every((node, index) => node === observedAncestors[index])) {
+            return;
+        }
+        visibilityObserver?.disconnect();
         visibilityObserver = new MutationObserver(() => {
             if (!isPanelVisible()) return;
             if (syncPending) synchronize();
             else if (tokensPending && !placingCounts) scheduleListTokens();
         });
-        for (let ancestor = column; ancestor && ancestor !== document.documentElement; ancestor = ancestor.parentElement) {
+        observedAncestors = ancestors;
+        for (const ancestor of ancestors) {
             visibilityObserver.observe(ancestor, { attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'inert', 'class'] });
         }
     }
@@ -1793,6 +1805,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     }, true);
     document.addEventListener('sb:shell-tab-activated', async event => {
         if (event.detail.tabId === 'editor') {
+            ensureVisibilityObserver();
             synchronize();
             if (tokensPending && !placingCounts) scheduleListTokens();
             return;
@@ -1804,6 +1817,12 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
             window.SillyBunnyShell.openTab('left', 'editor');
             if (mobile.matches) document.querySelector('button[data-sb-settings-tab="editor"]')?.click();
         } else closeNow();
+    });
+    document.addEventListener('sb:settings-content-revealed', () => {
+        ensureVisibilityObserver();
+        if (!isPanelVisible()) return;
+        if (syncPending) synchronize();
+        else if (tokensPending && !placingCounts) scheduleListTokens();
     });
     document.addEventListener('change', event => {
         if (event.target instanceof HTMLSelectElement && event.target.matches('#sysprompt_select, #instruct_presets, #context_presets')) scheduleSynchronize();

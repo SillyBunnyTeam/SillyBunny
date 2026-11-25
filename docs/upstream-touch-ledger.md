@@ -24,6 +24,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### `public/style.css`, `public/scripts/dynamic-styles.js` and `public/index.html` - Settings style-recalc diet and batched dynamic focus styles
+| Field | Value |
+| --- | --- |
+| File | `public/style.css` (removed `:root { interpolate-size: allow-keywords }` and replaced the two `body:has(.drawer-content...)` selectors with `body.sb-drawer-maximized #top-settings-holder` / `body.sb-drawer-open #top-settings-holder`, each marked `SillyBunny:`); `public/scripts/dynamic-styles.js` (deferred initial scan to idle / first `Tab`, coalesced stylesheet scans into batched `<style>` `textContent` writes, skipped hover-free icon/webfont sheets with `data-sb-source-href` awareness, narrowed `<head>` observer to `subtree: false`, marked `SillyBunny:`); `public/index.html` (cache key bumps only for modified stylesheets). |
+| Area | Settings style recalculation, CSS `:has()` scope, and startup/lazy stylesheet focus-mirror batching. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `bindBodyStateClassObservers()` in `public/scripts/sillybunny-tabs.js` (owns `body.sb-drawer-maximized`, `body.sb-drawer-open`, `body.sb-slide-toggle-shown`); batched `:focus-visible` writer in `public/scripts/dynamic-styles.js`. |
+| Adapter shape | Two marked rules in `public/style.css`; deferred/batched flush pipeline inside `public/scripts/dynamic-styles.js` preserving `initDynamicStyles()`, `loadStylesheetAsync()`, `prefetchAsset()`, and `#dynamic-styles` / `#dynamic-extension-styles` `<style>` outputs. |
+| Protecting tests | `tests/css-has-scope.test.js`; `tests/unit/perf-css-diet.test.js`; `tests/unit/perf-shell-css-and-large-lists.test.js`; `tests/sillybunny-backend-settings.e2e.js`. |
+| Validation | 2026-11-26: root and tests lint, frontend budgets/contracts/design-rules, and Jest unit suites (`css-has-scope`, `perf-css-diet`, `perf-large-lists`, `perf-shell-css-and-large-lists`, and related shell/editor/CSS suites). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1035 (Performance Optimization Series: PR 7). |
+| Owner | `TODO(copy)` |
+
+### `public/script.js` and `public/scripts/bookmarks.js` - shared chat-list cache invalidation signal
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (`importCharacterChat` dispatches `window` event `sb:chat-list-mutated` when imported chats succeed); `public/scripts/bookmarks.js` (`createBranch` and `createNewBookmark` dispatch `sb:chat-list-mutated` when a branch or checkpoint chat file is written). |
+| Area | Shared chat-file list cache invalidation across Recent Chats sidebar and bottom chat picker. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `bindChatFilesCacheInvalidation()` / `sbChatFilesCache` in `public/scripts/sillybunny-tabs.js`. |
+| Adapter shape | One marked `CustomEvent('sb:chat-list-mutated')` dispatch after each file-creating path (`importCharacterChat`, `createBranch`, `createNewBookmark`) that does not emit `CHAT_CREATED` or switch chats; existing upstream return values and `eventSource` events are unchanged. |
+| Protecting tests | `tests/unit/perf-shell-css-and-large-lists.test.js`. |
+| Validation | 2026-11-26: root and tests lint, Jest unit suites (`perf-shell-css-and-large-lists.test.js`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1035 (Performance Optimization Series: PR 7). |
+| Owner | `TODO(copy)` |
+
 ### Extension row action overflow adapter
 | Field | Value |
 | --- | --- |

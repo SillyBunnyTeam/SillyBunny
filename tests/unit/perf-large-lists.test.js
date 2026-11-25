@@ -371,6 +371,17 @@ describe('entity-row limitTagChips probe reuse and observedStrips cleanup', () =
         onResize([{ target: fourth.container, contentRect: { width: fourth.width } }]);
         expect(appendedProbes).toHaveLength(0);
         expect(fourth.container.querySelector('.sb-tag-overflow').textContent).toBe('+3');
+
+        // Changing body fontSize or compact mode invalidates the cache key and re-measures probes.
+        document.body.style.fontSize = '22px';
+        document.documentElement.dataset.sbCompactMode = 'true';
+        const fifth = makeTagStrip(['J', 'K', 'L', 'M', 'N'], 130);
+        limitTagChips(fifth.container);
+        frames.splice(0).forEach(cb => cb());
+        onResize([{ target: fifth.container, contentRect: { width: fifth.width } }]);
+        expect(appendedProbes.length).toBeGreaterThan(0);
+        document.body.style.fontSize = '';
+        delete document.documentElement.dataset.sbCompactMode;
     });
 
     test('prunes detached strips from observedStrips and unobserves them on the next frame', () => {
@@ -532,5 +543,61 @@ describe('Prompt editor visibility gating, ordered class, and search debounce', 
 
         jest.advanceTimersByTime(60);
         expect(column.querySelectorAll('.sb-prompt-row--ordered')).toHaveLength(1);
+    });
+
+    test('reconnects visibilityObserver after reparenting into #sb-settings-page and catches up on mobile inert clear', async () => {
+        jest.useFakeTimers();
+        countTokens.mockClear();
+        window.matchMedia = jest.fn(() => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() }));
+        window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+        window.CSS = { escape: value => String(value) };
+        window.SillyBunnyAssets = { loadStylesheetAsync: async () => {} };
+        global.$ = () => ({ on() { return this; } });
+        global.$.ajaxPrefilter = jest.fn();
+        global.$.fn = {};
+        global.toastr = { error: jest.fn(), clear: jest.fn(), info: jest.fn() };
+
+        // Step 1: mounted while hidden under #top-settings-holder (e.g., via Universal Search ensureReady()).
+        const topHolder = document.createElement('div');
+        topHolder.id = 'top-settings-holder';
+        const leftNav = document.createElement('div');
+        leftNav.id = 'left-nav-panel';
+        leftNav.className = 'closedDrawer';
+        const panel = document.createElement('section');
+        panel.className = 'sb-shell-panel';
+        panel.setAttribute('aria-hidden', 'true');
+        const column = document.createElement('div');
+        panel.append(column);
+        leftNav.append(panel);
+        topHolder.append(leftNav);
+        document.body.append(topHolder);
+
+        initializePromptEditor(column);
+        await jest.advanceTimersByTimeAsync(50);
+        expect(column.querySelectorAll('.sb-prompt-row')).toHaveLength(0);
+
+        // Step 2: reparent #left-nav-panel into #sb-settings-page > #sb-settings-content[inert] on mobile.
+        const settingsPage = document.createElement('div');
+        settingsPage.id = 'sb-settings-page';
+        const settingsContent = document.createElement('div');
+        settingsContent.id = 'sb-settings-content';
+        settingsContent.setAttribute('inert', '');
+        settingsPage.append(settingsContent);
+        document.body.append(settingsPage);
+
+        leftNav.classList.remove('closedDrawer');
+        panel.setAttribute('aria-hidden', 'false');
+        settingsContent.append(leftNav);
+
+        // Tab activates while mobile content pane is still inert: must stay pending, not render prematurely.
+        document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', { detail: { tabId: 'editor' } }));
+        await jest.advanceTimersByTimeAsync(0);
+        expect(column.querySelectorAll('.sb-prompt-row')).toHaveLength(0);
+
+        // Step 3: mobile content view reveals by removing `inert` on #sb-settings-content (new post-reparent ancestor!).
+        settingsContent.removeAttribute('inert');
+        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(0);
+        expect(column.querySelectorAll('.sb-prompt-row--ordered')).toHaveLength(2);
     });
 });
