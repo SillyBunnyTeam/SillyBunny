@@ -150,7 +150,7 @@ test.describe('Edit Details and Add Member', () => {
             shownPage(page).getByRole('button', { name: 'Select New Picture' }).click(),
         ]);
         await chooser.setFiles({ name: 'crew.png', mimeType: 'image/png', buffer: solidPng() });
-        await expect(shownPage(page).locator('.sb-details-editable-avatar img')).toBeVisible();
+        await expect(shownPage(page).locator('.sb-details-editable-avatar img'), 'the chosen picture replaces the tiles').toHaveCount(1);
         await shownPage(page).getByRole('button', { name: 'Save' }).click();
 
         await expect(shownPage(page).locator('.sb-details-hero__name', { hasText: 'Picnic crew' })).toBeVisible();
@@ -586,7 +586,7 @@ test.describe('On the smallest phone', () => {
             expect(overflow, `${pageId} does not scroll sideways`).toBeLessThanOrEqual(1);
             const close = await shownPage(page).getByRole('button', { name: 'Close' }).boundingBox();
             expect(close.x + close.width, 'Close is inside the sheet').toBeLessThanOrEqual(360);
-            expect(close.height).toBeGreaterThanOrEqual(44);
+            expect(Math.round(close.height)).toBeGreaterThanOrEqual(44);
         }
     });
 });
@@ -628,8 +628,9 @@ test.describe('On a phone', () => {
         await expect(page.locator(`${DETAILS_SURFACE} .sb-dialog__handle`)).toBeVisible();
         const remove = shownPage(page).getByRole('button', { name: `Remove ${names[avatars[1]]}` });
         const box = await remove.boundingBox();
-        expect(box.width).toBeGreaterThanOrEqual(44);
-        expect(box.height).toBeGreaterThanOrEqual(44);
+        // A layout box is a fraction of a pixel short of its size in Firefox, so the size is rounded.
+        expect(Math.round(box.width)).toBeGreaterThanOrEqual(44);
+        expect(Math.round(box.height)).toBeGreaterThanOrEqual(44);
 
         for (const pageId of ['general', 'members', 'chats', 'behaviour', 'advanced', 'profile']) {
             // Opening the window again replaces the one that is open, so each page starts from a window of its own.

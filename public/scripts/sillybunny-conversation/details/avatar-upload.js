@@ -44,6 +44,7 @@ export async function toAvatarDataUrl(file) {
 
 /**
  * Opens the file chooser. Resolves with the file the user picked, or null when they cancel.
+ * The input stays in the document while the chooser is open, because WebKit can collect a detached input before its `change` fires.
  * @returns {Promise<File|null>}
  */
 export function chooseAvatarFile() {
@@ -51,8 +52,14 @@ export function chooseAvatarFile() {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = ACCEPTED_TYPES.join(',');
-        input.addEventListener('change', () => resolve(input.files?.[0] ?? null), { once: true });
-        input.addEventListener('cancel', () => resolve(null), { once: true });
+        input.hidden = true;
+        const finish = (file) => {
+            input.remove();
+            resolve(file);
+        };
+        input.addEventListener('change', () => finish(input.files?.[0] ?? null), { once: true });
+        input.addEventListener('cancel', () => finish(null), { once: true });
+        document.body.append(input);
         input.click();
     });
 }
