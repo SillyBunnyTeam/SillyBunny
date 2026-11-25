@@ -34,7 +34,7 @@ export async function bootWindowToolsDialogs(page, viewport, { admin = false, re
             event.stopImmediatePropagation();
         }, true);
     }, WINDOW_TOOLS_SAFE_DEBUG_FUNCTION);
-    await page.route('**/api/extensions/discover', async route => {
+    await page.route('**/api/extensions/discover*', async route => {
         const extensions = await fetchJsonOrSkip(route);
         if (!extensions) return;
         return route.fulfill({ json: [...extensions, { name: 'third-party/window-tools-branch', type: 'local' }] });

@@ -145,14 +145,9 @@ let templateRegexBundles = {};
 let templatesLoaded = false;
 let templatesLoadPromise = null;
 let autoSeededTemplateIds = new Set();
-let stampedBundledAgentsSchemaVersion = null;
+let bundledAgentsReconciled = false;
+let bundledAgentsReconcilePromise = null;
 let consumedInitialSettingsSnapshot = false;
-
-const BUNDLED_AGENTS_SCHEMA_VERSION = 1;
-
-function getBundledAgentsSchemaStamp() {
-    return `${BUNDLED_AGENTS_SCHEMA_VERSION}:${CLIENT_VERSION || 'dev'}`;
-}
 
 function isAgentsSurfaceOpen() {
     if (typeof document === 'undefined') return false;
@@ -165,11 +160,21 @@ function isAgentsSurfaceOpen() {
     return Boolean(listRoot && listRoot.getClientRects?.().length > 0);
 }
 
-function warmTemplatesForAgentsUi() {
-    if (templatesLoaded || templatesLoadPromise) {
-        return templatesLoadPromise ?? Promise.resolve();
+function ensureTemplatesLoaded() {
+    if (bundledAgentsReconciled && templatesLoaded) {
+        return Promise.resolve();
     }
-    return loadTemplates().then(() => {
+    if (bundledAgentsReconcilePromise) {
+        return bundledAgentsReconcilePromise;
+    }
+    return reconcileBundledAgentsOnce();
+}
+
+function warmTemplatesForAgentsUi() {
+    if (templatesLoaded && bundledAgentsReconciled) {
+        return Promise.resolve();
+    }
+    return ensureTemplatesLoaded().then(() => {
         renderAgentList();
     });
 }
@@ -492,7 +497,6 @@ function persistExtensionState() {
         ...(extension_settings.inChatAgents ?? {}),
         globalSettings: structuredClone(getGlobalSettings()),
         autoSeededTemplateIds: [...autoSeededTemplateIds],
-        ...(stampedBundledAgentsSchemaVersion ? { bundledAgentsSchemaVersion: stampedBundledAgentsSchemaVersion } : {}),
     };
     delete extension_settings.inChatAgents.groups;
     saveSettingsDebounced();
@@ -562,6 +566,9 @@ async function setAgentListEntryEnabled(entry, enabled) {
 
 async function openAgentListEntry(entry) {
     if (!entry) return openEditor();
+    if (entry?.kind === 'agent-template') {
+        await loadTemplates();
+    }
     entry = currentAgentListEntry(entry);
     if (entry.kind === 'agent') return openEditor(entry.agent.id);
     const defaults = createDefaultAgent();
@@ -804,7 +811,12 @@ async function registerAgentListUi(settingsStore, settingsFields) {
         fixTrackers: fixTrackersFromList,
         convertTrackers: convertTrackersFromList,
         exportAll: handleExportAll,
-        getGroups,
+        getGroups: () => {
+            if (!templatesLoaded && isAgentsSurfaceOpen()) {
+                void warmTemplatesForAgentsUi();
+            }
+            return getGroups();
+        },
         turnOnGroup: async group => {
             await loadTemplates();
             const result = await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList();
@@ -2219,7 +2231,7 @@ async function loadTemplates() {
                     : [];
                 loadBuiltinGroups(builtinGroups);
             }
-            if (templateResponse.ok && regexBundleResponse.ok) {
+            if (templateResponse.ok && regexBundleResponse.ok && groupResponse.ok) {
                 templatesLoaded = true;
             }
         } catch (e) {
@@ -3635,83 +3647,19 @@ async function resetBundledAgentsFromSettings() {
     return result;
 }
 
-(async function () {
-    const bulkEditHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'bulk-edit');
-    if (!bulkEditHtml) return;
-    const { store: settingsStore, fields: settingsFields } = createAgentSettingsControls();
-    document.body.append(settingsStore);
-    document.body.append($(bulkEditHtml)[0]);
-
-    const savedState = extension_settings.inChatAgents;
-    const legacyGroups = Array.isArray(savedState?.groups)
-        ? savedState.groups.map(group => structuredClone(group))
-        : [];
-    if (savedState && typeof savedState === 'object') {
-        if (savedState.globalSettings && typeof savedState.globalSettings === 'object') {
-            setGlobalSettings(savedState.globalSettings);
-        }
-        if (typeof savedState.bundledAgentsSchemaVersion === 'string') {
-            stampedBundledAgentsSchemaVersion = savedState.bundledAgentsSchemaVersion;
-        }
-        restoreAutoSeededTemplateIds(savedState);
+async function reconcileBundledAgentsOnce() {
+    if (bundledAgentsReconciled && templatesLoaded) {
+        return;
+    }
+    if (bundledAgentsReconcilePromise) {
+        return bundledAgentsReconcilePromise;
     }
 
-    // SillyBunny: consume the startup /api/settings/get snapshot instead of firing a duplicate settings POST,
-    // and defer templates/index.json + regex-bundles.json until migrations or the Agents UI actually need them.
-    const initResults = await Promise.allSettled([
-        loadCustomGroupsFromServer(),
-        (async () => {
-            const initialSnapshot = !consumedInitialSettingsSnapshot ? globalThis.__sbGetInitialSettingsSnapshot?.() : null;
-            consumedInitialSettingsSnapshot = true;
-
-            let settings = initialSnapshot;
-            if (!settings) {
-                const settingsResp = await fetch('/api/settings/get', {
-                    method: 'POST',
-                    headers: getRequestHeaders(),
-                    body: JSON.stringify({}),
-                });
-
-                if (!settingsResp.ok) {
-                    return;
-                }
-
-                settings = await settingsResp.json();
-            }
-
-            if (settings?.inChatAgents) {
-                loadAgents(settings.inChatAgents);
-            }
-        })(),
-    ]);
-
-    for (const result of initResults) {
-        if (result.status === 'rejected') {
-            console.warn('[InChatAgents] Failed during initialization:', result.reason);
-        }
-    }
-
-    if (legacyGroups.length > 0) {
-        try {
-            const migratedCount = await migrateLegacyGroups(legacyGroups);
-            if (migratedCount > 0) {
-                toastr.success(`Migrated ${migratedCount} custom group(s) to backend storage`);
-            }
-        } catch (error) {
-            console.warn('[InChatAgents] Failed to migrate legacy groups:', error);
-        }
-    }
-
-    if (savedState && Object.hasOwn(savedState, 'groups')) {
-        persistExtensionState();
-    }
-
-    const currentSchemaStamp = getBundledAgentsSchemaStamp();
-    const needsBundledAgentMigrations = stampedBundledAgentsSchemaVersion !== currentSchemaStamp
-        || (isPathfinderSubmoduleEnabled() && !getAgents().some(isPathfinderAgent));
-
-    if (needsBundledAgentMigrations) {
+    bundledAgentsReconcilePromise = (async () => {
         await loadTemplates();
+        if (!templatesLoaded) {
+            return;
+        }
 
         await ensureDefaultBundledAgents();
         const latestBundledAgentMigration = await refreshBundledAgentsFromLatestTemplates();
@@ -3777,10 +3725,101 @@ async function resetBundledAgentsFromSettings() {
 
         await migrateLevelUpStatsContextLinks();
 
-        if (templatesLoaded) {
-            stampedBundledAgentsSchemaVersion = currentSchemaStamp;
-            persistExtensionState();
+        bundledAgentsReconciled = true;
+        try {
+            syncToolAgentRegistrations();
+        } catch (err) {
+            console.warn('[InChatAgents] Tool agent sync failed:', err);
         }
+        renderAgentList();
+    })().catch((error) => {
+        console.warn('[InChatAgents] Failed to reconcile bundled agents:', error);
+    }).finally(() => {
+        bundledAgentsReconcilePromise = null;
+    });
+
+    return bundledAgentsReconcilePromise;
+}
+
+(async function () {
+    const bulkEditHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'bulk-edit');
+    if (!bulkEditHtml) return;
+    const { store: settingsStore, fields: settingsFields } = createAgentSettingsControls();
+    document.body.append(settingsStore);
+    document.body.append($(bulkEditHtml)[0]);
+
+    const savedState = extension_settings.inChatAgents;
+    const legacyGroups = Array.isArray(savedState?.groups)
+        ? savedState.groups.map(group => structuredClone(group))
+        : [];
+    if (savedState && typeof savedState === 'object') {
+        if (savedState.globalSettings && typeof savedState.globalSettings === 'object') {
+            setGlobalSettings(savedState.globalSettings);
+        }
+        restoreAutoSeededTemplateIds(savedState);
+    }
+
+    // SillyBunny: consume the startup /api/settings/get snapshot instead of firing a duplicate settings POST,
+    // and defer templates/index.json + regex-bundles.json + bundled-agent reconciliation to post-APP_READY idle
+    // or first Agents UI open (without suppressing updates behind a persistent schema stamp).
+    const initResults = await Promise.allSettled([
+        loadCustomGroupsFromServer(),
+        (async () => {
+            const initialSnapshot = !consumedInitialSettingsSnapshot ? globalThis.__sbGetInitialSettingsSnapshot?.() : null;
+            consumedInitialSettingsSnapshot = true;
+
+            let settings = initialSnapshot;
+            if (!settings) {
+                const settingsResp = await fetch('/api/settings/get', {
+                    method: 'POST',
+                    headers: getRequestHeaders(),
+                    body: JSON.stringify({}),
+                });
+
+                if (!settingsResp.ok) {
+                    return;
+                }
+
+                settings = await settingsResp.json();
+            }
+
+            if (settings?.inChatAgents) {
+                loadAgents(settings.inChatAgents);
+            }
+        })(),
+    ]);
+
+    for (const result of initResults) {
+        if (result.status === 'rejected') {
+            console.warn('[InChatAgents] Failed during initialization:', result.reason);
+        }
+    }
+
+    if (legacyGroups.length > 0) {
+        try {
+            const migratedCount = await migrateLegacyGroups(legacyGroups);
+            if (migratedCount > 0) {
+                toastr.success(`Migrated ${migratedCount} custom group(s) to backend storage`);
+            }
+        } catch (error) {
+            console.warn('[InChatAgents] Failed to migrate legacy groups:', error);
+        }
+    }
+
+    if (savedState && Object.hasOwn(savedState, 'groups')) {
+        persistExtensionState();
+    }
+
+    if (isPathfinderSubmoduleEnabled() && !getAgents().some(isPathfinderAgent)) {
+        await reconcileBundledAgentsOnce();
+    } else if (eventSource && event_types?.APP_READY) {
+        eventSource.once(event_types.APP_READY, () => {
+            if (typeof globalThis.requestIdleCallback === 'function') {
+                globalThis.requestIdleCallback(() => { void reconcileBundledAgentsOnce(); }, { timeout: 3000 });
+            } else {
+                globalThis.setTimeout(() => { void reconcileBundledAgentsOnce(); }, 500);
+            }
+        });
     }
 
     if (getGlobalSettings().separateRecentChats) {

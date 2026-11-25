@@ -165,7 +165,8 @@ export const MAX_CACHE_ENTRIES_PER_CHAT = 500;
 const COUNT_BATCH_MAX_TEXTS = 500;
 const COUNT_BATCH_MAX_TEXT_LENGTH = 500_000;
 const COUNT_BATCH_MAX_TOTAL_CHARS = 2_000_000;
-const MULTIMODAL_STRING_FINGERPRINT_THRESHOLD = 256;
+const LARGE_MEDIA_STRING_THRESHOLD = 1024;
+const ESTIMATED_IMAGE_PART_TOKENS = 256;
 
 const LOCAL_TOKENIZER_BATCH_MODELS = Object.freeze({
     [tokenizers.GPT2]: 'gpt2',
@@ -197,7 +198,7 @@ let countBatchEndpointAvailable = null;
 /** @type {Map<string, Promise<number>>} */
 const inFlightTokenCounts = new Map();
 
-/** @type {Map<string, { isOpenAI: boolean, model: string, tokenizerType: number, items: Array<{ text: string, cacheKey: string, chatKey: string, resolve: (value: number) => void }> }>} */
+/** @type {Map<string, { model: string, tokenizerType: number, items: Array<{ text: string, cacheKey: string, chatKey: string, resolve: (value: number) => void }> }>} */
 const pendingPlainTextBatches = new Map();
 let plainTextBatchScheduled = false;
 
@@ -737,107 +738,86 @@ async function requestOpenAIPerMessageCounts(model, messages) {
 }
 
 async function flushPlainTextBucket(bucket) {
-    const chunks = splitPlainTextBatchChunks(bucket.items);
-
-    for (const chunk of chunks) {
-        if (chunk.length === 1 && !bucket.isOpenAI) {
-            const [single] = chunk;
-            const count = await callTokenizerAsync(bucket.tokenizerType, single.text);
-            if (Number.isFinite(count)) {
-                setCachedTokenCount(single.cacheKey, count, single.chatKey);
-            }
-            single.resolve(count);
-            continue;
+    const settled = new Set();
+    const resolveItem = (item, value) => {
+        if (!settled.has(item)) {
+            settled.add(item);
+            item.resolve(value);
         }
+    };
 
-        if (chunk.length === 1 && bucket.isOpenAI && countBatchEndpointAvailable !== true) {
-            const [single] = chunk;
-            const message = { content: single.text };
-            const count = await requestOpenAITokenCount(`/api/tokenizers/openai/count?model=${bucket.model}`, [message]);
-            if (count === null) {
-                single.resolve(guesstimate(JSON.stringify(message)));
-            } else {
-                if (bucket.model !== chat_completion_sources.KOBOLDCPP) {
+    try {
+        const chunks = splitPlainTextBatchChunks(bucket.items);
+
+        for (const chunk of chunks) {
+            if (chunk.length === 1) {
+                const [single] = chunk;
+                const count = await callTokenizerAsync(bucket.tokenizerType, single.text);
+                if (Number.isFinite(count)) {
                     setCachedTokenCount(single.cacheKey, count, single.chatKey);
                 }
-                single.resolve(count);
+                resolveItem(single, count);
+                continue;
             }
-            continue;
-        }
 
-        const texts = chunk.map(item => item.text);
-        let resolvedCounts = null;
+            const texts = chunk.map(item => item.text);
+            let resolvedCounts = null;
 
-        if (countBatchEndpointAvailable !== false) {
-            try {
-                const data = await jQuery.ajax({
-                    async: true,
-                    type: 'POST',
-                    url: '/api/tokenizers/count-batch',
-                    data: JSON.stringify({ model: bucket.model, texts }),
-                    dataType: 'json',
-                    contentType: 'application/json',
-                });
-
-                if (Array.isArray(data?.counts) && data.counts.length === chunk.length) {
-                    countBatchEndpointAvailable = true;
-                    resolvedCounts = data.counts.map(value => {
-                        const parsed = Number(value);
-                        return Number.isFinite(parsed) ? parsed : null;
+            if (countBatchEndpointAvailable !== false) {
+                try {
+                    const data = await jQuery.ajax({
+                        async: true,
+                        type: 'POST',
+                        url: '/api/tokenizers/count-batch',
+                        data: JSON.stringify({ model: bucket.model, texts }),
+                        dataType: 'json',
+                        contentType: 'application/json',
                     });
-                }
-            } catch (error) {
-                if (isNotFoundAjaxError(error)) {
-                    // SillyBunny: graceful cross-PR fallback when /api/tokenizers/count-batch is not present yet.
-                    countBatchEndpointAvailable = false;
-                } else {
-                    console.error('Failed to count tokens via /api/tokenizers/count-batch.', error);
+
+                    if (Array.isArray(data?.counts) && data.counts.length === chunk.length) {
+                        countBatchEndpointAvailable = true;
+                        resolvedCounts = data.counts.map(value => {
+                            const parsed = Number(value);
+                            return Number.isFinite(parsed) ? parsed : null;
+                        });
+                    }
+                } catch (error) {
+                    if (isNotFoundAjaxError(error)) {
+                        // SillyBunny: graceful cross-PR fallback when /api/tokenizers/count-batch is not present yet.
+                        countBatchEndpointAvailable = false;
+                    } else {
+                        console.error('Failed to count tokens via /api/tokenizers/count-batch.', error);
+                    }
                 }
             }
-        }
 
-        if (!resolvedCounts) {
-            if (bucket.isOpenAI) {
-                const messages = texts.map(text => ({ content: text }));
-                resolvedCounts = await requestOpenAIPerMessageCounts(bucket.model, messages);
-                if (!resolvedCounts) {
-                    resolvedCounts = messages.map(msg => guesstimate(JSON.stringify(msg)));
-                } else {
-                    for (let i = 0; i < chunk.length; i++) {
-                        const val = resolvedCounts[i];
-                        if (val !== null && bucket.model !== chat_completion_sources.KOBOLDCPP) {
-                            setCachedTokenCount(chunk[i].cacheKey, val, chunk[i].chatKey);
-                        }
-                    }
-                    for (let i = 0; i < chunk.length; i++) {
-                        const val = resolvedCounts[i];
-                        chunk[i].resolve(val ?? guesstimate(JSON.stringify(messages[i])));
-                    }
-                    continue;
-                }
+            if (!resolvedCounts) {
+                const counts = await Promise.all(chunk.map(item => callTokenizerAsync(bucket.tokenizerType, item.text)));
                 for (let i = 0; i < chunk.length; i++) {
-                    chunk[i].resolve(resolvedCounts[i]);
+                    const count = counts[i];
+                    if (Number.isFinite(count)) {
+                        setCachedTokenCount(chunk[i].cacheKey, count, chunk[i].chatKey);
+                    }
+                    resolveItem(chunk[i], count);
                 }
                 continue;
             }
 
-            const counts = await Promise.all(chunk.map(item => callTokenizerAsync(bucket.tokenizerType, item.text)));
             for (let i = 0; i < chunk.length; i++) {
-                const count = counts[i];
-                if (Number.isFinite(count)) {
-                    setCachedTokenCount(chunk[i].cacheKey, count, chunk[i].chatKey);
+                const val = resolvedCounts[i];
+                if (val !== null) {
+                    setCachedTokenCount(chunk[i].cacheKey, val, chunk[i].chatKey);
                 }
-                chunk[i].resolve(count);
+                resolveItem(chunk[i], val ?? guesstimate(chunk[i].text));
             }
-            continue;
         }
-
-        for (let i = 0; i < chunk.length; i++) {
-            const val = resolvedCounts[i];
-            if (val !== null && (!bucket.isOpenAI || bucket.model !== chat_completion_sources.KOBOLDCPP)) {
-                setCachedTokenCount(chunk[i].cacheKey, val, chunk[i].chatKey);
+    } catch (error) {
+        console.error('Unexpected error while flushing plain-text token batch.', error);
+    } finally {
+        for (const item of bucket.items) {
+            if (!settled.has(item)) {
+                resolveItem(item, guesstimate(item.text));
             }
-            chunk[i].resolve(val ?? guesstimate(chunk[i].text));
         }
     }
 }
@@ -855,7 +835,7 @@ function flushPlainTextBatches() {
     }
 }
 
-function enqueuePlainTextBatchCount({ bucketKey, isOpenAI, model, tokenizerType = tokenizers.NONE, text, cacheKey, chatKey }) {
+function enqueuePlainTextBatchCount({ bucketKey, model, tokenizerType = tokenizers.NONE, text, cacheKey, chatKey }) {
     const inFlightKey = `${chatKey}::${bucketKey}::${cacheKey}`;
     const existingPromise = inFlightTokenCounts.get(inFlightKey);
     if (existingPromise) {
@@ -865,7 +845,7 @@ function enqueuePlainTextBatchCount({ bucketKey, isOpenAI, model, tokenizerType 
     const promise = new Promise((resolve) => {
         let bucket = pendingPlainTextBatches.get(bucketKey);
         if (!bucket) {
-            bucket = { isOpenAI, model, tokenizerType, items: [] };
+            bucket = { model, tokenizerType, items: [] };
             pendingPlainTextBatches.set(bucketKey, bucket);
         }
         bucket.items.push({ text, cacheKey, chatKey, resolve });
@@ -943,7 +923,6 @@ export async function getTokenCountAsync(str, padding = undefined) {
         } else {
             baseCount = await enqueuePlainTextBatchCount({
                 bucketKey: `local:${tokenizerType}:${modelHash}`,
-                isOpenAI: false,
                 model: LOCAL_TOKENIZER_BATCH_MODELS[tokenizerType],
                 tokenizerType,
                 text: str,
@@ -1285,6 +1264,26 @@ export function getTokenizerModel() {
     return turboTokenizer;
 }
 
+function isLargeBase64OrMediaString(value, parentKey = '') {
+    if (typeof value !== 'string' || value.length <= LARGE_MEDIA_STRING_THRESHOLD) {
+        return false;
+    }
+    if (value.startsWith('data:') || value.includes(';base64,')) {
+        return true;
+    }
+    if (
+        parentKey === 'images'
+        || parentKey === 'image_url'
+        || parentKey === 'inlineData'
+        || parentKey === 'audio'
+        || parentKey === 'video'
+        || (parentKey === 'data' && !/\s/.test(value.slice(0, 128)))
+    ) {
+        return true;
+    }
+    return false;
+}
+
 function isMultimodalOrLargeDataMessage(message) {
     if (!message || typeof message !== 'object' || Array.isArray(message)) {
         return false;
@@ -1295,18 +1294,18 @@ function isMultimodalOrLargeDataMessage(message) {
     if ('image_url' in message || 'images' in message || 'inlineData' in message || 'audio' in message || 'video' in message) {
         return true;
     }
-    if (typeof message.content === 'string' && message.content.length > 1024 && (message.content.includes(';base64,') || message.content.startsWith('data:'))) {
+    if (isLargeBase64OrMediaString(message.content, 'content')) {
         return true;
     }
     return false;
 }
 
-function buildCompactMessageFingerprint(value, depth = 0) {
+function buildCompactMessageFingerprint(value, depth = 0, parentKey = '') {
     if (value === null || value === undefined || typeof value === 'boolean' || typeof value === 'number') {
         return String(value);
     }
     if (typeof value === 'string') {
-        if (value.length <= MULTIMODAL_STRING_FINGERPRINT_THRESHOLD) {
+        if (!isLargeBase64OrMediaString(value, parentKey)) {
             return `s:${value.length}:${value}`;
         }
         const mid = value.length >> 1;
@@ -1316,21 +1315,58 @@ function buildCompactMessageFingerprint(value, depth = 0) {
         if (depth > 6) {
             return `[arr:${value.length}]`;
         }
-        return `[${value.map(item => buildCompactMessageFingerprint(item, depth + 1)).join(',')}]`;
+        return `[${value.map(item => buildCompactMessageFingerprint(item, depth + 1, parentKey)).join(',')}]`;
     }
     if (typeof value === 'object') {
         if (depth > 6) {
             return '{obj}';
         }
         const keys = Object.keys(value);
-        return `{${keys.map(key => `${key}:${buildCompactMessageFingerprint(value[key], depth + 1)}`).join(',')}}`;
+        return `{${keys.map(key => `${key}:${buildCompactMessageFingerprint(value[key], depth + 1, key)}`).join(',')}}`;
     }
     return String(value);
 }
 
+function estimateMultimodalValueTokens(value, depth = 0, parentKey = '') {
+    if (value === null || value === undefined) {
+        return 0;
+    }
+    if (typeof value === 'string') {
+        if (isLargeBase64OrMediaString(value, parentKey)) {
+            return ESTIMATED_IMAGE_PART_TOKENS;
+        }
+        return value.length > 0 ? guesstimate(value) : 0;
+    }
+    if (typeof value === 'boolean' || typeof value === 'number') {
+        return 1;
+    }
+    if (Array.isArray(value)) {
+        if (depth > 6) {
+            return value.length;
+        }
+        let total = 0;
+        for (const item of value) {
+            total += estimateMultimodalValueTokens(item, depth + 1, parentKey);
+        }
+        return total;
+    }
+    if (typeof value === 'object') {
+        if (depth > 6) {
+            return 1;
+        }
+        let total = 0;
+        for (const key of Object.keys(value)) {
+            total += estimateMultimodalValueTokens(value[key], depth + 1, key);
+        }
+        return total;
+    }
+    return 0;
+}
+
 /**
  * Computes a stable cache hash for an OpenAI message without JSON.stringifying multi-MB base64 media payloads.
- * Plain-text messages keep exact `getStringHash(JSON.stringify(message))` parity.
+ * Plain-text messages keep exact `getStringHash(JSON.stringify(message))` parity; text parts inside multimodal
+ * messages are hashed in full so edits never collide.
  * @param {object} message
  * @returns {number}
  */
@@ -1341,49 +1377,56 @@ export function getOpenAIMessageHash(message) {
     return getStringHash(JSON.stringify(message));
 }
 
-function guesstimateOpenAIMessage(message) {
+export function guesstimateOpenAIMessage(message) {
     if (isMultimodalOrLargeDataMessage(message)) {
-        return guesstimate(buildCompactMessageFingerprint(message));
+        return estimateMultimodalValueTokens(message);
     }
     return guesstimate(JSON.stringify(message));
 }
 
-function isBareContentMessage(message) {
-    if (!message || typeof message !== 'object' || Array.isArray(message)) {
-        return false;
-    }
-    if (typeof message.content !== 'string' || message.content.length > COUNT_BATCH_MAX_TEXT_LENGTH) {
-        return false;
-    }
-    const keys = Object.keys(message);
-    return keys.length === 1 && keys[0] === 'content' && !isMultimodalOrLargeDataMessage(message);
-}
-
 async function flushOpenAIMessageBucket(model, items) {
-    if (items.length === 1) {
-        const [single] = items;
-        const count = await requestOpenAITokenCount(`/api/tokenizers/openai/count?model=${model}`, [single.message]);
-        if (count !== null && single.cacheable) {
-            setCachedTokenCount(single.cacheKey, count, single.chatKey);
+    const settled = new Set();
+    const resolveItem = (item, value) => {
+        if (!settled.has(item)) {
+            settled.add(item);
+            item.resolve(value);
         }
-        single.resolve(count);
-        return;
-    }
+    };
 
-    const counts = await requestOpenAIPerMessageCounts(model, items.map(item => item.message));
-    if (!counts) {
+    try {
+        if (items.length === 1) {
+            const [single] = items;
+            const count = await requestOpenAITokenCount(`/api/tokenizers/openai/count?model=${model}`, [single.message]);
+            if (count !== null && single.cacheable) {
+                setCachedTokenCount(single.cacheKey, count, single.chatKey);
+            }
+            resolveItem(single, count);
+            return;
+        }
+
+        const counts = await requestOpenAIPerMessageCounts(model, items.map(item => item.message));
+        if (!counts) {
+            for (const item of items) {
+                resolveItem(item, null);
+            }
+            return;
+        }
+
+        for (let i = 0; i < items.length; i++) {
+            const count = counts[i];
+            if (count !== null && items[i].cacheable) {
+                setCachedTokenCount(items[i].cacheKey, count, items[i].chatKey);
+            }
+            resolveItem(items[i], count);
+        }
+    } catch (error) {
+        console.error('Unexpected error while flushing OpenAI message token batch.', error);
+    } finally {
         for (const item of items) {
-            item.resolve(null);
+            if (!settled.has(item)) {
+                resolveItem(item, null);
+            }
         }
-        return;
-    }
-
-    for (let i = 0; i < items.length; i++) {
-        const count = counts[i];
-        if (count !== null && items[i].cacheable) {
-            setCachedTokenCount(items[i].cacheKey, count, items[i].chatKey);
-        }
-        items[i].resolve(count);
     }
 }
 
@@ -1562,18 +1605,8 @@ export async function countTokensOpenAIAsync(messages, full = false) {
             continue;
         }
 
-        if (isBareContentMessage(message)) {
-            pendingPromises.push(enqueuePlainTextBatchCount({
-                bucketKey: `openai:${model}`,
-                isOpenAI: true,
-                model,
-                text: message.content,
-                cacheKey,
-                chatKey,
-            }));
-            continue;
-        }
-
+        // SillyBunny: route all OpenAI messages (including bare { content } wrappers) through
+        // /api/tokenizers/openai/count(?per_message=1) so framed message counts never mix with raw /count-batch counts.
         pendingPromises.push(
             enqueueOpenAIMessageCount({ model, message, cacheKey, chatKey, cacheable }).then(count => (
                 count === null ? guesstimateOpenAIMessage(message) : count

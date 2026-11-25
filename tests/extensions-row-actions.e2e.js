@@ -26,7 +26,7 @@ async function waitForAnimations(page) {
 async function openExtensionsManager(page, viewport) {
     await page.setViewportSize(viewport);
     await protectMaintainerServer(page);
-    await page.route('**/api/extensions/discover', route => route.fulfill({ json: extensionFixtures.map(({ name, type }) => ({ name, type })) }));
+    await page.route('**/api/extensions/discover*', route => route.fulfill({ json: extensionFixtures.map(({ name, type }) => ({ name, type })) }));
     await page.route('**/manifest.json*', route => {
         const pathname = new URL(route.request().url()).pathname;
         const fixture = extensionFixtures.find(({ name }) => pathname.endsWith(`/${name}/manifest.json`));

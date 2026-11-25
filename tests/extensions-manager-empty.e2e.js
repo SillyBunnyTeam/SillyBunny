@@ -7,7 +7,7 @@ test.use({ serviceWorkers: 'block' });
 
 for (const viewport of MISC_VIEWPORTS) {
     test(`the Extensions manager with no installed extension shows the empty status page at ${viewport.width}px`, async ({ page }) => {
-        await page.route('**/api/extensions/discover', async route => {
+        await page.route('**/api/extensions/discover*', async route => {
             const extensions = await fetchJsonOrSkip(route);
             if (!extensions) return;
             return route.fulfill({ json: extensions.filter(extension => !extension.name.startsWith('third-party/')) });

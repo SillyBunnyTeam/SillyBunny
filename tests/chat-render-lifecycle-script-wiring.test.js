@@ -415,7 +415,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('await this.#checkDomElements(messageId);');
         expect(source).toContain('await updateMessageTokenAccounting(chat[messageId],');
         expect(source).toContain('shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork');
-        expect(source).toContain('this.setFirstSwipe(messageId);');
+        expect(source).toContain('this.setFirstSwipe(messageId, { isFinal });');
         expect(source).toContain('this.#queueStreamingVisibleWrite({');
         expect(source).toContain('formatText,');
         expect(source).toContain('timePassed,');

@@ -114,7 +114,7 @@ const genericExtensionSettingsClasses = new Set([
 
 let extensionSettingsDedupeObserver = null;
 let extensionSettingsDedupeScheduled = false;
-const observedExtensionSettingsContainers = new WeakSet();
+let observedExtensionSettingsContainers = new WeakSet();
 let bundledOptInSettingsLoaded = false;
 /** @type {object|null} */
 let initialSettingsSnapshot = null;
@@ -979,6 +979,7 @@ function observeExtensionSettingsDrawers() {
     if (extensionSettingsDedupeObserver) {
         extensionSettingsDedupeObserver.disconnect();
     }
+    observedExtensionSettingsContainers = new WeakSet();
 
     const hosts = extensionSettingsHostIds
         .map(id => document.getElementById(id))

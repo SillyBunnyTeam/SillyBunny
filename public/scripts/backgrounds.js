@@ -867,7 +867,6 @@ export async function getBackgrounds() {
             const { images, config } = await response.json();
             Object.assign(THUMBNAIL_CONFIG, config);
             cachedSystemBackgrounds = images;
-            systemBackgroundsLoaded = true;
 
             await Promise.all([
                 loadFolders(),
@@ -876,6 +875,7 @@ export async function getBackgrounds() {
 
             renderSystemBackgrounds(cachedSystemBackgrounds);
             highlightSelectedBackground();
+            systemBackgroundsLoaded = true;
         }
     })().finally(() => {
         inFlightBackgroundsPromise = null;
@@ -885,6 +885,9 @@ export async function getBackgrounds() {
 }
 
 export function ensureBackgroundsLoaded() {
+    if (inFlightBackgroundsPromise) {
+        return inFlightBackgroundsPromise;
+    }
     if (systemBackgroundsLoaded) {
         return Promise.resolve();
     }
@@ -1462,6 +1465,9 @@ export function initBackgrounds() {
  * @returns {Array<{bgfile: string, select: () => void}>}
  */
 export function getBackgroundTargets() {
+    if (!systemBackgroundsLoaded && cachedSystemBackgrounds.length === 0) {
+        void ensureBackgroundsLoaded();
+    }
     const built = Array.from(document.querySelectorAll('.bg_example'), element => ({ bgfile: element.getAttribute('bgfile') ?? '', select: () => element.click() }));
     const builtSystem = new Set(Array.from(document.querySelectorAll('#bg_menu_content .bg_example'), element => element.getAttribute('bgfile')));
     const unbuilt = cachedSystemBackgrounds

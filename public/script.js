@@ -1172,10 +1172,43 @@ function isLoopbackOrAndroidWebView(hostname = window.location?.hostname, userAg
     }
 
     const ua = String(userAgent || '');
-    return /Android/i.test(ua) && (/\bwv\b/i.test(ua) || /Version\/\d+\.\d+/i.test(ua) || /SillyBunnyAndroid/i.test(ua));
+    return /Android/i.test(ua) && (/\bwv\b|SillyBunnyAndroid|Version\/\d+\.\d+.*Chrome\//i.test(ua));
 }
 
 async function retireLoopbackServiceWorkerAndCaches() {
+    try {
+        const controller = navigator.serviceWorker?.controller;
+        if (controller && typeof controller.postMessage === 'function') {
+            if (typeof MessageChannel === 'function') {
+                await new Promise((resolve) => {
+                    let settled = false;
+                    const finish = () => {
+                        if (!settled) {
+                            settled = true;
+                            resolve();
+                        }
+                    };
+                    const timer = globalThis.setTimeout(finish, 1000);
+                    try {
+                        const channel = new MessageChannel();
+                        channel.port1.onmessage = () => {
+                            globalThis.clearTimeout(timer);
+                            finish();
+                        };
+                        controller.postMessage({ type: 'SB_CLEAR_CACHES' }, [channel.port2]);
+                    } catch {
+                        globalThis.clearTimeout(timer);
+                        finish();
+                    }
+                });
+            } else {
+                controller.postMessage({ type: 'SB_CLEAR_CACHES' });
+            }
+        }
+    } catch (error) {
+        console.debug('Could not request active service worker cache clear.', error);
+    }
+
     try {
         if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
             const registrations = await navigator.serviceWorker.getRegistrations();
@@ -1216,7 +1249,7 @@ function registerSillyBunnyServiceWorker() {
     }
 
     const register = () => {
-        navigator.serviceWorker.register('/sw.js?v=20260622g', { updateViaCache: 'none' }).then((registration) => {
+        navigator.serviceWorker.register('/sw.js?v=20261124a', { updateViaCache: 'none' }).then((registration) => {
             return registration.update().catch((error) => {
                 console.warn('Failed to update SillyBunny service worker.', error);
             });
@@ -4747,6 +4780,7 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
         mes = mes.replaceAll('\\begin{align*}', '$$');
         mes = mes.replaceAll('\\end{align*}', '$$');
         mes = converter.makeHtml(mes);
+        // SillyBunny: removed redundant \n -> \0 -> \n code-block round-trip regex.
         mes = mes.trim();
 
         mes = mes.replace(/<code(.*)>[\s\S]*?<\/code>/g, function (match) {
@@ -5491,6 +5525,8 @@ const HLJS_AUTO_LANGUAGE_CANDIDATES = Object.freeze([
 const HLJS_LARGE_UNLABELED_BLOCK_CHARS = 2048;
 let cachedHljsAutoSubset = null;
 let codeBlockHighlightObserver = null;
+const pendingCodeBlockHighlights = new Set();
+let codeBlockPrintListenerAttached = false;
 
 function getHljsAutoLanguageSubset() {
     if (!cachedHljsAutoSubset) {
@@ -5505,13 +5541,15 @@ function highlightCodeElementNow(codeEl) {
     if (!(codeEl instanceof HTMLElement) || codeEl.dataset.sbHighlighted === 'true') {
         return;
     }
+    pendingCodeBlockHighlights.delete(codeEl);
     codeEl.dataset.sbHighlighted = 'true';
     const existingCopy = codeEl.querySelector(':scope > .code-copy');
     existingCopy?.remove();
     try {
+        const isNoHighlight = codeEl.classList.contains('nohighlight') || /\blang(?:uage)?-nohighlight\b/i.test(codeEl.className);
         const hasExplicitLang = /\blang(?:uage)?-[\w-]+/i.test(codeEl.className);
         const rawCode = codeEl.textContent ?? '';
-        if (!hasExplicitLang && rawCode.length > HLJS_LARGE_UNLABELED_BLOCK_CHARS && typeof hljs?.highlightAuto === 'function') {
+        if (!isNoHighlight && !hasExplicitLang && rawCode.length > HLJS_LARGE_UNLABELED_BLOCK_CHARS && typeof hljs?.highlightAuto === 'function') {
             // SillyBunny: cap auto-detection on >2 KB unlabeled blocks to common languages instead of scanning 192 grammars.
             const result = hljs.highlightAuto(rawCode, getHljsAutoLanguageSubset());
             codeEl.innerHTML = result.value;
@@ -5529,6 +5567,16 @@ function highlightCodeElementNow(codeEl) {
     }
 }
 
+function flushPendingCodeBlockHighlights() {
+    for (const codeEl of Array.from(pendingCodeBlockHighlights)) {
+        pendingCodeBlockHighlights.delete(codeEl);
+        codeBlockHighlightObserver?.unobserve(codeEl);
+        if (codeEl.isConnected) {
+            highlightCodeElementNow(codeEl);
+        }
+    }
+}
+
 function scheduleCodeElementHighlight(codeEl) {
     if (!(codeEl instanceof HTMLElement) || codeEl.dataset.sbHighlighted === 'true') {
         return;
@@ -5537,28 +5585,27 @@ function scheduleCodeElementHighlight(codeEl) {
         highlightCodeElementNow(codeEl);
         return;
     }
-    if (codeEl.isConnected) {
-        const rect = codeEl.getBoundingClientRect();
-        const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 900;
-        if (rect.bottom >= -200 && rect.top <= viewportHeight + 200) {
-            highlightCodeElementNow(codeEl);
-            return;
-        }
-    }
     if (!codeBlockHighlightObserver) {
         codeBlockHighlightObserver = new IntersectionObserver((entries, observer) => {
             for (const entry of entries) {
                 if (entry.isIntersecting && entry.target instanceof HTMLElement) {
                     observer.unobserve(entry.target);
+                    pendingCodeBlockHighlights.delete(entry.target);
                     highlightCodeElementNow(entry.target);
                 }
             }
         }, { rootMargin: '300px 0px' });
     }
+    if (!codeBlockPrintListenerAttached && typeof window.addEventListener === 'function') {
+        codeBlockPrintListenerAttached = true;
+        window.addEventListener('beforeprint', flushPendingCodeBlockHighlights);
+    }
+    pendingCodeBlockHighlights.add(codeEl);
     codeBlockHighlightObserver.observe(codeEl);
     if (!codeEl.isConnected) {
         requestAnimationFrame(() => {
-            if (!codeEl.isConnected) {
+            if (!codeEl.isConnected && pendingCodeBlockHighlights.has(codeEl)) {
+                pendingCodeBlockHighlights.delete(codeEl);
                 codeBlockHighlightObserver?.unobserve(codeEl);
                 highlightCodeElementNow(codeEl);
             }
@@ -7382,8 +7429,7 @@ class StreamingProcessor {
             });
 
             if (!shouldReduceIntermediateStreamingWork) {
-                this.isFinalStreamingTick = Boolean(isFinal);
-                this.setFirstSwipe(messageId);
+                this.setFirstSwipe(messageId, { isFinal });
             }
         }
 
@@ -7508,7 +7554,7 @@ class StreamingProcessor {
         }
     }
 
-    setFirstSwipe(messageId, { isFinal = Boolean(this.isFinalStreamingTick) } = {}) {
+    setFirstSwipe(messageId, { isFinal = true } = {}) {
         if (!this.#isCurrent(messageId, true)) return;
         if (this.type !== 'swipe' && this.type !== 'impersonate') {
             if (Array.isArray(chat[messageId].swipes) && chat[messageId].swipes.length === 1 && chat[messageId].swipe_id === 0) {

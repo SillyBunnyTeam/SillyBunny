@@ -30,6 +30,24 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
+    <script>
+        // SillyBunny: kick off critical boot fetches while stylesheets and modules parse.
+        if (typeof window.fetch === 'function') {
+            window.__sbBootPrefetch = {
+                csrf: fetch('/csrf-token', {
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache',
+                    },
+                }).catch(function () { return null; }),
+                version: fetch('/version').catch(function () { return null; }),
+                lang: fetch('/locales/lang.json').catch(function () { return null; }),
+                extensionsDiscover: fetch('/api/extensions/discover?manifests=1').catch(function () { return null; }),
+            };
+        }
+    </script>
     <link rel="preload" as="style" href="style.css?v=20261125a">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">

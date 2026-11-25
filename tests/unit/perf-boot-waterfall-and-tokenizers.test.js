@@ -156,6 +156,7 @@ const {
     getTextTokensAsync,
     getTokenCacheStatsForTests,
     getTokenCountAsync,
+    guesstimateOpenAIMessage,
     isTokenCacheDirty,
     loadTokenCache,
     primeOpenAITokenCache,
@@ -167,7 +168,23 @@ const {
 
 const { drawChunks } = await import('../../public/scripts/extensions/token-counter/index.js');
 
+// Load a second tokenizers.js instance bound to a non-OpenAI main_api so local plain-text
+// /api/tokenizers/count-batch coalescing and 404 fallback are tested against real ESM bindings.
+jest.resetModules();
+await jest.unstable_mockModule('../../public/script.js', () => ({
+    characters: mockCharacters,
+    event_types: { ONLINE_STATUS_CHANGED: 'online_status_changed' },
+    eventSource: { on: jest.fn() },
+    main_api: 'textgenerationwebui',
+    nai_settings: {},
+    online_status: 'connected',
+    this_chid: 0,
+}));
+const localTokenizers = await import('../../public/scripts/tokenizers.js');
+
+const indexHtmlSource = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8');
 const scriptSource = readFileSync(new URL('../../public/script.js', import.meta.url), 'utf8');
+const backgroundsSource = readFileSync(new URL('../../public/scripts/backgrounds.js', import.meta.url), 'utf8');
 const extensionsSource = readFileSync(new URL('../../public/scripts/extensions.js', import.meta.url), 'utf8');
 const splashSource = readFileSync(new URL('../../public/scripts/sillybunny-splash.js', import.meta.url), 'utf8');
 const ttsSource = readFileSync(new URL('../../public/scripts/extensions/tts/index.js', import.meta.url), 'utf8');
@@ -189,6 +206,7 @@ function extractSliceBetween(source, startMarker, endMarker) {
 describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimodal hashing', () => {
     beforeEach(() => {
         resetTokenizerPerfStateForTests();
+        localTokenizers.resetTokenizerPerfStateForTests();
         mockObjectStore.getItem.mockReset().mockResolvedValue(null);
         mockObjectStore.setItem.mockReset().mockResolvedValue(undefined);
         mockObjectStore.removeItem.mockReset().mockResolvedValue(undefined);
@@ -287,70 +305,111 @@ describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimoda
         expect(getTokenCacheStatsForTests().chatCount).toBe(0);
     });
 
-    test('coalesces concurrent getTokenCountAsync calls into one /api/tokenizers/count-batch with in-flight deduplication', async () => {
+    test('coalesces concurrent local getTokenCountAsync calls into one /api/tokenizers/count-batch with in-flight deduplication', async () => {
+        mockPowerUser.tokenizer = localTokenizers.tokenizers.LLAMA3;
+
         globalThis.jQuery.ajax.mockImplementation(async (options) => {
             expect(options.url).toBe('/api/tokenizers/count-batch');
             const body = JSON.parse(options.data);
             expect(body).toEqual({
-                model: 'gpt-4o',
+                model: 'llama3',
                 texts: ['first uncached string', 'second uncached string'],
             });
             return { counts: [14, 29] };
         });
 
         const results = await Promise.all([
-            getTokenCountAsync('first uncached string'),
-            getTokenCountAsync('second uncached string'),
-            getTokenCountAsync('first uncached string'),
+            localTokenizers.getTokenCountAsync('first uncached string'),
+            localTokenizers.getTokenCountAsync('second uncached string'),
+            localTokenizers.getTokenCountAsync('first uncached string'),
         ]);
 
         expect(results).toEqual([14, 29, 14]);
         expect(globalThis.jQuery.ajax).toHaveBeenCalledTimes(1);
 
         // Subsequent calls hit the O(1) Map LRU with zero AJAX traffic.
-        expect(await getTokenCountAsync('second uncached string')).toBe(29);
+        expect(await localTokenizers.getTokenCountAsync('second uncached string')).toBe(29);
         expect(globalThis.jQuery.ajax).toHaveBeenCalledTimes(1);
     });
 
-    test('falls back seamlessly from /api/tokenizers/count-batch 404 to /api/tokenizers/openai/count?per_message=1 and remembers unavailability', async () => {
+    test('falls back seamlessly from /api/tokenizers/count-batch 404 to individual local tokenizer endpoints and remembers unavailability', async () => {
+        mockPowerUser.tokenizer = localTokenizers.tokenizers.LLAMA3;
+
         const requestedUrls = [];
-        globalThis.jQuery.ajax.mockImplementation(async (options) => {
+        globalThis.jQuery.ajax.mockImplementation((options) => {
             requestedUrls.push(options.url);
             if (options.url === '/api/tokenizers/count-batch') {
-                const notFound = { status: 404, statusText: 'Not Found', readyState: 4 };
-                throw notFound;
+                return Promise.reject({ status: 404, statusText: 'Not Found', readyState: 4 });
             }
-            if (options.url.includes('/api/tokenizers/openai/count') && options.url.includes('per_message=1')) {
-                const payload = JSON.parse(options.data);
-                return { token_counts: payload.map((_, idx) => (idx + 1) * 11) };
+            if (options.url === '/api/tokenizers/llama3/encode') {
+                const body = JSON.parse(options.data);
+                const count = body.text.includes('one') || body.text.includes('three') ? 11 : 22;
+                options.success?.({ count });
+                return undefined;
             }
             throw new Error(`Unexpected URL: ${options.url}`);
         });
 
         const firstBatch = await Promise.all([
-            getTokenCountAsync('fallback-one'),
-            getTokenCountAsync('fallback-two'),
+            localTokenizers.getTokenCountAsync('fallback-one'),
+            localTokenizers.getTokenCountAsync('fallback-two'),
         ]);
         expect(firstBatch).toEqual([11, 22]);
         expect(requestedUrls).toEqual([
             '/api/tokenizers/count-batch',
-            '/api/tokenizers/openai/count?model=gpt-4o&per_message=1',
+            '/api/tokenizers/llama3/encode',
+            '/api/tokenizers/llama3/encode',
         ]);
-        expect(getTokenCacheStatsForTests().countBatchEndpointAvailable).toBe(false);
+        expect(localTokenizers.getTokenCacheStatsForTests().countBatchEndpointAvailable).toBe(false);
 
-        // Next concurrent batch skips the 404 round-trip directly to per_message=1.
+        // Next concurrent batch skips the 404 round-trip directly to local endpoints.
         requestedUrls.length = 0;
         const secondBatch = await Promise.all([
-            getTokenCountAsync('fallback-three'),
-            getTokenCountAsync('fallback-four'),
+            localTokenizers.getTokenCountAsync('fallback-three'),
+            localTokenizers.getTokenCountAsync('fallback-four'),
         ]);
         expect(secondBatch).toEqual([11, 22]);
         expect(requestedUrls).toEqual([
-            '/api/tokenizers/openai/count?model=gpt-4o&per_message=1',
+            '/api/tokenizers/llama3/encode',
+            '/api/tokenizers/llama3/encode',
         ]);
     });
 
-    test('avoids JSON.stringifying multi-MB base64 payloads in getOpenAIMessageHash while keeping distinct hashes', () => {
+    test('routes OpenAI bare { content } messages through /api/tokenizers/openai/count(?per_message=1) and never mixes raw /count-batch counts', async () => {
+        mockScriptState.main_api = 'openai';
+        const requestedUrls = [];
+
+        globalThis.jQuery.ajax.mockImplementation(async (options) => {
+            requestedUrls.push(options.url);
+            expect(options.url).not.toBe('/api/tokenizers/count-batch');
+            const payload = JSON.parse(options.data);
+            if (options.url.includes('per_message=1')) {
+                // Framed counts include +6 per-message overhead (e.g., 1 token + 6 = 7).
+                return { token_counts: payload.map(msg => msg.content.length + 6) };
+            }
+            return { token_count: payload[0].content.length + 6 };
+        });
+
+        const batched = await Promise.all([
+            getTokenCountAsync('hi'),
+            getTokenCountAsync('hello'),
+            getTokenCountAsync('hi'),
+        ]);
+        expect(batched).toEqual([8, 11, 8]);
+        expect(requestedUrls).toEqual([
+            '/api/tokenizers/openai/count?model=gpt-4o&per_message=1',
+        ]);
+
+        // Unframed / full=false call on a 1-char bare message stays positive and preserves framed parity.
+        requestedUrls.length = 0;
+        const framedSingle = await countTokensOpenAIAsync({ content: 'a' }, false);
+        expect(framedSingle).toBe(5);
+        expect(requestedUrls).toEqual([
+            '/api/tokenizers/openai/count?model=gpt-4o',
+        ]);
+    });
+
+    test('avoids JSON.stringifying multi-MB base64 payloads while hashing long multimodal text parts in full and estimating full text tokens', () => {
         const plainMessage = { role: 'user', content: 'short text message' };
         hashInputs.length = 0;
         const plainHash = getOpenAIMessageHash(plainMessage);
@@ -382,6 +441,37 @@ describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimoda
         expect(hashInputs).toHaveLength(2);
         expect(hashInputs[0].length).toBeLessThan(1024);
         expect(hashInputs[1].length).toBeLessThan(1024);
+
+        // Long text parts inside multimodal messages are hashed in full (no mid-string collision)
+        // and guesstimated at full text length + fixed image overhead.
+        const prefix = 'P'.repeat(200);
+        const suffix = 'S'.repeat(200);
+        const longProseA = `${prefix}ALPHA_SECTION_${'x'.repeat(2000)}${suffix}`;
+        const longProseB = `${prefix}OMEGA_SECTION_${'x'.repeat(2000)}${suffix}`;
+        expect(longProseA.length).toBe(longProseB.length);
+
+        const multimodalTextA = {
+            role: 'user',
+            content: [
+                { type: 'text', text: longProseA },
+                { type: 'image_url', image_url: { url: twoMegBase64A } },
+            ],
+        };
+        const multimodalTextB = {
+            role: 'user',
+            content: [
+                { type: 'text', text: longProseB },
+                { type: 'image_url', image_url: { url: twoMegBase64A } },
+            ],
+        };
+
+        expect(getOpenAIMessageHash(multimodalTextA)).not.toBe(getOpenAIMessageHash(multimodalTextB));
+
+        const estimatedTokens = guesstimateOpenAIMessage(multimodalTextA);
+        // 2414-char text (~721 tokens) + fixed 256 image estimate (~980 total), never ~50 from truncated text
+        // and never ~600,000 from stringifying the 2 MB base64 image.
+        expect(estimatedTokens).toBeGreaterThan(900);
+        expect(estimatedTokens).toBeLessThan(2000);
     });
 
     test('getTextTokensAsync encodes asynchronously and drawChunks commits via a single DocumentFragment', async () => {
@@ -504,6 +594,75 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(fetchCalls).toEqual(['/api/extensions/discover?manifests=1']);
     });
 
+    test('resets observedExtensionSettingsContainers when observeExtensionSettingsDrawers reconnects', () => {
+        const observerSlice = extractSliceBetween(
+            extensionsSource,
+            'function observeExtensionSettingsContainer(',
+            '/**\n * Loads manifest.json files',
+        );
+
+        class FakeElement {
+            constructor(id, classes = [], children = []) {
+                this.id = id;
+                this.classList = {
+                    contains: (name) => classes.includes(name),
+                };
+                this.children = children;
+            }
+        }
+
+        const existingContainer = new FakeElement('ext-container-1', ['extension_container']);
+        const host = new FakeElement('extensions_settings', [], [existingContainer]);
+        const createdObservers = [];
+
+        class FakeMutationObserver {
+            constructor(callback) {
+                this.callback = callback;
+                this.observed = [];
+                this.disconnected = false;
+                createdObservers.push(this);
+            }
+
+            observe(target, options) {
+                this.observed.push({ target, options });
+            }
+
+            disconnect() {
+                this.disconnected = true;
+            }
+        }
+
+        const sandbox = {
+            HTMLElement: FakeElement,
+            MutationObserver: FakeMutationObserver,
+            extensionSettingsDedupeObserver: null,
+            observedExtensionSettingsContainers: new WeakSet(),
+            extensionSettingsHostIds: ['extensions_settings'],
+            document: {
+                getElementById: (id) => (id === 'extensions_settings' ? host : null),
+            },
+            scheduleExtensionSettingsDedupe: jest.fn(),
+        };
+
+        vm.runInNewContext(observerSlice, sandbox);
+
+        sandbox.observeExtensionSettingsDrawers();
+        expect(createdObservers).toHaveLength(1);
+        expect(createdObservers[0].observed).toEqual([
+            { target: host, options: { childList: true, subtree: false } },
+            { target: existingContainer, options: { childList: true, subtree: false } },
+        ]);
+
+        // Second call disconnects the first observer and MUST re-observe existing .extension_container nodes.
+        sandbox.observeExtensionSettingsDrawers();
+        expect(createdObservers).toHaveLength(2);
+        expect(createdObservers[0].disconnected).toBe(true);
+        expect(createdObservers[1].observed).toEqual([
+            { target: host, options: { childList: true, subtree: false } },
+            { target: existingContainer, options: { childList: true, subtree: false } },
+        ]);
+    });
+
     test('retires service worker and purges sillybunny-cache-* on loopback & Android WebView while keeping remote HTTPS registration', async () => {
         const swSlice = extractSliceBetween(
             scriptSource,
@@ -511,9 +670,10 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
             'function scheduleDeferredStartupStylesheets(',
         );
 
-        const runSwScenario = async ({ hostname, userAgent = 'Mozilla/5.0 Chrome/130.0', isSecureContext = true }) => {
+        const runSwScenario = async ({ hostname, userAgent = 'Mozilla/5.0 Chrome/130.0', isSecureContext = true, withController = false }) => {
             const idleCallbacks = [];
             const deletedCaches = [];
+            const controllerMessages = [];
             const unregisterSpy = jest.fn(async () => true);
             const registerSpy = jest.fn(async () => ({ update: jest.fn(async () => undefined) }));
 
@@ -528,6 +688,9 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
                 navigator: {
                     userAgent,
                     serviceWorker: {
+                        controller: withController ? {
+                            postMessage: jest.fn((msg) => { controllerMessages.push(msg); }),
+                        } : null,
                         register: registerSpy,
                         getRegistrations: jest.fn(async () => [{ unregister: unregisterSpy }]),
                     },
@@ -552,12 +715,13 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
             // Flush promise continuations inside retireLoopbackServiceWorkerAndCaches.
             await new Promise(resolve => setImmediate(resolve));
 
-            return { registerSpy, unregisterSpy, deletedCaches };
+            return { registerSpy, unregisterSpy, deletedCaches, controllerMessages };
         };
 
         for (const host of ['127.0.0.1', 'localhost', '[::1]', 'dev.localhost']) {
-            const res = await runSwScenario({ hostname: host });
+            const res = await runSwScenario({ hostname: host, withController: true });
             expect(res.registerSpy).not.toHaveBeenCalled();
+            expect(res.controllerMessages).toEqual([{ type: 'SB_CLEAR_CACHES' }]);
             expect(res.unregisterSpy).toHaveBeenCalledTimes(1);
             expect(res.deletedCaches).toEqual(['sillybunny-cache-v4', 'sillybunny-cache-v3']);
         }
@@ -569,8 +733,15 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(webviewRes.registerSpy).not.toHaveBeenCalled();
         expect(webviewRes.unregisterSpy).toHaveBeenCalledTimes(1);
 
+        // Non-Chrome Android browser containing Version/X.Y without wv/Chrome/SillyBunnyAndroid keeps remote SW registration.
+        const androidNonWebViewRes = await runSwScenario({
+            hostname: 'sillybunny.example.com',
+            userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Version/17.0 Mobile Safari/537.36',
+        });
+        expect(androidNonWebViewRes.registerSpy).toHaveBeenCalledWith('/sw.js?v=20261124a', { updateViaCache: 'none' });
+
         const remoteHttpsRes = await runSwScenario({ hostname: 'sillybunny.example.com' });
-        expect(remoteHttpsRes.registerSpy).toHaveBeenCalledTimes(1);
+        expect(remoteHttpsRes.registerSpy).toHaveBeenCalledWith('/sw.js?v=20261124a', { updateViaCache: 'none' });
         expect(remoteHttpsRes.unregisterSpy).not.toHaveBeenCalled();
         expect(remoteHttpsRes.deletedCaches).toEqual([]);
     });
@@ -614,7 +785,13 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(getItemSpy).toHaveBeenCalledTimes(2);
     });
 
-    test('enforces DOMContentLoaded boot gate, corrected avatar lazy-loading, flanking wheel scope, scoped observers, and lazy bundled extensions', () => {
+    test('enforces DOMContentLoaded boot gate, head prefetch, corrected avatar lazy-loading, flanking wheel scope, scoped observers, and lazy bundled extensions', () => {
+        // 0. <head> boot prefetch uses no-store CSRF headers matching script.js.
+        expect(indexHtmlSource).toContain('window.__sbBootPrefetch = {');
+        expect(indexHtmlSource).toContain('cache: \'no-store\'');
+        expect(indexHtmlSource).toContain('\'Pragma\': \'no-cache\'');
+        expect(indexHtmlSource).toContain('/api/extensions/discover?manifests=1');
+
         // 1. Boot readiness uses DOMContentLoaded and does not await dismissPreloader fade-out before getCharacters.
         expect(scriptSource).toContain('document.addEventListener(\'DOMContentLoaded\', resolve, { once: true })');
         expect(scriptSource).not.toContain('window.addEventListener(\'load\', () => resolve(), { once: true })');
@@ -634,25 +811,47 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(scriptSource).not.toContain('document.addEventListener(\'wheel\', routeShellWheelToChat');
         expect(scriptSource).toContain('for (const chromeId of [\'top-bar\', \'form_sheld\'])');
 
-        // 4. Extension observer is subtree: false and Kokoro prefetch is strictly gated.
+        // 4. Streaming setFirstSwipe defaults isFinal = true; offscreen hljs avoids sync getBoundingClientRect, respects nohighlight, and flushes on beforeprint.
+        expect(scriptSource).toContain('setFirstSwipe(messageId, { isFinal = true } = {})');
+        const hljsSlice = extractSliceBetween(scriptSource, 'function highlightCodeElementNow(', 'export function addCopyToCodeBlocks(');
+        expect(hljsSlice).not.toContain('getBoundingClientRect');
+        expect(hljsSlice).toContain('nohighlight');
+        expect(hljsSlice).toContain('beforeprint');
+
+        // 5. Backgrounds ensureBackgroundsLoaded checks inFlightBackgroundsPromise before systemBackgroundsLoaded.
+        expect(backgroundsSource).toContain('if (inFlightBackgroundsPromise) {\n        return inFlightBackgroundsPromise;\n    }');
+
+        // 6. Extension observer is subtree: false and Kokoro prefetch is strictly gated.
         expect(extensionsSource).toContain('subtree: false');
         expect(extensionsSource).not.toContain('nanogallery2');
         expect(extensionsSource).toContain('extension_settings.tts?.currentProvider === \'Kokoro\'');
 
-        // 5. TTS uses dynamic provider imports + conditional timer; quick-reply & in-chat-agents reuse initial settings snapshot.
+        // 7. TTS uses dynamic provider imports + conditional timer; quick-reply & in-chat-agents reuse initial settings snapshot without a persistent schema stamp.
         expect(ttsSource).not.toMatch(/^import \{[^}]+\} from '\.\/[a-z0-9-]+\.js';$/m);
         expect(ttsSource).toContain('const builtinTtsProviderLoaders = Object.freeze({');
         expect(ttsSource).toContain('syncTtsWorkerTimer()');
         expect(quickReplySource).toContain('__sbGetInitialSettingsSnapshot?.()');
         expect(inChatAgentsSource).toContain('__sbGetInitialSettingsSnapshot?.()');
-        expect(inChatAgentsSource).toContain('bundledAgentsSchemaVersion');
+        expect(inChatAgentsSource).not.toContain('bundledAgentsSchemaVersion');
+        expect(inChatAgentsSource).toContain('reconcileBundledAgentsOnce');
     });
 
-    test('skips animated splash frames on low-memory/mobile/coarse-pointer devices and skips repeated localStorage unread scans', () => {
-        const evaluateSplashSkip = ({ deviceMemory, userAgent = 'Mozilla/5.0 Windows NT 10.0', coarse = false, saveData = false }) => {
+    test('skips animated splash frames only on reduced-motion, Save-Data/slow-network, or <=2 GB mobile and avoids boot settings POST for unread cleanup', () => {
+        const evaluateSplashSkip = ({
+            deviceMemory,
+            userAgent = 'Mozilla/5.0 Windows NT 10.0',
+            coarse = false,
+            reducedMotion = false,
+            saveData = false,
+            effectiveType = '4g',
+        }) => {
             const windowStub = {
                 matchMedia: (query) => ({
-                    matches: query === '(pointer: coarse)' ? coarse : false,
+                    matches: query === '(pointer: coarse)'
+                        ? coarse
+                        : query === '(prefers-reduced-motion: reduce)'
+                            ? reducedMotion
+                            : false,
                 }),
                 addEventListener: jest.fn(),
                 setTimeout: jest.fn(),
@@ -665,56 +864,72 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
             const sandbox = {
                 window: windowStub,
                 document: documentStub,
-                navigator: { deviceMemory, userAgent, connection: { saveData } },
+                navigator: { deviceMemory, userAgent, connection: { saveData, effectiveType } },
                 Image: function Image() {},
             };
             vm.runInNewContext(splashSource, sandbox);
             return sandbox.window.SillyBunnySplash.shouldSkipLoop();
         };
 
+        // Normal desktops (4 GB & 8 GB) and normal mobile/coarse viewports play the splash loop.
         expect(evaluateSplashSkip({ deviceMemory: 8, coarse: false })).toBe(false);
-        expect(evaluateSplashSkip({ deviceMemory: 4, coarse: false })).toBe(true);
-        expect(evaluateSplashSkip({ deviceMemory: 8, coarse: true })).toBe(true);
-        expect(evaluateSplashSkip({ deviceMemory: 8, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)' })).toBe(true);
+        expect(evaluateSplashSkip({ deviceMemory: 4, coarse: false })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: 8, coarse: true })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: 4, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)', coarse: true })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: undefined, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', coarse: true })).toBe(false);
+
+        // Constrained conditions skip the loop.
+        expect(evaluateSplashSkip({ deviceMemory: 2, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 4a)', coarse: true })).toBe(true);
+        expect(evaluateSplashSkip({ deviceMemory: 2, coarse: true })).toBe(true);
+        expect(evaluateSplashSkip({ deviceMemory: 8, saveData: true })).toBe(true);
+        expect(evaluateSplashSkip({ deviceMemory: 8, effectiveType: '3g' })).toBe(true);
+        expect(evaluateSplashSkip({ deviceMemory: 8, reducedMotion: true })).toBe(true);
 
         const contextSource = readFileSync(
             new URL('../../public/scripts/sillybunny-conversation/context.js', import.meta.url),
             'utf8',
-        );
-        const migrateSlice = contextSource
-            .slice(contextSource.indexOf('export function clearLegacyConversationUnreadStorage()'))
+        ).replace(/\r\n/g, '\n');
+        const startIdx = contextSource.indexOf('const UNREAD_STORAGE_CLEANED_KEY =');
+        const endIdx = contextSource.indexOf('\n// ---', startIdx);
+        expect(startIdx).toBeGreaterThan(-1);
+        expect(endIdx).toBeGreaterThan(startIdx);
+        const unreadCleanupSlice = contextSource
+            .slice(startIdx, endIdx)
             .replace(/export function /g, 'function ');
 
         let keyScanCount = 0;
         const removedKeys = [];
-        const persistConversationStore = jest.fn();
-        const store = { localStorageMigrated: true, unreadStorageCleaned: false };
+        const localData = new Map([
+            ['sillybunny_conv_unread_alice', '3'],
+            ['other_key', 'value'],
+        ]);
         const convSandbox = {
             UNREAD_PREFIX: 'sillybunny_conv_unread_',
-            getConversationStore: () => store,
-            persistConversationStore,
             localStorage: {
                 get length() {
                     keyScanCount += 1;
-                    return 2;
+                    return localData.size;
                 },
-                key: (idx) => (idx === 0 ? 'sillybunny_conv_unread_alice' : 'other_key'),
-                removeItem: (key) => removedKeys.push(key),
+                key: (idx) => Array.from(localData.keys())[idx] ?? null,
+                getItem: (key) => localData.get(key) ?? null,
+                setItem: (key, value) => localData.set(key, String(value)),
+                removeItem: (key) => {
+                    removedKeys.push(key);
+                    localData.delete(key);
+                },
             },
         };
 
-        vm.runInNewContext(migrateSlice, convSandbox);
+        vm.runInNewContext(unreadCleanupSlice, convSandbox);
 
-        // First boot after upgrade cleans unread keys once and stamps unreadStorageCleaned = true.
-        convSandbox.migrateConversationLocalStorage();
+        // First call cleans unread keys once and stamps localStorage with UNREAD_STORAGE_CLEANED_KEY.
+        expect(convSandbox.clearLegacyConversationUnreadStorage()).toBe(1);
         expect(removedKeys).toEqual(['sillybunny_conv_unread_alice']);
-        expect(store.unreadStorageCleaned).toBe(true);
-        expect(persistConversationStore).toHaveBeenCalledTimes(1);
+        expect(localData.get('sillybunny_conv_unread_cleaned_v1')).toBe('1');
 
-        // Subsequent boots skip the full localStorage scan completely.
+        // Subsequent calls short-circuit before scanning localStorage keys.
         keyScanCount = 0;
-        convSandbox.migrateConversationLocalStorage();
+        expect(convSandbox.clearLegacyConversationUnreadStorage()).toBe(0);
         expect(keyScanCount).toBe(0);
-        expect(persistConversationStore).toHaveBeenCalledTimes(1);
     });
 });
