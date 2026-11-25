@@ -55,3 +55,32 @@ export function isLikelyLocalServerUrl(serverUrl, baseUrl = undefined) {
 export function getLocalPromptCacheValue(cacheScope) {
     return String(cacheScope ?? 'auxiliary') === 'main';
 }
+
+/**
+ * Chat Completion sources whose server code turns the chat id into an opaque cache routing key.
+ * The server never sends the chat id itself to the provider.
+ */
+export const CHAT_ID_FORWARDING_SOURCES = Object.freeze([
+    'fireworks',
+    'openrouter',
+    'openai',
+    'openai_responses',
+    'xai',
+    'mistralai',
+    'azure_openai',
+]);
+
+/**
+ * Decides whether a generation request carries the current chat id to the server.
+ * Only requests of the main cache lane that are not quiet carry it.
+ * @param {string | undefined} source Chat Completion source
+ * @param {string} type Generation type
+ * @param {string | null | undefined} cacheScope Prompt cache lane of the request
+ * @returns {boolean}
+ */
+export function shouldForwardChatId(source, type, cacheScope) {
+    if (!CHAT_ID_FORWARDING_SOURCES.includes(String(source)) || type === 'quiet') {
+        return false;
+    }
+    return !cacheScope || cacheScope === 'main';
+}

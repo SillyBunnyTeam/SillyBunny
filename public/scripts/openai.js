@@ -84,6 +84,7 @@ import { renderTemplateAsync } from './templates.js';
 import { SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { shouldForwardChatId } from './local-url-utils.js'; // SillyBunny: decides which requests carry chat_id for provider cache routing.
 // SillyBunny: Native confirmation uses the shared alert so discarded drafts keep a safe default.
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { t } from './i18n.js';
@@ -5921,13 +5922,7 @@ export async function createGenerationParameters(settings, model, type, messages
     }
 
     // SillyBunny: forward chat_id on main turns so the backend can derive opaque session cache routing keys.
-    const isMainCacheScope = !generate_data.cacheScope || generate_data.cacheScope === 'main';
-    if ([
-        chat_completion_sources.FIREWORKS,
-        chat_completion_sources.OPENROUTER,
-        chat_completion_sources.OPENAI,
-        chat_completion_sources.OPENAI_RESPONSES,
-    ].includes(settings.chat_completion_source) && type !== 'quiet' && isMainCacheScope) {
+    if (shouldForwardChatId(settings.chat_completion_source, type, generate_data.cacheScope)) {
         generate_data.chat_id = getCurrentChatId();
     }
 
