@@ -5,8 +5,10 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { MockServer } from './util/mock-server.js';
 
 // A group must not keep talking after the user deletes its chat or the conversation, a new group must stay silent until
-// the user writes, and Add Member must keep the group. The tests without a `test.fail` mark are the controls that prove
-// that the harness can see what the other tests say must not happen.
+// the user writes, and Add Member must keep the group. Messaging first is off by default: with it off a group stays silent
+// whatever the silence, and with it on a group writes once after the patience and no more than its maximum. The guards
+// against a chat that was emptied or deleted are tested with the switch on, because with it off nothing is sent. The
+// controls prove that the harness can see what the other tests say must not happen.
 test.use({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 120_000 });
 
@@ -102,6 +104,21 @@ async function openApp(page) {
     // A data root that other runs have used can hold conversations; the test starts from none.
     await resetConversations(page);
     return names;
+}
+
+/**
+ * Turns messaging first on for the open group, with the shortest patience that the setting allows (15 minutes; a card's
+ * talkativeness scales it from 7.5 to 22.5).
+ * @param {import('@playwright/test').Page} page
+ * @param {Record<string, unknown>} [settings] More settings of the conversation, such as `max_followups`
+ */
+async function turnMessagingFirstOn(page, settings = {}) {
+    await page.evaluate(async (extra) => {
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const view = conversationData.list().find(item => item.kind === 'group');
+        conversationData.patchConversation(view.id, { settings: { proactive_messaging: true, inactivity_threshold: 15, ...extra } });
+        await conversationData.flush();
+    }, settings);
 }
 
 /**
@@ -277,9 +294,10 @@ test('a forced reply queued behind a user message is dropped by Delete Chat', as
     }
 });
 
-test('after Delete Chat the members stay silent until the user writes again', async ({ page }) => {
+test('after Delete Chat the members stay silent until the user writes again, with messaging first on', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
+    await turnMessagingFirstOn(page);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     await deleteChat(page);
 
@@ -290,9 +308,10 @@ test('after Delete Chat the members stay silent until the user writes again', as
     expect(await memberMessagesWaitingInGroup(page), 'messages from members after the delete').toBe(0);
 });
 
-test('after Delete Conversation the list has no group and nothing asks the model', async ({ page }) => {
+test('after Delete Conversation the list has no group and nothing asks the model, with messaging first on', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
+    await turnMessagingFirstOn(page);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     await deleteConversation(page);
 
@@ -303,14 +322,86 @@ test('after Delete Conversation the list has no group and nothing asks the model
     await expect(page.locator(GROUP_ROWS), 'groups in the list').toHaveCount(0);
 });
 
-test('a new group stays silent until the user writes the first message', async ({ page }) => {
+test('a new group stays silent until the user writes the first message, with messaging first on', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
+    await turnMessagingFirstOn(page);
 
     await advance(page, 16 * MINUTE);
 
     expect(model.prompts.length, 'requests to the model before the user wrote').toBe(0);
     expect(await memberMessagesWaitingInGroup(page), 'messages from members before the user wrote').toBe(0);
+});
+
+test('with messaging first off, which is the default, a group that the user wrote in stays silent after any silence', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
+    const requestsBefore = model.prompts.length;
+
+    await advance(page, 12 * 60 * MINUTE, 15 * MINUTE);
+
+    expect(model.prompts.length - requestsBefore, 'requests to the model while messaging first was off').toBe(0);
+    expect(await memberMessagesWaitingInGroup(page), 'messages from members that the model did not write for the user').toBeLessThanOrEqual(requestsBefore);
+});
+
+test('with messaging first on, a group writes once after the patience and no more than its maximum', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await turnMessagingFirstOn(page, { max_followups: 2 });
+    await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
+    const requestsBefore = model.prompts.length;
+
+    // 7.5 minutes is the shortest patience that a card can give to the setting of 15.
+    await advance(page, 6 * MINUTE);
+    expect(model.prompts.length - requestsBefore, 'requests before any patience can have run out').toBe(0);
+
+    let waited = 6 * MINUTE;
+    await expect.poll(async () => {
+        await advance(page, 2 * MINUTE, 2 * MINUTE);
+        waited += 2 * MINUTE;
+        return model.prompts.length - requestsBefore;
+    }, { message: 'a message once the patience ran out', timeout: 60_000, intervals: [50] }).toBeGreaterThan(0);
+    // The longest patience that a card can give is 22.5 minutes, and the next message waits twice as long as the first.
+    expect(waited, 'minutes of silence before the first message').toBeLessThanOrEqual(24 * MINUTE);
+    expect(model.prompts.length - requestsBefore, 'messages at that moment').toBe(1);
+
+    await advance(page, 12 * 60 * MINUTE, 15 * MINUTE);
+    expect(model.prompts.length - requestsBefore, 'messages after the user wrote: the maximum, and no more').toBe(2);
+});
+
+test('with messaging first on, the user writing again starts the count over', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await turnMessagingFirstOn(page, { max_followups: 1 });
+    await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
+    const requestsBefore = model.prompts.length;
+    await advance(page, 6 * 60 * MINUTE, 15 * MINUTE);
+    expect(model.prompts.length - requestsBefore, 'one message of the maximum of one').toBe(1);
+
+    await sendAndWaitForAnswer(page, 'Sorry, I was away. Saturday works.');
+    const requestsAfterAnswer = model.prompts.length;
+    await advance(page, 6 * 60 * MINUTE, 15 * MINUTE);
+
+    expect(model.prompts.length - requestsAfterAnswer, 'one more message after the user wrote again').toBe(1);
+});
+
+test('a chat that has no message from the user stays silent although its record says that the user was active long ago', async ({ page }) => {
+    const members = await openApp(page);
+    await createGroup(page, members);
+    await turnMessagingFirstOn(page);
+    // What deleting the messages of a chat leaves behind: the time of the user's last activity and no message of the user.
+    await page.evaluate(async () => {
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const view = conversationData.list().find(item => item.kind === 'group');
+        conversationData.patchConversation(view.id, { chats: { [view.activeChatId]: { lastActivity: Date.now() - 10 * 60 * 60_000 } } });
+        await conversationData.flush();
+    });
+
+    await advance(page, 2 * 60 * MINUTE, 15 * MINUTE);
+
+    expect(model.prompts.length, 'requests to the model for a chat with no message from the user').toBe(0);
+    expect(await memberMessagesWaitingInGroup(page), 'messages from members').toBe(0);
 });
 
 test('Add Member keeps the group and its history instead of starting a second group', async ({ page }) => {
@@ -368,6 +459,7 @@ test('Add Member on a direct conversation starts a group and leaves the direct c
 test('a reply that was being generated when the chat was deleted is dropped', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
+    await turnMessagingFirstOn(page);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     const generations = await holdGenerations(page);
     try {
@@ -387,6 +479,7 @@ test('a reply that was being generated when the chat was deleted is dropped', as
 test('a reply that was being generated when the conversation was deleted is dropped', async ({ page }) => {
     const members = await openApp(page);
     await createGroup(page, members);
+    await turnMessagingFirstOn(page);
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     const generations = await holdGenerations(page);
     try {
