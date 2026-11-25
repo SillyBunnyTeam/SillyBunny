@@ -27,6 +27,7 @@
 import { rebaseChat, describeSyncedMessages } from './conversation-data-merge.js';
 import { createSerialQueue } from './conversation-data-queue.js';
 import { isPendingServerReply } from './pending-reply.js';
+import { getReminderState } from './reminders.js';
 import { summarizeChat } from './conversation-summary.js';
 
 export const CHAT_STATE_FIELDS = Object.freeze(['readThrough', 'lastActivity', 'followupCount', 'lastAutoMessageAt', 'sessionMarkers']);
@@ -506,6 +507,56 @@ export function createConversationData(adapter) {
         pendingPatches.set(id, { patch: merged, firstAt, timer });
         emit('list', { id });
         return true;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Reminders of a conversation: the list that the details page shows, and what the worker writes while it delivers one
+
+    /**
+     * @param {string} id The conversation.
+     * @param {{ state?: 'scheduled'|'delivered'|'invalid'|'given-up' }} [filter]
+     * @returns {Record<string, any>[]} Copies of the reminders by time, each with its `state`. A change to a copy is not saved.
+     */
+    function reminders(id, { state } = {}) {
+        const view = views.get(id);
+        if (!view) {
+            return [];
+        }
+        return view.reminders
+            .map(reminder => ({ ...structuredClone(reminder), state: getReminderState(reminder) }))
+            .filter(reminder => !state || reminder.state === state)
+            .sort((first, second) => first.triggerAt - second.triggerAt);
+    }
+
+    /** Removes a reminder, whatever its state. @returns {boolean} False when the conversation or the reminder is not there. */
+    function cancelReminder(id, reminderId) {
+        const view = views.get(id);
+        if (!view?.reminders.some(reminder => reminder.id === reminderId)) {
+            return false;
+        }
+        return patchConversation(id, { reminders: view.reminders.filter(reminder => reminder.id !== reminderId) });
+    }
+
+    /**
+     * Changes fields of one reminder. A field given as null is removed. It reads the reminder when it is called, so a
+     * worker that holds an older copy does not undo a reminder that was added or cancelled in the meantime.
+     * @returns {boolean} False when the conversation or the reminder is not there.
+     */
+    function patchReminder(id, reminderId, change) {
+        const view = views.get(id);
+        const current = view?.reminders.find(reminder => reminder.id === reminderId);
+        if (!current) {
+            return false;
+        }
+        const next = { ...current };
+        for (const [key, value] of Object.entries(change)) {
+            if (value === null) {
+                delete next[key];
+            } else {
+                next[key] = value;
+            }
+        }
+        return patchConversation(id, { reminders: view.reminders.map(reminder => (reminder.id === reminderId ? next : reminder)) });
     }
 
     async function flushConversation(id, options) {
@@ -1443,6 +1494,9 @@ export function createConversationData(adapter) {
         setOpen,
         patchConversation,
         patchCharacter,
+        reminders,
+        cancelReminder,
+        patchReminder,
         commitChat,
         createChat,
         createConversation,
