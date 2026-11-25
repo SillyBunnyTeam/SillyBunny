@@ -2501,23 +2501,6 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     }
 }
 
-/* Notification badges */
-#rightNavDrawerIcon {
-    position: relative;
-}
-.sb-drawer-notification-badge {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    inline-size: 8px;
-    block-size: 8px;
-    background-color: var(--sb-accent);
-    border-radius: 50%;
-    box-shadow: 0 0 6px var(--sb-accent);
-    pointer-events: none;
-    z-index: var(--sb-z-raised, 10);
-}
-
 @media (prefers-reduced-motion: reduce) {
     #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-message, .sb-conversation-picker, .sb-conversation-search-bar),
     .sb-conversation-typing-dots span,

@@ -140,5 +140,16 @@ describe('the unread count for the control of the chat mode', () => {
 
             expect(TEXT in document.documentElement.dataset).toBe(false);
         });
+
+        test('put no dot on the Characters button, because the mode control carries the count', () => {
+            document.body.innerHTML = '<div id="rightNavDrawerIcon"></div><div id="rm_button_characters"></div>';
+            totalUnread = 4;
+
+            updateConversationNotificationIndicators();
+
+            expect(document.querySelector('#rightNavDrawerIcon *, #rm_button_characters *')).toBeNull();
+            totalUnread = 0;
+            document.body.innerHTML = '';
+        });
     });
 });

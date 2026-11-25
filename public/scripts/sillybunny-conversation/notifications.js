@@ -203,36 +203,12 @@ export function updateModeToggleUnread(totalUnread = getTotalUnreadCount()) {
     window.dispatchEvent(new CustomEvent(CONVERSATION_UNREAD_CHANGED_EVENT, { detail: { text, name } }));
 }
 
-export function updateCharactersDrawerBadge(totalUnread = getTotalUnreadCount()) {
-    const ids = ['rm_button_characters', 'rightNavDrawerIcon'];
-    for (const id of ids) {
-        const drawerButton = document.getElementById(id);
-        if (!drawerButton) {
-            continue;
-        }
-        let badge = drawerButton.querySelector('.sb-drawer-notification-badge');
-        if (totalUnread <= 0) {
-            badge?.remove();
-            continue;
-        }
-
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.className = 'sb-drawer-notification-badge';
-            drawerButton.appendChild(badge);
-        }
-        badge.style.display = 'block';
-        badge.textContent = '';
-    }
-}
-
 export function updateConversationNotificationIndicators() {
     const totalUnread = getTotalUnreadCount();
     updateListToggleBadge(totalUnread);
     updateConversationTitleBadge(totalUnread);
     updateConversationFaviconBadge(totalUnread);
     updateModeToggleUnread(totalUnread);
-    updateCharactersDrawerBadge(totalUnread);
 }
 
 export function getActiveConversationKey() {
