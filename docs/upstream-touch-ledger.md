@@ -2849,7 +2849,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Target seam | `deleteConversationsOfCharacter()` and `renameCharacterInConversations()` in `src/conversation-cleanup.js`, built on `src/conversation-store.js`. |
 | Adapter shape | One import; in `/rename`, one `await renameCharacterInConversations()` after the card is renamed and before the answer; in `/delete`, one call to `deleteConversationsOfCharacter()` after the card and its metadata are deleted, only when `delete_chats` is true. Each call answers a count and never throws, so a conversation that cannot be changed is logged and cannot fail the route or undo a rename. |
 | Protecting tests | `tests/conversation-cleanup-routes.test.js` (the real routes), `tests/conversation-cleanup.test.js`, `tests/character-route-inputs.test.js` (the routes' own guards). |
-| Validation | 2026-11-25: root and `tests/` lint; the protecting tests; the route tests fail with either call removed. |
+| Validation | 2026-11-25: root lint and ESLint on the changed test files (`npm run lint` in `tests/` has one error in `conversation-mode-scoped-profile.test.js`, unchanged since the work branch `e58d6e751`); `npm run test:unit` in `tests/` (747 suites); `e2e-related --run e58d6e751` and the specs that call these routes (persona editor, persona folders, temporary chat, conversation start picker, conversation message actions; 124 passed); `bun server.js` and `node server.js` on throwaway data roots with a `curl` to `/rename` and `/delete` that changed and deleted a conversation; each route test fails with its call removed. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-25, conversation mode rework, task 3A. |
 | Owner | `TODO(copy)` |
@@ -2863,7 +2863,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Target seam | `deleteConversationsOfPersona()` in `src/conversation-cleanup.js`, built on `src/conversation-store.js`. |
 | Adapter shape | One import and one call after the persona file is unlinked and its thumbnail is dropped. The call is synchronous, so the handler stays a plain function, which keeps a throw from a bad body an Express error and not a request that never answers. It answers a count and never throws, so a conversation that cannot be deleted is logged and cannot fail the route. |
 | Protecting tests | `tests/conversation-persona-delete-route.test.js` (the real route), `tests/conversation-cleanup.test.js`, `tests/hostile-file-names-media.test.js` (the route's own guards). |
-| Validation | 2026-11-25: root and `tests/` lint; the protecting tests; the route test fails with the call removed. |
+| Validation | 2026-11-25: root lint and ESLint on the changed test files; `npm run test:unit` in `tests/` (747 suites); the persona specs above; `bun server.js` and `node server.js` on throwaway data roots with a `curl` to `/api/avatars/delete` that deleted the persona's conversation; the route test fails with the call removed. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-25, conversation mode rework, task 3A. |
 | Owner | `TODO(copy)` |
