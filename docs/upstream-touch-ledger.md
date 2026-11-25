@@ -2854,6 +2854,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-25, conversation mode rework, task 3A. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/avatars.js` - conversations of a deleted persona
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/avatars.js`. |
+| Area | `POST /api/avatars/delete`, the one route that deletes a persona (`deletePersona()` in `public/scripts/personas.js` calls it for every way of deleting one): what it does to the conversation folders of the user. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `deleteConversationsOfPersona()` in `src/conversation-cleanup.js`, built on `src/conversation-store.js`. |
+| Adapter shape | One import and one call after the persona file is unlinked and its thumbnail is dropped. The call is synchronous, so the handler stays a plain function, which keeps a throw from a bad body an Express error and not a request that never answers. It answers a count and never throws, so a conversation that cannot be deleted is logged and cannot fail the route. |
+| Protecting tests | `tests/conversation-persona-delete-route.test.js` (the real route), `tests/conversation-cleanup.test.js`, `tests/hostile-file-names-media.test.js` (the route's own guards). |
+| Validation | 2026-11-25: root and `tests/` lint; the protecting tests; the route test fails with the call removed. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-25, conversation mode rework, task 3A. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
