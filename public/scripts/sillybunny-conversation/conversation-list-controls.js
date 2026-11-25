@@ -23,6 +23,7 @@ import {
     planSectionMove,
 } from './conversation-list-model.js';
 import {
+    announceInList,
     clearTemporaryOpen,
     findRow,
     getRowControl,
@@ -34,6 +35,8 @@ import { createListFolderActions } from './conversation-list-folders.js';
 import { markConversationRead } from './notifications.js';
 
 const ROW_SELECTOR = '.sb-conversation-list-row';
+// The heading of a folder is the only heading with a menu; Favorites has none.
+const FOLDER_HEADING_SELECTOR = '.sb-conversation-list-section[data-kind="folder"] .sb-conversation-list-heading-button';
 const SECTION_SELECTOR = '.sb-conversation-list-section';
 const MENU_KEYS_SELECTOR = '.sb-conversation-list-item';
 const TOUCH_CONTEXTMENU_WINDOW_MS = 1500;
@@ -57,18 +60,9 @@ export function bindConversationListControls(list, { getEntries, runAction, open
     list.dataset.sbConversationListBound = 'true';
 
     const aside = document.getElementById(CHROME_IDS.conversationList);
-    const region = aside?.querySelector('.sb-conversation-list-status') ?? null;
     let lastTouchAt = 0;
 
-    const announce = (text) => {
-        if (!region) {
-            return;
-        }
-        region.textContent = '';
-        requestAnimationFrame(() => {
-            region.textContent = text;
-        });
-    };
+    const announce = announceInList;
     const entryOf = row => getEntries().find(entry => entry.id === row.dataset.conversationId) ?? null;
     const isSearching = () => list.dataset.searching === 'true';
 
@@ -263,8 +257,10 @@ export function bindConversationListControls(list, { getEntries, runAction, open
     }, true);
 
     list.addEventListener('contextmenu', (event) => {
-        const row = event.target instanceof Element ? event.target.closest(ROW_SELECTOR) : null;
-        if (!(row instanceof HTMLElement)) {
+        const target = event.target instanceof Element ? event.target : null;
+        const row = target?.closest(ROW_SELECTOR);
+        const heading = row ? null : target?.closest(FOLDER_HEADING_SELECTOR);
+        if (!(row instanceof HTMLElement) && !(heading instanceof HTMLElement)) {
             return;
         }
         event.preventDefault();
@@ -272,7 +268,12 @@ export function bindConversationListControls(list, { getEntries, runAction, open
         if (Date.now() - lastTouchAt < TOUCH_CONTEXTMENU_WINDOW_MS) {
             return;
         }
-        openRowMenu(row, { point: { x: event.clientX, y: event.clientY } });
+        const point = { x: event.clientX, y: event.clientY };
+        if (row instanceof HTMLElement) {
+            openRowMenu(row, { point });
+        } else {
+            folderActions.openFolderMenu(heading, { point });
+        }
     });
 
     // Shift+F10 and the Menu key come from the keyboard, so the menu opens on the focused row with its first item focused.
@@ -280,13 +281,16 @@ export function bindConversationListControls(list, { getEntries, runAction, open
         if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) {
             return;
         }
-        const control = event.target instanceof Element ? event.target.closest(MENU_KEYS_SELECTOR) : null;
-        const row = control?.closest(ROW_SELECTOR);
-        if (!(row instanceof HTMLElement)) {
-            return;
+        const target = event.target instanceof Element ? event.target : null;
+        const row = target?.closest(MENU_KEYS_SELECTOR)?.closest(ROW_SELECTOR);
+        const heading = row ? null : target?.closest(FOLDER_HEADING_SELECTOR);
+        if (row instanceof HTMLElement) {
+            event.preventDefault();
+            openRowMenu(row, { keyboard: true });
+        } else if (heading instanceof HTMLElement) {
+            event.preventDefault();
+            folderActions.openFolderMenu(heading, { keyboard: true });
         }
-        event.preventDefault();
-        openRowMenu(row, { keyboard: true });
     });
 
     list.addEventListener('click', (event) => {
@@ -317,6 +321,8 @@ export function bindConversationListControls(list, { getEntries, runAction, open
             }
         },
         onMenu: (row, point) => openRowMenu(row, { point }),
+        menuOnlySelector: FOLDER_HEADING_SELECTOR,
+        onMenuOnly: (heading, point) => folderActions.openFolderMenu(heading, { point }),
         // Resting on a closed section shows it open for the length of the drag, so that the stored state of a section that
         // the pointer only crossed does not change.
         onHoldOver: (section) => {

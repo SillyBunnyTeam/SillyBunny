@@ -1,16 +1,48 @@
 /**
  * What the conversation list does with folders that is not drawing and not a drag: the menu that moves a row to a folder,
- * and the folder that a row menu makes. It works through the folders module and the controls of the list, which give it the
- * state of the sections, so that the section that a move opens is stored the same way wherever the move came from.
+ * the folder that a row menu makes, the menu of a folder's heading (Rename, Colour, Delete) and New Folder. It works through
+ * the folders module and the controls of the list, which give it the state of the sections, so that the section that a move
+ * opens is stored the same way wherever the move came from.
  */
 
 import { openActionMenu } from '../sillybunny-action-menu.js';
-import { openFolderNamePopover, PLACEHOLDER_COPY } from '../sillybunny-editor/folder-popovers.js';
+import { confirmFolderDelete, openFolderColorPopover, openFolderNamePopover, PLACEHOLDER_COPY } from '../sillybunny-editor/folder-popovers.js';
 import { MAX_FOLDERS_PER_PERSONA, MAX_FOLDER_NAME_LENGTH } from './folder-model.js';
 import { setConversationFolder } from './conversation-list-actions.js';
-import { buildMoveToFolderSections } from './conversation-menus.js';
-import { describeFolderChange, folderSectionKey, planFolderChange } from './conversation-list-model.js';
-import { getRowControl, highlightMovedRow } from './conversation-list-view.js';
+import { buildFolderMenuSections, buildMoveToFolderSections } from './conversation-menus.js';
+import { describeFolderChange, folderIdOfSection, folderSectionKey, planFolderChange } from './conversation-list-model.js';
+import { getHeadingControl, getRowControl, highlightMovedRow } from './conversation-list-view.js';
+
+// About a second of frames for the alert to finish closing and the list to draw before focus is given up on.
+const FOCUS_RETURN_FRAMES = 60;
+
+/**
+ * Opens the popover that asks for the name of a new folder, and makes the folder at the end of the persona's folders.
+ * @param {object} options
+ * @param {HTMLElement} options.trigger The button that the popover opens from.
+ * @param {HTMLElement|null} options.bounds
+ * @param {ReturnType<typeof import('./conversation-folders.js').createConversationFolders>} options.folders
+ * @param {string} options.personaId
+ * @param {(text: string) => void} options.announce
+ * @param {() => void} options.render
+ */
+export function openNewFolderPopover({ trigger, bounds, folders, personaId, announce, render }) {
+    openFolderNamePopover({
+        trigger,
+        bounds,
+        title: 'New Folder',
+        submitLabel: 'Create',
+        maxLength: MAX_FOLDER_NAME_LENGTH,
+        onSubmit: (name) => {
+            if (folders.layout(personaId).folders.length >= MAX_FOLDERS_PER_PERSONA) {
+                throw new Error(PLACEHOLDER_COPY);
+            }
+            const folder = folders.createFolder(personaId, name);
+            announce(`${folder.name} created`);
+            render();
+        },
+    });
+}
 
 /**
  * @param {object} context
@@ -98,5 +130,97 @@ export function createListFolderActions({ list, aside, folders, getPersonaId, ge
         });
     }
 
-    return { changeFolder, openMoveMenu };
+    function renameFolder(button, folder) {
+        openFolderNamePopover({
+            trigger: button,
+            bounds: aside,
+            title: 'Rename Folder',
+            submitLabel: 'Rename',
+            trackTrigger: false,
+            value: folder.name,
+            maxLength: MAX_FOLDER_NAME_LENGTH,
+            onSubmit: (name) => {
+                folders.updateFolder(getPersonaId(), folder.id, { name });
+                announce(`${folder.name} renamed to ${name}`);
+                render();
+            },
+        });
+    }
+
+    function colourFolder(button, folder) {
+        openFolderColorPopover({
+            trigger: button,
+            bounds: aside,
+            trackTrigger: false,
+            value: folder.color,
+            onChange: (color) => {
+                try {
+                    folders.updateFolder(getPersonaId(), folder.id, { color });
+                } catch (error) {
+                    console.warn('Conversation Mode: a folder colour was refused', error);
+                }
+                render();
+            },
+        });
+    }
+
+    /** Asks first, then deletes the folder: its conversations are in no folder after. Focus goes to the heading that followed it, else the one before. */
+    async function deleteFolder(button, folder) {
+        const buttons = [...list.querySelectorAll('.sb-conversation-list-heading-button')];
+        const index = buttons.indexOf(button);
+        const neighbourKey = (buttons[index + 1] ?? buttons[index - 1])?.closest('[data-section]')?.dataset.section ?? '';
+        if (!await confirmFolderDelete(PLACEHOLDER_COPY)) {
+            return;
+        }
+        commitKeyOpen();
+        try {
+            folders.deleteFolder(getPersonaId(), folder.id);
+        } catch (error) {
+            console.warn('Conversation Mode: a folder could not be deleted', error);
+            return;
+        }
+        announce(`${folder.name} deleted`);
+        render();
+        for (let frame = 0; frame < FOCUS_RETURN_FRAMES; frame++) {
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            const target = getHeadingControl(list, neighbourKey);
+            const settled = !getHeadingControl(list, folderSectionKey(folder.id)) && !document.querySelector('dialog[open]');
+            if (!target || list.contains(document.activeElement)) {
+                return;
+            }
+            if (settled) {
+                target.focus();
+                return;
+            }
+        }
+    }
+
+    /**
+     * Opens the menu of a folder's heading: Rename, Colour, Delete.
+     * @param {HTMLElement} button The heading's button.
+     * @param {{ point?: { x: number, y: number } | null, keyboard?: boolean }} [options]
+     */
+    function openFolderMenu(button, { point = null, keyboard = false } = {}) {
+        const folderId = folderIdOfSection(button.closest('[data-section]')?.dataset.section);
+        const folder = getLayout().folders.find(candidate => candidate.id === folderId);
+        if (!folder) {
+            return;
+        }
+        openActionMenu({
+            trigger: button,
+            title: folder.name,
+            sections: buildFolderMenuSections(folder, {
+                rename: chosen => renameFolder(button, chosen),
+                colour: chosen => colourFolder(button, chosen),
+                remove: chosen => void deleteFolder(button, chosen),
+            }),
+            point,
+            keyboard,
+            bounds: aside,
+            // The heading's `aria-expanded` is the folder's own state, which the menu must not overwrite.
+            trackTrigger: false,
+        });
+    }
+
+    return { changeFolder, openMoveMenu, openFolderMenu };
 }

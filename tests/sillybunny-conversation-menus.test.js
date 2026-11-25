@@ -4,6 +4,7 @@ const {
     buildComposerMenuSections,
     buildHeaderMenuSections,
     buildMainMenuSections,
+    buildFolderMenuSections,
     buildMoveToFolderSections,
     buildNewMenuSections,
     buildRowMenuSections,
@@ -139,25 +140,67 @@ describe('the menu that moves a row to a folder', () => {
 });
 
 describe('the New menu', () => {
-    test('offers New Conversation and New Group and nothing else', () => {
-        const actions = { newConversation: jest.fn(), newGroup: jest.fn() };
+    test('offers New Conversation and New Group, then New Folder in a group of its own', () => {
+        const actions = { newConversation: jest.fn(), newGroup: jest.fn(), newFolder: jest.fn() };
         const sections = buildNewMenuSections(actions);
 
-        expect(labels(sections)).toEqual([['New Conversation', 'New Group']]);
+        expect(labels(sections)).toEqual([['New Conversation', 'New Group'], ['New Folder…']]);
         find(sections, 'New Conversation').onSelect();
         find(sections, 'New Group').onSelect();
+        find(sections, 'New Folder…').onSelect();
         expect(actions.newConversation).toHaveBeenCalledTimes(1);
         expect(actions.newGroup).toHaveBeenCalledTimes(1);
+        expect(actions.newFolder).toHaveBeenCalledTimes(1);
+    });
+
+    test('gives every item an icon and disables none', () => {
+        const items = buildNewMenuSections({ newConversation: jest.fn(), newGroup: jest.fn(), newFolder: jest.fn() }).flatMap(section => section.items);
+
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+});
+
+describe('the menu of a folder heading', () => {
+    const folder = { id: 'f1', name: 'Work' };
+    const makeFolderActions = () => ({ rename: jest.fn(), colour: jest.fn(), remove: jest.fn() });
+
+    test('offers Rename and Colour, then Delete in a section of its own', () => {
+        expect(labels(buildFolderMenuSections(folder, makeFolderActions()))).toEqual([['Rename', 'Colour'], ['Delete']]);
+    });
+
+    test('each item runs its action with the folder, and Delete is a danger item', () => {
+        const actions = makeFolderActions();
+        const sections = buildFolderMenuSections(folder, actions);
+
+        find(sections, 'Rename').onSelect();
+        find(sections, 'Colour').onSelect();
+        find(sections, 'Delete').onSelect();
+
+        expect(actions.rename).toHaveBeenCalledWith(folder);
+        expect(actions.colour).toHaveBeenCalledWith(folder);
+        expect(actions.remove).toHaveBeenCalledWith(folder);
+        expect(find(sections, 'Delete').danger).toBe(true);
+    });
+
+    test('has no Move Up or Move Down, because the folders are ordered in the Folder Manager, and no item is disabled', () => {
+        const items = buildFolderMenuSections(folder, makeFolderActions()).flatMap(section => section.items);
+
+        expect(items.map(item => item.label).some(label => /^Move/.test(label))).toBe(false);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
     });
 });
 
 describe('the Main Menu', () => {
-    test('holds Mark All as Read first, then Preferences and Help as the last group, and no Close or Quit', () => {
-        const actions = { markAllRead: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() };
+    test('holds Mark All as Read and Manage Folders first, then Preferences and Help as the last group, and no Close or Quit', () => {
+        const actions = { markAllRead: jest.fn(), manageFolders: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() };
         const sections = buildMainMenuSections(actions);
 
-        expect(labels(sections)).toEqual([['Mark All as Read'], ['Preferences', 'Help']]);
+        expect(labels(sections)).toEqual([['Mark All as Read', 'Manage Folders'], ['Preferences', 'Help']]);
         find(sections, 'Mark All as Read').onSelect();
+        find(sections, 'Manage Folders').onSelect();
+        expect(actions.manageFolders).toHaveBeenCalledTimes(1);
         find(sections, 'Preferences').onSelect();
         find(sections, 'Help').onSelect();
         expect(actions.markAllRead).toHaveBeenCalledTimes(1);
@@ -166,7 +209,7 @@ describe('the Main Menu', () => {
     });
 
     test('gives every item an icon and disables none', () => {
-        const items = buildMainMenuSections({ markAllRead: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() }).flatMap(section => section.items);
+        const items = buildMainMenuSections({ markAllRead: jest.fn(), manageFolders: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() }).flatMap(section => section.items);
 
         expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
         expect(items.some(item => item.disabled)).toBe(false);

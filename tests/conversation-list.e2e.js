@@ -109,11 +109,11 @@ test.describe('the list at a desktop width', () => {
         await expect(page.locator('#sb_conversation_input')).toBeEnabled();
     });
 
-    test('the New menu offers New Conversation and New Group, which open their pickers', async ({ page, baseURL }) => {
+    test('the New menu offers New Conversation, New Group and New Folder, and the first two open their pickers', async ({ page, baseURL }) => {
         await openSeededList(page, baseURL);
 
         await page.locator(NEW_MENU).click();
-        await expect(page.getByRole('menuitem')).toHaveText(['New Conversation', 'New Group']);
+        await expect(page.getByRole('menuitem')).toHaveText(['New Conversation', 'New Group', 'New Folder…']);
         await chooseMenuItem(page, 'New Conversation');
         await expect(page.locator('.sb-picker')).toBeVisible();
         await page.keyboard.press('Escape');
@@ -124,11 +124,11 @@ test.describe('the list at a desktop width', () => {
         await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeVisible();
     });
 
-    test('the Main Menu holds Mark All as Read, Preferences and Help, and Help opens at the first Conversations topic', async ({ page, baseURL }) => {
+    test('the Main Menu holds Mark All as Read, Manage Folders, Preferences and Help, and Help opens at the first Conversations topic', async ({ page, baseURL }) => {
         await openSeededList(page, baseURL);
 
         await page.locator(MAIN_MENU).click();
-        await expect(page.getByRole('menuitem')).toHaveText(['Mark All as Read', 'Preferences', 'Help']);
+        await expect(page.getByRole('menuitem')).toHaveText(['Mark All as Read', 'Manage Folders', 'Preferences', 'Help']);
         await chooseMenuItem(page, 'Help');
 
         const help = page.getByRole('dialog', { name: 'Help' });
@@ -526,6 +526,8 @@ test.describe('the keyboard in the list', () => {
         await openSeededList(page, baseURL);
         await openRowMenuByRightClick(page, 'Seraphina');
         await chooseMenuItem(page, 'Add to Favorites');
+        // The list draws on the frame after the change; a key pressed before that finds the row still in Conversations.
+        await expectNames(page, 'favorites', ['Seraphina']);
         await rowNamed(page, 'Seraphina').locator(ITEM).focus();
 
         await page.keyboard.press('ArrowUp');

@@ -417,6 +417,9 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     text-align: start;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     transition: background-color var(--sb-transition-fast);
 }
 
@@ -453,7 +456,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     flex: 0 0 auto;
     inline-size: 10px;
     block-size: 10px;
-    border-radius: 50%;
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-folder-color, var(--sb-input-placeholder));
 }
 
@@ -564,6 +567,11 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     box-shadow: var(--sb-shadow-card);
 }
 
+/* The press that a long touch lifts on the heading of a folder: its fill shows that the menu is coming. */
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button.is-lifted {
+    background: var(--sb-flat-active-bg);
+}
+
 /* The ghost follows the pointer. The row styles are scoped to #sheld, so it lives there, and `fixed` still positions it on the viewport. */
 .sb-conversation-list-ghost {
     position: fixed;
@@ -618,6 +626,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     }
 
     .sb-conversation-list-row:is(.is-just-moved, .is-lifted) .sb-conversation-list-item,
+    .sb-conversation-list-heading-button.is-lifted,
     .sb-conversation-list-ghost {
         outline: 2px solid Highlight;
         outline-offset: -2px;

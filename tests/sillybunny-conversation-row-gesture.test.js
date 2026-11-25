@@ -207,3 +207,55 @@ describe('a press by touch', () => {
         expect(timers.pending).toBe(0);
     });
 });
+
+describe('a press that cannot drag, as the press on the heading of a folder', () => {
+    const startMenuOnly = (x = 100, y = 100) => createRowGesture({ pointerType: 'touch', x, y, timers, on, canDrag: false });
+
+    test('lifts after the long press and a release without a move opens the menu', () => {
+        const gesture = startMenuOnly();
+
+        timers.advance(LIFT_DELAY_MS);
+        expect(on.lift).toHaveBeenCalledTimes(1);
+        expect(gesture.phase).toBe('lifted');
+        gesture.release(100, 100);
+
+        expect(on.menu).toHaveBeenCalledWith(100, 100);
+        expect(on.dragStart).not.toHaveBeenCalled();
+        expect(gesture.phase).toBe('ended');
+    });
+
+    test('a move after the lift never starts a drag, it gives the press up and the release opens no menu', () => {
+        const gesture = startMenuOnly();
+        timers.advance(LIFT_DELAY_MS);
+
+        gesture.move(100, 100 + DRAG_DISTANCE_PX + 20);
+        gesture.release(100, 200);
+
+        expect(on.dragStart).not.toHaveBeenCalled();
+        expect(on.drop).not.toHaveBeenCalled();
+        expect(on.menu).not.toHaveBeenCalled();
+        expect(on.abort).toHaveBeenCalledTimes(1);
+        expect(gesture.phase).toBe('ended');
+    });
+
+    test('a move before the long press is a scroll, as for a row', () => {
+        const gesture = startMenuOnly();
+
+        gesture.move(100, 100 + SCROLL_CANCEL_DISTANCE_PX + 1);
+        timers.advance(LIFT_DELAY_MS);
+
+        expect(on.lift).not.toHaveBeenCalled();
+        expect(on.abort).toHaveBeenCalledTimes(1);
+        expect(gesture.phase).toBe('ended');
+    });
+
+    test('a press that is cancelled after the lift gives up, with no menu', () => {
+        const gesture = startMenuOnly();
+        timers.advance(LIFT_DELAY_MS);
+
+        gesture.cancel();
+
+        expect(on.menu).not.toHaveBeenCalled();
+        expect(on.abort).toHaveBeenCalledTimes(1);
+    });
+});

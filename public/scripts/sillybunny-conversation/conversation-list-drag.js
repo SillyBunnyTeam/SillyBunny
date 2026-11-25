@@ -25,12 +25,14 @@ const LIFT_VIBRATION_MS = 10;
  * @param {(row: HTMLElement, section: string) => void} options.onDrop A drop on a section other than the row's own.
  * @param {(row: HTMLElement, point: { x: number, y: number }) => void} options.onMenu A long press on a lifted row ended without a move.
  * @param {(section: string) => void} options.onHoldOver The pointer rested on a section for half a second while dragging, which opens it if it is collapsed.
+ * @param {string} [options.menuOnlySelector] Elements that a finger can press for a long time to open a menu, and never drag: the heading of a folder.
+ * @param {(element: HTMLElement, point: { x: number, y: number }) => void} [options.onMenuOnly] A long press on such an element ended without a move.
  * @param {() => void} options.onDragEnd A drag ended, by a drop or by Escape, after `onDrop` ran: what the drag opened for now is undone here.
  * @param {(text: string) => void} options.announce
  * @param {() => HTMLElement} [options.getGhostHost] The element the ghost row lives in; the row styles are scoped to it.
  */
-export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSectionOfRow, onDrop, onMenu, onHoldOver, onDragEnd, announce, getGhostHost = () => list.closest('#sheld') ?? document.body }) {
-    /** @type {null | { pointerId: number, row: HTMLElement, gesture: ReturnType<typeof createRowGesture>, cancelled: boolean, ghost: HTMLElement | null, offsetX: number, offsetY: number, lastY: number, from: string, holdKey: string, holdTimer: number, scrollFrame: number }} */
+export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSectionOfRow, onDrop, onMenu, menuOnlySelector = '', onMenuOnly = () => {}, onHoldOver, onDragEnd, announce, getGhostHost = () => list.closest('#sheld') ?? document.body }) {
+    /** @type {null | { menuOnly: boolean, pointerId: number, row: HTMLElement, gesture: ReturnType<typeof createRowGesture>, cancelled: boolean, ghost: HTMLElement | null, offsetX: number, offsetY: number, lastY: number, from: string, holdKey: string, holdTimer: number, scrollFrame: number }} */
     let session = null;
     let swallowUntil = 0;
 
@@ -167,10 +169,10 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
             onDragEnd();
         },
         menu(x, y) {
-            const { row } = session;
+            const { row, menuOnly } = session;
             row.classList.remove('is-lifted');
             armClickSwallow();
-            onMenu(row, { x, y });
+            (menuOnly ? onMenuOnly : onMenu)(row, { x, y });
         },
         abort() {
             session.row.classList.remove('is-lifted');
@@ -228,15 +230,19 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
     }
 
     function onPointerDown(event) {
-        if (session || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || !canDrag()) {
+        if (session || !event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
             return;
         }
-        const row = event.target instanceof Element ? event.target.closest(rowSelector) : null;
-        if (!(row instanceof HTMLElement) || !list.contains(row)) {
+        const target = event.target instanceof Element ? event.target : null;
+        const row = target?.closest(rowSelector) ?? null;
+        // A finger pressing the heading of a folder for a long time opens its menu. A mouse and a pen open it by the secondary click.
+        const menuOnly = !row && event.pointerType === 'touch' && menuOnlySelector ? target?.closest(menuOnlySelector) ?? null : null;
+        const element = menuOnly ?? row;
+        if (!(element instanceof HTMLElement) || !list.contains(element) || (!menuOnly && !canDrag())) {
             return;
         }
-        const state = { pointerId: event.pointerId, row, cancelled: false, ghost: null, offsetX: 0, offsetY: 0, lastY: 0, from: getSectionOfRow(row), holdKey: '', holdTimer: 0, scrollFrame: 0 };
-        session = { ...state, gesture: createRowGesture({ pointerType: event.pointerType, x: event.clientX, y: event.clientY, on: callbacks }) };
+        const state = { menuOnly: Boolean(menuOnly), pointerId: event.pointerId, row: element, cancelled: false, ghost: null, offsetX: 0, offsetY: 0, lastY: 0, from: menuOnly ? '' : getSectionOfRow(element), holdKey: '', holdTimer: 0, scrollFrame: 0 };
+        session = { ...state, gesture: createRowGesture({ pointerType: event.pointerType, x: event.clientX, y: event.clientY, canDrag: !menuOnly, on: callbacks }) };
         window.addEventListener('pointermove', onPointerMove, true);
         window.addEventListener('pointerup', onPointerUp, true);
         window.addEventListener('pointercancel', onPointerCancel, true);

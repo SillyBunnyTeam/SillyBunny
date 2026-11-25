@@ -33,7 +33,8 @@ import {
 import { bindConversationListControls } from './conversation-list-controls.js';
 import { conversationFolders, installConversationFoldersHooks } from './conversation-folders-browser.js';
 import { buildComposerMenuSections, buildHeaderMenuSections, buildMainMenuSections, buildNewMenuSections } from './conversation-menus.js';
-import { setConversationListQuery } from './conversation-list-view.js';
+import { announceInList, setConversationListQuery } from './conversation-list-view.js';
+import { openNewFolderPopover } from './conversation-list-folders.js';
 import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
 import { getDirectConversations } from './conversation-list.js';
@@ -418,6 +419,14 @@ function openConversationNewMenu(trigger) {
         sections: buildNewMenuSections({
             newConversation: runFromMenu('open-start-direct-conversation', {}, trigger),
             newGroup: runFromMenu('open-new-group-chat', {}, trigger),
+            newFolder: () => openNewFolderPopover({
+                trigger,
+                bounds: document.getElementById(CHROME_IDS.conversationList),
+                folders: conversationFolders,
+                personaId: getConversationPersonaId(),
+                announce: announceInList,
+                render: scheduleConversationListRender,
+            }),
         }),
         alignment: 'end',
     });
@@ -429,6 +438,7 @@ function openConversationMainMenu(trigger) {
         title: 'Main Menu',
         sections: buildMainMenuSections({
             markAllRead: runFromMenu('mark-all-read'),
+            manageFolders: () => void import('./conversation-folder-manager.js').then(({ openConversationFolderManager }) => openConversationFolderManager()),
             openPreferences: () => void openConversationPreferences(),
             openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp({ topic: 'start-a-conversation' })),
         }),

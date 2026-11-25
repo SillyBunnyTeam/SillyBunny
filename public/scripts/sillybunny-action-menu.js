@@ -493,7 +493,9 @@ function finishClose() {
     open = null;
     visualViewportWatch?.stop();
     visualViewportWatch = null;
-    setTriggerExpanded(state.trigger, false);
+    if (state.trackTrigger !== false) {
+        setTriggerExpanded(state.trigger, false);
+    }
     const root = state.kind === 'popover' ? state.popover : state.frame.element;
     if (root.id) {
         // A picker that was opened from inside this surface goes with it.
@@ -529,8 +531,10 @@ function releaseSheetIds({ frame, menu }) {
  * @param {boolean} [options.forcePopover=false] - Use an anchored popover even on mobile.
  * @param {'auto'|'start'|'end'} [options.alignment='auto'] - Popover inline alignment; see `positionPopover`.
  * @param {() => void} [options.onClose]
+ * @param {boolean} [options.trackTrigger=true] - False leaves `aria-expanded` and `aria-controls` of the trigger alone, for a trigger
+ * whose own `aria-expanded` says something else, such as the heading of a section that opens and closes.
  */
-export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, alignment = 'auto', onClose = null }) {
+export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, alignment = 'auto', onClose = null, trackTrigger = true }) {
     initialize();
     if (open?.trigger === trigger && !point) {
         closeActionMenu({ restoreFocus: true });
@@ -550,8 +554,10 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
         frame.subtitle.hidden = !subtitle;
         frame.body.replaceChildren(menu);
         hostOverlayLayer(frame.backdrop, frame.element);
-        open = { kind: 'sheet', frame, trigger, menu, keyboard, onClose };
-        setTriggerExpanded(trigger, true);
+        open = { kind: 'sheet', frame, trigger, menu, keyboard, onClose, trackTrigger };
+        if (trackTrigger) {
+            setTriggerExpanded(trigger, true);
+        }
         frame.controller.open();
         return;
     }
@@ -565,9 +571,11 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     blockUpstreamDrawerClose(popover);
     hostOverlayLayer(popover);
     const origin = positionPopover(popover, trigger, point, bounds, alignment);
-    open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds, alignment };
+    open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds, alignment, trackTrigger };
     watchVisualViewport();
-    setTriggerExpanded(trigger, true);
+    if (trackTrigger) {
+        setTriggerExpanded(trigger, true);
+    }
     // Popovers open with a 200ms fade and a scale from 0.96 to 1, so they grow out of the trigger.
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
         duration: MOTION_FAST,
@@ -581,7 +589,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     });
 }
 
-export function openPopover({ trigger, content, title = '', titleLabel = null, titleInput = null, bounds = null, initialFocus = null, onClose = null }) {
+export function openPopover({ trigger, content, title = '', titleLabel = null, titleInput = null, bounds = null, initialFocus = null, onClose = null, trackTrigger = true }) {
     if (!(trigger instanceof HTMLElement) || !(content instanceof HTMLElement)) {
         throw new TypeError('openPopover requires a trigger and content element');
     }
@@ -602,8 +610,10 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
         frame.subtitle.hidden = true;
         frame.body.replaceChildren(content);
         hostOverlayLayer(frame.backdrop, frame.element);
-        open = { kind: 'sheet', frame, trigger, keyboard: false, initialFocus, onClose };
-        setTriggerExpanded(trigger, true);
+        open = { kind: 'sheet', frame, trigger, keyboard: false, initialFocus, onClose, trackTrigger };
+        if (trackTrigger) {
+            setTriggerExpanded(trigger, true);
+        }
         frame.controller.open();
         return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
     }
@@ -624,9 +634,11 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
     blockUpstreamDrawerClose(popover);
     hostOverlayLayer(popover);
     const origin = positionPopover(popover, trigger, null, bounds);
-    open = { kind: 'popover', trigger, popover, keyboard: false, custom: true, initialFocus, onClose, bounds };
+    open = { kind: 'popover', trigger, popover, keyboard: false, custom: true, initialFocus, onClose, bounds, trackTrigger };
     watchVisualViewport();
-    setTriggerExpanded(trigger, true);
+    if (trackTrigger) {
+        setTriggerExpanded(trigger, true);
+    }
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
         duration: MOTION_FAST,
         easing: MOTION_EASE_OUT_CUBIC,

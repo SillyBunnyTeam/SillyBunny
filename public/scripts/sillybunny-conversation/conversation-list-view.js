@@ -6,6 +6,7 @@
  */
 
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { CHROME_IDS } from './constants.js';
 import { renderConversationParticipantStack } from './media.js';
 import {
     SECTION_CONVERSATIONS,
@@ -98,6 +99,21 @@ export function highlightMovedRow(list, id) {
         viewState.movedId = '';
         list.querySelector('.is-just-moved')?.classList.remove('is-just-moved');
     }, MOVED_HIGHLIGHT_MS);
+}
+
+/**
+ * Says something in the live region of the list. The text is cleared first and set on the next frame, so that a screen
+ * reader reads the same text again when it is said twice.
+ */
+export function announceInList(text) {
+    const region = document.getElementById(CHROME_IDS.conversationList)?.querySelector('.sb-conversation-list-status');
+    if (!region) {
+        return;
+    }
+    region.textContent = '';
+    requestAnimationFrame(() => {
+        region.textContent = text;
+    });
 }
 
 export function findRow(list, id) {

@@ -56,8 +56,26 @@ export function buildMoveToFolderSections(entry, folders, { setFolder, newFolder
     ];
 }
 
-/** The New button's menu: the two ways to start a conversation. */
-export function buildNewMenuSections({ newConversation, newGroup }) {
+/**
+ * The context menu of the heading of a folder: right-click, long press, Shift+F10 and the Menu key. The folders are ordered
+ * in the Folder Manager, so there is no Move Up or Move Down here.
+ * @param {{ id: string, name: string }} folder
+ * @param {{ rename: Function, colour: Function, remove: Function }} actions Each is called with the folder.
+ */
+export function buildFolderMenuSections(folder, actions) {
+    return [
+        {
+            items: [
+                { label: 'Rename', icon: 'fa-solid fa-pen', onSelect: () => actions.rename(folder) },
+                { label: 'Colour', icon: 'fa-solid fa-palette', onSelect: () => actions.colour(folder) },
+            ],
+        },
+        { items: [{ label: 'Delete', icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => actions.remove(folder) }] },
+    ];
+}
+
+/** The New button's menu: the two ways to start a conversation, and New Folder in a group of its own. */
+export function buildNewMenuSections({ newConversation, newGroup, newFolder }) {
     return [
         {
             items: [
@@ -65,6 +83,7 @@ export function buildNewMenuSections({ newConversation, newGroup }) {
                 { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: newGroup },
             ],
         },
+        { items: [{ label: 'New Folder…', icon: 'fa-solid fa-folder-plus', onSelect: newFolder }] },
     ];
 }
 
@@ -72,9 +91,14 @@ export function buildNewMenuSections({ newConversation, newGroup }) {
  * The primary menu of the list's header bar (HIG Menus): what the whole list can do, then the standard items of an
  * application that has them as the last group.
  */
-export function buildMainMenuSections({ markAllRead, openPreferences, openHelp }) {
+export function buildMainMenuSections({ markAllRead, manageFolders, openPreferences, openHelp }) {
     return [
-        { items: [{ label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: markAllRead }] },
+        {
+            items: [
+                { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: markAllRead },
+                { label: 'Manage Folders', icon: 'fa-solid fa-folder', onSelect: manageFolders },
+            ],
+        },
         {
             items: [
                 { label: 'Preferences', icon: 'fa-solid fa-sliders', onSelect: openPreferences },

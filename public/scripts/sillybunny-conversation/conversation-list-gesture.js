@@ -28,10 +28,12 @@ export const SCROLL_CANCEL_DISTANCE_PX = 8;
  * @param {number} options.x Where the pointer went down.
  * @param {number} options.y
  * @param {{ set: (callback: () => void, delay: number) => any, clear: (handle: any) => void }} [options.timers]
+ * @param {boolean} [options.canDrag] False for a press that only opens a menu, such as the press on the heading of a folder:
+ * a move after the lift gives the press up, and the release of a lifted press opens the menu.
  * @param {RowGestureCallbacks} options.on
  * @returns {{ move: (x: number, y: number) => void, release: (x: number, y: number) => void, cancel: () => void, readonly phase: 'pressed' | 'lifted' | 'dragging' | 'ended' }}
  */
-export function createRowGesture({ pointerType, x, y, timers = { set: (callback, delay) => setTimeout(callback, delay), clear: handle => clearTimeout(handle) }, on }) {
+export function createRowGesture({ pointerType, x, y, timers = { set: (callback, delay) => setTimeout(callback, delay), clear: handle => clearTimeout(handle) }, canDrag = true, on }) {
     const isTouch = pointerType === 'touch';
     let phase = 'pressed';
     let liftTimer = null;
@@ -76,7 +78,12 @@ export function createRowGesture({ pointerType, x, y, timers = { set: (callback,
                 }
                 return;
             }
-            if ((phase === 'pressed' || phase === 'lifted') && distanceFromStart(nowX, nowY) > DRAG_DISTANCE_PX) {
+            if (!canDrag && phase === 'lifted' && distanceFromStart(nowX, nowY) > DRAG_DISTANCE_PX) {
+                end();
+                on.abort();
+                return;
+            }
+            if (canDrag && (phase === 'pressed' || phase === 'lifted') && distanceFromStart(nowX, nowY) > DRAG_DISTANCE_PX) {
                 stopLiftTimer();
                 phase = 'dragging';
                 on.dragStart(nowX, nowY);

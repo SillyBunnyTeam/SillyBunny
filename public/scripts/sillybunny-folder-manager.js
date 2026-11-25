@@ -5,14 +5,14 @@ import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-edit
 import { bindListFocus } from './sillybunny-editor/list-focus.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
-import { openAlert, openDialog, createIconButton } from './sillybunny-editor/dialog.js';
+import { openDialog, createIconButton } from './sillybunny-editor/dialog.js';
 import { announceReorder, LONG_LIST, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 import * as settingsFolderStore from './sillybunny-folders.js';
-import { DEFAULT_FOLDER_COLOR, createFolderColorPicker, openFolderNamePopover, parseFolderName } from './sillybunny-editor/folder-popovers.js';
+import { DEFAULT_FOLDER_COLOR, confirmFolderDelete, createFolderColorPicker, openFolderNamePopover, parseFolderName } from './sillybunny-editor/folder-popovers.js';
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261125a', id: 'deferred-editor-shell-css' },
@@ -481,16 +481,7 @@ export function createFolderManager(scope, adapter) {
     }
 
     async function confirmDelete(folder) {
-        const body = scopeCopy(scope).deleteBody;
-        const bodyNode = element('span', '', body);
-        if (body === PLACEHOLDER_COPY) bodyNode.setAttribute('data-sb-copy-placeholder', 'true');
-        const response = await openAlert({
-            heading: t`Delete Folder?`,
-            bodyNode,
-            responses: [{ id: 'cancel', label: t`Cancel` }, { id: 'delete', label: t`Delete`, appearance: 'destructive' }],
-            closeResponse: 'cancel',
-        });
-        if (response !== 'delete' || disposed) return;
+        if (!await confirmFolderDelete(scopeCopy(scope).deleteBody) || disposed) return;
         const showing = members?.folderId === folder.id ? members : null;
         store.deleteFolder(scope, folder.id);
         if (showing) showing.page.forceClose();

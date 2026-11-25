@@ -2,11 +2,14 @@ import { expect, test } from '@playwright/test';
 import {
     ITEM,
     LIST,
+    MAIN_MENU,
+    NEW_MENU,
     ROW,
     SECTION,
     bootConversationPage,
     centreOf,
     expectNames,
+    flushListWrites,
     headingLabels,
     headingOf,
     newFolderId,
@@ -476,9 +479,15 @@ test.describe('Move to Folder in the menu of a row', () => {
 });
 
 test.describe('Alt with an arrow key across the sections', () => {
+    /** A key press and the write that it makes, which has landed before the next press, as it has for a person. */
+    async function press(page, combo) {
+        await page.keyboard.press(combo);
+        await flushListWrites(page);
+    }
+
     async function altKey(page, name, key) {
         await rowNamed(page, name).locator(ITEM).focus();
-        await page.keyboard.press(`Alt+${key}`);
+        await press(page, `Alt+${key}`);
     }
 
     test('walks a row down from Favorites through the folders to Conversations and back up, keeping focus and announcing each move', async ({ page, baseURL }) => {
@@ -494,24 +503,24 @@ test.describe('Alt with an arrow key across the sections', () => {
         await expect(page.locator(STATUS)).toHaveText('Seraphina moved to Work');
         expect((await readStoredConversation(page, made.seraphina.conversationId)).favorite).toBe(false);
 
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, friends, ['Seraphina']);
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect(page.locator(STATUS)).toHaveText('Seraphina moved to Conversations');
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, 'conversations', ALL_NAMES);
 
-        await page.keyboard.press('Alt+ArrowUp');
+        await press(page, 'Alt+ArrowUp');
         await expectNames(page, friends, ['Seraphina']);
-        await page.keyboard.press('Alt+Home');
+        await press(page, 'Alt+Home');
         await expectNames(page, 'favorites', ['Seraphina']);
         await expect(page.locator(STATUS)).toHaveText('Seraphina added to Favorites');
         // Moving into Favorites keeps the folder that the row was last in.
         await expect.poll(() => filedIn(page, persona, made.seraphina.conversationId)).toBe(ids[1]);
-        await page.keyboard.press('Alt+ArrowUp');
+        await press(page, 'Alt+ArrowUp');
         await expectNames(page, 'favorites', ['Seraphina']);
-        await page.keyboard.press('Alt+End');
+        await press(page, 'Alt+End');
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect.poll(() => filedIn(page, persona, made.seraphina.conversationId)).toBe('');
     });
@@ -521,7 +530,7 @@ test.describe('Alt with an arrow key across the sections', () => {
 
         await altKey(page, 'Seraphina', 'ArrowUp');
         await expectNames(page, folderKeys(ids)[1], ['Seraphina']);
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect(rowNamed(page, 'Seraphina').locator(ITEM)).toBeFocused();
     });
@@ -531,7 +540,7 @@ test.describe('Alt with an arrow key across the sections', () => {
 
         await altKey(page, 'Seraphina', 'ArrowUp');
         await expectNames(page, 'favorites', ['Seraphina']);
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, 'favorites', []);
         await expect(rowNamed(page, 'Seraphina').locator(ITEM)).toBeFocused();
     });
@@ -543,10 +552,10 @@ test.describe('Alt with an arrow key across the sections', () => {
         // From Conversations, Up goes to the last folder and Home to Favorites.
         await altKey(page, 'Seraphina', 'Home');
         await expectNames(page, 'favorites', ['Seraphina']);
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, one, ['Seraphina']);
         await expect(headingOf(page, one)).toHaveAttribute('aria-expanded', 'true');
-        await page.keyboard.press('Alt+ArrowDown');
+        await press(page, 'Alt+ArrowDown');
         await expectNames(page, two, ['Seraphina']);
         await expect(headingOf(page, one)).toHaveAttribute('aria-expanded', 'false');
         await expect(headingOf(page, two)).toHaveAttribute('aria-expanded', 'true');
@@ -623,5 +632,262 @@ test.describe('moving a row into a folder by touch on a phone', () => {
         const box = await headingOf(page, folderKeys(ids)[0]).boundingBox();
 
         expect(box.height).toBeGreaterThanOrEqual(44);
+    });
+});
+
+const FOLDER_MENU_ITEMS = ['Rename', 'Colour', 'Delete'];
+const NAME_FIELD = '.sb-manager-name-popover__input';
+
+test.describe('the menu of the heading of a folder', () => {
+    test('opens on a right-click with Rename, Colour and Delete, and not on the heading of Favorites', async ({ page, baseURL }) => {
+        const { ids } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+        const [work] = folderKeys(ids);
+
+        await headingOf(page, work).click({ button: 'right' });
+        await expect(page.getByRole('menuitem')).toHaveText(FOLDER_MENU_ITEMS);
+        await expect(page.getByRole('menu')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(headingOf(page, work)).toBeFocused();
+        // A secondary click opens a menu and never toggles the folder.
+        await expect(headingOf(page, work)).toHaveAttribute('aria-expanded', 'true');
+
+        await patchFavorite(page, 'Seraphina');
+        await headingOf(page, 'favorites').click({ button: 'right' });
+        await expect(page.getByRole('menuitem')).toHaveCount(0);
+    });
+
+    test('opens from the keyboard with Shift+F10 and the Menu key, with the first item focused', async ({ page, baseURL }) => {
+        const { ids } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+        const heading = headingOf(page, folderKeys(ids)[0]);
+
+        await heading.focus();
+        await page.keyboard.press('Shift+F10');
+        await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(heading).toBeFocused();
+
+        await page.keyboard.press('ContextMenu');
+        await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
+        await page.keyboard.press('Escape');
+    });
+
+    test('Rename asks for a name, refuses a blank one, renames the folder in the list and in the file, and keeps the conversations in it', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }], members: { seraphina: 0 } });
+        const key = folderKeys(ids)[0];
+
+        await headingOf(page, key).click({ button: 'right' });
+        await chooseMenuItem(page, 'Rename');
+        const field = page.locator(NAME_FIELD);
+        await expect(field).toBeFocused();
+        await expect(field).toHaveValue('Work');
+        await field.fill('  ');
+        await expect(page.locator('.sb-manager-name-popover__create')).toBeDisabled();
+        await field.fill('Job');
+        await page.keyboard.press('Enter');
+
+        await expect(headingOf(page, key).locator('.sb-conversation-list-heading-label')).toHaveText('Job');
+        await expectNames(page, key, ['Seraphina']);
+        await expect(page.locator(STATUS)).toHaveText('Work renamed to Job');
+        await expect.poll(async () => (await readStoredFolders(page, persona)).folders[0].name).toBe('Job');
+    });
+
+    test('Colour opens the colour picker of the folder, and a colour that it gives is on the dot and in the file', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+        const key = folderKeys(ids)[0];
+
+        await headingOf(page, key).click({ button: 'right' });
+        await chooseMenuItem(page, 'Colour');
+        const picker = page.locator('.sb-folder-color-popover toolcool-color-picker');
+        await expect(picker).toBeAttached();
+        await picker.evaluate(element => element.dispatchEvent(new CustomEvent('change', { detail: { rgba: 'rgba(10, 120, 200, 1)' } })));
+
+        await expect(section(page, key).locator('.sb-conversation-list-folder-dot')).toHaveCSS('background-color', 'rgb(10, 120, 200)');
+        await expect.poll(async () => (await readStoredFolders(page, persona)).folders[0].color).toBe('rgba(10, 120, 200, 1)');
+    });
+
+    test('Delete asks first with Cancel focused, keeps the folder on Cancel, and on Delete takes the folder away and leaves its conversations in Conversations', async ({ page, baseURL }) => {
+        const { ids, made, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }, { name: 'Friends' }], members: { seraphina: 0, tewi: 0 } });
+        const [work, friends] = folderKeys(ids);
+
+        await headingOf(page, work).click({ button: 'right' });
+        await chooseMenuItem(page, 'Delete');
+        const alert = page.getByRole('alertdialog');
+        await expect(alert.getByRole('heading', { name: 'Delete Folder?' })).toBeVisible();
+        await expect(alert.locator('[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+        await expect(alert.getByRole('button', { name: 'Cancel' })).toBeFocused();
+        await alert.getByRole('button', { name: 'Cancel' }).click();
+        await expect(alert).toHaveCount(0);
+        await expectNames(page, work, ['Seraphina', 'Assistant Tewi']);
+
+        await headingOf(page, work).click({ button: 'right' });
+        await chooseMenuItem(page, 'Delete');
+        await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+
+        expect(await headingLabels(page)).toEqual(['Favorites', 'Friends', 'Conversations']);
+        await expectNames(page, 'conversations', ALL_NAMES);
+        await expect(page.locator(STATUS)).toHaveText('Work deleted');
+        await expect(headingOf(page, friends)).toBeFocused();
+        const stored = await readStoredFolders(page, persona);
+        expect(stored.folders.map(folder => folder.name)).toEqual(['Friends']);
+        expect(stored.members).toEqual({});
+        expect(await filedIn(page, persona, made.seraphina.conversationId)).toBe('');
+    });
+
+    test('Delete of the last folder leaves no folder, and its file entry goes with it', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }], members: { seraphina: 0 } });
+
+        await headingOf(page, folderKeys(ids)[0]).click({ button: 'right' });
+        await chooseMenuItem(page, 'Delete');
+        await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+
+        expect(await headingLabels(page)).toEqual(['Favorites', 'Conversations']);
+        await expect.poll(() => readStoredFolders(page, persona)).toBeNull();
+    });
+});
+
+async function patchFavorite(page, name) {
+    await openRowMenu(page, name);
+    await chooseMenuItem(page, 'Add to Favorites');
+    await expectNames(page, 'favorites', [name]);
+}
+
+test.describe('New Folder and Manage Folders', () => {
+    test('New Folder, in the New menu, asks for a name and adds a folder at the end of the others, and refuses a blank name', async ({ page, baseURL }) => {
+        const { persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+
+        await page.locator(NEW_MENU).click();
+        await expect(page.getByRole('menuitem')).toHaveText(['New Conversation', 'New Group', 'New Folder…']);
+        await chooseMenuItem(page, 'New Folder…');
+        const field = page.locator(NAME_FIELD);
+        await expect(field).toBeFocused();
+        await expect(page.locator('.sb-manager-name-popover__create')).toBeDisabled();
+        await field.fill('Friends');
+        await page.keyboard.press('Enter');
+
+        expect(await headingLabels(page)).toEqual(['Favorites', 'Work', 'Friends', 'Conversations']);
+        await expect(page.locator(STATUS)).toHaveText('Friends created');
+        await expect.poll(async () => (await readStoredFolders(page, persona)).folders.map(folder => folder.name)).toEqual(['Work', 'Friends']);
+    });
+
+    test('refuses the 51st folder in the popover and says so with the placeholder copy', async ({ page, baseURL }) => {
+        const persona = await bootConversationPage(page, baseURL);
+        await seedConversationList(page);
+        const ops = Array.from({ length: 50 }, (_, index) => ({ op: 'createFolder', id: newFolderId(), name: `Folder ${index}` }));
+        // A request takes at most 32 operations.
+        expect((await seedFolders(page, persona, ops.slice(0, 25))).status).toBe(200);
+        expect((await seedFolders(page, persona, ops.slice(25))).status).toBe(200);
+        await openConversationList(page);
+
+        await page.locator(NEW_MENU).click();
+        await chooseMenuItem(page, 'New Folder…');
+        await page.locator(NAME_FIELD).fill('Too many');
+        await page.keyboard.press('Enter');
+
+        await expect(page.locator('.sb-manager-name-popover__error')).toHaveText('TODO(copy)');
+        await expect(page.locator('.sb-manager-name-popover__error')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        expect((await readStoredFolders(page, persona)).folders).toHaveLength(50);
+    });
+
+    test('Manage Folders opens the Folder Manager with the folders of the persona and the number of conversations in each', async ({ page, baseURL }) => {
+        await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }, { name: 'Friends' }], members: { seraphina: 0, tewi: 0, study: 1 } });
+
+        await page.locator(MAIN_MENU).click();
+        await chooseMenuItem(page, 'Manage Folders');
+
+        const manager = page.locator('.sb-folder-manager');
+        await expect(manager).toBeVisible();
+        await expect(manager.locator('.sb-folder-manager__name').nth(0)).toHaveValue('Work');
+        await expect(manager.locator('.sb-folder-manager__name').nth(1)).toHaveValue('Friends');
+        await expect(manager.locator('.sb-folder-manager__count')).toHaveText(['2 conversations', '1 conversation']);
+    });
+
+    test('a folder that the Folder Manager makes, renames and deletes shows in the list and in the file, and its members page files a conversation', async ({ page, baseURL }) => {
+        const { persona, made } = await openFoldersList(page, baseURL, {});
+
+        await page.locator(MAIN_MENU).click();
+        await chooseMenuItem(page, 'Manage Folders');
+        const manager = page.locator('.sb-folder-manager');
+        await manager.locator('.sb-folder-manager__add').click();
+        await page.locator(NAME_FIELD).fill('Trips');
+        await page.keyboard.press('Enter');
+        await expect(manager.locator('.sb-folder-manager__folder-row')).toHaveCount(1);
+        const stored = await readStoredFolders(page, persona);
+        const key = `folder:${stored.folders[0].id}`;
+        await expect(manager.locator('.sb-folder-manager__count')).toHaveText('0 conversations');
+
+        // The row opens its members page; its name field is a field, so the press is on its count.
+        await manager.locator('.sb-folder-manager__count').click();
+        await manager.locator('.sb-folder-manager__add-member').click();
+        await page.getByRole('option', { name: 'Study group' }).click();
+        await expect(manager.locator('.sb-folder-manager__member-row')).toHaveCount(1);
+        await manager.locator('.sb-dialog__back').click();
+        await expect(manager.locator('.sb-folder-manager__count')).toHaveText('1 conversation');
+        await expect.poll(() => filedIn(page, persona, made.study.conversationId)).toBe(stored.folders[0].id);
+
+        await manager.locator('.sb-dialog__close').click();
+        await expect(manager).toHaveCount(0);
+        await expectNames(page, key, ['Study group']);
+        await expect(section(page, key).locator('.sb-conversation-list-heading-count')).toHaveText('1');
+    });
+});
+
+test.describe('the menu of a folder heading by touch on a phone', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+    test.beforeEach(({ browserName }) => {
+        // eslint-disable-next-line playwright/no-skipped-test -- Only Chromium offers the DevTools protocol that sends the touch events.
+        test.skip(browserName !== 'chromium', 'touch events are driven with the DevTools protocol');
+    });
+
+    async function touchPoint(client, type, x, y) {
+        await client.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+    }
+
+    test('a long press that ends without a move opens the menu as a sheet, lifts the heading and neither drags nor toggles the folder', async ({ page, baseURL }) => {
+        const { ids } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+        const heading = headingOf(page, folderKeys(ids)[0]);
+        const client = await page.context().newCDPSession(page);
+        const { x, y } = await centreOf(heading);
+
+        await touchPoint(client, 'touchStart', x, y);
+        await wait(600);
+        await expect(heading).toHaveClass(/is-lifted/);
+        await touchPoint(client, 'touchEnd', 0, 0);
+
+        await expect(page.getByRole('menuitem')).toHaveText(FOLDER_MENU_ITEMS);
+        await expect(heading).not.toHaveClass(/is-lifted/);
+        await expect(page.locator(LIST)).not.toHaveAttribute('data-dragging', 'true');
+        await wait(700);
+        await expect(heading).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.getByRole('menuitem')).toHaveCount(3);
+    });
+
+    test('a move after the long press gives the press up: no menu, no drag, and the folder keeps its state', async ({ page, baseURL }) => {
+        const { ids } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+        const heading = headingOf(page, folderKeys(ids)[0]);
+        const client = await page.context().newCDPSession(page);
+        const { x, y } = await centreOf(heading);
+
+        await touchPoint(client, 'touchStart', x, y);
+        await wait(600);
+        await touchPoint(client, 'touchMove', x, y + 30);
+        await touchPoint(client, 'touchEnd', 0, 0);
+        await wait(300);
+
+        await expect(page.getByRole('menuitem')).toHaveCount(0);
+        await expect(page.locator(LIST)).not.toHaveAttribute('data-dragging', 'true');
+        await expect(heading).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('a tap on the heading opens and closes the folder', async ({ page, baseURL }) => {
+        const { ids } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }], members: { tewi: 0 } });
+        const heading = headingOf(page, folderKeys(ids)[0]);
+
+        await heading.tap();
+        await expect(heading).toHaveAttribute('aria-expanded', 'false');
+        await heading.tap();
+        await expect(heading).toHaveAttribute('aria-expanded', 'true');
     });
 });
