@@ -8,8 +8,41 @@ import { CHAT_BACKUPS_PREFIX } from './chats.js';
 import { isPathUnderParent, recoverFileWriteSync, tryParse } from '../util.js';
 import { SETTINGS_FILE } from '../constants.js';
 import { getKeptExternalMediaPaths } from '../external-media-manifest.js';
+// SillyBunny: NovelAI Precise Reference PNGs stored as user files are listed in settings.json.
+import { normalizeNovelAIPreciseReferencePath } from '../../public/scripts/novelai-precise-reference.js';
 
 const sha256 = str => crypto.createHash('sha256').update(str).digest('hex');
+
+/**
+ * SillyBunny: records NovelAI Precise Reference PNG paths saved in Image Generation or Quick Image Gen settings
+ * so Data Maid keeps active references and still flags orphaned files.
+ * @param {object} settings Parsed settings.json object
+ * @param {Set<string>} knownFiles Set of referenced file paths relative to the user root
+ */
+function collectPreciseReferenceFiles(settings, knownFiles) {
+    const addState = state => {
+        if (!Array.isArray(state?.references)) return;
+        for (const reference of state.references) {
+            const normalized = normalizeNovelAIPreciseReferencePath(reference?.path);
+            if (normalized) knownFiles.add(normalized.slice(1));
+        }
+    };
+    addState(settings?.extension_settings?.sd?.novel_precise_reference);
+    const qig = settings?.extension_settings?.['quick-image-gen'];
+    if (!qig || typeof qig !== 'object') return;
+    addState(qig.naiPreciseReference);
+    addState(qig._charSettingsBaseState?.naiPreciseReference);
+    if (Array.isArray(qig._backupConfigurations)) {
+        for (const configuration of qig._backupConfigurations) {
+            addState(configuration?.naiPreciseReference);
+        }
+    }
+    if (qig._backupCharRefImages && typeof qig._backupCharRefImages === 'object') {
+        for (const record of Object.values(qig._backupCharRefImages)) {
+            addState(record?.naiPreciseReference);
+        }
+    }
+}
 
 /**
  * @typedef {object} DataMaidRawReport
@@ -297,6 +330,8 @@ export class DataMaidService {
                             }
                         }
                     }
+                    // SillyBunny: keep NovelAI Precise Reference PNGs referenced by Image Generation or Quick Image Gen.
+                    collectPreciseReferenceFiles(settings, knownFiles);
                 } catch (error) {
                     console.error('[Data Maid] Error reading settings file:', error);
                 }

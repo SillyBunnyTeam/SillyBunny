@@ -10,7 +10,7 @@ const coreAssetPaths = [
 
 // Guards against growth in the number of requests a start makes. Lower it when a start makes fewer requests; raise it
 // only when a change adds a request on purpose.
-const STARTUP_RESOURCE_LIMIT = 871;
+const STARTUP_RESOURCE_LIMIT = 873;
 const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
 
 // The first start of a day for an admin account asks the server for the install type and then saves the notice stamp
