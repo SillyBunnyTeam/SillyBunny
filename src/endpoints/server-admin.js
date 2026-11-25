@@ -4,6 +4,7 @@ import process from 'node:process';
 import { spawn } from 'node:child_process';
 
 import express from 'express';
+import _ from 'lodash';
 import yaml from 'yaml';
 import { sync as commandExistsSync } from 'command-exists';
 import { simpleGit } from 'simple-git';
@@ -33,9 +34,10 @@ import {
 } from '../server-plugin-update-ipc.js';
 import { serverDirectory } from '../server-directory.js';
 import { requireAdminMiddleware } from '../users.js';
-import { getConfigValue, getVersion, isPathUnderParent, tryWriteFileSync } from '../util.js';
+import { getConfig, getConfigValue, getVersion, isPathUnderParent, keyToEnv, toBoolean, tryWriteFileSync } from '../util.js';
 import { getThumbnailDimensions, getThumbnailMobileDimensions, setThumbnailDimensions, setThumbnailMobileDimensions } from './image-metadata.js';
 import { getThumbnailMobileRuntimeSettings, getThumbnailRuntimeSettings, setThumbnailMobileRuntimeSettings, setThumbnailRuntimeSettings } from './thumbnails.js';
+import { normalizeCachingDepth } from '../prompt-caching.js';
 import { requestGracefulExit } from '../shutdown.js';
 import { getServerBootId } from '../server-boot-marker.js';
 import {
@@ -68,6 +70,16 @@ const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({
         thoughtSignatures: true,
         enableSystemPromptCache: false,
     }),
+});
+// Value types of the config.yaml keys that the chat completion settings page mirrors.
+const CHAT_COMPLETION_CONFIG_KEY_TYPES = Object.freeze({
+    'claude.enableSystemPromptCache': 'boolean',
+    'claude.cachingAtDepth': 'depth',
+    'claude.extendedTTL': 'boolean',
+    'claude.enableAdaptiveThinking': 'boolean',
+    'gemini.apiVersion': 'string',
+    'gemini.thoughtSignatures': 'boolean',
+    'gemini.enableSystemPromptCache': 'boolean',
 });
 const THUMBNAIL_CONFIG_DEFAULTS = Object.freeze({
     enabled: true,
@@ -207,24 +219,70 @@ function writeConfigDocument(configPath, document) {
 }
 
 function getChatCompletionConfigState(document) {
-    const claudeNode = document.getIn(['claude']) ?? {};
-    const geminiNode = document.getIn(['gemini']) ?? {};
+    const getConfig = (pathParts, fallback) => document.getIn(pathParts) ?? fallback;
 
-    const cachingAtDepth = Number.parseInt(String(claudeNode?.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+    const cachingAtDepth = normalizeCachingDepth(getConfig(['claude', 'cachingAtDepth'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth));
 
     return {
         claude: {
-            enableSystemPromptCache: Boolean(claudeNode?.enableSystemPromptCache ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableSystemPromptCache),
-            cachingAtDepth: Number.isFinite(cachingAtDepth) ? cachingAtDepth : CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth,
-            extendedTTL: Boolean(claudeNode?.extendedTTL ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.extendedTTL),
-            enableAdaptiveThinking: Boolean(claudeNode?.enableAdaptiveThinking ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking),
+            enableSystemPromptCache: toBoolean(getConfig(['claude', 'enableSystemPromptCache'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableSystemPromptCache)),
+            cachingAtDepth,
+            extendedTTL: toBoolean(getConfig(['claude', 'extendedTTL'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.extendedTTL)),
+            enableAdaptiveThinking: toBoolean(getConfig(['claude', 'enableAdaptiveThinking'], CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking)),
         },
         gemini: {
-            apiVersion: toTrimmedString(geminiNode?.apiVersion || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
-            thoughtSignatures: Boolean(geminiNode?.thoughtSignatures ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures),
-            enableSystemPromptCache: Boolean(geminiNode?.enableSystemPromptCache ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache),
+            apiVersion: toTrimmedString(getConfig(['gemini', 'apiVersion'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion)) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
+            thoughtSignatures: toBoolean(getConfig(['gemini', 'thoughtSignatures'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures)),
+            enableSystemPromptCache: toBoolean(getConfig(['gemini', 'enableSystemPromptCache'], CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache)),
         },
     };
+}
+
+/**
+ * Lists the mirrored config keys whose value an environment variable decides, so a save cannot change them.
+ * @returns {string[]}
+ */
+function getEnvManagedChatCompletionKeys() {
+    return Object.keys(CHAT_COMPLETION_CONFIG_KEY_TYPES).filter(key => keyToEnv(key) in process.env);
+}
+
+/**
+ * Reads the saved settings and replaces the env-managed keys with the value the server uses.
+ * Environment values of other keys never enter the result.
+ * @param {yaml.Document} document
+ * @returns {{ settings: ReturnType<typeof getChatCompletionConfigState>, envManaged: string[] }}
+ */
+function getEffectiveChatCompletionConfigState(document) {
+    const settings = getChatCompletionConfigState(document);
+    const envManaged = getEnvManagedChatCompletionKeys();
+
+    for (const key of envManaged) {
+        const fallback = _.get(CHAT_COMPLETION_CONFIG_DEFAULTS, key);
+        switch (CHAT_COMPLETION_CONFIG_KEY_TYPES[key]) {
+            case 'boolean':
+                _.set(settings, key, getConfigValue(key, fallback, 'boolean'));
+                break;
+            case 'depth':
+                _.set(settings, key, normalizeCachingDepth(getConfigValue(key, fallback, 'number')));
+                break;
+            default:
+                _.set(settings, key, toTrimmedString(getConfigValue(key, fallback)) || fallback);
+        }
+    }
+
+    return { settings, envManaged };
+}
+
+/**
+ * Copies the mirrored keys into the cached config object that getConfigValue reads, so a save applies at once.
+ * The object itself is never replaced and no other key is copied.
+ * @param {ReturnType<typeof getChatCompletionConfigState>} settings
+ */
+function applyChatCompletionConfigToCache(settings) {
+    const cachedConfig = getConfig();
+    for (const key of Object.keys(CHAT_COMPLETION_CONFIG_KEY_TYPES)) {
+        _.set(cachedConfig, key, _.get(settings, key));
+    }
 }
 
 function getThumbnailConfigState(document) {
@@ -342,20 +400,22 @@ function clearThumbnailCacheForUser(directories) {
     };
 }
 
-function normalizeChatCompletionConfigInput(settings) {
-    const cachingAtDepth = Number.parseInt(String(settings?.claude?.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth), 10);
+function normalizeChatCompletionConfigInput(settings, existingSettings = CHAT_COMPLETION_CONFIG_DEFAULTS) {
+    const fallbackClaude = existingSettings?.claude ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude;
+    const fallbackGemini = existingSettings?.gemini ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini;
+    const cachingAtDepth = normalizeCachingDepth(settings?.claude?.cachingAtDepth ?? fallbackClaude.cachingAtDepth ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth);
 
     return {
         claude: {
-            enableSystemPromptCache: Boolean(settings?.claude?.enableSystemPromptCache),
-            cachingAtDepth: Number.isFinite(cachingAtDepth) ? cachingAtDepth : CHAT_COMPLETION_CONFIG_DEFAULTS.claude.cachingAtDepth,
-            extendedTTL: Boolean(settings?.claude?.extendedTTL),
-            enableAdaptiveThinking: Boolean(settings?.claude?.enableAdaptiveThinking ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking),
+            enableSystemPromptCache: toBoolean(settings?.claude?.enableSystemPromptCache ?? fallbackClaude.enableSystemPromptCache ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableSystemPromptCache),
+            cachingAtDepth,
+            extendedTTL: toBoolean(settings?.claude?.extendedTTL ?? fallbackClaude.extendedTTL ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.extendedTTL),
+            enableAdaptiveThinking: toBoolean(settings?.claude?.enableAdaptiveThinking ?? fallbackClaude.enableAdaptiveThinking ?? CHAT_COMPLETION_CONFIG_DEFAULTS.claude.enableAdaptiveThinking),
         },
         gemini: {
-            apiVersion: toTrimmedString(settings?.gemini?.apiVersion || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
-            thoughtSignatures: Boolean(settings?.gemini?.thoughtSignatures ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures),
-            enableSystemPromptCache: Boolean(settings?.gemini?.enableSystemPromptCache),
+            apiVersion: toTrimmedString(settings?.gemini?.apiVersion ?? fallbackGemini.apiVersion ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion) || CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.apiVersion,
+            thoughtSignatures: toBoolean(settings?.gemini?.thoughtSignatures ?? fallbackGemini.thoughtSignatures ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.thoughtSignatures),
+            enableSystemPromptCache: toBoolean(settings?.gemini?.enableSystemPromptCache ?? fallbackGemini.enableSystemPromptCache ?? CHAT_COMPLETION_CONFIG_DEFAULTS.gemini.enableSystemPromptCache),
         },
     };
 }
@@ -775,6 +835,7 @@ router.post('/config/save', requireAdminMiddleware, async (request, response) =>
         const nextContent = content.endsWith('\n') ? content : `${content}\n`;
         tryWriteFileSync(configPath, nextContent);
         const nextStat = fs.statSync(configPath);
+        applyChatCompletionConfigToCache(getChatCompletionConfigState(parsed));
 
         if (restart) {
             scheduleRestart(response);
@@ -803,11 +864,13 @@ router.post('/config/save', requireAdminMiddleware, async (request, response) =>
 router.post('/config/chat-completions/get', requireAdminMiddleware, async (_request, response) => {
     try {
         const { configPath, stat, document } = readConfigDocument();
+        const { settings, envManaged } = getEffectiveChatCompletionConfigState(document);
 
         response.json({
             path: configPath,
             lastModifiedMs: stat.mtimeMs,
-            settings: getChatCompletionConfigState(document),
+            settings,
+            envManaged,
         });
     } catch (error) {
         console.error('Failed to read chat completions config settings.', error);
@@ -819,14 +882,16 @@ router.post('/config/chat-completions/save', requireAdminMiddleware, async (requ
     try {
         const restart = Boolean(request.body?.restart);
         const expectedLastModifiedMs = Number(request.body?.expectedLastModifiedMs);
-        const normalizedSettings = normalizeChatCompletionConfigInput(request.body?.settings);
         const { configPath, stat, document } = readConfigDocument();
+        const existingSettings = getChatCompletionConfigState(document);
+        const normalizedSettings = normalizeChatCompletionConfigInput(request.body?.settings, existingSettings);
 
         ensureExpectedConfigMtime(stat, expectedLastModifiedMs);
         applyChatCompletionConfigState(document, normalizedSettings);
 
         const nextStat = writeConfigDocument(configPath, document);
-        const nextSettings = getChatCompletionConfigState(document);
+        applyChatCompletionConfigToCache(getChatCompletionConfigState(document));
+        const { settings: nextSettings, envManaged } = getEffectiveChatCompletionConfigState(document);
 
         if (restart) {
             scheduleRestart(response);
@@ -836,6 +901,7 @@ router.post('/config/chat-completions/save', requireAdminMiddleware, async (requ
                 path: configPath,
                 lastModifiedMs: nextStat.mtimeMs,
                 settings: nextSettings,
+                envManaged,
                 message: 'Chat completion server config saved. Restarting SillyBunny now.',
             });
         }
@@ -846,7 +912,8 @@ router.post('/config/chat-completions/save', requireAdminMiddleware, async (requ
             path: configPath,
             lastModifiedMs: nextStat.mtimeMs,
             settings: nextSettings,
-            message: 'Chat completion server config saved. Restart the server to apply changes.',
+            envManaged,
+            message: 'Chat completion server config saved.',
         });
     } catch (error) {
         console.error('Failed to save chat completions config settings.', error);

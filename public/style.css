@@ -6854,146 +6854,8 @@ body:not(.movingUI) .drawer-content.maximized {
     flex: 0 0 clamp(160px, 32%, 220px);
 }
 
-.sb-chat-completion-server-config {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 12px;
-    min-width: 0;
-}
-
-.sb-chat-completion-server-config > * {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-}
-
-.sb-chat-completion-config-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    min-width: 0;
-    width: 100%;
-    max-width: 100%;
-}
-
-.sb-chat-completion-config-state {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 28px;
-    padding: 0 10px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
-    font-size: var(--sb-type-caption); /* SillyBunny: the size comes from the --sb-type-* scale. */
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    max-width: 100%;
-    white-space: normal;
-    text-align: center;
-    overflow-wrap: anywhere;
-}
-
-.sb-chat-completion-config-state[data-state='saved'] {
-    color: color-mix(in srgb, var(--color-success, #22c55e) 86%, white);
-    background: color-mix(in srgb, var(--color-success, #22c55e) 18%, transparent);
-}
-
-.sb-chat-completion-config-state[data-state='dirty'] {
-    color: color-mix(in srgb, var(--warning, #ef4444) 90%, white);
-    background: color-mix(in srgb, var(--warning, #ef4444) 16%, transparent);
-}
-
-.sb-chat-completion-config-grid {
-    display: grid;
-    width: 100%;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    gap: 12px;
-}
-
-.sb-chat-completion-config-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-width: 0;
-    /* SillyBunny: card padding on the spacing scale. */
-    padding: 12px;
-    border-radius: 16px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    overflow: hidden;
-}
-
-.sb-chat-completion-config-title {
-    font-size: var(--sb-type-control); /* SillyBunny: the size comes from the --sb-type-* scale. */
-    overflow-wrap: anywhere;
-}
-
-.sb-chat-completion-config-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    text-align: left;
-    min-width: 0;
-}
-
-.sb-chat-completion-config-actions {
-    display: grid;
-    width: 100%;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
-    gap: 8px;
-}
-
-.sb-chat-completion-config-actions .menu_button {
-    width: 100%;
-    min-width: 0;
-    min-height: 34px;
-    padding: 7px 10px;
-    white-space: normal;
-    line-height: 1.3;
-}
-
-.sb-chat-completion-config-status {
-    margin-bottom: 0;
-}
-
-.sb-chat-completion-config-inline-copy,
-.sb-chat-completion-config-inline-copy small,
-.sb-chat-completion-server-config .toggle-description,
-.sb-chat-completion-config-section .checkbox_label,
-.sb-chat-completion-config-field > span,
-.sb-chat-completion-config-actions .menu_button span {
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-}
-
-.sb-chat-completion-config-inline-copy {
-    flex: 1 1 220px;
-    max-width: 100%;
-}
-
-.sb-chat-completion-config-inline-copy strong,
-.sb-chat-completion-config-inline-copy small {
-    display: block;
-    max-width: 100%;
-}
-
-.sb-chat-completion-config-field .text_pole {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-}
-
 @media screen and (max-width: 850px) {
-    .sb-setting-inline-help,
-    .sb-chat-completion-config-header {
+    .sb-setting-inline-help {
         flex-direction: column;
         align-items: stretch;
     }
@@ -7001,10 +6863,6 @@ body:not(.movingUI) .drawer-content.maximized {
     .sb-setting-inline-help select {
         flex-basis: auto;
         width: 100%;
-    }
-
-    .sb-chat-completion-config-state {
-        align-self: flex-start;
     }
 }
 

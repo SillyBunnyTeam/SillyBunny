@@ -165,6 +165,10 @@ function revealBackendGroup(tabId, groupId) {
 const backendPagesContext = {
     revealGroup: revealBackendGroup,
     templateMenuSections: holder => getPresetMenuSections(holder, false, { master: false }),
+    refreshPresets() {
+        const prompting = getShellState('left')?.tabs.get('prompting');
+        if (prompting?.panel instanceof HTMLElement) updatePromptingPanel(prompting.panel);
+    },
 };
 
 /**
@@ -8839,6 +8843,7 @@ function updatePromptingPanel(panel) {
         const openAIReadingOrder = [
             'sb-openai-budget', 'sb-openai-names-behavior', 'sb-openai-continue-postfix', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request',
             'sb-openai-function-calling', 'sb-openai-inline-media', 'sb-openai-request-images', 'sb-openai-request-reasoning', 'sb-openai-reasoning-tags',
+            'sb-openai-prompt-caching',
         ];
         const orderedGroups = openAIReadingOrder
             .map(id => root.querySelector(`#${id}`))

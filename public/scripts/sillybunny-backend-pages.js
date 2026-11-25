@@ -3,6 +3,7 @@ import { openActionMenu } from './sillybunny-action-menu.js';
 import { createButtonRow, createEntryRow, createPropertyRow, createSpinRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { adoptButtonRows, adoptFieldRow, bindDependentSets, readRowTitle, unwrapLoneSelects } from './sillybunny-settings-presentation.js';
+import { createServerRequestSettings } from './sillybunny-server-request-settings.js';
 
 /**
  * Backend ▸ Formatting and Backend ▸ Presets. `sillybunny-tabs.js` builds the groups (a heading above one boxed list) and
@@ -11,7 +12,8 @@ import { adoptButtonRows, adoptFieldRow, bindDependentSets, readRowTitle, unwrap
  * to them, and the Backend visibility rules write to the nodes that wrap them.
  *
  * `context` carries what lives in `sillybunny-tabs.js`: `revealGroup(tabId, groupId)` and, for Presets,
- * `templateMenuSections(holder)`, the Template Actions menu sections for the action buttons a holder keeps.
+ * `templateMenuSections(holder)`, the Template Actions menu sections for the action buttons a holder keeps, and
+ * `refreshPresets()`, which updates the page's groups and its search index after a group came or went.
  */
 
 const textOf = node => node?.textContent.replace(/\s+/g, ' ').trim() ?? '';
@@ -785,10 +787,12 @@ function moveDependentSet(request, { id, source, switchId, rows = [] }) {
 }
 
 /**
- * Request Options: selects become select rows, and each switch with settings that depend on it becomes a group.
+ * Request Options: selects become select rows, and each switch with settings that depend on it becomes a group. The
+ * server's own settings (Prompt Caching and three rows of this group) come from `sillybunny-server-request-settings.js`.
  * @param {HTMLElement} root
+ * @param {{refreshPresets?: () => void}} [context]
  */
-function presentRequestOptions(root) {
+function presentRequestOptions(root, context = {}) {
     const request = root.querySelector('#sb-openai-request');
     const body = request && bodyOf(request);
     if (!(request instanceof HTMLElement && body)) return;
@@ -837,6 +841,8 @@ function presentRequestOptions(root) {
 
     const tagStyle = lift('openai_reasoning_tag_style');
     moveDependentSet(request, { id: 'sb-openai-reasoning-tags', source: wrapperOf('openai_auto_append_reasoning_tags'), switchId: 'openai_auto_append_reasoning_tags', rows: [tagStyle] });
+
+    createServerRequestSettings({ request, body, createGroup, onPlacementChange: () => context.refreshPresets?.() });
 
     request.dataset.sbPresented = 'true';
 }
@@ -927,8 +933,9 @@ function presentPromptCosts(body) {
 /**
  * Chat Completions groups.
  * @param {HTMLElement} root
+ * @param {{refreshPresets?: () => void}} [context]
  */
-function presentChatCompletion(root) {
+function presentChatCompletion(root, context = {}) {
     adoptHeadings(root);
     const budget = root.querySelector('#sb-openai-budget');
     if (budget instanceof HTMLElement) {
@@ -938,7 +945,7 @@ function presentChatCompletion(root) {
     }
     presentNames(root);
     presentPrefill(root);
-    presentRequestOptions(root);
+    presentRequestOptions(root, context);
 }
 
 /**
@@ -965,7 +972,7 @@ export function presentPresets(context) {
         const section = root.querySelector(`#${id}`);
         if (section instanceof HTMLElement) adoptRows(section);
     }
-    presentChatCompletion(root);
+    presentChatCompletion(root, context);
     presentNovel(root);
     bindDependentSets(root);
     syncTemplateRows();
