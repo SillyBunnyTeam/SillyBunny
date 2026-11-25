@@ -62,6 +62,8 @@ const ALLOWED_NON_GET_PATHS = new Set([
     '/api/sillybunny-conversation/get',
     '/api/sillybunny-conversation/chat/get',
     '/api/sillybunny-conversation/characters/get',
+    // The folders of the list, read when the workspace opens; a read, though it is a POST.
+    '/api/sillybunny-conversation/folders/get',
     '/api/sillybunny-conversation/update',
     '/api/sillybunny-conversation/chat/save',
     // The model, which the spec stubs.
