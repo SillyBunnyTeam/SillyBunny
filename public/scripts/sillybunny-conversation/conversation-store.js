@@ -11,6 +11,7 @@ import {
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
 import { isConversationActive } from './notifications.js';
+import { isPendingServerReply } from './pending-reply.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
 import { stripPreviewText } from './typing.js';
@@ -96,7 +97,11 @@ export function parseReminderDelayToMs(rawDelay) {
     return 0;
 }
 
-export function addConversationReminder(avatar, groupId, delayText, memoText, { chatId = '', personaId = getConversationPersonaId() } = {}) {
+/**
+ * @param {object} [options]
+ * @param {string} [options.id] An id that the caller derives, so that the reminder of a reply that two pages land is added once. Without it a new id is made.
+ */
+export function addConversationReminder(avatar, groupId, delayText, memoText, { chatId = '', personaId = getConversationPersonaId(), id = '' } = {}) {
     const delayMs = parseReminderDelayToMs(delayText);
     if (delayMs <= 0) {
         console.warn(`Conversation Mode: invalid reminder delay "${delayText}"`);
@@ -109,9 +114,13 @@ export function addConversationReminder(avatar, groupId, delayText, memoText, { 
         return null;
     }
 
+    if (id && view.reminders.some(item => item.id === id)) {
+        return null;
+    }
+
     const triggerAt = Date.now() + delayMs;
     const reminder = {
-        id: `rem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        id: id || `rem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         avatar,
         chatId: address.chatId,
         triggerAt,
@@ -137,10 +146,10 @@ export function updateLastUserActivity(avatar = getCurrentCharAvatar(), { chatId
     resetFollowupCount(avatar, { chatId, groupId, personaId });
 }
 
-export function createConversationMessage({ role = 'character', name = getCurrentCharName(), mes = '', extra = {} } = {}) {
+export function createConversationMessage({ role = 'character', name = getCurrentCharName(), mes = '', extra = {}, id = '' } = {}) {
     const createdAt = Date.now();
     return {
-        id: `${createdAt}-${Math.random().toString(36).slice(2)}`,
+        id: id || `${createdAt}-${Math.random().toString(36).slice(2)}`,
         role,
         name,
         is_user: role === 'user',
@@ -194,7 +203,9 @@ export function getConversationMessageCount(avatar = getCurrentCharAvatar(), { c
 }
 
 /**
- * Loads the chat that an avatar and a group name, so that it can be read and written.
+ * Loads the chat that an avatar and a group name, so that it can be read and written. A reply that the server wrote
+ * into the chat while no page was open is turned into bubbles first, so that a prompt or a new message never meets it
+ * as one raw message. The finalizer is loaded only when the chat holds such a reply.
  * @returns {Promise<{ conversationId: string, chatId: string }|null>} The address of the chat, or null when there is none.
  */
 export async function ensureConversationChatLoaded(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -202,7 +213,16 @@ export async function ensureConversationChatLoaded(avatar, { chatId = '', groupI
     if (!address) {
         return null;
     }
-    await conversationData.loadChat(address);
+    const loaded = await conversationData.loadChat(address);
+    if (loaded?.messages?.some(isPendingServerReply)) {
+        try {
+            const { finalizePendingReplies } = await import('./reply-finalizer-browser.js');
+            await finalizePendingReplies(address);
+        } catch (error) {
+            // The message stays pending, hidden from the timeline and the prompt, and the next load tries again. The caller's own work must not fail for it.
+            console.warn('Conversation Mode: a reply that the server wrote could not be landed', error);
+        }
+    }
     return address;
 }
 
@@ -238,6 +258,10 @@ export function appendConversationChatMessage(avatar, messageInput, { chatId = '
         return null;
     }
 
+    // A message with an id of its own, such as the picture of a reply that two pages land, is added once.
+    if (messageInput.id && conversationData.chat(address)?.messages.some(item => item.id === messageInput.id)) {
+        return null;
+    }
     const message = createConversationMessage(messageInput);
     conversationData.commitChat(address, (draft) => {
         draft.messages.push(message);

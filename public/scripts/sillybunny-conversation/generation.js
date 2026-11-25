@@ -297,15 +297,19 @@ export function extractCharacterReplyCommands(rawText, settings) {
     return extractCharacterReplyCommandParts(rawText, settings);
 }
 
-export function commitCharacterReplyCommands(commandParts, avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), reminderAvatar = avatar } = {}) {
+/**
+ * @param {object} [options]
+ * @param {string} [options.reminderIdPrefix] Makes the id of each reminder `<prefix>_<n>`, so that two pages that land the same reply add each reminder once.
+ */
+export function commitCharacterReplyCommands(commandParts, avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), reminderAvatar = avatar, reminderIdPrefix = '' } = {}) {
     for (const rawArgs of commandParts.scheduleUpdates) {
         applyScheduleUpdateCommand(avatar, rawArgs, { personaId });
     }
 
     // Always enable parsing of the reminder command from character DMs!
-    for (const reminder of commandParts.reminders) {
-        addConversationReminder(reminderAvatar, groupId, reminder.delay, reminder.memo, { chatId, personaId });
-    }
+    commandParts.reminders.forEach((reminder, index) => {
+        addConversationReminder(reminderAvatar, groupId, reminder.delay, reminder.memo, { chatId, personaId, ...(reminderIdPrefix ? { id: `${reminderIdPrefix}_${index}` } : {}) });
+    });
 }
 
 export function getConversationErrorDetail(error) {
@@ -551,12 +555,19 @@ export async function postMemberConversationReply(rawText, member, memberSetting
     return posted;
 }
 
-export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { anchorAvatar = avatar, role = 'character', name = '', extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), force = false, notify = false, validateTarget = null } = {}) {
+/**
+ * @param {object} [options]
+ * @param {string} [options.messageId] The id of the picture message. A reply that two pages land names it, and no picture is made when the chat holds a message with that id already.
+ */
+export async function generateSelfieFromContext(context, settings, avatar = getCurrentCharAvatar(), { anchorAvatar = avatar, role = 'character', name = '', extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), force = false, notify = false, validateTarget = null, messageId = '' } = {}) {
     const resolvedSettings = settings || {};
     if (!avatar) {
         return false;
     }
     if (typeof validateTarget === 'function' && !validateTarget()) {
+        return false;
+    }
+    if (messageId && getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId }).some(message => message.id === messageId)) {
         return false;
     }
 
@@ -609,6 +620,7 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
             chatId,
             groupId,
             personaId,
+            id: messageId,
         }, anchorAvatar);
         return true;
     }

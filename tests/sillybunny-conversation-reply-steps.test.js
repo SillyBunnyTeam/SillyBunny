@@ -1,7 +1,9 @@
 import { describe, expect, test } from '@jest/globals';
 
 import { parseCommandArgs } from '../public/scripts/sillybunny-conversation/generation-utils.js';
-import { buildReplySteps, splitMemberChatroomMessages } from '../public/scripts/sillybunny-conversation/reply-steps.js';
+import { buildPendingBubbles, buildReplySteps, splitMemberChatroomMessages } from '../public/scripts/sillybunny-conversation/reply-steps.js';
+import { readPendingReply } from '../public/scripts/sillybunny-conversation/pending-reply.js';
+import { pendingReply } from './util/conversation-pending-reply.js';
 
 const ASTER = { avatar: 'aster.png', name: 'Aster' };
 const NOVA = { avatar: 'nova.png', name: 'Nova' };
@@ -116,5 +118,95 @@ describe('a reply in a group', () => {
 
         expect(only.speakerAvatar).toBe('aster.png');
         expect(only.bubbles).toEqual(['Nova: this is the character talking']);
+    });
+});
+
+describe('the bubbles that a pending reply becomes', () => {
+    const REFERENCE = { messageId: 'u1', name: 'You', role: 'user', text: 'hi' };
+    const GROUP_SPEAKERS = [ASTER, NOVA];
+
+    function land({ text, pending = {}, speakers = [], mode = 'character', speaker = ASTER, reference = REFERENCE, settings = ALL_COMMANDS } = {}) {
+        const message = pendingReply({ text, speaker: speaker.avatar, anchor: 'aster.png', name: speaker.name, round: [], ...pending });
+        const reply = readPendingReply(message);
+        const groups = buildReplySteps(text, { speaker, mode, speakers, settings });
+        return { message, reply, ...buildPendingBubbles(message, reply, groups, { anchorAvatar: reply.anchor, reference }) };
+    }
+
+    test('take their ids and times from the pending message, so that two pages that land it build the same bubbles', () => {
+        const first = land({ text: 'one\n\ntwo\n\nthree' });
+        const second = land({ text: 'one\n\ntwo\n\nthree' });
+
+        expect(first.bubbles.map(bubble => bubble.id)).toEqual([`${first.message.id}.0`, `${first.message.id}.1`, `${first.message.id}.2`]);
+        expect(first.bubbles.map(bubble => bubble.created_at)).toEqual([0, 1, 2].map(step => first.message.created_at + step));
+        expect(first.bubbles[1].send_date).toBe(new Date(first.message.created_at + 1).toISOString());
+        expect(second.bubbles).toEqual(first.bubbles);
+    });
+
+    test('are shaped like the messages that the live path writes, and carry the token of the reply', () => {
+        const { bubbles, message } = land({ text: 'hello' });
+
+        expect(bubbles).toEqual([{
+            id: `${message.id}.0`,
+            role: 'character',
+            name: 'Aster',
+            is_user: false,
+            is_system: false,
+            mes: 'hello',
+            send_date: message.send_date,
+            created_at: message.created_at,
+            extra: { conversation_mode_reply: true, conversation_reply_to: REFERENCE, reply_token: 'abcdef0123456789' },
+        }]);
+        expect(bubbles[0].extra.server_generation).toBeUndefined();
+    });
+
+    test('point back at the message that they answer on the first bubble of each speaker only', () => {
+        const { bubbles } = land({ text: 'Aster: one\nNova: two\nAster: three\nNova: four', speakers: GROUP_SPEAKERS });
+
+        expect(bubbles.map(bubble => [bubble.name, bubble.role, Boolean(bubble.extra.conversation_reply_to), bubble.extra.member_avatar])).toEqual([
+            ['Aster', 'character', true, undefined],
+            ['Nova', 'member', true, 'nova.png'],
+            ['Aster', 'character', false, undefined],
+            ['Nova', 'member', false, 'nova.png'],
+        ]);
+    });
+
+    test('carry no reference when the reply answers no message that is in the chat', () => {
+        const { bubbles } = land({ text: 'hello', reference: null });
+
+        expect(bubbles[0].extra).not.toHaveProperty('conversation_reply_to');
+    });
+
+    test('keep the command metadata on the first bubble of a line, and run the command once', () => {
+        const { bubbles, sideEffects } = land({ text: 'Later [reminder: 15m | tea] [selfie: context="at my desk"]' });
+
+        expect(bubbles[0].extra.conversation_commands).toEqual({ selfieRequests: ['at my desk'], reminders: [{ delay: '15m', memo: 'tea' }] });
+        expect(sideEffects).toHaveLength(1);
+        expect(sideEffects[0]).toMatchObject({ speakerAvatar: 'aster.png', idPrefix: expect.stringMatching(/^rem_.*_g0$/) });
+        expect(sideEffects[0].commandParts.reminders).toEqual([{ delay: '15m', memo: 'tea' }]);
+    });
+
+    test('ask for a selfie with an id of its own, and no second reply card for a speaker who has one', () => {
+        const { selfieRequests, message } = land({ text: 'Look [selfie: context="beach"]\n\n[selfie: context="dusk"]' });
+
+        expect(selfieRequests.map(request => request.id)).toEqual([`${message.id}.s0`, `${message.id}.s1`]);
+        expect(selfieRequests.map(request => request.context)).toEqual(['beach', 'dusk']);
+        expect(selfieRequests[0].extra).toEqual({ conversation_mode_reply: true, reply_token: 'abcdef0123456789' });
+    });
+
+    test('mark the last bubble with the rest of the round, and no other bubble', () => {
+        const { bubbles, reply } = land({ text: 'one\n\ntwo', pending: { round: ['nova.png'], triggers: ['u1'] } });
+
+        expect(bubbles[0].extra).not.toHaveProperty('conversation_round');
+        expect(bubbles[1].extra.conversation_round).toEqual({ remaining: ['nova.png'], started: reply.roundStarted, triggers: ['u1'] });
+    });
+
+    test('carry no round marker when nobody is left to speak', () => {
+        const { bubbles } = land({ text: 'one\n\ntwo', pending: { round: [] } });
+
+        expect(bubbles.some(bubble => bubble.extra.conversation_round)).toBe(false);
+    });
+
+    test('are none for a reply that was only whitespace', () => {
+        expect(land({ text: '   ' })).toMatchObject({ bubbles: [], selfieRequests: [], sideEffects: [] });
     });
 });

@@ -26,6 +26,7 @@
 
 import { rebaseChat, describeSyncedMessages } from './conversation-data-merge.js';
 import { createSerialQueue } from './conversation-data-queue.js';
+import { isPendingServerReply } from './pending-reply.js';
 import { summarizeChat } from './conversation-summary.js';
 
 export const CHAT_STATE_FIELDS = Object.freeze(['readThrough', 'lastActivity', 'followupCount', 'lastAutoMessageAt', 'sessionMarkers']);
@@ -125,6 +126,7 @@ export function createConversationData(adapter) {
     let characterState = { version: 1, characters: {} };
     const listeners = new Set();
     const removalListeners = new Set();
+    const chatReadListeners = new Set();
     const queuedEvents = new Map();
     let eventScheduled = false;
     let status = { state: 'idle', code: '', retryAt: 0 };
@@ -187,6 +189,28 @@ export function createConversationData(adapter) {
                 listener(target);
             } catch (error) {
                 console.error('Conversation data removal listener failed:', error);
+            }
+        }
+    }
+
+    /**
+     * Listeners run at once, not at the end of the tick, each time the messages of a chat were read from the server
+     * (a load, a reload, a merge after a conflict). The `chat` events cannot say this: they are merged by type within a
+     * tick, and the one of a local change can replace the one of a load. What the server wrote into a chat that the
+     * page did not write, such as a pending reply, is found through this.
+     * @param {(address: ChatAddress) => void} listener
+     */
+    function onChatRead(listener) {
+        chatReadListeners.add(listener);
+        return () => chatReadListeners.delete(listener);
+    }
+
+    function announceChatRead(address) {
+        for (const listener of [...chatReadListeners]) {
+            try {
+                listener(address);
+            } catch (error) {
+                console.error('Conversation data chat listener failed:', error);
             }
         }
     }
@@ -652,6 +676,7 @@ export function createConversationData(adapter) {
             const session = newSession(address, json.chat);
             sessions.delete(key);
             attachSession(session);
+            announceChatRead(address);
             emit('chat', { address });
             emit('list', { id: address.conversationId });
             return session.chat;
@@ -795,6 +820,84 @@ export function createConversationData(adapter) {
         return 'retry';
     }
 
+    /**
+     * Puts the server's copy of a chat into the session and keeps what only this page wrote: the messages that the
+     * server does not have and that were not on it at the last load or save. The session is dirty afterwards when it
+     * kept any, so that its next save sends them.
+     */
+    function adoptServerRecords(session, serverRecords) {
+        const { conversationId, chatId } = session.address;
+        const result = rebaseChat({ localMessages: session.chat.messages, localHeader: session.chat.header, synced: session.synced, serverRecords });
+        session.chat.messages.splice(0, session.chat.messages.length, ...result.messages);
+        replaceContents(session.chat.header, result.header);
+        session.synced = describeSyncedMessages(serverRecords.slice(1));
+        session.dirty = result.appended > 0;
+        session.shrink = false;
+        const view = views.get(conversationId);
+        const entry = view?.chats.find(item => item.id === chatId);
+        if (view && entry) {
+            refreshEntrySummary(view, entry);
+            recomputeAggregates(view);
+        }
+        announceChatRead(session.address);
+        emit('chat', { address: session.address });
+        emit('list', { id: conversationId });
+        return result;
+    }
+
+    /**
+     * Sends what waits of one chat and resolves when the server has it.
+     * @param {ChatAddress} address
+     * @returns {Promise<boolean>} Whether the chat is saved. False when it is not loaded, or when the save failed.
+     */
+    async function saveChat(address) {
+        const session = sessions.get(keyOf(address));
+        if (!session?.chat) {
+            return false;
+        }
+        if (session.saving) {
+            await session.savePromise;
+        }
+        if (session.dirty && !session.failed && !session.dropped) {
+            adapter.clearTimer(session.retryTimer);
+            session.retries = 0;
+            await saveSession(session);
+        }
+        return !session.dirty && !session.saving && !session.failed && !session.dropped;
+    }
+
+    /**
+     * Reads a chat from the server again, for a change that the page did not make (a reply that the server wrote
+     * while the page was frozen, a save of another tab). What waits to be saved goes first, so that the server's copy
+     * already has it; a message that the page wrote since stays, merged by id as after a conflict. A chat that is not
+     * loaded is loaded.
+     * @param {ChatAddress} address
+     * @returns {Promise<LoadedChat|null>} Null when the chat was dropped while the request was out.
+     */
+    async function reloadChat(address) {
+        const key = keyOf(address);
+        const session = sessions.get(key);
+        if (!session?.chat) {
+            return loadChat(address);
+        }
+        await saveChat(address);
+        const answer = await request('/chat/get', { id: address.conversationId, chatId: address.chatId });
+        if (answer.status !== 200) {
+            throw failureOf(answer);
+        }
+        if (session.dropped || sessions.get(key) !== session) {
+            return null;
+        }
+        const result = adoptServerRecords(session, answer.json.chat);
+        if (result.lostEdits > 0 || result.lostDeletes > 0) {
+            emit('conflict', { address: session.address, appended: result.appended, lostEdits: result.lostEdits, lostDeletes: result.lostDeletes });
+        }
+        if (session.dirty) {
+            void saveSession(session);
+        }
+        return session.chat;
+    }
+
     async function rebaseSession(session, allowShrink) {
         const { conversationId, chatId } = session.address;
         session.rebases = (session.rebases ?? 0) + 1;
@@ -815,20 +918,7 @@ export function createConversationData(adapter) {
             reportError(session.failed, 'The chat could not be reloaded after it changed elsewhere.', { address: session.address });
             return 'failed';
         }
-        const result = rebaseChat({ localMessages: session.chat.messages, localHeader: session.chat.header, synced: session.synced, serverRecords: answer.json.chat });
-        session.chat.messages.splice(0, session.chat.messages.length, ...result.messages);
-        replaceContents(session.chat.header, result.header);
-        session.synced = describeSyncedMessages(answer.json.chat.slice(1));
-        session.dirty = result.appended > 0;
-        session.shrink = false;
-        const view = views.get(conversationId);
-        const entry = view?.chats.find(item => item.id === chatId);
-        if (view && entry) {
-            refreshEntrySummary(view, entry);
-            recomputeAggregates(view);
-        }
-        emit('chat', { address: session.address });
-        emit('list', { id: conversationId });
+        const result = adoptServerRecords(session, answer.json.chat);
         emit('conflict', { address: session.address, appended: result.appended, lostEdits: result.lostEdits, lostDeletes: result.lostDeletes });
         if (!session.dirty) {
             session.rebases = 0;
@@ -852,6 +942,7 @@ export function createConversationData(adapter) {
                 refreshEntrySummary(view, entry);
                 recomputeAggregates(view);
             }
+            announceChatRead(session.address);
             emit('chat', { address: session.address });
             emit('list', { id: conversationId });
         } catch {
@@ -859,10 +950,17 @@ export function createConversationData(adapter) {
         }
     }
 
-    /** Sets the read marker of a chat to its last message, loading the chat first when it is not loaded. */
+    /**
+     * Sets the read marker of a chat to its last message, loading the chat first when it is not loaded. A reply that
+     * the server wrote and no page has landed yet is not a message to read through: the finalizer replaces it with
+     * bubbles of other ids, and a marker that names no message counts no unread message for good.
+     */
     async function markRead(address) {
         const loaded = chat(address) ?? await loadChat(address);
-        const last = loaded.messages.at(-1);
+        let last = null;
+        for (let index = loaded.messages.length - 1; index >= 0 && !last; index--) {
+            last = isPendingServerReply(loaded.messages[index]) ? null : loaded.messages[index];
+        }
         if (!last?.id) {
             return;
         }
@@ -1325,6 +1423,8 @@ export function createConversationData(adapter) {
         characterState: getCharacterState,
         resolve,
         loadChat,
+        reloadChat,
+        saveChat,
         setOpen,
         patchConversation,
         patchCharacter,
@@ -1341,6 +1441,7 @@ export function createConversationData(adapter) {
         removeMember,
         removeExtra,
         onRemoval,
+        onChatRead,
         markRead,
         importLegacy,
         flush,

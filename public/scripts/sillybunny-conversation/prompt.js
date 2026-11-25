@@ -21,6 +21,7 @@ import {
 } from './context.js';
 import { generateConversationRaw } from './generation.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
+import { isPendingServerReply } from './pending-reply.js';
 import { getCharacterAuthorNote, getCharacterForAvatar, getConversationParticipants, getParticipantNamesForDisplay } from './media.js';
 import {
     composeConversationPersonaDescription,
@@ -247,7 +248,7 @@ export async function buildConversationPromptMessages(messages, directive, speak
         identifier: 'conversation-transcript-header',
     }];
 
-    const sliceMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT);
+    const sliceMessages = messages.filter(message => !isPendingServerReply(message)).slice(-TRANSCRIPT_MESSAGE_LIMIT);
     const convertedMessages = await Promise.all(sliceMessages.map(async (message, index) => {
         const parts = [
             formatPromptText(message.mes, 1800),
@@ -362,7 +363,7 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
     }
 
     const chat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
-    const messages = Array.isArray(chat?.messages) ? chat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
+    const messages = Array.isArray(chat?.messages) ? chat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system' && !isPendingServerReply(message)) : [];
     if (!messages.length || (!force && messages.length < MEMORY_SUMMARY_MIN_MESSAGES)) {
         if (notify) {
             toastr.info(`Memory appears after at least ${MEMORY_SUMMARY_MIN_MESSAGES} messages, or when there is enough chat to summarize`);
@@ -397,7 +398,7 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         if (response?.trim()) {
             const currentChat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
             const currentMessages = Array.isArray(currentChat?.messages)
-                ? currentChat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system')
+                ? currentChat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system' && !isPendingServerReply(message))
                 : [];
             if (getConversationMessagesRevision(currentMessages) !== sourceRevision) {
                 return false;

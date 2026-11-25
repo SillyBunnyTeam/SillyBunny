@@ -160,6 +160,15 @@ describe('Conversation prompt lorebook entries', () => {
         expect(prompt[4]).toEqual({ role: 'user', content: 'Depth two lore.', identifier: 'conversation-world-info-depth-2-user' });
     });
 
+    test('leaves a reply that the server wrote and no page has landed yet out of the transcript', async () => {
+        const pending = { ...message('3', 'character', 'Reisen'), extra: { server_generation: { pending: true } } };
+        const messages = [message('1', 'user', 'Moon Fan'), message('2', 'character', 'Reisen'), pending];
+
+        const prompt = await buildConversationPromptMessages(messages, 'Reply.', 'Reisen', { personaId: 'persona-a.png', worldInfo: EMPTY });
+
+        expect(prompt.map(item => item.identifier)).toEqual(['conversation-transcript-header', 'conversation-message-1', 'conversation-message-2', 'conversation-reply-directive']);
+    });
+
     test('keeps the empty transcript note before a depth zero entry', async () => {
         const prompt = await buildConversationPromptMessages([], 'Reply.', 'Reisen', {
             personaId: 'persona-a.png',

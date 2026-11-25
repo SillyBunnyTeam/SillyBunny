@@ -82,7 +82,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-
 
 const {
     editConversationMessage,
+    commitCharacterReplyCommands,
     generateConversationReply,
+    generateSelfieFromContext,
     getConversationErrorDetail,
     postCharacterReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
@@ -269,6 +271,36 @@ describe('Conversation core generated reply regressions', () => {
             chatId: 'branch-a',
             personaId: 'persona-a.png',
         });
+    });
+
+    test('derives the ids of the reminders of a reply from an id that the caller gives, so that two pages that land the reply add each once', () => {
+        commitCharacterReplyCommands({ scheduleUpdates: [], reminders: [{ delay: '15m', memo: 'tea' }, { delay: '1h', memo: 'call' }] }, 'char.png', {
+            chatId: 'branch-a',
+            groupId: '',
+            personaId: 'persona-a.png',
+            reminderIdPrefix: 'rem_p_g0',
+        });
+
+        expect(addConversationReminder.mock.calls).toEqual([
+            ['char.png', '', '15m', 'tea', { chatId: 'branch-a', personaId: 'persona-a.png', id: 'rem_p_g0_0' }],
+            ['char.png', '', '1h', 'call', { chatId: 'branch-a', personaId: 'persona-a.png', id: 'rem_p_g0_1' }],
+        ]);
+    });
+
+    test('gives the picture message of a selfie the id that the caller names, and makes no picture when that message is in the chat already', async () => {
+        generateConversationImage.mockResolvedValue('/img/beach.png');
+        const options = { anchorAvatar: 'char.png', chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', force: true, messageId: 'pending.s0', name: 'Aster' };
+
+        await expect(generateSelfieFromContext('beach', settings, 'char.png', options)).resolves.toBe(true);
+
+        expect(appendConversationMessage.mock.calls.at(-1)[1]).toMatchObject({ id: 'pending.s0', extra: { conversation_mode_image: true, image_url: '/img/beach.png' } });
+
+        generateConversationImage.mockClear();
+        chatMessages.push({ id: 'pending.s0', role: 'character', name: 'Aster', mes: 'Here', extra: {} });
+        await expect(generateSelfieFromContext('beach', settings, 'char.png', options)).resolves.toBe(false);
+
+        expect(generateConversationImage).not.toHaveBeenCalled();
+        chatMessages.pop();
     });
 
     test('saves only changed content and closes the editor in all cases', async () => {

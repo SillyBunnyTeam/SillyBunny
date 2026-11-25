@@ -1,10 +1,12 @@
+import { isPendingServerReply } from './pending-reply.js';
 import { conversationState } from './state.js';
 import { getConversationAttachmentLabels, getConversationAttachmentSummary } from './conversation-store.js';
 
 export function getConversationTimelineMessages(messages, { channel = conversationState.conversationTimelineChannel, query = conversationState.conversationTimelineSearchQuery } = {}) {
     const normalizedQuery = String(query || '').trim().toLowerCase();
     return (Array.isArray(messages) ? messages : []).filter((message) => {
-        if (!message) {
+        // A reply that the server wrote waits as one message with the raw text until the finalizer turns it into bubbles.
+        if (!message || isPendingServerReply(message)) {
             return false;
         }
 

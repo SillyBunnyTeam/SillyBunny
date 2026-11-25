@@ -16,6 +16,7 @@
 import {
     extractCharacterReplyCommandParts,
     getCharacterReplyCommandMetadata,
+    hasCharacterReplyCommandSideEffects,
     normalizeConversationOutputText,
     splitChatroomMessages,
 } from './generation-utils.js';
@@ -83,4 +84,77 @@ export function buildReplySteps(rawText, { speaker, mode = 'character', speakers
             commandMetadata: getCharacterReplyCommandMetadata(commandParts),
         };
     });
+}
+
+/**
+ * The bubbles that a pending reply becomes, built the way the live path writes them: the same roles, names and
+ * `extra` keys, one reply card on the first bubble of each speaker, the command metadata on the first bubble of a
+ * line. Ids and times come from the pending message (`<id>.<n>`, one millisecond apart), so that two pages that land
+ * the same reply build the same bubbles and the data module's merge by id collapses them.
+ * @param {{ id: string, created_at: number }} message The pending message.
+ * @param {import('./pending-reply.js').PendingReply} reply Its marker.
+ * @param {ReplyGroup[]} groups What `buildReplySteps()` made of its text.
+ * @param {object} context
+ * @param {string} context.anchorAvatar Who the role `character` belongs to; every other speaker is a member.
+ * @param {Record<string, any>|null} [context.reference] The reply card for the message that the reply answers.
+ * @returns {{ bubbles: object[], selfieRequests: { id: string, speaker: ReplySpeaker, speakerAvatar: string, context: string, role: string, extra: Record<string, any> }[], sideEffects: { speakerAvatar: string, commandParts: ReplyGroup['commandParts'], idPrefix: string }[] }}
+ * `sideEffects` are the schedule updates and reminders, which the page runs once after the bubbles are saved;
+ * `selfieRequests` are the pictures to make after that. `idPrefix` makes the reminder ids the same on every page.
+ */
+export function buildPendingBubbles(message, reply, groups, { anchorAvatar, reference = null }) {
+    const bubbles = [];
+    const selfieRequests = [];
+    const sideEffects = [];
+    const speakersWithReference = new Set();
+    const createdAt = Number(message.created_at) || 0;
+
+    const extraFor = (speakerAvatar) => {
+        const extra = {
+            ...(reply.origin === 'reply' ? { conversation_mode_reply: true } : {}),
+            reply_token: reply.token,
+        };
+        if (speakerAvatar !== anchorAvatar) {
+            extra.member_avatar = speakerAvatar;
+        }
+        if (reference && !speakersWithReference.has(speakerAvatar)) {
+            speakersWithReference.add(speakerAvatar);
+            extra.conversation_reply_to = { ...reference };
+        }
+        return extra;
+    };
+
+    groups.forEach((group, groupIndex) => {
+        const { speaker, speakerAvatar } = group;
+        const role = speakerAvatar !== anchorAvatar ? 'member' : 'character';
+        group.bubbles.forEach((text, bubbleIndex) => {
+            const time = createdAt + bubbles.length;
+            const extra = extraFor(speakerAvatar);
+            if (bubbleIndex === 0 && group.commandMetadata) {
+                extra.conversation_commands = structuredClone(group.commandMetadata);
+            }
+            bubbles.push({
+                id: `${message.id}.${bubbles.length}`,
+                role,
+                name: speaker.name || 'Character',
+                is_user: false,
+                is_system: false,
+                mes: text,
+                send_date: new Date(time).toISOString(),
+                created_at: time,
+                extra,
+            });
+        });
+        if (group.bubbles.length && hasCharacterReplyCommandSideEffects(group.commandParts)) {
+            sideEffects.push({ speakerAvatar, commandParts: group.commandParts, idPrefix: `rem_${message.id}_g${groupIndex}` });
+        }
+        for (const context of group.commandParts.selfieRequests) {
+            selfieRequests.push({ id: `${message.id}.s${selfieRequests.length}`, speaker, speakerAvatar, context, role, extra: extraFor(speakerAvatar) });
+        }
+    });
+
+    if (bubbles.length && reply.round.length) {
+        bubbles[bubbles.length - 1].extra.conversation_round = { remaining: [...reply.round], started: reply.roundStarted, triggers: [...reply.triggers] };
+    }
+
+    return { bubbles, selfieRequests, sideEffects };
 }

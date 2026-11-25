@@ -5,7 +5,7 @@ import { scheduleInterfaceRefresh, scheduleConversationListRender } from './rend
 import { conversationState } from './state.js';
 import { appendConversationChatMessage, ensureConversationChatLoaded, markConversationSeen } from './conversation-store.js';
 
-export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId() } = {}, avatar = getCurrentCharAvatar()) {
+export async function appendConversationMessage(messageText, { name = getCurrentCharName(), role = 'character', extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), id = '' } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return null;
     }
@@ -21,6 +21,7 @@ export async function appendConversationMessage(messageText, { name = getCurrent
         name,
         mes: messageText,
         extra,
+        id,
     }, { chatId, groupId: resolvedGroupId, personaId });
     if (!message) {
         return null;

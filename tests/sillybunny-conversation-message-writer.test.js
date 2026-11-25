@@ -1,7 +1,9 @@
+/* global globalThis */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
 import { PERSONA, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
+import { pendingReply } from './util/conversation-pending-reply.js';
 
 const charactersByAvatar = new Map();
 let data;
@@ -12,6 +14,7 @@ const markConversationRead = jest.fn();
 const isConversationActive = jest.fn(() => false);
 const scheduleInterfaceRefresh = jest.fn();
 const scheduleConversationMemorySummary = jest.fn();
+const finalizePendingReplies = jest.fn();
 
 await jest.unstable_mockModule('../public/script.js', () => ({ characters: [], saveSettingsDebounced: jest.fn(), this_chid: undefined }));
 await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: {} }));
@@ -47,9 +50,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/tts.js', () => ({ narrateConversationMessage: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({ finalizePendingReplies }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({ scheduleConversationMemorySummary }));
 
 const { afterIncomingMessage, appendConversationMessage } = await import('../public/scripts/sillybunny-conversation/message-writer.js');
+const { addConversationReminder, ensureConversationChatLoaded } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
 
 let server;
 
@@ -60,6 +65,7 @@ beforeEach(async () => {
         mock.mockClear();
     }
     isConversationActive.mockReset().mockReturnValue(false);
+    finalizePendingReplies.mockReset().mockResolvedValue([]);
 });
 
 afterEach(async () => {
@@ -163,5 +169,87 @@ describe('the effects of an incoming message', () => {
 
         expect(notifyNewConversationMessage).toHaveBeenCalledWith('Nova.png', incoming, false, expect.anything());
         expect(scheduleConversationMemorySummary).not.toHaveBeenCalled();
+    });
+});
+
+describe('a chat that holds a reply that the server wrote', () => {
+    const address = { conversationId: 'conv_1_direct01', chatId: 'main' };
+    const PENDING = pendingReply({ text: 'raw reply', triggers: ['main-1'] });
+    const WITH_PENDING = { ...TWO_CHATS, chats: [{ id: 'main', messages: ['hello', 'hi there', { record: PENDING }] }, { id: 'trip', messages: ['to the sea'] }] };
+    const load = () => ensureConversationChatLoaded('Nova.png', { chatId: 'main', groupId: '', personaId: PERSONA });
+
+    test('is landed before the page reads it, so that a prompt never sees the raw message', async () => {
+        await startData([WITH_PENDING]);
+        finalizePendingReplies.mockImplementation(async (landing) => {
+            data.commitChat(landing, (draft) => {
+                draft.messages.splice(2, 1, { id: 'bubble', role: 'character', name: 'Nova', mes: 'raw reply', extra: {} });
+            });
+            return [];
+        });
+
+        await expect(load()).resolves.toEqual(address);
+
+        expect(finalizePendingReplies).toHaveBeenCalledTimes(1);
+        expect(finalizePendingReplies).toHaveBeenCalledWith(address);
+        expect(data.chat(address).messages.map(message => message.id)).toEqual(['main-0', 'main-1', 'bubble']);
+    });
+
+    test('is not looked for in a chat that holds none, and the finalizer is not loaded for it', async () => {
+        await startData([TWO_CHATS]);
+
+        await load();
+
+        expect(finalizePendingReplies).not.toHaveBeenCalled();
+    });
+
+    test('does not stop the caller when it cannot be landed: the message stays pending, and the predicates keep it hidden', async () => {
+        await startData([WITH_PENDING]);
+        finalizePendingReplies.mockRejectedValue(new Error('the finalizer failed'));
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        await expect(load()).resolves.toEqual(address);
+
+        expect(warn).toHaveBeenCalled();
+        expect(data.chat(address).messages).toHaveLength(3);
+        warn.mockRestore();
+    });
+
+    test('is landed before a message is added after it', async () => {
+        await startData([WITH_PENDING]);
+        finalizePendingReplies.mockImplementation(async (landing) => {
+            data.commitChat(landing, (draft) => {
+                draft.messages.splice(2, 1);
+            });
+            return [];
+        });
+
+        await reply('main', 'A live reply.');
+
+        expect(data.chat(address).messages.map(message => message.mes)).toEqual(['hello', 'hi there', 'A live reply.']);
+    });
+});
+
+describe('a message or a reminder that a caller gives an id', () => {
+    test('keeps the id, so that a reply landed by two pages has the same messages in both', async () => {
+        await startData([TWO_CHATS]);
+
+        const message = await appendConversationMessage('Here, a picture.', { name: 'Nova', role: 'character', id: 'pending.s0', chatId: 'main', groupId: '', personaId: PERSONA }, 'Nova.png');
+
+        expect(message.id).toBe('pending.s0');
+        expect(data.chat({ conversationId: 'conv_1_direct01', chatId: 'main' }).messages.at(-1).id).toBe('pending.s0');
+    });
+
+    test('is added to the conversation once, however often the same reply asks for it', async () => {
+        globalThis.toastr = { info: jest.fn() };
+        await startData([TWO_CHATS]);
+        const options = { chatId: 'main', personaId: PERSONA, id: 'rem_pending_g0_0' };
+
+        addConversationReminder('Nova.png', '', '15m', 'tea', options);
+        addConversationReminder('Nova.png', '', '15m', 'tea', options);
+        await data.flush();
+
+        const reminders = data.get('conv_1_direct01').reminders;
+        expect(reminders.map(item => item.id)).toEqual(['rem_pending_g0_0']);
+        delete globalThis.toastr;
     });
 });

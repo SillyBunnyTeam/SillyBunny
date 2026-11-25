@@ -54,6 +54,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
     installConversationDataHooks: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/legacy-import.js', () => ({ importLegacyLocalStorage: jest.fn(async () => 'none') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({ installReplyFinalizer: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-engine.js', () => ({
     captureGroupAsideRequest: jest.fn(),
     captureRoleplayAsideRequest: options => ({ ...options, chatId: 'branch-a', roleplayContext: 'captured roleplay' }),

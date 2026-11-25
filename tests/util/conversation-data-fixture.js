@@ -189,16 +189,20 @@ export function scriptedAdapter(answer, overrides = {}) {
 /**
  * Puts conversations on the disk of a started server, through the store, and returns them with their ids.
  * @param {{ user: object }} server
- * @param {object[]} descriptors `{ id?, kind?, personaId?, characters, name?, chats?: [{ id?, name?, messages?: [text or { id, text, user, system, minute }], readThrough? }], settings?, reminders? }`
+ * @param {object[]} descriptors `{ id?, kind?, personaId?, characters, name?, chats?: [{ id?, name?, messages?: [text or { id, text, user, system, minute } or { record }], readThrough? }], settings?, reminders? }`
  * @returns {object[]} The stored conversations.
  */
 export function seedConversations(server, descriptors) {
     return descriptors.map((descriptor, index) => {
         const characters = descriptor.characters ?? ['Nova.png'];
         const chatInputs = (descriptor.chats ?? [{ id: 'main' }]).map((chat) => {
-            const messages = (chat.messages ?? []).map((item, number) => (typeof item === 'string'
-                ? line(`${chat.id ?? 'main'}-${number}`, item, { minute: number, user: number % 2 === 1 })
-                : line(item.id ?? `${chat.id ?? 'main'}-${number}`, item.text, { minute: item.minute ?? number, user: item.user, system: item.system })));
+            const messages = (chat.messages ?? []).map((item, number) => {
+                if (typeof item === 'string') {
+                    return line(`${chat.id ?? 'main'}-${number}`, item, { minute: number, user: number % 2 === 1 });
+                }
+                // A message record that the test built, such as a reply that the server wrote.
+                return item.record ?? line(item.id ?? `${chat.id ?? 'main'}-${number}`, item.text, { minute: item.minute ?? number, user: item.user, system: item.system });
+            });
             return {
                 id: chat.id ?? 'main',
                 name: chat.name ?? 'Main',
