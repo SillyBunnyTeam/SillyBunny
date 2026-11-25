@@ -631,14 +631,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/endpoints/chats.js` |
 | Area | Chat persistence, recovery fast paths, backup deduplication/pruning, chat search, and recent chats. |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Upstream's chat save, load, search, and recent endpoints re-read, re-parse, and re-hash the full JSONL file multiple times per save, issue seven `fsync` barriers with full-file pre-write copies, and perform O(M^2) buffer rescans during chat search. SillyBunny delegates bounded stat-tuple caching, row-level diffs, hard-linked pre-write backups, deferred Barrier #3 flush-before-prune tracking, raw-row load responses, and O(M*F) incremental search to `src/chat-io-fastpath.js` while preserving all crash-recovery and zero-data-loss invariants. |
 | Target seam | `src/chat-io-fastpath.js` and `src/chat-recovery.js`. |
 | Adapter shape | Delegate bounded stat-tuple caching (`chatStateCache`, `chatInfoCache`, `backupDedupeCache`), durable/non-durable atomic writers, crash-safe in-place writes with Barrier #1/#2 + deferred byte-0 flush tracking (`writeChatFileInPlaceFast`, `flushDirtyByte0ActiveFileSync`), hard-linked pre-write backups (`tryHardLinkPreWriteBackupSync`), and Schwartzian 1-stat backup pruning (`pruneBackupsByPrefix`) to `src/chat-io-fastpath.js` and `writeLatestChatSnapshotTrusted()` in `src/chat-recovery.js`. In `src/endpoints/chats.js`, keep row-level header/message comparison (`isSameChatSaveContentFast`, `isChatSaveExtensionFast`), raw-row `/api/chats/get` response assembly (`sendChatLoadResponse`), O(M*F) incremental fragment search (`createFragmentSearchMatcher`), O(1) `Set` pinned-chat sorting in `/recent`, `bigint` `fs.promises.stat` in `getChatInfo()`, and cache invalidation on save/rename/delete/import routes, each marked `SillyBunny:`. |
 | Protecting tests | `tests/chat-save-fastpath-differential.test.js`, `tests/chat-recovery.test.js`, `tests/chat-recovery-endpoints.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/chat-save-destructive-write.test.js`, `tests/chat-backups.test.js`, `tests/chat-backup-sequence.test.js`, `tests/chat-info.test.js`, `tests/prove-368-differential.test.js`. |
 | Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- --maxWorkers=2 chat-save-fastpath-differential.test.js`, `bun test chat-save-fastpath-differential.test.js`, and existing chat/recovery Jest suites. |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Revert the marked `SillyBunny:` fast-path hunks in `src/endpoints/chats.js` and `writeLatestChatSnapshotTrusted()` / dirty-byte0 flush hooks in `src/chat-recovery.js`, and delete `src/chat-io-fastpath.js` and `tests/chat-save-fastpath-differential.test.js`. On-disk chat JSONL, recovery `.latest.jsonl`, and backup formats remain 100% identical to upstream, so rollback requires no data migration. |
 | Last reviewed | 2026-11-26, PR #1036. |
-| Owner | `TODO(copy)` |
+| Owner | Server and data compatibility integrator. |
 
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
