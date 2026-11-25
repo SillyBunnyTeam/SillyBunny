@@ -92,29 +92,36 @@ describe('the menu of a row', () => {
 });
 
 describe('the New menu', () => {
-    test('offers New Conversation and New Group, then Mark All as Read in its own section', () => {
-        const actions = { newConversation: jest.fn(), newGroup: jest.fn(), markAllRead: jest.fn() };
+    test('offers New Conversation and New Group and nothing else', () => {
+        const actions = { newConversation: jest.fn(), newGroup: jest.fn() };
         const sections = buildNewMenuSections(actions);
 
-        expect(labels(sections)).toEqual([['New Conversation', 'New Group'], ['Mark All as Read']]);
+        expect(labels(sections)).toEqual([['New Conversation', 'New Group']]);
         find(sections, 'New Conversation').onSelect();
         find(sections, 'New Group').onSelect();
-        find(sections, 'Mark All as Read').onSelect();
         expect(actions.newConversation).toHaveBeenCalledTimes(1);
         expect(actions.newGroup).toHaveBeenCalledTimes(1);
-        expect(actions.markAllRead).toHaveBeenCalledTimes(1);
     });
 });
 
 describe('the Main Menu', () => {
-    test('holds Preferences and Help, the standard items of a primary menu, and no Close or Quit', () => {
-        const actions = { openPreferences: jest.fn(), openHelp: jest.fn() };
+    test('holds Mark All as Read first, then Preferences and Help as the last group, and no Close or Quit', () => {
+        const actions = { markAllRead: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() };
         const sections = buildMainMenuSections(actions);
 
-        expect(labels(sections)).toEqual([['Preferences', 'Help']]);
+        expect(labels(sections)).toEqual([['Mark All as Read'], ['Preferences', 'Help']]);
+        find(sections, 'Mark All as Read').onSelect();
         find(sections, 'Preferences').onSelect();
         find(sections, 'Help').onSelect();
+        expect(actions.markAllRead).toHaveBeenCalledTimes(1);
         expect(actions.openPreferences).toHaveBeenCalledTimes(1);
         expect(actions.openHelp).toHaveBeenCalledTimes(1);
+    });
+
+    test('gives every item an icon and disables none', () => {
+        const items = buildMainMenuSections({ markAllRead: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() }).flatMap(section => section.items);
+
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
     });
 });

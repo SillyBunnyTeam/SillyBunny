@@ -34,8 +34,8 @@ export function buildRowMenuSections(entry, actions) {
     ];
 }
 
-/** The New button's menu. Mark All as Read stays where the list had it until a task moves it. */
-export function buildNewMenuSections({ newConversation, newGroup, markAllRead }) {
+/** The New button's menu: the two ways to start a conversation. */
+export function buildNewMenuSections({ newConversation, newGroup }) {
     return [
         {
             items: [
@@ -43,13 +43,16 @@ export function buildNewMenuSections({ newConversation, newGroup, markAllRead })
                 { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: newGroup },
             ],
         },
-        { items: [{ label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: markAllRead }] },
     ];
 }
 
-/** The primary menu of the list's header bar (HIG Menus): the standard items of an application that has them. */
-export function buildMainMenuSections({ openPreferences, openHelp }) {
+/**
+ * The primary menu of the list's header bar (HIG Menus): what the whole list can do, then the standard items of an
+ * application that has them as the last group.
+ */
+export function buildMainMenuSections({ markAllRead, openPreferences, openHelp }) {
     return [
+        { items: [{ label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: markAllRead }] },
         {
             items: [
                 { label: 'Preferences', icon: 'fa-solid fa-sliders', onSelect: openPreferences },

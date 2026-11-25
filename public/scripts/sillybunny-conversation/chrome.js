@@ -586,7 +586,6 @@ function openConversationNewMenu(trigger) {
         sections: buildNewMenuSections({
             newConversation: runFromMenu('open-start-direct-conversation', {}, trigger),
             newGroup: runFromMenu('open-new-group-chat', {}, trigger),
-            markAllRead: runFromMenu('mark-all-read'),
         }),
         alignment: 'end',
     });
@@ -597,6 +596,7 @@ function openConversationMainMenu(trigger) {
         trigger,
         title: 'Main Menu',
         sections: buildMainMenuSections({
+            markAllRead: runFromMenu('mark-all-read'),
             openPreferences: () => void openConversationPreferences(),
             openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp()),
         }),
