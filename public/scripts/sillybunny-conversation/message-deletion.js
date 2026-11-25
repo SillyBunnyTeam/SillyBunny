@@ -3,6 +3,8 @@
  * the data module and the send queue as arguments, so that a test reaches them without a page.
  */
 
+import { removeQueueItems } from './deletion-guards.js';
+
 /**
  * The read marker that stays valid after messages are deleted. A marker that names a deleted message would make the
  * summary count every message as read (`summarizeChat` treats an unknown id as "all read"), so it moves back to the
@@ -38,15 +40,7 @@ export function dropQueueItemsOfDeletedMessages(queue, { chatId, messageIds }) {
     if (!doomed.size) {
         return [];
     }
-    const dropped = [];
-    for (let index = queue.length - 1; index >= 0; index--) {
-        const item = queue[index];
-        if (item?.chatId === chatId && Array.isArray(item.messageIds) && item.messageIds.some(id => doomed.has(String(id)))) {
-            dropped.unshift(item);
-            queue.splice(index, 1);
-        }
-    }
-    return dropped;
+    return removeQueueItems(queue, item => item?.chatId === chatId && Array.isArray(item.messageIds) && item.messageIds.some(id => doomed.has(String(id))));
 }
 
 /**

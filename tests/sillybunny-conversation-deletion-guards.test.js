@@ -6,6 +6,7 @@ import {
     dropQueuedReplies,
     installRemovalEffects,
     isTargetOfRemoval,
+    removeQueueItems,
 } from '../public/scripts/sillybunny-conversation/deletion-guards.js';
 
 const item = (conversationKey, chatId, extra = {}) => ({ conversationKey, chatId, avatar: 'Nova.png', messageIds: [], ...extra });
@@ -19,6 +20,26 @@ describe('which items a removal takes', () => {
     test('a removed chat takes only that chat', () => {
         expect(isTargetOfRemoval({ conversationId: 'conv_a', chatId: 'one' }, { conversationId: 'conv_a', chatId: 'one' })).toBe(true);
         expect(isTargetOfRemoval({ conversationId: 'conv_a', chatId: 'one' }, { conversationId: 'conv_a', chatId: 'two' })).toBe(false);
+    });
+});
+
+describe('removing items from the queue', () => {
+    test('takes the items that match out of the queue in place, and answers them in the order of the queue', () => {
+        const queue = [item('conv_a', 'one'), item('conv_b', 'two'), item('conv_a', 'three')];
+        const same = queue;
+
+        const removed = removeQueueItems(queue, queued => queued.conversationKey === 'conv_a');
+
+        expect(queue).toBe(same);
+        expect(queue).toEqual([item('conv_b', 'two')]);
+        expect(removed.map(queued => queued.chatId)).toEqual(['one', 'three']);
+    });
+
+    test('leaves the queue alone when nothing matches', () => {
+        const queue = [item('conv_a', 'one')];
+
+        expect(removeQueueItems(queue, () => false)).toEqual([]);
+        expect(queue).toHaveLength(1);
     });
 });
 

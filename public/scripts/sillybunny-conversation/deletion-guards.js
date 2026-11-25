@@ -12,21 +12,30 @@ export function isTargetOfRemoval(removed, candidate) {
 }
 
 /**
+ * Takes the items of the send queue that match out of it. The queue is the page's own array, so it is changed in place.
+ * @param {object[]} queue
+ * @param {(item: object) => boolean} matches
+ * @returns {object[]} The items that were removed, in the order that the queue had them.
+ */
+export function removeQueueItems(queue, matches) {
+    const removed = [];
+    for (let index = queue.length - 1; index >= 0; index--) {
+        if (matches(queue[index])) {
+            removed.unshift(queue[index]);
+            queue.splice(index, 1);
+        }
+    }
+    return removed;
+}
+
+/**
  * Drops the items of the send queue that were made for a removed target. An item carries the id of its conversation
  * as `conversationKey`, and the id of its chat, so that a forced reply that names no message is found as well.
  * @param {object[]} queue Changed in place.
  * @returns {number} How many items were dropped.
  */
 export function dropQueuedReplies(queue, removed) {
-    let dropped = 0;
-    for (let index = queue.length - 1; index >= 0; index--) {
-        const queued = queue[index];
-        if (isTargetOfRemoval(removed, { conversationId: queued.conversationKey, chatId: queued.chatId })) {
-            queue.splice(index, 1);
-            dropped++;
-        }
-    }
-    return dropped;
+    return removeQueueItems(queue, queued => isTargetOfRemoval(removed, { conversationId: queued.conversationKey, chatId: queued.chatId })).length;
 }
 
 /** The replies that are being generated, so that a deletion can stop the request instead of waiting for its answer. */
