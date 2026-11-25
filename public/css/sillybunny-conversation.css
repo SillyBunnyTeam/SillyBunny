@@ -2399,6 +2399,13 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     font-size: max(16px, var(--mainFontSize));
 }
 
+/* The entry shares its row with three 44px buttons, so at 320px it is narrower than the prompt: one line with an ellipsis, not a second line that the entry clips. */
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer textarea::placeholder {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 :where(#sheld[data-sb-conversation-layout='pages']) .sb-conversation-drop-hint {
     inset-inline: 10px;
     inset-block-end: 116px;

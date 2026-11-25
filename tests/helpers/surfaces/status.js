@@ -1264,17 +1264,17 @@ const CONVERSATION_SOURCES = [`${SCRIPTS}/sillybunny-conversation/timeline-rende
 
 const conversationChoose = status({
     id: 'conversation.choose-conversation',
-    title: 'Conversation: no DM chosen yet',
+    title: 'Conversation: no conversation chosen yet',
     component: 'shared',
     root: TIMELINE_EMPTY,
-    ready: titled(TIMELINE_EMPTY, 'Choose a DM to Begin'),
+    ready: titled(TIMELINE_EMPTY, 'Choose a Conversation'),
     async open(page) {
         await openConversation(page);
         await reveal(page, TIMELINE_EMPTY);
         await settle(page);
     },
     close: leaveConversation,
-    // A phone shows the Pals page when no DM is chosen; the thread area with this text is the wide layouts'.
+    // A phone shows the list page when no conversation is chosen; the chat area with this text is the wide layouts'.
     viewports: ['3440x1440', '1920x1080', '1440x900', '1024x600', '900x700'],
     sources: CONVERSATION_SOURCES,
     primaryFlow: true,
@@ -1282,10 +1282,10 @@ const conversationChoose = status({
 
 const conversationNoMessages = status({
     id: 'conversation.no-messages',
-    title: 'Conversation: a DM without messages',
+    title: 'Conversation: a conversation without messages',
     component: 'shared',
     root: TIMELINE_EMPTY,
-    ready: titled(TIMELINE_EMPTY, 'No DM Messages Yet'),
+    ready: titled(TIMELINE_EMPTY, 'No Messages Yet'),
     async open(page) {
         await openConversation(page, { thread: true });
         await reveal(page, TIMELINE_EMPTY);

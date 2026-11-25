@@ -32,8 +32,6 @@ const menuItemWith = text => `.sb-action-menu [role^="menuitem"]:has-text("${tex
 const HOME_MENU_BUTTON = '#chat > .welcomePanel .sbHomeMenuButton';
 const TAG_MANAGER = '#tag_view_list';
 const FOLDER_MANAGER = '.sb-dialog-host[open]:has(> .sb-folder-manager)';
-/** The matrix sizes up to 768px wide: the Conversation workspace shows one page at a time, and the prompt editor folds all its header actions into a menu. */
-const NARROW_VIEWPORTS = ['768x1024', '390x844', '360x640', '360x294', '320x568'];
 const ACTION_MENU = `${SCRIPTS}/sillybunny-action-menu.js`;
 const READY = { [MENU_ROOT]: '.sb-action-menu [role^="menuitem"]', [PICKER_ROOT]: '.sb-picker__option' };
 const PICKER = `${SCRIPTS}/sillybunny-editor/picker.js`;
@@ -93,19 +91,16 @@ export const surfaces = [
         primaryFlow: true,
     }),
     ...[
-        ['branch', 'Branches menu', 'open-chat-menu', 'chat'],
         ['overflow', 'Conversation menu', 'open-conversation-menu', 'chat'],
-        // The desktop composer has an attach button of its own; the menu replaces it where the workspace is paged.
-        ['composer', 'Conversation composer menu (Add to message)', 'open-composer-menu', 'chat', NARROW_VIEWPORTS],
+        ['composer', 'Conversation composer menu (Add to message)', 'open-composer-menu', 'chat'],
         ['status', 'Conversation status and persona menu', 'open-persona-menu', 'list'],
         ['new', 'New conversation menu', 'open-new-menu', 'list'],
         ['main', 'Conversation list main menu', 'open-main-menu', 'list'],
-    ].map(([id, title, action, workspacePage, viewports]) => menu({
+    ].map(([id, title, action, workspacePage]) => menu({
         id: `conversation.${id}`,
         title,
         needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/chrome.js`, ACTION_MENU],
-        ...(viewports && { viewports }),
+        sources: [`${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, ACTION_MENU],
         async open(page) {
             await openAuditConversation(page);
             await showConversationPage(page, workspacePage);

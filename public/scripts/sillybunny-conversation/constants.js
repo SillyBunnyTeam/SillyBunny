@@ -204,7 +204,7 @@ export const CHROME_IDS = Object.freeze({
     pickerBackdrop: 'sb_conversation_picker_backdrop',
 });
 export const AVAILABILITY_COPY = Object.freeze({
-    online: { label: 'Online', detail: 'Available for live replies.' },
+    online: { label: 'Online', detail: 'Available for Live Replies' },
     idle: { label: 'Idle', detail: 'May follow up after a quiet stretch.' },
     dnd: { label: 'Do Not Disturb', detail: 'Auto-responder answers new messages.' },
     offline: { label: 'Offline', detail: 'Auto-responder answers while away.' },

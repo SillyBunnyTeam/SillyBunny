@@ -597,15 +597,6 @@ export async function addMembersToConversation(avatars, { sourceAvatar, sourceGr
     return true;
 }
 
-export function getCurrentGroupMemberAvatars(groupId) {
-    const group = getConversationGroupById(groupId);
-    if (!group?.members?.length) {
-        return [];
-    }
-
-    return group.members.filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
-}
-
 export function toggleConversationGroupPicker({ anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
     const selectedMembers = new Set();
     const avatarOf = index => characters[index]?.avatar;

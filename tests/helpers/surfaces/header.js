@@ -429,8 +429,8 @@ export const surfaces = [
         owner: 'A',
         title: 'Conversation: content header of a group conversation',
         root: '#sb_conversation_header',
-        // The name of a group conversation lists its participants, so the second member's name is in it only when the group is open.
-        ready: withText('#sb_conversation_header [data-sb-conversation-name]', FIXTURES['characters-many'].characters[1].name),
+        // The header names a group as the list does: by the name that it was given, which a direct conversation has not.
+        ready: withText('#sb_conversation_header [data-sb-conversation-name]', FIXTURES.group.name),
         async open(page) {
             await openConversation(page, { group: true });
             await shown(page, '#sb_conversation_header');

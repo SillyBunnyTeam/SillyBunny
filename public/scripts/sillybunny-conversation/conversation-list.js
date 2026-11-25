@@ -18,7 +18,7 @@ import {
     parsePositiveInt,
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
-import { getCharacterForAvatar, getCharacterIndexForAvatar, getConversationParticipants } from './media.js';
+import { getCharacterForAvatar, getCharacterIndexForAvatar } from './media.js';
 import { formatPromptText } from './shared-helpers.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
@@ -94,37 +94,6 @@ export function getCurrentGroupConversationMembers({ requireRoleplayReactions = 
         })
         .filter(item => item.character?.avatar)
         .filter(item => !requireRoleplayReactions || item.settings.roleplay_reactions);
-}
-
-export function getScheduleEditorTargets(baseAvatar = getCurrentCharAvatar()) {
-    const targets = [];
-    const addTarget = (character, sourceLabel = '', groupId = '') => {
-        if (!character?.avatar || targets.some(target => target.avatar === character.avatar)) {
-            return;
-        }
-
-        targets.push({
-            avatar: character.avatar,
-            name: character.name || 'Character',
-            sourceLabel,
-            groupId,
-        });
-    };
-
-    const baseGroupId = getConversationGroupIdForAvatar(baseAvatar);
-    const baseSettings = baseAvatar ? getSettings(baseAvatar, { groupId: baseGroupId }) : null;
-    if (baseAvatar) {
-        getConversationParticipants(baseAvatar, baseSettings || getSettings(baseAvatar, { groupId: baseGroupId }), { groupId: baseGroupId })
-            .forEach(character => addTarget(character, 'Conversation', baseGroupId));
-    }
-
-    getCurrentGroupConversationMembers().forEach(({ character }) => addTarget(character, 'Group chat', getConversationGroupIdForAvatar(character?.avatar)));
-
-    if (!targets.length && baseAvatar) {
-        addTarget(getCharacterForAvatar(baseAvatar), 'Conversation', baseGroupId);
-    }
-
-    return targets;
 }
 
 export function getCharacterForGroupChatMessage(message) {

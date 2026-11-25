@@ -377,7 +377,7 @@ test('mobile pages keep the list and the chat as full screens, and the details o
     await expect(details).toBeVisible();
     // The page of the chat stays under the sheet, and the sheet holds the same rows as the window.
     await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
-    await expect(details.getByRole('switch').first()).toBeVisible();
+    await expect(details.getByRole('button', { name: /^Chats/ })).toBeVisible();
 });
 
 test.describe('the header', () => {

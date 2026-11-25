@@ -890,16 +890,15 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
             /** Turns on "React to current roleplay" for a character and makes the reaction roll always succeed. */
             async function enableReactions(page, name) {
                 await page.evaluate(async (characterName) => {
-                    const { saveSettings, getSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
-                    const { ensureDirectConversation } = await import('/scripts/sillybunny-conversation/context.js');
+                    const { ensureDirectConversation, getConversationRecord } = await import('/scripts/sillybunny-conversation/context.js');
+                    const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
                     const context = window.SillyTavern.getContext();
                     const avatar = context.characters.find(character => character.name === characterName).avatar;
                     const options = { groupId: '', personaId: String(context.userAvatar ?? '') };
                     // The settings belong to the conversation, so the conversation is made first.
                     await ensureDirectConversation(avatar, { personaId: options.personaId });
-                    saveSettings(avatar, { ...getSettings(avatar, options), roleplay_reactions: true }, options);
+                    conversationData.patchConversation(getConversationRecord(avatar, options).id, { settings: { roleplay_reactions: true } });
                     // The change goes to the server after a short delay; it is written now, so that it is not counted as a write of the chat that the test starts next.
-                    const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
                     await conversationData.flush();
                     Math.random = () => 0;
                 }, name);
