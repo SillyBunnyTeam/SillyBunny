@@ -14067,15 +14067,19 @@ function updateMessage(div) {
 }
 
 function openMessageDelete(fromSlashCommand, deleteToolCalls = true) {
-    closeMessageEditor();
-    hideSwipeButtons();
     if (fromSlashCommand || (!is_send_press) || (selected_group && !is_group_generating)) {
-        $('#dialogue_del_mes').css('display', 'block');
-        $('#send_form').css('display', 'none');
-        $('.del_checkbox').each(function () {
-            $(this).css('display', 'grid');
-            $(this).parent().children('.for_checkbox').css('display', 'none');
-        });
+        closeMessageEditor();
+        hideSwipeButtons();
+        // SillyBunny: the selection mode of sillybunny-message-selection.js (any messages, Shift ranges, Select All) replaces the
+        // "this message and everything after it" bar. A refusal below changes nothing, where upstream still set the delete-mode flag.
+        is_delete_mode = true;
+        import('./scripts/sillybunny-message-selection.js')
+            .then(({ openMessageSelection }) => openMessageSelection({ deleteToolCalls, onExit: () => { is_delete_mode = false; } }))
+            .catch((error) => {
+                console.error('Could not enter message selection', error);
+                is_delete_mode = false;
+                showSwipeButtons();
+            });
     } else {
         console.debug(`
             ERR -- could not enter del mode
@@ -14084,9 +14088,6 @@ function openMessageDelete(fromSlashCommand, deleteToolCalls = true) {
             selected_group: ${selected_group}
             is_group_generating: ${is_group_generating}`);
     }
-    this_del_mes = -1;
-    deleteToolCallsInDeleteMode = deleteToolCalls;
-    is_delete_mode = true;
 }
 
 function messageEditAuto(div) {

@@ -1590,66 +1590,71 @@ body.whisperstyle #chat .mes:not(.smallSysMes) .mes_edit_buttons .menu_button {
     }
 }
 
-/* ---------- Delete mode ---------- */
+/* ---------- Message selection ("Delete messages") ---------- */
 
-/* Cancel, the count, then Delete; the markup has the same order. */
-#dialogue_del_mes[style*='block'] {
-    padding-inline: 12px;
+/* The check, the header and the action bar are the shared selection mode of sillybunny-editor-shell.css. The ids of the
+   delete bar that it replaced (#dialogue_del_mes*) stay on them, so these rules also undo upstream's rules for those ids. */
+#sheld[data-selection-mode='true'] #send_form {
+    display: none;
+}
+
+#sb_message_selection_header {
+    background: var(--sb-layer-view);
+    border-block-end: var(--sb-headerbar-shade);
+}
+
+#form_sheld > #dialogue_del_mes.sb-selection-action-bar:not([hidden]) {
+    display: flex;
+    position: relative;
+    inline-size: 100%;
+    margin: 0;
     box-sizing: border-box;
-}
-
-#dialogue_del_mes > :is(.menu_button, [role='status']) {
-    display: inline-flex;
-    align-items: center;
     justify-content: center;
-    vertical-align: middle;
-    margin: 0 6px;
+    background: var(--sb-layer-view);
 }
 
-#dialogue_del_mes_cancel {
-    border-color: transparent;
-    background: var(--sb-raised-bg);
+#form_sheld #dialogue_del_mes .sb-selection-action {
+    margin: 0;
+    background-color: transparent;
 }
 
-#dialogue_del_mes_ok {
-    border-color: transparent;
-    background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
-    color: var(--sb-color-danger);
+#form_sheld #dialogue_del_mes_ok.sb-selection-action {
+    display: inline-flex;
 }
 
-@media (hover: hover) {
-    #dialogue_del_mes_cancel:hover {
-        background: var(--sb-raised-hover-bg);
-    }
-
-    #dialogue_del_mes_ok:hover {
-        background: color-mix(in srgb, var(--sb-color-danger) 26%, transparent);
-    }
+/* Per-message actions are off while messages are selected. A Shift-click would extend the browser's text selection over the rows between the two clicks. */
+#sheld[data-selection-mode='true'] #chat > .mes {
+    --sb-selection-gutter: 44px;
+    position: relative;
+    padding-inline-start: var(--sb-selection-gutter);
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
 }
 
-#dialogue_del_mes_count {
-    min-inline-size: 9ch;
-    color: var(--sb-muted-fg);
-    text-align: center;
-    font-variant-numeric: tabular-nums;
+#sheld[data-selection-mode='true'] #chat > .mes :is(.mes_buttons, .mes_edit_buttons, .extraMesButtons, .swipe_left, .swipe_right, .swipeRightBlock, .swipes-counter) {
+    display: none;
 }
 
-/* libadwaita's selection check: a 28px circle with a 2px outline. */
-#chat .mes .del_checkbox {
-    --sb-checkbox-size: 28px;
-    border-radius: var(--sb-radius-pill);
-    border-color: var(--sb-selection-check-outline);
-    opacity: 1;
+#chat > .mes > .sb-selection-check {
+    position: absolute;
+    inset-inline-start: 8px;
+    inset-block-start: 14px;
 }
 
-#chat .mes .del_checkbox:checked {
-    border-color: var(--sb-accent);
+/* A tool call or a narrator line is one short row, so its check is centred on it. */
+#sheld[data-selection-mode='true'] #chat > .mes[is_system='true'] {
+    min-block-size: 44px;
 }
 
-@media (hover: hover) {
-    #chat .mes .del_checkbox:not(:checked):not(:disabled):hover {
-        border-color: var(--sb-selection-check-outline-hover);
-    }
+#chat > .mes[is_system='true'] > .sb-selection-check {
+    inset-block-start: 50%;
+    transform: translateY(-50%);
+}
+
+#sheld[data-selection-mode='true'] #chat > .mes:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* Grows the 18px counter to the pointer's floor without moving it: up beside the arrow (which keeps its taps by z-index),

@@ -2868,6 +2868,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-25, conversation mode rework, task 3A. |
 | Owner | `TODO(copy)` |
 
+### `public/script.js` - Delete messages takes the selection mode
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (`openMessageDelete`). |
+| Area | Roleplay's "Delete messages": Options > Delete messages and `/del` with no number. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-message-selection.js` (`openMessageSelection`), on `public/scripts/sillybunny-editor/message-selection.js`. |
+| Adapter shape | `openMessageDelete` keeps its guard (a reply that is generating refuses the mode) and calls `openMessageSelection({ deleteToolCalls, onExit })` through a dynamic `import()`, which sets and clears `is_delete_mode`. The refusal changes nothing, where upstream still set the flag and hid the swipe buttons. Upstream's `.mes` click handler, `#dialogue_del_mes_ok` and `#dialogue_del_mes_cancel` handlers stay in the file and have no effect: the checkboxes they read are never shown, and the bar's buttons are replaced when the mode first starts. The mode deletes through the exported `deleteMessage` once per message, as `/cut` does, then `saveChatConditional({ allowShrink: true })`. A stylesheet key moved in `public/index.html` (`sillybunny-tabs.css`) and `public/scripts/power-user.js` (`sillybunny-chat-styles.css`). |
+| Protecting tests | `tests/message-selection-roleplay.e2e.js`; `tests/frontend/DeleteToolCalls.e2e.js`; `tests/foundation/message-actions.e2e.js` (`delete mode is the selection mode`); the `chat.roleplay.*` surface audit (state `delete-mode`); `tests/unit/sillybunny-selection-mode.test.js`. |
+| Validation | 2026-11-25: root and `tests/` lint; the full unit run; `npm run check:frontend-budgets`; `e2e-related --run e58d6e751`; the foundation message-actions spec on port 5421; the roleplay and conversation chat audits. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-25, conversation mode rework, task 3C. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

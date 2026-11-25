@@ -166,7 +166,7 @@ function transcriptStates(style) {
             {
                 id: 'delete-mode',
                 open: openDeleteMode,
-                ready: ['#dialogue_del_mes_ok', '#dialogue_del_mes_cancel', `${message(REST)} .del_checkbox`],
+                ready: ['#dialogue_del_mes_ok', '#dialogue_del_mes_cancel', `${message(REST)} .sb-selection-check`],
             },
             {
                 id: 'narrator-message',
