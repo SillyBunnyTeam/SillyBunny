@@ -166,6 +166,11 @@ export function clearWorldInfoCaches() {
     validatedWorldInfoFiles.clear();
 }
 
+function invalidateWorldInfoFileCaches(filePath) {
+    validatedWorldInfoFiles.delete(filePath);
+    worldInfoListCache.get(path.dirname(filePath))?.delete(filePath);
+}
+
 /**
  * Reads the list entry for one World Info file, from cache when the file is unchanged.
  * @param {string} filePath Full path to the file
@@ -296,7 +301,7 @@ router.post('/delete', (request, response) => {
     const pathToWorldInfo = path.join(request.user.directories.worlds, filename);
 
     fs.unlinkSync(pathToWorldInfo);
-    validatedWorldInfoFiles.delete(pathToWorldInfo);
+    invalidateWorldInfoFileCaches(pathToWorldInfo);
 
     return response.sendStatus(200);
 });
@@ -329,6 +334,7 @@ router.post('/import', async (request, response) => {
 
         const pathToNewFile = path.join(request.user.directories.worlds, filename);
         writeWorldInfoFile(pathToNewFile, persistedContents);
+        invalidateWorldInfoFileCaches(pathToNewFile);
         return response.send(localized.changed ? { name: worldName, data: worldContent } : { name: worldName });
     } catch (err) {
         console.error('World Info import failed:', err);
@@ -376,6 +382,7 @@ router.post('/edit', (request, response) => {
     }
 
     writeWorldInfoFile(pathToFile, JSON.stringify(request.body.data, null, 4));
+    invalidateWorldInfoFileCaches(pathToFile);
 
     return response.send({ ok: true, name: worldName });
 });
@@ -403,8 +410,8 @@ router.post('/rename', (request, response) => {
     try {
         writeWorldInfoFile(oldPath, JSON.stringify(data, null, 4));
         fs.renameSync(oldPath, newPath);
-        validatedWorldInfoFiles.delete(oldPath);
-        validatedWorldInfoFiles.delete(newPath);
+        invalidateWorldInfoFileCaches(oldPath);
+        invalidateWorldInfoFileCaches(newPath);
         return response.send({ ok: true, name: canonicalName });
     } catch (err) {
         console.error('World Info rename failed:', err);

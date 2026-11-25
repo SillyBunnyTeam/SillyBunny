@@ -404,17 +404,28 @@ export async function getOrGenerateMetadataBatch(userDataRoot, relativePaths, ty
     }
 
     // SillyBunny: decoding can take a while, so merge into a fresh read of the index right before
-    // writing. Folder changes saved meanwhile are kept instead of being overwritten by a stale copy.
+    // writing. Folder changes saved meanwhile are kept instead of being overwritten by a stale copy,
+    // and files deleted or renamed while decoding are not resurrected.
     if (generated.size > 0) {
         const latestIndex = await readMetadataIndex(userDataRoot);
+        let hasLiveUpdates = false;
         for (const [posixPath, metadata] of generated) {
+            const fullPath = path.join(userDataRoot, posixPath);
+            try {
+                await fs.access(fullPath);
+            } catch {
+                continue;
+            }
             const latestFolderIds = latestIndex.images[posixPath]?.folderIds;
             if (Array.isArray(latestFolderIds)) {
                 metadata.folderIds = [...latestFolderIds];
             }
             latestIndex.images[posixPath] = metadata;
+            hasLiveUpdates = true;
         }
-        await writeMetadataIndex(userDataRoot, latestIndex);
+        if (hasLiveUpdates) {
+            await writeMetadataIndex(userDataRoot, latestIndex);
+        }
     }
 
     return { results, generatedCount: generated.size };
@@ -443,27 +454,29 @@ export function queueMetadataGeneration(userDataRoot, relativePaths, type) {
     if (!queue.running) {
         const activeQueue = queue;
         activeQueue.running = (async () => {
-            while (activeQueue.pending.size > 0) {
-                /** @type {Map<ThumbnailType, string[]>} */
-                const byType = new Map();
-                for (const [relativePath, pathType] of activeQueue.pending) {
-                    byType.set(pathType, [...(byType.get(pathType) ?? []), relativePath]);
-                }
-                activeQueue.pending.clear();
-                for (const [pathType, paths] of byType) {
-                    try {
-                        await getOrGenerateMetadataBatch(userDataRoot, paths, pathType);
-                    } catch (error) {
-                        console.warn('[ImageMetadata] Background metadata generation failed:', error.message);
+            try {
+                while (activeQueue.pending.size > 0) {
+                    /** @type {Map<ThumbnailType, string[]>} */
+                    const byType = new Map();
+                    for (const [relativePath, pathType] of activeQueue.pending) {
+                        byType.set(pathType, [...(byType.get(pathType) ?? []), relativePath]);
+                    }
+                    activeQueue.pending.clear();
+                    for (const [pathType, paths] of byType) {
+                        try {
+                            await getOrGenerateMetadataBatch(userDataRoot, paths, pathType);
+                        } catch (error) {
+                            console.warn('[ImageMetadata] Background metadata generation failed:', error.message);
+                        }
                     }
                 }
+            } finally {
+                activeQueue.running = null;
+                if (metadataGenerationQueues.get(userDataRoot) === activeQueue && activeQueue.pending.size === 0) {
+                    metadataGenerationQueues.delete(userDataRoot);
+                }
             }
-        })().finally(() => {
-            activeQueue.running = null;
-            if (metadataGenerationQueues.get(userDataRoot) === activeQueue && activeQueue.pending.size === 0) {
-                metadataGenerationQueues.delete(userDataRoot);
-            }
-        });
+        })();
     }
 
     return queue.running;

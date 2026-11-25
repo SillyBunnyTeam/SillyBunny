@@ -389,10 +389,14 @@ class SentencePieceTokenizer {
                 let id = this.#pieceIdCache.get(piece);
                 if (id === undefined) {
                     const stringView = new sp.StringView(piece);
-                    const abslView = stringView.getView();
-                    id = instance.processor.PieceToId(abslView);
-                    abslView.delete();
-                    stringView.delete();
+                    let abslView = null;
+                    try {
+                        abslView = stringView.getView();
+                        id = instance.processor.PieceToId(abslView);
+                    } finally {
+                        abslView?.delete();
+                        stringView.delete();
+                    }
                     if (this.#pieceIdCache.size < SENTENCEPIECE_PIECE_CACHE_MAX) {
                         this.#pieceIdCache.set(piece, id);
                     }
@@ -1512,6 +1516,24 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
 }
 
 /**
+ * Counts a single batch entry with LRU caching, isolating per-entry errors (such as disallowed
+ * Tiktoken special tokens like `<|endoftext|>`) to an uncached guesstimate fallback so one entry
+ * cannot fail the rest of the batch.
+ * @param {string} namespace Canonical cache namespace
+ * @param {string} text Text to count
+ * @param {() => Promise<number>} compute Async token-count computation
+ * @returns {Promise<number>}
+ */
+async function countBatchEntry(namespace, text, compute) {
+    try {
+        return await getCachedTokenCount(namespace, text, compute);
+    } catch (error) {
+        console.warn('Error counting batch token entry, using fallback estimation:', error?.message ?? error);
+        return guesstimate(text);
+    }
+}
+
+/**
  * Counts tokens for a batch of plain text strings for a requested model using the bounded LRU cache.
  * @param {string} rawModel Requested model string
  * @param {string[]} texts Texts to count
@@ -1523,20 +1545,21 @@ async function countBatchTexts(rawModel, texts) {
     }
 
     const normalizedRaw = String(rawModel || '').trim();
-    if (normalizedRaw === 'nerdstash_v2') {
+    const lowerRaw = normalizedRaw.toLowerCase();
+    if (lowerRaw === 'nerdstash_v2') {
         const instance = await spp_nerd_v2.get();
         if (!instance) return texts.map(t => guesstimate(t));
-        return Promise.all(texts.map(text => getCachedTokenCount('sp:nerdstash_v2', text, async () => instance.encodeIds(text).length)));
+        return Promise.all(texts.map(text => countBatchEntry('sp:nerdstash_v2', text, async () => instance.encodeIds(text).length)));
     }
-    if (normalizedRaw === 'nerdstash') {
+    if (lowerRaw === 'nerdstash') {
         const instance = await spp_nerd.get();
         if (!instance) return texts.map(t => guesstimate(t));
-        return Promise.all(texts.map(text => getCachedTokenCount('sp:nerdstash', text, async () => instance.encodeIds(text).length)));
+        return Promise.all(texts.map(text => countBatchEntry('sp:nerdstash', text, async () => instance.encodeIds(text).length)));
     }
-    if (normalizedRaw === 'gpt2') {
+    if (lowerRaw === 'gpt2') {
         const { tokenizer, encoding } = await getTiktokenTokenizerAsync('gpt2');
         const namespace = `tiktoken:${encoding}`;
-        return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => tokenizer.encode(text).length)));
+        return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => tokenizer.encode(text).length)));
     }
 
     const model = getTokenizerModel(normalizedRaw);
@@ -1558,7 +1581,7 @@ async function countBatchTexts(rawModel, texts) {
             return texts.map(t => guesstimate(t));
         }
         const namespace = `sp:${canonical}`;
-        return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => instance.encodeIds(text).length)));
+        return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => instance.encodeIds(text).length)));
     }
 
     /** @type {Record<string, WebTokenizer|ClaudeTokenizer>} */
@@ -1580,12 +1603,12 @@ async function countBatchTexts(rawModel, texts) {
             return texts.map(t => guesstimate(t));
         }
         const namespace = `web:${canonical}`;
-        return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => instance.encode(text).length)));
+        return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => instance.encode(text).length)));
     }
 
     const { tokenizer, encoding } = await getTiktokenTokenizerAsync(model);
     const namespace = `tiktoken:${encoding}`;
-    return Promise.all(texts.map(text => getCachedTokenCount(namespace, text, async () => tokenizer.encode(text).length)));
+    return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => tokenizer.encode(text).length)));
 }
 
 router.post('/openai/count', async function (req, res) {

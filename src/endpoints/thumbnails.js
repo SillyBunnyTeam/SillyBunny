@@ -59,14 +59,15 @@ const thumbnailMobileRuntimeSettings = {
 const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const THUMBNAIL_CONTENT_TYPE_CACHE_LIMIT = 1024;
-export const THUMBNAIL_CACHE_CONTROL = 'public, max-age=86400';
+export const THUMBNAIL_CACHE_CONTROL = 'private, max-age=86400';
+export const THUMBNAIL_REVALIDATE_CACHE_CONTROL = 'private, no-cache';
 
 // SillyBunny: a thumbnail's format only changes when the file is rewritten, so the sniffed type is
 // remembered per (path, ctime, size) instead of opening the file on every request.
 /** @type {Map<string, {ctimeMs: number, size: number, type: string|null}>} */
 const thumbnailContentTypeCache = new Map();
 
-/** @type {Map<string, Promise<{success: boolean, skipped?: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}>>} */
+/** @type {Map<string, { invalidated: boolean, promise: Promise<{success: boolean, skipped?: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}> }>} */
 const thumbnailGenerationsInFlight = new Map();
 
 async function sniffThumbnailContentType(filePath) {
@@ -273,6 +274,10 @@ export function invalidateThumbnail(directories, type, file) {
         const pathToThumbnail = resolveDirectChildPath(folder, file);
         if (!pathToThumbnail) continue;
         thumbnailContentTypeCache.delete(pathToThumbnail);
+        const inFlight = thumbnailGenerationsInFlight.get(pathToThumbnail);
+        if (inFlight) {
+            inFlight.invalidated = true;
+        }
         if (fs.existsSync(pathToThumbnail)) {
             fs.unlinkSync(pathToThumbnail);
         }
@@ -374,9 +379,25 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
 
         // SillyBunny: deduplicate concurrent generation before the first await so parallel requests
         // for the same uncached thumbnail share one file read, animation check, decode, and write.
-        let generation = thumbnailGenerationsInFlight.get(pathToCachedFile);
-        if (!generation) {
-            generation = (async () => {
+        // Forced regeneration or an invalidated in-flight entry waits for the stale run to finish
+        // and starts fresh from disk so edited originals never serve stale thumbnail bytes.
+        let existing = thumbnailGenerationsInFlight.get(pathToCachedFile);
+        if (forceGenerate && existing) {
+            existing.invalidated = true;
+        }
+        while (existing && existing.invalidated) {
+            await existing.promise.catch(() => {});
+            existing = thumbnailGenerationsInFlight.get(pathToCachedFile);
+        }
+
+        let entry = existing;
+        if (!entry) {
+            /** @type {{ invalidated: boolean, promise: Promise<{success: boolean, skipped?: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}> }} */
+            const nextEntry = {
+                invalidated: false,
+                promise: Promise.resolve({ success: false }),
+            };
+            nextEntry.promise = (async () => {
                 /** @type {Buffer|null} */
                 let originalBuffer = null;
 
@@ -397,12 +418,17 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
                     }
                 }
 
-                return processSingleImage(file, originalFolder, thumbnailFolder, type, preset, originalBuffer);
-            })().finally(() => thumbnailGenerationsInFlight.delete(pathToCachedFile));
-            thumbnailGenerationsInFlight.set(pathToCachedFile, generation);
+                return processSingleImage(file, originalFolder, thumbnailFolder, type, preset, originalBuffer, () => !nextEntry.invalidated);
+            })().finally(() => {
+                if (thumbnailGenerationsInFlight.get(pathToCachedFile) === nextEntry) {
+                    thumbnailGenerationsInFlight.delete(pathToCachedFile);
+                }
+            });
+            thumbnailGenerationsInFlight.set(pathToCachedFile, nextEntry);
+            entry = nextEntry;
         }
 
-        const result = await generation;
+        const result = await entry.promise;
         if (result.skipped) {
             // The client is expected to handle animated formats.
             return { path: null, aspectRatio: null, resolution: null };
@@ -427,9 +453,10 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
  * @param {ThumbnailType} type - The type of thumbnail to generate.
  * @param {ThumbnailPreset} [preset='desktop'] - Thumbnail preset to generate.
  * @param {Buffer|null} [originalBuffer=null] - Contents of the original file, when the caller already read it.
- * @returns {Promise<{success: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}>} Result of the processing.
+ * @param {() => boolean} [shouldWrite] - Returns false if this generation was invalidated before writing.
+ * @returns {Promise<{success: boolean, skipped?: boolean, filename?: string, error?: string, aspectRatio?: number, resolution?: number}>} Result of the processing.
  */
-async function processSingleImage(file, originalFolder, thumbnailFolder, type, preset = 'desktop', originalBuffer = null) {
+async function processSingleImage(file, originalFolder, thumbnailFolder, type, preset = 'desktop', originalBuffer = null, shouldWrite = () => true) {
     const pathToOriginalFile = path.join(originalFolder, file);
     const pathToCachedFile = path.join(thumbnailFolder, file);
 
@@ -470,6 +497,10 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type, p
         const buffer = settings.format === 'png'
             ? await thumbImage.getBuffer(JimpMime.png)
             : await thumbImage.getBuffer(JimpMime.jpeg, { quality: settings.quality, jpegColorSpace: 'ycbcr' });
+
+        if (!shouldWrite()) {
+            return { skipped: true, success: false };
+        }
 
         writeFileAtomicSync(pathToCachedFile, buffer);
 
@@ -547,10 +578,13 @@ publicRouter.get('/', async function (request, response) {
 
         if (cachedStat) {
             invalidateFirefoxCache(pathToCachedFile, request, response);
-            // SillyBunny: cache thumbnails for 24h when cache-busted (?t=) or on non-Firefox clients;
-            // unversioned Firefox requests keep invalidateFirefoxCache's no-store header.
-            if (request.query.t !== undefined || !response.getHeader('Cache-Control')) {
+            // SillyBunny: thumbnails belong to authenticated users, so never emit `public`.
+            // Cache-busted (?t=) requests are cached privately for 24h; unversioned non-Firefox requests
+            // revalidate via ETag/304 (`private, no-cache`), while unversioned Firefox keeps no-store.
+            if (request.query.t !== undefined) {
                 response.setHeader('Cache-Control', THUMBNAIL_CACHE_CONTROL);
+            } else if (!response.getHeader('Cache-Control')) {
+                response.setHeader('Cache-Control', THUMBNAIL_REVALIDATE_CACHE_CONTROL);
             }
             response.locals.thumbnailStat = cachedStat;
             await setCachedThumbnailContentType(response, pathToCachedFile);

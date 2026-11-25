@@ -267,7 +267,7 @@ function readSettingsFile(filePath, signature) {
  * @returns {{ name: string, entry: CachedFile }[]} Files in directory listing order
  */
 function readCachedDirectory(directoryPath, fileExtension, mode) {
-    const cacheKey = `${mode}\0${directoryPath}`;
+    const cacheKey = `${mode}\0${fileExtension}\0${directoryPath}`;
     let dirents;
     try {
         dirents = fs.readdirSync(directoryPath, { withFileTypes: true });

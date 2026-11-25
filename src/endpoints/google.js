@@ -329,8 +329,13 @@ router.post('/caption-image', async (request, response) => {
 
 // SillyBunny: google-translate-api-x is imported only by the Google Translate TTS routes, not at server boot.
 router.post('/list-voices', async (_, response) => {
-    const { languages } = await import('google-translate-api-x');
-    return response.json(languages);
+    try {
+        const { languages } = await import('google-translate-api-x');
+        return response.json(languages);
+    } catch (error) {
+        console.error(error);
+        return response.sendStatus(500);
+    }
 });
 
 router.post('/generate-voice', async (request, response) => {

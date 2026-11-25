@@ -93,9 +93,11 @@ const {
 } = await import('../src/endpoints/extensions.js');
 const {
     THUMBNAIL_CACHE_CONTROL,
+    THUMBNAIL_REVALIDATE_CACHE_CONTROL,
     generateThumbnail,
     getThumbnailMobileRuntimeSettings,
     getThumbnailRuntimeSettings,
+    invalidateThumbnail,
     publicRouter: thumbnailsRouter,
     setThumbnailMobileRuntimeSettings,
     setThumbnailRuntimeSettings,
@@ -141,6 +143,8 @@ const HEAVY_PACKAGES = [
     'wavefile',
     'archiver',
     'proxy-agent',
+    'jimp',
+    '@jimp/core',
     'tiktoken',
     '@agnai/web-tokenizers',
     '@agnai/sentencepiece-js',
@@ -180,18 +184,20 @@ function getStaticImports(source) {
 }
 
 /**
- * Walks the static import graph from a module and returns every bare package specifier it reaches.
+ * Walks the static import graph from a module and returns every bare package specifier and local file it reaches.
  * @param {string} entry Absolute path of the entry module
- * @returns {Map<string, string>} Package specifier to the first file importing it
+ * @returns {{ packages: Map<string, string>, files: Set<string> }} Package specifier map and normalized relative file paths
  */
-function collectStaticPackages(entry) {
+function collectStaticGraph(entry) {
     const packages = new Map();
+    const files = new Set();
     const seen = new Set();
     const queue = [entry];
     while (queue.length > 0) {
         const file = queue.pop();
         if (seen.has(file) || !fs.existsSync(file)) continue;
         seen.add(file);
+        files.add(path.relative(repoRoot, file).replaceAll('\\', '/'));
         for (const specifier of getStaticImports(fs.readFileSync(file, 'utf8'))) {
             if (specifier.startsWith('.')) {
                 queue.push(path.resolve(path.dirname(file), specifier));
@@ -200,7 +206,7 @@ function collectStaticPackages(entry) {
             }
         }
     }
-    return packages;
+    return { packages, files };
 }
 
 describe('lazyRouter', () => {
@@ -293,6 +299,50 @@ describe('lazyRouter', () => {
         expect(order).toEqual(['before:/lazy/missing', 'after:/missing']);
         expect(loads).toBe(2);
     });
+
+    test('validates module.router export, retries after invalid export, and forwards cold-path sync throws to next', async () => {
+        let attempt = 0;
+        const app = express();
+        app.use('/invalid-then-valid', lazyRouter(async () => {
+            attempt++;
+            if (attempt === 1) {
+                return /** @type {any} */ ({});
+            }
+            const router = express.Router();
+            router.get('/ok', (_req, res) => res.json({ ok: true, attempt }));
+            return { router };
+        }));
+        app.use('/sync-throw', lazyRouter(async () => ({
+            router: /** @type {any} */ (() => {
+                throw new Error('cold sync boom');
+            }),
+        })));
+        app.use((error, _req, res, _next) => {
+            res.status(500).json({ error: error.message });
+        });
+
+        let edgeServer;
+        await new Promise(resolve => {
+            edgeServer = app.listen(0, '127.0.0.1', resolve);
+        });
+        const edgeUrl = `http://127.0.0.1:${edgeServer.address().port}`;
+        try {
+            const first = await fetch(`${edgeUrl}/invalid-then-valid/ok`);
+            expect(first.status).toBe(500);
+            expect(await first.json()).toEqual({ error: 'Lazy router module did not export a router function' });
+
+            const second = await fetch(`${edgeUrl}/invalid-then-valid/ok`);
+            expect(second.status).toBe(200);
+            expect(await second.json()).toEqual({ ok: true, attempt: 2 });
+
+            const syncThrowRes = await fetch(`${edgeUrl}/sync-throw/any`);
+            expect(syncThrowRes.status).toBe(500);
+            expect(await syncThrowRes.json()).toEqual({ error: 'cold sync boom' });
+        } finally {
+            edgeServer.closeAllConnections?.();
+            await new Promise(resolve => edgeServer.close(resolve));
+        }
+    });
 });
 
 describe('setupPrivateEndpoints', () => {
@@ -345,16 +395,18 @@ describe('setupPrivateEndpoints', () => {
 });
 
 describe('server boot import graph', () => {
-    test('heavy optional packages are not statically imported from server-startup.js', () => {
-        const packages = collectStaticPackages(path.join(repoRoot, 'src', 'server-startup.js'));
+    test('heavy optional packages and src/jimp.js are not statically imported from server-startup.js', () => {
+        const { packages, files } = collectStaticGraph(path.join(repoRoot, 'src', 'server-startup.js'));
         const leaked = HEAVY_PACKAGES.filter(name => packages.has(name)).map(name => `${name} <- ${packages.get(name)}`);
         expect(leaked).toEqual([]);
+        expect(files.has('src/jimp.js')).toBe(false);
     });
 
-    test('heavy optional packages are not statically imported from server-main.js', () => {
-        const packages = collectStaticPackages(path.join(repoRoot, 'src', 'server-main.js'));
+    test('heavy optional packages and src/jimp.js are not statically imported from server-main.js', () => {
+        const { packages, files } = collectStaticGraph(path.join(repoRoot, 'src', 'server-main.js'));
         const leaked = HEAVY_PACKAGES.filter(name => packages.has(name)).map(name => `${name} <- ${packages.get(name)}`);
         expect(leaked).toEqual([]);
+        expect(files.has('src/jimp.js')).toBe(false);
     });
 });
 
@@ -1023,6 +1075,21 @@ describe('PR 6 hot APIs: settings cache, ETag, and backup comparison', () => {
         expect(areFilesEqual(fileA, fileC)).toBe(false);
         expect(areFilesEqual(fileA, path.join(tempRoot, 'missing.bin'))).toBe(false);
     });
+
+    test('readAndParseFromDirectory isolates cache entries by file extension in the same directory', () => {
+        const multiDir = path.join(tempRoot, 'multi-ext');
+        fs.mkdirSync(multiDir, { recursive: true });
+        fs.writeFileSync(path.join(multiDir, 'note.txt'), 'hello txt');
+        fs.writeFileSync(path.join(multiDir, 'doc.md'), 'hello md');
+
+        expect(readAndParseFromDirectory(multiDir, '.txt')).toEqual(['hello txt']);
+        expect(readAndParseFromDirectory(multiDir, '.md')).toEqual(['hello md']);
+
+        const readSpy = jest.spyOn(fs, 'readFileSync');
+        expect(readAndParseFromDirectory(multiDir, '.txt')).toEqual(['hello txt']);
+        expect(readAndParseFromDirectory(multiDir, '.md')).toEqual(['hello md']);
+        expect(readSpy).not.toHaveBeenCalled();
+    });
 });
 
 describe('PR 6 hot APIs: tokenizers lazy loading, coalescing, encoding cache, LRU, and count-batch', () => {
@@ -1192,6 +1259,28 @@ describe('PR 6 hot APIs: tokenizers lazy loading, coalescing, encoding cache, LR
         expect(batchSp.body.counts[0]).toBe(llamaRes.body.count);
         expect(batchSp.body.counts[1]).toBe(llamaInstance.encodeIds('short').length);
     }, 30_000);
+
+    test('POST /api/tokenizers/count-batch isolates disallowed Tiktoken special tokens to per-entry fallback and normalizes model case', async () => {
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const o200k = getTiktokenTokenizer('gpt-4o');
+        const normalA = 'The quick brown fox jumps over the lazy dog.';
+        const special = 'prefix <|endoftext|> suffix';
+        const normalB = 'Another completely ordinary sentence with exact token count!';
+
+        const res = await post('/count-batch', {
+            model: 'gpt-4o',
+            texts: [normalA, special, normalB],
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.counts[0]).toBe(o200k.encode(normalA).length);
+        expect(res.body.counts[1]).toBe(Math.ceil(Buffer.byteLength(special, 'utf8') / 3.35));
+        expect(res.body.counts[2]).toBe(o200k.encode(normalB).length);
+
+        const gpt2 = getTiktokenTokenizer('gpt2');
+        const upperGpt2 = await post('/count-batch', { model: 'GPT2', texts: [normalA] });
+        expect(upperGpt2.status).toBe(200);
+        expect(upperGpt2.body.counts).toEqual([gpt2.encode(normalA).length]);
+    });
 });
 
 const originalThumbnailSettings = getThumbnailRuntimeSettings();
@@ -1460,16 +1549,24 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             expect(openSpy).toHaveBeenCalledTimes(2);
         });
 
-        test('sets Cache-Control: public, max-age=86400 for non-Firefox or ?t= and preserves Firefox no-store without ?t=', async () => {
+        test('sets private Cache-Control: max-age=86400 only with ?t=, private no-cache for unversioned non-Firefox, and preserves Firefox no-store without ?t=', async () => {
             const file = 'cached.png';
             fs.writeFileSync(path.join(directories.characters, file), STATIC_PNG);
             fs.writeFileSync(path.join(directories.thumbnailsAvatar, file), STATIC_PNG);
 
-            const chromiumRes = await fetch(`${baseUrl}/thumbnail?type=avatar&file=${file}`, {
+            const chromiumNoBust = await fetch(`${baseUrl}/thumbnail?type=avatar&file=${file}`, {
                 headers: { 'User-Agent': 'Mozilla/5.0 Chrome/128.0.0.0 Safari/537.36' },
             });
-            expect(chromiumRes.status).toBe(200);
-            expect(chromiumRes.headers.get('cache-control')).toBe(THUMBNAIL_CACHE_CONTROL);
+            expect(chromiumNoBust.status).toBe(200);
+            expect(chromiumNoBust.headers.get('cache-control')).toBe(THUMBNAIL_REVALIDATE_CACHE_CONTROL);
+            expect(chromiumNoBust.headers.get('cache-control')).not.toContain('public');
+
+            const chromiumWithBust = await fetch(`${baseUrl}/thumbnail?type=avatar&file=${file}&t=1700000000000`, {
+                headers: { 'User-Agent': 'Mozilla/5.0 Chrome/128.0.0.0 Safari/537.36' },
+            });
+            expect(chromiumWithBust.status).toBe(200);
+            expect(chromiumWithBust.headers.get('cache-control')).toBe(THUMBNAIL_CACHE_CONTROL);
+            expect(chromiumWithBust.headers.get('cache-control')).not.toContain('public');
 
             const firefoxNoBust = await fetch(`${baseUrl}/thumbnail?type=avatar&file=${file}`, {
                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0' },
@@ -1482,6 +1579,7 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             });
             expect(firefoxWithBust.status).toBe(200);
             expect(firefoxWithBust.headers.get('cache-control')).toBe(THUMBNAIL_CACHE_CONTROL);
+            expect(firefoxWithBust.headers.get('cache-control')).not.toContain('public');
         });
 
         test('deduplicates concurrent thumbnail generation and reads original PNG only once', async () => {
@@ -1518,6 +1616,54 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             expect(singleResult.path).toBe(path.join(directories.thumbnailsBg, singleFile));
             const singleReads = readFileSpy.mock.calls.filter(([p]) => p === singleOriginalPath);
             expect(singleReads).toHaveLength(1);
+        });
+
+        test('forceGenerate does not reuse a stale in-flight generation when the original is replaced mid-flight', async () => {
+            const file = 'replaced.png';
+            const originalPath = path.join(directories.backgrounds, file);
+            const expectedThumbPath = path.join(directories.thumbnailsBg, file);
+            // 8x8 square (aspectRatio = 1) vs 4x2 wide (aspectRatio = 2).
+            const widePng = encodePng([
+                ...Object.values(createImageChunks({ width: 4, height: 2 })),
+            ]);
+            fs.writeFileSync(originalPath, STATIC_PNG);
+            setThumbnailRuntimeSettings({ enabled: true, format: 'png', quality: 100 });
+            setThumbnailDimensions({ ...originalThumbnailDimensions, bg: [8, 8] });
+
+            /** @type {(value?: unknown) => void} */
+            let releaseFirstRead = () => {};
+            /** @type {(value?: unknown) => void} */
+            let firstReadStarted = () => {};
+            const firstReadEntered = new Promise(resolve => { firstReadStarted = resolve; });
+            const origReadFile = fs.promises.readFile.bind(fs.promises);
+            let interceptedFirst = false;
+
+            jest.spyOn(fs.promises, 'readFile').mockImplementation(async (...args) => {
+                if (!interceptedFirst && args[0] === originalPath) {
+                    interceptedFirst = true;
+                    const staleBytes = await origReadFile(...args);
+                    firstReadStarted();
+                    await new Promise(resolve => { releaseFirstRead = resolve; });
+                    return staleBytes;
+                }
+                return origReadFile(...args);
+            });
+
+            const stalePromise = generateThumbnail(directories, 'bg', file, false, null, 'desktop');
+            await firstReadEntered;
+
+            // Replace original with wide 4x2 PNG and trigger invalidation + forced regeneration while stale run is paused.
+            fs.writeFileSync(originalPath, widePng);
+            invalidateThumbnail(directories, 'bg', file);
+            const forcedPromise = generateThumbnail(directories, 'bg', file, true, null, 'desktop');
+
+            releaseFirstRead();
+            const [staleResult, forcedResult] = await Promise.all([stalePromise, forcedPromise]);
+
+            expect(staleResult.path).toBeNull();
+            expect(forcedResult.path).toBe(expectedThumbPath);
+            expect(forcedResult.aspectRatio).toBe(2);
+            expect(fs.existsSync(expectedThumbPath)).toBe(true);
         });
     });
 

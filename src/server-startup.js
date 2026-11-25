@@ -81,7 +81,10 @@ export function lazyRouter(loader) {
         }
 
         if (!pending) {
-            pending = loader().then((module) => {
+            pending = Promise.resolve().then(loader).then((module) => {
+                if (typeof module?.router !== 'function') {
+                    throw new TypeError('Lazy router module did not export a router function');
+                }
                 router = module.router;
                 return router;
             }).catch((error) => {
@@ -91,7 +94,13 @@ export function lazyRouter(loader) {
             });
         }
 
-        pending.then(loaded => loaded(req, res, next), next);
+        pending.then((loaded) => {
+            try {
+                loaded(req, res, next);
+            } catch (error) {
+                next(error);
+            }
+        }, next);
     };
 }
 
