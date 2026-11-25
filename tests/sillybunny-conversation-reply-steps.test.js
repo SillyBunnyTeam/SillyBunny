@@ -45,13 +45,24 @@ describe('a reply from the character of a direct conversation', () => {
         });
     });
 
-    // The name of the speaker is stripped from the line before the commands are read, and that step also removes every
-    // double quote, so `parseCommandArgs()` finds no `key="value"` pair. The old path behaves the same; this pins it
-    // for the day that the order of the two steps is fixed.
-    test.failing('keeps the quotes of the arguments of a schedule_update command, so that they can be read', () => {
-        const [group] = plan('Later [schedule_update: status="dnd" activity="working"]');
+    test('keeps the quotes of the arguments of a schedule_update command, so that they can be read', () => {
+        const [group] = plan('Later [schedule_update: status="dnd" activity="working" duration="1h30m"]');
 
-        expect(parseCommandArgs(group.commandParts.scheduleUpdates[0])).toEqual({ status: 'dnd', activity: 'working' });
+        expect(group.bubbles).toEqual(['Later']);
+        expect(parseCommandArgs(group.commandParts.scheduleUpdates[0])).toEqual({ status: 'dnd', activity: 'working', duration: '1h30m' });
+    });
+
+    test('reads the arguments of a schedule_update command of a member whose name starts the line', () => {
+        const groups = buildReplySteps('Nova: on my way [schedule_update: status="idle" activity="commuting"]', {
+            speaker: ASTER,
+            mode: 'character',
+            speakers: [NOVA, ASTER],
+            settings: ALL_COMMANDS,
+        });
+
+        expect(groups[0].speaker).toBe(NOVA);
+        expect(groups[0].bubbles).toEqual(['on my way']);
+        expect(parseCommandArgs(groups[0].commandParts.scheduleUpdates[0])).toEqual({ status: 'idle', activity: 'commuting' });
     });
 
     test('leaves the commands that the settings turn off in the text, and always reads a reminder', () => {

@@ -53,12 +53,16 @@ function splitGeneratedReplyMessages(rawText, speakers, { splitEveryLine }) {
     return splitEveryLine ? splitMemberChatroomMessages(text) : splitChatroomMessages(text);
 }
 
+/**
+ * The text keeps its double quotes: the commands of the line are read from it next, and `schedule_update` and
+ * `selfie` carry `key="value"` arguments. `extractCharacterReplyCommandParts()` normalizes what is left of the text.
+ */
 function resolveReplySpeaker(messageText, fallbackSpeaker, speakers) {
     const speakerMatch = speakers.length ? getSpeakerPrefixMatch(messageText, speakers) : null;
     const speaker = speakerMatch?.speaker || fallbackSpeaker;
     const text = speakerMatch
-        ? normalizeConversationOutputText(speakerMatch.text)
-        : stripSpeakerPrefixText(messageText, speaker.name || fallbackSpeaker?.name || 'Character', normalizeConversationOutputText);
+        ? speakerMatch.text.trim()
+        : stripSpeakerPrefixText(messageText, speaker.name || fallbackSpeaker?.name || 'Character');
 
     return { speaker, text };
 }
