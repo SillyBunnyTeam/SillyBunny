@@ -22,9 +22,6 @@ const CACHEABLE_CLAUDE_BLOCK_TYPES = new Set([
  * @property {{ enableSystemPromptCache: boolean }} gemini
  */
 
-/** @type {{ claude?: { enableSystemPromptCache?: boolean, cachingAtDepth?: number, extendedTTL?: boolean }, gemini?: { enableSystemPromptCache?: boolean } } | null} */
-let runtimeCachingOverrides = null;
-
 /** @type {Map<string, boolean> | null} */
 let openRouterCacheableMap = null;
 let openRouterCacheableExpiresAt = 0;
@@ -43,125 +40,23 @@ export function normalizeCachingDepth(value) {
 }
 
 /**
- * Mirrors src/util.js keyToEnv without adding extra imports that break tests mocking only getConfigValue.
- * @param {string} key
- * @returns {string}
- */
-function configKeyToEnv(key) {
-    return 'SILLYTAVERN_' + String(key).toUpperCase().replace(/\./g, '_');
-}
-
-/**
- * Mirrors src/util.js toBoolean without adding extra imports from ./util.js.
- * @param {unknown} value
- * @returns {boolean}
- */
-function parseConfigBoolean(value) {
-    if (typeof value === 'string') {
-        const trimmedLower = value.trim().toLowerCase();
-        if (trimmedLower === 'true') return true;
-        if (trimmedLower === 'false') return false;
-    }
-    return Boolean(value);
-}
-
-/**
- * Resolves a caching config flag while preserving process.env precedence over runtime YAML saves.
- * @param {string} key
- * @param {unknown} runtimeValue
- * @param {any} defaultValue
- * @param {'boolean'|'number'} type
- * @returns {any}
- */
-function resolveConfigFlag(key, runtimeValue, defaultValue, type) {
-    if (configKeyToEnv(key) in process.env) {
-        return getConfigValue(key, defaultValue, type);
-    }
-    if (runtimeValue !== undefined) {
-        return type === 'boolean' ? parseConfigBoolean(runtimeValue) : runtimeValue;
-    }
-    return getConfigValue(key, defaultValue, type);
-}
-
-/**
- * Reads active prompt caching configuration, preferring process.env, then live runtime overrides, then config.yaml.
+ * Reads the active prompt caching configuration. Environment variables take precedence over config.yaml.
  * @returns {PromptCachingConfig}
  */
 export function getPromptCachingConfig() {
-    const claudeSystemPromptCache = resolveConfigFlag(
-        'claude.enableSystemPromptCache',
-        runtimeCachingOverrides?.claude?.enableSystemPromptCache,
-        false,
-        'boolean',
-    );
-    const claudeCachingAtDepth = normalizeCachingDepth(resolveConfigFlag(
-        'claude.cachingAtDepth',
-        runtimeCachingOverrides?.claude?.cachingAtDepth,
-        -1,
-        'number',
-    ));
-    const claudeExtendedTTL = resolveConfigFlag(
-        'claude.extendedTTL',
-        runtimeCachingOverrides?.claude?.extendedTTL,
-        false,
-        'boolean',
-    );
-    const geminiSystemPromptCache = resolveConfigFlag(
-        'gemini.enableSystemPromptCache',
-        runtimeCachingOverrides?.gemini?.enableSystemPromptCache,
-        false,
-        'boolean',
-    );
+    const extendedTTL = Boolean(getConfigValue('claude.extendedTTL', false, 'boolean'));
 
     return {
         claude: {
-            enableSystemPromptCache: Boolean(claudeSystemPromptCache),
-            cachingAtDepth: claudeCachingAtDepth,
-            extendedTTL: Boolean(claudeExtendedTTL),
-            cacheTTL: claudeExtendedTTL ? '1h' : '5m',
+            enableSystemPromptCache: Boolean(getConfigValue('claude.enableSystemPromptCache', false, 'boolean')),
+            cachingAtDepth: normalizeCachingDepth(getConfigValue('claude.cachingAtDepth', -1, 'number')),
+            extendedTTL,
+            cacheTTL: extendedTTL ? '1h' : '5m',
         },
         gemini: {
-            enableSystemPromptCache: Boolean(geminiSystemPromptCache),
+            enableSystemPromptCache: Boolean(getConfigValue('gemini.enableSystemPromptCache', false, 'boolean')),
         },
     };
-}
-
-/**
- * Applies prompt caching configuration in memory so saves take effect without waiting for a restart.
- * @param {{ claude?: object, gemini?: object }} [settings]
- */
-export function setPromptCachingRuntimeConfig(settings = {}) {
-    const next = {
-        claude: { ...(runtimeCachingOverrides?.claude ?? {}) },
-        gemini: { ...(runtimeCachingOverrides?.gemini ?? {}) },
-    };
-
-    if (settings?.claude && typeof settings.claude === 'object') {
-        if ('enableSystemPromptCache' in settings.claude) {
-            next.claude.enableSystemPromptCache = parseConfigBoolean(settings.claude.enableSystemPromptCache);
-        }
-        if ('cachingAtDepth' in settings.claude) {
-            next.claude.cachingAtDepth = normalizeCachingDepth(settings.claude.cachingAtDepth);
-        }
-        if ('extendedTTL' in settings.claude) {
-            next.claude.extendedTTL = parseConfigBoolean(settings.claude.extendedTTL);
-        }
-    }
-
-    if (settings?.gemini && typeof settings.gemini === 'object') {
-        if ('enableSystemPromptCache' in settings.gemini) {
-            next.gemini.enableSystemPromptCache = parseConfigBoolean(settings.gemini.enableSystemPromptCache);
-        }
-    }
-
-    runtimeCachingOverrides = next;
-}
-
-/**
- * Clears in-memory runtime overrides so config.yaml values apply again.
- */
-export function resetPromptCachingRuntimeConfig() {
-    runtimeCachingOverrides = null;
 }
 
 /**

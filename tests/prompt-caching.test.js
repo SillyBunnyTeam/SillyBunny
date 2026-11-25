@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import _ from 'lodash';
+import yaml from 'yaml';
 
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
-import { setConfigFilePath } from '../src/util.js';
+import { getConfig, getConfigValue, setConfigFilePath } from '../src/util.js';
 
 const actualNodeFetch = (await import('node-fetch')).default;
 const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
@@ -29,12 +31,47 @@ function jsonResponse(body, status = 200) {
     });
 }
 
+const cachedConfigBaseline = {
+    claude: structuredClone(getConfig().claude ?? {}),
+    gemini: structuredClone(getConfig().gemini ?? {}),
+};
+
+/**
+ * Sets values on the cached config object that getConfigValue reads, as a saved config.yaml does.
+ * @param {Record<string, unknown>} values Dotted config keys and their values
+ */
+function setCachingConfig(values) {
+    for (const [key, value] of Object.entries(values)) {
+        _.set(getConfig(), key, value);
+    }
+}
+
+/**
+ * Merges nested claude and gemini sections into the cached config object.
+ * @param {{ claude?: Record<string, unknown>, gemini?: Record<string, unknown> }} sections
+ */
+function mergeCachingConfig(sections) {
+    _.merge(getConfig(), sections);
+}
+
+function resetCachingConfig() {
+    _.set(getConfig(), 'claude', structuredClone(cachedConfigBaseline.claude));
+    _.set(getConfig(), 'gemini', structuredClone(cachedConfigBaseline.gemini));
+}
+
+function clearCachingEnv() {
+    for (const name of Object.keys(process.env)) {
+        if (/^SILLYTAVERN_(CLAUDE|GEMINI)_/.test(name)) {
+            delete process.env[name];
+        }
+    }
+}
+
 describe('Prompt caching primitives and edge cases', () => {
     afterEach(() => {
-        promptCaching.resetPromptCachingRuntimeConfig();
+        resetCachingConfig();
+        clearCachingEnv();
         promptCaching.resetOpenRouterCacheableModelsCache();
-        delete process.env.SILLYTAVERN_CLAUDE_ENABLESYSTEMPROMPTCACHE;
-        delete process.env.SILLYTAVERN_GEMINI_ENABLESYSTEMPROMPTCACHE;
     });
 
     test('applySystemPromptCacheForOpenRouter marks the last non-empty leading system/developer message', () => {
@@ -277,16 +314,41 @@ describe('Prompt caching primitives and edge cases', () => {
         expect(messages[1].content).toBe('Turn 1');
     });
 
-    test('process.env overrides take precedence over runtime YAML config saves', () => {
-        promptCaching.setPromptCachingRuntimeConfig({
-            claude: { enableSystemPromptCache: false, cachingAtDepth: 0, extendedTTL: false },
-            gemini: { enableSystemPromptCache: false },
+    test('getPromptCachingConfig reads the cached config object on every call', () => {
+        setCachingConfig({
+            'claude.enableSystemPromptCache': true,
+            'claude.cachingAtDepth': 3,
+            'claude.extendedTTL': true,
+            'gemini.enableSystemPromptCache': true,
+        });
+        expect(promptCaching.getPromptCachingConfig()).toEqual({
+            claude: { enableSystemPromptCache: true, cachingAtDepth: 3, extendedTTL: true, cacheTTL: '1h' },
+            gemini: { enableSystemPromptCache: true },
+        });
+
+        setCachingConfig({ 'claude.extendedTTL': false, 'claude.cachingAtDepth': -4 });
+        expect(promptCaching.getPromptCachingConfig().claude).toEqual({
+            enableSystemPromptCache: true,
+            cachingAtDepth: -1,
+            extendedTTL: false,
+            cacheTTL: '5m',
+        });
+    });
+
+    test('process.env overrides take precedence over values saved to the cached config', () => {
+        setCachingConfig({
+            'claude.enableSystemPromptCache': false,
+            'claude.cachingAtDepth': 0,
+            'claude.extendedTTL': false,
+            'gemini.enableSystemPromptCache': false,
         });
         process.env.SILLYTAVERN_CLAUDE_ENABLESYSTEMPROMPTCACHE = 'true';
+        process.env.SILLYTAVERN_CLAUDE_CACHINGATDEPTH = '2';
+        process.env.SILLYTAVERN_CLAUDE_EXTENDEDTTL = 'true';
         process.env.SILLYTAVERN_GEMINI_ENABLESYSTEMPROMPTCACHE = 'true';
 
         const config = promptCaching.getPromptCachingConfig();
-        expect(config.claude.enableSystemPromptCache).toBe(true);
+        expect(config.claude).toEqual({ enableSystemPromptCache: true, cachingAtDepth: 2, extendedTTL: true, cacheTTL: '1h' });
         expect(config.gemini.enableSystemPromptCache).toBe(true);
     });
 
@@ -371,10 +433,12 @@ describe('Chat completions backend prompt caching integration', () => {
     let appServer;
     let baseUrl;
     let configPath;
+    let configYamlBaseline;
     const tempDirs = [];
 
     beforeAll(async () => {
         configPath = initialConfigPath;
+        configYamlBaseline = fs.readFileSync(configPath, 'utf8');
 
         const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-prompt-cache-data-'));
         tempDirs.push(initialConfigRoot, dataRoot);
@@ -394,6 +458,7 @@ describe('Chat completions backend prompt caching integration', () => {
             SECRET_KEYS.OPENAI,
             SECRET_KEYS.NANOGPT,
             SECRET_KEYS.ELECTRONHUB,
+            SECRET_KEYS.MAKERSUITE,
         ]) {
             secretManager.writeSecret(key, 'test-provider-key');
         }
@@ -418,7 +483,9 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     beforeEach(() => {
-        promptCaching.resetPromptCachingRuntimeConfig();
+        fs.writeFileSync(configPath, configYamlBaseline);
+        resetCachingConfig();
+        clearCachingEnv();
         promptCaching.resetOpenRouterCacheableModelsCache();
         nodeFetchMock.mockReset();
         nodeFetchMock.mockImplementation(async (url) => {
@@ -432,6 +499,9 @@ describe('Chat completions backend prompt caching integration', () => {
             }
             if (String(url).endsWith('/messages')) {
                 return jsonResponse({ content: [{ type: 'text', text: 'ok' }] });
+            }
+            if (String(url).includes(':generateContent')) {
+                return jsonResponse({ candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] });
             }
             if (String(url).endsWith('/responses')) {
                 return jsonResponse({
@@ -448,7 +518,8 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     afterAll(async () => {
-        promptCaching.resetPromptCachingRuntimeConfig();
+        resetCachingConfig();
+        clearCachingEnv();
         promptCaching.resetOpenRouterCacheableModelsCache();
         if (appServer) {
             await new Promise((resolve, reject) => {
@@ -498,7 +569,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     test('OpenRouter omits session_id and explicit cache markers on quiet, auxiliary, and cacheScope none requests', async () => {
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: false },
             gemini: { enableSystemPromptCache: true },
         });
@@ -532,7 +603,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     test('OpenRouter Gemini 4 with suffix marks only the static leading system prefix without TTL', async () => {
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             gemini: { enableSystemPromptCache: true },
         });
 
@@ -565,7 +636,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     test('OpenRouter ~anthropic/claude-sonnet-latest receives Claude system and depth markers with TTL', async () => {
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true },
         });
 
@@ -592,7 +663,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     test('NanoGPT marks system prompt even when cachingAtDepth is -1 and sets explicitCacheControl: true', async () => {
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false },
         });
 
@@ -613,7 +684,7 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(sysOnlyBody.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
         expect(sysOnlyBody.messages[1].content).toBe('Turn 1');
 
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true },
         });
 
@@ -639,7 +710,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     test('Electron Hub applies Claude cache markers for both bare and vendor-prefixed Claude model IDs', async () => {
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: false },
         });
 
@@ -661,7 +732,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 
     test('Native Claude marks stable tools before json_schema tool and only sends extended-cache-ttl beta header for 1h TTL', async () => {
-        promptCaching.setPromptCachingRuntimeConfig({
+        mergeCachingConfig({
             claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true },
         });
 
@@ -756,11 +827,12 @@ describe('Chat completions backend prompt caching integration', () => {
         ]);
     });
 
-    test('server-admin /config/chat-completions/save persists YAML flags, parses quoted YAML booleans, preserves omitted fields, and updates runtime caching', async () => {
+    test('server-admin /config/chat-completions/save persists YAML flags, parses quoted YAML booleans, and preserves omitted fields', async () => {
         const getRes = await post('/api/server-admin/config/chat-completions/get', {});
         expect(getRes.status).toBe(200);
         const initial = await getRes.json();
         expect(initial.settings.gemini.enableSystemPromptCache).toBe(false);
+        expect(initial.envManaged).toEqual([]);
 
         const saveRes = await post('/api/server-admin/config/chat-completions/save', {
             expectedLastModifiedMs: initial.lastModifiedMs,
@@ -792,6 +864,8 @@ describe('Chat completions backend prompt caching integration', () => {
             thoughtSignatures: true,
             enableSystemPromptCache: true,
         });
+        expect(saved.envManaged).toEqual([]);
+        expect(saved.message).not.toMatch(/restart/i);
 
         // Re-reading from disk returns persisted YAML values rather than hardcoded defaults.
         const reloadRes = await post('/api/server-admin/config/chat-completions/get', {});
@@ -799,7 +873,6 @@ describe('Chat completions backend prompt caching integration', () => {
         const reloaded = await reloadRes.json();
         expect(reloaded.settings).toEqual(saved.settings);
 
-        // Runtime cache config is updated immediately without a server restart.
         expect(promptCaching.getPromptCachingConfig()).toEqual({
             claude: {
                 enableSystemPromptCache: true,
@@ -814,8 +887,6 @@ describe('Chat completions backend prompt caching integration', () => {
 
         // Partial save omitting claude/gemini booleans preserves existing persisted flags rather than resetting them.
         const partialRes = await post('/api/server-admin/config/chat-completions/save', {
-            expectedLastModifiedMs: saved.lastModifiedMs,
-            restart: false,
             settings: {
                 claude: { cachingAtDepth: 4 },
                 gemini: {},
@@ -842,6 +913,173 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(quotedRes.status).toBe(200);
         const quoted = await quotedRes.json();
         expect(quoted.settings.claude.enableSystemPromptCache).toBe(false);
+    });
+
+    test.each([
+        ['claude.enableSystemPromptCache', true],
+        ['claude.cachingAtDepth', 3],
+        ['claude.extendedTTL', true],
+        ['claude.enableAdaptiveThinking', true],
+        ['gemini.apiVersion', 'v1alpha'],
+        ['gemini.thoughtSignatures', false],
+        ['gemini.enableSystemPromptCache', true],
+    ])('a partial save of %s is live at once and touches no other cached key', async (key, value) => {
+        const cachedConfig = getConfig();
+        const sentinel = { promptPlaceholder: cachedConfig.promptPlaceholder, listen: cachedConfig.listen };
+        cachedConfig.promptPlaceholder = 'only-in-the-cache';
+        cachedConfig.listen = 'only-in-the-cache';
+
+        try {
+            const res = await post('/api/server-admin/config/chat-completions/save', { settings: _.set({}, key, value) });
+            expect(res.status).toBe(200);
+            const body = await res.json();
+
+            expect(_.get(body.settings, key)).toEqual(value);
+            expect(getConfigValue(key)).toEqual(value);
+            expect(getConfig()).toBe(cachedConfig);
+            expect(cachedConfig.promptPlaceholder).toBe('only-in-the-cache');
+            expect(cachedConfig.listen).toBe('only-in-the-cache');
+            expect(yaml.parse(fs.readFileSync(configPath, 'utf8'))).toMatchObject(_.set({}, key, value));
+        } finally {
+            cachedConfig.promptPlaceholder = sentinel.promptPlaceholder;
+            cachedConfig.listen = sentinel.listen;
+        }
+    });
+
+    test('a saved enableAdaptiveThinking applies to the next Claude request without a restart', async () => {
+        const send = async () => {
+            nodeFetchMock.mockClear();
+            const res = await post('/api/backends/chat-completions/generate', {
+                chat_completion_source: CHAT_COMPLETION_SOURCES.CLAUDE,
+                model: 'claude-sonnet-4-6',
+                reasoning_effort: 'medium',
+                stream: false,
+                max_tokens: 4096,
+                messages: [{ role: 'user', content: 'Hello' }],
+            });
+            expect(res.status).toBe(200);
+            return JSON.parse(nodeFetchMock.mock.calls[0][1].body).thinking;
+        };
+
+        await post('/api/server-admin/config/chat-completions/save', { settings: { claude: { enableAdaptiveThinking: true } } });
+        expect(await send()).toEqual({ type: 'adaptive' });
+
+        await post('/api/server-admin/config/chat-completions/save', { settings: { claude: { enableAdaptiveThinking: false } } });
+        expect(await send()).toEqual({ type: 'enabled', budget_tokens: 1024 });
+    });
+
+    test('saved Gemini apiVersion and thoughtSignatures apply to the next Google AI Studio request', async () => {
+        const send = async () => {
+            nodeFetchMock.mockClear();
+            const res = await post('/api/backends/chat-completions/generate', {
+                chat_completion_source: CHAT_COMPLETION_SOURCES.MAKERSUITE,
+                model: 'gemini-3-pro-preview',
+                stream: false,
+                max_tokens: 256,
+                messages: [
+                    { role: 'user', content: 'Hello' },
+                    { role: 'assistant', content: 'Hi there', signature: 'stored-signature' },
+                    { role: 'user', content: 'Again' },
+                ],
+            });
+            expect(res.status).toBe(200);
+            const [url, options] = nodeFetchMock.mock.calls[0];
+            const modelTurn = JSON.parse(options.body).contents.find(content => content.role === 'model');
+            return { url: String(url), signature: modelTurn.parts[0].thoughtSignature };
+        };
+
+        await post('/api/server-admin/config/chat-completions/save', { settings: { gemini: { apiVersion: 'v1beta', thoughtSignatures: true } } });
+        const before = await send();
+        expect(before.url).toContain('/v1beta/models/gemini-3-pro-preview:generateContent');
+        expect(before.signature).toBe('stored-signature');
+
+        await post('/api/server-admin/config/chat-completions/save', { settings: { gemini: { apiVersion: 'v1alpha', thoughtSignatures: false } } });
+        const after = await send();
+        expect(after.url).toContain('/v1alpha/models/gemini-3-pro-preview:generateContent');
+        expect(after.signature).toBeUndefined();
+    });
+
+    test('envManaged lists only mirrored keys with an environment variable, and settings report their effective value', async () => {
+        process.env.SILLYTAVERN_CLAUDE_EXTENDEDTTL = 'true';
+        process.env.SILLYTAVERN_CLAUDE_CACHINGATDEPTH = '2';
+        process.env.SILLYTAVERN_GEMINI_APIVERSION = 'v1alpha';
+        process.env.SILLYTAVERN_CLAUDE_ENABLEADAPTIVETHINKING = 'false';
+        process.env.SILLYTAVERN_PROMPTPLACEHOLDER = 'env-secret-value';
+
+        try {
+            const getRes = await post('/api/server-admin/config/chat-completions/get', {});
+            const got = await getRes.json();
+            expect(got.envManaged.sort()).toEqual([
+                'claude.cachingAtDepth',
+                'claude.enableAdaptiveThinking',
+                'claude.extendedTTL',
+                'gemini.apiVersion',
+            ]);
+            expect(got.settings.claude).toEqual({
+                enableSystemPromptCache: false,
+                cachingAtDepth: 2,
+                extendedTTL: true,
+                enableAdaptiveThinking: false,
+            });
+            expect(got.settings.gemini.apiVersion).toBe('v1alpha');
+            expect(JSON.stringify(got)).not.toContain('env-secret-value');
+
+            // A save writes the file but cannot change what the environment variable decides.
+            const saveRes = await post('/api/server-admin/config/chat-completions/save', {
+                settings: { claude: { extendedTTL: false, enableSystemPromptCache: true } },
+            });
+            const saved = await saveRes.json();
+            expect(saved.envManaged.sort()).toEqual(got.envManaged.sort());
+            expect(saved.settings.claude.extendedTTL).toBe(true);
+            expect(saved.settings.claude.enableSystemPromptCache).toBe(true);
+            expect(yaml.parse(fs.readFileSync(configPath, 'utf8')).claude.extendedTTL).toBe(false);
+            expect(promptCaching.getPromptCachingConfig().claude.cacheTTL).toBe('1h');
+            expect(JSON.stringify(saved)).not.toContain('env-secret-value');
+        } finally {
+            delete process.env.SILLYTAVERN_PROMPTPLACEHOLDER;
+        }
+    });
+
+    const describeWithDirectoryModes = process.platform !== 'win32' && process.getuid?.() !== 0 ? describe : describe.skip;
+    describeWithDirectoryModes('a failed config.yaml write', () => {
+        test('leaves the cached config and the reply untouched', async () => {
+            const configDirectory = path.dirname(configPath);
+            const yamlBefore = fs.readFileSync(configPath, 'utf8');
+            const cachedBefore = structuredClone({ claude: getConfig().claude, gemini: getConfig().gemini });
+
+            fs.chmodSync(configDirectory, 0o555);
+            try {
+                const res = await post('/api/server-admin/config/chat-completions/save', {
+                    settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 5 }, gemini: { apiVersion: 'v9' } },
+                });
+                expect(res.status).toBeGreaterThanOrEqual(500);
+                expect((await res.json()).error).toBeTruthy();
+
+                const rawRes = await post('/api/server-admin/config/save', {
+                    content: yamlBefore.replace('enableSystemPromptCache: false', 'enableSystemPromptCache: true'),
+                });
+                expect(rawRes.status).toBeGreaterThanOrEqual(500);
+            } finally {
+                fs.chmodSync(configDirectory, 0o755);
+            }
+
+            expect(fs.readFileSync(configPath, 'utf8')).toBe(yamlBefore);
+            expect({ claude: getConfig().claude, gemini: getConfig().gemini }).toEqual(cachedBefore);
+        });
+    });
+
+    test('the raw /config/save route applies the mirrored keys of the saved document at once', async () => {
+        const document = yaml.parseDocument(fs.readFileSync(configPath, 'utf8'));
+        document.setIn(['claude', 'enableSystemPromptCache'], true);
+        document.setIn(['claude', 'cachingAtDepth'], 1);
+        document.setIn(['gemini', 'apiVersion'], 'v1alpha');
+
+        const res = await post('/api/server-admin/config/save', { content: document.toString() });
+        expect(res.status).toBe(200);
+
+        expect(getConfigValue('claude.enableSystemPromptCache', false, 'boolean')).toBe(true);
+        expect(getConfigValue('claude.cachingAtDepth', -1, 'number')).toBe(1);
+        expect(getConfigValue('gemini.apiVersion', 'v1beta')).toBe('v1alpha');
     });
 });
 

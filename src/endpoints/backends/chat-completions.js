@@ -133,9 +133,6 @@ const API_MINIMAX_CN = 'https://api.minimaxi.com/v1';
 const API_WORKERS_AI = 'https://api.cloudflare.com/client/v4/accounts';
 const API_OPENROUTER = 'https://openrouter.ai/api/v1';
 
-// SillyBunny: prompt caching flags and OpenRouter cache capability lookup are read dynamically in src/prompt-caching.js.
-const enableAdaptiveThinking = getConfigValue('claude.enableAdaptiveThinking', true, 'boolean');
-
 /**
  * Lazily-cached HMAC key (instance cookie secret) for session-affinity hashing.
  * @type {string|undefined}
@@ -355,6 +352,8 @@ async function sendClaudeRequest(request, response) {
         const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
         const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        // SillyBunny: read per request so a saved config applies without a restart.
+        const enableAdaptiveThinking = getConfigValue('claude.enableAdaptiveThinking', true, 'boolean');
         const isAdaptiveModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isSonnetOrOpus5 || (enableAdaptiveThinking && /^claude-(opus-4-6|sonnet-4-6)/.test(request.body.model));
         const noSamplingModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
         let fixThinkingPrefill = false;
