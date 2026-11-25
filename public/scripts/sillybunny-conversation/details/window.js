@@ -33,13 +33,9 @@ let session = null;
 let openToken = 0;
 
 function createNavigation(current) {
-    const nav = {
-        get conversationId() {
-            return current.conversationId;
-        },
+    return {
         push: (id, args = {}) => pushPage(current, id, args),
         pop: () => void current.pages.at(-1)?.handle.close(),
-        popToRoot: () => popToRoot(current),
         close: () => current.dialog.close(),
         // The conversation that the window shows is gone. A page calls this, and the window closes unless another conversation
         // is about to take its place (a group that became a direct conversation).
@@ -55,12 +51,10 @@ function createNavigation(current) {
         viewPicture: picture => pushPicture(current, picture),
         reroot: (conversationId, pageId = 'general') => reroot(current, conversationId, pageId),
     };
-    return nav;
 }
 
 function buildInto(current, id, args) {
-    const spec = buildPage(id, { conversationId: current.conversationId, nav: current.nav }, args);
-    return spec;
+    return buildPage(id, { conversationId: current.conversationId, nav: current.nav }, args);
 }
 
 function pushPage(current, id, args = {}) {
