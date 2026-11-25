@@ -960,7 +960,9 @@ export async function applyOpenRouterRequestCaching({
 }
 
 /**
- * Applies NanoGPT prompt caching for Claude models using explicit inline markers plus explicitCacheControl.
+ * Applies NanoGPT prompt caching for Claude models.
+ * With the system flag and no depth, only the body helper is sent and NanoGPT places the breakpoints.
+ * With a depth, the inline markers decide, and the helper carries explicitCacheControl so NanoGPT adds none of its own.
  * @param {{ requestBody?: any, messages?: any[], tools?: any[], bodyParams: Record<string, any>, model: unknown, config?: PromptCachingConfig }} params
  */
 export function applyNanoGptRequestCaching({
@@ -971,11 +973,7 @@ export function applyNanoGptRequestCaching({
     model,
     config = getPromptCachingConfig(),
 }) {
-    if (!isNanoGptClaudeModel(model)) {
-        return;
-    }
-
-    if (isCachingDisabled(requestBody)) {
+    if (!isNanoGptClaudeModel(model) || isCachingDisabled(requestBody)) {
         return;
     }
 
@@ -984,24 +982,22 @@ export function applyNanoGptRequestCaching({
         return;
     }
 
-    let usedBreakpoints = countCacheControlMarkers({ tools, messages });
-    if (Array.isArray(messages)) {
-        usedBreakpoints = applyOpenAiStyleClaudeCaching({
-            messages,
-            tools,
-            enableSystemPromptCache,
-            cachingAtDepth,
-            cacheTTL,
-        });
+    /** @type {{ enabled: true, ttl: string, explicitCacheControl?: true }} */
+    const helper = { enabled: true, ttl: cacheTTL };
+
+    if (cachingAtDepth !== -1) {
+        const usedBreakpoints = Array.isArray(messages)
+            ? applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL })
+            : 0;
+
+        if (usedBreakpoints > 0) {
+            helper.explicitCacheControl = true;
+        } else if (!enableSystemPromptCache) {
+            return;
+        }
     }
 
-    if (usedBreakpoints > 0) {
-        bodyParams.cache_control = {
-            enabled: true,
-            ttl: cacheTTL,
-            explicitCacheControl: true,
-        };
-    }
+    bodyParams.cache_control = helper;
 }
 
 /**

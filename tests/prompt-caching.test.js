@@ -740,51 +740,93 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(body.messages[4].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
     });
 
-    test('NanoGPT marks system prompt even when cachingAtDepth is -1 and sets explicitCacheControl: true', async () => {
-        mergeCachingConfig({
-            claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false },
+    describe('NanoGPT prompt caching', () => {
+        const history = [
+            { role: 'system', content: 'System' },
+            { role: 'user', content: 'Turn 1' },
+            { role: 'assistant', content: 'Reply 1' },
+            { role: 'user', content: 'Turn 2' },
+        ];
+
+        async function sendNanoGpt({ messages = history, model = 'anthropic/claude-sonnet-4-6', ...overrides } = {}) {
+            nodeFetchMock.mockClear();
+            const res = await post('/api/backends/chat-completions/generate', {
+                chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
+                model,
+                stream: false,
+                max_tokens: 256,
+                messages: structuredClone(messages),
+                ...overrides,
+            });
+            expect(res.status).toBe(200);
+            return JSON.parse(nodeFetchMock.mock.calls[0][1].body);
+        }
+
+        test('system flag on with depth -1 sends only the body helper, so NanoGPT places the breakpoints', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false } });
+
+            const body = await sendNanoGpt();
+            expect(body.cache_control).toEqual({ enabled: true, ttl: '5m' });
+            expect(body.cache_control).not.toHaveProperty('explicitCacheControl');
+            expect(body.messages).toEqual(history);
+
+            mergeCachingConfig({ claude: { extendedTTL: true } });
+            expect((await sendNanoGpt()).cache_control).toEqual({ enabled: true, ttl: '1h' });
         });
 
-        const sysOnlyRes = await post('/api/backends/chat-completions/generate', {
-            chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
-            model: 'anthropic/claude-sonnet-4-6',
-            stream: false,
-            max_tokens: 256,
-            messages: [
-                { role: 'system', content: 'System' },
-                { role: 'user', content: 'Turn 1' },
-            ],
-        });
-        expect(sysOnlyRes.status).toBe(200);
+        test('system flag on with depth -1 sends the helper without a leading system message and on a quiet request', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false } });
 
-        const sysOnlyBody = JSON.parse(nodeFetchMock.mock.calls[0][1].body);
-        expect(sysOnlyBody.cache_control).toEqual({ enabled: true, ttl: '5m', explicitCacheControl: true });
-        expect(sysOnlyBody.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
-        expect(sysOnlyBody.messages[1].content).toBe('Turn 1');
+            const noSystem = await sendNanoGpt({ messages: history.slice(1) });
+            expect(noSystem.cache_control).toEqual({ enabled: true, ttl: '5m' });
+            expect(noSystem.messages).toEqual(history.slice(1));
 
-        mergeCachingConfig({
-            claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true },
+            const quiet = await sendNanoGpt({ type: 'quiet', cacheScope: 'auxiliary' });
+            expect(quiet.cache_control).toEqual({ enabled: true, ttl: '5m' });
+            expect(quiet.messages).toEqual(history);
         });
 
-        const depthRes = await post('/api/backends/chat-completions/generate', {
-            chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
-            model: 'anthropic/claude-sonnet-4-6',
-            stream: false,
-            max_tokens: 256,
-            messages: [
-                { role: 'system', content: 'System' },
-                { role: 'user', content: 'Turn 1' },
-                { role: 'assistant', content: 'Reply 1' },
-                { role: 'user', content: 'Turn 2' },
-            ],
-        });
-        expect(depthRes.status).toBe(200);
+        test('a depth of 0 or more places inline markers and sends the helper with explicitCacheControl', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true } });
 
-        const depthBody = JSON.parse(nodeFetchMock.mock.calls[1][1].body);
-        expect(depthBody.cache_control).toEqual({ enabled: true, ttl: '1h', explicitCacheControl: true });
-        expect(depthBody.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-        expect(depthBody.messages[1].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-        expect(depthBody.messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+            const withSystem = await sendNanoGpt();
+            expect(withSystem.cache_control).toEqual({ enabled: true, ttl: '1h', explicitCacheControl: true });
+            expect(withSystem.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+            expect(withSystem.messages[1].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+            expect(withSystem.messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+
+            mergeCachingConfig({ claude: { enableSystemPromptCache: false, extendedTTL: false } });
+            const depthOnly = await sendNanoGpt();
+            expect(depthOnly.cache_control).toEqual({ enabled: true, ttl: '5m', explicitCacheControl: true });
+            expect(depthOnly.messages[0].content).toBe('System');
+            expect(depthOnly.messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+
+            const quiet = await sendNanoGpt({ type: 'quiet', cacheScope: 'auxiliary' });
+            expect(quiet.cache_control).toEqual({ enabled: true, ttl: '5m', explicitCacheControl: true });
+            expect(quiet.messages[3].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '5m' });
+        });
+
+        test('a depth with nothing to mark falls back to the helper only when the system flag is on', async () => {
+            const unmarkable = [{ role: 'user', content: '   ' }];
+
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
+            expect((await sendNanoGpt({ messages: unmarkable })).cache_control).toEqual({ enabled: true, ttl: '5m' });
+
+            mergeCachingConfig({ claude: { enableSystemPromptCache: false } });
+            expect((await sendNanoGpt({ messages: unmarkable })).cache_control).toBeUndefined();
+        });
+
+        test('both flags off sends nothing, and a non-Claude model gets nothing', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: false, cachingAtDepth: -1 } });
+            const off = await sendNanoGpt();
+            expect(off.cache_control).toBeUndefined();
+            expect(off.messages).toEqual(history);
+
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
+            const other = await sendNanoGpt({ model: 'deepseek/deepseek-v3.2' });
+            expect(other.cache_control).toBeUndefined();
+            expect(other.messages).toEqual(history);
+        });
     });
 
     test('Electron Hub applies Claude cache markers for both bare and vendor-prefixed Claude model IDs', async () => {
