@@ -65,8 +65,8 @@ describe('Conversation mobile controls', () => {
 
     test('the pages layout follows the layout attribute, not a viewport media query', () => {
         // The layout is decided from the #sheld width in conversation-pages.js, so a viewport query here would disagree with it.
-        expect(findMediaRule(query => query.includes('max-width: 768px') && !query.includes('max-height'))
-            ?.rules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_list'))).toEqual([]);
+        const viewportRules = findMediaRule(query => query.includes('max-width: 768px') && !query.includes('max-height'))?.rules ?? [];
+        expect(viewportRules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_list'))).toEqual([]);
         expect(css).not.toMatch(/@media \(max-width: 450px\)/);
     });
 
