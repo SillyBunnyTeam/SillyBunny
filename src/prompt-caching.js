@@ -277,7 +277,7 @@ export function deriveSessionCacheKey(chatId, secret, { namespace = '', userHand
  * @param {string | undefined} [ttl]
  * @returns {{ type: 'ephemeral', ttl?: string }}
  */
-export function buildCacheControl(ttl = undefined) {
+function buildCacheControl(ttl = undefined) {
     return typeof ttl === 'string' && ttl.length > 0
         ? { type: 'ephemeral', ttl }
         : { type: 'ephemeral' };
@@ -376,7 +376,6 @@ function getMessageCacheControls(message) {
 }
 
 /**
- * Checks whether any marker in a list has effective TTL '1h'.
  * @param {any[]} markers
  * @returns {boolean}
  */
@@ -385,7 +384,7 @@ function has1hTTL(markers) {
 }
 
 /**
- * Checks whether any marker in a list has effective TTL '5m' (including omitted ttl).
+ * An omitted ttl counts as '5m'.
  * @param {any[]} markers
  * @returns {boolean}
  */
@@ -420,7 +419,7 @@ function messagesRangeHasMarker(messages, start, end, predicate) {
  * @param {{ systemPrompt?: any[], tools?: any[], messages?: any[] }} [payload]
  * @returns {boolean}
  */
-export function hasExtendedTTLMarker({ systemPrompt, tools, messages } = {}) {
+function hasExtendedTTLMarker({ systemPrompt, tools, messages } = {}) {
     if (has1hTTL(getToolCacheControls(tools)) || has1hTTL(getSystemCacheControls(systemPrompt))) {
         return true;
     }
@@ -428,7 +427,6 @@ export function hasExtendedTTLMarker({ systemPrompt, tools, messages } = {}) {
 }
 
 /**
- * Checks whether a message already carries a cache_control marker.
  * @param {any} message
  * @returns {boolean}
  */
@@ -559,7 +557,7 @@ function markOpenRouterMessageCacheControl(message, ttl) {
  * @param {{ existingBreakpoints?: number, maxBreakpoints?: number }} [options]
  * @returns {boolean}
  */
-export function markClaudeSystemPromptCache(systemPrompt, ttl, { existingBreakpoints = null, maxBreakpoints = MAX_ANTHROPIC_CACHE_BREAKPOINTS } = {}) {
+function markClaudeSystemPromptCache(systemPrompt, ttl, { existingBreakpoints = null, maxBreakpoints = MAX_ANTHROPIC_CACHE_BREAKPOINTS } = {}) {
     if (!Array.isArray(systemPrompt) || systemPrompt.length === 0) {
         return false;
     }
@@ -587,7 +585,7 @@ export function markClaudeSystemPromptCache(systemPrompt, ttl, { existingBreakpo
  * @param {{ existingBreakpoints?: number, maxBreakpoints?: number }} [options]
  * @returns {boolean}
  */
-export function markClaudeToolsCache(tools, ttl, { existingBreakpoints = null, maxBreakpoints = MAX_ANTHROPIC_CACHE_BREAKPOINTS } = {}) {
+function markClaudeToolsCache(tools, ttl, { existingBreakpoints = null, maxBreakpoints = MAX_ANTHROPIC_CACHE_BREAKPOINTS } = {}) {
     if (!Array.isArray(tools) || tools.length === 0) {
         return false;
     }
@@ -678,7 +676,7 @@ export function applySystemPromptCacheForOpenRouter(
  * @param {any[]} messages
  * @param {number} cachingAtDepth
  * @param {string | undefined} [ttl]
- * @param {{ openRouterStyle?: boolean, singleBreakpoint?: boolean, existingBreakpoints?: number | null, maxBreakpoints?: number, resolveTTLForIndex?: ((index: number) => string | undefined | null) | null }} [options]
+ * @param {{ openRouterStyle?: boolean, existingBreakpoints?: number | null, maxBreakpoints?: number, resolveTTLForIndex?: ((index: number) => string | undefined | null) | null }} [options]
  * @returns {number} Number of breakpoints added
  */
 export function applyDepthCacheBreakpoints(
@@ -687,7 +685,6 @@ export function applyDepthCacheBreakpoints(
     ttl = undefined,
     {
         openRouterStyle = false,
-        singleBreakpoint = false,
         existingBreakpoints = null,
         maxBreakpoints = Infinity,
         resolveTTLForIndex = null,
@@ -706,11 +703,8 @@ export function applyDepthCacheBreakpoints(
         return 0;
     }
 
-    const targetDepths = singleBreakpoint
-        ? [cachingAtDepth]
-        : [cachingAtDepth, cachingAtDepth + 2];
-    const maxTargetDepth = targetDepths[targetDepths.length - 1];
-    const targetDepthSet = new Set(targetDepths);
+    const targetDepthSet = new Set([cachingAtDepth, cachingAtDepth + 2]);
+    const maxTargetDepth = cachingAtDepth + 2;
     const markMessage = openRouterStyle ? markOpenRouterMessageCacheControl : markClaudeMessageCacheControl;
 
     let passedThePrefill = false;

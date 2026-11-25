@@ -438,6 +438,152 @@ describe('Prompt caching primitives and edge cases', () => {
     });
 });
 
+describe('TTL ordering and breakpoint budget over seeded random payloads', () => {
+    const ITERATIONS = 4000;
+
+    /** @param {number} seed */
+    function createRandom(seed) {
+        let state = seed;
+        const next = () => {
+            state = (state * 1664525 + 1013904223) % 4294967296;
+            return state / 4294967296;
+        };
+        return { next, int: (max) => Math.floor(next() * max), pick: (values) => values[Math.floor(next() * values.length)] };
+    }
+
+    const ttlOf = (cacheControl) => (cacheControl?.ttl === '1h' ? '1h' : '5m');
+    const hasLongBeforeShort = (ttls) => {
+        let seenShort = false;
+        for (const ttl of ttls) {
+            if (ttl === '5m') {
+                seenShort = true;
+            } else if (seenShort) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    function buildPayload(random) {
+        const existingMarker = () => (random.next() < 0.8
+            ? undefined
+            : random.pick([{ type: 'ephemeral' }, { type: 'ephemeral', ttl: '5m' }, { type: 'ephemeral', ttl: '1h' }]));
+        const textBlock = (text) => {
+            const block = { type: 'text', text };
+            const marker = existingMarker();
+            if (marker) {
+                block.cache_control = marker;
+            }
+            return block;
+        };
+
+        const tools = Array.from({ length: random.int(4) }, (_, index) => {
+            const tool = { name: `tool${index}` };
+            const marker = existingMarker();
+            if (marker) {
+                tool.cache_control = marker;
+            }
+            return tool;
+        });
+        const systemPrompt = Array.from({ length: random.int(3) }, (_, index) => textBlock(`system${index}`));
+        const messages = Array.from({ length: 1 + random.int(8) }, (_, index) => ({
+            role: index % 2 === 0 ? 'user' : 'assistant',
+            content: Array.from({ length: 1 + random.int(2) }, (_, part) => textBlock(`message${index}.${part}`)),
+        }));
+        const ext = random.next() < 0.5;
+        const config = {
+            claude: {
+                enableSystemPromptCache: random.next() < 0.8,
+                cachingAtDepth: random.pick([-1, 0, 0, 1, 2]),
+                extendedTTL: ext,
+                cacheTTL: ext ? '1h' : '5m',
+            },
+            gemini: { enableSystemPromptCache: false },
+        };
+        return { tools, systemPrompt, messages, config, useSystemPrompt: random.next() < 0.7 };
+    }
+
+    /** Marker TTLs in the order Anthropic reads the prompt: tools, system, messages. */
+    function markerTtls({ tools, systemPrompt, messages, useSystemPrompt }) {
+        const ttls = [];
+        for (const tool of tools) {
+            if (tool.cache_control) ttls.push(ttlOf(tool.cache_control));
+        }
+        if (useSystemPrompt) {
+            for (const block of systemPrompt) {
+                if (block.cache_control) ttls.push(ttlOf(block.cache_control));
+            }
+        }
+        for (const message of messages) {
+            for (const block of message.content) {
+                if (block.cache_control) ttls.push(ttlOf(block.cache_control));
+            }
+        }
+        return ttls;
+    }
+
+    function checkInvariants(before, after, tally) {
+        tally.total += 1;
+        if (hasLongBeforeShort(before)) {
+            return;
+        }
+        if (after.length > before.length) {
+            tally.placed += 1;
+        }
+        expect(hasLongBeforeShort(after)).toBe(false);
+        if (before.length <= 4) {
+            expect(after.length).toBeLessThanOrEqual(4);
+        } else {
+            expect(after.length).toBe(before.length);
+        }
+    }
+
+    test('native Claude never puts a 5m marker before a 1h marker and never adds one past four', () => {
+        const random = createRandom(12345);
+        const tally = { total: 0, placed: 0 };
+
+        for (let i = 0; i < ITERATIONS; i++) {
+            const payload = buildPayload(random);
+            const before = markerTtls(payload);
+            promptCaching.applyClaudeRequestCaching({
+                requestBody: { type: 'normal' },
+                systemPrompt: payload.systemPrompt,
+                tools: payload.tools,
+                allTools: payload.tools,
+                messages: payload.messages,
+                useSystemPrompt: payload.useSystemPrompt,
+                betaHeaders: [],
+                config: payload.config,
+            });
+            checkInvariants(before, markerTtls(payload), tally);
+        }
+
+        expect(tally.placed).toBeGreaterThan(ITERATIONS / 4);
+    });
+
+    test('OpenRouter Claude keeps the same two invariants on OpenAI-style messages', async () => {
+        const random = createRandom(67890);
+        const tally = { total: 0, placed: 0 };
+
+        for (let i = 0; i < ITERATIONS; i++) {
+            const payload = buildPayload(random);
+            const messages = [];
+            if (payload.systemPrompt.length > 0) {
+                messages.push({ role: 'system', content: payload.systemPrompt });
+            }
+            messages.push(...payload.messages);
+            const readTtls = () => markerTtls({ tools: payload.tools, systemPrompt: [], messages, useSystemPrompt: false });
+            const before = readTtls();
+            const requestBody = { type: 'normal', model: 'anthropic/claude-sonnet-4.5', messages, tools: payload.tools.length > 0 ? payload.tools : undefined };
+
+            await promptCaching.applyOpenRouterRequestCaching({ requestBody, bodyParams: {}, tools: requestBody.tools, config: payload.config });
+            checkInvariants(before, readTtls(), tally);
+        }
+
+        expect(tally.placed).toBeGreaterThan(ITERATIONS / 4);
+    });
+});
+
 describe('Chat completions backend prompt caching integration', () => {
     /** @type {import('http').Server} */
     let appServer;
