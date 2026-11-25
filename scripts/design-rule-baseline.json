@@ -37,7 +37,7 @@
             "duration-literal": 3,
             "important": 5,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 96
+            "spacing-off-scale": 95
         },
         "public/css/sillybunny-editor-shell.css": {
             "radius-literal": 2,

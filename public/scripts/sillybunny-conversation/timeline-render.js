@@ -2021,10 +2021,14 @@ export function ensureConversationChrome() {
                         <span class="sr-only"><span id="sb_conv_footer_persona_name"></span>, <span id="sb_conv_footer_user_status"></span></span>
                     </button>
                 </div>
-                <h2 class="sb-conversation-rail-title">Conversations</h2>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-menu" aria-haspopup="menu" title="New Conversation" aria-label="New Conversation">
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                </button>
+                <div class="sb-conversation-rail-actions">
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-menu" aria-haspopup="menu" title="New" aria-label="New">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-rail-main-menu-button" data-sb-conversation-action="open-main-menu" aria-haspopup="menu" title="Main Menu" aria-label="Main Menu">
+                        <i class="fa-solid fa-bars" aria-hidden="true"></i>
+                    </button>
+                </div>
             </div>
             <div class="sb-conversation-rail-search">
                 <label class="sb-conversation-search-wrap" for="sb_conversation_list_search">
@@ -2033,7 +2037,8 @@ export function ensureConversationChrome() {
                     <input type="search" id="sb_conversation_list_search" class="sb-conversation-search-entry" placeholder="Search" autocomplete="off" />
                 </label>
             </div>
-            <div id="${CHROME_IDS.listItems}" class="sb-conversation-list-items"></div>
+            <div id="${CHROME_IDS.listItems}" class="sb-conversation-list-items" tabindex="-1"></div>
+            <div class="sb-conversation-list-status sr-only" role="status" aria-live="polite"></div>
         `;
         sheld.insertBefore(conversationList, header);
     }

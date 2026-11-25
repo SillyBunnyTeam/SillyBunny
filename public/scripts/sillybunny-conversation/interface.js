@@ -35,49 +35,61 @@ import { renderConversationTimeline, syncSettingsDrawerRows } from './timeline-r
 import { getActiveTypingParticipants, getLastConversationPreview } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
-import { createSpinner, createStatusPage } from '../sillybunny-editor/status-page.js';
+import { createSpinner } from '../sillybunny-editor/status-page.js';
+import { getConversationListViewKey, renderConversationListView } from './conversation-list-view.js';
 
-function buildChatListFingerprint(characterStore, activeChatId) {
-    return (characterStore?.chats || [])
-        .map(chat => [
-            chat.id,
-            chat.name || '',
-            chat.preview || '',
-            chat.lastMessageAt || '',
-            chat.unread || 0,
-            chat.id === activeChatId ? '1' : '0',
-        ].join('\u001f'))
-        .join('\u001e');
+/** The name the conversation was given, else its members' names (a direct conversation: the character's own). */
+function getListRowName({ name, character, settings, groupId }) {
+    if (name) {
+        return name;
+    }
+    const members = getConversationParticipants(character.avatar, settings, { groupId });
+    return groupId && members.length ? members.map(member => member?.name || 'Character').join(', ') : character.name || 'Character';
 }
 
-function buildConversationListFingerprint(conversations) {
-    const personaId = getConversationPersonaId();
-    const parts = [String(conversations.length), personaId, conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
-    for (const { character, index, settings, groupId, group } of conversations) {
-        const avatar = character?.avatar || '';
-        const unreadCount = getUnreadCount(avatar, { groupId, personaId });
-        const characterStore = getConversationRecord(avatar, { groupId, personaId });
-        const activeChatId = characterStore?.activeChatId || DEFAULT_CHAT_ID;
-        const participants = getConversationParticipants(avatar, settings, { groupId })
-            .map(participant => `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar)}`)
-            .join(',');
-        const chats = buildChatListFingerprint(characterStore, activeChatId);
+function buildListEntry(item, personaId) {
+    const { character, index, settings, groupId, key, favorite, lastMessageRole } = item;
+    const avatar = character.avatar;
+    const unread = getUnreadCount(avatar, { groupId, personaId });
+    return {
+        id: key,
+        name: getListRowName(item),
+        favorite,
+        muted: Boolean(settings?.notifications_muted),
+        unread,
+        badge: getBadgeLabel(unread),
+        preview: getLastConversationPreview(avatar, { groupId, personaId }),
+        lastMessageRole,
+        active: isConversationActive(avatar, groupId, { personaId }),
+        avatar,
+        characterIndex: String(index),
+        groupId: groupId || '',
+        participants: getConversationParticipants(avatar, settings, { groupId }),
+        status: getEffectiveConversationStatus(avatar),
+    };
+}
 
+/** The rows of the conversation list as it shows them now, in the order of the data module. */
+export function getConversationListEntries() {
+    const personaId = getConversationPersonaId();
+    return getConversationRailItems({ personaId }).map(item => buildListEntry(item, personaId));
+}
+
+function buildConversationListFingerprint(entries) {
+    const parts = [String(entries.length), getConversationPersonaId(), getConversationListViewKey()];
+    for (const entry of entries) {
         parts.push([
-            avatar,
-            index,
-            character?.name || '',
-            groupId || '',
-            group?.name || '',
-            settings?.availability || '',
-            settings?.multi_char_names || '',
-            getConversationDisplayName(avatar, settings, { groupId }),
-            getLastConversationPreview(avatar, { groupId, personaId }),
-            unreadCount,
-            isConversationActive(avatar, groupId, { personaId }) ? '1' : '0',
-            activeChatId,
-            participants,
-            chats,
+            entry.id,
+            entry.name,
+            entry.favorite ? '1' : '0',
+            entry.muted ? '1' : '0',
+            entry.unread,
+            entry.preview,
+            entry.lastMessageRole,
+            entry.active ? '1' : '0',
+            entry.avatar,
+            entry.groupId,
+            entry.participants.map(participant => `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar)}`).join(','),
         ].join('\u001f'));
     }
 
@@ -123,80 +135,15 @@ export function renderConversationList() {
         return;
     }
 
-    const conversations = getConversationRailItems();
-    const personaId = getConversationPersonaId();
-    const fingerprint = buildConversationListFingerprint(conversations);
+    const entries = getConversationListEntries();
+    const fingerprint = buildConversationListFingerprint(entries);
     if (fingerprint === conversationState.lastConversationListFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
         return;
     }
 
     conversationState.lastConversationListFingerprint = fingerprint;
     list.dataset.sbConversationFingerprint = fingerprint;
-    list.textContent = '';
-
-    if (!conversations.length) {
-        list.appendChild(createStatusPage({ state: 'empty', icon: 'comments', title: 'Use + to start a DM with a character.', compact: true }).element);
-        updateConversationNotificationIndicators();
-        return;
-    }
-
-    for (const { character, index, settings, groupId, group } of conversations) {
-        const unreadCount = getUnreadCount(character.avatar, { groupId, personaId });
-        const row = document.createElement('div');
-        row.className = 'sb-conversation-list-row';
-        row.dataset.groupId = groupId || '';
-
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'sb-conversation-list-item';
-        button.dataset.characterIndex = String(index);
-        button.dataset.avatar = character.avatar;
-        button.dataset.groupId = groupId || '';
-        button.dataset.unread = String(unreadCount > 0);
-        button.setAttribute('aria-current', String(isConversationActive(character.avatar, groupId, { personaId })));
-        button.innerHTML = `
-            <span class="sb-conversation-list-item-avatar"></span>
-            <span class="sb-conversation-list-item-copy">
-                <span class="sb-conversation-list-item-name-row"><span class="sb-conversation-list-item-name"></span><span class="sb-conversation-list-item-kind"></span></span>
-                <span class="sb-conversation-list-item-preview"></span>
-            </span>
-            <span class="sb-conversation-list-item-unread" aria-hidden="true"></span>
-        `;
-
-        const avatarStack = button.querySelector('.sb-conversation-list-item-avatar');
-        const name = button.querySelector('.sb-conversation-list-item-name');
-        const kind = button.querySelector('.sb-conversation-list-item-kind');
-        const preview = button.querySelector('.sb-conversation-list-item-preview');
-        const unreadBadge = button.querySelector('.sb-conversation-list-item-unread');
-
-        renderConversationParticipantStack(avatarStack, getConversationParticipants(character.avatar, settings, { groupId }), {
-            status: getEffectiveConversationStatus(character.avatar),
-            max: 3,
-        });
-        if (name instanceof HTMLElement) {
-            name.textContent = groupId
-                ? getConversationDisplayName(character.avatar, settings, { groupId })
-                : character.name || 'Character';
-        }
-        if (kind instanceof HTMLElement) {
-            kind.textContent = groupId ? 'Group' : '';
-            kind.hidden = !groupId;
-            kind.title = groupId ? (group?.name || 'Group DM') : '';
-        }
-        if (preview instanceof HTMLElement) {
-            preview.textContent = getLastConversationPreview(character.avatar, { groupId, personaId });
-        }
-        if (unreadBadge instanceof HTMLElement) {
-            unreadBadge.textContent = getBadgeLabel(unreadCount);
-            unreadBadge.hidden = unreadCount <= 0;
-        }
-        if (unreadCount > 0) {
-            button.setAttribute('aria-label', `${name?.textContent || 'Conversation'}, ${unreadCount} Unread`);
-        }
-
-        row.append(button);
-        list.appendChild(row);
-    }
+    renderConversationListView(list, entries);
     updateConversationNotificationIndicators();
 }
 

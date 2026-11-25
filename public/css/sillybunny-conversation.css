@@ -27,6 +27,10 @@
     /* The 1px is the bar's bottom shade, which sits inside the border box. The padding gives way (to no less than 0) so that a 44px touch button still fits in a 56px bar. */
     --sb-conv-headerbar-pad-block: clamp(0px, calc((var(--sb-conv-headerbar-height) - 1px - var(--sb-conv-button-size)) / 2), 6px);
     --sb-conv-column-gutter: 20px;
+    /* DESIGN.md, Drop Target: a whole drop area takes a 2px ring at 40% Accent. */
+    --sb-conv-drop-ring: inset 0 0 0 2px color-mix(in srgb, var(--sb-accent) 40%, transparent);
+    /* How long a row that has just moved keeps its highlight; the script clears the class after the same time. */
+    --sb-conv-moved-duration: 1.6s;
     /* libadwaita sidebar/headerbar: #2e2e32 in Libadwaita dark, #ebebed in light. */
     --sb-conv-sidebar-bg: var(--sb-sidebar-bg);
     display: grid;
@@ -289,7 +293,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     gap: 2px;
 }
 
-/* ---------- Sidebar (pals rail) ---------- */
+/* ---------- Sidebar (conversation list) ---------- */
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_list {
     grid-area: list;
     min-block-size: 0;
@@ -301,10 +305,17 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     background: var(--sb-conv-sidebar-bg);
 }
 
+/* Fractal's list header: the persona at the start, New and the primary menu at the end, no title. */
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-header {
-    display: grid;
-    grid-template-columns: var(--sb-conv-button-size) minmax(0, 1fr) var(--sb-conv-button-size);
     background: var(--sb-conv-sidebar-bg);
+}
+
+.sb-conversation-rail-actions {
+    display: flex;
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    align-items: center;
+    gap: 3px;
 }
 
 .sb-conversation-rail-persona {
@@ -326,39 +337,254 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     --sb-conv-dot-ring: var(--sb-conv-sidebar-bg);
 }
 
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-title {
-    min-inline-size: 0;
-    margin: 0;
-    overflow: hidden;
-    color: var(--SmartThemeBodyColor);
-    font-family: inherit;
-    font-size: calc(var(--mainFontSize) * 1.02);
-    font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-title);
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .sb-conversation-rail-search {
     flex: 0 0 auto;
     padding: 8px 8px 4px;
 }
 
+/* The scroller has tabindex="-1" so that Firefox does not make the scrolling box a Tab stop beside the list's own. */
 .sb-conversation-list-items {
     min-block-size: 0;
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 2px;
+    gap: 6px;
     padding: 4px 6px 8px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
+    outline: none;
+}
+
+/* ---------- Sections: Favorites (collapsible, shown while it has rows) and Conversations ---------- */
+.sb-conversation-list-section {
+    min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--sb-radius-card);
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+.sb-conversation-list-section[data-section='favorites'][data-empty='true'] {
+    display: none;
+}
+
+/* A drag shows the empty Favorites as a drop zone, so that the first favourite can be dropped. */
+.sb-conversation-list-items[data-dragging='true'] .sb-conversation-list-section[data-section='favorites'][data-empty='true'] {
+    display: flex;
+}
+
+.sb-conversation-list-heading {
+    display: flex;
+    align-items: center;
+    min-block-size: 32px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-title);
+}
+
+.sb-conversation-list-heading-label {
+    min-inline-size: 0;
+    padding: 3px 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button {
+    box-sizing: border-box;
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-inline-size: 0;
+    min-block-size: 32px;
+    margin: 0;
+    padding: 3px 9px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--sb-transition-fast);
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button .sb-conversation-list-heading-label {
+    padding: 0;
+}
+
+@media (hover: hover) {
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-conversation-list-heading-button > i {
+    font-size: 0.8em;
+    transition: transform var(--sb-transition-fast);
+}
+
+.sb-conversation-list-section[data-collapsed='true'] .sb-conversation-list-heading-button > i {
+    transform: rotate(-90deg);
+}
+
+/* A collapsed section tells that something in it is unread. */
+.sb-conversation-list-heading-badge {
+    min-inline-size: 20px;
+    block-size: 20px;
+    box-sizing: border-box;
+    display: inline-grid;
+    place-items: center;
+    margin-inline-start: auto;
+    padding-inline: 6px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-accent);
+    color: var(--sb-on-solid-accent);
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-title);
+    line-height: 1;
+}
+
+.sb-conversation-list-heading-badge[hidden] {
+    display: none;
+}
+
+.sb-conversation-list-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-block-size: 0;
+}
+
+.sb-conversation-list-section[data-collapsed='true'] > .sb-conversation-list-rows {
+    display: none;
+}
+
+/* A collapsed section stays a thin strip to drop on while a row is dragged; resting on it opens it. */
+.sb-conversation-list-items[data-dragging='true'] .sb-conversation-list-section[data-collapsed='true'] > .sb-conversation-list-rows {
+    display: flex;
+    min-block-size: 8px;
+    max-block-size: 8px;
+    overflow: hidden;
+}
+
+.sb-conversation-list-zone-hint {
+    display: none;
+    margin: 0;
+    padding: 12px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+    text-align: center;
+}
+
+.sb-conversation-list-items[data-dragging='true'] .sb-conversation-list-section[data-empty='true'] .sb-conversation-list-zone-hint {
+    display: block;
+}
+
+/* DESIGN.md, Drop Target: a whole drop area takes a 2px ring at 40% Accent and a 10% Accent fill. */
+.sb-conversation-list-section.is-drop-target {
+    background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
+    box-shadow: var(--sb-conv-drop-ring);
+}
+
+.sb-conversation-list-empty {
+    min-inline-size: 0;
+}
+
+.sb-conversation-list-empty[hidden] {
+    display: none;
 }
 
 .sb-conversation-list-row {
+    position: relative;
     min-inline-size: 0;
+    border-radius: var(--sb-radius-control);
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.sb-conversation-list-row img {
+    -webkit-user-drag: none;
+}
+
+.sb-conversation-list-row.is-drag-source {
+    opacity: 0.4;
+}
+
+/* The press that a long touch lifts: the row rises under the finger until it is dragged or opens its menu. */
+.sb-conversation-list-row.is-lifted .sb-conversation-list-item {
+    background: var(--sb-flat-active-bg);
+    transform: scale(1.02);
+    box-shadow: var(--sb-shadow-card);
+}
+
+/* The ghost follows the pointer. The row styles are scoped to #sheld, so it lives there, and `fixed` still positions it on the viewport. */
+.sb-conversation-list-ghost {
+    position: fixed;
+    inset: 0 auto auto 0;
+    z-index: var(--sb-z-dropdown);
+    pointer-events: none;
+    background: var(--sb-conv-sidebar-bg);
+    box-shadow: var(--sb-shadow-popover);
+    border-radius: var(--sb-radius-control);
+    opacity: 0.96;
+}
+
+/* A row that has dropped into its place shows where it landed, as the list shows no insertion marker. */
+.sb-conversation-list-row.is-just-moved .sb-conversation-list-item {
+    animation: sb-conversation-moved var(--sb-conv-moved-duration) var(--sb-ease-out-cubic);
+}
+
+/* The last frame is the row's own fill (selected, hovered or none), so the highlight fades into it. */
+@keyframes sb-conversation-moved {
+    0%,
+    40% {
+        background: color-mix(in srgb, var(--sb-accent) 25%, transparent);
+    }
+}
+
+/* Reduced motion keeps the state and drops the movement: the highlight stays as a fill, the lift shows by its fill alone, and nothing scales or rotates. */
+@media (prefers-reduced-motion: reduce) {
+    .sb-conversation-list-row.is-just-moved .sb-conversation-list-item {
+        animation: none;
+        background: color-mix(in srgb, var(--sb-accent) 25%, transparent);
+    }
+
+    .sb-conversation-list-row.is-lifted .sb-conversation-list-item {
+        transform: none;
+    }
+
+    .sb-conversation-list-section,
+    .sb-conversation-list-heading-button > i {
+        transition: none;
+    }
+}
+
+/* Forced colours remove box shadows and fills, so the drop ring, the highlight and the lift are drawn as outlines. */
+@media (forced-colors: active) {
+    .sb-conversation-list-section.is-drop-target {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    .sb-conversation-list-row:is(.is-just-moved, .is-lifted) .sb-conversation-list-item,
+    .sb-conversation-list-ghost {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
 }
 
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-list-item {
@@ -455,14 +681,14 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     white-space: nowrap;
 }
 
-.sb-conversation-list-item-kind {
+/* Muted is told by the bell, and by the word in the row's name for assistive technology. */
+.sb-conversation-list-item-muted {
     flex: 0 0 auto;
     color: var(--sb-muted-fg);
-    font-size: var(--sb-type-caption);
-    font-weight: var(--sb-weight-control);
+    font-size: 0.75em;
 }
 
-.sb-conversation-list-item-kind[hidden] {
+.sb-conversation-list-item-muted[hidden] {
     display: none;
 }
 
@@ -499,6 +725,12 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 .sb-conversation-list-item-unread:empty,
 .sb-conversation-list-item-unread[hidden] {
     display: none;
+}
+
+/* A muted conversation still counts what is unread, but quietly: the badge is neutral, not Accent. */
+.sb-conversation-list-item[data-muted='true'] .sb-conversation-list-item-unread {
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
 }
 
 /* ---------- Search entries (borderless neutral pill) ---------- */
@@ -2477,6 +2709,10 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-entry {
         block-size: var(--sb-mobile-touch-target, 44px);
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-list-heading-button {
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 

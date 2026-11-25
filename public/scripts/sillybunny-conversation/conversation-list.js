@@ -46,7 +46,7 @@ export function getDirectConversations({ personaId = getConversationPersonaId() 
 
 /**
  * The rows of the list, newest message first (the cache keeps that order). A conversation whose characters are all
- * gone from the library is left out; its files stay.
+ * gone from the library is left out; its files stay. `key` is the id of the conversation.
  */
 export function getConversationRailItems({ personaId = getConversationPersonaId() } = {}) {
     const items = [];
@@ -66,6 +66,9 @@ export function getConversationRailItems({ personaId = getConversationPersonaId(
             groupId,
             group,
             key: getConversationKey(character.avatar, groupId, { personaId }),
+            name: view.name ?? '',
+            favorite: view.favorite === true,
+            lastMessageRole: view.lastMessageRole ?? '',
         });
     }
     return items;
