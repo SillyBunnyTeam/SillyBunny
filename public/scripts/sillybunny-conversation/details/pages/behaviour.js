@@ -114,6 +114,10 @@ export function buildBehaviour({ conversationId, nav }) {
     const description = copyPlaceholder('small', 'ds-row-subtitle');
     messaging.row.querySelector('.ds-row-text')?.append(description);
 
+    // What the switch does is for the maintainer to say.
+    const charactersReact = settingSwitch(conversationId, settings, 'characters_react', 'Characters React');
+    charactersReact.row.querySelector('.ds-row-text')?.append(copyPlaceholder('small', 'ds-row-subtitle'));
+
     const reminders = createReminderRows(conversationId);
     const reminderGroup = createGroup({ title: 'Reminders', field: 'reminders', rows: [] });
     reminderGroup.group.append(reminders.container);
@@ -127,6 +131,7 @@ export function buildBehaviour({ conversationId, nav }) {
                 settingEntry(conversationId, settings, 'offline_message', 'Offline and Busy Auto-Responder', '[{{user}} is currently offline. Leave a message!]'),
                 settingSwitch(conversationId, settings, 'selfie_command_enabled', 'Selfies Through [selfie]'),
                 settingSwitch(conversationId, settings, 'schedule_command_enabled', 'Status Updates Through [schedule_update]'),
+                charactersReact,
             ],
         }).section,
         createGroup({

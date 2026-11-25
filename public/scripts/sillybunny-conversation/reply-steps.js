@@ -9,7 +9,7 @@
  * @property {ReplySpeaker} speaker The member that the line is given to.
  * @property {string} speakerAvatar
  * @property {string[]} bubbles The text of each bubble, clean. Empty when the line was only commands.
- * @property {{ text: string, selfieRequests: string[], scheduleUpdates: string[], reminders: { delay: string, memo: string }[] }} commandParts
+ * @property {{ text: string, selfieRequests: string[], scheduleUpdates: string[], reminders: { delay: string, memo: string }[], reaction: string|null }} commandParts
  * @property {Record<string, any>|null} commandMetadata What `extra.conversation_commands` holds for the first bubble.
  */
 
@@ -89,6 +89,22 @@ export function buildReplySteps(rawText, { speaker, mode = 'character', speakers
             commandMetadata: getCharacterReplyCommandMetadata(commandParts),
         };
     });
+}
+
+/**
+ * The reactions of a reply: the first that each speaker's lines carry. A line that is only the marker has no bubble and
+ * counts. A speaker that answers more than once reacts once.
+ * @param {ReplyGroup[]} groups
+ * @returns {{ speakerAvatar: string, emoji: string }[]}
+ */
+export function collectReplyReactions(groups) {
+    const reactions = [];
+    for (const { speakerAvatar, commandParts } of groups) {
+        if (commandParts.reaction && !reactions.some(reaction => reaction.speakerAvatar === speakerAvatar)) {
+            reactions.push({ speakerAvatar, emoji: commandParts.reaction });
+        }
+    }
+    return reactions;
 }
 
 /**

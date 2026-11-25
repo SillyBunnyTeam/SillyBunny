@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 
 import { parseCommandArgs } from '../public/scripts/sillybunny-conversation/generation-utils.js';
-import { buildPendingBubbles, buildReplySteps, splitMemberChatroomMessages } from '../public/scripts/sillybunny-conversation/reply-steps.js';
+import { buildPendingBubbles, buildReplySteps, collectReplyReactions, splitMemberChatroomMessages } from '../public/scripts/sillybunny-conversation/reply-steps.js';
 import { readPendingReply } from '../public/scripts/sillybunny-conversation/pending-reply.js';
 import { pendingReply } from './util/conversation-pending-reply.js';
 
@@ -129,6 +129,45 @@ describe('a reply in a group', () => {
 
         expect(only.speakerAvatar).toBe('aster.png');
         expect(only.bubbles).toEqual(['Nova: this is the character talking']);
+    });
+});
+
+describe('the reactions that a reply carries', () => {
+    const speakers = [NOVA, ASTER, { avatar: 'tewi.png', name: 'Tewi' }];
+    const group = rawText => buildReplySteps(rawText, { speaker: ASTER, mode: 'character', speakers, settings: ALL_COMMANDS });
+
+    test('are one of the character of a direct conversation, from a marker in its text', () => {
+        const groups = plan('haha [react: 😂] that is great');
+
+        expect(groups[0].bubbles).toEqual(['haha that is great']);
+        expect(collectReplyReactions(groups)).toEqual([{ speakerAvatar: 'aster.png', emoji: '😂' }]);
+    });
+
+    test('count from a line that is only the marker, which makes a group with no bubble', () => {
+        const groups = plan('[react: 🎉]\n\nCongratulations!');
+
+        expect(groups.map(item => item.bubbles)).toEqual([[], ['Congratulations!']]);
+        expect(collectReplyReactions(groups)).toEqual([{ speakerAvatar: 'aster.png', emoji: '🎉' }]);
+    });
+
+    test('are the first valid one of each speaker, and none for a marker that holds no emoji', () => {
+        const groups = plan('one [react: nope]\n\ntwo [react: 👍]\n\nthree [react: 🎉]');
+
+        expect(collectReplyReactions(groups)).toEqual([{ speakerAvatar: 'aster.png', emoji: '👍' }]);
+    });
+
+    test('belong to the member whose line carries the marker, in a group', () => {
+        const groups = group('Aster: hi [react: ❤️]\nNova: hello [react: 😂]\nTewi: bye\nNova: again [react: 👍]');
+
+        expect(collectReplyReactions(groups)).toEqual([
+            { speakerAvatar: 'aster.png', emoji: '❤️' },
+            { speakerAvatar: 'nova.png', emoji: '😂' },
+        ]);
+    });
+
+    test('are none for a reply without a marker', () => {
+        expect(collectReplyReactions(plan('just text'))).toEqual([]);
+        expect(collectReplyReactions([])).toEqual([]);
     });
 });
 

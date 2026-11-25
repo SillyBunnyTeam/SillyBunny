@@ -66,3 +66,23 @@ export function qualifyEmoji(text) {
 export function emojiKey(text) {
     return String(text).replace(/️/g, '');
 }
+
+/**
+ * The first emoji of a text that holds nothing else, which a model's value for a reaction is read as: it may write
+ * several, or put spaces between them. Anything with a word in it is not an emoji, and gives nothing.
+ * @returns {string} The emoji in its fully qualified form, or an empty text.
+ */
+export function firstEmoji(text) {
+    const trimmed = typeof text === 'string' ? text.trim() : '';
+    if (!trimmed) {
+        return '';
+    }
+    if (isSingleEmoji(trimmed)) {
+        return qualifyEmoji(trimmed);
+    }
+    if (!SEGMENTER) {
+        return '';
+    }
+    const parts = [...SEGMENTER.segment(trimmed)].map(part => part.segment).filter(part => part.trim());
+    return parts.length && parts.every(isSingleEmoji) ? qualifyEmoji(parts[0]) : '';
+}

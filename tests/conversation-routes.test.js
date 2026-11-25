@@ -117,6 +117,28 @@ describe('POST /create, /get, /update and /delete', () => {
         expect(second.json).toMatchObject({ created: false, conversation: { id: first.json.conversation.id } });
     });
 
+    test('create takes the settings that a conversation starts with, and keeps those of a direct conversation that is there already', async () => {
+        const body = { kind: 'direct', personaId: PERSONA, characters: ['Nova.png'] };
+
+        const first = await post('/create', { ...body, settings: { characters_react: true } });
+        const second = await post('/create', { ...body, settings: { characters_react: false, authors_note: 'x' } });
+
+        expect(first.json.conversation.settings).toEqual({ characters_react: true });
+        expect(second.json).toMatchObject({ created: false, conversation: { id: first.json.conversation.id, settings: { characters_react: true } } });
+    });
+
+    test.each([
+        ['a setting that is an object', { characters_react: { on: true } }],
+        ['a key that is not a setting name', { '../x': true }],
+        ['settings that are no object', 'on'],
+    ])('create refuses %s and makes nothing', async (_name, settings) => {
+        const { status, json } = await post('/create', { kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], settings });
+
+        expect(status).toBe(400);
+        expect(json.error).toBe('invalid_input');
+        expect(fs.readdirSync(user.directories.conversations)).toEqual([]);
+    });
+
     test('create does not take the fields that are for the migration', async () => {
         const { status, json } = await post('/create', { kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], id: 'conv_1_abcd' });
 

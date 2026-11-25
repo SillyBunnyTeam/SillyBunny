@@ -167,6 +167,18 @@ describe('making conversations', () => {
         expect(group).toMatchObject({ name: 'Crew', members: ['Nova.png', 'Orion.png'], is_conversation_group: true });
         expect(await makeConversationGroup(['Nova.png'])).toBeNull();
     });
+
+    test('a new direct conversation and a new group let their characters react, and a conversation that was there keeps its settings', async () => {
+        await startData([DIRECT]);
+
+        const existing = await ensureDirectConversation('Nova.png');
+        const created = await ensureDirectConversation('Orion.png');
+        const group = await makeConversationGroup(['Nova.png', 'Orion.png']);
+
+        expect(existing.settings).not.toHaveProperty('characters_react');
+        expect(created.settings).toEqual({ characters_react: true });
+        expect(data.get(group.id).settings).toEqual({ characters_react: true });
+    });
 });
 
 describe('chats of a conversation', () => {

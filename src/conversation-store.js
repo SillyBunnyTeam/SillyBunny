@@ -89,6 +89,13 @@ import { getConfigValue, tryWriteFileSync } from './util.js';
 
 export { ConversationStoreError, summarizeChatRecords };
 
+/**
+ * The settings that a group made by Add Member starts with. The page writes the same literal for a conversation that it
+ * makes (`NEW_CONVERSATION_SETTINGS` in `public/scripts/sillybunny-conversation/constants.js`); the server cannot import
+ * from `public/`, and a test holds the two equal.
+ */
+export const NEW_CONVERSATION_SETTINGS = Object.freeze({ characters_react: true });
+
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxRecoveryStates = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
 const CONVERSATION_ID_ATTEMPTS = 5;
@@ -918,7 +925,7 @@ export function addMembers(user, id, avatars) {
     requireCharacterCards(user, chosen);
     const current = readConversation(user, id);
     if (current.kind === 'direct') {
-        const { conversation } = createConversation(user, { kind: 'group', personaId: current.personaId, characters: [current.characters[0], ...chosen] });
+        const { conversation } = createConversation(user, { kind: 'group', personaId: current.personaId, characters: [current.characters[0], ...chosen], settings: NEW_CONVERSATION_SETTINGS });
         return { conversation, created: true };
     }
     const conversation = mutateConversation(user, id, latest => guard(() => applyUpdatePatch(latest, { characters: [...latest.characters, ...chosen] }, { now: Date.now() })));

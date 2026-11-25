@@ -183,6 +183,7 @@ export const SCHEDULE_GENERATION_RESPONSE_TOKENS = 8000;
 export const SELFIE_COMMAND_RE = /\[selfie(?::\s*(?:context=)?"?([^"\]]*)"?)?\]/gi;
 export const SCHEDULE_UPDATE_RE = /\[schedule_update:\s*([^\]]+)\]/gi;
 export const REMINDER_COMMAND_RE = /\[reminder:\s*([^|\]]+)\s*\|\s*([^\]]+)\]/gi;
+export const REACT_COMMAND_RE = /\[react:\s*([^\]]{1,64})\]/gi;
 export const CHROME_IDS = Object.freeze({
     header: 'sb_conversation_header',
     listToggle: 'sb_conversation_list_toggle',
@@ -243,7 +244,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
     image_gen_negative: '',
     image_gen_cooldown: 10,
     spontaneous_selfies: false,
+    characters_react: false,
 });
+
+/**
+ * What a conversation that the app makes starts with. A conversation that does not say reads the defaults above, so a
+ * conversation made before a key was added keeps its old behaviour and the creators write the new one; a creator that
+ * forgets the key gives the safe value. `src/conversation-store.js` repeats the literal for the group that Add Member
+ * makes from a direct conversation, and a test holds the two equal.
+ */
+export const NEW_CONVERSATION_SETTINGS = Object.freeze({ characters_react: true });
 
 /** Settings of the mode, not of a conversation: they are kept in `settings.json`, and every conversation reads the same value. */
 export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([

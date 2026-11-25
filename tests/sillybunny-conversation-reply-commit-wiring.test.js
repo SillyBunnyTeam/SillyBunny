@@ -170,6 +170,23 @@ describe('a queued reply of a direct conversation', () => {
         }
     });
 
+    test('names the last user message of the trigger as the message that its characters react to', async () => {
+        answerWith('claimed');
+        const later = { id: 'u2', role: 'user', name: 'You', mes: 'are you there?', created_at: 3, extra: {} };
+        messages = [...messages, later];
+
+        await processQueuedConversationReply(queueItem({ messageIds: ['u1', 'u2'], messageRevisions: createConversationMessageRevisionEntries([USER_MESSAGE, later]) }));
+
+        expect(postCharacterReply.mock.calls[0][2].reactionTarget).toEqual({ messageId: 'u2' });
+    });
+
+    test('names the one message that triggered the reply', async () => {
+        answerWith('claimed');
+        await processQueuedConversationReply(queueItem());
+
+        expect(postCharacterReply.mock.calls[0][2].reactionTarget).toEqual({ messageId: 'u1' });
+    });
+
     test('does not write the reply when the server did, reads the chat again, and leaves landing it to the finalizer', async () => {
         answerWith('committed');
 
@@ -288,6 +305,15 @@ describe('a queued reply of a group', () => {
         expect(new Set(plans.map(plan => plan.reply.token)).size).toBe(2);
         expect(plans.every(plan => plan.reply.anchor === 'char.png')).toBe(true);
         expect(plans.every(plan => normalizeCommitPlan(plan) !== null)).toBe(true);
+    });
+
+    test('gives every member that answers the same message to react to', async () => {
+        answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem());
+
+        expect(postCharacterReply.mock.calls[0][2].reactionTarget).toEqual({ messageId: 'u1' });
+        expect(postMemberConversationReply.mock.calls[0][3].reactionTarget).toEqual({ messageId: 'u1' });
     });
 
     test('asks the second member only when the reply of the first is in the chat, so that it reads it', async () => {

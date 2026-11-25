@@ -6,6 +6,7 @@ import {
     CONVERSATION_STORE_KEY,
     DEFAULT_CHAT_ID,
     DEFAULT_SETTINGS,
+    NEW_CONVERSATION_SETTINGS,
     UNREAD_PREFIX,
 } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
@@ -177,7 +178,7 @@ export async function ensureDirectConversation(avatar, { personaId = getConversa
     if (existing) {
         return existing;
     }
-    const { conversation } = await conversationData.createConversation({ kind: 'direct', personaId, characters: [avatar] });
+    const { conversation } = await conversationData.createConversation({ kind: 'direct', personaId, characters: [avatar], settings: NEW_CONVERSATION_SETTINGS });
     return conversation;
 }
 
@@ -190,7 +191,7 @@ export async function makeConversationGroup(memberAvatars, { name = '', personaI
     if (members.length < 2) {
         return null;
     }
-    const { conversation } = await conversationData.createConversation({ kind: 'group', personaId, characters: members, ...(name ? { name } : {}) });
+    const { conversation } = await conversationData.createConversation({ kind: 'group', personaId, characters: members, settings: NEW_CONVERSATION_SETTINGS, ...(name ? { name } : {}) });
     return toGroupRecord(conversation);
 }
 

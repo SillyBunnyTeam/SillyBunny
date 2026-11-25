@@ -21,7 +21,7 @@
  * @property {string} groupId
  * @property {string} personaId
  * @property {(fallbackSpeaker: ReplySpeaker) => ReplySpeaker[]} speakersFor The speakers whose name may start a line. Empty in a direct conversation.
- * @property {(speakerAvatar: string) => Record<string, any>} settingsFor The settings that decide which commands the text may carry.
+ * @property {(speakerAvatar: string) => Record<string, any>} settingsFor The settings that decide which commands the text may carry, and whether its characters react (`characters_react`).
  * @typedef {object} FinalizerPage
  * @property {(view: Record<string, any>, reply: PendingReply) => ChatContext} context
  * @property {(route: 'profile'|'raw', text: string) => string} cleanUpText The clean-up that the request route would have applied.
@@ -37,7 +37,8 @@
  */
 
 import { isPendingServerReply, readPendingReply } from './pending-reply.js';
-import { buildPendingBubbles, buildReplySteps } from './reply-steps.js';
+import { addCharacterReaction, readReactions, writeReactions } from './reaction-model.js';
+import { buildPendingBubbles, buildReplySteps, collectReplyReactions } from './reply-steps.js';
 
 const LOCK_PREFIX = 'sb-conversation-finalize';
 const DEFAULT_LOCK_TIMEOUT_MS = 20_000;
@@ -182,11 +183,21 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
             reference: triggerMessage ? page.buildReference(triggerMessage) : null,
         });
 
+        // Only a reply to a message of the user reacts to it, and only when the conversation lets its characters react.
+        const reactions = reply.origin === 'reply' && settings.characters_react && triggerMessage ? collectReplyReactions(groups) : [];
+
         try {
+            // One commit, so that the reaction and the reply land together or not at all, and so that a page that finds the
+            // pending message gone (another page landed it) writes neither a second time.
             data.commitChat(address, (draft) => {
                 const index = draft.messages.findIndex(item => item.id === message.id);
-                if (index >= 0) {
-                    draft.messages.splice(index, 1, ...bubbles);
+                if (index < 0) {
+                    return;
+                }
+                draft.messages.splice(index, 1, ...bubbles);
+                const target = reactions.length ? draft.messages.find(item => item.id === triggerMessage.id) : null;
+                if (target) {
+                    writeReactions(target, reactions.reduce((entries, { speakerAvatar: reactor, emoji }) => addCharacterReaction(entries, emoji, reactor, message.created_at), readReactions(target)));
                 }
             }, { shrink: bubbles.length === 0 });
         } catch (error) {

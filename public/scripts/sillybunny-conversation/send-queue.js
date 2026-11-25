@@ -267,6 +267,9 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
         reply_token: token,
         ...(queueItem.replyReference ? { conversation_reply_to: queueItem.replyReference } : {}),
     };
+    // The characters of a reply may react to the last message of the user that it answers.
+    const triggerMessage = getLastConversationQueueUserMessage(queueItem, getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId }));
+    const reactionTarget = triggerMessage?.id ? { messageId: triggerMessage.id } : null;
     let posted = false;
     if (response?.trim()) {
         if (replyAvatar === anchorAvatar) {
@@ -279,6 +282,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
                 personaId,
                 validateTarget,
                 roundMarker,
+                reactionTarget,
             }, anchorAvatar);
             posted = Boolean(postedText);
         } else {
@@ -293,6 +297,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
                 personaId,
                 validateTarget,
                 roundMarker,
+                reactionTarget,
             });
         }
     }

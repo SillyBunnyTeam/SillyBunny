@@ -75,6 +75,12 @@ async function serverChat(address = ADDRESS) {
     return reader.chat(address).messages;
 }
 
+/** The chat as the server holds it, in the shape that `byId` reads. */
+async function serverChatData(address = ADDRESS) {
+    const messages = await serverChat(address);
+    return { chat: () => ({ messages }) };
+}
+
 describe('landing a pending reply', () => {
     test('replaces the pending message with its bubbles, in its place, and saves them', async () => {
         const pending = pendingReply({ text: 'one\n\ntwo', triggers: ['main-1'] });
@@ -158,6 +164,140 @@ describe('landing a pending reply', () => {
         const [first, last] = data.chat(ADDRESS).messages.slice(2);
         expect(first.extra).not.toHaveProperty('conversation_round');
         expect(last.extra.conversation_round).toEqual({ remaining: ['Orion.png'], started: pending.extra.server_generation.round_started, triggers: ['main-1'] });
+    });
+});
+
+describe('the reaction of a character in a reply that the server wrote', () => {
+    const REACTING = { ...COMMANDS_ON, characters_react: true };
+    const reactingPage = (settings = REACTING) => makePage({
+        context: jest.fn((view, reply) => ({
+            anchorAvatar: reply.anchor || view.characters[0],
+            groupId: view.kind === 'group' ? view.id : '',
+            personaId: view.personaId,
+            speakersFor: fallback => (view.kind === 'group' ? [fallback, ...view.characters.map(avatar => ({ avatar, name: avatar.replace('.png', '') }))] : []),
+            settingsFor: () => settings,
+        })),
+    });
+    const reactionsOf = (data, id, address = ADDRESS) => byId(data, id, address).extra?.conversation_reactions;
+
+    test('is written to the message that the reply answers, with the time of the reply, and the marker is not in the bubble', async () => {
+        const pending = pendingReply({ text: 'haha [react: 😂] that is great', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, finalizer } = await openPage(reactingPage());
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(reactionsOf(data, 'main-1')).toEqual([{ emoji: '😂', by: 'Nova.png', at: pending.created_at }]);
+        expect(byId(data, `${pending.id}.0`).mes).toBe('haha that is great');
+        expect(reactionsOf(await serverChatData(), 'main-1')).toEqual([{ emoji: '😂', by: 'Nova.png', at: pending.created_at }]);
+    });
+
+    test('lands with the bubbles in one commit, so that the reaction and the reply are there together or not at all', async () => {
+        const pending = pendingReply({ text: 'one [react: 🎉]\n\ntwo', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const data = createConversationData(server.adapter());
+        tabs.push(data);
+        await data.start();
+        await data.loadChat(ADDRESS);
+        const commitChat = jest.fn((...args) => data.commitChat(...args));
+        const finalizer = createReplyFinalizer({ data: { ...data, commitChat }, page: reactingPage(), getLocks: () => locks });
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(commitChat).toHaveBeenCalledTimes(1);
+        expect(reactionsOf(data, 'main-1')).toEqual([{ emoji: '🎉', by: 'Nova.png', at: pending.created_at }]);
+        expect(ids(data)).toEqual(['main-0', 'main-1', `${pending.id}.0`, `${pending.id}.1`]);
+    });
+
+    test('is all that a reply of only the marker leaves in the chat: the pending message goes and no bubble comes', async () => {
+        const pending = pendingReply({ text: '[react: 👍]', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, page, finalizer } = await openPage(reactingPage());
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(ids(data)).toEqual(['main-0', 'main-1']);
+        expect(reactionsOf(data, 'main-1')).toEqual([{ emoji: '👍', by: 'Nova.png', at: pending.created_at }]);
+        expect(page.acknowledge).toHaveBeenCalledWith([expect.any(String)]);
+    });
+
+    test('is taken out of the bubble and not written when characters may not react', async () => {
+        const pending = pendingReply({ text: 'haha [react: 😂]', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, finalizer } = await openPage(reactingPage(COMMANDS_ON));
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(byId(data, `${pending.id}.0`).mes).toBe('haha');
+        expect(reactionsOf(data, 'main-1')).toBeUndefined();
+    });
+
+    test('is not written when the message that the reply answers is gone, and the bubbles land all the same', async () => {
+        const pending = pendingReply({ text: 'haha [react: 😂]', triggers: ['deleted-message'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, finalizer } = await openPage(reactingPage());
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(ids(data)).toEqual(['main-0', 'main-1', `${pending.id}.0`]);
+        expect(reactionsOf(data, 'main-1')).toBeUndefined();
+    });
+
+    test('is not written for a message that a character started or a reminder, which answer no message', async () => {
+        const pending = pendingReply({ text: 'thinking of you [react: ❤️]', origin: 'auto', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, finalizer } = await openPage(reactingPage());
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(byId(data, `${pending.id}.0`).mes).toBe('thinking of you');
+        expect(reactionsOf(data, 'main-1')).toBeUndefined();
+    });
+
+    test('is added to the reactions that the message holds already, and the user keeps theirs', async () => {
+        const pending = pendingReply({ text: 'same here [react: ❤️]', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, finalizer } = await openPage(reactingPage());
+        await data.loadChat(ADDRESS);
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.find(item => item.id === 'main-1').extra = { conversation_reactions: [{ emoji: '❤️', by: 'user', at: 5 }] };
+        });
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(reactionsOf(data, 'main-1')).toEqual([{ emoji: '❤️', by: 'user', at: 5 }, { emoji: '❤️', by: 'Nova.png', at: pending.created_at }]);
+    });
+
+    test('is written once when two pages land the same reply', async () => {
+        const pending = pendingReply({ text: 'haha [react: 😂]', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const pages = [await openPage(reactingPage()), await openPage(reactingPage())];
+        await Promise.all(pages.map(({ data }) => data.loadChat(ADDRESS)));
+        locks = undefined;
+
+        await Promise.all(pages.map(({ finalizer }) => finalizer.finalize(ADDRESS)));
+        await Promise.all(pages.map(({ data }) => data.flush()));
+
+        expect(reactionsOf(await serverChatData(), 'main-1')).toEqual([{ emoji: '😂', by: 'Nova.png', at: pending.created_at }]);
+    });
+
+    test('is written by each member of a group that reacts, once each', async () => {
+        const pending = pendingReply({ text: 'Nova: hi [react: ❤️]\nOrion: yo [react: ❤️]\nOrion: again [react: 👍]', speaker: 'Nova.png', anchor: 'Nova.png', name: 'Nova', triggers: ['main-1'] });
+        seedConversations(server, [GROUP(pending)]);
+        const { data, finalizer } = await openPage(reactingPage());
+        await data.loadChat(GROUP_ADDRESS);
+
+        await finalizer.finalize(GROUP_ADDRESS);
+
+        expect(reactionsOf(data, 'main-1', GROUP_ADDRESS)).toEqual([
+            { emoji: '❤️', by: 'Nova.png', at: pending.created_at },
+            { emoji: '❤️', by: 'Orion.png', at: pending.created_at },
+        ]);
     });
 });
 

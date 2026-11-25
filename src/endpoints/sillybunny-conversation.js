@@ -66,7 +66,8 @@ const STATUS_BY_CODE = Object.freeze({
     conversion_failed: 500,
     migration_failed: 503,
 });
-const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description'];
+// `settings` is for what the page starts a conversation with (`NEW_CONVERSATION_SETTINGS`); its keys and values are checked as an update's are.
+const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description', 'settings'];
 const CREATE_CHAT_FIELDS = ['id', 'chatId', 'name', 'activate', 'readThrough', 'records', 'chat_metadata'];
 const MAX_IMAGE_TEXT_LENGTH = Math.ceil(MAX_AVATAR_IMAGE_BYTES / 3) * 4;
 const IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpeg|gif|webp);base64,/i;

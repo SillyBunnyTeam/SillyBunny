@@ -20,7 +20,8 @@ import { generationTargets } from './deletion-guards.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getCharacterImageDetails } from './media.js';
 import { appendConversationMessage } from './message-writer.js';
 import { stripSpeakerPrefix } from './members.js';
-import { buildReplySteps } from './reply-steps.js';
+import { addCharacterReaction } from './reaction-model.js';
+import { buildReplySteps, collectReplyReactions } from './reply-steps.js';
 import { confirmConversationAction } from './dialogs.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
@@ -38,6 +39,7 @@ import {
     hasConversationMessageContent,
     markImageGenerated,
     updateConversationChatMessage,
+    updateConversationChatMessageReactions,
 } from './conversation-store.js';
 import { waitForReplyDelay, withTypingParticipant } from './typing.js';
 import { getConversationWorldInfo } from './world-info.js';
@@ -482,6 +484,31 @@ function getReplyExtraWithCommandMetadata(extra, commandMetadata) {
     return resolvedExtra;
 }
 
+/**
+ * Writes the reaction of each speaker of a reply to the message of the user that the reply answers. A function that
+ * takes a speaker's turn: it writes that speaker's reaction the first time, so that a speaker with several groups reacts
+ * once, and it writes none when characters may not react or the reply answers no message (an automatic message).
+ * @param {import('./reply-steps.js').ReplyGroup[]} groups
+ * @param {Record<string, any>} settings
+ * @param {{ messageId: string }|null|undefined} reactionTarget
+ * @param {{ avatar: string, chatId: string, groupId: string|undefined, personaId: string }} scope
+ * @returns {(speakerAvatar: string) => void}
+ */
+function createReactionWriter(groups, settings, reactionTarget, { avatar, chatId, groupId, personaId }) {
+    if (!settings?.characters_react || !reactionTarget?.messageId) {
+        return () => {};
+    }
+    const pending = new Map(collectReplyReactions(groups).map(({ speakerAvatar, emoji }) => [speakerAvatar, emoji]));
+    return (speakerAvatar) => {
+        const emoji = pending.get(speakerAvatar);
+        if (!emoji) {
+            return;
+        }
+        pending.delete(speakerAvatar);
+        updateConversationChatMessageReactions(avatar, reactionTarget.messageId, entries => addCharacterReaction(entries, emoji, speakerAvatar), { chatId, groupId, personaId });
+    };
+}
+
 /** The index of the last group that has a bubble: the bubble that carries the marker of a round. */
 function getLastBubbleGroupIndex(groups) {
     for (let index = groups.length - 1; index >= 0; index--) {
@@ -518,7 +545,11 @@ async function appendResolvedConversationReply(messageText, speaker, settings, {
     }, avatar, { chatId, groupId, personaId });
 }
 
-export async function postMemberConversationReply(rawText, member, memberSettings, { avatar = getCurrentCharAvatar(), extra = {}, chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), validateTarget = null, roundMarker = null } = {}) {
+/**
+ * @param {object} [options]
+ * @param {{ messageId: string }|null} [options.reactionTarget] The message of the user that the reply answers, which its characters may react to. An automatic message answers none.
+ */
+export async function postMemberConversationReply(rawText, member, memberSettings, { avatar = getCurrentCharAvatar(), extra = {}, chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), validateTarget = null, roundMarker = null, reactionTarget = null } = {}) {
     if (!avatar || !member) {
         return false;
     }
@@ -534,12 +565,14 @@ export async function postMemberConversationReply(rawText, member, memberSetting
     let posted = false;
     const replyReferenceSpeakers = new Set();
     const lastBubbleGroup = getLastBubbleGroupIndex(groups);
+    const writeReaction = createReactionWriter(groups, memberSettings, reactionTarget, { avatar, chatId, groupId, personaId });
 
     for (const [groupIndex, group] of groups.entries()) {
         if (typeof validateTarget === 'function' && !validateTarget()) {
             return posted;
         }
         const { speaker, speakerAvatar, commandParts } = group;
+        writeReaction(speakerAvatar);
         const replyExtra = getReplyExtraWithCommandMetadata(extra, group.commandMetadata);
         const plainReplyExtra = getReplyExtraWithCommandMetadata(extra, null);
         let commandReplyAppended = false;
@@ -690,7 +723,11 @@ async function generateSelfieCaption(context, settings, avatar, imagePrompt) {
     return 'Here, I took this for you.';
 }
 
-export async function postCharacterReply(rawText, settings, { extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), validateTarget = null, roundMarker = null } = {}, avatar = getCurrentCharAvatar()) {
+/**
+ * @param {object} [options]
+ * @param {{ messageId: string }|null} [options.reactionTarget] The message of the user that the reply answers, which its characters may react to. An automatic message answers none.
+ */
+export async function postCharacterReply(rawText, settings, { extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), validateTarget = null, roundMarker = null, reactionTarget = null } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return '';
     }
@@ -706,12 +743,14 @@ export async function postCharacterReply(rawText, settings, { extra = {}, chatId
     const postedText = [];
     const replyReferenceSpeakers = new Set();
     const lastBubbleGroup = getLastBubbleGroupIndex(groups);
+    const writeReaction = createReactionWriter(groups, settings, reactionTarget, { avatar, chatId, groupId, personaId });
 
     for (const [groupIndex, group] of groups.entries()) {
         if (typeof validateTarget === 'function' && !validateTarget()) {
             return postedText.join('\n');
         }
         const { speaker, speakerAvatar, commandParts } = group;
+        writeReaction(speakerAvatar);
         const replyExtra = getReplyExtraWithCommandMetadata(extra, group.commandMetadata);
         const plainReplyExtra = getReplyExtraWithCommandMetadata(extra, null);
         let commandReplyAppended = false;

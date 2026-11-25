@@ -176,6 +176,15 @@ describe('addMembers on a direct conversation', () => {
         expect(folderNames()).toEqual([DIRECT_ID, conversation.id].sort());
     });
 
+    test('lets the characters of the new group react, as a group that the app makes does', () => {
+        makeDirect();
+
+        const { conversation } = addMembers(user, DIRECT_ID, ['Orion.png']);
+
+        expect(conversation.settings).toEqual({ characters_react: true });
+        expect(readConversation(user, conversation.id).settings).toEqual({ characters_react: true });
+    });
+
     test('a second call starts a second group', () => {
         makeDirect();
 
@@ -250,6 +259,14 @@ describe('removeMember', () => {
 });
 
 describe('removing the second-to-last member converts the group', () => {
+    test.each([true, false])('keeps what the group said about Characters React (%s)', (value) => {
+        makeGroup({ settings: { characters_react: value } });
+
+        const direct = removeMember(user, GROUP_ID, 'Orion.png').conversation;
+
+        expect(direct.settings).toEqual({ characters_react: value });
+    });
+
     test('creates the direct conversation of the remaining character, with the chats named after the group', () => {
         makeGroup();
 

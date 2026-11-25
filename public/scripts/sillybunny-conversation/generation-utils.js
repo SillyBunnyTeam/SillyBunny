@@ -1,8 +1,10 @@
 import {
+    REACT_COMMAND_RE,
     REMINDER_COMMAND_RE,
     SCHEDULE_UPDATE_RE,
     SELFIE_COMMAND_RE,
 } from './constants.js';
+import { firstEmoji } from './emoji/emoji-validate.js';
 
 export function parseCommandArgs(rawArgs) {
     const args = {};
@@ -64,17 +66,30 @@ export function extractCharacterReplyCommandParts(rawText, settings = {}) {
         return '';
     });
 
+    // The marker is always taken out, whether or not the character may react, so that a model that echoes it shows no
+    // brackets. Its value is read here, before the quotes of the text go, and the first marker decides.
+    let reaction = null;
+    let reactionMarkerSeen = false;
+    text = text.replace(REACT_COMMAND_RE, (full, value) => {
+        if (!reactionMarkerSeen) {
+            reaction = firstEmoji(String(value).trim().replace(/^["'`“”]+|["'`“”]+$/g, '')) || null;
+        }
+        reactionMarkerSeen = true;
+        return '';
+    });
+
     text = text.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     text = normalizeConversationOutputText(text);
 
     // SillyBunny: bracket-command stripping must never blank a real reply. If the strip
     // pass consumed everything (e.g. the model echoed bracket labels it saw in the persona),
-    // fall back to the original text so the user always sees a response.
-    if (!text && originalText.trim()) {
+    // fall back to the original text so the user always sees a response. A reply that was
+    // only a reaction is a reaction with no bubble, and shows no marker.
+    if (!text && originalText.trim() && !reactionMarkerSeen) {
         text = normalizeConversationOutputText(originalText.trim());
     }
 
-    return { text, selfieRequests, scheduleUpdates, reminders };
+    return { text, selfieRequests, scheduleUpdates, reminders, reaction };
 }
 
 /** Splits a reply into chat bubbles at its blank lines. Lives here, with the other pure text rules, so that the reply planner does not import the page. */

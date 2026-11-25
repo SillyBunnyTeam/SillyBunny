@@ -5,6 +5,8 @@ const appendConversationMessage = jest.fn();
 const addConversationReminder = jest.fn();
 const generateConversationImage = jest.fn();
 const updateConversationChatMessage = jest.fn();
+const updateConversationChatMessageReactions = jest.fn();
+const waitForReplyDelay = jest.fn();
 const ensureConversationChatLoaded = jest.fn(async () => ({ conversationId: 'conv_1_direct', chatId: 'main' }));
 const loadRelatedMemoryChats = jest.fn(async () => {});
 const runtimeStatusOverrides = new Map();
@@ -76,10 +78,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
     hasConversationMessageContent: message => Boolean(message?.id && message?.mes),
     markImageGenerated: jest.fn(),
     updateConversationChatMessage,
+    updateConversationChatMessageReactions,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     splitChatroomMessages: value => String(value || '').split(/\n\s*\n+/).map(part => part.trim()).filter(Boolean),
-    waitForReplyDelay: jest.fn(),
+    waitForReplyDelay,
     withTypingParticipant: (_participant, task) => task(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-info.js', () => ({ getConversationWorldInfo }));
@@ -124,6 +127,8 @@ describe('Conversation core generated reply regressions', () => {
         addConversationReminder.mockClear();
         generateConversationImage.mockClear();
         updateConversationChatMessage.mockClear();
+        updateConversationChatMessageReactions.mockReset();
+        waitForReplyDelay.mockReset();
         runtimeStatusOverrides.clear();
         generateRaw.mockReset();
         getConnectionProfiles.mockReset().mockReturnValue([]);
@@ -280,6 +285,83 @@ describe('Conversation core generated reply regressions', () => {
         expect(addConversationReminder).toHaveBeenCalledWith('char.png', '', '15m', 'check in', {
             chatId: 'branch-a',
             personaId: 'persona-a.png',
+        });
+    });
+
+    describe('the reaction of a character to the message that it answers', () => {
+        const reactingSettings = { ...settings, characters_react: true };
+        const reactionTarget = { messageId: 'user-1' };
+        const scope = { chatId: 'branch-a', groupId: '', personaId: 'persona-a.png' };
+        /** The entries that the store would write for the call, when the message held `entries`. */
+        const writtenBy = (callIndex, entries = []) => updateConversationChatMessageReactions.mock.calls[callIndex][2](entries);
+
+        test('is written to the message that the reply answers, with the speaker as its reactor', async () => {
+            await postCharacterReply('haha [react: 😂] that is great', reactingSettings, { ...scope, reactionTarget }, 'char.png');
+
+            expect(updateConversationChatMessageReactions).toHaveBeenCalledTimes(1);
+            expect(updateConversationChatMessageReactions.mock.calls[0].slice(0, 2)).toEqual(['char.png', 'user-1']);
+            expect(updateConversationChatMessageReactions.mock.calls[0][3]).toEqual(scope);
+            expect(writtenBy(0)).toEqual([{ emoji: '😂', by: 'char.png', at: expect.any(Number) }]);
+            expect(appendConversationMessage.mock.calls.map(call => call[0])).toEqual(['haha that is great']);
+        });
+
+        test('comes before the typing delay of the first bubble, so that the user sees the reaction, the dots and then the text', async () => {
+            await postCharacterReply('[react: 👍] sounds good', reactingSettings, { ...scope, reactionTarget }, 'char.png');
+
+            const reacted = updateConversationChatMessageReactions.mock.invocationCallOrder[0];
+            expect(reacted).toBeLessThan(waitForReplyDelay.mock.invocationCallOrder[0]);
+            expect(reacted).toBeLessThan(appendConversationMessage.mock.invocationCallOrder[0]);
+        });
+
+        test('is all that a reply of only the marker does: it posts no bubble', async () => {
+            const posted = await postCharacterReply('[react: 🎉]', reactingSettings, { ...scope, reactionTarget }, 'char.png');
+
+            expect(updateConversationChatMessageReactions).toHaveBeenCalledTimes(1);
+            expect(appendConversationMessage).not.toHaveBeenCalled();
+            expect(posted).toBe('');
+        });
+
+        test('is taken out of the text and not written when characters may not react', async () => {
+            await postCharacterReply('haha [react: 😂]', { ...settings, characters_react: false }, { ...scope, reactionTarget }, 'char.png');
+            await postCharacterReply('haha [react: 😂]', settings, { ...scope, reactionTarget }, 'char.png');
+
+            expect(updateConversationChatMessageReactions).not.toHaveBeenCalled();
+            expect(appendConversationMessage.mock.calls.map(call => call[0])).toEqual(['haha', 'haha']);
+        });
+
+        test('is not written for a message that answers no message of the user, such as an automatic one', async () => {
+            await postCharacterReply('thinking of you [react: ❤️]', reactingSettings, { ...scope }, 'char.png');
+
+            expect(updateConversationChatMessageReactions).not.toHaveBeenCalled();
+            expect(appendConversationMessage).toHaveBeenCalledTimes(1);
+        });
+
+        test('is not written when the reply is no longer wanted', async () => {
+            await postCharacterReply('haha [react: 😂]', reactingSettings, { ...scope, reactionTarget, validateTarget: () => false }, 'char.png');
+
+            expect(updateConversationChatMessageReactions).not.toHaveBeenCalled();
+            expect(appendConversationMessage).not.toHaveBeenCalled();
+        });
+
+        test('is written once for a speaker that answers in several bubbles with several markers', async () => {
+            await postCharacterReply('one [react: 😂]\n\ntwo [react: 👍]', reactingSettings, { ...scope, reactionTarget }, 'char.png');
+
+            expect(updateConversationChatMessageReactions).toHaveBeenCalledTimes(1);
+            expect(writtenBy(0)[0].emoji).toBe('😂');
+        });
+
+        test('leaves the message as it was when the character reacted to it already', async () => {
+            await postCharacterReply('again [react: 👍]', reactingSettings, { ...scope, reactionTarget }, 'char.png');
+
+            const held = [{ emoji: '😂', by: 'char.png', at: 5 }];
+            expect(writtenBy(0, held)).toBe(held);
+        });
+
+        test('belongs to the member that wrote the reply, when a member answers', async () => {
+            await postMemberConversationReply('lol [react: 😂]', { avatar: 'partner.png', name: 'Partner' }, reactingSettings, { avatar: 'char.png', ...scope, reactionTarget });
+
+            expect(updateConversationChatMessageReactions.mock.calls[0].slice(0, 2)).toEqual(['char.png', 'user-1']);
+            expect(writtenBy(0)).toEqual([{ emoji: '😂', by: 'partner.png', at: expect.any(Number) }]);
         });
     });
 

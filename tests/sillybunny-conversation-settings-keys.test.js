@@ -4,14 +4,20 @@ import {
     DEFAULT_SETTINGS,
     GLOBAL_CONVERSATION_SETTINGS_KEYS,
     CONVERSATION_SETTINGS_KEYS,
+    NEW_CONVERSATION_SETTINGS,
 } from '../public/scripts/sillybunny-conversation/constants.js';
+import { mapConversationSettings } from '../src/conversation-migration-settings.js';
+// The sandbox points the server's configuration at the bundled one, which the store needs when it loads.
+import './util/conversation-store-sandbox.js';
+
+const { NEW_CONVERSATION_SETTINGS: SERVER_NEW_CONVERSATION_SETTINGS } = await import('../src/conversation-store.js');
 
 // Plan S5.6, as lists. A key that is kept per conversation, kept mode-wide, moved to the character, or removed.
 const KEPT_PER_CONVERSATION = [
     'proactive_messaging', 'inactivity_threshold', 'max_followups', 'notifications_muted', 'offline_message',
     'selfie_command_enabled', 'schedule_command_enabled', 'include_related_memory', 'geechan_chatroom_prompt', 'authors_note',
     'lorebook_override', 'prose_polisher', 'roleplay_reactions', 'image_gen_enabled', 'image_gen_prompt_template',
-    'image_gen_negative', 'image_gen_cooldown', 'spontaneous_selfies',
+    'image_gen_negative', 'image_gen_cooldown', 'spontaneous_selfies', 'characters_react',
 ];
 const KEPT_MODE_WIDE = [
     'custom_instructions', 'grounded_dialogue_rules_enabled', 'grounded_dialogue_rules', 'lorebooks_enabled', 'connection_profile',
@@ -52,6 +58,28 @@ describe('sillybunny conversation settings keys', () => {
         expect(DEFAULT_SETTINGS.use_device_emoji).toBe(false);
         expect(GLOBAL_CONVERSATION_SETTINGS_KEYS).toContain('use_device_emoji');
         expect(CONVERSATION_SETTINGS_KEYS).not.toContain('use_device_emoji');
+    });
+
+    describe('Characters React', () => {
+        test('is off for a conversation that does not say, so that a conversation made before it stays as it was', () => {
+            expect(DEFAULT_SETTINGS.characters_react).toBe(false);
+            expect(CONVERSATION_SETTINGS_KEYS).toContain('characters_react');
+        });
+
+        test('is on in the settings that a new conversation is made with, the same on the client and on the server', () => {
+            expect(NEW_CONVERSATION_SETTINGS).toEqual({ characters_react: true });
+            expect(SERVER_NEW_CONVERSATION_SETTINGS).toEqual(NEW_CONVERSATION_SETTINGS);
+            expect(Object.isFrozen(NEW_CONVERSATION_SETTINGS)).toBe(true);
+            for (const key of Object.keys(NEW_CONVERSATION_SETTINGS)) {
+                expect(CONVERSATION_SETTINGS_KEYS).toContain(key);
+            }
+        });
+
+        test('is not written for a conversation that the migration makes, which stays off', () => {
+            const migrated = mapConversationSettings({ kind: 'group', effective: { characters_react: true, authors_note: 'Mine' }, idleToggleOn: false });
+
+            expect(migrated).not.toHaveProperty('characters_react');
+        });
     });
 
     test('turn the reply delay on, and messaging first off, until the user chooses', () => {
