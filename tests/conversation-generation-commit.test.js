@@ -1,13 +1,26 @@
-import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PassThrough } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createSandboxUser, header, PERSONA } from './util/conversation-store-sandbox.js';
-import { encodeCommitPlan, hashCommitText, normalizeCommitPlan } from '../public/scripts/generation-commit-plan.js';
-import { getConversationMessageRevision } from '../public/scripts/sillybunny-conversation/message-identity-utils.js';
+import {
+    CONTEXT,
+    CONVERSATION,
+    FINISHED,
+    RAW_TEXT,
+    REPLY,
+    TOKEN,
+    chatMessages,
+    chatRecords,
+    message,
+    plan,
+    revisionOf,
+    settled,
+    stampOf,
+    startGeneration as startRegistryGeneration,
+} from './util/conversation-reply-fixture.js';
+import { hashCommitText, normalizeCommitPlan } from '../public/scripts/generation-commit-plan.js';
 
 const { conversationIndex } = await import('../src/conversation-index.js');
 const { createConversation, deleteChat, deleteConversation, listConversations, saveChat, updateConversation } = await import('../src/conversation-store.js');
@@ -15,80 +28,6 @@ const { applyConversationReply } = await import('../src/conversation-generation-
 const { applyGenerationReply, commitGenerationReply, revertGenerationCommit } = await import('../src/generation-commit.js');
 const journal = await import('../src/generation-journal.js');
 const registry = await import('../src/resumable-generations.js');
-
-const CONVERSATION = 'conv_1700000000000_abcdef0123';
-const TOKEN = 'a1b2c3d4e5f60718';
-const FINISHED = new Date('2026-10-03T10:00:30.000Z');
-const CONTEXT = { id: 'gen-1', finishedAt: FINISHED };
-const RAW_TEXT = '  Hello there.\n\nNova: a second line, left raw.  ';
-const REPLY = { text: RAW_TEXT, reasoning: 'Think first.', error: false, swipes: ['An extra completion.'] };
-
-const revisionOf = message => hashCommitText(getConversationMessageRevision(message));
-
-function message(id, role, text, minute, extra = {}) {
-    const at = Date.UTC(2026, 9, 3, 9, minute, 0);
-    return {
-        id,
-        role,
-        name: role === 'user' ? 'You' : 'Nova',
-        is_user: role === 'user',
-        is_system: role === 'system',
-        mes: text,
-        send_date: new Date(at).toISOString(),
-        created_at: at,
-        extra,
-    };
-}
-
-/** The chat a reply is written into: a greeting, a user message and the user message that the reply answers. */
-function chatMessages() {
-    return [
-        message('m1', 'character', 'Greetings.', 1),
-        message('m2', 'user', 'Hello there.', 2),
-        message('m3', 'user', 'Are you there?', 3),
-    ];
-}
-
-function chatRecords(messages = chatMessages()) {
-    return [header({ integrity: 'slug-1' }), ...messages];
-}
-
-function stampOf(item) {
-    return { id: item.id, rev: revisionOf(item) };
-}
-
-/** A normalized plan for the reply to m2 and m3, from Nova, with Orion still to speak. */
-function plan({ reply = {}, ...overrides } = {}) {
-    const messages = chatMessages();
-    const normalized = normalizeCommitPlan({
-        v: 1,
-        chat: { conversation: CONVERSATION },
-        file: 'main',
-        kind: 'reply',
-        index: 4,
-        started: '2026-10-03T10:00:00.000Z',
-        page: 'page-a',
-        round: ['Orion.png'],
-        message: { name: 'Nova' },
-        reply: {
-            token: TOKEN,
-            speaker: 'Nova.png',
-            anchor: 'Nova.png',
-            origin: 'reply',
-            route: 'profile',
-            triggers: [stampOf(messages[1]), stampOf(messages[2])],
-            target: null,
-            needs_user: false,
-            round_started: 1760000000000,
-            ...reply,
-        },
-        ...overrides,
-    });
-    if (!normalized) {
-        throw new Error('The test plan is not valid');
-    }
-    return normalized;
-}
 
 function applied(records, planned = plan(), reply = REPLY, context = CONTEXT) {
     return applyConversationReply(records, planned, reply, context);
@@ -540,37 +479,7 @@ describe('commitGenerationReply for a conversation', () => {
     });
 
     const GENERATION_ID = 'g'.repeat(32);
-
-    function startGeneration(planned = plan(), id = GENERATION_ID) {
-        const headers = { 'x-generation-id': id, 'x-generation-commit': encodeCommitPlan(planned) };
-        const request = {
-            method: 'POST',
-            path: '/api/backends/chat-completions/generate',
-            headers,
-            socket: new EventEmitter(),
-            user,
-            get: name => headers[String(name).toLowerCase()],
-        };
-        const response = new PassThrough();
-        response.statusCode = 200;
-        response.statusMessage = '';
-        response.socket = {};
-        response.getHeader = name => (String(name).toLowerCase() === 'content-type' ? 'text/event-stream' : undefined);
-        registry.resumableGenerationMiddleware(request, response, jest.fn());
-        response.resume();
-        return {
-            generation: request.resumableGeneration,
-            finish() {
-                response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: RAW_TEXT } }] })}\n\n`);
-                response.end('data: [DONE]\n\n');
-            },
-        };
-    }
-
-    async function settled(generation) {
-        await new Promise(resolve => setImmediate(resolve));
-        await generation.commit.work;
-    }
+    const startGeneration = (planned = plan(), id = GENERATION_ID) => startRegistryGeneration(registry, user, planned, id);
 
     describe('through the registry', () => {
         test('a detached reply is written into the conversation chat when it finishes', async () => {

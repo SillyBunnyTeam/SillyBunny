@@ -15,7 +15,9 @@ export const CONVERSATION_REPLY_ROUTES = Object.freeze(['profile', 'raw']);
 export const MAX_CONVERSATION_ROUND = 2;
 export const MAX_REPLY_TRIGGERS = 24;
 
-const KEY_PREFIX = 'conversation:';
+/** Every chat key of a conversation chat starts with this; roleplay keys start with `character:` or `group:`. */
+export const CONVERSATION_CHAT_KEY_PREFIX = 'conversation:';
+
 const MAX_ID_LENGTH = 64;
 const MAX_AVATAR_LENGTH = 255;
 const MAX_NAME_LENGTH = 120;
@@ -62,7 +64,7 @@ function messageStamp(value) {
  * @returns {string} Stable key for matching generations to a conversation chat
  */
 export function getConversationChatKey(conversation, file) {
-    return `${KEY_PREFIX}${conversation}:${file}`;
+    return `${CONVERSATION_CHAT_KEY_PREFIX}${conversation}:${file}`;
 }
 
 /**
@@ -70,10 +72,10 @@ export function getConversationChatKey(conversation, file) {
  * @returns {{ conversation: string, chat: string }|null} The two ids, or null for any key that is not a conversation chat's
  */
 export function parseConversationChatKey(chatKey) {
-    if (typeof chatKey !== 'string' || !chatKey.startsWith(KEY_PREFIX)) {
+    if (typeof chatKey !== 'string' || !chatKey.startsWith(CONVERSATION_CHAT_KEY_PREFIX)) {
         return null;
     }
-    const parts = chatKey.slice(KEY_PREFIX.length).split(':');
+    const parts = chatKey.slice(CONVERSATION_CHAT_KEY_PREFIX.length).split(':');
     return parts.length === 2 && parts[0] && parts[1] ? { conversation: parts[0], chat: parts[1] } : null;
 }
 

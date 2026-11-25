@@ -169,6 +169,16 @@ export function getLostGenerations(user, chatKey) {
 }
 
 /**
+ * @param {{ directories?: { root?: string } }} user Owner
+ * @param {string} chatKeyPrefix Start of the chat keys wanted, such as `conversation:`
+ * @returns {JournalEntry[]} Replies for every chat under this prefix that a server restart lost
+ */
+export function getLostGenerationsByPrefix(user, chatKeyPrefix) {
+    const journal = getJournal(user);
+    return journal ? [...journal.entries.values()].filter(entry => entry.lost && entry.chatKey.startsWith(chatKeyPrefix)) : [];
+}
+
+/**
  * Forgets lost replies the page has told the user about.
  * @param {{ directories?: { root?: string } }} user Owner
  * @param {string[]} ids Generation ids
