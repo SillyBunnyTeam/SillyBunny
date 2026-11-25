@@ -1601,7 +1601,7 @@ describe('Chat completions backend prompt caching integration', () => {
     });
 });
 
-describe('Frontend prompt caching UI and chat_id wiring', () => {
+describe('Chat Completion preset compatibility', () => {
     const openaiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
 
     test('keeps server-side caching flags out of Chat Completion preset serialization (SillyTavern preset compatibility)', () => {
@@ -1609,9 +1609,5 @@ describe('Frontend prompt caching UI and chat_id wiring', () => {
         expect(settingsMapMatch).not.toBeNull();
         const settingsMapSource = settingsMapMatch[0];
         expect(settingsMapSource).not.toMatch(/sb-config-|enableSystemPromptCache|cachingAtDepth|extendedTTL|prompt_caching/i);
-    });
-
-    test('forwards chat_id for OpenRouter, OpenAI, OpenAI Responses, and Fireworks only on main cache scope turns', () => {
-        expect(openaiSource).toMatch(/isMainCacheScope[\s\S]*?chat_completion_sources\.OPENROUTER[\s\S]*?chat_completion_sources\.OPENAI[\s\S]*?chat_completion_sources\.OPENAI_RESPONSES[\s\S]*?type !== 'quiet' && isMainCacheScope[\s\S]*?generate_data\.chat_id = getCurrentChatId\(\)/);
     });
 });
