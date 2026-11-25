@@ -94,11 +94,13 @@
         return;
     }
 
-    // Without a controlling service worker nothing can re-populate Cache Storage
-    // during the reload navigation, so one pass suffices and records PASSES immediately.
+    // Without a controlling service worker on the first pass nothing can re-populate
+    // Cache Storage during the reload navigation, so one pass suffices.
     var hasController = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
-    var nextCompleted = hasController ? completed + 1 : PASSES;
-    var totalPasses = hasController ? PASSES : 1;
+    var isSinglePass = completed === 0 && !hasController;
+    var pass = completed + 1;
+    var nextCompleted = isSinglePass ? PASSES : pass;
+    var totalPasses = isSinglePass ? 1 : PASSES;
 
     // Record the pass before purging so a failing purge cannot loop, and
     // never reload when the browser refuses the progress cookie.
@@ -112,7 +114,6 @@
         window.stop();
     }
 
-    var pass = hasController ? completed + 1 : 1;
     clearBrowserCaches()
         .catch(function (error) {
             console.warn('[Cache] Restart cache clear pass ' + pass + ' failed.', error);

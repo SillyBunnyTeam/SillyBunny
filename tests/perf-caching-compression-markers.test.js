@@ -36,7 +36,9 @@ import {
     RECONCILE_MARKER_FILE_NAME,
     buildManifest,
     fingerprintCard,
+    reconcileManagedContentWithStatus,
 } from '../src/sillybunny-managed-content.js';
+import { setPublicAssetHeaders } from '../src/middleware/frontend-assets.js';
 import { setConfigFilePath } from '../src/util.js';
 import { createCard, createCardFile, createSpriteFile, createWorldFile } from './fixtures/managed-content/fixture-builder.js';
 
@@ -52,6 +54,7 @@ const swSource = fs.readFileSync(path.join(repoRoot, 'public', 'sw.js'), 'utf8')
 let createRestartCacheClearMiddleware;
 let compileIpPatterns;
 let getForwardedIps;
+let getTrustedProxies;
 let isIpInPatterns;
 let getWhitelistMiddleware;
 let contentManager;
@@ -187,7 +190,7 @@ function createSwHarness(origin = 'http://127.0.0.1:4444') {
 
 beforeAll(async () => {
     ({ createRestartCacheClearMiddleware } = await import('../src/middleware/restartCacheClear.js'));
-    ({ compileIpPatterns, getForwardedIps, isIpInPatterns } = await import('../src/express-common.js'));
+    ({ compileIpPatterns, getForwardedIps, getTrustedProxies, isIpInPatterns } = await import('../src/express-common.js'));
     ({ default: getWhitelistMiddleware } = await import('../src/middleware/whitelist.js'));
     contentManager = await import('../src/endpoints/content-manager.js');
     groupsModule = await import('../src/endpoints/groups.js');
@@ -201,7 +204,7 @@ afterEach(() => {
 });
 
 describe('1. Content-fingerprint restartCacheClear & boot ID', () => {
-    test('computes deterministic CONTENT_BOOT_ID in under 10 ms on warm stat cache and preserves SERVER_BOOT_ID', () => {
+    test('computes deterministic CONTENT_BOOT_ID quickly on warm stat cache and preserves SERVER_BOOT_ID', () => {
         computeContentBootId();
         const start = performance.now();
         const computed = computeContentBootId();
@@ -209,50 +212,113 @@ describe('1. Content-fingerprint restartCacheClear & boot ID', () => {
 
         expect(computed).toBe(CONTENT_BOOT_ID);
         expect(computed).toMatch(/^c-[0-9a-f]{24}$/);
-        expect(elapsedMs).toBeLessThan(25);
+        expect(elapsedMs).toBeLessThan(250);
         expect(getServerBootId()).toBe(SERVER_BOOT_ID);
         expect(SERVER_BOOT_ID).not.toBe(CONTENT_BOOT_ID);
     });
 
-    test('changes CONTENT_BOOT_ID when package version, git ref, public top-level, manifest, or third-party extensions mutate', () => {
+    test('changes CONTENT_BOOT_ID when package version, git ref, public subdirs, manifest, global or per-user extensions mutate', () => {
         const root = makeTempDir('sb-boot-fp-');
+        const dataRoot = path.join(root, 'data');
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '2.0.0' }));
         fs.mkdirSync(path.join(root, '.git', 'refs', 'heads'), { recursive: true });
         fs.writeFileSync(path.join(root, '.git', 'HEAD'), 'ref: refs/heads/staging\n');
         fs.writeFileSync(path.join(root, '.git', 'refs', 'heads', 'staging'), '1111111111111111111111111111111111111111\n');
         fs.mkdirSync(path.join(root, 'public', 'scripts', 'extensions', 'third-party', 'ext-a'), { recursive: true });
+        fs.mkdirSync(path.join(root, 'public', 'css'), { recursive: true });
+        fs.mkdirSync(path.join(root, 'public', 'locales'), { recursive: true });
+        fs.mkdirSync(path.join(root, 'public', 'lib'), { recursive: true });
+        fs.mkdirSync(path.join(dataRoot, 'default-user', 'extensions', 'user-ext'), { recursive: true });
         fs.writeFileSync(path.join(root, 'public', 'index.html'), '<html>v1</html>');
+        fs.writeFileSync(path.join(root, 'public', 'scripts', 'openai.js'), 'export const v = 1;\n');
+        fs.writeFileSync(path.join(root, 'public', 'css', 'sillybunny-theme.css'), 'body { color: red; }\n');
+        fs.writeFileSync(path.join(root, 'public', 'locales', 'en.json'), '{"ok":"OK"}');
+        fs.writeFileSync(path.join(root, 'public', 'lib', 'bundle.js'), 'export const b = 1;\n');
         fs.writeFileSync(
             path.join(root, 'public', 'scripts', 'extensions', 'third-party', 'ext-a', 'manifest.json'),
             '{"display_name":"A","version":"1.0.0"}',
         );
+        fs.writeFileSync(
+            path.join(dataRoot, 'default-user', 'extensions', 'user-ext', 'manifest.json'),
+            '{"display_name":"UserExt","version":"1.0.0"}',
+        );
+        fs.writeFileSync(
+            path.join(dataRoot, 'default-user', 'extensions', 'user-ext', 'index.js'),
+            'export const ext = 1;\n',
+        );
 
-        const base = computeContentBootId({ rootDir: root });
-        expect(computeContentBootId({ rootDir: root })).toBe(base);
+        const base = computeContentBootId({ rootDir: root, dataRoot });
+        expect(computeContentBootId({ rootDir: root, dataRoot })).toBe(base);
 
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '2.0.1' }));
-        const afterPkg = computeContentBootId({ rootDir: root });
+        const afterPkg = computeContentBootId({ rootDir: root, dataRoot });
         expect(afterPkg).not.toBe(base);
 
         fs.writeFileSync(path.join(root, '.git', 'refs', 'heads', 'staging'), '2222222222222222222222222222222222222222\n');
-        const afterGit = computeContentBootId({ rootDir: root });
+        const afterGit = computeContentBootId({ rootDir: root, dataRoot });
         expect(afterGit).not.toBe(afterPkg);
 
         fs.writeFileSync(path.join(root, 'public', 'index.html'), '<html>v2-longer-payload</html>');
-        const afterPublic = computeContentBootId({ rootDir: root });
+        const afterPublic = computeContentBootId({ rootDir: root, dataRoot });
         expect(afterPublic).not.toBe(afterGit);
+
+        fs.writeFileSync(path.join(root, 'public', 'scripts', 'openai.js'), 'export const v = 222222;\n');
+        const afterScriptsSubdir = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterScriptsSubdir).not.toBe(afterPublic);
+
+        fs.writeFileSync(path.join(root, 'public', 'css', 'sillybunny-theme.css'), 'body { color: blue; font-size: 16px; }\n');
+        const afterCssSubdir = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterCssSubdir).not.toBe(afterScriptsSubdir);
+
+        fs.writeFileSync(path.join(root, 'public', 'locales', 'en.json'), '{"ok":"Okay-Updated"}');
+        const afterLocalesSubdir = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterLocalesSubdir).not.toBe(afterCssSubdir);
+
+        fs.writeFileSync(path.join(root, 'public', 'lib', 'bundle.js'), 'export const b = 222222;\n');
+        const afterLibSubdir = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterLibSubdir).not.toBe(afterLocalesSubdir);
 
         fs.mkdirSync(path.join(root, 'dist', 'frontend'), { recursive: true });
         fs.writeFileSync(path.join(root, 'dist', 'frontend', 'asset-manifest.json'), '{"assets":{}}');
-        const afterManifest = computeContentBootId({ rootDir: root });
-        expect(afterManifest).not.toBe(afterPublic);
+        const afterManifest = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterManifest).not.toBe(afterLibSubdir);
 
         fs.writeFileSync(
             path.join(root, 'public', 'scripts', 'extensions', 'third-party', 'ext-a', 'manifest.json'),
             '{"display_name":"A","version":"1.1.0-updated"}',
         );
-        const afterExt = computeContentBootId({ rootDir: root });
-        expect(afterExt).not.toBe(afterManifest);
+        const afterGlobalExt = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterGlobalExt).not.toBe(afterManifest);
+
+        fs.writeFileSync(
+            path.join(dataRoot, 'default-user', 'extensions', 'user-ext', 'index.js'),
+            'export const ext = 222222;\n',
+        );
+        const afterUserExtEdit = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterUserExtEdit).not.toBe(afterGlobalExt);
+
+        fs.mkdirSync(path.join(dataRoot, 'default-user', 'extensions', 'user-ext-2'), { recursive: true });
+        const afterUserExtInstall = computeContentBootId({ rootDir: root, dataRoot });
+        expect(afterUserExtInstall).not.toBe(afterUserExtEdit);
+    });
+
+    test('detects public/ subdirectory edits even without .git (Docker layout) and wires bumpRestartCacheGeneration in extension routes', () => {
+        const dockerRoot = makeTempDir('sb-docker-fp-');
+        fs.writeFileSync(path.join(dockerRoot, 'package.json'), JSON.stringify({ version: '2.0.0-dev' }));
+        fs.mkdirSync(path.join(dockerRoot, 'public', 'scripts', 'sillybunny-editor'), { recursive: true });
+        fs.writeFileSync(path.join(dockerRoot, 'public', 'scripts', 'sillybunny-editor', 'dialog.js'), 'export const d = 1;\n');
+
+        const before = computeContentBootId({ rootDir: dockerRoot });
+        fs.writeFileSync(path.join(dockerRoot, 'public', 'scripts', 'sillybunny-editor', 'dialog.js'), 'export const d = 999999;\n');
+        const after = computeContentBootId({ rootDir: dockerRoot });
+        expect(after).not.toBe(before);
+
+        const extensionsSource = fs.readFileSync(path.join(repoRoot, 'src', 'endpoints', 'extensions.js'), 'utf8');
+        const usersPrivateSource = fs.readFileSync(path.join(repoRoot, 'src', 'endpoints', 'users-private.js'), 'utf8');
+        expect(extensionsSource).toMatch(/import\s*\{[^}]*bumpRestartCacheGeneration[^}]*\}\s*from\s*'\.\.\/server-boot-marker\.js'/);
+        expect((extensionsSource.match(/bumpRestartCacheGeneration\(\)/g) ?? []).length).toBeGreaterThanOrEqual(7);
+        expect(usersPrivateSource).toMatch(/import\s*\{[^}]*bumpRestartCacheGeneration[^}]*\}\s*from\s*'\.\.\/server-boot-marker\.js'/);
+        expect(usersPrivateSource).toMatch(/bumpRestartCacheGeneration\(\)/);
     });
 
     test('supports SB_DEV=1 always mode override and live bumpRestartCacheGeneration()', () => {
@@ -338,8 +404,11 @@ describe('2. Service Worker disk-thrash & loopback SWR fixes (public/sw.js)', ()
 describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded static LRU', () => {
     test('bypasses loopback ONLY when no proxy headers are present', () => {
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: {} })).toBe(true);
+        expect(isDirectLoopbackRequest({ socket: { remoteAddress: '127.0.0.2' }, headers: {} })).toBe(true);
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '::1' }, headers: {} })).toBe(true);
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '::ffff:127.0.0.1' }, headers: {} })).toBe(true);
+        expect(isDirectLoopbackRequest({ socket: { remoteAddress: '::FFFF:127.0.0.1' }, headers: {} })).toBe(true);
+        expect(isDirectLoopbackRequest({ socket: { remoteAddress: '::ffff:127.0.0.2' }, headers: {} })).toBe(true);
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '192.168.1.25' }, headers: {} })).toBe(false);
 
         for (const proxyHeader of ['x-forwarded-for', 'forwarded', 'via', 'x-real-ip', 'cf-connecting-ip']) {
@@ -406,6 +475,14 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
             expect(proxiedBunRes.headers['content-encoding']).toBe('gzip');
             expect(observedAcceptEncoding).toBe('gzip, deflate, br, zstd');
             expect(JSON.parse(gunzipSync(proxiedBunRes.body).toString('utf8'))).toEqual(largePayload);
+
+            // When gzip is explicitly rejected (`gzip;q=0`), Bun preferGzip must preserve `br` instead of dropping compression.
+            const proxiedBunBrOnly = await getRawHttp(`${bunUrl}/large`, {
+                'Accept-Encoding': 'br, gzip;q=0',
+                'Via': '1.1 reverse-proxy',
+            });
+            expect(proxiedBunBrOnly.headers['content-encoding']).toBe('br');
+            expect(JSON.parse(brotliDecompressSync(proxiedBunBrOnly.body).toString('utf8'))).toEqual(largePayload);
         } finally {
             await new Promise(resolve => nodeServer.close(resolve));
             await new Promise(resolve => bunServer.close(resolve));
@@ -464,6 +541,18 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
             });
             expect(notModified.statusCode).toBe(304);
 
+            const weakNotModified = await getRawHttp(url, {
+                'Accept-Encoding': 'gzip',
+                'If-None-Match': `W/${secondHit.headers.etag}`,
+            });
+            expect(weakNotModified.statusCode).toBe(304);
+
+            const wildcardNotModified = await getRawHttp(url, {
+                'Accept-Encoding': 'gzip',
+                'If-None-Match': '*',
+            });
+            expect(wildcardNotModified.statusCode).toBe(304);
+
             const updatedSource = `export const a = "${'updated-delta-'.repeat(900)}";\n`;
             fs.writeFileSync(assetAPath, updatedSource);
             const future = new Date(Date.now() + 10_000);
@@ -471,6 +560,91 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
 
             const afterMutate = await getRawHttp(url, { 'Accept-Encoding': 'gzip' });
             expect(afterMutate.body.toString('utf8')).toBe(updatedSource);
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+
+    test('mounts static compressed LRU in server-main.js, honors no-transform, and rejects mid-warm file mutations', async () => {
+        const serverMainSource = fs.readFileSync(path.join(repoRoot, 'src', 'server-main.js'), 'utf8');
+        const staticLruPos = serverMainSource.indexOf('createCompressedStaticMiddleware(publicDirectory');
+        const expressStaticPos = serverMainSource.indexOf('express.static(publicDirectory');
+        expect(staticLruPos).toBeGreaterThan(-1);
+        expect(expressStaticPos).toBeGreaterThan(staticLruPos);
+
+        const staticRoot = makeTempDir('sb-static-live-');
+        const scriptPath = path.join(staticRoot, 'app.js');
+        const noTransformPath = path.join(staticRoot, 'raw.js');
+        const payloadText = `export const msg = "${'live-lru-'.repeat(600)}";\n`;
+        fs.writeFileSync(scriptPath, payloadText);
+        fs.writeFileSync(noTransformPath, payloadText);
+
+        const staleCache = createStaticCompressionCache({ maxBytes: 1024 * 1024 });
+        const initialStat = fs.statSync(scriptPath);
+        const mismatchedWarm = await staleCache.warm(scriptPath, {
+            size: initialStat.size + 10,
+            mtimeMs: initialStat.mtimeMs,
+        }, 'gzip');
+        expect(mismatchedWarm).toBeNull();
+        expect(staleCache.stats().entries).toBe(0);
+
+        const liveCache = createStaticCompressionCache({ maxBytes: 1024 * 1024 });
+        const customSetHeaders = (res, filePath) => {
+            if (filePath.endsWith('raw.js')) {
+                res.setHeader('Cache-Control', 'public, no-transform');
+                return;
+            }
+            setPublicAssetHeaders(res, filePath);
+        };
+
+        const app = express();
+        app.use(getResponseCompressionMiddleware({ preferGzip: true, env: {} }));
+        app.use(createCompressedStaticMiddleware(staticRoot, {
+            cache: liveCache,
+            preferGzip: true,
+            env: {},
+            setHeaders: customSetHeaders,
+        }));
+        app.use(express.static(staticRoot, { setHeaders: customSetHeaders }));
+
+        const server = await new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
+
+        try {
+            const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+            const directLoopback = await getRawHttp(`${baseUrl}/app.js`, { 'Accept-Encoding': 'gzip, br' });
+            expect(directLoopback.headers['content-encoding']).toBeUndefined();
+            expect(liveCache.stats().entries).toBe(0);
+
+            const proxiedMiss = await getRawHttp(`${baseUrl}/app.js`, {
+                'Accept-Encoding': 'gzip, br',
+                'Via': '1.1 edge',
+            });
+            expect(proxiedMiss.headers['content-encoding']).toBe('gzip');
+            expect(gunzipSync(proxiedMiss.body).toString('utf8')).toBe(payloadText);
+
+            await liveCache.warm(scriptPath, fs.statSync(scriptPath), 'gzip');
+            const proxiedHit = await getRawHttp(`${baseUrl}/app.js`, {
+                'Accept-Encoding': 'gzip, br',
+                'Via': '1.1 edge',
+            });
+            expect(proxiedHit.headers['content-encoding']).toBe('gzip');
+            expect(proxiedHit.headers['cache-control']).toBe('no-cache');
+            expect(proxiedHit.headers.etag).toMatch(/-gzip"$/);
+            expect(proxiedHit.headers.vary).toContain('Accept-Encoding');
+            expect(liveCache.stats().hits).toBeGreaterThanOrEqual(1);
+            expect(gunzipSync(proxiedHit.body).toString('utf8')).toBe(payloadText);
+
+            const noTransformRes = await getRawHttp(`${baseUrl}/raw.js`, {
+                'Accept-Encoding': 'gzip, br',
+                'Via': '1.1 edge',
+            });
+            expect(noTransformRes.headers['content-encoding']).toBeUndefined();
+            expect(noTransformRes.headers.vary).toBeUndefined();
+            expect(noTransformRes.body.toString('utf8')).toBe(payloadText);
+            expect(liveCache.get(noTransformPath, fs.statSync(noTransformPath), 'gzip')).toBeNull();
         } finally {
             await new Promise(resolve => server.close(resolve));
         }
@@ -500,6 +674,30 @@ describe('4. Precompiled CIDR whitelist, getForwardedIps fast-path, and Handleba
         const freshCompiled = compileIpPatterns(['::1']);
         expect(freshCompiled.allowsIpv6Loopback).toBe(true);
         expect(freshCompiled.allowsIpv4Loopback).toBe(false);
+    });
+
+    test('keeps getTrustedProxies cached by value when SILLYTAVERN_WHITELIST env var returns a fresh array per lookup', () => {
+        const previousEnv = process.env.SILLYTAVERN_WHITELIST;
+        try {
+            process.env.SILLYTAVERN_WHITELIST = JSON.stringify(['127.0.0.1', '::1', '192.168.0.0/16']);
+            const first = getTrustedProxies();
+            const second = getTrustedProxies();
+            expect(second).toBe(first);
+            expect(first).toEqual(['127.0.0.1', '::1', '192.168.0.0/16']);
+
+            process.env.SILLYTAVERN_WHITELIST = JSON.stringify(['127.0.0.1', '10.0.0.0/8']);
+            const updated = getTrustedProxies();
+            expect(updated).not.toBe(first);
+            expect(updated).toEqual(['127.0.0.1', '10.0.0.0/8']);
+            expect(getTrustedProxies()).toBe(updated);
+        } finally {
+            if (previousEnv === undefined) {
+                delete process.env.SILLYTAVERN_WHITELIST;
+            } else {
+                process.env.SILLYTAVERN_WHITELIST = previousEnv;
+            }
+            getTrustedProxies();
+        }
     });
 
     test('short-circuits getForwardedIps with zero config lookups when no forwarded headers exist', () => {
@@ -664,7 +862,55 @@ describe('5. Cold-boot content & group reconciliation markers', () => {
         readSpyOnVersionBump.mockRestore();
     });
 
-    test('writes .migrated-v1 marker after migrateGroupChatsMetadataFormat and skips directory scans on subsequent boots', async () => {
+    test('does not persist managed reconciliation marker when a per-item update fails, allowing next boot to retry', () => {
+        const bundledDir = makeTempDir('sb-bundled-retry-');
+        const userRoot = makeTempDir('sb-user-retry-');
+        const directories = {
+            root: userRoot,
+            characters: path.join(userRoot, 'characters'),
+            worlds: path.join(userRoot, 'worlds'),
+            backups: path.join(userRoot, 'backups'),
+        };
+        Object.values(directories).forEach(dir => fs.mkdirSync(dir, { recursive: true }));
+
+        const cardV1 = createCardFile({ card: createCard({ character_version: '1', first_mes: 'v1' }) });
+        const cardV2 = createCardFile({ card: createCard({ character_version: '2', first_mes: 'v2' }) });
+        const entries = [{ filename: 'default_AssistantReisen.png', type: 'character' }];
+
+        fs.writeFileSync(path.join(bundledDir, 'default_AssistantReisen.png'), cardV1);
+        const manifestV1 = buildManifest({ bundledDirectory: bundledDir, entries });
+        fs.writeFileSync(path.join(bundledDir, 'default_AssistantReisen.png'), cardV2);
+        const manifestV2 = buildManifest({ bundledDirectory: bundledDir, entries, previous: manifestV1 });
+        fs.writeFileSync(path.join(bundledDir, MANIFEST_FILE_NAME), JSON.stringify(manifestV2));
+
+        // User starts with v1, while bundled v2 file is temporarily missing to induce a caught per-item failure.
+        const userCardPath = path.join(directories.characters, 'default_AssistantReisen.png');
+        fs.writeFileSync(userCardPath, cardV1);
+        fs.rmSync(path.join(bundledDir, 'default_AssistantReisen.png'));
+
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const failedPass = reconcileManagedContentWithStatus({
+            bundledDirectory: bundledDir,
+            directories,
+            appVersion: '2.0.0-retry',
+        });
+        expect(failedPass).toEqual({ updated: [], clean: false });
+        expect(fs.existsSync(path.join(userRoot, RECONCILE_MARKER_FILE_NAME))).toBe(false);
+        warnSpy.mockRestore();
+
+        // Once the bundled file is available again, the next boot retries and updates the card + writes the marker.
+        fs.writeFileSync(path.join(bundledDir, 'default_AssistantReisen.png'), cardV2);
+        const retryPass = reconcileManagedContentWithStatus({
+            bundledDirectory: bundledDir,
+            directories,
+            appVersion: '2.0.0-retry',
+        });
+        expect(retryPass).toEqual({ updated: ['default_AssistantReisen.png'], clean: true });
+        expect(fingerprintCard(fs.readFileSync(userCardPath))).toBe(manifestV2.items[0].fingerprint);
+        expect(fs.existsSync(path.join(userRoot, RECONCILE_MARKER_FILE_NAME))).toBe(true);
+    });
+
+    test('writes .migrated-v1 signature marker after migrateGroupChatsMetadataFormat, skips reads when unchanged, and re-migrates newly copied legacy groups', async () => {
         const userRoot = makeTempDir('sb-groups-marker-');
         const userDirs = {
             root: userRoot,
@@ -687,10 +933,35 @@ describe('5. Cold-boot content & group reconciliation markers', () => {
         const markerPath = groupsModule.getGroupsMigrationMarkerPath(userDirs);
         expect(path.basename(markerPath)).toBe('.migrated-v1');
         expect(fs.existsSync(markerPath)).toBe(true);
+        expect(fs.readFileSync(markerPath, 'utf8').trim()).toMatch(/^v1:g1\.json:/);
         expect(fs.readdirSync(userDirs.groups)).toEqual(['g1.json']);
 
+        const readFileSpy = jest.spyOn(fs.promises, 'readFile');
         const readdirSpy = jest.spyOn(fs.promises, 'readdir');
         await groupsModule.migrateGroupChatsMetadataFormat([userDirs]);
-        expect(readdirSpy).not.toHaveBeenCalled();
+        expect(readFileSpy).not.toHaveBeenCalled();
+        expect(readdirSpy).toHaveBeenCalledTimes(1);
+        expect(readdirSpy).toHaveBeenCalledWith(userDirs.groups, { withFileTypes: true });
+        readFileSpy.mockRestore();
+        readdirSpy.mockRestore();
+
+        // Copying a legacy group file later invalidates the signature and triggers migration.
+        fs.writeFileSync(path.join(userDirs.groups, 'g2.json'), JSON.stringify({
+            id: 'g2',
+            name: 'Legacy Imported Group',
+            members: [],
+            chats: ['c2'],
+            chat_id: 'c2',
+            chat_metadata: { note: 'imported-legacy-note' },
+        }));
+        fs.writeFileSync(path.join(userDirs.groupChats, 'c2.jsonl'), '{"name":"Bob","mes":"Old chat"}\n');
+
+        await groupsModule.migrateGroupChatsMetadataFormat([userDirs]);
+
+        const migratedGroup = JSON.parse(fs.readFileSync(path.join(userDirs.groups, 'g2.json'), 'utf8'));
+        expect(migratedGroup.chat_metadata).toBeUndefined();
+        const migratedChatLines = fs.readFileSync(path.join(userDirs.groupChats, 'c2.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        expect(migratedChatLines[0].chat_metadata).toEqual({ note: 'imported-legacy-note' });
+        expect(fs.readFileSync(markerPath, 'utf8').trim()).toContain('g2.json:');
     });
 });

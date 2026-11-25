@@ -14,11 +14,7 @@ import { getConfigValue } from '../util.js';
 const brotliCompressAsync = promisify(zlib.brotliCompress);
 const gzipAsync = promisify(zlib.gzip);
 
-const LOOPBACK_REMOTE_ADDRESSES = new Set([
-    '127.0.0.1',
-    '::1',
-    '::ffff:127.0.0.1',
-]);
+const IPV4_LOOPBACK_RE = /^127(?:\.\d{1,3}){3}$/;
 
 const PROXY_FORWARDING_HEADERS = Object.freeze([
     'x-forwarded-for',
@@ -92,6 +88,20 @@ function hasProxyHeaders(request) {
     return false;
 }
 
+function isLoopbackRemoteAddress(remoteAddress) {
+    if (typeof remoteAddress !== 'string' || !remoteAddress) {
+        return false;
+    }
+
+    const normalized = remoteAddress.trim().toLowerCase();
+    if (normalized === '::1') {
+        return true;
+    }
+
+    const ipv4 = normalized.startsWith('::ffff:') ? normalized.slice('::ffff:'.length) : normalized;
+    return IPV4_LOOPBACK_RE.test(ipv4);
+}
+
 /**
  * True only when the TCP peer is loopback and no reverse-proxy header is present.
  * A local reverse proxy (nginx/Caddy/Cloudflare Tunnel) connects over loopback on behalf
@@ -100,8 +110,7 @@ function hasProxyHeaders(request) {
  * @returns {boolean}
  */
 export function isDirectLoopbackRequest(request) {
-    const remoteAddress = request?.socket?.remoteAddress;
-    if (!remoteAddress || !LOOPBACK_REMOTE_ADDRESSES.has(remoteAddress)) {
+    if (!isLoopbackRemoteAddress(request?.socket?.remoteAddress)) {
         return false;
     }
 
@@ -151,6 +160,9 @@ export function shouldBypassLoopbackCompression(request, { loopbackBypass, env =
 function stripBrotliWhenGzipAccepted(acceptEncoding) {
     const raw = Array.isArray(acceptEncoding) ? acceptEncoding.join(', ') : String(acceptEncoding || '');
     if (!raw || !/\bgzip\b/i.test(raw) || !/\bbr\b/i.test(raw)) {
+        return null;
+    }
+    if (parseEncodingQuality(raw, 'gzip') <= 0 || parseEncodingQuality(raw, 'br') <= 0) {
         return null;
     }
 
@@ -375,6 +387,19 @@ export function createStaticCompressionCache({
                 if (sourceBuffer.byteLength < minBytes) {
                     return null;
                 }
+                let effectiveSize = sourceBuffer.byteLength;
+                let effectiveMtimeMs = mtimeMs;
+                if (!rawBuffer) {
+                    if (sourceBuffer.byteLength !== size) {
+                        return null;
+                    }
+                    const currentStat = await fs.promises.stat(filePath);
+                    if (currentStat.size !== size || Math.trunc(currentStat.mtimeMs) !== Math.trunc(mtimeMs)) {
+                        return null;
+                    }
+                    effectiveSize = currentStat.size;
+                    effectiveMtimeMs = currentStat.mtimeMs;
+                }
                 const compressed = encoding === 'br'
                     ? await brotliCompressAsync(sourceBuffer, {
                         params: {
@@ -384,7 +409,7 @@ export function createStaticCompressionCache({
                     })
                     : await gzipAsync(sourceBuffer, { level: gzipLevel });
 
-                return set(filePath, { size: sourceBuffer.byteLength, mtimeMs }, encoding, compressed);
+                return set(filePath, { size: effectiveSize, mtimeMs: effectiveMtimeMs }, encoding, compressed);
             } catch {
                 return null;
             } finally {
@@ -452,6 +477,75 @@ function resolveStaticTargetPath(rootDir, requestPath) {
     return candidate;
 }
 
+function probeStaticHeaders(response, setHeaders, targetPath, fileStat) {
+    if (typeof setHeaders !== 'function') {
+        return { noTransform: hasCacheDirective(response, 'no-transform'), apply: () => {} };
+    }
+
+    const ops = [];
+    const staged = new Map();
+    const recorder = {
+        setHeader(name, value) {
+            staged.set(String(name).toLowerCase(), value);
+            ops.push(['setHeader', name, value]);
+            return this;
+        },
+        getHeader(name) {
+            const key = String(name).toLowerCase();
+            return staged.has(key) ? staged.get(key) : response.getHeader?.(name);
+        },
+        removeHeader(name) {
+            staged.delete(String(name).toLowerCase());
+            ops.push(['removeHeader', name]);
+            return this;
+        },
+        set(field, value) {
+            if (typeof field === 'string') {
+                return this.setHeader(field, value);
+            }
+            if (field && typeof field === 'object') {
+                for (const [key, val] of Object.entries(field)) {
+                    this.setHeader(key, val);
+                }
+            }
+            return this;
+        },
+    };
+
+    setHeaders(recorder, targetPath, fileStat);
+    const noTransform = hasCacheDirective(recorder, 'no-transform');
+
+    return {
+        noTransform,
+        apply() {
+            for (const [op, name, value] of ops) {
+                if (op === 'setHeader') {
+                    response.setHeader(name, value);
+                } else {
+                    response.removeHeader?.(name);
+                }
+            }
+        },
+    };
+}
+
+function matchesIfNoneMatch(ifNoneMatchHeader, etag) {
+    if (typeof ifNoneMatchHeader !== 'string' || !ifNoneMatchHeader.trim()) {
+        return false;
+    }
+
+    const stripWeak = tag => tag.trim().replace(/^W\//, '');
+    const target = stripWeak(etag);
+    for (const rawTag of ifNoneMatchHeader.split(',')) {
+        const trimmed = rawTag.trim();
+        if (trimmed === '*' || stripWeak(trimmed) === target) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /**
  * Express middleware that serves pre-compressed static files from a bounded LRU cache
  * and warms misses asynchronously in the background without blocking the first response.
@@ -501,25 +595,25 @@ export function createCompressedStaticMiddleware(rootDir, {
             return next();
         }
 
-        appendVaryAcceptEncoding(response);
-
         const encoding = negotiateStaticEncoding(request.headers?.['accept-encoding'], { preferGzip });
         if (!encoding) {
             return next();
         }
 
+        const headerProbe = probeStaticHeaders(response, setHeaders, targetPath, fileStat);
+        if (headerProbe.noTransform) {
+            return next();
+        }
+
         const cached = cache.get(targetPath, fileStat, encoding);
         if (!cached) {
+            appendVaryAcceptEncoding(response);
             void cache.warm(targetPath, fileStat, encoding);
             return next();
         }
 
-        if (typeof setHeaders === 'function') {
-            setHeaders(response, targetPath, fileStat);
-        }
-        if (hasCacheDirective(response, 'no-transform')) {
-            return next();
-        }
+        headerProbe.apply();
+        appendVaryAcceptEncoding(response);
 
         const contentType = mime.contentType(ext);
         if (contentType && !response.getHeader('Content-Type')) {
@@ -528,8 +622,7 @@ export function createCompressedStaticMiddleware(rootDir, {
         response.setHeader('ETag', cached.etag);
         response.setHeader('Last-Modified', fileStat.mtime.toUTCString());
 
-        const ifNoneMatch = request.headers?.['if-none-match'];
-        if (typeof ifNoneMatch === 'string' && ifNoneMatch.split(',').map(tag => tag.trim()).includes(cached.etag)) {
+        if (matchesIfNoneMatch(request.headers?.['if-none-match'], cached.etag)) {
             response.status(304);
             return response.end();
         }

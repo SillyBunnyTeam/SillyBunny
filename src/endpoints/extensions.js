@@ -12,6 +12,8 @@ import { CheckRepoActions, simpleGit } from 'simple-git';
 import { PUBLIC_DIRECTORIES } from '../constants.js';
 import { color, getConfigValue, isValidUrl } from '../util.js';
 import { createGitClient } from '../git/client.js';
+// SillyBunny: advance the content-mode cache-clear generation after in-process extension mutations.
+import { bumpRestartCacheGeneration } from '../server-boot-marker.js';
 
 const gitBackend = getConfigValue('git.backend', 'auto');
 const execFileAsync = promisify(execFile);
@@ -331,6 +333,8 @@ router.post('/install', async (request, response) => {
                 throw new Error('Manifest is not a valid JSON object.');
             }
             const { version, author, display_name } = manifest;
+            // SillyBunny: invalidate browser frontend caches after installing an extension in-process.
+            bumpRestartCacheGeneration();
             return response.send({ version, author, display_name, extensionPath, folderName });
         } catch (manifestError) {
             await fs.promises.rm(extensionPath, { recursive: true, force: true });
@@ -408,6 +412,8 @@ router.post('/update', async (request, response) => {
         if (!isUpToDate) {
             await git.pull('origin', currentBranch.current);
             console.info(`Extension has been updated at ${extensionPath}`);
+            // SillyBunny: invalidate browser frontend caches after pulling new extension code.
+            bumpRestartCacheGeneration();
         } else {
             console.info(`Extension is up to date at ${extensionPath}`);
         }
@@ -524,11 +530,15 @@ router.post('/switch', async (request, response) => {
             if (branches.all.includes(localBranch)) {
                 console.info(`Branch ${localBranch} already exists locally, checking it out`);
                 await git.checkout(localBranch);
+                // SillyBunny: invalidate browser frontend caches after switching extension branches.
+                bumpRestartCacheGeneration();
                 return response.sendStatus(204);
             }
 
             console.info(`Branch ${localBranch} does not exist locally, creating it from ${branch}`);
             await git.checkoutBranch(localBranch, branch);
+            // SillyBunny: invalidate browser frontend caches after switching extension branches.
+            bumpRestartCacheGeneration();
             return response.sendStatus(204);
         }
 
@@ -547,6 +557,8 @@ router.post('/switch', async (request, response) => {
         // Checkout the branch
         await git.checkout(branch);
         console.info(`Checked out branch ${branch} at ${extensionPath}`);
+        // SillyBunny: invalidate browser frontend caches after switching extension branches.
+        bumpRestartCacheGeneration();
 
         return response.sendStatus(204);
     } catch (error) {
@@ -598,6 +610,8 @@ router.post('/move', async (request, response) => {
         fs.cpSync(sourcePath, destinationPath, { recursive: true, force: true });
         fs.rmSync(sourcePath, { recursive: true, force: true });
         console.info(`Extension has been moved from ${sourcePath} to ${destinationPath}`);
+        // SillyBunny: invalidate browser frontend caches after moving an extension between scopes.
+        bumpRestartCacheGeneration();
 
         return response.sendStatus(204);
     } catch (error) {
@@ -711,6 +725,8 @@ router.post('/sync', async (request, response) => {
             const metadata = fs.existsSync(metadataPath) ? fs.readFileSync(metadataPath, 'utf8') : '';
             const version = metadata.match(/^QIG_VERSION=(.*)$/m)?.[1] || '';
             const shortCommitHash = metadata.match(/^QIG_SHORT_COMMIT=(.*)$/m)?.[1] || '';
+            // SillyBunny: invalidate browser frontend caches after syncing a bundled extension in-process.
+            bumpRestartCacheGeneration();
             return response.send({ stdout, stderr, version, shortCommitHash });
         } finally {
             fs.rmSync(metadataPath, { force: true });
@@ -758,6 +774,8 @@ router.post('/delete', async (request, response) => {
 
         await fs.promises.rm(extensionPath, { recursive: true });
         console.info(`Extension has been deleted at ${extensionPath}`);
+        // SillyBunny: invalidate browser frontend caches after deleting an extension in-process.
+        bumpRestartCacheGeneration();
 
         return response.send(`Extension has been deleted at ${extensionPath}`);
     } catch (error) {

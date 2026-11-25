@@ -316,7 +316,7 @@ cacheBuster:
   # Example: 'firefox|safari' (case-insensitive)
   userAgentPattern: ''
 
-# RESTART CACHE CLEAR CONFIGURATION
+# SillyBunny: RESTART CACHE CLEAR CONFIGURATION
 # Clears each browser's cache when served frontend content changes (mode: content) or on every start (mode: always),
 # so stale scripts and styles are never served after an update. Saved settings, chats and cookies are kept.
 # Requires localhost or HTTPS, like the cache buster above.

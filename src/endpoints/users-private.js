@@ -18,6 +18,8 @@ import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath, r
 import { ENTITY_DATE_ADDED_FILE, importEntityDateAdded } from '../entity-date-added.js';
 import { ENTITY_LAST_CHAT_FILE, importEntityLastChat } from '../entity-last-chat.js';
 import { isPathInside } from '../path-containment.js';
+// SillyBunny: advance the content-mode cache-clear generation when third-party extensions are synced in-process.
+import { bumpRestartCacheGeneration } from '../server-boot-marker.js';
 
 import { getIpAddress, retryAfter } from '../express-common.js';
 
@@ -1071,6 +1073,8 @@ router.post('/import-sillytavern/extensions', requireAdminMiddleware, async (req
 
         const syncReport = await syncThirdPartyExtensions(sourceRoot, path.resolve(request.user.directories.extensions));
         await checkForNewContent([request.user.directories]);
+        // SillyBunny: invalidate browser frontend caches after syncing third-party extensions into the account.
+        bumpRestartCacheGeneration();
 
         return response.json(syncReport);
     } catch (error) {

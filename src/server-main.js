@@ -52,7 +52,8 @@ import {
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 import { FRONTEND_ASSET_PREFIX, rewriteFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
-import getResponseCompressionMiddleware from './middleware/response-compression.js';
+// SillyBunny: dynamic compression with loopback bypass plus bounded static compressed LRU.
+import getResponseCompressionMiddleware, { createCompressedStaticMiddleware } from './middleware/response-compression.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
 import requireHttpsMiddleware from './middleware/requireHttps.js';
 import { isSessionAuthEnabled, registerSessionAuthRoutes } from './middleware/sessionAuth.js';
@@ -411,7 +412,10 @@ app.use((request, response, next) => {
 
     return frontendAssetMiddleware.publicAssets(request, response, next);
 });
-app.use(express.static(path.join(serverDirectory, 'public'), { setHeaders: setPublicAssetHeaders }));
+const publicDirectory = path.join(serverDirectory, 'public');
+// SillyBunny: serve pre-compressed public static assets from the bounded LRU before express.static.
+app.use(createCompressedStaticMiddleware(publicDirectory, { setHeaders: setPublicAssetHeaders }));
+app.use(express.static(publicDirectory, { setHeaders: setPublicAssetHeaders }));
 
 // Public API
 app.use('/api/users', usersPublicRouter);

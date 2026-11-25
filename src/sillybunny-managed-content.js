@@ -986,8 +986,10 @@ export function createManagedContent({
     function dropThumbnails(filename) {
         try {
             invalidateThumbnail?.(filename);
+            return true;
         } catch (error) {
             console.warn(`The cached thumbnails of managed content ${filename} could not be dropped`, error);
+            return false;
         }
     }
 
@@ -996,11 +998,13 @@ export function createManagedContent({
      * still shows its old picture. The same comparison as the thumbnail module makes when it generates one.
      * @param {ManagedItem[]} items
      * @param {Set<string>} written The cards that were just written, whose thumbnails are already dropped.
+     * @returns {boolean} True when every attempted thumbnail invalidation succeeded
      */
     function dropStaleThumbnails(items, written) {
         if (!invalidateThumbnail) {
-            return;
+            return true;
         }
+        let clean = true;
         for (const item of items) {
             if (item.type !== ITEM_TYPES.CARD || written.has(item.filename)) {
                 continue;
@@ -1014,13 +1018,14 @@ export function createManagedContent({
                         return false;
                     }
                 });
-                if (stale) {
-                    dropThumbnails(item.filename);
+                if (stale && !dropThumbnails(item.filename)) {
+                    clean = false;
                 }
             } catch {
                 // A card that is not there or not a plain file has no thumbnail worth dropping.
             }
         }
+        return clean;
     }
 
     /**
@@ -1117,6 +1122,36 @@ export function createManagedContent({
         return parts.join('|');
     }
 
+    function runReconcile() {
+        const updated = [];
+        let clean = true;
+        let items;
+        try {
+            items = readItems();
+        } catch (error) {
+            console.warn(error.message);
+            return { updated, clean: false };
+        }
+        const worldNames = worldNamesOf(items);
+        for (const item of items) {
+            try {
+                if (!needsUpdate(item, worldNames)) {
+                    continue;
+                }
+                bringUp(item, item.type === ITEM_TYPES.WORLD ? createBackups() : null);
+                updated.push(item.filename);
+                console.info(`Managed content ${item.filename} updated to version ${item.version}`);
+            } catch (error) {
+                clean = false;
+                console.warn(`Failed to update managed content ${item.filename}`, error);
+            }
+        }
+        if (!dropStaleThumbnails(items, new Set(updated))) {
+            clean = false;
+        }
+        return { updated, clean };
+    }
+
     return {
         /**
          * A text that changes whenever the files `status` reads change, made from what the file system says about them,
@@ -1150,23 +1185,16 @@ export function createManagedContent({
          * @returns {string[]} The filenames that were updated.
          */
         reconcile() {
-            const updated = [];
-            const items = loadItems();
-            const worldNames = worldNamesOf(items);
-            for (const item of items) {
-                try {
-                    if (!needsUpdate(item, worldNames)) {
-                        continue;
-                    }
-                    bringUp(item, item.type === ITEM_TYPES.WORLD ? createBackups() : null);
-                    updated.push(item.filename);
-                    console.info(`Managed content ${item.filename} updated to version ${item.version}`);
-                } catch (error) {
-                    console.warn(`Failed to update managed content ${item.filename}`, error);
-                }
-            }
-            dropStaleThumbnails(items, new Set(updated));
-            return updated;
+            return runReconcile().updated;
+        },
+
+        /**
+         * Runs `reconcile` and reports whether every item completed without caught errors so boot markers
+         * are only persisted after a clean pass.
+         * @returns {{ updated: string[], clean: boolean }}
+         */
+        reconcileWithStatus() {
+            return runReconcile();
         },
 
         /**
@@ -1207,12 +1235,12 @@ export function createManagedContent({
 }
 
 /**
- * Updates the managed content of one user that nobody edited. It runs in the seeding pass of every start, so a
- * failure is logged and never stops the start.
+ * Updates the managed content of one user that nobody edited, reporting whether the pass completed cleanly so
+ * callers avoid persisting markers after transient item failures.
  * @param {Parameters<typeof createManagedContent>[0] & { appVersion?: string }} options
- * @returns {string[]} The filenames that were updated.
+ * @returns {{ updated: string[], clean: boolean }}
  */
-export function reconcileManagedContent(options) {
+export function reconcileManagedContentWithStatus(options) {
     try {
         const service = createManagedContent(options);
         const userRoot = options?.directories?.root;
@@ -1221,19 +1249,31 @@ export function reconcileManagedContent(options) {
         const beforeSignature = service.reconcileSignature();
 
         if (marker && marker.managedAppVersion === appVersion && marker.managedSignature === beforeSignature) {
-            return [];
+            return { updated: [], clean: true };
         }
 
-        const updated = service.reconcile();
-        const afterSignature = service.reconcileSignature();
-        writeReconcileMarker(userRoot, {
-            appVersion,
-            managedAppVersion: appVersion,
-            managedSignature: afterSignature,
-        }, options?.setPermissions);
-        return updated;
+        const { updated, clean } = service.reconcileWithStatus();
+        if (clean) {
+            const afterSignature = service.reconcileSignature();
+            writeReconcileMarker(userRoot, {
+                appVersion,
+                managedAppVersion: appVersion,
+                managedSignature: afterSignature,
+            }, options?.setPermissions);
+        }
+        return { updated, clean };
     } catch (error) {
         console.warn('Failed to reconcile managed content', error);
-        return [];
+        return { updated: [], clean: false };
     }
+}
+
+/**
+ * Updates the managed content of one user that nobody edited. It runs in the seeding pass of every start, so a
+ * failure is logged and never stops the start.
+ * @param {Parameters<typeof createManagedContent>[0] & { appVersion?: string }} options
+ * @returns {string[]} The filenames that were updated.
+ */
+export function reconcileManagedContent(options) {
+    return reconcileManagedContentWithStatus(options).updated;
 }

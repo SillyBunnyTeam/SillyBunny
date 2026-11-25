@@ -152,6 +152,7 @@ describe('response compression middleware', () => {
         test('keeps no-transform responses uncompressed', async () => {
             const response = await getRawResponse(`${baseUrl}/no-transform`, {
                 'Accept-Encoding': 'gzip',
+                'X-Forwarded-For': '203.0.113.10',
             });
 
             expect(response.statusCode).toBe(200);
@@ -162,6 +163,7 @@ describe('response compression middleware', () => {
         test('streams the first SSE event before the delayed response completes', async () => {
             const response = await openHttpResponse(`${baseUrl}/events`, {
                 'Accept-Encoding': 'gzip',
+                'X-Forwarded-For': '203.0.113.10',
             });
             let stream;
 

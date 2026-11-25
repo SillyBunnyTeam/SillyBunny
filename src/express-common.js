@@ -9,6 +9,7 @@ export const jsonParser = noopMiddleware;
 /** @deprecated Do not use. A global middleware is provided at the application level. */
 export const urlencodedParser = noopMiddleware;
 
+// SillyBunny: pre-compile CIDR whitelist matchers once per array snapshot instead of parsing on every request.
 /**
  * @typedef {object} CompiledIpPatterns
  * @property {string[]} snapshot
@@ -123,6 +124,7 @@ function normalizeIpAddress(address) {
     if (typeof address !== 'string') {
         return null;
     }
+    // SillyBunny: fast-path canonical loopback strings before running ipaddr.js validation.
     if (address === '127.0.0.1' || address === '::ffff:127.0.0.1') {
         return '127.0.0.1';
     }
@@ -215,17 +217,23 @@ export function getForwardedIps(req, trustedProxies, { readConfig = getConfigVal
 }
 
 let trustedProxies = null;
-let trustedProxiesSource = undefined;
+/** @type {string[] | null} */
+let trustedProxiesSource = null;
 
 /**
  * Gets the IP patterns of the hops whose forwarded headers are believed.
  * @returns {string[]} The valid whitelist entries
  */
 export function getTrustedProxies() {
-    const configuredWhitelist = getConfigValue('whitelist', []);
-    if (trustedProxies === null || trustedProxiesSource !== configuredWhitelist) {
-        trustedProxiesSource = configuredWhitelist;
-        trustedProxies = filterValidIpPatterns(configuredWhitelist);
+    const rawWhitelist = getConfigValue('whitelist', []);
+    const configuredWhitelist = Array.isArray(rawWhitelist) ? rawWhitelist : [];
+    // SillyBunny: compare whitelist entries by value so env overrides or absent config defaults keep the compiled cache warm.
+    if (trustedProxies === null
+        || trustedProxiesSource === null
+        || !isSamePatternList(trustedProxiesSource, configuredWhitelist)
+    ) {
+        trustedProxiesSource = configuredWhitelist.slice();
+        trustedProxies = filterValidIpPatterns(trustedProxiesSource);
         compileIpPatterns(trustedProxies);
     }
     return trustedProxies;

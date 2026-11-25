@@ -71,35 +71,115 @@ function readPackageVersionSignature(rootDir) {
     }
 }
 
+const PUBLIC_FRONTEND_SUBDIRS = Object.freeze([
+    'scripts',
+    'css',
+    'locales',
+    'lib',
+]);
+
+const SKIPPED_SUBDIR_NAMES = new Set([
+    'third-party',
+    '.git',
+]);
+
+function compareAscii(a, b) {
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function readPublicTopLevelSignature(rootDir) {
     const publicDir = path.join(rootDir, 'public');
     try {
         const entries = fs.readdirSync(publicDir, { withFileTypes: true })
             .map(entry => entry.name)
-            .sort();
+            .sort(compareAscii);
         return entries.map(name => `${name}=${readStatTuple(path.join(publicDir, name))}`).join(';');
     } catch {
         return 'absent';
     }
 }
 
-function readThirdPartyExtensionsSignature(rootDir) {
-    const thirdPartyDir = path.join(rootDir, 'public', 'scripts', 'extensions', 'third-party');
+function updateFrontendSubtreeHash(hash, baseDir, relPrefix) {
+    let entries;
     try {
-        const entries = fs.readdirSync(thirdPartyDir, { withFileTypes: true })
+        entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    } catch {
+        hash.update(`${relPrefix}=absent;`);
+        return;
+    }
+
+    entries.sort((left, right) => compareAscii(left.name, right.name));
+    for (const entry of entries) {
+        if (SKIPPED_SUBDIR_NAMES.has(entry.name)) {
+            continue;
+        }
+        const entryPath = path.join(baseDir, entry.name);
+        const relPath = `${relPrefix}/${entry.name}`;
+        if (entry.isDirectory()) {
+            updateFrontendSubtreeHash(hash, entryPath, relPath);
+            continue;
+        }
+        if (entry.isFile() || entry.isSymbolicLink()) {
+            hash.update(`${relPath}=${readStatTuple(entryPath)};`);
+        }
+    }
+}
+
+function updatePublicSubdirsHash(hash, rootDir) {
+    const publicDir = path.join(rootDir, 'public');
+    for (const subdir of PUBLIC_FRONTEND_SUBDIRS) {
+        updateFrontendSubtreeHash(hash, path.join(publicDir, subdir), subdir);
+        hash.update('\0');
+    }
+}
+
+function readExtensionsDirectorySignature(extensionsDir) {
+    try {
+        const entries = fs.readdirSync(extensionsDir, { withFileTypes: true })
             .filter(entry => entry.isDirectory() || entry.isFile())
             .map(entry => entry.name)
-            .sort();
+            .sort(compareAscii);
         return entries.map((name) => {
-            const extPath = path.join(thirdPartyDir, name);
+            const extPath = path.join(extensionsDir, name);
             const statSig = readStatTuple(extPath);
             const manifestSig = readStatTuple(path.join(extPath, 'manifest.json'));
+            const entryScriptSig = readStatTuple(path.join(extPath, 'index.js'));
             const gitSig = readGitHeadSignature(extPath);
-            return `${name}=${statSig},${manifestSig},${gitSig}`;
+            return `${name}=${statSig},${manifestSig},${entryScriptSig},${gitSig}`;
         }).join(';');
     } catch {
         return 'absent';
     }
+}
+
+function readThirdPartyExtensionsSignature(rootDir) {
+    return readExtensionsDirectorySignature(path.join(rootDir, 'public', 'scripts', 'extensions', 'third-party'));
+}
+
+function readPerUserExtensionsSignature(dataRoot) {
+    if (typeof dataRoot !== 'string' || !dataRoot) {
+        return 'absent';
+    }
+    let userEntries;
+    try {
+        userEntries = fs.readdirSync(dataRoot, { withFileTypes: true });
+    } catch {
+        return 'absent';
+    }
+
+    const userHandles = userEntries
+        .filter(entry => entry.isDirectory() && !entry.name.startsWith('_') && !entry.name.startsWith('.'))
+        .map(entry => entry.name)
+        .sort(compareAscii);
+
+    const parts = [];
+    for (const handle of userHandles) {
+        const sig = readExtensionsDirectorySignature(path.join(dataRoot, handle, 'extensions'));
+        if (sig !== 'absent') {
+            parts.push(`${handle}:${sig}`);
+        }
+    }
+    return parts.length > 0 ? parts.join('|') : 'empty';
 }
 
 /**
@@ -107,9 +187,16 @@ function readThirdPartyExtensionsSignature(rootDir) {
  * server restarts keep browser caches warm instead of triggering Clear-Site-Data reloads.
  * @param {object} [options]
  * @param {string} [options.rootDir] Server root directory
+ * @param {string} [options.dataRoot] User data root containing per-user extensions
  * @returns {string}
  */
-export function computeContentBootId({ rootDir = serverDirectory } = {}) {
+export function computeContentBootId({ rootDir = serverDirectory, dataRoot } = {}) {
+    const effectiveDataRoot = dataRoot !== undefined
+        ? dataRoot
+        : (rootDir === serverDirectory && typeof globalThis.DATA_ROOT === 'string' && globalThis.DATA_ROOT
+            ? globalThis.DATA_ROOT
+            : path.join(rootDir, 'data'));
+
     const hash = createHash('sha256');
     hash.update(readPackageVersionSignature(rootDir));
     hash.update('\0');
@@ -117,9 +204,12 @@ export function computeContentBootId({ rootDir = serverDirectory } = {}) {
     hash.update('\0');
     hash.update(readPublicTopLevelSignature(rootDir));
     hash.update('\0');
+    updatePublicSubdirsHash(hash, rootDir);
     hash.update(readStatTuple(path.join(rootDir, 'dist', 'frontend', 'asset-manifest.json')));
     hash.update('\0');
     hash.update(readThirdPartyExtensionsSignature(rootDir));
+    hash.update('\0');
+    hash.update(readPerUserExtensionsSignature(effectiveDataRoot));
     return `c-${hash.digest('hex').slice(0, 24)}`;
 }
 

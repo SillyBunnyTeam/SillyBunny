@@ -28,6 +28,7 @@ class FakeBrowser {
         this.registrations = registrations;
         this.serviceWorkerPurges = 0;
         this.stoppedLoads = 0;
+        this.infoLogs = [];
     }
 
     get cookieHeader() {
@@ -127,7 +128,10 @@ class FakeBrowser {
             navigator,
             location: window.location,
             MessageChannel,
-            console: { info: () => {}, warn: () => {} },
+            console: {
+                info: message => browser.infoLogs.push(String(message)),
+                warn: () => {},
+            },
             Promise,
         });
         vm.runInContext(pageScriptSource, context);
@@ -146,6 +150,10 @@ describe('restart cache clear', () => {
         expect(browser.serviceWorkerPurges).toBe(1);
         expect(browser.cacheStorage.size).toBe(0);
         expect(browser.registrations).toBe(0);
+        expect(browser.infoLogs).toEqual([
+            '[Cache] Restart cache clear pass 1 of 2 complete. Reloading.',
+            '[Cache] Restart cache clear pass 2 of 2 complete. Reloading.',
+        ]);
 
         const later = await browser.open(middleware);
         expect(later).toEqual({ clearSiteDataLoads: 0, loads: 1 });
@@ -179,6 +187,9 @@ describe('restart cache clear', () => {
         expect(result).toEqual({ clearSiteDataLoads: 1, loads: 2 });
         expect(browser.stoppedLoads).toBe(1);
         expect(browser.cacheStorage.size).toBe(0);
+        expect(browser.infoLogs).toEqual([
+            '[Cache] Restart cache clear pass 1 of 1 complete. Reloading.',
+        ]);
     });
 
     test('skips forced reloads across unchanged restarts in content mode', async () => {

@@ -16,6 +16,7 @@ export const router = express.Router();
 const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', 25, 'number'));
 const getEntityDateAddedRoot = directories => directories.root || path.dirname(directories.groups);
+// SillyBunny: store a per-user signature of groups/*.json outside groups/ so unchanged boots skip reparsing group files while newly copied legacy groups still trigger migration.
 const GROUPS_METADATA_MARKER_DIR = '_groups_metadata';
 export const GROUPS_MIGRATED_MARKER_FILE = '.migrated-v1';
 
@@ -27,6 +28,38 @@ export const GROUPS_MIGRATED_MARKER_FILE = '.migrated-v1';
  */
 export function getGroupsMigrationMarkerPath(userDirs) {
     return path.join(getEntityDateAddedRoot(userDirs), GROUPS_METADATA_MARKER_DIR, GROUPS_MIGRATED_MARKER_FILE);
+}
+
+function readGroupsMigrationMarker(markerPath) {
+    try {
+        if (!fs.existsSync(markerPath)) {
+            return null;
+        }
+        return fs.readFileSync(markerPath, 'utf8').trim();
+    } catch {
+        return null;
+    }
+}
+
+async function readGroupsDirectoryState(groupsDir) {
+    const groupFiles = await fsPromises.readdir(groupsDir, { withFileTypes: true });
+    const jsonNames = groupFiles
+        .filter(entry => entry.isFile() && path.extname(entry.name) === '.json')
+        .map(entry => entry.name)
+        .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    const parts = [];
+    for (const name of jsonNames) {
+        try {
+            const stat = fs.statSync(path.join(groupsDir, name));
+            parts.push(`${name}:${stat.size}:${Math.trunc(stat.mtimeMs)}`);
+        } catch {
+            parts.push(`${name}:missing`);
+        }
+    }
+    return {
+        groupFiles,
+        signature: `v1:${parts.join('|')}`,
+    };
 }
 const getGroupDateAddedFallback = stat => [stat.birthtimeMs, stat.ctimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
@@ -65,15 +98,16 @@ function hasValidChatIds(request) {
 export async function migrateGroupChatsMetadataFormat(userDirectories) {
     for (const userDirs of userDirectories) {
         try {
-            // SillyBunny: skip re-scanning and parsing every group file once migration has completed for this user.
+            // SillyBunny: skip re-parsing every group and chat file once this exact groups/*.json snapshot has migrated cleanly.
             const markerPath = getGroupsMigrationMarkerPath(userDirs);
-            if (fs.existsSync(markerPath)) {
+            const beforeState = await readGroupsDirectoryState(userDirs.groups);
+            if (readGroupsMigrationMarker(markerPath) === beforeState.signature) {
                 continue;
             }
             let anyDataMigrated = false;
             let migrationClean = true;
             const backupPath = path.join(userDirs.backups, '_group_metadata_update');
-            const groupFiles = await fsPromises.readdir(userDirs.groups, { withFileTypes: true });
+            const { groupFiles } = beforeState;
             const groupChatFiles = await fsPromises.readdir(userDirs.groupChats, { withFileTypes: true });
             // Capture addition dates before metadata migration rewrites group files.
             reconcileEntityDateAdded(
@@ -162,9 +196,13 @@ export async function migrateGroupChatsMetadataFormat(userDirectories) {
                 console.log(color.green(`Completed migration of group chats metadata for user at ${userDirs.root}`));
                 console.log(color.cyan(`Backups of modified files are located at ${backupPath}`));
             }
+            // SillyBunny: persist the post-migration groups/*.json signature only when every group migrated cleanly.
             if (migrationClean) {
+                const persistedSignature = anyDataMigrated
+                    ? (await readGroupsDirectoryState(userDirs.groups)).signature
+                    : beforeState.signature;
                 await fsPromises.mkdir(path.dirname(markerPath), { recursive: true });
-                await writeFileAtomic(markerPath, '1\n', 'utf8');
+                await writeFileAtomic(markerPath, `${persistedSignature}\n`, 'utf8');
             }
         } catch (directoryError) {
             console.error(color.red(`Error migrating group chats metadata for user at ${userDirs.root}`), directoryError);
