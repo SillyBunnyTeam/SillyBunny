@@ -568,38 +568,116 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(completionCalls[0][1].body).not.toContain('secret-character-chat-1');
     });
 
-    test('OpenRouter omits session_id and explicit cache markers on quiet, auxiliary, and cacheScope none requests', async () => {
-        mergeCachingConfig({
-            claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: false },
-            gemini: { enableSystemPromptCache: true },
+    const MARKER_SOURCES = [
+        { name: 'native Claude', source: CHAT_COMPLETION_SOURCES.CLAUDE, model: 'claude-sonnet-4-6', extra: { use_sysprompt: true } },
+        { name: 'OpenRouter Claude', source: CHAT_COMPLETION_SOURCES.OPENROUTER, model: 'anthropic/claude-sonnet-4-6', extra: {} },
+        { name: 'NanoGPT', source: CHAT_COMPLETION_SOURCES.NANOGPT, model: 'anthropic/claude-sonnet-4-6', extra: {} },
+        { name: 'Electron Hub', source: CHAT_COMPLETION_SOURCES.ELECTRONHUB, model: 'anthropic/claude-sonnet-4-6', extra: {} },
+    ];
+    const NON_MAIN_REQUESTS = [
+        ['quiet', { type: 'quiet' }],
+        ['auxiliary', { type: 'normal', cacheScope: 'auxiliary' }],
+        ['conversation-mode', { type: 'quiet', cacheScope: 'conversation-mode' }],
+    ];
+
+    /** Counts cache_control markers placed in the prompt, not the NanoGPT body helper. */
+    function countInlineMarkers(body) {
+        return promptCaching.countCacheControlMarkers({ systemPrompt: body.system, tools: body.tools, messages: body.messages });
+    }
+
+    async function sendMarkerRequest({ source, model, extra }, overrides = {}) {
+        nodeFetchMock.mockClear();
+        const res = await post('/api/backends/chat-completions/generate', {
+            chat_completion_source: source,
+            model,
+            stream: false,
+            max_tokens: 256,
+            messages: [
+                { role: 'system', content: 'Helper system' },
+                { role: 'user', content: 'Turn 1' },
+                { role: 'assistant', content: 'Reply 1' },
+                { role: 'user', content: 'Summarize' },
+            ],
+            ...extra,
+            ...overrides,
+        });
+        expect(res.status).toBe(200);
+        const [, options] = nodeFetchMock.mock.calls[0];
+        return { body: JSON.parse(options.body), headers: options.headers };
+    }
+
+    describe.each(MARKER_SOURCES)('$name cache markers', (sourceCase) => {
+        beforeEach(() => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: false } });
         });
 
-        for (const overrides of [
-            { type: 'quiet' },
-            { type: 'normal', cacheScope: 'auxiliary' },
-            { type: 'normal', cacheScope: 'none' },
-        ]) {
+        test.each(NON_MAIN_REQUESTS)('are placed on %s requests, as on a main turn', async (_name, overrides) => {
+            const main = await sendMarkerRequest(sourceCase);
+            const helper = await sendMarkerRequest(sourceCase, overrides);
+
+            expect(countInlineMarkers(main.body)).toBeGreaterThanOrEqual(2);
+            expect(countInlineMarkers(helper.body)).toBe(countInlineMarkers(main.body));
+            expect(helper.body.system ?? helper.body.messages[0].content).toEqual(main.body.system ?? main.body.messages[0].content);
+        });
+
+        test('are absent for cacheScope none, together with the NanoGPT helper and the Claude beta header', async () => {
+            const { body, headers } = await sendMarkerRequest(sourceCase, { cacheScope: 'none', chat_id: 'some-chat' });
+
+            expect(countInlineMarkers(body)).toBe(0);
+            expect(body.cache_control).toBeUndefined();
+            expect(body.session_id).toBeUndefined();
+            expect(String(headers['anthropic-beta'] ?? '')).not.toContain('prompt-caching');
+        });
+    });
+
+    test.each(NON_MAIN_REQUESTS)('session keys follow chat_id on %s requests and never the request type', async (_name, overrides) => {
+        const send = async (source, model, extra) => {
+            nodeFetchMock.mockClear();
             const res = await post('/api/backends/chat-completions/generate', {
-                chat_completion_source: CHAT_COMPLETION_SOURCES.OPENROUTER,
-                model: 'anthropic/claude-sonnet-4-6',
-                chat_id: 'main-chat-id',
+                chat_completion_source: source,
+                model,
                 stream: false,
-                max_tokens: 128,
-                messages: [
-                    { role: 'system', content: 'Helper system' },
-                    { role: 'user', content: 'Summarize' },
-                ],
+                max_tokens: 64,
+                messages: [{ role: 'user', content: 'Hi' }],
                 ...overrides,
+                ...extra,
             });
             expect(res.status).toBe(200);
-        }
+            return JSON.parse(nodeFetchMock.mock.calls[0][1].body);
+        };
 
-        const bodies = nodeFetchMock.mock.calls.map(([, opts]) => JSON.parse(opts.body));
-        for (const body of bodies) {
-            expect(body.session_id).toBeUndefined();
-            expect(body.messages[0].content).toBe('Helper system');
-            expect(body.messages[1].content).toBe('Summarize');
-        }
+        const withChat = await send(CHAT_COMPLETION_SOURCES.OPENROUTER, 'anthropic/claude-sonnet-4-6', { chat_id: 'secret-chat' });
+        expect(withChat.session_id).toMatch(/^sb_[a-f0-9]{32}$/);
+        expect(JSON.stringify(withChat)).not.toContain('secret-chat');
+        expect((await send(CHAT_COMPLETION_SOURCES.OPENROUTER, 'anthropic/claude-sonnet-4-6', {})).session_id).toBeUndefined();
+        expect((await send(CHAT_COMPLETION_SOURCES.OPENROUTER, 'anthropic/claude-sonnet-4-6', { chat_id: '  ' })).session_id).toBeUndefined();
+        expect((await send(CHAT_COMPLETION_SOURCES.OPENROUTER, 'anthropic/claude-sonnet-4-6', { chat_id: 'secret-chat', cacheScope: 'none' })).session_id).toBeUndefined();
+
+        const openAiWithChat = await send(CHAT_COMPLETION_SOURCES.OPENAI, 'gpt-5', { chat_id: 'secret-chat' });
+        expect(openAiWithChat.prompt_cache_key).toMatch(/^sb_[a-f0-9]{32}$/);
+        expect((await send(CHAT_COMPLETION_SOURCES.OPENAI, 'gpt-5', {})).prompt_cache_key).toBeUndefined();
+        expect((await send(CHAT_COMPLETION_SOURCES.OPENAI, 'gpt-5', { chat_id: 'secret-chat', cacheScope: 'none' })).prompt_cache_key).toBeUndefined();
+    });
+
+    test('OpenRouter Gemini places its system marker on a quiet request too', async () => {
+        mergeCachingConfig({ gemini: { enableSystemPromptCache: true } });
+        nodeFetchMock.mockClear();
+        const res = await post('/api/backends/chat-completions/generate', {
+            chat_completion_source: CHAT_COMPLETION_SOURCES.OPENROUTER,
+            model: 'google/gemini-4-neon',
+            type: 'quiet',
+            stream: false,
+            max_tokens: 64,
+            messages: [
+                { role: 'system', content: 'Prefix' },
+                { role: 'user', content: 'Summarize' },
+            ],
+        });
+        expect(res.status).toBe(200);
+        const completionCall = nodeFetchMock.mock.calls.find(([url]) => String(url).endsWith('/chat/completions'));
+        expect(JSON.parse(completionCall[1].body).messages[0].content).toEqual([
+            { type: 'text', text: 'Prefix', cache_control: { type: 'ephemeral' } },
+        ]);
     });
 
     test('OpenRouter Gemini 4 with suffix marks only the static leading system prefix without TTL', async () => {

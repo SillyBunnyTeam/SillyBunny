@@ -233,34 +233,25 @@ export async function isOpenRouterModelCacheable(
 }
 
 /**
- * Checks whether a request belongs to the main chat lane (not quiet, auxiliary, or cacheScope 'none').
+ * `cacheScope: 'none'` is the only opt-out. Every other request carries markers and session keys, including
+ * quiet and auxiliary ones, because a provider reads a cache entry only through a breakpoint of its own.
  * @param {any} requestBody
  * @returns {boolean}
  */
-export function isMainCacheableTurn(requestBody) {
-    if (!requestBody || typeof requestBody !== 'object') {
-        return false;
-    }
-    if (requestBody.type === 'quiet') {
-        return false;
-    }
-    const scope = requestBody.cacheScope;
-    if (scope !== undefined && scope !== null && scope !== '' && scope !== 'main') {
-        return false;
-    }
-    return true;
+function isCachingDisabled(requestBody) {
+    return requestBody?.cacheScope === 'none';
 }
 
 /**
- * Checks whether the request represents a main chat turn eligible for session-level cache routing.
+ * Checks whether a request may carry an opaque session routing key: caching is not opted out and the client sent a chat id.
  * @param {any} requestBody
  * @returns {boolean}
  */
-export function shouldAttachSessionCacheKey(requestBody) {
-    if (!isMainCacheableTurn(requestBody)) {
+function shouldAttachSessionCacheKey(requestBody) {
+    if (isCachingDisabled(requestBody)) {
         return false;
     }
-    return typeof requestBody.chat_id === 'string' && requestBody.chat_id.trim().length > 0;
+    return typeof requestBody?.chat_id === 'string' && requestBody.chat_id.trim().length > 0;
 }
 
 /**
@@ -818,7 +809,7 @@ export function applyClaudeRequestCaching({
     const activeSystemPrompt = useSystemPrompt ? systemPrompt : undefined;
     let usedBreakpoints = countCacheControlMarkers({ systemPrompt: activeSystemPrompt, tools: allTools, messages });
 
-    if (!requestBody || isMainCacheableTurn(requestBody)) {
+    if (!isCachingDisabled(requestBody)) {
         const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
 
         // Anthropic evaluates breakpoints in strict order: tools -> system -> messages.
@@ -927,7 +918,7 @@ export async function applyOpenRouterRequestCaching({
         }
     }
 
-    if (!isMainCacheableTurn(requestBody)) {
+    if (isCachingDisabled(requestBody)) {
         return;
     }
 
@@ -984,7 +975,7 @@ export function applyNanoGptRequestCaching({
         return;
     }
 
-    if (requestBody && !isMainCacheableTurn(requestBody)) {
+    if (isCachingDisabled(requestBody)) {
         return;
     }
 
@@ -1028,7 +1019,7 @@ export function applyElectronHubRequestCaching({
         return;
     }
 
-    if (requestBody && !isMainCacheableTurn(requestBody)) {
+    if (isCachingDisabled(requestBody)) {
         return;
     }
 
