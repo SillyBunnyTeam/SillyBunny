@@ -43,6 +43,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
 const {
     clearLegacyConversationUnreadStorage,
     createConversationChat,
+    deleteConversationByAvatar,
     deleteConversationChat,
     deleteConversationWelcomeChat,
     ensureDirectConversation,
@@ -56,7 +57,6 @@ const {
     getConversationStore,
     makeConversationGroup,
     renameConversationChat,
-    resetCharacterConversationChats,
 } = await import('../public/scripts/sillybunny-conversation/context.js');
 
 let server;
@@ -129,9 +129,19 @@ describe('conversations as the rest of the mode reads them', () => {
         expect(getConversationRecord('Orion.png', { groupId: 'conv_2_group001' })).toBe(data.get('conv_2_group001'));
         expect(getConversationRecord('Nova.png', { groupId: '', personaId: 'other.png' })).toBeNull();
         expect(getConversationRecord('Ghost.png', { groupId: '' })).toBeNull();
-        expect(getConversationAddress('Nova.png', { groupId: '', chatId: 'ghost' })).toEqual({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        expect(getConversationAddress('Nova.png', { groupId: '', chatId: 'main' })).toEqual({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        expect(getConversationAddress('Nova.png', { groupId: '' })).toEqual({ conversationId: 'conv_1_direct01', chatId: 'main' });
         expect(getConversationKey('Nova.png', '')).toBe('conv_1_direct01');
         expect(getConversationKey('Ghost.png', '')).toBe(`pending:${PERSONA}::Ghost.png`);
+    });
+
+    test('a chat that the conversation does not have names no address, so that a write for a deleted chat lands nowhere', async () => {
+        await startData([DIRECT]);
+        await data.deleteChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
+
+        expect(getConversationAddress('Nova.png', { groupId: '', chatId: 'main' })).toBeNull();
+        expect(getConversationAddress('Nova.png', { groupId: '', chatId: 'ghost' })).toBeNull();
+        expect(getConversationAddress('Nova.png', { groupId: '' })).toMatchObject({ conversationId: 'conv_1_direct01' });
     });
 
     test('a chat is a handle with its messages only while it is loaded', async () => {
@@ -176,7 +186,7 @@ describe('chats of a conversation', () => {
         expect(stored.json.conversation.chats.map(item => item.id)).toEqual(['main', chat.id]);
     });
 
-    test('a new chat takes the memory summary of the chat it was started from', async () => {
+    test('a new chat starts blank: it has no messages and no memory summary, whatever the chat it was started from has', async () => {
         await startData([DIRECT]);
         const loaded = await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
         data.commitChat(loaded.address, (draft) => {
@@ -185,10 +195,10 @@ describe('chats of a conversation', () => {
 
         const chat = createConversationChat('Nova.png', 'Trip', { groupId: '' });
 
-        expect(chat.memorySummary).toBe('Durable memory');
-        expect(chat.memoryMessageCount).toBe(0);
-        expect(chat.sessionMarkers).toEqual({ memory_copied_from: 'main' });
+        expect(chat).toMatchObject({ messageCount: 0, memorySummary: '', memoryMessageCount: 0, sessionMarkers: {} });
         await data.flush();
+        const stored = await server.adapter().fetchJson('/chat/get', { id: 'conv_1_direct01', chatId: chat.id });
+        expect(stored.json.chat[0].chat_metadata.sb_conversation).toBeUndefined();
     });
 
     test('a chat can be renamed, and a blank name or a chat that does not exist is refused', async () => {
@@ -221,21 +231,16 @@ describe('chats of a conversation', () => {
         expect(await deleteConversationWelcomeChat('Nova.png', 'ghost', { personaId: PERSONA })).toEqual({ deleted: false, reset: false });
     });
 
-    test('emptying a conversation leaves one empty chat that keeps the memory summary and the conversation listed', async () => {
-        await startData([{ ...DIRECT, chats: [{ id: 'main', messages: ['a', 'b'] }, { id: 'side', messages: ['c'] }] }]);
-        const loaded = await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
-        data.commitChat(loaded.address, (draft) => {
-            draft.header.chat_metadata.sb_conversation = { memory_summary: 'Durable memory', memory_message_count: 2, memory_updated_at: 5 };
-        });
+    test('deleting a conversation by its avatar and group removes it from the list and the disk, and a conversation that is not there is not an error', async () => {
+        await startData([DIRECT, GROUP]);
 
-        await resetCharacterConversationChats('Nova.png', { groupId: '' });
-        await data.flush();
+        expect(await deleteConversationByAvatar('Nova.png', { groupId: '' })).toBe(true);
+        expect(await deleteConversationByAvatar('Orion.png', { groupId: 'conv_2_group001' })).toBe(true);
+        expect(await deleteConversationByAvatar('Nova.png', { groupId: '' })).toBe(false);
 
-        const chats = getConversationChats('Nova.png', { groupId: '' });
-        expect(chats).toHaveLength(1);
-        expect(chats[0]).toMatchObject({ name: 'Main', messageCount: 0, memorySummary: 'Durable memory' });
-        expect(data.get('conv_1_direct01')).not.toBeNull();
-        expect(getConversationRecord('Nova.png', { groupId: '' }).activeChatId).toBe(chats[0].id);
+        expect(data.list()).toHaveLength(0);
+        const stored = await server.adapter().fetchJson('/list', {});
+        expect(stored.json.conversations).toEqual([]);
     });
 });
 

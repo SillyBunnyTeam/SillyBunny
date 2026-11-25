@@ -16,6 +16,7 @@ import { disableConversationModeForCurrentCharacter, getDefaultConversationAvata
 import { CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById } from './context.js';
 import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
+import { generationTargets, installRemovalEffects } from './deletion-guards.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
@@ -23,7 +24,7 @@ import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } f
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { closeConversationSettings } from './settings-panel.js';
 import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
-import { conversationState, setExternalConversationGenerationActive } from './state.js';
+import { conversationState, sendQueue, setExternalConversationGenerationActive } from './state.js';
 import { setConversationTimeout } from './timers.js';
 
 function hasConversationRuntimeUsage() {
@@ -51,6 +52,7 @@ export function init() {
     }
 
     conversationState.initialized = true;
+    installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
     conversationData.subscribe((event) => {
         if (event.type === 'list' || event.type === 'status') {
             updateConversationNotificationIndicators();

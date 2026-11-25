@@ -85,6 +85,7 @@ const {
     getConversationErrorDetail,
     postCharacterReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
+const { generationTargets } = await import('../public/scripts/sillybunny-conversation/deletion-guards.js');
 
 const settings = {
     image_gen_enabled: false,
@@ -159,6 +160,39 @@ describe('Conversation core generated reply regressions', () => {
         await generateConversationReply('Reply now.', { ...settings, include_related_memory: true }, { avatar: 'char.png', speakerAvatar: 'partner.png', groupId: 'conv_2_group', personaId: 'persona-a.png' });
 
         expect(loadRelatedMemoryChats).toHaveBeenCalledWith('partner.png', { groupId: 'conv_2_group', personaId: 'persona-a.png' });
+    });
+
+    test('answers nothing for a reply whose conversation was deleted while the model worked, and hands the model a signal to stop', async () => {
+        globalThis.window = {};
+        let signal;
+        generateRaw.mockImplementationOnce(async (options) => {
+            signal = options.signal;
+            generationTargets.cancel({ conversationId: 'conv_1_direct' });
+            return 'a reply for a conversation that is gone';
+        });
+
+        await expect(generateConversationReply('Reply now.', settings, { avatar: 'char.png', chatId: 'main', groupId: '', personaId: 'persona-a.png' })).resolves.toBe('');
+
+        expect(signal.aborted).toBe(true);
+        expect(generationTargets.size).toBe(0);
+    });
+
+    test('answers nothing, and reports no error, when the request fails because its chat was deleted', async () => {
+        globalThis.window = {};
+        generateRaw.mockImplementationOnce(async () => {
+            generationTargets.cancel({ conversationId: 'conv_1_direct', chatId: 'main' });
+            throw Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' });
+        });
+
+        await expect(generateConversationReply('Reply now.', settings, { avatar: 'char.png', chatId: 'main', groupId: '', personaId: 'persona-a.png' })).resolves.toBe('');
+    });
+
+    test('still raises the error of a request that failed for another reason', async () => {
+        globalThis.window = {};
+        generateRaw.mockRejectedValueOnce(new Error('The model is down.'));
+
+        await expect(generateConversationReply('Reply now.', settings, { avatar: 'char.png', chatId: 'main', groupId: '', personaId: 'persona-a.png' })).rejects.toThrow('The model is down.');
+        expect(generationTargets.size).toBe(0);
     });
 
     test('asks the active API for the response length that it can serve', async () => {

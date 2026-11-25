@@ -30,6 +30,7 @@ import {
     parsePositiveInt,
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
+import { createTargetCheck } from './deletion-guards.js';
 import { generateConversationReply, postCharacterReply, postMemberConversationReply, reportConversationGenerationError } from './generation.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar } from './media.js';
@@ -142,7 +143,25 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
     }
 }
 
-export async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar(), { chatId = '', personaId = getConversationPersonaId() } = {}) {
+/**
+ * The check that an automatic message runs before it writes: its conversation and chat still exist, and, unless the
+ * user asked for the message, the chat has a message from the user. Null when that is not so now.
+ * @returns {(() => boolean)|null}
+ */
+function createAutomaticTargetCheck(avatar, { chatId = '', groupId = '', personaId = getConversationPersonaId() } = {}, { needsUserMessage = true } = {}) {
+    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
+    if (!address) {
+        return null;
+    }
+    const check = createTargetCheck(id => conversationData.get(id), address, { needsUserMessage });
+    return check() ? check : null;
+}
+
+/**
+ * Sends one automatic message of the character. `needsUserMessage` is false for a reminder, which the user asked for;
+ * every other automatic message waits for the user to have written in the chat.
+ */
+export async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar(), { chatId = '', personaId = getConversationPersonaId(), needsUserMessage = true } = {}) {
     const character = getCharacterForAvatar(avatar);
     if (conversationState.autoWorkerBusy || conversationState.conversationReplyBusy || is_send_press || !character || !avatar) {
         return false;
@@ -152,6 +171,10 @@ export async function triggerAutoMessage(directive, settings, extra = {}, avatar
     const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
     const capturedChatId = chatId || conversationRecord?.activeChatId || '';
     if (!capturedChatId || !conversationRecord?.chats?.some(entry => entry.id === capturedChatId)) {
+        return false;
+    }
+    const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId: capturedChatId, groupId, personaId }, { needsUserMessage });
+    if (!targetIsCurrent) {
         return false;
     }
     // The chat is read for the prompt and written to with the reply, so it has to be loaded.
@@ -174,7 +197,7 @@ export async function triggerAutoMessage(directive, settings, extra = {}, avatar
             personaId,
         });
 
-        if (response?.trim()) {
+        if (response?.trim() && targetIsCurrent()) {
             const postedText = await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
                 extra: {
                     conversation_mode_auto: true,
@@ -183,11 +206,14 @@ export async function triggerAutoMessage(directive, settings, extra = {}, avatar
                 chatId: capturedChatId,
                 groupId,
                 personaId,
+                validateTarget: targetIsCurrent,
             }, avatar), avatar, { chatId: capturedChatId, groupId, personaId });
             if (!postedText) {
                 return false;
             }
-            await maybeGenerateSpontaneousImage(settings, avatar, { chatId: capturedChatId, groupId, personaId });
+            if (targetIsCurrent()) {
+                await maybeGenerateSpontaneousImage(settings, avatar, { chatId: capturedChatId, groupId, personaId });
+            }
             return true;
         }
     } catch (error) {
@@ -535,6 +561,11 @@ export async function triggerConversationMemberChime(memberCharacter, settings, 
         return false;
     }
 
+    const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId, groupId, personaId });
+    if (!targetIsCurrent) {
+        return false;
+    }
+
     const busyKey = getMemberReplyBusyKey(avatar, memberCharacter.avatar, `chime:${groupId || 'solo'}`);
     if (memberReplyBusyKeys.has(busyKey)) {
         return false;
@@ -560,7 +591,7 @@ export async function triggerConversationMemberChime(memberCharacter, settings, 
             personaId,
         });
 
-        if (response?.trim()) {
+        if (response?.trim() && targetIsCurrent()) {
             await postMemberConversationReply(response.trim(), memberCharacter, memberSettings, {
                 avatar,
                 chatId,
@@ -570,6 +601,7 @@ export async function triggerConversationMemberChime(memberCharacter, settings, 
                 },
                 groupId,
                 personaId,
+                validateTarget: targetIsCurrent,
             });
             return true;
         }
@@ -627,6 +659,10 @@ export async function triggerAutoCharacterChat(avatar, settings, { chatId = '', 
     if (!memberCharacter) {
         return false;
     }
+    const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId, groupId, personaId });
+    if (!targetIsCurrent) {
+        return false;
+    }
 
     const busyKey = getMemberReplyBusyKey(avatar, memberCharacter.avatar, `auto-chat:${groupId || 'solo'}`);
     if (memberReplyBusyKeys.has(busyKey)) {
@@ -660,13 +696,14 @@ export async function triggerAutoCharacterChat(avatar, settings, { chatId = '', 
             personaId,
         });
 
-        if (response?.trim()) {
+        if (response?.trim() && targetIsCurrent()) {
             await postMemberConversationReply(response.trim(), memberCharacter, memberSettings, {
                 avatar,
                 chatId,
                 extra: { conversation_mode_auto_chat: true, member_avatar: memberCharacter.avatar },
                 groupId,
                 personaId,
+                validateTarget: targetIsCurrent,
             });
             return true;
         }
@@ -1003,7 +1040,7 @@ export async function checkConversationReminders(now) {
             reminder_id: reminder.id,
             member_avatar: groupId ? avatar : undefined,
             groupId,
-        }, avatar, { chatId, personaId });
+        }, avatar, { chatId, personaId, needsUserMessage: false });
 
         if (triggered) {
             const current = conversationData.get(view.id);
@@ -1062,6 +1099,13 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
         if (!chatId) {
             continue;
         }
+        // A chat that has no message from the user gets no automatic message, whether it is new or was emptied. The
+        // check reads the conversation again at each step below, because a step can take a long time and the
+        // conversation or the chat can be deleted in the meantime.
+        const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId, groupId, personaId });
+        if (!targetIsCurrent) {
+            continue;
+        }
         const lastAutoMessageAt = getTickLastAutoMessageTime(avatar, groupId, chatId);
         const elapsedSeconds = (now - lastAutoMessageAt) / 1000;
         if (elapsedSeconds < settings.cooldown) {
@@ -1073,6 +1117,9 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
         }
         if (isAutoWorkerAborted(signal)) {
             return;
+        }
+        if (!targetIsCurrent()) {
+            continue;
         }
 
         // Marinara-style proactive loop takes priority over legacy idle action.
@@ -1086,12 +1133,18 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
         if (isAutoWorkerAborted(signal)) {
             return;
         }
+        if (!targetIsCurrent()) {
+            continue;
+        }
 
         if (await checkMultiCharacterChime(avatar, settings, now, { chatId, groupId, personaId })) {
             return;
         }
         if (isAutoWorkerAborted(signal)) {
             return;
+        }
+        if (!targetIsCurrent()) {
+            continue;
         }
 
         if (await checkAutoCharacterChat(avatar, settings, now, { chatId, groupId, personaId })) {

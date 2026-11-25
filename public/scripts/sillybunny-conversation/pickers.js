@@ -30,7 +30,7 @@ import {
     getUserStatus,
     safeParseWeeklySchedule,
 } from './personas.js';
-import { scheduleConversationListRender } from './render-scheduler.js';
+import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlAttribute } from './render-utils.js';
 import { closeConversationList } from './settings-panel.js';
 import { conversationState } from './state.js';
@@ -652,61 +652,7 @@ export function buildConversationGroupName(memberAvatars) {
     return `Group: ${visibleNames}${hiddenCount ? ` +${hiddenCount}` : ''}`;
 }
 
-export function cloneConversationStoreValue(value) {
-    try {
-        return JSON.parse(JSON.stringify(value));
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Copies the chats of a conversation, with their messages and read markers, into a group that was just made. The first
- * chat of the group is the first chat of the source, so that the group does not start with an empty one.
- * @returns {Promise<boolean>}
- */
-export async function copyConversationToGroup(sourceAvatar, targetGroupId, { sourceGroupId = '' } = {}) {
-    if (!sourceAvatar || !targetGroupId) {
-        return false;
-    }
-
-    const source = getConversationRecord(sourceAvatar, { groupId: sourceGroupId || '' });
-    const target = conversationData.get(targetGroupId);
-    if (!source?.chats.length || !target) {
-        return false;
-    }
-
-    const idMap = new Map();
-    for (const [index, entry] of source.chats.entries()) {
-        const sourceChat = await conversationData.loadChat({ conversationId: source.id, chatId: entry.id });
-        const targetChatId = index === 0 ? target.chats[0].id : conversationData.createChat(target.id, { name: entry.name })?.address.chatId;
-        if (!targetChatId) {
-            return false;
-        }
-        idMap.set(entry.id, targetChatId);
-        const memory = sourceChat.header.chat_metadata?.sb_conversation;
-        conversationData.commitChat({ conversationId: target.id, chatId: targetChatId }, (draft) => {
-            draft.messages.splice(0, draft.messages.length, ...cloneConversationStoreValue(sourceChat.messages));
-            if (memory) {
-                draft.header.chat_metadata.sb_conversation = cloneConversationStoreValue(memory);
-            }
-        });
-        conversationData.patchConversation(target.id, {
-            chats: {
-                [targetChatId]: {
-                    ...(index === 0 ? { name: entry.name } : {}),
-                    readThrough: entry.readThrough,
-                    lastActivity: entry.lastActivity,
-                    sessionMarkers: { ...entry.sessionMarkers, copied_to_group_at: String(Date.now()) },
-                },
-            },
-        });
-    }
-    conversationData.patchConversation(target.id, { activeChatId: idMap.get(source.activeChatId) ?? target.chats[0].id });
-    return true;
-}
-
-export async function createConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
+export async function createConversationGroup(memberAvatars) {
     const members = getUniqueConversationGroupMembers(memberAvatars);
     if (members.length < 2) {
         toastr.warning('Pick at least two characters for a group Conversation');
@@ -724,21 +670,21 @@ export async function createConversationGroup(memberAvatars, { sourceAvatar = ''
         return null;
     }
 
-    if (sourceAvatar && copySourceGroupId !== null) {
-        await copyConversationToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
-    }
-
     return group;
 }
 
-export async function createAndOpenConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
-    const group = await createConversationGroup(memberAvatars, { sourceAvatar, copySourceGroupId });
+/**
+ * Opens a group that was just made. The character that the user started from anchors it when it is a member.
+ * @param {{ id: string, name?: string, members: string[] }} group
+ * @returns {Promise<boolean>}
+ */
+async function openNewConversationGroup(group, preferredAvatar = '') {
     if (!group?.id || !Array.isArray(group.members)) {
         return false;
     }
 
-    const targetAvatar = sourceAvatar && group.members.includes(sourceAvatar)
-        ? sourceAvatar
+    const targetAvatar = preferredAvatar && group.members.includes(preferredAvatar)
+        ? preferredAvatar
         : group.members.find(avatar => getCharacterForAvatar(avatar));
     if (!targetAvatar) {
         toastr.warning('This group does not have any available character cards for Conversation Mode');
@@ -759,6 +705,41 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
     return opened;
 }
 
+export async function createAndOpenConversationGroup(memberAvatars) {
+    return openNewConversationGroup(await createConversationGroup(memberAvatars));
+}
+
+/**
+ * Add Member. On a group the characters join it in place and read its history. On a direct conversation the server
+ * starts a new group of that character and the chosen ones, which opens; the direct conversation stays as it is.
+ * @param {string[]} avatars The characters to add, without the ones that are in the conversation already.
+ * @returns {Promise<boolean>}
+ */
+export async function addMembersToConversation(avatars, { sourceAvatar, sourceGroupId = '' }) {
+    const view = getConversationRecord(sourceAvatar, { groupId: sourceGroupId });
+    if (!view || !avatars.length) {
+        return false;
+    }
+
+    let result;
+    try {
+        result = await conversationData.addMembers(view.id, avatars);
+    } catch (error) {
+        console.error('Conversation Mode: the members could not be added', error);
+        toastr.error('Could not add members');
+        return false;
+    }
+
+    if (result.created) {
+        return openNewConversationGroup(getConversationGroupById(result.conversation.id), sourceAvatar);
+    }
+    hideConversationPickers();
+    scheduleInterfaceRefresh({ syncControls: true });
+    scheduleConversationListRender();
+    toastr.success('Members added');
+    return true;
+}
+
 export function getCurrentGroupMemberAvatars(groupId) {
     const group = getConversationGroupById(groupId);
     if (!group?.members?.length) {
@@ -775,9 +756,11 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
     const selectedMembers = new Set(lockedMembers);
     const avatarOf = index => characters[index]?.avatar;
     const items = getCharacterPickerItems().map(item => ({ ...item, muted: lockedMembers.has(avatarOf(item.value)) }));
+    // A group needs two members, and Add Member needs one that is not in the conversation yet.
+    const neededSelection = Math.max(2, lockedMembers.size + 1);
 
     const title = sourceAvatar
-        ? (normalizedSourceGroupId ? 'Add Members to This Group' : 'Add Members to This DM')
+        ? (normalizedSourceGroupId ? 'Add Members to This Group' : 'Start a Group')
         : 'Create a Group DM';
 
     openStartPicker(`group:${sourceAvatar || ''}:${normalizedSourceGroupId}`, anchor, {
@@ -798,10 +781,12 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
             }
         },
         footer: [{
-            label: 'Create Group',
+            label: sourceAvatar && normalizedSourceGroupId ? 'Add to Group' : 'Create Group',
             icon: 'fa-solid fa-user-group',
-            disabled: () => selectedMembers.size < 2,
-            onSelect: () => void createAndOpenConversationGroup([...selectedMembers], { sourceAvatar, copySourceGroupId: null }),
+            disabled: () => selectedMembers.size < neededSelection,
+            onSelect: () => void (sourceAvatar
+                ? addMembersToConversation([...selectedMembers].filter(avatar => !lockedMembers.has(avatar)), { sourceAvatar, sourceGroupId: normalizedSourceGroupId })
+                : createAndOpenConversationGroup([...selectedMembers])),
         }],
     });
 }

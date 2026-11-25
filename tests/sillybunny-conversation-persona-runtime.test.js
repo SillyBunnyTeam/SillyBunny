@@ -50,7 +50,7 @@ await jest.unstable_mockModule('../public/scripts/events.js', () => ({
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
 await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: {} }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
-    conversationData: { subscribe: jest.fn(), whenReady: () => Promise.resolve() },
+    conversationData: { onRemoval: jest.fn(), subscribe: jest.fn(), whenReady: () => Promise.resolve() },
     installConversationDataHooks: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/legacy-import.js', () => ({ importLegacyLocalStorage: jest.fn(async () => 'none') }));
@@ -97,6 +97,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
     conversationState,
+    sendQueue: [],
     setExternalConversationGenerationActive: (active) => {
         conversationState.externalGenerationActive = active;
         conversationState.generationActive = active;

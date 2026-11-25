@@ -17,6 +17,7 @@ import {
     normalizeConversationOutputText,
     parseCommandArgs,
 } from './generation-utils.js';
+import { generationTargets } from './deletion-guards.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getCharacterImageDetails } from './media.js';
 import { appendConversationMessage } from './message-writer.js';
 import { stripSpeakerPrefix } from './members.js';
@@ -110,26 +111,43 @@ export async function generateConversationRaw(options, settings) {
     return generateRaw(options);
 }
 
+/**
+ * Asks the model for the next message of a conversation. The request is tracked by the chat it is for, so that deleting
+ * that chat or its conversation stops it; a reply that was stopped, or that came back after its target was deleted,
+ * answers an empty text, and the caller writes nothing.
+ */
 export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), anchorAvatar = avatar, speakerAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId() } = {}) {
     // The transcript is read from the chat, and a related memory comes from the chats of other conversations.
-    await ensureConversationChatLoaded(anchorAvatar, { chatId, groupId, personaId });
-    if (settings?.include_related_memory) {
-        await loadRelatedMemoryChats(speakerAvatar, { groupId, personaId });
-    }
-    const messages = getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId });
-    const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
-        ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
-        : getConversationReplyMaxTokens(settings);
-    const worldInfo = await getConversationWorldInfo(messages, settings, { avatar: speakerAvatar, personaId });
-    const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo });
+    const address = await ensureConversationChatLoaded(anchorAvatar, { chatId, groupId, personaId });
+    const tracked = generationTargets.begin(address);
+    try {
+        if (settings?.include_related_memory) {
+            await loadRelatedMemoryChats(speakerAvatar, { groupId, personaId });
+        }
+        const messages = getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId });
+        const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
+            ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
+            : getConversationReplyMaxTokens(settings);
+        const worldInfo = await getConversationWorldInfo(messages, settings, { avatar: speakerAvatar, personaId });
+        const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo });
 
-    return generateConversationRaw({
-        prompt,
-        systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { anchorAvatar, chatId, groupId, personaId, worldInfo }),
-        responseLength: resolvedResponseLength,
-        trimNames,
-        cacheScope: 'conversation-mode',
-    }, settings);
+        const reply = await generateConversationRaw({
+            prompt,
+            systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { anchorAvatar, chatId, groupId, personaId, worldInfo }),
+            responseLength: resolvedResponseLength,
+            trimNames,
+            cacheScope: 'conversation-mode',
+            signal: tracked.signal,
+        }, settings);
+        return tracked.signal.aborted ? '' : reply;
+    } catch (error) {
+        if (tracked.signal.aborted) {
+            return '';
+        }
+        throw error;
+    } finally {
+        tracked.end();
+    }
 }
 
 export async function editConversationMessage(messageId) {

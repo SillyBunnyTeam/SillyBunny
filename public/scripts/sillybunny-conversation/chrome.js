@@ -12,9 +12,11 @@ import { CHROME_IDS, CONVERSATION_OPENED_EVENT, DEFAULT_CHAT_ID, DEFAULT_GROUNDE
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
     createConversationChat,
+    deleteConversationByAvatar,
     deleteConversationChat,
     ensureDirectConversation,
     getConversationChats,
+    getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getConversationKey,
@@ -25,7 +27,6 @@ import {
     isAvatarInConversationGroup,
     parsePositiveInt,
     renameConversationChat,
-    resetCharacterConversationChats,
     setActiveConversationChat,
 } from './context.js';
 import { editConversationMessage } from './generation.js';
@@ -63,6 +64,7 @@ import {
     forceCreateMemoryFromPanel,
     isConversationPagesLayout,
     observeConversationLayout,
+    openConversationList,
     openConversationSettings,
     openScheduleEditorModal,
     refreshConversationMemoryFromPanel,
@@ -71,7 +73,7 @@ import {
     syncConversationPage,
     toggleConversationList,
 } from './settings-panel.js';
-import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
+import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
 import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
@@ -424,6 +426,17 @@ const USER_STATUS_MENU_ITEMS = Object.freeze([
     { status: 'offline', label: 'Invisible' },
 ]);
 
+// TODO(copy): the body of the alerts that ask before a chat or a conversation is deleted is a placeholder.
+const DELETE_ALERT_BODY = 'TODO(copy)';
+
+function getConversationDisplayName(avatar, groupId) {
+    return (groupId ? getConversationGroupById(groupId)?.name : getCharacterForAvatar(avatar)?.name) || 'this character';
+}
+
+function isConversationSelectedInWorkspace(avatar, groupId) {
+    return conversationState.conversationSelectedAvatar === avatar && (conversationState.conversationSelectedGroupId || '') === (groupId || '');
+}
+
 function getActiveConversationIdentity() {
     const avatar = getCurrentCharAvatar();
     return { avatar, groupId: avatar ? getConversationGroupIdForAvatar(avatar) : '' };
@@ -458,13 +471,7 @@ function openConversationChatMenu(trigger) {
             },
             {
                 items: [
-                    { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-named-chat', identity) },
                     { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeChat, onSelect: runFromMenu('rename-chat', { ...identity, chatId: activeChatId }) },
-                ],
-            },
-            {
-                items: [
-                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeChat, onSelect: runFromMenu('delete-chat', { ...identity, chatId: activeChatId }) },
                 ],
             },
         ],
@@ -474,15 +481,15 @@ function openConversationChatMenu(trigger) {
 function openConversationOverflowMenu(trigger) {
     const { avatar, groupId } = getActiveConversationIdentity();
     const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
-    const addMemberLabel = groupId ? 'Add Member to Group…' : 'Add Member…';
     const hasMessages = Boolean(avatar) && getConversationMessageCount(avatar, { groupId }) > 0;
+    const activeChatId = avatar ? getConversationRecord(avatar, { create: false, groupId })?.activeChatId || '' : '';
     openActionMenu({
         trigger,
         title: 'Conversation',
         sections: [
             {
                 items: [
-                    ...(avatar ? [{ label: addMemberLabel, icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
+                    ...(avatar ? [{ label: 'Add Member…', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
                     { label: 'New Chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
                     { label: 'Select Messages', icon: 'fa-solid fa-square-check', disabled: !hasMessages, onSelect: runFromMenu('select-messages', {}, trigger) },
                     { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
@@ -495,7 +502,10 @@ function openConversationOverflowMenu(trigger) {
             },
             {
                 items: avatar
-                    ? [{ label: 'Delete Conversation History…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-conversation', { avatar, groupId }) }]
+                    ? [
+                        { label: 'Delete Chat…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeChatId, onSelect: runFromMenu('delete-chat', { avatar, groupId, chatId: activeChatId }) },
+                        { label: 'Delete Conversation…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-conversation', { avatar, groupId }) },
+                    ]
                     : [],
             },
         ],
@@ -700,34 +710,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'new-named-chat': {
-            const avatar = data.avatar;
-            const groupId = data.groupId || '';
-            const character = getCharacterForAvatar(avatar);
-            if (!avatar) {
-                break;
-            }
-            const fallbackName = `Chat ${getConversationChats(avatar, { groupId }).length + 1}`;
-            const enteredName = await promptConversationText({
-                title: 'New Branch',
-                text: `Name this Conversation branch for ${character?.name || 'this character'}`,
-                defaultValue: fallbackName,
-                confirmLabel: 'Create',
-            });
-            if (enteredName === null) {
-                break;
-            }
-            const name = enteredName.trim() || fallbackName;
-            createConversationChat(avatar, name, { groupId });
-            openConversationWorkspaceForAvatar(avatar, {
-                groupId: groupId || null,
-                showToast: false,
-            });
-            scheduleInterfaceRefresh({ syncControls: false });
-            renderConversationMemoryPanel();
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-            break;
-        }
         case 'rename-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
@@ -751,19 +733,26 @@ export async function runConversationAction(action, data = {}, target = null, ev
             break;
         }
         case 'delete-chat': {
+            // Delete Chat: the user stays in the conversation (R5-24). The chat that takes the place of the deleted one opens.
             const avatar = data.avatar;
             const groupId = data.groupId || '';
             const chatId = data.chatId;
             const chat = getConversationChats(avatar, { groupId }).find(item => item.id === chatId);
             if (avatar && chatId && chat) {
                 const confirmed = await confirmConversationAction({
-                    title: `Delete the "${chat.name || 'Conversation'}" branch?`,
-                    text: 'This cannot be undone',
+                    title: `Delete the "${chat.name || 'Conversation'}" chat?`,
+                    text: DELETE_ALERT_BODY,
                 });
                 if (confirmed) {
-                    await deleteConversationChat(avatar, chatId, { groupId });
+                    try {
+                        await deleteConversationChat(avatar, chatId, { groupId });
+                    } catch (error) {
+                        console.error('Conversation Mode: the chat could not be deleted', error);
+                        toastr.error('The chat could not be deleted');
+                        break;
+                    }
                     if (isConversationActive(avatar, groupId)) {
-                        scheduleInterfaceRefresh({ syncControls: false });
+                        scheduleInterfaceRefresh({ syncControls: true });
                         renderConversationMemoryPanel();
                     } else {
                         scheduleConversationListRender();
@@ -773,35 +762,38 @@ export async function runConversationAction(action, data = {}, target = null, ev
             break;
         }
         case 'delete-conversation': {
+            // Delete Conversation: the user goes to the list, not Home (R5-24).
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const character = getCharacterForAvatar(avatar);
             if (!avatar) {
                 break;
             }
-            const name = character?.name || 'this character';
-            const historyLabel = groupId ? `group Conversation history with ${name}` : `solo DM history with ${name}`;
             const confirmed = await confirmConversationAction({
-                title: `Delete your previous ${historyLabel}?`,
-                text: 'This cannot be undone',
+                title: `Delete the conversation with ${getConversationDisplayName(avatar, groupId)}?`,
+                text: DELETE_ALERT_BODY,
             });
-            if (confirmed) {
-                await resetCharacterConversationChats(avatar, { groupId });
-                resetFollowupCount(avatar, { groupId });
-
-                if (isConversationActive(avatar, groupId)) {
-                    scheduleInterfaceRefresh({ syncControls: true });
-                } else {
-                    scheduleConversationListRender();
-                }
-                toastr.success(`Deleted ${historyLabel}`);
+            if (!confirmed) {
+                break;
             }
+            try {
+                await deleteConversationByAvatar(avatar, { groupId });
+            } catch (error) {
+                console.error('Conversation Mode: the conversation could not be deleted', error);
+                toastr.error('The conversation could not be deleted');
+                break;
+            }
+            hideConversationPickers();
+            if (conversationState.conversationWorkspaceOpen && isConversationSelectedInWorkspace(avatar, groupId)) {
+                await openConversationWorkspaceForAvatar(null, { showToast: false });
+                openConversationList();
+            }
+            scheduleConversationListRender();
             break;
         }
         case 'new-chat': {
             const avatar = getCurrentCharAvatar();
             if (!avatar) {
-                toastr.warning('Pick a DM first');
+                toastr.warning('Pick a conversation first');
                 break;
             }
             const groupId = getConversationGroupIdForAvatar(avatar);
@@ -809,7 +801,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             updateLastUserActivity(avatar, { groupId });
             scheduleInterfaceRefresh({ syncControls: false });
             renderConversationMemoryPanel();
-            toastr.success('New Conversation branch started');
+            toastr.success('New chat started');
             break;
         }
         case 'edit-message':

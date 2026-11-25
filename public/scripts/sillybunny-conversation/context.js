@@ -72,7 +72,10 @@ export function parsePositiveInt(value, fallback, min = 1) {
  * @returns {{ conversationId: string, chatId: string }|null}
  */
 export function getConversationAddress(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), chatId = '' } = {}) {
-    return conversationData.resolve({ avatar, groupId: groupId || '', personaId, chatId });
+    const address = conversationData.resolve({ avatar, groupId: groupId || '', personaId, chatId });
+    // The data module answers the active chat for a chat id that the conversation does not have. A reply that was
+    // started for a chat that has been deleted since would land in that other chat, so a named chat has to exist.
+    return chatId && address?.chatId !== chatId ? null : address;
 }
 
 /** A group in the shape that the rest of the mode reads: its members, and a name that is never empty. */
@@ -412,29 +415,14 @@ export function setActiveConversationChat(avatar, chatId, { groupId = getConvers
 }
 
 /**
- * Starts a chat in the conversation and makes it the active one. The chat exists in the cache at once; the memory
- * summary of the chat it was started from is carried over when that chat is loaded.
+ * New Chat: adds an empty chat to the conversation, with no memory summary, and makes it the active one. The chat
+ * exists in the cache at once and the server makes it before it takes the first save.
  * @returns {object|null} The new chat, or null when the conversation does not exist.
  */
-export function createConversationChat(avatar, name = 'New chat', { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), copyMemory = null } = {}) {
+export function createConversationChat(avatar, name = 'New chat', { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const view = getConversationRecord(avatar, { groupId, personaId });
-    if (!view) {
-        return null;
-    }
-    const source = view.chats.find(entry => entry.id === view.activeChatId);
-    const sourceChat = source ? toChatHandle(view, source) : null;
-    const created = conversationData.createChat(view.id, { name: name || 'New chat', activate: true });
-    if (!created) {
-        return null;
-    }
-    const memorySummary = String(sourceChat?.memorySummary || '').trim();
-    if ((copyMemory ?? true) && memorySummary) {
-        conversationData.commitChat(created.address, (draft) => {
-            draft.header.chat_metadata.sb_conversation = { memory_summary: memorySummary, memory_message_count: 0, memory_updated_at: Date.now() };
-        });
-        conversationData.patchConversation(view.id, { chats: { [created.address.chatId]: { sessionMarkers: { memory_copied_from: sourceChat.id } } } });
-    }
-    return getActiveConversationChat(avatar, { chatId: created.address.chatId, groupId, personaId });
+    const created = view ? conversationData.createChat(view.id, { name: name || 'New chat', activate: true }) : null;
+    return created ? getActiveConversationChat(avatar, { chatId: created.address.chatId, groupId, personaId }) : null;
 }
 
 export function renameConversationChat(avatar, chatId, name, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -467,17 +455,14 @@ export async function deleteConversationWelcomeChat(avatar, chatId, { groupId = 
 }
 
 /**
- * Empties a conversation to one blank chat and keeps it listed. The memory summary of the active chat is carried over.
- * @returns {Promise<void>}
+ * Delete Conversation: removes the conversation with all its chats and reminders. The characters are untouched.
+ * @returns {Promise<boolean>} False when there was no such conversation.
  */
-export async function resetCharacterConversationChats(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export async function deleteConversationByAvatar(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const view = getConversationRecord(avatar, { groupId, personaId });
     if (!view) {
-        return;
+        return false;
     }
-    const oldChatIds = view.chats.map(entry => entry.id);
-    createConversationChat(avatar, 'Main', { groupId, personaId });
-    for (const chatId of oldChatIds) {
-        await conversationData.deleteChat({ conversationId: view.id, chatId });
-    }
+    await conversationData.deleteConversation(view.id);
+    return true;
 }
