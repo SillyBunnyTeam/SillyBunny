@@ -12,9 +12,9 @@ import { fetchBodyOrSkip } from './route-fetch.js';
  *
  * It leaves a request alone that it cannot read (a compressed body) and every answer that is not JSON.
  * @param {import('@playwright/test').Page} page
+ * @param {string} [prefix] The prefix of the page. Pages of one spec that must see each other's conversations (one closes, another opens) share one; every other page gets its own.
  */
-export async function isolateConversations(page) {
-    const prefix = `qa-${randomUUID().slice(0, 8)}-`;
+export async function isolateConversations(page, prefix = `qa-${randomUUID().slice(0, 8)}-`) {
     await page.route('**/api/sillybunny-conversation/**', async (route) => {
         const request = route.request();
         if (request.method() !== 'POST' || request.headers()['content-encoding']) {
