@@ -626,6 +626,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 Gemini long decode. |
 | Owner | Generation lifecycle owner. |
 
+### `src/endpoints/chats.js` - chat save, load, search, and recent fast paths
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/chats.js` |
+| Area | Chat persistence, recovery fast paths, backup deduplication/pruning, chat search, and recent chats. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `src/chat-io-fastpath.js` and `src/chat-recovery.js`. |
+| Adapter shape | Delegate bounded stat-tuple caching (`chatStateCache`, `chatInfoCache`, `backupDedupeCache`), durable/non-durable atomic writers, crash-safe in-place writes with Barrier #1/#2 + deferred byte-0 flush tracking (`writeChatFileInPlaceFast`, `flushDirtyByte0ActiveFileSync`), hard-linked pre-write backups (`tryHardLinkPreWriteBackupSync`), and Schwartzian 1-stat backup pruning (`pruneBackupsByPrefix`) to `src/chat-io-fastpath.js` and `writeLatestChatSnapshotTrusted()` in `src/chat-recovery.js`. In `src/endpoints/chats.js`, keep row-level header/message comparison (`isSameChatSaveContentFast`, `isChatSaveExtensionFast`), raw-row `/api/chats/get` response assembly (`sendChatLoadResponse`), O(M*F) incremental fragment search (`createFragmentSearchMatcher`), O(1) `Set` pinned-chat sorting in `/recent`, `bigint` `fs.promises.stat` in `getChatInfo()`, and cache invalidation on save/rename/delete/import routes, each marked `SillyBunny:`. |
+| Protecting tests | `tests/chat-save-fastpath-differential.test.js`, `tests/chat-recovery.test.js`, `tests/chat-recovery-endpoints.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/chat-save-destructive-write.test.js`, `tests/chat-backups.test.js`, `tests/chat-backup-sequence.test.js`, `tests/chat-info.test.js`, `tests/prove-368-differential.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- --maxWorkers=2 chat-save-fastpath-differential.test.js`, `bun test chat-save-fastpath-differential.test.js`, and existing chat/recovery Jest suites. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1036. |
+| Owner | `TODO(copy)` |
+
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |

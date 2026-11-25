@@ -14,17 +14,21 @@ import { acquireChatFileLock, acquireChatFileLocks } from '../chat-file-lock.js'
 import validateAvatarUrlMiddleware, { forbiddenRegExp } from '../middleware/validateFileName.js';
 import { renameChatFile } from '../chat-rename.js';
 import { resolveConversationChatTarget } from '../conversation-paths.js';
+// SillyBunny: bounded chat state/info/dedupe caches, crash-safe in-place writer, and backup pruning helpers.
 import {
     backupDedupeCache,
     chatInfoCache,
     chatStateCache,
+    clearDirtyByte0ActiveFile,
     computeNormalizedBackupHash,
     computeSha256,
     extractStatTuple,
+    flushDirtyByte0ActiveFileSync,
     getEntryRawBuffer,
     getEntryRawText,
     getLatestBackupFileInfo,
     isReliableStatTuple,
+    isValidUtf8Buffer,
     maybeInjectChatIoFault,
     pruneBackupsByPrefix,
     statTuplesEqual,
@@ -102,6 +106,7 @@ export function getBackupKey(name) {
  * @param {number} limit Maximum number of regular chat backups to keep.
  */
 export function removeOldRegularChatBackups(directory, limit) {
+    // SillyBunny: Schwartzian-transform 1-stat mtime pruning avoids O(N log N) statSync calls.
     const reservedPrefixes = [CHAT_PRE_WRITE_BACKUPS_PREFIX, CHAT_FORCED_OVERWRITE_BACKUPS_PREFIX];
     pruneBackupsByPrefix(directory, CHAT_BACKUPS_PREFIX, limit, reservedPrefixes);
 }
@@ -143,6 +148,7 @@ function getChatBackupType(backupPrefix) {
     return 'regular';
 }
 
+// SillyBunny: stream-hash header without integrity + message rows directly to avoid copying large chats.
 function computeNormalizedBackupHashFromLines(headerRecord, messageLines) {
     const hash = crypto.createHash('sha256');
     if (isPlainObject(headerRecord?.chat_metadata)) {
@@ -285,6 +291,7 @@ function normalizeChatMessageForComparison(message, chatMetadata, messageCount) 
     return normalized;
 }
 
+// SillyBunny: row-level comparison helpers avoid JSON.parse/normalization on byte-equal chat rows.
 function parseStrictPlainJsonObject(line) {
     let parsed;
     try {
@@ -535,6 +542,7 @@ export function isChatSaveExtensionFast(incoming, existing, { ignoreDerivedMetad
     return true;
 }
 
+// SillyBunny: dedupe regular and pre-write backups via stat-validated normalized SHA-256 hashes.
 function checkDuplicateChatBackup(directory, prefix, incomingNormalizedHash) {
     const latestInfo = getLatestBackupFileInfo(directory, prefix);
     if (!latestInfo) {
@@ -581,7 +589,7 @@ function checkDuplicateChatBackup(directory, prefix, incomingNormalizedHash) {
  * @param {string|Buffer} data The serialized chat to save.
  * @param {string} backupPrefix The file prefix. Typically CHAT_BACKUPS_PREFIX.
  * @param {string} handle User handle for diagnostic logging.
- * @param {{ filePath?: string, normalizedHash?: string|null }} [meta] Optional precomputed backup metadata.
+ * @param {{ normalizedHash?: string|null }} [meta] Optional precomputed backup metadata.
  * @returns
  */
 function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, handle = '', meta = undefined) {
@@ -609,9 +617,6 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
         if (isRegularBackup) {
             const { isDuplicate } = checkDuplicateChatBackup(directory, prefix, normalizedHash);
             if (isDuplicate) {
-                if (meta?.filePath) {
-                    chatStateCache.update(meta.filePath, { lastRegularHash: normalizedHash });
-                }
                 logBackupEvent('chat-backup-skipped', {
                     type: backupType,
                     handle,
@@ -626,7 +631,7 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
 
         const backupFile = path.join(directory, `${backupPrefix}${name}_${generateTimestamp()}.jsonl`);
 
-        // Regular chat backups are never hard-linked to live `.latest.jsonl` and write non-durably from memory.
+        // SillyBunny: regular chat backups never hard-link to live `.latest.jsonl` and write non-durably from memory.
         let writtenTuple = null;
         if (isRegularBackup) {
             writtenTuple = writeNonDurableAtomicFileSync(backupFile, data);
@@ -634,18 +639,13 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
             tryWriteFileSync(backupFile, data);
         }
 
-        if (isRegularBackup && normalizedHash) {
-            if (writtenTuple && isReliableStatTuple(writtenTuple)) {
-                backupDedupeCache.set(directory, prefix, {
-                    filePath: backupFile,
-                    tuple: writtenTuple,
-                    size: writtenTuple.size,
-                    normalizedHash,
-                });
-            }
-            if (meta?.filePath) {
-                chatStateCache.update(meta.filePath, { lastRegularHash: normalizedHash });
-            }
+        if (isRegularBackup && normalizedHash && writtenTuple && isReliableStatTuple(writtenTuple)) {
+            backupDedupeCache.set(directory, prefix, {
+                filePath: backupFile,
+                tuple: writtenTuple,
+                size: writtenTuple.size,
+                normalizedHash,
+            });
         }
 
         logBackupEvent('chat-backup-written', {
@@ -712,9 +712,11 @@ function backupChatPreWrite(directory, name, dataOrGetter, handle = '', options 
         }
 
         const backupFile = path.join(directory, `${CHAT_PRE_WRITE_BACKUPS_PREFIX}${name}_${generateTimestamp()}_${uuidv4()}.jsonl`);
+        let linked = false;
         let writtenTuple = null;
         let bumpedSourceMtime = false;
 
+        // SillyBunny: hard-link the already-durable `.latest.jsonl` before it is replaced by rename.
         const hardLinkContext = options?.hardLinkContext;
         if (hardLinkContext?.latestPath && hardLinkContext?.latestTuple) {
             const linkResult = tryHardLinkPreWriteBackupSync(
@@ -724,12 +726,13 @@ function backupChatPreWrite(directory, name, dataOrGetter, handle = '', options 
                 latestInfo ? latestInfo.mtimeMs : null,
             );
             if (linkResult.linked) {
+                linked = true;
                 writtenTuple = linkResult.tuple;
                 bumpedSourceMtime = linkResult.bumpedMtime;
             }
         }
 
-        if (!writtenTuple) {
+        if (!linked) {
             tryWriteFileSync(backupFile, getData());
             try {
                 writtenTuple = extractStatTuple(fs.lstatSync(backupFile, { bigint: true }));
@@ -757,10 +760,10 @@ function backupChatPreWrite(directory, name, dataOrGetter, handle = '', options 
         });
         pruneBackupsByPrefix(directory, prefix, PRE_WRITE_BACKUP_RING_SIZE);
         if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
-            return { duplicate: false, normalizedHash, bumpedSourceMtime };
+            return { duplicate: false, normalizedHash, bumpedSourceMtime, linked, writtenTuple };
         }
         pruneBackupsByPrefix(directory, CHAT_PRE_WRITE_BACKUPS_PREFIX, maxTotalChatBackups);
-        return { duplicate: false, normalizedHash, bumpedSourceMtime };
+        return { duplicate: false, normalizedHash, bumpedSourceMtime, linked, writtenTuple };
     } catch (err) {
         console.error(`Could not create pre-write chat backup for ${name}`, err);
         throw err;
@@ -1218,6 +1221,7 @@ function repairRejectedChatRecoverySnapshot(recoveryTarget, rejectedSnapshotData
     }, 'Failed to reconcile chat recovery after a rejected save.');
 }
 
+// SillyBunny: O(M*F) incremental fragment search matcher replaces quadratic matchBuffer rescans.
 const INCREMENTAL_MATCHER_SYMBOL = Symbol('createIncrementalChatMatcher');
 
 /**
@@ -1294,7 +1298,12 @@ export function createFragmentSearchMatcher(fragments) {
 export async function getChatInfo(pathToFile, additionalData = {}, withMetadata = false, matcher = null, previewMessageLimit = 0) {
     try {
         const parsedPath = path.parse(pathToFile);
-        const stats = await fs.promises.stat(pathToFile);
+        // SillyBunny: bigint stat preserves full 64-bit NTFS inode IDs for ChatInfoCache validation.
+        const stats = await fs.promises.stat(pathToFile, { bigint: true });
+        const fileSize = Number(stats.size);
+        const mtimeMs = typeof stats.mtimeNs === 'bigint'
+            ? Number(stats.mtimeNs) / 1_000_000
+            : Number(stats.mtimeMs);
         const hasMatcher = (typeof matcher === 'function');
         const previewLimit = Math.max(0, Number(previewMessageLimit) || 0);
 
@@ -1302,18 +1311,19 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
             match: false,
             file_id: parsedPath.name,
             file_name: parsedPath.base,
-            file_size: formatBytes(stats.size),
+            file_size: formatBytes(fileSize),
             chat_items: 0,
             token_estimate: 0,
             mes: '[The chat is empty]',
-            last_mes: stats.mtimeMs,
+            last_mes: mtimeMs,
             ...additionalData,
         };
 
-        if (stats.size === 0) {
+        if (fileSize === 0) {
             return chatData;
         }
 
+        // SillyBunny: reuse stat-verified ChatInfoCache summaries on unsearched scans.
         if (!hasMatcher) {
             const cachedInfo = chatInfoCache.getIfStatMatches(pathToFile, stats, previewLimit);
             if (cachedInfo) {
@@ -1416,7 +1426,7 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                     // SillyBunny: expose a cheap chat length indicator for chat selectors.
                     chatData.token_estimate = Math.round(messageCharacters / 4);
                     chatData.mes = jsonData.mes || '[The message is empty]';
-                    chatData.last_mes = jsonData.send_date || new Date(Math.round(stats.mtimeMs)).toISOString();
+                    chatData.last_mes = jsonData.send_date || new Date(Math.round(mtimeMs)).toISOString();
                     chatData.match = hasMatcher ? hasAnyMatch : true;
                     if (previewLimit > 0) {
                         chatData.preview_messages = previewMessages;
@@ -1574,6 +1584,7 @@ function sendChatLoadResponse(response, target, { allowCreate = false } = {}) {
         if (result.recovered) {
             console.warn(`Recovered chat file from its latest valid snapshot: ${target.activePath}`);
         }
+        // SillyBunny: stream validated raw JSONL rows directly as a JSON array when no header fixup is needed.
         const rawRows = result[CHAT_RAW_ROWS_SYMBOL];
         const headerFixedUp = result[CHAT_HEADER_FIXED_UP_SYMBOL] === true;
         if (!headerFixedUp && Array.isArray(rawRows) && rawRows.length > 0) {
@@ -1651,6 +1662,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         }
         existingFile = fs.existsSync(filePath);
         if (existingFile) {
+            // SillyBunny: reuse validated ChatStateCache entry on exact 5-field regular-file stat match.
             const pathStats = fs.lstatSync(filePath, { bigint: true });
             if (pathStats.isFile() && !pathStats.isSymbolicLink()) {
                 cachedEntry = chatStateCache.getIfStatMatches(filePath, pathStats);
@@ -1833,7 +1845,10 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                     );
                     if (isUnchanged) {
                         diskParsedHeader = diskHeaderForCompare;
-                        diskValidated = true;
+                        // SillyBunny: only trust raw disk bytes on cache miss when they pass strict UTF-8 validation.
+                        if (cachedEntry || (currentSnapshot?.rawBuffer && isValidUtf8Buffer(currentSnapshot.rawBuffer))) {
+                            diskValidated = true;
+                        }
                     }
                 }
             }
@@ -1854,12 +1869,10 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                         byteLength: currentStatTuple ? Number(currentStatTuple.size) : undefined,
                         hardLinkContext: prewriteHardLinkContext,
                     });
-                    if (prewriteResult?.bumpedSourceMtime && cachedEntry) {
-                        chatStateCache.update(filePath, { latestTuple: null });
+                    // SillyBunny: fs.linkSync updates ctimeNs (and utimesSync may update mtimeNs) on the shared inode.
+                    if ((prewriteResult?.linked || prewriteResult?.bumpedSourceMtime) && cachedEntry) {
+                        chatStateCache.update(filePath, { latestTuple: prewriteResult.writtenTuple ?? null });
                         cachedEntry = chatStateCache.get(filePath);
-                    }
-                    if (prewriteResult?.normalizedHash && cachedEntry) {
-                        chatStateCache.update(filePath, { lastPrewriteHash: prewriteResult.normalizedHash });
                     }
                 } else {
                     logBackupEvent('chat-backup-skipped', {
@@ -1976,11 +1989,13 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     if (unchangedChatData === null) {
         let postWriteStatTuple = null;
         try {
+            // SillyBunny: when a durable redo snapshot exists, write in-place with Barrier #1/#2 and dirty-byte-0 tracking.
             if (preserveFileIdentity && hasRecoverySnapshot) {
                 postWriteStatTuple = writeChatFileInPlaceFast(filePath, jsonlBuffer, {
                     expectedFileIdentity,
                     expectedFileHash,
                     expectedStatTuple: currentStatTuple,
+                    recoveryLatestPath: recoveryTarget ? getChatRecoveryPaths(recoveryTarget).latestPath : null,
                     getRollbackBuffer: () => {
                         if (currentSnapshot?.rawBuffer) {
                             return currentSnapshot.rawBuffer;
@@ -2001,6 +2016,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                     replaceFileOnly,
                     durable: !existingFile,
                 });
+                clearDirtyByte0ActiveFile(filePath);
                 try {
                     const postStats = fs.lstatSync(filePath, { bigint: true });
                     if (postStats.isFile() && !postStats.isSymbolicLink()) {
@@ -2035,8 +2051,6 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                 latestTuple: latestSnapshotTuple,
                 latestSha: latestSnapshotSha,
                 latestEqualsActive: hasRecoverySnapshot,
-                lastPrewriteHash: cachedEntry?.lastPrewriteHash ?? null,
-                lastRegularHash: cachedEntry?.lastRegularHash ?? null,
                 normalizedBackupHash: nextNormalizedBackupHash,
             });
         } else {
@@ -2070,8 +2084,6 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                 latestTuple: latestSnapshotTuple,
                 latestSha: latestSnapshotSha,
                 latestEqualsActive: hasRecoverySnapshot,
-                lastPrewriteHash: null,
-                lastRegularHash: null,
                 normalizedBackupHash: persistedNormalizedBackupHash,
             });
         }
@@ -2083,7 +2095,6 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     }
     if (!deferBackup) {
         getBackupFunction(handle, cardName)(backupDirectory, cardName, persistedChatData, CHAT_BACKUPS_PREFIX, handle, {
-            filePath,
             normalizedHash: persistedNormalizedBackupHash,
         });
     } else {
@@ -2296,6 +2307,8 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
                 );
             }
 
+            // SillyBunny: flush any deferred byte-0 restore before atomic rename and invalidate chat caches.
+            flushDirtyByte0ActiveFileSync(pathToOriginalFile);
             // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
             const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
             chatStateCache.invalidate(pathToOriginalFile);
@@ -2366,6 +2379,8 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
         }
 
         if (chatFileDeleted) {
+            // SillyBunny: invalidate in-process chat caches and dirty byte-0 tracking on delete.
+            clearDirtyByte0ActiveFile(chatFilePath);
             chatStateCache.invalidate(chatFilePath);
             chatInfoCache.invalidate(chatFilePath);
             clearDeferredPreWriteBackupSequence(chatFilePath);
@@ -2489,6 +2504,8 @@ router.post('/group/import', function (request, response) {
         const pathToUpload = path.join(filedata.destination, filedata.filename);
         const pathToNewFile = path.join(request.user.directories.groupChats, `${chatname}.jsonl`);
         fs.copyFileSync(pathToUpload, pathToNewFile);
+        // SillyBunny: invalidate chat caches for imported group chat file.
+        clearDirtyByte0ActiveFile(pathToNewFile);
         chatStateCache.invalidate(pathToNewFile);
         chatInfoCache.invalidate(pathToNewFile);
         fs.unlinkSync(pathToUpload);
@@ -2548,6 +2565,8 @@ router.post('/import', validateAvatarUrlMiddleware, function (request, response)
                 const filePath = path.join(directoryPath, fileName);
                 fileNames.push(fileName);
                 writeFileAtomicSync(filePath, chat, 'utf8');
+                // SillyBunny: invalidate chat caches for imported character chat file.
+                clearDirtyByte0ActiveFile(filePath);
                 chatStateCache.invalidate(filePath);
                 chatInfoCache.invalidate(filePath);
             };
@@ -2593,6 +2612,8 @@ router.post('/import', validateAvatarUrlMiddleware, function (request, response)
             } else {
                 fs.copyFileSync(pathToUpload, filePath);
             }
+            // SillyBunny: invalidate chat caches for imported JSONL chat file.
+            clearDirtyByte0ActiveFile(filePath);
             chatStateCache.invalidate(filePath);
             chatInfoCache.invalidate(filePath);
             fs.unlinkSync(pathToUpload);
@@ -2680,6 +2701,8 @@ router.post('/group/delete', (request, response) => {
         }
 
         if (chatFileDeleted) {
+            // SillyBunny: invalidate in-process chat caches and dirty byte-0 tracking on delete.
+            clearDirtyByte0ActiveFile(chatFilePath);
             chatStateCache.invalidate(chatFilePath);
             chatInfoCache.invalidate(chatFilePath);
             clearDeferredPreWriteBackupSequence(chatFilePath);
@@ -2805,6 +2828,7 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
         /** @type {string[]} */
         const fragments = query ? query.trim().toLowerCase().split(/\s+/).filter(x => x) : [];
 
+        // SillyBunny: incremental Set matcher avoids O(M^2) rescanning across messages and skips scanning on filename match.
         /** @type {ChatMatchFunction} */
         const hasTextMatch = createFragmentSearchMatcher(fragments);
 
@@ -2920,6 +2944,7 @@ router.post('/recent', async function (request, response) {
 
         const parsedMax = parseInt(request.body.max ?? Number.MAX_SAFE_INTEGER);
         const max = (Number.isFinite(parsedMax) ? parsedMax : Number.MAX_SAFE_INTEGER) + pinnedChats.length;
+        // SillyBunny: pre-index pinned chats in O(1) Sets instead of O(N*P) scans inside the sort comparator.
         const pinnedAvatarKeys = new Set();
         const pinnedGroupKeys = new Set();
         const pinnedRootNames = new Set();

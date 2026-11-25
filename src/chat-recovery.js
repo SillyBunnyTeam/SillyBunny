@@ -6,9 +6,13 @@ import { TextDecoder } from 'node:util';
 import sanitize from 'sanitize-filename';
 import { acquireChatFileLock } from './chat-file-lock.js';
 import {
+    chatInfoCache,
     chatStateCache,
+    clearDirtyByte0ActiveFile,
     computeSha256,
     extractStatTuple,
+    flushDirtyByte0ActiveFileSync,
+    flushDirtyByte0ForRecoveryPathSync,
     getEntryRawBuffer,
     isReliableStatTuple,
     statTuplesEqual,
@@ -543,6 +547,7 @@ function pruneRecoveryStates(target) {
             targetPruned = true;
         }
         for (const filePath of group.paths) {
+            flushDirtyByte0ForRecoveryPathSync(filePath);
             removeRegularFile(filePath);
             deleteLatestSnapshotMeta(filePath);
             tombstonesMayExist.delete(filePath);
@@ -722,6 +727,8 @@ export function removeLatestChatSnapshotIfMatches(target, expectedData) {
         if (!isStoredSnapshotCurrent(latestPath, expectedData)) {
             return false;
         }
+        flushDirtyByte0ActiveFileSync(normalizedTarget.activePath);
+        flushDirtyByte0ForRecoveryPathSync(latestPath);
         const removed = removeRegularFile(latestPath);
         if (removed) {
             deleteLatestSnapshotMeta(latestPath);
@@ -811,7 +818,9 @@ function ensureActiveDirectory(target) {
 function atomicRestoreActive(target, data) {
     ensureActiveDirectory(target);
     assertWritableRegularPath(target.activePath);
-    return writeDurableAtomicFileSync(target.activePath, data);
+    const tuple = writeDurableAtomicFileSync(target.activePath, data);
+    clearDirtyByte0ActiveFile(target.activePath);
+    return tuple;
 }
 
 function buildLazyCachedActiveResult(cached) {
@@ -950,8 +959,6 @@ export function loadActiveChatWithRecovery(target) {
                 latestTuple,
                 latestSha,
                 latestEqualsActive,
-                lastPrewriteHash: null,
-                lastRegularHash: null,
             });
         }
 
@@ -1053,8 +1060,6 @@ export function loadActiveChatWithRecovery(target) {
             latestTuple: recoveryInspection.value.latestTuple,
             latestSha: restoredSha,
             latestEqualsActive: recoveryInspection.value.latestTuple !== null,
-            lastPrewriteHash: null,
-            lastRegularHash: null,
         });
     }
 
@@ -1111,7 +1116,9 @@ function getRecoveryStatePaths(target) {
  */
 export function clearChatRecoveryState(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
+    flushDirtyByte0ActiveFileSync(normalizedTarget.activePath);
     chatStateCache.invalidate(normalizedTarget.activePath);
+    chatInfoCache.invalidate(normalizedTarget.activePath);
     if (!assertRecoveryDirectory(normalizedTarget)) {
         return { status: 'missing', cleared: 0 };
     }
@@ -1120,6 +1127,7 @@ export function clearChatRecoveryState(target) {
     try {
         let cleared = 0;
         for (const filePath of getRecoveryStatePaths(normalizedTarget)) {
+            flushDirtyByte0ForRecoveryPathSync(filePath);
             if (removeRegularFile(filePath)) {
                 cleared++;
             }
@@ -1142,9 +1150,11 @@ function captureRecoveryState(target) {
 function applyRecoveryState(target, state) {
     const paths = getRecoveryStatePaths(target);
     chatStateCache.invalidate(target.activePath);
+    chatInfoCache.invalidate(target.activePath);
     for (let index = 0; index < paths.length; index++) {
         deleteLatestSnapshotMeta(paths[index]);
         if (state[index] === null) {
+            flushDirtyByte0ForRecoveryPathSync(paths[index]);
             removeRegularFile(paths[index]);
             tombstonesMayExist.delete(paths[index]);
         } else {
@@ -1191,6 +1201,8 @@ export function rekeyChatRecoveryState(sourceTarget, destinationTarget) {
 
     const release = acquireRecoveryStateLock(source);
     try {
+        flushDirtyByte0ActiveFileSync(source.activePath, destination.activePath);
+        flushDirtyByte0ActiveFileSync(destination.activePath);
         const sourceState = captureRecoveryState(source);
         const destinationState = captureRecoveryState(destination);
         const emptyState = sourceState.map(() => null);

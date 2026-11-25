@@ -2,9 +2,13 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { TextDecoder } from 'node:util';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { fsyncDirectorySync } from './util.js';
+
+const fatalUtf8Decoder = new TextDecoder('utf-8', { fatal: true });
+const DIRTY_BYTE0_TRACKING_MAX = 512;
 
 export const CHAT_STATE_CACHE_MAX_BYTES = process.env.SILLYBUNNY_ANDROID_APP === '1'
     ? 24 * 1024 * 1024
@@ -103,14 +107,38 @@ export function statTuplesEqual(left, right) {
 }
 
 /**
- * Extracts a comparable stat tuple from standard number-based `fs.promises.stat` results for ChatInfo caching.
+ * Validates that a Buffer or Uint8Array contains strictly valid UTF-8 byte sequences.
+ * @param {Buffer|Uint8Array} buffer
+ * @returns {boolean}
+ */
+export function isValidUtf8Buffer(buffer) {
+    if (!(buffer instanceof Uint8Array)) {
+        return false;
+    }
+    try {
+        fatalUtf8Decoder.decode(buffer);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Extracts a comparable stat tuple from `BigIntStats` (preferred, avoiding NTFS 64-bit `ino` precision loss)
+ * or standard number-based `Stats` for ChatInfo caching.
  * Returns null when fields are missing/zero or appear to come from a coarse 1-second filesystem.
- * @param {import('node:fs').Stats|null|undefined} stats
- * @returns {{ dev: number, ino: number, size: number, mtimeMs: number, ctimeMs: number }|null}
+ * @param {import('node:fs').BigIntStats|import('node:fs').Stats|null|undefined} stats
+ * @returns {{ dev: bigint|number, ino: bigint|number, size: bigint|number, mtimeNs: bigint|number, ctimeNs: bigint|number }|null}
  */
 export function extractChatInfoStatTuple(stats) {
-    if (!stats
-        || typeof stats.dev !== 'number' || !Number.isFinite(stats.dev) || stats.dev === 0
+    if (!stats) {
+        return null;
+    }
+    if (typeof stats.size === 'bigint') {
+        const tuple = extractStatTuple(stats);
+        return isReliableStatTuple(tuple) ? tuple : null;
+    }
+    if (typeof stats.dev !== 'number' || !Number.isFinite(stats.dev) || stats.dev === 0
         || typeof stats.ino !== 'number' || !Number.isFinite(stats.ino) || stats.ino === 0
         || typeof stats.size !== 'number' || !Number.isFinite(stats.size) || stats.size <= 0
         || typeof stats.mtimeMs !== 'number' || !Number.isFinite(stats.mtimeMs) || stats.mtimeMs === 0
@@ -126,39 +154,57 @@ export function extractChatInfoStatTuple(stats) {
         dev: stats.dev,
         ino: stats.ino,
         size: stats.size,
-        mtimeMs: stats.mtimeMs,
-        ctimeMs: stats.ctimeMs,
+        mtimeNs: stats.mtimeMs,
+        ctimeNs: stats.ctimeMs,
     };
 }
 
 /**
- * Resolves a canonical cache key for a chat path using `realpathSync` when available.
+ * Resolves a canonical cache key for a chat path using `realpathSync` when available,
+ * walking up ancestor directories when the file or parent directories have already been deleted.
  * Callers must check `lstatSync` first so file symlinks never hit cached entries for their targets.
  * @param {string} filePath
  * @returns {string}
  */
 export function getCanonicalChatCacheKey(filePath) {
-    let resolved;
-    try {
-        resolved = fs.realpathSync(filePath);
-    } catch {
+    const absolutePath = path.resolve(filePath);
+    let current = absolutePath;
+    const trailingSegments = [];
+    let resolved = absolutePath;
+    while (true) {
         try {
-            resolved = path.join(fs.realpathSync(path.dirname(filePath)), path.basename(filePath));
+            const realCurrent = fs.realpathSync(current);
+            resolved = trailingSegments.length > 0
+                ? path.join(realCurrent, ...trailingSegments.reverse())
+                : realCurrent;
+            break;
         } catch {
-            resolved = path.resolve(filePath);
+            const parent = path.dirname(current);
+            if (parent === current) {
+                resolved = absolutePath;
+                break;
+            }
+            trailingSegments.push(path.basename(current));
+            current = parent;
         }
     }
     return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
+function isTestFaultInjectionAllowed() {
+    return process.env.SB_ALLOW_TEST_FAULTS === '1'
+        || process.env.NODE_ENV === 'test'
+        || Boolean(process.env.JEST_WORKER_ID);
+}
+
 /**
- * Test-only fault injection hook controlled by `SB_FAULT_AT`.
+ * Test-only fault injection hook controlled by `SB_FAULT_AT` (active only under test environments).
  * Has negligible overhead when `SB_FAULT_AT` is unset.
  * @param {string} point Fault injection point name
  */
 export function maybeInjectChatIoFault(point) {
     const targetPoint = process.env.SB_FAULT_AT;
-    if (!targetPoint || targetPoint !== point) {
+    if (!targetPoint || targetPoint !== point || !isTestFaultInjectionAllowed()) {
         return;
     }
     if (process.env.SB_FAULT_MODE === 'throw') {
@@ -380,8 +426,8 @@ export class ChatInfoCache {
         if (entry.dev !== tuple.dev
             || entry.ino !== tuple.ino
             || entry.size !== tuple.size
-            || entry.mtimeMs !== tuple.mtimeMs
-            || entry.ctimeMs !== tuple.ctimeMs) {
+            || entry.mtimeNs !== tuple.mtimeNs
+            || entry.ctimeNs !== tuple.ctimeNs) {
             return null;
         }
         if (previewLimit > 0 && entry.previewLimitCached < previewLimit) {
@@ -610,12 +656,13 @@ export function writeDurableAtomicFileSync(filePath, data, options = undefined) 
 
     const encoding = typeof options === 'string' ? options : options?.encoding || 'utf8';
     const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data, encoding);
-    const tempFilePath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-    let tempCreated = false;
+    const createdTempPaths = new Set();
+    let tempFilePath = null;
     try {
         const writeTempResult = runWithWindowsRetries(() => {
-            const fd = fs.openSync(tempFilePath, 'wx');
-            tempCreated = true;
+            const candidatePath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+            const fd = fs.openSync(candidatePath, 'wx');
+            createdTempPaths.add(candidatePath);
             try {
                 writeAllSync(fd, dataBuffer);
                 resizeFileSync(fd, dataBuffer.byteLength);
@@ -623,17 +670,37 @@ export function writeDurableAtomicFileSync(filePath, data, options = undefined) 
             } finally {
                 fs.closeSync(fd);
             }
+            tempFilePath = candidatePath;
         });
         if (!writeTempResult.ok) {
             throw writeTempResult.error;
         }
         const renameResult = runWithWindowsRetries(() => fs.renameSync(tempFilePath, filePath));
         if (renameResult.ok) {
-            tempCreated = false;
+            createdTempPaths.delete(tempFilePath);
             fsyncDirectorySync(directory);
             return safeLstatTuple(filePath);
         }
+
+        // Never fall back to in-place copyFileSync when target is hard-linked (nlink > 1), a symlink,
+        // or non-regular: copyFileSync mutates the existing inode and would corrupt hard-linked pre-write backups.
+        const assertSafeForInPlaceCopy = () => {
+            let targetStats = null;
+            try {
+                targetStats = fs.lstatSync(filePath, { bigint: true });
+            } catch (statError) {
+                if (statError?.code !== 'ENOENT') {
+                    throw renameResult.error;
+                }
+            }
+            if (targetStats && (targetStats.isSymbolicLink() || !targetStats.isFile() || targetStats.nlink !== 1n)) {
+                throw renameResult.error;
+            }
+        };
+        assertSafeForInPlaceCopy();
+
         const copyResult = runWithWindowsRetries(() => {
+            assertSafeForInPlaceCopy();
             fs.copyFileSync(tempFilePath, filePath);
             const fd = fs.openSync(filePath, 'r+');
             try {
@@ -648,9 +715,9 @@ export function writeDurableAtomicFileSync(filePath, data, options = undefined) 
         }
         throw copyResult.error;
     } finally {
-        if (tempCreated) {
+        for (const candidatePath of createdTempPaths) {
             try {
-                fs.unlinkSync(tempFilePath);
+                fs.unlinkSync(candidatePath);
             } catch {
                 // Best-effort cleanup of temp file.
             }
@@ -708,6 +775,170 @@ export function writeNonDurableAtomicFileSync(filePath, data, encoding = 'utf8')
 }
 
 /**
+ * Tracks active chat paths whose Barrier #3 byte-0 restore was intentionally deferred to OS writeback
+ * while a durable `.latest.jsonl` redo snapshot guarantees crash recovery.
+ * Any recovery eviction/clear/rekey flushes the corresponding active file before dropping `.latest.jsonl`.
+ * @type {Map<string, { activePath: string, latestKey: string|null }>}
+ */
+const dirtyByte0ByActiveKey = new Map();
+/** @type {Map<string, string>} */
+const dirtyByte0ActiveKeyByLatestKey = new Map();
+
+function removeDirtyByte0Entry(activeKey) {
+    const entry = dirtyByte0ByActiveKey.get(activeKey);
+    if (!entry) {
+        return;
+    }
+    dirtyByte0ByActiveKey.delete(activeKey);
+    if (entry.latestKey && dirtyByte0ActiveKeyByLatestKey.get(entry.latestKey) === activeKey) {
+        dirtyByte0ActiveKeyByLatestKey.delete(entry.latestKey);
+    }
+}
+
+function fsyncRegularActiveFileSync(filePath) {
+    let pathStats;
+    try {
+        pathStats = fs.lstatSync(filePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return false;
+        }
+        throw error;
+    }
+    if (pathStats.isSymbolicLink() || !pathStats.isFile()) {
+        return false;
+    }
+    const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+    const flushOp = () => {
+        const fd = fs.openSync(filePath, fs.constants.O_RDWR | noFollow);
+        try {
+            fs.fsyncSync(fd);
+        } finally {
+            fs.closeSync(fd);
+        }
+    };
+    const retryResult = runWithWindowsRetries(flushOp);
+    if (!retryResult.ok) {
+        throw retryResult.error;
+    }
+    return true;
+}
+
+/**
+ * Records an active chat path whose restored byte 0 has not yet been explicitly fsynced.
+ * @param {string} activePath
+ * @param {string|null} [recoveryLatestPath]
+ */
+export function markActiveFileDirtyByte0(activePath, recoveryLatestPath = null) {
+    if (!activePath) {
+        return;
+    }
+    const activeKey = getCanonicalChatCacheKey(activePath);
+    removeDirtyByte0Entry(activeKey);
+    const latestKey = recoveryLatestPath ? getCanonicalChatCacheKey(recoveryLatestPath) : null;
+    dirtyByte0ByActiveKey.set(activeKey, { activePath, latestKey });
+    if (latestKey) {
+        dirtyByte0ActiveKeyByLatestKey.set(latestKey, activeKey);
+    }
+    while (dirtyByte0ByActiveKey.size > DIRTY_BYTE0_TRACKING_MAX) {
+        const oldestKey = dirtyByte0ByActiveKey.keys().next().value;
+        const oldestEntry = dirtyByte0ByActiveKey.get(oldestKey);
+        removeDirtyByte0Entry(oldestKey);
+        if (oldestEntry) {
+            try {
+                fsyncRegularActiveFileSync(oldestEntry.activePath);
+            } catch {
+                // Best-effort eviction flush.
+            }
+        }
+    }
+}
+
+/**
+ * Clears dirty byte-0 tracking for an active chat path after a full durable write or deletion.
+ * @param {string} activePath
+ */
+export function clearDirtyByte0ActiveFile(activePath) {
+    if (!activePath) {
+        return;
+    }
+    removeDirtyByte0Entry(getCanonicalChatCacheKey(activePath));
+}
+
+/**
+ * Synchronously fsyncs `activePath` if it has a pending un-fsynced Barrier #3 byte-0 restore,
+ * then clears it from tracking. Returns true if an fsync was performed.
+ * @param {string} activePath
+ * @param {string|null} [fallbackActivePath] Alternate path if the file was already renamed (e.g. rekey)
+ * @returns {boolean}
+ */
+export function flushDirtyByte0ActiveFileSync(activePath, fallbackActivePath = null) {
+    if (!activePath) {
+        return false;
+    }
+    const activeKey = getCanonicalChatCacheKey(activePath);
+    const entry = dirtyByte0ByActiveKey.get(activeKey);
+    if (!entry) {
+        return false;
+    }
+    let flushed = false;
+    try {
+        flushed = fsyncRegularActiveFileSync(entry.activePath);
+        if (!flushed && fallbackActivePath) {
+            flushed = fsyncRegularActiveFileSync(fallbackActivePath);
+        }
+    } finally {
+        removeDirtyByte0Entry(activeKey);
+    }
+    return flushed;
+}
+
+/**
+ * Flushes any dirty byte-0 active chat associated with `recoveryLatestPath` before that
+ * `.latest.jsonl` redo snapshot is pruned, removed, or rekeyed.
+ * @param {string} recoveryLatestPath
+ * @returns {boolean}
+ */
+export function flushDirtyByte0ForRecoveryPathSync(recoveryLatestPath) {
+    if (!recoveryLatestPath) {
+        return false;
+    }
+    const latestKey = getCanonicalChatCacheKey(recoveryLatestPath);
+    const activeKey = dirtyByte0ActiveKeyByLatestKey.get(latestKey);
+    if (!activeKey) {
+        return false;
+    }
+    const entry = dirtyByte0ByActiveKey.get(activeKey);
+    if (!entry) {
+        dirtyByte0ActiveKeyByLatestKey.delete(latestKey);
+        return false;
+    }
+    let flushed = false;
+    try {
+        flushed = fsyncRegularActiveFileSync(entry.activePath);
+    } finally {
+        removeDirtyByte0Entry(activeKey);
+    }
+    return flushed;
+}
+
+/**
+ * Resets dirty byte-0 tracking state (for test isolation).
+ */
+export function clearDirtyByte0Tracking() {
+    dirtyByte0ByActiveKey.clear();
+    dirtyByte0ActiveKeyByLatestKey.clear();
+}
+
+/**
+ * Returns the number of tracked active chat files awaiting byte-0 flush.
+ * @returns {number}
+ */
+export function getDirtyByte0TrackingCount() {
+    return dirtyByte0ByActiveKey.size;
+}
+
+/**
  * Identity-preserving in-place chat writer used ONLY when a durable redo snapshot (`.latest.jsonl`)
  * has already been stored (Invariants I2, I3, I4).
  *
@@ -716,7 +947,8 @@ export function writeNonDurableAtomicFileSync(filePath, data, encoding = 'utf8')
  * - Barrier #2: write body bytes `[1..end]` + `ftruncateSync` + `fsyncSync(fd)`
  * - Restore byte 0: write `dataBuffer[0]` (Barrier #3 is omitted because durable `.latest.jsonl`
  *   already holds the exact new bytes; a power cut before byte 0 reaches disk leaves byte 0 poisoned
- *   from Barrier #1 and triggers exact recovery from `.latest.jsonl`).
+ *   from Barrier #1 and triggers exact recovery from `.latest.jsonl`. Any later recovery eviction,
+ *   clear, or rekey flushes the active file first via `flushDirtyByte0*`).
  *
  * When a reliable pre-verified `expectedStatTuple` is provided, verifies all 5 stat fields on the
  * open file descriptor and path instead of re-reading and re-hashing the active file.
@@ -728,6 +960,7 @@ export function writeNonDurableAtomicFileSync(filePath, data, encoding = 'utf8')
  *   expectedFileHash?: string,
  *   expectedStatTuple?: { dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }|null,
  *   getRollbackBuffer?: () => Buffer,
+ *   recoveryLatestPath?: string|null,
  * }} options
  * @returns {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }} Post-write stat tuple
  */
@@ -736,6 +969,7 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
     expectedFileHash = undefined,
     expectedStatTuple = null,
     getRollbackBuffer = undefined,
+    recoveryLatestPath = null,
 } = {}) {
     const dataLength = dataBuffer.byteLength;
 
@@ -812,6 +1046,10 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
                 throw Object.assign(new Error(`Refused to finish writing a replaced or hard-linked file: ${filePath}`), { code: 'ESTALE' });
             }
 
+            if (dataLength > 0) {
+                markActiveFileDirtyByte0(filePath, recoveryLatestPath);
+            }
+
             return extractStatTuple(finalDescriptorStats);
         } catch (error) {
             operationFailed = true;
@@ -885,15 +1123,26 @@ export function tryHardLinkPreWriteBackupSync(sourceLatestPath, destinationBacku
     }
 
     let bumpedMtime = false;
-    try {
-        const sourceMtimeMs = Number(sourceStats.mtimeNs) / 1_000_000;
-        if (newestExistingMtimeMs !== null && sourceMtimeMs <= newestExistingMtimeMs) {
-            const targetTime = new Date(Math.ceil(newestExistingMtimeMs) + 1);
+    const sourceMtimeMs = Number(sourceStats.mtimeNs) / 1_000_000;
+    const minTargetMtimeMs = Math.max(
+        Date.now(),
+        newestExistingMtimeMs !== null ? Math.ceil(newestExistingMtimeMs) + 1 : 0,
+    );
+    if (sourceMtimeMs < minTargetMtimeMs) {
+        try {
+            const targetTime = new Date(minTargetMtimeMs);
             fs.utimesSync(destinationBackupPath, targetTime, targetTime);
             bumpedMtime = true;
+        } catch {
+            // If mtime cannot be updated on the hard link, global mtime pruning could immediately
+            // delete a brand-new pre-write backup of an older chat. Remove the link and fall back to copy.
+            try {
+                fs.unlinkSync(destinationBackupPath);
+            } catch {
+                // Best-effort cleanup before copy fallback.
+            }
+            return { linked: false };
         }
-    } catch {
-        // Non-fatal; backup file is already linked.
     }
 
     fsyncDirectorySync(path.dirname(destinationBackupPath));

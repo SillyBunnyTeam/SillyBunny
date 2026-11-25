@@ -18,12 +18,17 @@ const {
     backupDedupeCache,
     chatInfoCache,
     chatStateCache,
+    clearDirtyByte0Tracking,
     computeNormalizedBackupHash,
+    getCanonicalChatCacheKey,
+    getDirtyByte0TrackingCount,
     isReliableStatTuple,
+    writeDurableAtomicFileSync,
 } = await import('../src/chat-io-fastpath.js');
 
 const {
     clearChatRecoveryRuntimeCaches,
+    clearChatRecoveryState,
     createCharacterChatTarget,
     getChatRecoveryPaths,
     loadActiveChatWithRecovery,
@@ -440,6 +445,7 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         chatStateCache.clear();
         chatInfoCache.clear();
         backupDedupeCache.clear();
+        clearDirtyByte0Tracking();
         clearChatRecoveryRuntimeCaches();
         clearActiveDeferredChatPreWrites();
 
@@ -670,6 +676,265 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
 
         expect(fs.readdirSync(backupsDir).filter(f => f.startsWith('chat_pre_write_')).length).toBe(prewritesAfterGood);
     });
+
+    test('preserves brand-new hard-linked pre-write backup of an older chat when global pre-write ring is full (and falls back if utimes fails)', async () => {
+        const oldDir = path.join(chatsDir, 'OldChar');
+        fs.mkdirSync(oldDir, { recursive: true });
+        const oldChatPath = path.join(oldDir, 'old.jsonl');
+        const oldTarget = createCharacterChatTarget({
+            chatsDirectory: chatsDir,
+            backupDirectory: backupsDir,
+            owner: 'OldChar',
+            filename: 'old.jsonl',
+            maxRecoveryStates: 25,
+        });
+
+        const oldPayload = [
+            { user_name: 'User', character_name: 'OldChar', chat_metadata: { integrity: 'old-slug' } },
+            { name: 'OldChar', is_user: false, mes: 'Original message from 6 months ago', extra: {} },
+        ];
+        const savedOld = await trySaveChat(oldPayload, oldChatPath, false, 'user1', 'OldChar', backupsDir, {
+            recoveryTarget: oldTarget,
+            deferBackup: true,
+        });
+
+        // Age both the active chat and its .latest.jsonl snapshot by 6 months
+        const sixMonthsAgo = new Date(Date.now() - 180 * 86_400 * 1000);
+        const { latestPath } = getChatRecoveryPaths(oldTarget);
+        fs.utimesSync(oldChatPath, sixMonthsAgo, sixMonthsAgo);
+        fs.utimesSync(latestPath, sixMonthsAgo, sixMonthsAgo);
+
+        // Simulate restart + normal chat load (alreadyCurrent === true keeps old .latest.jsonl mtime)
+        chatStateCache.clear();
+        backupDedupeCache.clear();
+        clearChatRecoveryRuntimeCaches();
+        expect(loadActiveChatWithRecovery(oldTarget).status).toBe('ok');
+
+        // Fill the global 25-file chat_pre_write_* ring with recent backups from other chats
+        for (let i = 0; i < 25; i++) {
+            const p = path.join(backupsDir, `chat_pre_write_other${i}_20261126-0000${String(i).padStart(2, '0')}_uuid${i}.jsonl`);
+            fs.writeFileSync(p, '{"chat_metadata":{}}\n{"mes":"other"}', 'utf8');
+        }
+
+        // Editing OldChar must bump the hard-linked pre-write backup's mtime so global pruning keeps it
+        const editedOld = structuredClone(oldPayload);
+        editedOld[0].chat_metadata.integrity = savedOld.integrity;
+        editedOld[1].mes = 'Edited message today';
+        const res1 = await trySaveChat(editedOld, oldChatPath, false, 'user1', 'OldChar', backupsDir, {
+            recoveryTarget: oldTarget,
+            deferBackup: true,
+        });
+
+        const survivingOldPrewrites = fs.readdirSync(backupsDir).filter(f => f.startsWith('chat_pre_write_oldchar_'));
+        expect(survivingOldPrewrites).toHaveLength(1);
+        expect(fs.readFileSync(path.join(backupsDir, survivingOldPrewrites[0]), 'utf8')).toContain('Original message from 6 months ago');
+
+        // If utimesSync fails on the hard-linked pre-write backup, it must unlink & fall back to a fresh copy
+        fs.utimesSync(latestPath, sixMonthsAgo, sixMonthsAgo);
+        const cachedOld = chatStateCache.get(oldChatPath);
+        expect(cachedOld).not.toBeNull();
+        const agedLatestStat = fs.lstatSync(latestPath, { bigint: true });
+        chatStateCache.update(oldChatPath, {
+            latestTuple: {
+                dev: agedLatestStat.dev,
+                ino: agedLatestStat.ino,
+                size: agedLatestStat.size,
+                mtimeNs: agedLatestStat.mtimeNs,
+                ctimeNs: agedLatestStat.ctimeNs,
+            },
+        });
+        jest.spyOn(fs, 'utimesSync').mockImplementationOnce(() => {
+            throw Object.assign(new Error('EPERM utimes'), { code: 'EPERM' });
+        });
+        const editedOld2 = structuredClone(editedOld);
+        editedOld2[0].chat_metadata.integrity = res1.integrity;
+        editedOld2[1].mes = 'Second edit after utimes fallback';
+        await trySaveChat(editedOld2, oldChatPath, false, 'user1', 'OldChar', backupsDir, {
+            recoveryTarget: oldTarget,
+            deferBackup: true,
+        });
+        const survivingAfterFallback = fs.readdirSync(backupsDir).filter(f => f.startsWith('chat_pre_write_oldchar_'));
+        expect(survivingAfterFallback).toHaveLength(2);
+    });
+
+    test('writeDurableAtomicFileSync refuses in-place copyFileSync onto a hard-linked peer and retries temp writes without EEXIST', () => {
+        const latestFile = path.join(backupsDir, 'hardlinked.latest.jsonl');
+        const prewritePeer = path.join(backupsDir, 'hardlinked.prewrite.jsonl');
+        fs.writeFileSync(latestFile, 'ORIGINAL_PREWRITE_DATA', 'utf8');
+        fs.linkSync(latestFile, prewritePeer);
+
+        const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        try {
+            const copySpy = jest.spyOn(fs, 'copyFileSync');
+            const renameSpy = jest.spyOn(fs, 'renameSync').mockImplementation(() => {
+                throw Object.assign(new Error('Simulated Windows rename lock'), { code: 'EPERM' });
+            });
+
+            expect(() => writeDurableAtomicFileSync(latestFile, 'NEW_POSTWRITE_DATA')).toThrow(/Simulated Windows rename lock/);
+            expect(copySpy).not.toHaveBeenCalled();
+            expect(fs.readFileSync(prewritePeer, 'utf8')).toBe('ORIGINAL_PREWRITE_DATA');
+            expect(fs.readFileSync(latestFile, 'utf8')).toBe('ORIGINAL_PREWRITE_DATA');
+
+            // Verify temp-write retry creates a fresh candidate path instead of failing with EEXIST
+            renameSpy.mockRestore();
+            const unlinkedFile = path.join(backupsDir, 'retry-temp.jsonl');
+            fs.writeFileSync(unlinkedFile, 'OLD', 'utf8');
+            let renameFailCount = 0;
+            const realRenameSync = fs.renameSync.bind(fs);
+            jest.spyOn(fs, 'renameSync').mockImplementation((src, dst) => {
+                // Fail write-file-atomic's 4 attempts so we enter the temp-file fallback, then succeed
+                if (renameFailCount < 4) {
+                    renameFailCount++;
+                    throw Object.assign(new Error('Simulated atomic EBUSY'), { code: 'EBUSY' });
+                }
+                return realRenameSync(src, dst);
+            });
+            let fsyncFailOnce = false;
+            const realFsyncSync = fs.fsyncSync.bind(fs);
+            jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+                if (renameFailCount === 4 && !fsyncFailOnce) {
+                    fsyncFailOnce = true;
+                    throw Object.assign(new Error('Simulated temp fsync EBUSY'), { code: 'EBUSY' });
+                }
+                return realFsyncSync(fd);
+            });
+
+            const tuple = writeDurableAtomicFileSync(unlinkedFile, 'RETRIED_CONTENT');
+            expect(tuple).not.toBeNull();
+            expect(fs.readFileSync(unlinkedFile, 'utf8')).toBe('RETRIED_CONTENT');
+        } finally {
+            if (originalPlatform) {
+                Object.defineProperty(process, 'platform', originalPlatform);
+            }
+        }
+    });
+
+    test('cache-miss unchanged save on invalid-UTF-8 raw bytes falls back to validated snapshot and never writes corrupt .latest.jsonl', async () => {
+        const utf8Dir = path.join(chatsDir, 'Utf8Char');
+        fs.mkdirSync(utf8Dir, { recursive: true });
+        const utf8Path = path.join(utf8Dir, 'badutf8.jsonl');
+        const badBuf = Buffer.concat([
+            Buffer.from('{"user_name":"User","character_name":"Utf8Char","chat_metadata":{"integrity":"u1"}}\n{"name":"User","is_user":true,"mes":"hi '),
+            Buffer.from([0xFF]),
+            Buffer.from(' there"}'),
+        ]);
+        fs.writeFileSync(utf8Path, badBuf);
+        const utf8Target = createCharacterChatTarget({
+            chatsDirectory: chatsDir,
+            backupDirectory: backupsDir,
+            owner: 'Utf8Char',
+            filename: 'badutf8.jsonl',
+            maxRecoveryStates: 25,
+        });
+
+        const payload = [
+            { user_name: 'User', character_name: 'Utf8Char', chat_metadata: { integrity: 'u1' } },
+            { name: 'User', is_user: true, mes: 'hi \uFFFD there' },
+        ];
+        const res = await trySaveChat(payload, utf8Path, false, 'user1', 'Utf8Char', backupsDir, {
+            recoveryTarget: utf8Target,
+            deferBackup: true,
+        });
+        expect(res.integrity).toBe('u1');
+
+        const { latestPath } = getChatRecoveryPaths(utf8Target);
+        const strictLatest = readChatJsonlStrict(latestPath);
+        expect(strictLatest.status).toBe('ok');
+        expect(chatStateCache.get(utf8Path)).toBeNull();
+    });
+
+    test('flushes pending Barrier #3 byte-0 active file before pruning or clearing its .latest.jsonl redo snapshot', async () => {
+        const targetA = createCharacterChatTarget({
+            chatsDirectory: chatsDir,
+            backupDirectory: backupsDir,
+            owner: 'TestCard',
+            filename: 'chat-a.jsonl',
+            maxRecoveryStates: 1,
+        });
+        const targetB = createCharacterChatTarget({
+            chatsDirectory: chatsDir,
+            backupDirectory: backupsDir,
+            owner: 'TestCard',
+            filename: 'chat-b.jsonl',
+            maxRecoveryStates: 1,
+        });
+
+        const chatA = makeLargeChat(4, 'slug-a1');
+        const saveA1 = await trySaveChat(chatA, targetA.activePath, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget: targetA,
+            deferBackup: true,
+        });
+        // Second save triggers writeChatFileInPlaceFast (omits Barrier #3 and tracks dirty byte 0)
+        chatA[0].chat_metadata.integrity = saveA1.integrity;
+        chatA.push({ name: 'User', is_user: true, mes: 'second save in-place', extra: {} });
+        await trySaveChat(chatA, targetA.activePath, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget: targetA,
+            deferBackup: true,
+        });
+        expect(getDirtyByte0TrackingCount()).toBe(1);
+
+        // Track ordering: active chat-a must be fsynced BEFORE its .latest.jsonl is unlinked by pruning
+        const { latestPath: latestPathA } = getChatRecoveryPaths(targetA);
+        const events = [];
+        const realOpenSync = fs.openSync.bind(fs);
+        const realFsyncSync = fs.fsyncSync.bind(fs);
+        const realUnlinkSync = fs.unlinkSync.bind(fs);
+        const fdPaths = new Map();
+        jest.spyOn(fs, 'openSync').mockImplementation((p, ...rest) => {
+            const fd = realOpenSync(p, ...rest);
+            fdPaths.set(fd, String(p));
+            return fd;
+        });
+        jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+            if (fdPaths.get(fd) === targetA.activePath) {
+                events.push('fsync:chat-a');
+            }
+            return realFsyncSync(fd);
+        });
+        jest.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
+            if (String(p) === latestPathA) {
+                events.push('unlink:latest-a');
+            }
+            return realUnlinkSync(p);
+        });
+
+        // Saving chat-b with maxRecoveryStates=1 evicts chat-a's .latest.jsonl
+        const chatB = makeLargeChat(4, 'slug-b1');
+        await trySaveChat(chatB, targetB.activePath, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget: targetB,
+            deferBackup: true,
+        });
+
+        expect(events).toEqual(['fsync:chat-a', 'unlink:latest-a']);
+        expect(getDirtyByte0TrackingCount()).toBe(0);
+
+        // Verify clearChatRecoveryState also flushes a dirty active file
+        const saveB2Payload = structuredClone(chatB);
+        const loadedB = loadActiveChatWithRecovery(targetB);
+        saveB2Payload[0].chat_metadata.integrity = loadedB.records[0].chat_metadata.integrity;
+        saveB2Payload.push({ name: 'User', is_user: true, mes: 'trigger dirty B', extra: {} });
+        await trySaveChat(saveB2Payload, targetB.activePath, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget: targetB,
+            deferBackup: true,
+        });
+        expect(getDirtyByte0TrackingCount()).toBe(1);
+        clearChatRecoveryState(targetB);
+        expect(getDirtyByte0TrackingCount()).toBe(0);
+    });
+
+    test('getCanonicalChatCacheKey resolves the same key after both file and parent directory are deleted', () => {
+        const nestedDir = path.join(ownerDir, 'ephemeral-sub');
+        fs.mkdirSync(nestedDir, { recursive: true });
+        const nestedFile = path.join(nestedDir, 'gone.jsonl');
+        fs.writeFileSync(nestedFile, '{}', 'utf8');
+
+        const keyBeforeDelete = getCanonicalChatCacheKey(nestedFile);
+        fs.rmSync(nestedDir, { recursive: true, force: true });
+        const keyAfterDelete = getCanonicalChatCacheKey(nestedFile);
+
+        expect(keyAfterDelete).toBe(keyBeforeDelete);
+    });
 });
 
 describe('crash fault-injection tests (SIGKILL via SB_FAULT_AT=)', () => {
@@ -712,6 +977,7 @@ describe('crash fault-injection tests (SIGKILL via SB_FAULT_AT=)', () => {
             cwd: WORKTREE_ROOT,
             env: {
                 ...process.env,
+                SB_ALLOW_TEST_FAULTS: '1',
                 SB_FAULT_AT: faultAt,
                 SB_FAULT_MODE: 'kill',
             },
@@ -869,6 +1135,7 @@ describe('HTTP fast paths (/api/chats/get, /api/chats/search, /api/chats/recent)
         chatStateCache.clear();
         chatInfoCache.clear();
         backupDedupeCache.clear();
+        clearDirtyByte0Tracking();
         clearChatRecoveryRuntimeCaches();
         clearActiveDeferredChatPreWrites();
 
