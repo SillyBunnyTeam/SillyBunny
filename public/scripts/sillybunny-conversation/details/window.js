@@ -150,7 +150,7 @@ function reroot(current, conversationId, pageId) {
 
 async function open({ conversationId, path }) {
     const token = ++openToken;
-    await ensureDetailsStyles();
+    await ensureDetailsStyles().catch(error => console.warn('Conversation Mode: the details stylesheet failed to load', error));
     if (token !== openToken) {
         return null;
     }
@@ -182,6 +182,9 @@ async function open({ conversationId, path }) {
     const opened = current.dialog;
     opened.closed.then(() => {
         current.rootSpec?.dispose?.();
+        if (current.rootSpec?.content) {
+            releaseRowIds(current.rootSpec.content);
+        }
         current.pages.length = 0;
         if (session === current) {
             session = null;

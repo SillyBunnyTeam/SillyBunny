@@ -177,7 +177,8 @@ function ensureConversationStylesheet() {
     Promise.all([
         loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID }),
         loadStylesheetAsync(EDITOR_SHELL_STYLESHEET_HREF, { id: EDITOR_SHELL_STYLESHEET_ID }),
-        ensureDetailsStyles(),
+        // A sheet that fails to load must not fail the mode's own: the window then opens unstyled.
+        ensureDetailsStyles().catch(error => console.warn('Conversation Mode: the details stylesheet failed to load', error)),
     ])
         .then(() => {
             conversationStylesheetStatus = 'ready';

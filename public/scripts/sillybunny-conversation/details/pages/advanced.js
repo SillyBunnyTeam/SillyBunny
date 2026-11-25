@@ -174,7 +174,7 @@ export function buildAdvanced({ conversationId, nav }) {
 
     const signature = current => JSON.stringify([current.activeChatId, current.chats.map(chat => [chat.id, chat.name, chat.messageCount])]);
     const stopMemory = conversationData.subscribe((event) => {
-        if (event.type === 'chat' || event.type === 'list') {
+        if (event.type === 'chat' && event.address?.conversationId === conversationId) {
             memory.draw();
         }
     });

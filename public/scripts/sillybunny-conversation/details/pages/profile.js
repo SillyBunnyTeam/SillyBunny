@@ -19,7 +19,7 @@ async function confirmRegenerate(name) {
     const body = el('div', 'sb-details-alert-body');
     body.append(copyPlaceholder());
     return await openAlert({
-        heading: `Regenerate the Routine for ${name}?`,
+        heading: `Regenerate Routine for ${name}?`,
         bodyNode: body,
         responses: [
             { id: 'cancel', label: 'Cancel' },
@@ -167,7 +167,7 @@ export function buildProfile({ conversationId, nav }, { avatar }) {
 
     clamp.append(
         hero,
-        createGroup({ title: 'Status', rows: [status], field: 'profile-status' }).section,
+        createGroup({ label: 'Status', rows: [status], field: 'profile-status' }).section,
         createGroup({ title: 'Routine', rows: [routineSwitch, ...routineParts], field: 'profile-routine' }).section,
         createGroup({ title: 'Replies', rows: [talkativeness, editTalkativeness], field: 'profile-replies' }).section,
         createGroup({ label: 'Character', rows: [openCharacter], field: 'profile-character' }).section,
