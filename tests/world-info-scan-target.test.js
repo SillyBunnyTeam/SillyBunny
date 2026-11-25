@@ -291,6 +291,9 @@ describe('the SillyBunny Lexicon under the shipped World Info settings', () => {
         ['My replies keep getting cut off halfway. What can I do?', 'A71'],
         ['How do I back up my chats and characters?', 'A64'],
         ['What\'s a lorebook, and where do I edit one?', 'A10'],
+        ['How do I delete a group conversation?', 'A50'],
+        ['How do I stop my characters from messaging me first?', 'A87'],
+        ['How do I move a conversation to my favorites?', 'A84'],
     ];
 
     /** Roleplay scans the greeting that the card opens the chat with, so a scan of a new chat includes it. */
