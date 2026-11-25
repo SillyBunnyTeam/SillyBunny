@@ -25,7 +25,11 @@ function isExecutableFile(candidatePath, isWindows) {
 }
 
 function hasGitOnPath(env = process.env, platform = process.platform) {
-    const rawPath = env.PATH || env.Path || '';
+    let rawPath = env.PATH || env.Path || '';
+    if (!rawPath && platform === 'win32') {
+        const entry = Object.entries(env).find(([key]) => key.toLowerCase() === 'path');
+        rawPath = entry ? String(entry[1] || '') : '';
+    }
     if (!rawPath) {
         return false;
     }
@@ -135,7 +139,10 @@ function readStandardUpstreamFromConfig(commonDir, currentBranch) {
             continue;
         }
 
-        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        if (trimmed.startsWith('[')) {
+            if (!trimmed.endsWith(']')) {
+                return '';
+            }
             const inner = trimmed.slice(1, -1).trim();
             const headerMatch = inner.match(/^([A-Za-z0-9-]+)(?:\s+"((?:\\.|[^"\\])*)")?$/);
             if (!headerMatch) {
@@ -156,7 +163,7 @@ function readStandardUpstreamFromConfig(commonDir, currentBranch) {
 
         const key = trimmed.slice(0, eqIndex).trim().toLowerCase();
         let rawValue = trimmed.slice(eqIndex + 1).trim();
-        if (rawValue.includes('#') || rawValue.includes(';') || rawValue.includes('"')) {
+        if (rawValue.includes('#') || rawValue.includes(';') || rawValue.includes('"') || rawValue.includes('\\')) {
             return '';
         }
         rawValue = rawValue.trim();
@@ -275,7 +282,7 @@ export function runSelfUpdate({
     if (gitDirs) {
         try {
             const headLine = fs.readFileSync(path.join(gitDirs.gitDir, 'HEAD'), 'utf8').trim();
-            if (headLine.startsWith('ref: refs/heads/')) {
+            if (headLine.startsWith('ref: refs/heads/') && headLine !== 'ref: refs/heads/.invalid') {
                 currentBranch = headLine.slice('ref: refs/heads/'.length).trim();
             } else if (SHA_HEX_PATTERN.test(headLine)) {
                 if (!hasGitOnPath(env)) {
@@ -341,6 +348,9 @@ export function runSelfUpdate({
     }
 
     const upstreamRemote = upstreamRef.split('/')[0];
+    if (!upstreamRemote || upstreamRemote.startsWith('-')) {
+        return finishEarly(`branch '${currentBranch}' does not have a valid upstream remote.`);
+    }
     stdout(`Checking for updates on ${upstreamRef}...`);
 
     const rawLowSpeedTime = String(env.SILLYBUNNY_GIT_LOW_SPEED_TIME || '10').trim();
@@ -353,8 +363,8 @@ export function runSelfUpdate({
         ]
         : [];
     const fetchArgs = optional
-        ? [...optionalGitConfigArgs, 'fetch', '--quiet', '--no-tags', upstreamRemote]
-        : ['fetch', '--quiet', upstreamRemote];
+        ? [...optionalGitConfigArgs, 'fetch', '--quiet', '--no-tags', '--', upstreamRemote]
+        : ['fetch', '--quiet', '--', upstreamRemote];
 
     const fetchResult = invokeGit(fetchArgs);
     if (fetchResult.status !== 0) {
@@ -441,8 +451,17 @@ export function parseSelfUpdateArgs(argv) {
     return { optional, repoDir };
 }
 
-const scriptPath = fileURLToPath(import.meta.url);
-const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+function resolveCanonicalPath(targetPath) {
+    const resolved = path.resolve(targetPath);
+    try {
+        return fs.realpathSync(resolved);
+    } catch {
+        return resolved;
+    }
+}
+
+const scriptPath = resolveCanonicalPath(fileURLToPath(import.meta.url));
+const invokedPath = process.argv[1] ? resolveCanonicalPath(process.argv[1]) : '';
 if (invokedPath && (invokedPath === scriptPath || invokedPath.toLowerCase() === scriptPath.toLowerCase())) {
     process.exitCode = runSelfUpdate(parseSelfUpdateArgs(process.argv.slice(2)));
 }

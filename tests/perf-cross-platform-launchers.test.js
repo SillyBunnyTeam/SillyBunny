@@ -6,13 +6,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const selfUpdateMjsPath = path.join(repoRoot, 'scripts', 'self-update.mjs');
+const selfUpdateJsPath = path.join(repoRoot, 'scripts', 'self-update.js');
 const selfUpdateShPath = path.join(repoRoot, 'scripts', 'self-update.sh');
 const startBatPath = path.join(repoRoot, 'Start.bat');
 const startNodeBatPath = path.join(repoRoot, 'Start-Node.bat');
 const startShPath = path.join(repoRoot, 'start.sh');
 
-const selfUpdateMjsSource = fs.readFileSync(selfUpdateMjsPath, 'utf8');
+const selfUpdateJsSource = fs.readFileSync(selfUpdateJsPath, 'utf8');
 const selfUpdateShSource = fs.readFileSync(selfUpdateShPath, 'utf8');
 const startBatSource = fs.readFileSync(startBatPath, 'utf8');
 const startNodeBatSource = fs.readFileSync(startNodeBatPath, 'utf8');
@@ -127,8 +127,8 @@ function createSelfUpdateFixture() {
     return { dir, remoteDir, upstreamWorkDir, cloneDir };
 }
 
-function runMjsSelfUpdate(runtimeBin, cloneDir, args = [], extraEnv = {}) {
-    const result = spawnSync(runtimeBin, [selfUpdateMjsPath, '--repo', cloneDir, ...args], {
+function runJsSelfUpdate(runtimeBin, cloneDir, args = [], extraEnv = {}, scriptPath = selfUpdateJsPath) {
+    const result = spawnSync(runtimeBin, [scriptPath, '--repo', cloneDir, ...args], {
         cwd: cloneDir,
         env: makeGitEnv(extraEnv),
         encoding: 'utf8',
@@ -139,6 +139,36 @@ function runMjsSelfUpdate(runtimeBin, cloneDir, args = [], extraEnv = {}) {
         stdout: result.stdout || '',
         stderr: result.stderr || '',
     };
+}
+
+function seedRuntimePackages(appDir) {
+    const files = [
+        ['node_modules', 'express', 'package.json', '{"name":"express","version":"4.22.3"}\n'],
+        ['node_modules', 'send', 'package.json', '{"name":"send","version":"0.19.2"}\n'],
+        ['node_modules', 'serve-static', 'package.json', '{"name":"serve-static","version":"1.16.3"}\n'],
+        ['node_modules', 'mime', 'package.json', '{"name":"mime","version":"3.0.0"}\n'],
+        ['node_modules', 'send', 'node_modules', 'mime', 'package.json', '{"name":"mime","version":"1.6.0"}\n'],
+    ];
+
+    for (const segments of files) {
+        const content = segments.pop();
+        const filePath = path.join(appDir, ...segments);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, content);
+    }
+}
+
+function extractShellFunction(source, name) {
+    const lines = source.split('\n');
+    const start = lines.findIndex(line => line.startsWith(`${name}() {`));
+    if (start < 0) {
+        throw new Error(`Could not find shell function ${name}`);
+    }
+    const end = lines.findIndex((line, index) => index > start && line === '}');
+    if (end <= start) {
+        throw new Error(`Could not find closing brace for shell function ${name}`);
+    }
+    return lines.slice(start, end + 1).join('\n');
 }
 
 const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-perf-launchers-bash-'));
@@ -171,14 +201,17 @@ describe('cross-platform launcher static and line-ending contracts', () => {
     test('POSIX shell and ESM self-update scripts preserve strict LF line endings', () => {
         expect(startShSource.includes('\r')).toBe(false);
         expect(selfUpdateShSource.includes('\r')).toBe(false);
-        expect(selfUpdateMjsSource.includes('\r')).toBe(false);
+        expect(selfUpdateJsSource.includes('\r')).toBe(false);
     });
 
-    test('scripts/self-update.mjs uses only built-in node:* modules', () => {
-        const specifiers = [...selfUpdateMjsSource.matchAll(/^\s*import\s+.*?from\s+['"]([^'"]+)['"]/gm)]
+    test('scripts/self-update.js uses only built-in node:* modules and hardens git invocations', () => {
+        const specifiers = [...selfUpdateJsSource.matchAll(/^\s*import\s+.*?from\s+['"]([^'"]+)['"]/gm)]
             .map(match => match[1]);
         expect(specifiers.length).toBeGreaterThan(0);
         expect(specifiers.every(specifier => specifier.startsWith('node:'))).toBe(true);
+        expect(selfUpdateJsSource).toContain('\'fetch\', \'--quiet\', \'--no-tags\', \'--\', upstreamRemote');
+        expect(selfUpdateJsSource).toContain('ref: refs/heads/.invalid');
+        expect(selfUpdateJsSource).toContain('fs.realpathSync');
     });
 
     test('Start.bat and Start-Node.bat invoke server-init.js directly and fast-check known runtime paths', () => {
@@ -190,7 +223,7 @@ describe('cross-platform launcher static and line-ending contracts', () => {
         expect(startBatSource).toContain('bun "%~dp0src\\server-init.js"');
         expect(startNodeBatSource).toContain('node "%~dp0src\\server-init.js"');
 
-        expect(startBatSource).toContain('"%RUNTIME_CMD%" "%~dp0scripts\\self-update.mjs" --optional');
+        expect(startBatSource).toContain('"%RUNTIME_CMD%" "%~dp0scripts\\self-update.js" --optional');
         expect(startBatSource).toContain('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\\Self-Update.ps1" -Optional');
 
         expect(startBatSource).toContain('if exist "%USERPROFILE%\\.bun\\bin\\bun.exe"');
@@ -199,13 +232,20 @@ describe('cross-platform launcher static and line-ending contracts', () => {
 
         expect(startBatSource).toContain('node_modules\\.cache\\.sillybunny-boot-stamp');
         expect(startNodeBatSource).toContain('node_modules\\.cache\\.sillybunny-boot-stamp');
+        expect(startBatSource).toContain('node_modules\\send\\node_modules\\mime\\package.json');
+        expect(startNodeBatSource).toContain('node_modules\\send\\node_modules\\mime\\package.json');
+        expect(startBatSource).toContain('else if exist "!_common_rel!\\packed-refs"');
+        expect(startNodeBatSource).toContain('else if exist "!_common_rel!\\packed-refs"');
     });
 
     test('start.sh gates install-prerequisites.sh, invokes server-init.js directly, and avoids exec on the server loop', () => {
         expect(startShSource).not.toContain('"$PACKAGE_MANAGER_CMD" run init');
         expect(startShSource).toContain('"$RUNTIME_CMD" "$SCRIPT_DIR/src/server-init.js"');
         expect(startShSource).toContain('if ! have_required_prerequisites; then');
+        expect(startShSource).toContain('xcode-select -p');
+        expect(startShSource).toContain('ld-linux-*.so.*');
         expect(startShSource).toContain('node_modules/.cache/.sillybunny-boot-stamp');
+        expect(startShSource).toContain('node_modules/send/node_modules/mime/package.json');
 
         const runServerMatch = startShSource.match(/^run_server\(\) \{[\s\S]*?^\}/m);
         expect(runServerMatch).not.toBeNull();
@@ -218,15 +258,17 @@ describe('cross-platform launcher static and line-ending contracts', () => {
         expect(selfUpdateShSource).toContain('remote.$upstream_remote.tagOpt=--no-tags');
         expect(selfUpdateShSource).toContain('http.lowSpeedLimit=1000');
         expect(selfUpdateShSource).toContain('http.lowSpeedTime=$low_speed_time');
+        expect(selfUpdateShSource).toContain('fetch --quiet --no-tags -- "$upstream_remote"');
+        expect(selfUpdateShSource).toContain('ref: refs/heads/.invalid');
     });
 });
 
-describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeName, runtimeBin) => {
+describe.each(runtimeMatrix)('scripts/self-update.js parity on %s', (_runtimeName, runtimeBin) => {
     test('reports up to date on a clean checkout and runs git status at most once', () => {
         const { cloneDir, dir } = createSelfUpdateFixture();
         const tracePath = path.join(dir, 'git-trace.log');
 
-        const result = runMjsSelfUpdate(runtimeBin, cloneDir, ['--optional'], {
+        const result = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional'], {
             GIT_TRACE: tracePath,
         });
 
@@ -249,9 +291,59 @@ describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeNa
         git(cloneDir, 'checkout', '--quiet', 'release');
         git(cloneDir, 'worktree', 'add', '--quiet', worktreeDir, 'feature-branch');
 
-        const result = runMjsSelfUpdate(runtimeBin, worktreeDir, ['-Optional']);
+        const result = runJsSelfUpdate(runtimeBin, worktreeDir, ['-Optional']);
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('Checking for updates on origin/feature-branch...');
+        expect(result.stdout).toContain('SillyBunny is already up to date.');
+    });
+
+    test('executes when invoked through a directory junction or symlink', () => {
+        const { cloneDir, dir } = createSelfUpdateFixture();
+        const linkDir = path.join(dir, 'scripts-link');
+        fs.symlinkSync(
+            path.join(repoRoot, 'scripts'),
+            linkDir,
+            process.platform === 'win32' ? 'junction' : 'dir',
+        );
+
+        const result = runJsSelfUpdate(
+            runtimeBin,
+            cloneDir,
+            ['--optional'],
+            {},
+            path.join(linkDir, 'self-update.js'),
+        );
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe('');
+        expect(result.stdout).toContain('Checking for updates on origin/release...');
+        expect(result.stdout).toContain('SillyBunny is already up to date.');
+    });
+
+    test('falls back to git rev-parse when .git/config has trailing comments on section headers', () => {
+        const { cloneDir } = createSelfUpdateFixture();
+        const headSha = git(cloneDir, 'rev-parse', 'HEAD');
+        const fakeRemoteRef = path.join(cloneDir, '.git', 'refs', 'remotes', 'evil', 'other');
+        fs.mkdirSync(path.dirname(fakeRemoteRef), { recursive: true });
+        fs.writeFileSync(fakeRemoteRef, `${headSha}\n`);
+        fs.appendFileSync(
+            path.join(cloneDir, '.git', 'config'),
+            [
+                '',
+                '[remote "evil"]',
+                '\turl = https://example.invalid/evil.git',
+                '\tfetch = +refs/heads/*:refs/remotes/evil/*',
+                '[branch "other"] # inline comment',
+                '\tremote = evil',
+                '\tmerge = refs/heads/other',
+                '',
+            ].join('\n'),
+        );
+
+        const result = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe('');
+        expect(result.stdout).toContain('Checking for updates on origin/release...');
+        expect(result.stdout).not.toContain('evil/other');
         expect(result.stdout).toContain('SillyBunny is already up to date.');
     });
 
@@ -265,7 +357,7 @@ describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeNa
         git(upstreamWorkDir, 'push', '--quiet', 'origin', 'release');
         const afterShort = git(upstreamWorkDir, 'rev-parse', '--short', 'HEAD');
 
-        const result = runMjsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
+        const result = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('Updating SillyBunny...');
         expect(result.stdout).toContain(`Updated SillyBunny from ${beforeShort} to ${afterShort}.`);
@@ -282,7 +374,7 @@ describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeNa
 
         fs.writeFileSync(path.join(cloneDir, 'bun.lock'), 'locally-mutated-bun-lock\n');
 
-        const result = runMjsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
+        const result = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('Restoring tracked bun.lock before self-update...');
         expect(fs.readFileSync(path.join(cloneDir, 'bun.lock'), 'utf8')).toBe('lockfile-v1\n');
@@ -298,12 +390,12 @@ describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeNa
 
         fs.writeFileSync(path.join(cloneDir, 'README.md'), 'my uncommitted work\n');
 
-        const optionalResult = runMjsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
+        const optionalResult = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
         expect(optionalResult.status).toBe(0);
         expect(optionalResult.stderr).toContain('Skipping self-update: the working tree is not clean. Commit, stash, or remove local changes first.');
         expect(fs.readFileSync(path.join(cloneDir, 'README.md'), 'utf8')).toBe('my uncommitted work\n');
 
-        const requiredResult = runMjsSelfUpdate(runtimeBin, cloneDir, []);
+        const requiredResult = runJsSelfUpdate(runtimeBin, cloneDir, []);
         expect(requiredResult.status).toBe(1);
         expect(requiredResult.stderr).toContain('Self-update failed: the working tree is not clean. Commit, stash, or remove local changes first.');
         expect(fs.readFileSync(path.join(cloneDir, 'README.md'), 'utf8')).toBe('my uncommitted work\n');
@@ -316,7 +408,7 @@ describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeNa
         git(cloneDir, 'add', 'local.txt');
         git(cloneDir, 'commit', '--quiet', '-m', 'local commit');
 
-        const aheadResult = runMjsSelfUpdate(runtimeBin, cloneDir);
+        const aheadResult = runJsSelfUpdate(runtimeBin, cloneDir);
         expect(aheadResult.status).toBe(0);
         expect(aheadResult.stdout).toContain('Local branch \'release\' is already ahead of \'origin/release\'; nothing to pull.');
 
@@ -325,41 +417,41 @@ describe.each(runtimeMatrix)('scripts/self-update.mjs parity on %s', (_runtimeNa
         git(upstreamWorkDir, 'commit', '--quiet', '-m', 'upstream commit');
         git(upstreamWorkDir, 'push', '--quiet', 'origin', 'release');
 
-        const divergedOptional = runMjsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
+        const divergedOptional = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
         expect(divergedOptional.status).toBe(0);
         expect(divergedOptional.stderr).toContain('Skipping self-update: branch \'release\' has diverged from \'origin/release\'.');
 
-        const divergedRequired = runMjsSelfUpdate(runtimeBin, cloneDir);
+        const divergedRequired = runJsSelfUpdate(runtimeBin, cloneDir);
         expect(divergedRequired.status).toBe(1);
         expect(divergedRequired.stderr).toContain('Self-update failed: branch \'release\' has diverged from \'origin/release\'.');
 
         const { cloneDir: offlineClone, dir: offlineParent } = createSelfUpdateFixture();
         git(offlineClone, 'remote', 'set-url', 'origin', path.join(offlineParent, 'missing-remote.git'));
 
-        const offlineOptional = runMjsSelfUpdate(runtimeBin, offlineClone, ['--optional'], {
+        const offlineOptional = runJsSelfUpdate(runtimeBin, offlineClone, ['--optional'], {
             SILLYBUNNY_GIT_LOW_SPEED_TIME: '1',
         });
         expect(offlineOptional.status).toBe(0);
         expect(offlineOptional.stderr).toContain('Skipping self-update: could not fetch from \'origin\'.');
 
-        const offlineRequired = runMjsSelfUpdate(runtimeBin, offlineClone, []);
+        const offlineRequired = runJsSelfUpdate(runtimeBin, offlineClone, []);
         expect(offlineRequired.status).toBe(1);
         expect(offlineRequired.stderr).toContain('Self-update failed: could not fetch from \'origin\'.');
 
         git(offlineClone, 'checkout', '--quiet', '-b', 'untracked-local-branch');
-        const noUpstreamOptional = runMjsSelfUpdate(runtimeBin, offlineClone, ['--optional']);
+        const noUpstreamOptional = runJsSelfUpdate(runtimeBin, offlineClone, ['--optional']);
         expect(noUpstreamOptional.status).toBe(0);
         expect(noUpstreamOptional.stderr).toContain('Skipping self-update: branch \'untracked-local-branch\' does not have an upstream configured.');
 
         git(offlineClone, 'checkout', '--quiet', '--detach', 'HEAD');
-        const detachedOptional = runMjsSelfUpdate(runtimeBin, offlineClone, ['--optional']);
+        const detachedOptional = runJsSelfUpdate(runtimeBin, offlineClone, ['--optional']);
         expect(detachedOptional.status).toBe(0);
         expect(detachedOptional.stderr).toContain('Skipping self-update: detached HEAD checkouts cannot be updated automatically.');
     });
 });
 
 describeWin32('Windows batch warm-boot fast-stamp execution', () => {
-    test('Start-Node.bat skips dependency-state and server-init on unchanged warm boots and invalidates on change', () => {
+    test('Start-Node.bat skips dependency-state and server-init on unchanged warm boots and invalidates on change or missing nested mime', () => {
         const appDir = path.join(suiteRoot, 'win-warm-boot');
         fs.mkdirSync(path.join(appDir, 'scripts'), { recursive: true });
         fs.mkdirSync(path.join(appDir, 'src'), { recursive: true });
@@ -379,6 +471,7 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
         fs.writeFileSync(path.join(appDir, 'config.yaml'), 'port: 4444\n');
         fs.writeFileSync(path.join(appDir, 'public', 'index.html'), '<!doctype html>\n');
         fs.writeFileSync(path.join(appDir, 'node_modules', '.sillybunny-dependencies.json'), '{"version":1,"profiles":{}}\n');
+        seedRuntimePackages(appDir);
 
         fs.writeFileSync(
             path.join(appDir, 'scripts', 'dependency-state.js'),
@@ -389,12 +482,16 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
             'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", "init\\n");\n',
         );
         fs.writeFileSync(
+            path.join(appDir, 'src', 'config-init.js'),
+            'export function addMissingConfigValues() {}\n',
+        );
+        fs.writeFileSync(
             path.join(appDir, 'server.js'),
             'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", "server\\n");\n',
         );
 
         git(suiteRoot, 'init', '--quiet', '--initial-branch=release', appDir);
-        git(appDir, 'add', 'package.json', 'package-lock.json', 'default/config.yaml');
+        git(appDir, 'add', 'package.json', 'package-lock.json', 'default/config.yaml', 'scripts/dependency-state.js', 'src/server-init.js', 'src/config-init.js');
         git(appDir, 'commit', '--quiet', '-m', 'fixture');
 
         const bootOnce = () => spawnSync('cmd.exe', ['/d', '/c', 'call Start-Node.bat'], {
@@ -422,10 +519,29 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
             'server',
         ]);
 
+        // Deleting send/node_modules/mime (PR #1039 corruption case) must bypass the warm-boot stamp.
+        fs.rmSync(path.join(appDir, 'node_modules', 'send', 'node_modules', 'mime'), { recursive: true, force: true });
         fs.writeFileSync(path.join(appDir, 'boot-calls.log'), '');
-        fs.writeFileSync(path.join(appDir, 'default', 'config.yaml'), 'port: 4444\nlisten: false\n');
+        const missingMimeRun = bootOnce();
+        expect(missingMimeRun.status).toBe(0);
+        expect(fs.readFileSync(path.join(appDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
+            'dep:check,node-production',
+            'init',
+            'server',
+        ]);
+
+        seedRuntimePackages(appDir);
+        fs.writeFileSync(path.join(appDir, 'boot-calls.log'), '');
         const thirdRun = bootOnce();
         expect(thirdRun.status).toBe(0);
+        expect(fs.readFileSync(path.join(appDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
+            'server',
+        ]);
+
+        fs.writeFileSync(path.join(appDir, 'boot-calls.log'), '');
+        fs.writeFileSync(path.join(appDir, 'default', 'config.yaml'), 'port: 4444\nlisten: false\n');
+        const fourthRun = bootOnce();
+        expect(fourthRun.status).toBe(0);
         expect(fs.readFileSync(path.join(appDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
             'dep:check,node-production',
             'init',
@@ -433,7 +549,91 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
         ]);
     });
 
-    test('Start.bat runs self-update.mjs, skips warm-boot init when unchanged, and invalidates after fast-forward pull', () => {
+    test('Start-Node.bat resolves exact packed-refs SHA in linked worktrees with absolute commondir', () => {
+        const mainRepo = path.join(suiteRoot, 'win-packed-main');
+        const worktreeDir = path.join(suiteRoot, 'win-packed-wt');
+        fs.mkdirSync(path.join(mainRepo, 'scripts'), { recursive: true });
+        fs.mkdirSync(path.join(mainRepo, 'src'), { recursive: true });
+        fs.mkdirSync(path.join(mainRepo, 'default'), { recursive: true });
+
+        const nonInteractiveBat = startNodeBatSource.replace(/\r\npause\r\n/, '\r\n');
+        fs.writeFileSync(path.join(mainRepo, 'Start-Node.bat'), nonInteractiveBat, 'utf8');
+        fs.writeFileSync(path.join(mainRepo, 'package.json'), '{"name":"sillybunny","type":"module"}\n');
+        fs.writeFileSync(path.join(mainRepo, 'package-lock.json'), '{"lockfileVersion":3}\n');
+        fs.writeFileSync(path.join(mainRepo, 'default', 'config.yaml'), 'port: 4444\n');
+        fs.writeFileSync(
+            path.join(mainRepo, 'scripts', 'dependency-state.js'),
+            'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", `dep:${process.argv.slice(2).join(",")}\\n`);\n',
+        );
+        fs.writeFileSync(
+            path.join(mainRepo, 'src', 'server-init.js'),
+            'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", "init\\n");\n',
+        );
+        fs.writeFileSync(
+            path.join(mainRepo, 'src', 'config-init.js'),
+            'export function addMissingConfigValues() {}\n',
+        );
+        fs.writeFileSync(
+            path.join(mainRepo, 'server.js'),
+            'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", "server\\n");\n',
+        );
+
+        git(suiteRoot, 'init', '--quiet', '--initial-branch=release', mainRepo);
+        git(mainRepo, 'add', '-A');
+        git(mainRepo, 'commit', '--quiet', '-m', 'packed base');
+        const firstSha = git(mainRepo, 'rev-parse', 'HEAD');
+        git(mainRepo, 'checkout', '--quiet', '-b', 'wt/v2.0.0');
+        git(mainRepo, 'checkout', '--quiet', 'release');
+        git(mainRepo, 'worktree', 'add', '--quiet', worktreeDir, 'wt/v2.0.0');
+        git(mainRepo, 'pack-refs', '--all', '--prune');
+
+        const wtGitLine = fs.readFileSync(path.join(worktreeDir, '.git'), 'utf8').trim();
+        const wtGitDir = wtGitLine.slice('gitdir: '.length).trim();
+        const absCommonDir = path.join(mainRepo, '.git').replace(/\\/g, '/');
+        fs.writeFileSync(path.join(wtGitDir, 'commondir'), `${absCommonDir}\n`);
+
+        fs.mkdirSync(path.join(worktreeDir, 'public'), { recursive: true });
+        fs.writeFileSync(path.join(worktreeDir, 'config.yaml'), 'port: 4444\n');
+        fs.writeFileSync(path.join(worktreeDir, 'public', 'index.html'), '<!doctype html>\n');
+        fs.mkdirSync(path.join(worktreeDir, 'node_modules'), { recursive: true });
+        fs.writeFileSync(path.join(worktreeDir, 'node_modules', '.sillybunny-dependencies.json'), '{"version":1,"profiles":{}}\n');
+        seedRuntimePackages(worktreeDir);
+
+        const bootWt = () => spawnSync('cmd.exe', ['/d', '/c', 'call Start-Node.bat'], {
+            cwd: worktreeDir,
+            env: makeGitEnv(),
+            encoding: 'utf8',
+            windowsHide: true,
+        });
+
+        expect(bootWt().status).toBe(0);
+        const stampFile = path.join(worktreeDir, 'node_modules', '.cache', '.sillybunny-boot-stamp');
+        expect(fs.readFileSync(stampFile, 'utf8')).toContain(`ref: refs/heads/wt/v2.0.0@${firstSha}`);
+
+        fs.writeFileSync(path.join(worktreeDir, 'boot-calls.log'), '');
+        expect(bootWt().status).toBe(0);
+        expect(fs.readFileSync(path.join(worktreeDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
+            'server',
+        ]);
+
+        // Replace the 40-char SHA in packed-refs in place (same byte length, same minute) and confirm invalidation.
+        const packedRefsPath = path.join(mainRepo, '.git', 'packed-refs');
+        const nextSha = firstSha.startsWith('a') ? `b${firstSha.slice(1)}` : `a${firstSha.slice(1)}`;
+        const updatedPackedRefs = fs.readFileSync(packedRefsPath, 'utf8')
+            .replace(`${firstSha} refs/heads/wt/v2.0.0`, `${nextSha} refs/heads/wt/v2.0.0`);
+        fs.writeFileSync(packedRefsPath, updatedPackedRefs, 'utf8');
+
+        fs.writeFileSync(path.join(worktreeDir, 'boot-calls.log'), '');
+        expect(bootWt().status).toBe(0);
+        expect(fs.readFileSync(path.join(worktreeDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
+            'dep:check,node-production',
+            'init',
+            'server',
+        ]);
+        expect(fs.readFileSync(stampFile, 'utf8')).toContain(`ref: refs/heads/wt/v2.0.0@${nextSha}`);
+    });
+
+    test('Start.bat runs self-update.js, skips warm-boot init when unchanged, and invalidates after fast-forward pull', () => {
         const { upstreamWorkDir, cloneDir } = createSelfUpdateFixture();
         fs.mkdirSync(path.join(cloneDir, 'scripts'), { recursive: true });
         fs.mkdirSync(path.join(cloneDir, 'src'), { recursive: true });
@@ -443,7 +643,7 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
 
         const nonInteractiveStartBat = startBatSource.replace(/\r\npause\r\n/, '\r\n');
         fs.writeFileSync(path.join(cloneDir, 'Start.bat'), nonInteractiveStartBat, 'utf8');
-        fs.copyFileSync(selfUpdateMjsPath, path.join(cloneDir, 'scripts', 'self-update.mjs'));
+        fs.copyFileSync(selfUpdateJsPath, path.join(cloneDir, 'scripts', 'self-update.js'));
         fs.writeFileSync(path.join(cloneDir, 'package.json'), '{"name":"sillybunny","type":"module"}\n');
         fs.writeFileSync(path.join(cloneDir, 'package-lock.json'), '{"lockfileVersion":3}\n');
         fs.writeFileSync(path.join(cloneDir, 'default', 'config.yaml'), 'port: 4444\n');
@@ -454,6 +654,10 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
         fs.writeFileSync(
             path.join(cloneDir, 'src', 'server-init.js'),
             'import fs from "node:fs"; fs.appendFileSync("node_modules/boot-calls.log", "init\\n");\n',
+        );
+        fs.writeFileSync(
+            path.join(cloneDir, 'src', 'config-init.js'),
+            'export function addMissingConfigValues() {}\n',
         );
         fs.writeFileSync(
             path.join(cloneDir, 'server.js'),
@@ -479,6 +683,7 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
         fs.writeFileSync(path.join(cloneDir, 'config.yaml'), 'port: 4444\n');
         fs.writeFileSync(path.join(cloneDir, 'public', 'index.html'), '<!doctype html>\n');
         fs.writeFileSync(path.join(cloneDir, 'node_modules', '.sillybunny-dependencies.json'), '{"version":1,"profiles":{}}\n');
+        seedRuntimePackages(cloneDir);
 
         const bootStartBat = () => spawnSync('cmd.exe', ['/d', '/c', 'call Start.bat'], {
             cwd: cloneDir,
@@ -525,7 +730,7 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
 });
 
 describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () => {
-    test('start.sh and scripts/self-update.sh execute warm-boot stamp, exit-75 restart, and self-update cleanly', () => {
+    test('start.sh and scripts/self-update.sh execute warm-boot stamp, exit-75 restart, PR #1039 invalidation, and self-update cleanly', () => {
         const { upstreamWorkDir, cloneDir } = createSelfUpdateFixture();
         fs.mkdirSync(path.join(cloneDir, 'scripts'), { recursive: true });
         fs.copyFileSync(selfUpdateShPath, path.join(cloneDir, 'scripts', 'self-update.sh'));
@@ -575,6 +780,7 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         fs.writeFileSync(path.join(appDir, 'config.yaml'), 'port: 4444\n');
         fs.writeFileSync(path.join(appDir, 'public', 'index.html'), '<!doctype html>\n');
         fs.writeFileSync(path.join(appDir, 'node_modules', '.sillybunny-dependencies.json'), '{"version":1,"profiles":{}}\n');
+        seedRuntimePackages(appDir);
 
         fs.writeFileSync(
             path.join(appDir, 'scripts', 'dependency-state.js'),
@@ -583,6 +789,10 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         fs.writeFileSync(
             path.join(appDir, 'src', 'server-init.js'),
             'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", "init\\n");\n',
+        );
+        fs.writeFileSync(
+            path.join(appDir, 'src', 'config-init.js'),
+            'export function addMissingConfigValues() {}\n',
         );
         fs.writeFileSync(
             path.join(appDir, 'server.js'),
@@ -600,7 +810,7 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         );
 
         git(suiteRoot, 'init', '--quiet', '--initial-branch=release', appDir);
-        git(appDir, 'add', 'package.json', 'package-lock.json', 'default/config.yaml');
+        git(appDir, 'add', 'package.json', 'package-lock.json', 'default/config.yaml', 'scripts/dependency-state.js', 'src/server-init.js', 'src/config-init.js');
         git(appDir, 'commit', '--quiet', '-m', 'posix fixture');
 
         const runStartSh = () => spawnSync(
@@ -632,5 +842,86 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         expect(fs.readFileSync(path.join(appDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
             'server:0:skipBrowser=',
         ]);
+
+        // Deleting send/node_modules/mime (PR #1039 corruption case) must miss the warm-boot stamp.
+        fs.rmSync(path.join(appDir, 'node_modules', 'send', 'node_modules', 'mime'), { recursive: true, force: true });
+        fs.writeFileSync(path.join(appDir, 'boot-calls.log'), '');
+        const corruptedBoot = runStartSh();
+        expect(corruptedBoot.status).toBe(0);
+        expect(fs.readFileSync(path.join(appDir, 'boot-calls.log'), 'utf8').trim().split('\n')).toEqual([
+            'dep:check,node-production',
+            'init',
+            'server:0:skipBrowser=',
+        ]);
+    });
+
+    test('start.sh compute_boot_stamp handles Darwin GNU stat fallback, BSD stat fallback, and total stat failure', () => {
+        const harnessDir = path.join(suiteRoot, 'posix-stat-fallback');
+        const fakeBinDir = path.join(harnessDir, 'fakebin');
+        fs.mkdirSync(fakeBinDir, { recursive: true });
+        fs.writeFileSync(path.join(harnessDir, 'package.json'), '{"name":"fixture"}\n');
+
+        const statPath = path.join(fakeBinDir, 'stat');
+        const harnessScriptPath = path.join(harnessDir, 'harness.sh');
+        const computeFn = extractShellFunction(startShSource, 'compute_boot_stamp');
+        const harnessPosix = toPosixShellPath(bashExecutable, harnessDir);
+        const fakeBinPosix = toPosixShellPath(bashExecutable, fakeBinDir);
+
+        fs.writeFileSync(
+            harnessScriptPath,
+            [
+                '#!/usr/bin/env bash',
+                'set -euo pipefail',
+                `SCRIPT_DIR="${harnessPosix}"`,
+                'cd "$SCRIPT_DIR"',
+                'HOST_OS="$TEST_HOST_OS"',
+                'runtime_kind=node',
+                'dependency_profile=node-production',
+                'NODE_ENV=production',
+                computeFn,
+                'printf "STAMP=%s\\n" "$(compute_boot_stamp)"',
+                '',
+            ].join('\n'),
+        );
+
+        const runWithFakeStat = (hostOs, statScript) => {
+            fs.writeFileSync(statPath, statScript);
+            fs.chmodSync(statPath, 0o755);
+            const result = spawnSync(
+                bashExecutable,
+                ['-c', `PATH="${fakeBinPosix}:$PATH" bash "${toPosixShellPath(bashExecutable, harnessScriptPath)}"`],
+                {
+                    cwd: harnessDir,
+                    env: makeGitEnv({ TEST_HOST_OS: hostOs }),
+                    encoding: 'utf8',
+                    windowsHide: true,
+                },
+            );
+            return { status: result.status, stdout: (result.stdout || '').trim() };
+        };
+
+        // macOS with Homebrew GNU stat on PATH (rejects BSD -f format, prints garbage before failing)
+        const darwinGnu = runWithFakeStat(
+            'Darwin',
+            '#!/usr/bin/env bash\nif [[ "$1" == -f ]]; then echo "garbage"; exit 1; fi\necho "gnu-stat-ok"\n',
+        );
+        expect(darwinGnu.status).toBe(0);
+        expect(darwinGnu.stdout).toContain('gnu-stat-ok;');
+
+        // Non-Darwin BSD host (rejects GNU -c format, supports BSD -f)
+        const freebsdBsd = runWithFakeStat(
+            'FreeBSD',
+            '#!/usr/bin/env bash\nif [[ "$1" == -c ]]; then exit 1; fi\necho "bsd-stat-ok"\n',
+        );
+        expect(freebsdBsd.status).toBe(0);
+        expect(freebsdBsd.stdout).toContain('bsd-stat-ok;');
+
+        // Broken stat failing on both -c and -f must emit an empty stamp instead of caching empty stats
+        const brokenStat = runWithFakeStat(
+            'Linux',
+            '#!/usr/bin/env bash\nexit 1\n',
+        );
+        expect(brokenStat.status).toBe(0);
+        expect(brokenStat.stdout).toBe('STAMP=');
     });
 });

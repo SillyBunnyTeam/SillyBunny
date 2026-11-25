@@ -147,8 +147,14 @@ resolve_package_manager_command() {
 
 have_required_prerequisites() {
     if (( auto_update_enabled )) && [[ -e "$SCRIPT_DIR/.git" ]]; then
-        if ! command -v git >/dev/null 2>&1; then
+        local git_cmd=""
+        if ! git_cmd="$(command -v git 2>/dev/null)"; then
             return 1
+        fi
+        if [[ "$HOST_OS" == Darwin && "$git_cmd" == /usr/bin/git ]]; then
+            if ! xcode-select -p >/dev/null 2>&1 && [[ ! -x /Library/Developer/CommandLineTools/usr/bin/git ]]; then
+                return 1
+            fi
         fi
     fi
 
@@ -162,12 +168,35 @@ have_required_prerequisites() {
     fi
 
     if is_termux; then
+        local termux_prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+        local glibc_root="${GLIBC_ROOT:-$termux_prefix/glibc}"
         resolve_runtime_command bun >/dev/null 2>&1 \
-            && [[ -x "$BUN_INSTALL/bin/buno" && -f "$BUN_INSTALL/lib/bun-shim.so" ]]
+            && [[ -x "$BUN_INSTALL/bin/buno" && -f "$BUN_INSTALL/lib/bun-shim.so" ]] \
+            && (command -v grun >/dev/null 2>&1 || [[ -x "$termux_prefix/bin/grun" ]]) \
+            && compgen -G "$glibc_root/lib/ld-linux-*.so.*" >/dev/null 2>&1
         return $?
     fi
 
     resolve_runtime_command bun >/dev/null 2>&1
+}
+
+has_warm_boot_runtime_packages() {
+    [[ -f "$SCRIPT_DIR/node_modules/express/package.json" ]] \
+        && [[ -f "$SCRIPT_DIR/node_modules/send/package.json" ]] \
+        && [[ -f "$SCRIPT_DIR/node_modules/serve-static/package.json" ]] \
+        || return 1
+
+    if [[ -f "$SCRIPT_DIR/node_modules/mime/package.json" ]] \
+        && [[ ! -f "$SCRIPT_DIR/node_modules/send/node_modules/mime/package.json" ]]; then
+        return 1
+    fi
+
+    if [[ "$dependency_profile" == *development ]] \
+        && [[ ! -f "$SCRIPT_DIR/node_modules/@eslint/eslintrc/package.json" ]]; then
+        return 1
+    fi
+
+    return 0
 }
 
 compute_boot_stamp() {
@@ -213,7 +242,15 @@ compute_boot_stamp() {
         fi
     fi
 
-    for path_item in package.json package-lock.json bun.lock default/config.yaml; do
+    for path_item in \
+        package.json \
+        package-lock.json \
+        bun.lock \
+        default/config.yaml \
+        scripts/dependency-state.js \
+        src/server-init.js \
+        src/config-init.js \
+        node_modules/.sillybunny-dependencies.json; do
         if [[ -f "$SCRIPT_DIR/$path_item" ]]; then
             existing_files+=("$path_item")
         else
@@ -223,12 +260,18 @@ compute_boot_stamp() {
 
     if (( ${#existing_files[@]} > 0 )); then
         if [[ "$HOST_OS" == Darwin ]]; then
-            stat_out="$(stat -f '%N=%m:%z' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')"
-        else
-            stat_out="$(stat -c '%n=%Y:%s' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')"
+            stat_out="$(stat -f '%N=%m:%z' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')" || stat_out=""
             if [[ -z "$stat_out" ]]; then
-                stat_out="$(stat -f '%N=%m:%z' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')"
+                stat_out="$(stat -c '%n=%Y:%s' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')" || stat_out=""
             fi
+        else
+            stat_out="$(stat -c '%n=%Y:%s' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')" || stat_out=""
+            if [[ -z "$stat_out" ]]; then
+                stat_out="$(stat -f '%N=%m:%z' "${existing_files[@]}" 2>/dev/null | tr '\n' ';')" || stat_out=""
+            fi
+        fi
+        if [[ -z "$stat_out" ]]; then
+            return 0
         fi
     fi
 
@@ -406,11 +449,13 @@ boot_stamp="$(compute_boot_stamp)"
 warm_boot_hit=0
 
 if ! is_truthy "${SILLYBUNNY_FORCE_INIT:-}" \
+    && [[ -n "$boot_stamp" ]] \
     && [[ -f "$boot_stamp_file" ]] \
     && [[ -f "$SCRIPT_DIR/node_modules/.sillybunny-dependencies.json" ]] \
     && [[ -f "$SCRIPT_DIR/config.yaml" ]] \
     && [[ -f "$SCRIPT_DIR/public/index.html" ]] \
-    && [[ ! -e "$SCRIPT_DIR/config.conf" ]]; then
+    && [[ ! -e "$SCRIPT_DIR/config.conf" ]] \
+    && has_warm_boot_runtime_packages; then
     IFS= read -r saved_boot_stamp < "$boot_stamp_file" || saved_boot_stamp=""
     if [[ "$saved_boot_stamp" == "$boot_stamp" ]]; then
         warm_boot_hit=1
@@ -453,8 +498,11 @@ else
     fi
 
     "$RUNTIME_CMD" "$SCRIPT_DIR/src/server-init.js"
-    mkdir -p "$SCRIPT_DIR/node_modules/.cache"
-    printf '%s\n' "$boot_stamp" > "$boot_stamp_file"
+    boot_stamp="$(compute_boot_stamp)"
+    if [[ -n "$boot_stamp" ]]; then
+        mkdir -p "$SCRIPT_DIR/node_modules/.cache"
+        printf '%s\n' "$boot_stamp" > "$boot_stamp_file"
+    fi
 fi
 
 if is_truthy "${SILLYBUNNY_BUN_SMOL:-}" && [[ "$runtime_kind" == node ]]; then

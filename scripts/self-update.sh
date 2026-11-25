@@ -108,7 +108,7 @@ current_branch=""
 if [[ -n "$git_dir" && -f "$git_dir/HEAD" ]]; then
     IFS= read -r head_line < "$git_dir/HEAD" || head_line=""
     head_line="${head_line%$'\r'}"
-    if [[ "$head_line" == "ref: refs/heads/"* ]]; then
+    if [[ "$head_line" == "ref: refs/heads/"* && "$head_line" != "ref: refs/heads/.invalid" ]]; then
         current_branch="${head_line#ref: refs/heads/}"
     elif [[ "$head_line" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
         finish_early "detached HEAD checkouts cannot be updated automatically."
@@ -140,6 +140,9 @@ if [[ -n "$status_output" ]] && ! restore_lone_bun_lock_change "$status_output";
 fi
 
 upstream_remote="${upstream_ref%%/*}"
+if [[ -z "$upstream_remote" || "$upstream_remote" == -* ]]; then
+    finish_early "branch '$current_branch' does not have a valid upstream remote."
+fi
 
 echo "Checking for updates on $upstream_ref..."
 low_speed_time="${SILLYBUNNY_GIT_LOW_SPEED_TIME:-10}"
@@ -152,11 +155,11 @@ if (( OPTIONAL )); then
         -c "remote.$upstream_remote.tagOpt=--no-tags" \
         -c "http.lowSpeedLimit=1000" \
         -c "http.lowSpeedTime=$low_speed_time" \
-        fetch --quiet --no-tags "$upstream_remote"; then
+        fetch --quiet --no-tags -- "$upstream_remote"; then
         finish_early "could not fetch from '$upstream_remote'."
     fi
 else
-    if ! git fetch --quiet "$upstream_remote"; then
+    if ! git fetch --quiet -- "$upstream_remote"; then
         finish_early "could not fetch from '$upstream_remote'."
     fi
 fi
@@ -170,8 +173,13 @@ if [[ -n "$common_dir" && "$current_branch" != *..* && "$upstream_ref" != *..* ]
     fi
 fi
 
-counts_output="$(git rev-list --left-right --count 'HEAD...@{upstream}')"
+if ! counts_output="$(git rev-list --left-right --count 'HEAD...@{upstream}')"; then
+    finish_early "could not compare the local branch with its upstream."
+fi
 read -r ahead behind <<< "$counts_output"
+if [[ ! "${ahead:-}" =~ ^[0-9]+$ || ! "${behind:-}" =~ ^[0-9]+$ ]]; then
+    finish_early "received an unexpected response while comparing revisions."
+fi
 
 if (( ahead > 0 && behind > 0 )); then
     finish_early "branch '$current_branch' has diverged from '$upstream_ref'. Resolve it manually before using self-update."

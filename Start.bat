@@ -186,7 +186,7 @@ if "%_need_git%"=="1" (
 
 if "%_need_git%"=="1" if "%_auto_update%"=="1" (
     if defined RUNTIME_CMD (
-        "%RUNTIME_CMD%" "%~dp0scripts\self-update.mjs" --optional
+        "%RUNTIME_CMD%" "%~dp0scripts\self-update.js" --optional
     ) else (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Self-Update.ps1" -Optional
     )
@@ -212,62 +212,22 @@ if /I "!SILLYBUNNY_FORCE_INIT!"=="true" set "_force_init=1"
 if /I "!SILLYBUNNY_FORCE_INIT!"=="yes" set "_force_init=1"
 if /I "!SILLYBUNNY_FORCE_INIT!"=="on" set "_force_init=1"
 
-set "_git_dir="
-if exist ".git\HEAD" (
-    set "_git_dir=.git"
-) else if exist ".git" (
-    set "_gitfile_line="
-    set /p _gitfile_line=<".git"
-    if /I "!_gitfile_line:~0,8!"=="gitdir: " (
-        set "_git_dir=!_gitfile_line:~8!"
-        set "_git_dir=!_git_dir:/=\!"
-    )
-)
-set "_head_state=nogit"
-if defined _git_dir if exist "!_git_dir!\HEAD" (
-    set /p _head_state=<"!_git_dir!\HEAD"
-    if "!_head_state:~0,5!"=="ref: " (
-        set "_head_ref=!_head_state:~5!"
-        set "_head_ref=!_head_ref:/=\!"
-        if exist "!_git_dir!\!_head_ref!" (
-            set "_head_sha="
-            set /p _head_sha=<"!_git_dir!\!_head_ref!"
-            set "_head_state=!_head_state!@!_head_sha!"
-        ) else if exist "!_git_dir!\commondir" (
-            set "_common_rel="
-            set /p _common_rel=<"!_git_dir!\commondir"
-            set "_common_rel=!_common_rel:/=\!"
-            if exist "!_git_dir!\!_common_rel!\!_head_ref!" (
-                set "_head_sha="
-                set /p _head_sha=<"!_git_dir!\!_common_rel!\!_head_ref!"
-                set "_head_state=!_head_state!@!_head_sha!"
-            ) else if exist "!_common_rel!\!_head_ref!" (
-                set "_head_sha="
-                set /p _head_sha=<"!_common_rel!\!_head_ref!"
-                set "_head_state=!_head_state!@!_head_sha!"
-            ) else if exist "!_git_dir!\!_common_rel!\packed-refs" (
-                for %%F in ("!_git_dir!\!_common_rel!\packed-refs") do set "_head_state=!_head_state!@packed:%%~tF:%%~zF"
-            )
-        ) else if exist "!_git_dir!\packed-refs" (
-            for %%F in ("!_git_dir!\packed-refs") do set "_head_state=!_head_state!@packed:%%~tF:%%~zF"
-        )
-    )
-)
-set "_files_state="
-for %%P in ("package.json" "package-lock.json" "bun.lock" "default\config.yaml") do (
-    if exist %%P (
-        for %%F in (%%P) do set "_files_state=!_files_state!;%%~P=%%~tF:%%~zF"
-    ) else (
-        set "_files_state=!_files_state!;%%~P=missing"
-    )
-)
 set "_boot_stamp_file=node_modules\.cache\.sillybunny-boot-stamp"
-set "_boot_stamp=v1;!_dependency_profile!;!NODE_ENV!;!_head_state!!_files_state!"
+call :compute_boot_stamp
 set "_warm_boot_hit=0"
-if "!_force_init!"=="0" if exist "!_boot_stamp_file!" if exist "node_modules\.sillybunny-dependencies.json" if exist "config.yaml" if exist "public\index.html" if not exist "config.conf" (
-    set "_saved_boot_stamp="
-    set /p _saved_boot_stamp=<"!_boot_stamp_file!"
-    if "!_saved_boot_stamp!"=="!_boot_stamp!" set "_warm_boot_hit=1"
+if "!_force_init!"=="0" if defined _boot_stamp if exist "!_boot_stamp_file!" if exist "node_modules\.sillybunny-dependencies.json" if exist "config.yaml" if exist "public\index.html" if not exist "config.conf" (
+    set "_runtime_pkgs_ok=1"
+    if not exist "node_modules\express\package.json" set "_runtime_pkgs_ok=0"
+    if not exist "node_modules\send\package.json" set "_runtime_pkgs_ok=0"
+    if not exist "node_modules\serve-static\package.json" set "_runtime_pkgs_ok=0"
+    if exist "node_modules\mime\package.json" if not exist "node_modules\send\node_modules\mime\package.json" set "_runtime_pkgs_ok=0"
+    if "!_dependency_profile!"=="node-development" if not exist "node_modules\@eslint\eslintrc\package.json" set "_runtime_pkgs_ok=0"
+    if "!_dependency_profile!"=="bun-development" if not exist "node_modules\@eslint\eslintrc\package.json" set "_runtime_pkgs_ok=0"
+    if "!_runtime_pkgs_ok!"=="1" (
+        set "_saved_boot_stamp="
+        set /p _saved_boot_stamp=<"!_boot_stamp_file!"
+        if "!_saved_boot_stamp!"=="!_boot_stamp!" set "_warm_boot_hit=1"
+    )
 )
 
 if "!_warm_boot_hit!"=="1" (
@@ -345,8 +305,11 @@ if "!_warm_boot_hit!"=="1" (
         bun "%~dp0src\server-init.js"
     )
     if !errorlevel! neq 0 goto end
-    if not exist "node_modules\.cache" mkdir "node_modules\.cache" > nul 2>&1
-    (echo(!_boot_stamp!)>"!_boot_stamp_file!"
+    call :compute_boot_stamp
+    if defined _boot_stamp (
+        if not exist "node_modules\.cache" mkdir "node_modules\.cache" > nul 2>&1
+        (echo(!_boot_stamp!)>"!_boot_stamp_file!"
+    )
 )
 
 REM Normalise SILLYBUNNY_BUN_SMOL to a 0/1 flag so the accepted spellings match
@@ -384,3 +347,80 @@ if "!_server_exit!"=="75" (
 pause
 popd
 endlocal
+goto :eof
+
+:compute_boot_stamp
+set "_boot_stamp="
+set "_git_dir="
+if exist ".git\HEAD" (
+    set "_git_dir=.git"
+) else if exist ".git" (
+    set "_gitfile_line="
+    set /p _gitfile_line=<".git"
+    if /I "!_gitfile_line:~0,8!"=="gitdir: " (
+        set "_git_dir=!_gitfile_line:~8!"
+        set "_git_dir=!_git_dir:/=\!"
+    )
+)
+set "_head_state=nogit"
+set "_packed_refs_file="
+set "_head_unresolved=0"
+if defined _git_dir if exist "!_git_dir!\HEAD" (
+    set /p _head_state=<"!_git_dir!\HEAD"
+    if "!_head_state:~0,5!"=="ref: " (
+        set "_head_ref_posix=!_head_state:~5!"
+        set "_head_ref=!_head_ref_posix:/=\!"
+        if /I "!_head_ref_posix!"=="refs/heads/.invalid" (
+            set "_head_unresolved=1"
+        ) else if exist "!_git_dir!\!_head_ref!" (
+            set "_head_sha="
+            set /p _head_sha=<"!_git_dir!\!_head_ref!"
+            set "_head_state=!_head_state!@!_head_sha!"
+        ) else if exist "!_git_dir!\commondir" (
+            set "_common_rel="
+            set /p _common_rel=<"!_git_dir!\commondir"
+            set "_common_rel=!_common_rel:/=\!"
+            if exist "!_git_dir!\!_common_rel!\!_head_ref!" (
+                set "_head_sha="
+                set /p _head_sha=<"!_git_dir!\!_common_rel!\!_head_ref!"
+                set "_head_state=!_head_state!@!_head_sha!"
+            ) else if exist "!_common_rel!\!_head_ref!" (
+                set "_head_sha="
+                set /p _head_sha=<"!_common_rel!\!_head_ref!"
+                set "_head_state=!_head_state!@!_head_sha!"
+            ) else if exist "!_git_dir!\!_common_rel!\packed-refs" (
+                set "_packed_refs_file=!_git_dir!\!_common_rel!\packed-refs"
+            ) else if exist "!_common_rel!\packed-refs" (
+                set "_packed_refs_file=!_common_rel!\packed-refs"
+            ) else (
+                set "_head_unresolved=1"
+            )
+        ) else if exist "!_git_dir!\packed-refs" (
+            set "_packed_refs_file=!_git_dir!\packed-refs"
+        ) else (
+            set "_head_unresolved=1"
+        )
+    )
+)
+if defined _packed_refs_file (
+    set "_packed_sha="
+    for /f "eol=# tokens=1,2" %%A in ('findstr /L /C:" !_head_ref_posix!" "!_packed_refs_file!" 2^>nul') do (
+        if "%%B"=="!_head_ref_posix!" set "_packed_sha=%%A"
+    )
+    if defined _packed_sha (
+        set "_head_state=!_head_state!@!_packed_sha!"
+    ) else (
+        set "_head_unresolved=1"
+    )
+)
+if "!_head_unresolved!"=="1" exit /b 0
+set "_files_state="
+for %%P in ("package.json" "package-lock.json" "bun.lock" "default\config.yaml" "scripts\dependency-state.js" "src\server-init.js" "src\config-init.js" "node_modules\.sillybunny-dependencies.json") do (
+    if exist %%P (
+        for %%F in (%%P) do set "_files_state=!_files_state!;%%~P=%%~tF:%%~zF"
+    ) else (
+        set "_files_state=!_files_state!;%%~P=missing"
+    )
+)
+set "_boot_stamp=v1;!_dependency_profile!;!NODE_ENV!;!_head_state!!_files_state!"
+exit /b 0
