@@ -225,6 +225,42 @@ export async function openConversationPicker(page, { toggle, root }) {
     await settle(page, { root });
 }
 
+/** The surface of the details window, which is on top of the workspace while it is open. */
+export const DETAILS_WINDOW = '.sb-details-window';
+
+/**
+ * Opens the details window of the audit character's conversation at one of its pages, or the mode-wide Preferences, through
+ * the entry points of `chrome.js`, as the header and the list do. A window that is open is replaced, so a page can be opened
+ * after another without closing it. Needs the workspace open (`openConversation`).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} pageId A page of `openConversationDetails`, or `preferences`.
+ * @param {{ avatar?: string }} [options] The character of a `profile` page, the audit character by default.
+ */
+export async function openConversationDetailsAt(page, pageId, { avatar = FIXTURES.character.avatar } = {}) {
+    await page.evaluate(async ({ pageId, avatar }) => {
+        const { openConversationDetails, openConversationPreferences } = await import('/scripts/sillybunny-conversation/chrome.js');
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const { getConversationPersonaId } = await import('/scripts/sillybunny-conversation/context.js');
+        const opened = pageId === 'preferences'
+            ? await openConversationPreferences()
+            : await openConversationDetails(conversationData.findDirect(getConversationPersonaId(), avatar)?.id, { page: pageId, avatar });
+        if (!opened) {
+            throw new Error(`The details window did not open at ${pageId}.`);
+        }
+    }, { pageId, avatar });
+    await page.locator(`${DETAILS_WINDOW} .sb-details-page`).last().waitFor({ state: 'visible' });
+    await settle(page, { root: DETAILS_WINDOW });
+}
+
+/** Closes the details window, one page at a time, as Escape does. */
+export async function closeConversationDetails(page) {
+    while (await page.locator(DETAILS_WINDOW).count()) {
+        const before = await page.locator(`${DETAILS_WINDOW} .sb-dialog__page`).count();
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(({ selector, count }) => document.querySelectorAll(selector).length < count, { selector: `${DETAILS_WINDOW} .sb-dialog__page`, count: before });
+    }
+}
+
 /** Adds two conversations to the thread of the character, so that the workspace has branches, and opens the first of them. */
 export async function addConversationChats(page) {
     await page.evaluate(async ({ avatar, texts, names, characterName, userName }) => {

@@ -103,7 +103,7 @@ export function buildMedia({ conversationId, nav }) {
             grid.setAttribute('role', 'list');
             grid.setAttribute('aria-label', 'Media');
             for (const item of items) {
-                const label = `${item.kind === 'video' ? 'Video' : 'Picture'} from ${describeSender(item)}, ${formatWhen(item.createdAt)}`;
+                const label = `${item.kind === 'video' ? 'Video' : 'Picture'} by ${describeSender(item)}, ${formatWhen(item.createdAt)}`;
                 const cell = el('button', 'sb-details-media-cell');
                 cell.type = 'button';
                 cell.setAttribute('role', 'listitem');
@@ -201,7 +201,7 @@ export function buildPinned({ conversationId, nav }) {
                 body.replaceChildren(emptyPage('thumbtack', 'No Pinned Messages'));
                 return;
             }
-            const list = createCollection('Pinned messages');
+            const list = createCollection('Pinned Messages');
             for (const item of items) {
                 const sender = describeSender(item);
                 const picture = item.memberAvatar
@@ -215,7 +215,7 @@ export function buildPinned({ conversationId, nav }) {
                     preview: item.text,
                     onActivate: openInChat(nav, conversationId, item),
                     menu: {
-                        label: `Actions for the pinned message from ${sender}`,
+                        label: `Pinned Message Actions for ${sender}`,
                         sections: () => [
                             { items: [createMenuItem('Show in Chat', 'arrow-up-right-from-square', openInChat(nav, conversationId, item))] },
                             { items: [createMenuItem('Unpin', 'thumbtack-slash', () => {

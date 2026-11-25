@@ -30,8 +30,8 @@ import {
     setExpandMessageActions, startGeneration, stopGeneration,
 } from './chat-steps.js';
 import {
-    MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById, openConversation,
-    openConversationPicker, openConversationSettings, setConversationConnection, showConversationPage,
+    DETAILS_WINDOW, MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationDetails, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById,
+    openConversation, openConversationDetailsAt, openConversationPicker, openConversationSettings, setConversationConnection, showConversationPage,
 } from './chat-conversation-steps.js';
 import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
 import { settle } from './steps.js';
@@ -598,6 +598,51 @@ export const surfaces = [
         masks: CONVERSATION_MASKS,
         needs: ['character'],
         sources: CONVERSATION_SOURCES,
+    },
+    {
+        id: 'chat.conversation.details',
+        family: 'chat',
+        owner: 'A',
+        overlay: true,
+        title: 'Conversation mode: the details window of a direct conversation, and Preferences (a modal window at the Dialog tier; a bottom sheet on a phone)',
+        root: DETAILS_WINDOW,
+        ready: [`${DETAILS_WINDOW} .sb-details-page--general`, `${DETAILS_WINDOW} .sb-details-hero__name`],
+        async open(page) {
+            await openConversation(page);
+            await openConversationDetailsAt(page, 'general');
+        },
+        close: closeConversationDetails,
+        states: [
+            ...['chats', 'media', 'files', 'pinned', 'behaviour', 'advanced'].map(id => ({
+                id,
+                async open(page) {
+                    await openConversationDetailsAt(page, id);
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-frame--${id} .sb-details-page`],
+            })),
+            {
+                id: 'profile',
+                async open(page) {
+                    await openConversationDetailsAt(page, 'profile');
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-frame--profile .sb-details-hero__name`],
+            },
+            {
+                id: 'preferences',
+                async open(page) {
+                    await openConversationDetailsAt(page, 'preferences');
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-page--settings`],
+            },
+        ],
+        // The rows of the Chats page and the reminders print dates and times that depend on the day of the run.
+        masks: [`${DETAILS_WINDOW} .ds-entity-row__subtitle`, `${DETAILS_WINDOW} .sb-details-hero__subtitle`, `${DETAILS_WINDOW} .sb-details-avatar`],
+        needs: ['character'],
+        sources: [
+            `${SCRIPTS}/sillybunny-conversation/details/window.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/general.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/chats.js`,
+            `${SCRIPTS}/sillybunny-conversation/details/pages/behaviour.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/advanced.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/profile.js`,
+            `${SCRIPTS}/sillybunny-conversation/details/pages/preferences.js`, `${CSS}/sillybunny-conversation-details.css`,
+        ],
     },
     {
         id: 'chat.conversation.composer',

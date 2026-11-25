@@ -337,9 +337,9 @@ test.describe('Media, Files and Pinned', () => {
         await showToasts(page);
         await openDetails(page, conversationId, { page: 'pinned' });
 
-        const pinned = shownPage(page).getByRole('list', { name: 'Pinned messages' });
+        const pinned = shownPage(page).getByRole('list', { name: 'Pinned Messages' });
         await expect(pinned.getByRole('listitem')).toContainText('Noon on Saturday, at the old oak.');
-        await pinned.getByRole('button', { name: /^Actions for the pinned message/ }).click();
+        await pinned.getByRole('button', { name: /^Pinned Message Actions/ }).click();
         await page.getByRole('menuitem', { name: 'Unpin' }).click();
         await expect(shownPage(page).getByText('No Pinned Messages')).toBeVisible();
         await page.getByRole('button', { name: 'Undo' }).click();

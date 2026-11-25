@@ -69,8 +69,8 @@ function createPageLinks(view, nav) {
     ];
     return {
         groups: [
-            createGroup({ label: 'People and chats', rows, field: 'people-and-chats' }),
-            createGroup({ label: 'Shared in this conversation', rows: shared, field: 'shared' }),
+            createGroup({ label: 'People and Chats', rows, field: 'people-and-chats' }),
+            createGroup({ label: 'Shared in This Conversation', rows: shared, field: 'shared' }),
         ],
         sharedRows: { media: shared[0], files: shared[1], pinned: shared[2] },
     };
@@ -123,7 +123,7 @@ export function buildGeneral({ conversationId, nav }) {
             ...links.groups.map(group => group.section),
             createGroup({ label: 'Notifications', rows: [notifications], field: 'notifications' }).section,
             createGroup({
-                label: 'Conversation settings',
+                label: 'Conversation Settings',
                 rows: [
                     createNavRow({ label: 'Behaviour', field: 'behaviour', onActivate: () => nav.push('behaviour') }),
                     createNavRow({ label: 'Advanced', field: 'advanced', onActivate: () => nav.push('advanced') }),

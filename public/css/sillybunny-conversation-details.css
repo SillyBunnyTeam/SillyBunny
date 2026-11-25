@@ -119,6 +119,9 @@
 
 .sb-details-page--profile .sb-details-clamp { max-inline-size: 444px; }
 
+/* The editor sheet spaces consecutive sections itself; the clamp spaces its groups, as AdwPreferencesPage does. */
+.sb-details-page .sb-details-clamp > .sb-editor-section { margin-block: 0; }
+
 .sb-details-hero {
     display: flex;
     flex-direction: column;
