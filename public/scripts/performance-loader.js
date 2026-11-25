@@ -38,10 +38,20 @@ function scheduleIdleWork(callback) {
 window.SillyBunnyLoadStylesheet = activateDeferredStyles;
 window.SillyBunnyLoadWideFontFallbacks = loadWideFontFallbacks;
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => scheduleIdleWork(activateDeferredStyles), { once: true });
-} else {
-    scheduleIdleWork(activateDeferredStyles);
+// An activated sheet delays the window `load` event until it has loaded, and script.js waits for `load` at its top
+// level before the app starts. An idle callback can run before `load` (the main thread is idle while the rest of the module
+// graph loads), so the idle work waits for `load`, and a slow sheet delays no start. A caller that needs a sheet earlier
+// activates it through the two functions above.
+function whenWindowLoaded(callback) {
+    if (document.readyState === 'complete') {
+        callback();
+        return;
+    }
+
+    window.addEventListener('load', callback, { once: true });
 }
 
-scheduleIdleWork(loadWideFontFallbacks);
+whenWindowLoaded(() => {
+    scheduleIdleWork(activateDeferredStyles);
+    scheduleIdleWork(loadWideFontFallbacks);
+});
