@@ -131,15 +131,25 @@ test.describe('the list at a desktop width', () => {
         await expect(page.getByRole('dialog', { name: 'Help' })).toBeVisible();
     });
 
-    test('Preferences and Details do not break the page while the window that opens them is not built', async ({ page, baseURL }) => {
+    test('Preferences and Details open the details window, or say in the console that it is missing, and never break the page', async ({ page, baseURL }) => {
         const errors = [];
+        const warnings = [];
         page.on('pageerror', error => errors.push(error.message));
+        page.on('console', message => message.type() === 'warning' && warnings.push(message.text()));
         await openSeededList(page, baseURL);
+        const answered = name => expect.poll(async () => (await page.locator('dialog[open]').count()) > 0 || warnings.some(text => text.includes(name)));
 
         await page.locator(MAIN_MENU).click();
         await chooseMenuItem(page, 'Preferences');
+        await answered('openConversationPreferences').toBe(true);
+        await page.keyboard.press('Escape');
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
+
         await openRowMenuByRightClick(page, 'Seraphina');
         await chooseMenuItem(page, 'Details');
+        await answered('openConversationDetails').toBe(true);
+        await page.keyboard.press('Escape');
+        await expect(page.locator('dialog[open]')).toHaveCount(0);
 
         await expect(page.getByRole('menuitem')).toHaveCount(0);
         await expect(page.locator(`${LIST} ${ROW}`)).toHaveCount(ALL_NAMES.length);
