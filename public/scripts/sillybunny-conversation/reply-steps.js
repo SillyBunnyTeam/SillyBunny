@@ -87,6 +87,20 @@ export function buildReplySteps(rawText, { speaker, mode = 'character', speakers
     });
 }
 
+/** The `extra` keys that the live path gives each bubble of a message, by what asked for it. */
+function getOriginFlags(reply) {
+    switch (reply.origin) {
+        case 'auto':
+            return { conversation_mode_auto: true, proactive: true };
+        case 'auto_chat':
+            return { conversation_mode_auto_chat: true };
+        case 'reminder':
+            return { conversation_mode_reminder: true, reminder_id: reply.reminder };
+        default:
+            return { conversation_mode_reply: true };
+    }
+}
+
 /**
  * The bubbles that a pending reply becomes, built the way the live path writes them: the same roles, names and
  * `extra` keys, one reply card on the first bubble of each speaker, the command metadata on the first bubble of a
@@ -111,7 +125,7 @@ export function buildPendingBubbles(message, reply, groups, { anchorAvatar, refe
 
     const extraFor = (speakerAvatar) => {
         const extra = {
-            ...(reply.origin === 'reply' ? { conversation_mode_reply: true } : {}),
+            ...getOriginFlags(reply),
             reply_token: reply.token,
         };
         if (speakerAvatar !== anchorAvatar) {

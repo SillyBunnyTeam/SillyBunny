@@ -140,6 +140,36 @@ describe('applyConversationReply', () => {
         })));
     });
 
+    describe('an automatic message and a reminder', () => {
+        const reminderPlan = reply => plan({ round: [], reply: { origin: 'reminder', reminder: 'rem_1760000000000_abc123', needs_user: false, triggers: [], ...reply } });
+        const autoPlan = reply => plan({ round: [], reply: { origin: 'auto', needs_user: true, triggers: [], ...reply } });
+
+        test('the marker names the origin, and the reminder that a reminder reply is for', () => {
+            const records = chatRecords([message('m1', 'user', 'Hi.', 1)]);
+
+            expect(applied(records, reminderPlan()).records.at(-1).extra.server_generation).toMatchObject({ origin: 'reminder', reminder: 'rem_1760000000000_abc123', triggers: [], round: [] });
+            expect(applied(records, autoPlan()).records.at(-1).extra.server_generation).toMatchObject({ origin: 'auto', triggers: [] });
+            expect(applied(records, autoPlan()).records.at(-1).extra.server_generation).not.toHaveProperty('reminder');
+        });
+
+        test('a reminder lands in a chat that has no message from the user, because the user asked for it', () => {
+            const records = chatRecords([message('m1', 'character', 'Greetings.', 1)]);
+
+            expect('records' in applied(records, reminderPlan())).toBe(true);
+            expect(applied(records, autoPlan())).toEqual({ reason: 'no-user-message' });
+        });
+
+        test('a second attempt at the same reminder is refused, whether the first landed as a pending message or as bubbles', () => {
+            const records = chatRecords([message('m1', 'user', 'Hi.', 1)]);
+            const first = applied(records, reminderPlan());
+            expect(first.records).toHaveLength(3);
+
+            expect(applied(first.records, reminderPlan({ token: TOKEN }))).toEqual({ reason: 'reply-landed' });
+            const split = chatRecords([message('m1', 'user', 'Hi.', 1), message('p.0', 'character', 'Do not forget.', 2, { reply_token: TOKEN })]);
+            expect(applied(split, reminderPlan())).toEqual({ reason: 'reply-landed' });
+        });
+    });
+
     describe('refuses', () => {
         test('reply-landed: a message already carries the token of the reply', () => {
             const records = chatRecords([...chatMessages(), message('m4', 'character', 'Saved by the page.', 4, { reply_token: TOKEN })]);

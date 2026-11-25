@@ -159,6 +159,20 @@ describe('the bubbles that a pending reply becomes', () => {
         expect(bubbles[0].extra.server_generation).toBeUndefined();
     });
 
+    test('carry the flags of the live path for a message that a character starts, and no flag of a reply', () => {
+        const auto = land({ text: 'Hey, you there?', pending: { origin: 'auto' }, reference: null }).bubbles[0].extra;
+        const chat = land({ text: 'Did you see that?', pending: { origin: 'auto_chat', speaker: 'nova.png' }, speaker: NOVA, reference: null }).bubbles[0].extra;
+
+        expect(auto).toEqual({ conversation_mode_auto: true, proactive: true, reply_token: 'abcdef0123456789' });
+        expect(chat).toEqual({ conversation_mode_auto_chat: true, member_avatar: 'nova.png', reply_token: 'abcdef0123456789' });
+    });
+
+    test('carry the id of the reminder that a reminder reply delivers', () => {
+        const { bubbles } = land({ text: 'Time to water the plants.', pending: { origin: 'reminder', reminder: 'rem_1_abc123' }, reference: null });
+
+        expect(bubbles[0].extra).toEqual({ conversation_mode_reminder: true, reminder_id: 'rem_1_abc123', reply_token: 'abcdef0123456789' });
+    });
+
     test('point back at the message that they answer on the first bubble of each speaker only', () => {
         const { bubbles } = land({ text: 'Aster: one\nNova: two\nAster: three\nNova: four', speakers: GROUP_SPEAKERS });
 

@@ -27,7 +27,13 @@ describe('a message that the server wrote and no page has landed yet', () => {
             roundStarted: message.extra.server_generation.round_started,
             triggers: ['u1', 'u2'],
             target: 'c9',
+            reminder: '',
         });
+    });
+
+    test('reads the origin, and the reminder that a reminder reply is for', () => {
+        expect(readPendingReply(pendingReply({ origin: 'auto' }))).toMatchObject({ origin: 'auto', reminder: '' });
+        expect(readPendingReply(pendingReply({ origin: 'reminder', reminder: 'rem_1_abc123' }))).toMatchObject({ origin: 'reminder', reminder: 'rem_1_abc123' });
     });
 
     test('answers null for a message that is not pending', () => {

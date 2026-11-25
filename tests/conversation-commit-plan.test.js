@@ -11,6 +11,7 @@ import { parseConversationChatKey } from '../public/scripts/conversation-commit-
 
 const CONVERSATION = 'conv_1700000000000_abcdef0123';
 const TOKEN = 'a1b2c3d4e5f60718';
+const REMINDER = 'rem_1760000000000_abc123';
 const STARTED = '2026-10-03T10:00:00.000Z';
 
 function conversationPlan(overrides = {}) {
@@ -117,12 +118,34 @@ describe('normalizeCommitPlan for a conversation reply', () => {
     });
 
     test('accepts every origin and both routes that the format names', () => {
-        for (const origin of ['reply', 'auto', 'chime', 'auto_chat', 'reminder']) {
+        for (const origin of ['reply', 'auto', 'auto_chat']) {
             expect(normalizeCommitPlan(withReply({ origin }))?.reply.origin).toBe(origin);
         }
+        expect(normalizeCommitPlan(withReply({ origin: 'reminder', reminder: REMINDER }))?.reply.origin).toBe('reminder');
         for (const route of ['profile', 'raw']) {
             expect(normalizeCommitPlan(withReply({ route }))?.reply.route).toBe(route);
         }
+    });
+
+    test('has no origin for a member that chimes in: the mode no longer sends one', () => {
+        expect(normalizeCommitPlan(withReply({ origin: 'chime' }))).toBeNull();
+    });
+
+    test('a plan for an automatic message answers no message, and needs a message from the user in the chat', () => {
+        const plan = normalizeCommitPlan(withReply({ origin: 'auto', triggers: [], target: null, needs_user: true }));
+
+        expect(plan?.reply).toMatchObject({ origin: 'auto', triggers: [], target: null, needs_user: true });
+    });
+
+    test('a reminder plan names its reminder, and a plan of any other origin names none', () => {
+        expect(normalizeCommitPlan(withReply({ origin: 'reminder', reminder: REMINDER }))?.reply.reminder).toBe(REMINDER);
+        expect(normalizeCommitPlan(withReply({ origin: 'reminder' }))).toBeNull();
+        expect(normalizeCommitPlan(withReply({ origin: 'reminder', reminder: '' }))).toBeNull();
+        expect(normalizeCommitPlan(withReply({ origin: 'reminder', reminder: 'r'.repeat(65) }))).toBeNull();
+        expect(normalizeCommitPlan(withReply({ origin: 'reminder', reminder: 42 }))).toBeNull();
+        expect(normalizeCommitPlan(withReply({ origin: 'auto', reminder: REMINDER }))).toBeNull();
+        expect(normalizeCommitPlan(withReply({ origin: 'reply', reminder: REMINDER }))).toBeNull();
+        expect(normalizeCommitPlan(conversationPlan())?.reply).not.toHaveProperty('reminder');
     });
 
     test('is one owner or the other: a conversation with an avatar or a group is invalid', () => {

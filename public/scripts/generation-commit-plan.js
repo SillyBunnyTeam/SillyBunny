@@ -183,10 +183,11 @@ export function decodeCommitPlan(value) {
  * @property {string} token One per logical reply (16 to 32 hex); a reply that carries it is in the chat already
  * @property {string} speaker Avatar file of the member who speaks
  * @property {string} anchor Avatar file the page used as the anchor of the conversation, which decides each bubble's role
- * @property {'reply'|'auto'|'chime'|'auto_chat'|'reminder'} origin What asked for the reply
+ * @property {'reply'|'auto'|'auto_chat'|'reminder'} origin What asked for the reply
  * @property {'profile'|'raw'} route Which request route made it, and so which text clean-up applies
  * @property {{ id: string, rev: string }[]} triggers The messages the reply answers, with the 8-hex hash of each revision (at most 24)
  * @property {{ id: string, rev: string }|null} target Explicit reply target
  * @property {boolean} needs_user The chat must hold a user message
  * @property {number} round_started Start of the group round, ms since the epoch, the same for every member of it
+ * @property {string} [reminder] The id of the reminder that the reply delivers; only for the origin `reminder`
  */

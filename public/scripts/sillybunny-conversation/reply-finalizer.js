@@ -30,6 +30,7 @@
  * @property {(commandParts: object, speakerAvatar: string, options: object) => void} runCommands `commitCharacterReplyCommands()`.
  * @property {(request: object, context: object) => Promise<boolean>} makeSelfie
  * @property {(generationIds: string[]) => void} acknowledge
+ * @property {(conversationId: string, reminderId: string) => void} [markReminderDelivered] Records that a reminder reached the chat.
  * @typedef {object} LandedReply
  * @property {PendingReply} reply The marker of the message that was replaced.
  * @property {string[]} bubbleIds
@@ -43,6 +44,9 @@ const DEFAULT_LOCK_TIMEOUT_MS = 20_000;
 const MAX_PASSES = 3;
 
 const keyOf = address => `${address.conversationId}/${address.chatId}`;
+
+/** Whether bubbles of the reply are in the chat already: any message that is not the pending one and carries its token. */
+const hasLandedBubbles = (messages, reply) => Boolean(reply.token) && messages.some(item => !isPendingServerReply(item) && item.extra?.reply_token === reply.token);
 
 /**
  * @param {object} parts
@@ -111,6 +115,39 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
         }
     }
 
+    /** A reminder that a landed reply delivers is done: the worker of a page that was closed could not write it. */
+    function reportReminderDelivered(address, reply) {
+        if (reply.origin === 'reminder' && reply.reminder) {
+            page.markReminderDelivered?.(address.conversationId, reply.reminder);
+        }
+    }
+
+    /**
+     * A page that was alive when the reply was ready wrote it itself, and the server's copy of the same reply then
+     * arrived as well (the claim failed and the server committed, or an earlier attempt at the same reminder was
+     * written late). The chat holds the reply already, so the pending message goes and nothing is written twice.
+     */
+    async function dropDuplicate(address, message, reply) {
+        try {
+            data.commitChat(address, (draft) => {
+                const index = draft.messages.findIndex(item => item.id === message.id);
+                if (index >= 0) {
+                    draft.messages.splice(index, 1);
+                }
+            }, { shrink: true });
+        } catch (error) {
+            if (error?.name === 'ChatNotLoadedError') {
+                return null;
+            }
+            throw error;
+        }
+        await data.saveChat(address);
+        reportReminderDelivered(address, reply);
+        page.acknowledge([reply.generationId]);
+        landedGenerationIds.add(reply.generationId);
+        return { landed: { reply, bubbleIds: [] }, selfies: [], context: null };
+    }
+
     /**
      * Replaces one pending message with its bubbles. Called with the lock held.
      * @returns {Promise<{ landed: LandedReply, selfies: object[], context: object }|null>} Null when the chat went away.
@@ -120,6 +157,10 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
         const reply = readPendingReply(message);
         if (!view || !reply) {
             return null;
+        }
+
+        if (hasLandedBubbles(data.chat(address)?.messages ?? [], reply)) {
+            return dropDuplicate(address, message, reply);
         }
 
         const chatContext = page.context(view, reply);
@@ -164,6 +205,9 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
 
         for (const effect of sideEffects) {
             page.runCommands(effect.commandParts, effect.speakerAvatar, { chatId: address.chatId, groupId, personaId, reminderAvatar: anchorAvatar, reminderIdPrefix: effect.idPrefix });
+        }
+        if (bubbles.length) {
+            reportReminderDelivered(address, reply);
         }
         page.acknowledge([reply.generationId]);
         landedGenerationIds.add(reply.generationId);

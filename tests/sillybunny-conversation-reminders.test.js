@@ -42,9 +42,15 @@ describe('the state of a reminder', () => {
     });
 });
 
+/** What `patchReminder()` does with a change: a field given as null is removed. */
+function applied(reminder, change) {
+    const next = { ...reminder, ...change };
+    return Object.fromEntries(Object.entries(next).filter(([, value]) => value !== null));
+}
+
 describe('the attempts of a reminder', () => {
     test('are counted before the request starts, and the next one waits', () => {
-        const claimed = claimReminderAttempt(reminder(), NOW);
+        const claimed = applied(reminder(), claimReminderAttempt(reminder(), NOW));
 
         expect(claimed).toMatchObject({ attempts: 1, lastAttemptAt: NOW, retryAfter: NOW + REMINDER_RETRY_DELAY_MS });
         expect(isReminderDue(claimed, NOW + REMINDER_RETRY_DELAY_MS - 1)).toBe(false);
@@ -54,7 +60,9 @@ describe('the attempts of a reminder', () => {
     test('stop after a fixed number: the last failed one gives the reminder up', () => {
         let current = reminder();
         for (let attempt = 1; attempt <= MAX_REMINDER_ATTEMPTS; attempt++) {
-            current = settleFailedReminderAttempt(claimReminderAttempt(current, NOW + attempt * 1_000_000), NOW + attempt * 1_000_000);
+            const at = NOW + attempt * 1_000_000;
+            current = applied(current, claimReminderAttempt(current, at));
+            current = applied(current, settleFailedReminderAttempt(current, at));
             expect(getReminderState(current)).toBe(attempt < MAX_REMINDER_ATTEMPTS ? 'scheduled' : 'given-up');
         }
 
@@ -62,8 +70,15 @@ describe('the attempts of a reminder', () => {
         expect(isReminderDue(current, Number.MAX_SAFE_INTEGER)).toBe(false);
     });
 
+    test('a failed attempt before the last one changes nothing: the wait that the claim set stays', () => {
+        const claimed = applied(reminder(), claimReminderAttempt(reminder(), NOW));
+
+        expect(settleFailedReminderAttempt(claimed, NOW)).toEqual({});
+    });
+
     test('a delivered reminder keeps its count and loses the wait', () => {
-        const delivered = markReminderDelivered(claimReminderAttempt(reminder(), NOW), NOW + 5);
+        const claimed = applied(reminder(), claimReminderAttempt(reminder(), NOW));
+        const delivered = applied(claimed, markReminderDelivered(NOW + 5));
 
         expect(delivered).toMatchObject({ fired: true, firedAt: NOW + 5, attempts: 1 });
         expect(delivered).not.toHaveProperty('retryAfter');

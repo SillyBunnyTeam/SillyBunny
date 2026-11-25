@@ -15,6 +15,8 @@ const FINISHED_AT = Date.UTC(2026, 5, 1, 12, 30, 0);
  * @param {string[]} [options.round] Avatars still to speak after this reply.
  * @param {string[]} [options.triggers] Ids of the messages that the reply answers.
  * @param {string} [options.token]
+ * @param {'reply'|'auto'|'auto_chat'|'reminder'} [options.origin]
+ * @param {string} [options.reminder] The reminder that a reply of origin `reminder` is for.
  * @param {number} [options.finishedAt]
  * @returns {object} The message record.
  */
@@ -31,6 +33,8 @@ export function pendingReply({
     generationId = 'gen-1',
     roundStarted = finishedAt - 4000,
     target = null,
+    origin = 'reply',
+    reminder = '',
 } = {}) {
     const isMember = speaker !== anchor;
     return {
@@ -50,7 +54,7 @@ export function pendingReply({
                 kind: 'reply',
                 pending: true,
                 token,
-                origin: 'reply',
+                origin,
                 route,
                 speaker,
                 anchor,
@@ -58,6 +62,7 @@ export function pendingReply({
                 round_started: roundStarted,
                 triggers,
                 target,
+                ...(reminder ? { reminder } : {}),
             },
         },
     };

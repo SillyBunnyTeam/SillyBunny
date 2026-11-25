@@ -7,7 +7,7 @@
  * @typedef {object} PendingReply
  * @property {string} generationId The id that the page acknowledges to the server.
  * @property {string} token One per logical reply; it is on every bubble that the reply becomes.
- * @property {string} origin `reply` for an answer to a message of the user.
+ * @property {string} origin `reply` for an answer to a message of the user, `auto` and `auto_chat` for a message that a character starts, `reminder` for a reminder.
  * @property {'profile'|'raw'} route The request route, which decides the clean-up of the text.
  * @property {string} speaker Avatar of the member that spoke.
  * @property {string} anchor Avatar that named the conversation when the reply was asked for.
@@ -15,6 +15,7 @@
  * @property {number} roundStarted Milliseconds since the epoch at which the round began.
  * @property {string[]} triggers Ids of the messages that the reply answers.
  * @property {string|null} target Id of the message that the user chose to reply to, if any.
+ * @property {string} reminder The id of the reminder that the reply delivers; empty for every other origin.
  */
 
 /** @param {any} message */
@@ -53,5 +54,6 @@ export function readPendingReply(message) {
         roundStarted: Number.isFinite(roundStarted) ? roundStarted : 0,
         triggers: readStrings(marker.triggers),
         target: typeof marker.target === 'string' && marker.target ? marker.target : null,
+        reminder: readString(marker.reminder),
     };
 }

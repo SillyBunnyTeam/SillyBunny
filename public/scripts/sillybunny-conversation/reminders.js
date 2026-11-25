@@ -1,7 +1,7 @@
 /**
  * What a reminder of a conversation goes through. The worker starts an attempt, and a reminder that fails stops after
- * `MAX_REMINDER_ATTEMPTS` instead of trying every minute for ever. Every function returns the reminder that results and
- * changes nothing, so that the worker and the data module apply the change in one patch.
+ * `MAX_REMINDER_ATTEMPTS` instead of trying every minute for ever. The functions that change a reminder return the
+ * change and write nothing; the worker and the finalizer apply it with `conversationData.patchReminder()`.
  *
  * The stored shape is `src/conversation-schema.js`: `fired`, `firedAt`, `attempts`, `lastAttemptAt`, `retryAfter`,
  * `invalidAt` (the chat is gone) and `skippedAt` (given up).
@@ -39,22 +39,25 @@ export function isReminderDue(reminder, now) {
 }
 
 /**
- * Records an attempt before its request starts. The time until the next try is a lease: a page that closes in the
- * middle of the request cannot write anything afterwards, and the lease keeps the next page from starting a second
- * request while the server may still write the first one.
+ * The change that records an attempt before its request starts (`conversationData.patchReminder()`; null removes a
+ * field). The time until the next try is a lease: a page that closes in the middle of the request cannot write anything
+ * afterwards, and the lease keeps the next page from starting a second request while the server may still write the first.
  */
 export function claimReminderAttempt(reminder, now) {
-    return { ...reminder, attempts: (reminder.attempts ?? 0) + 1, lastAttemptAt: now, retryAfter: now + REMINDER_RETRY_DELAY_MS };
+    return { attempts: (reminder.attempts ?? 0) + 1, lastAttemptAt: now, retryAfter: now + REMINDER_RETRY_DELAY_MS };
 }
 
-/** What an attempt that did not deliver leaves: the reminder, or the reminder given up when it used every attempt. */
+/**
+ * The change after an attempt that did not deliver. `reminder` is the reminder as the attempt left it, so that it has
+ * the count that the attempt added; a reminder that used every attempt is given up.
+ */
 export function settleFailedReminderAttempt(reminder, now) {
-    return (reminder.attempts ?? 0) >= MAX_REMINDER_ATTEMPTS ? { ...reminder, skippedAt: now } : reminder;
+    return (reminder.attempts ?? 0) >= MAX_REMINDER_ATTEMPTS ? { skippedAt: now } : {};
 }
 
-export function markReminderDelivered(reminder, now) {
-    const { retryAfter: _retryAfter, ...rest } = reminder;
-    return { ...rest, fired: true, firedAt: now };
+/** The change that records a delivered reminder. The page that wrote the reply and the page that landed the server's copy both write it. */
+export function markReminderDelivered(now) {
+    return { fired: true, firedAt: now, retryAfter: null };
 }
 
 /**

@@ -11,6 +11,7 @@ import { createTargetCheck } from './deletion-guards.js';
 import { commitCharacterReplyCommands, generateSelfieFromContext, getConversationReplySpeakers } from './generation.js';
 import { getConversationMemberSettings } from './members.js';
 import { afterIncomingMessage } from './message-writer.js';
+import { markReminderDelivered } from './reminders.js';
 import { createReplyFinalizer } from './reply-finalizer.js';
 import { getSettings } from './settings-store.js';
 
@@ -82,6 +83,7 @@ const finalizer = createReplyFinalizer({
             messageId: request.id,
         }),
         acknowledge: acknowledgeGenerations,
+        markReminderDelivered: (conversationId, reminderId) => conversationData.patchReminder(conversationId, reminderId, markReminderDelivered(Date.now())),
     },
 });
 

@@ -8,8 +8,11 @@
  */
 
 export const CONVERSATION_REPLY_KIND = 'reply';
-/** Phase 4 sends `reply` only; the others are reserved for the automatic messages that a later phase moves to the server. */
-export const CONVERSATION_REPLY_ORIGINS = Object.freeze(['reply', 'auto', 'chime', 'auto_chat', 'reminder']);
+/**
+ * `reply`: an answer to a message of the user. `auto`: a message to the user that a character starts (messaging first).
+ * `auto_chat`: members of a group talking to each other. `reminder`: a reminder that the user set, named in `reply.reminder`.
+ */
+export const CONVERSATION_REPLY_ORIGINS = Object.freeze(['reply', 'auto', 'auto_chat', 'reminder']);
 /** `profile`: the connection profile route. `raw`: generateRaw(). The route decides which text clean-up the page applies later. */
 export const CONVERSATION_REPLY_ROUTES = Object.freeze(['profile', 'raw']);
 export const MAX_CONVERSATION_ROUND = 2;
@@ -120,6 +123,11 @@ export function normalizeConversationPlan(plan) {
         || typeof reply.needs_user !== 'boolean' || !Number.isSafeInteger(reply.round_started) || reply.round_started < 0) {
         return null;
     }
+    // The reminder is named so that the page that lands the reply can mark it delivered; no other origin has one.
+    const reminder = reply.origin === 'reminder' ? boundedText(reply.reminder, MAX_ID_LENGTH) : null;
+    if (reply.origin === 'reminder' ? reminder === null : reply.reminder !== undefined) {
+        return null;
+    }
 
     const message = plan.message && typeof plan.message === 'object' ? plan.message : {};
     const name = boundedText(message.name, MAX_NAME_LENGTH);
@@ -159,6 +167,7 @@ export function normalizeConversationPlan(plan) {
             target,
             needs_user: reply.needs_user,
             round_started: reply.round_started,
+            ...(reminder === null ? {} : { reminder }),
         },
     };
 }

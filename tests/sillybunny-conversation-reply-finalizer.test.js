@@ -161,6 +161,57 @@ describe('landing a pending reply', () => {
     });
 });
 
+describe('a message that a character started, and a reminder', () => {
+    test('an automatic message lands as bubbles with the flags of the live path, and is acknowledged', async () => {
+        const pending = pendingReply({ text: 'Hey, you there?\n\nWhat are you up to?', origin: 'auto', generationId: 'g-auto' });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data, page, finalizer } = await openPage();
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(data.chat(ADDRESS).messages.slice(2).map(message => message.mes)).toEqual(['Hey, you there?', 'What are you up to?']);
+        expect(byId(data, `${pending.id}.0`).extra).toMatchObject({ conversation_mode_auto: true, reply_token: pending.extra.reply_token });
+        expect(byId(data, `${pending.id}.0`).extra).not.toHaveProperty('conversation_mode_reply');
+        expect(page.acknowledge).toHaveBeenCalledWith(['g-auto']);
+    });
+
+    test('a reminder lands as bubbles, and the page is told which reminder it delivered', async () => {
+        const pending = pendingReply({ text: 'Time to water the plants.', origin: 'reminder', reminder: 'rem_1_aaaaaa' });
+        seedConversations(server, [DIRECT(pending)]);
+        const markReminderDelivered = jest.fn();
+        const { data, finalizer } = await openPage(makePage({ markReminderDelivered }));
+        await data.loadChat(ADDRESS);
+
+        await finalizer.finalize(ADDRESS);
+
+        expect(byId(data, `${pending.id}.0`).extra).toMatchObject({ conversation_mode_reminder: true, reminder_id: 'rem_1_aaaaaa' });
+        expect(markReminderDelivered).toHaveBeenCalledTimes(1);
+        expect(markReminderDelivered).toHaveBeenCalledWith(DIRECT_ID, 'rem_1_aaaaaa');
+    });
+
+    test('a reply whose token a page already wrote into the chat is removed and written no second time', async () => {
+        const token = 'feedfacefeedface';
+        const pending = pendingReply({ text: 'Time to water the plants.', origin: 'reminder', reminder: 'rem_1_aaaaaa', token, generationId: 'g-twice' });
+        const bubble = { ...pendingReply({ text: 'Time to water the plants.', token, finishedAt: Date.UTC(2026, 5, 1, 12, 29, 0) }), id: 'live-1', extra: { conversation_mode_reminder: true, reply_token: token } };
+        seedConversations(server, [DIRECT(pending, [{ record: bubble }])]);
+        const markReminderDelivered = jest.fn();
+        const page = makePage({ markReminderDelivered });
+        const { data, finalizer } = await openPage(page);
+        await data.loadChat(ADDRESS);
+
+        const landed = await finalizer.finalize(ADDRESS);
+
+        expect(ids(data)).toEqual(['main-0', 'main-1', 'live-1']);
+        expect((await serverChat()).map(message => message.id)).toEqual(['main-0', 'main-1', 'live-1']);
+        expect(page.afterIncoming).not.toHaveBeenCalled();
+        expect(page.acknowledge).toHaveBeenCalledWith(['g-twice']);
+        expect(markReminderDelivered).toHaveBeenCalledWith(DIRECT_ID, 'rem_1_aaaaaa');
+        expect(landed).toHaveLength(1);
+        expect(landed[0].bubbleIds).toEqual([]);
+    });
+});
+
 describe('what the page does after a reply landed', () => {
     test('runs the effects of an incoming message for each bubble, and notifies and schedules the memory summary once, for the last', async () => {
         const pending = pendingReply({ text: 'one\n\ntwo\n\nthree', triggers: ['main-1'] });

@@ -110,6 +110,7 @@ function createPendingMessage(plan, reply, { id, finishedAt }) {
                 round_started: fields.round_started,
                 triggers: fields.triggers.map(stamp => stamp.id),
                 target: fields.target?.id ?? null,
+                ...(fields.reminder ? { reminder: fields.reminder } : {}),
             },
         },
     };
