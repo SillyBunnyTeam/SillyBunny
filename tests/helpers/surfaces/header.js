@@ -459,7 +459,7 @@ export const surfaces = [
         owner: 'A',
         title: 'Conversation: sidebar header',
         root: '#sb_conversation_list .sb-conversation-rail-header',
-        ready: ['#sb_conversation_list .sb-conversation-rail-title', '#sb_conversation_list .sb-conversation-rail-new-button'],
+        ready: ['#sb_conversation_list .sb-conversation-rail-new-button', '#sb_conversation_list .sb-conversation-rail-main-menu-button'],
         open: openConversationSidebar,
         close: closeConversation,
         needs: ['character'],

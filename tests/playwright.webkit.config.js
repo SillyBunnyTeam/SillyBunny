@@ -4,7 +4,9 @@ import baseConfig from './playwright.config.js';
 // The dialog frame, side panels and their callers. Safari/iOS WebKit is a supported baseline, and these
 // surfaces rely on `<dialog>`, `inert`, `backdrop-filter` and touch gestures, where WebKit differs most. The last three
 // specs measure the layout that settings pages, windows and panels share: percentage padding, `vw` widths and transitions.
+// `conversation-list` is here for the drag of a row by pointer events, the one Tab stop of the list and its menu keys.
 export const DIALOG_SPECS = [
+    'conversation-list',
     'sillybunny-dialog-frame',
     'sillybunny-dialog-tiers',
     'popup-scroll',

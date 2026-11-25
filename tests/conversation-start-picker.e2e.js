@@ -87,11 +87,11 @@ async function chooseNewMenuItem(page, name) {
     await expect(page.locator(PICKER)).toBeVisible();
 }
 
-test('New DM picks a character from the shared picker and focuses the composer', async ({ page, baseURL }) => {
+test('New Conversation picks a character from the shared picker and focuses the composer', async ({ page, baseURL }) => {
     test.setTimeout(90000);
     await boot(page, baseURL);
     await openEmptyWorkspace(page);
-    await chooseNewMenuItem(page, 'New DM');
+    await chooseNewMenuItem(page, 'New Conversation');
 
     await expect(page.locator(`${PICKER} .sb-picker__option img.sb-conversation-picker-avatar`).first()).toBeVisible();
     await page.locator(`${PICKER} .sb-picker__search`).fill('zzzz-no-such-character');

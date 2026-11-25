@@ -1323,13 +1323,13 @@ const NEW_MENU = '[data-sb-conversation-action="open-new-menu"]';
 
 const conversationStartNoMatches = status({
     id: 'conversation.start-direct-conversation-no-matches',
-    title: 'Conversation: the New DM list finds no character, and the New group list as a state',
+    title: 'Conversation: the New Conversation list finds no character, and the New group list as a state',
     component: 'shared',
     root: START_DIRECT_CONVERSATION_EMPTY,
     ready: titled(START_DIRECT_CONVERSATION_EMPTY, 'No matching characters found.'),
     async open(page) {
         await openConversation(page);
-        await chooseMenuItem(page, NEW_MENU, 'New DM');
+        await chooseMenuItem(page, NEW_MENU, 'New Conversation');
         await page.locator(PICKER_SEARCH).fill(NO_MATCH);
         await reveal(page, START_DIRECT_CONVERSATION_EMPTY);
         await settle(page);
@@ -1381,13 +1381,13 @@ const conversationPersonasEmpty = status({
 
 const conversationListEmpty = status({
     id: 'conversation.list-empty',
-    title: 'Conversation: the Pals list without a DM',
+    title: 'Conversation: the list without a conversation',
     component: 'shared',
     root: LIST_EMPTY,
     async open(page) {
         await openConversation(page);
         if (!await page.locator(LIST_EMPTY).first().isVisible()) {
-            // A phone keeps the Pals list on its own page.
+            // A phone keeps the list on its own page.
             await page.locator('[data-sb-conversation-action="toggle-list"]').first().click();
         }
         await reveal(page, LIST_EMPTY);

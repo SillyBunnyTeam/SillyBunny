@@ -99,6 +99,7 @@ export const surfaces = [
         ['composer', 'Conversation composer menu (Add to message)', 'open-composer-menu', 'chat', NARROW_VIEWPORTS],
         ['status', 'Conversation status and persona menu', 'open-persona-menu', 'list'],
         ['new', 'New conversation menu', 'open-new-menu', 'list'],
+        ['main', 'Conversation list main menu', 'open-main-menu', 'list'],
     ].map(([id, title, action, workspacePage, viewports]) => menu({
         id: `conversation.${id}`,
         title,
@@ -111,6 +112,18 @@ export const surfaces = [
             await openFrom(page, `[data-sb-conversation-action="${action}"]`);
         },
     })),
+    menu({
+        id: 'conversation.row',
+        title: 'Conversation row menu (secondary click)',
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-list-menu.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-controls.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await page.locator('#sb_conversation_list_items .sb-conversation-list-item').filter({ visible: true }).first().click({ button: 'right' });
+            await settleOverlay(page, MENU_ROOT);
+        },
+    }),
     menu({
         id: 'character-list.actions',
         title: 'Character list menu (More)',
