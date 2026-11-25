@@ -80,7 +80,7 @@ describe('createChat', () => {
     test('adds a blank chat with an id of the server, and leaves the active chat as it was', () => {
         const { conversation, chat: created } = createChat(user, conversationId, { name: 'Trip' });
 
-        expect(created.id).toMatch(/^chat_\d+_[0-9a-f]{6}$/);
+        expect(created.id).toMatch(/^chat_\d+_[0-9a-f]{12}$/);
         expect(created).toMatchObject({ name: 'Trip', readThrough: '', followupCount: 0 });
         expect(conversation.chats.map(item => item.id)).toEqual(['main', created.id]);
         expect(conversation.activeChatId).toBe('main');

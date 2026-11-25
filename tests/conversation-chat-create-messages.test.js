@@ -69,7 +69,7 @@ describe('createChatFromMessages', () => {
     test('chooses the chat id when the caller gives none, and opens the chat when asked to', async () => {
         const { chat, conversation } = await createChatFromMessages(user, conversationId, { messages: messages(1), activate: true });
 
-        expect(chat.id).toMatch(/^chat_\d+_[0-9a-f]{6}$/);
+        expect(chat.id).toMatch(/^chat_\d+_[0-9a-f]{12}$/);
         expect(conversation.activeChatId).toBe(chat.id);
     });
 

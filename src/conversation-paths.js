@@ -80,7 +80,7 @@ export function createConversationId(now = Date.now(), random = crypto.randomByt
  * @param {string} [random] The random part, for tests.
  * @returns {string}
  */
-export function createChatId(now = Date.now(), random = crypto.randomBytes(3).toString('hex')) {
+export function createChatId(now = Date.now(), random = crypto.randomBytes(6).toString('hex')) {
     return `chat_${now}_${random}`;
 }
 
