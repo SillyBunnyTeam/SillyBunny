@@ -5,7 +5,9 @@ import baseConfig from './playwright.config.js';
 // surfaces rely on `<dialog>`, `inert`, `backdrop-filter` and touch gestures, where WebKit differs most. The last three
 // specs measure the layout that settings pages, windows and panels share: percentage padding, `vw` widths and transitions.
 // `conversation-list` is here for the drag of a row by pointer events, the one Tab stop of the list and its menu keys.
+// `conversation-emoji-chooser` is here for the roving grid, the bottom sheet, the long press and the colour font, which differ per engine.
 export const DIALOG_SPECS = [
+    'conversation-emoji-chooser',
     'conversation-list',
     'sillybunny-dialog-frame',
     'sillybunny-dialog-tiers',
