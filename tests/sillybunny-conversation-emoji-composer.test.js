@@ -44,6 +44,24 @@ describe('insertEmojiAtCaret', () => {
         expect(document.activeElement).toBe(entry);
     });
 
+    test('answers where the caret is after the emoji, so that a second pick goes after the first', () => {
+        const entry = makeEntry('ab');
+        const caret = insertEmojiAtCaret(entry, '😀', { start: 1, end: 1 });
+        expect(caret).toBe('a😀'.length);
+        insertEmojiAtCaret(entry, '👍', { start: caret, end: caret });
+        expect(entry.value).toBe('a😀👍b');
+    });
+
+    test('leaves the focus where it is when asked to, because moving it out of an open chooser closes the chooser', () => {
+        const entry = makeEntry('ab');
+        const other = document.createElement('button');
+        document.body.append(other);
+        other.focus();
+        insertEmojiAtCaret(entry, '😀', { start: 1, end: 1 }, { focus: false });
+        expect(document.activeElement).toBe(other);
+        expect(entry.value).toBe('a😀b');
+    });
+
     test('works on an empty entry, and inserts a sequence whole', () => {
         const entry = makeEntry('');
         insertEmojiAtCaret(entry, '👨‍👩‍👧', { start: 0, end: 0 });

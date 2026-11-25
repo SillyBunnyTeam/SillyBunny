@@ -4,8 +4,10 @@
  * @param {HTMLTextAreaElement} entry
  * @param {string} emoji
  * @param {{ start: number, end: number }} range The selection of the entry when the chooser opened.
+ * @param {{ focus?: boolean }} [options] `focus: false` leaves the focus where it is: a chooser that stays open closes when the focus leaves it.
+ * @returns {number} Where the caret is now, which is where the next emoji of the same chooser goes.
  */
-export function insertEmojiAtCaret(entry, emoji, { start, end }) {
+export function insertEmojiAtCaret(entry, emoji, { start, end }, { focus = true } = {}) {
     const length = entry.value.length;
     const from = Math.min(Math.max(0, start), length);
     const to = Math.min(Math.max(from, end), length);
@@ -14,5 +16,8 @@ export function insertEmojiAtCaret(entry, emoji, { start, end }) {
     entry.setSelectionRange(from + emoji.length, from + emoji.length);
     // The entry grows with its text and saves its draft on `input`.
     entry.dispatchEvent(new Event('input', { bubbles: true }));
-    entry.focus({ preventScroll: true });
+    if (focus) {
+        entry.focus({ preventScroll: true });
+    }
+    return from + emoji.length;
 }

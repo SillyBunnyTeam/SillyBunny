@@ -344,19 +344,31 @@ function isComposerEmojiButtonHidden() {
 /**
  * Opens the emoji chooser for the composer entry. The entry's selection is read first, because the chooser takes the focus.
  * @param {HTMLElement} trigger The Emoji button, or the "+" button when the Emoji button is not drawn.
+ * @param {{ fromEntry?: boolean }} [options] `fromEntry`: the shortcut opened it, so a chooser that closes without a pick gives the focus back to the entry and not to the button.
  */
-async function openComposerEmojiChooser(trigger) {
+async function openComposerEmojiChooser(trigger, { fromEntry = false } = {}) {
     const input = document.getElementById(CHROME_IDS.input);
     if (!(input instanceof HTMLTextAreaElement) || input.disabled) {
         return;
     }
-    const range = { start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length };
+    let range = { start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length };
     const { openEmojiChooser } = await import('./emoji/emoji-chooser.js');
     openEmojiChooser({
         trigger,
         kind: 'insert',
         bounds: document.getElementById(CHROME_IDS.stage),
-        onPick: emoji => insertEmojiAtCaret(input, emoji, range),
+        onPick: (emoji, { keepOpen }) => {
+            const caret = insertEmojiAtCaret(input, emoji, range, { focus: !keepOpen });
+            range = { start: caret, end: caret };
+        },
+        onClose: fromEntry
+            // The surface gives the focus to its trigger after this callback; only a focus that is on the trigger by then is moved, so a click elsewhere keeps its own.
+            ? () => setTimeout(() => {
+                if (document.activeElement === trigger) {
+                    input.focus({ preventScroll: true });
+                }
+            }, 0)
+            : null,
     });
 }
 
@@ -815,7 +827,7 @@ export function bindConversationChromeControls(sheld) {
                 // The Emoji button is not drawn in a narrow composer, and the "+" button, which always is, takes its place.
                 const anchor = getComputedStyle(emojiButton).display === 'none' ? input.closest('form')?.querySelector('.sb-conversation-composer-more') : emojiButton;
                 if (anchor instanceof HTMLElement) {
-                    void openComposerEmojiChooser(anchor);
+                    void openComposerEmojiChooser(anchor, { fromEntry: true });
                 }
                 return;
             }
