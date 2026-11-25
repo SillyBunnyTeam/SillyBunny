@@ -21,7 +21,7 @@ const MAX_LOST_ENTRIES = 50;
  * @typedef {object} JournalEntry
  * @property {string} id Generation id
  * @property {string} chatKey Chat the reply was for
- * @property {'append'|'swipe'|'continue'} kind How the reply would have landed
+ * @property {'append'|'swipe'|'continue'|'reply'} kind How the reply would have landed
  * @property {number} index Message index the reply would have been written to
  * @property {string|null} anchor append: identity of the message before `index`
  * @property {string|null} target swipe/continue: identity of the message at `index`
@@ -29,6 +29,8 @@ const MAX_LOST_ENTRIES = 50;
  * @property {string} page Page load that started it
  * @property {string|null} member Group chats: avatar of the member who was speaking
  * @property {string[]} round Group chats: members still to speak after this one
+ * @property {string[]} [triggers] Conversations: ids of the messages the reply answers, which a regeneration needs
+ * @property {string} [token] Conversations: the reply token, which tells whether the reply ever landed
  * @property {boolean} lost The server stopped before the reply was finished or saved
  */
 
@@ -122,7 +124,8 @@ export function recordGeneration(user, id, plan) {
     if (!journal) {
         return;
     }
-    journal.entries.set(id, {
+    /** @type {JournalEntry} */
+    const entry = {
         id,
         chatKey: getCommitChatKey(plan.chat, plan.file),
         kind: plan.kind,
@@ -134,7 +137,12 @@ export function recordGeneration(user, id, plan) {
         member: plan.message.original_avatar,
         round: plan.round,
         lost: false,
-    });
+    };
+    if (plan.reply) {
+        entry.triggers = plan.reply.triggers.map(stamp => stamp.id);
+        entry.token = plan.reply.token;
+    }
+    journal.entries.set(id, entry);
     saveJournal(journal.file, journal.entries);
 }
 
