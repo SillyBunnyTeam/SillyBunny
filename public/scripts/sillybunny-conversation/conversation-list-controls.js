@@ -19,7 +19,6 @@ import {
     isFavoritesCollapsed,
     setFavoritesCollapsed,
 } from './conversation-list-view.js';
-import { openConversationSurface } from './conversation-surface.js';
 import { markConversationRead } from './notifications.js';
 
 const ROW_SELECTOR = '.sb-conversation-list-row';
@@ -34,9 +33,10 @@ const FOCUS_RETURN_FRAMES = 60;
  * @param {object} deps
  * @param {() => import('./conversation-list-view.js').ListRowEntry[]} deps.getEntries The rows as the list shows them now.
  * @param {(action: string, data?: Record<string, string|undefined>) => unknown} deps.runAction `runConversationAction` of `chrome.js`.
+ * @param {(conversationId: string) => unknown} deps.openDetails `openConversationDetails` of `chrome.js`.
  * @param {() => void} deps.render Asks for the list to be drawn.
  */
-export function bindConversationListControls(list, { getEntries, runAction, render }) {
+export function bindConversationListControls(list, { getEntries, runAction, openDetails, render }) {
     if (list.dataset.sbConversationListBound === 'true') {
         return;
     }
@@ -102,7 +102,7 @@ export function bindConversationListControls(list, { getEntries, runAction, rend
             setConversationMuted(conversationData, entry.id, muted);
             render();
         },
-        openDetails: entry => void openConversationSurface('openConversationDetails', entry.id),
+        openDetails: entry => void openDetails(entry.id),
         remove: entry => void removeConversation(entry),
     };
 

@@ -41,7 +41,6 @@ import {
 import { bindConversationListControls } from './conversation-list-controls.js';
 import { buildMainMenuSections, buildNewMenuSections } from './conversation-list-menu.js';
 import { setConversationListQuery } from './conversation-list-view.js';
-import { openConversationSurface } from './conversation-surface.js';
 import { getCharacterForAvatar } from './media.js';
 import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
 import { getDirectConversations, getCurrentGroupConversationMembers } from './conversation-list.js';
@@ -598,7 +597,7 @@ function openConversationMainMenu(trigger) {
         trigger,
         title: 'Main Menu',
         sections: buildMainMenuSections({
-            openPreferences: () => void openConversationSurface('openConversationPreferences'),
+            openPreferences: () => void openConversationPreferences(),
             openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp()),
         }),
         alignment: 'end',
@@ -1182,6 +1181,7 @@ export function bindConversationChromeControls(sheld) {
         bindConversationListControls(listItems, {
             getEntries: getConversationListEntries,
             runAction: runConversationAction,
+            openDetails: openConversationDetails,
             render: scheduleConversationListRender,
         });
     }

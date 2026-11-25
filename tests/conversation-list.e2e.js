@@ -18,6 +18,7 @@ import {
     sectionOfRow,
     seedConversationList,
 } from './helpers/conversation-list-steps.js';
+import { DETAILS_HOST } from './helpers/conversation-details.js';
 
 test.use({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: 'reduce' } });
 test.describe.configure({ timeout: 120000 });
@@ -131,27 +132,24 @@ test.describe('the list at a desktop width', () => {
         await expect(page.getByRole('dialog', { name: 'Help' })).toBeVisible();
     });
 
-    test('Preferences and Details open the details window, or say in the console that it is missing, and never break the page', async ({ page, baseURL }) => {
+    test('Details opens the details window of the row, even for a conversation that is not open, and Preferences opens its page', async ({ page, baseURL }) => {
         const errors = [];
-        const warnings = [];
         page.on('pageerror', error => errors.push(error.message));
-        page.on('console', message => message.type() === 'warning' && warnings.push(message.text()));
         await openSeededList(page, baseURL);
-        const expectAnswer = name => expect.poll(async () => (await page.locator('dialog[open]').count()) > 0 || warnings.some(text => text.includes(name))).toBe(true);
+
+        await openRowMenuByRightClick(page, 'Study group');
+        await chooseMenuItem(page, 'Details');
+        await expect(page.locator(DETAILS_HOST)).toContainText('Study group');
+        await expect(page.locator(`${ITEM}[aria-current="true"]`)).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(page.locator(DETAILS_HOST)).toHaveCount(0);
 
         await page.locator(MAIN_MENU).click();
         await chooseMenuItem(page, 'Preferences');
-        await expectAnswer('openConversationPreferences');
+        await expect(page.locator(DETAILS_HOST)).toContainText('Preferences');
         await page.keyboard.press('Escape');
-        await expect(page.locator('dialog[open]')).toHaveCount(0);
+        await expect(page.locator(DETAILS_HOST)).toHaveCount(0);
 
-        await openRowMenuByRightClick(page, 'Seraphina');
-        await chooseMenuItem(page, 'Details');
-        await expectAnswer('openConversationDetails');
-        await page.keyboard.press('Escape');
-        await expect(page.locator('dialog[open]')).toHaveCount(0);
-
-        await expect(page.getByRole('menuitem')).toHaveCount(0);
         await expect(page.locator(`${LIST} ${ROW}`)).toHaveCount(ALL_NAMES.length);
         expect(errors).toEqual([]);
     });
