@@ -73,6 +73,8 @@ export async function bootConversationPage(page, baseURL, { theme = '' } = {}) {
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page, { timeout: 60000 });
+    // A toast from the app (a reply that failed with no model connected) sits over the header of the list and would take the clicks of a case that is about something else.
+    await page.addStyleTag({ content: '#toast-container, #sb-toast-overlay { pointer-events: none !important; }' });
     return persona;
 }
 
