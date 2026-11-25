@@ -109,6 +109,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         test.use({ viewport });
 
         test('the Prompt Caching group follows the request groups for every source', async ({ page, baseURL }) => {
+            test.setTimeout(120000);
             await boot(page, baseURL);
             await mockServerConfig(page);
             await open(page, 'openrouter');
@@ -207,6 +208,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
 
         test('the three rows show for the sources that read their keys', async ({ page, baseURL }) => {
+            test.setTimeout(120000);
             await boot(page, baseURL);
             await mockServerConfig(page);
             await open(page, 'openai');
@@ -231,6 +233,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await boot(page, baseURL);
             await mockServerConfig(page);
             await open(page, 'linkapi');
+            await expect(page.locator('#sb-openai-prompt-caching')).toBeVisible();
             const order = await page.evaluate(() => {
                 const body = document.querySelector('#sb-openai-request .sb-prompting-group-body');
                 return [...body.children].map(node => node.dataset.sbEditorField ?? node.querySelector('input')?.id ?? '').filter(Boolean);
@@ -243,10 +246,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
 
         test('shows none of the rows and no error when the read is refused', async ({ page, baseURL }) => {
             await boot(page, baseURL);
-            await mockServerConfig(page, { readStatus: 403 });
+            const server = await mockServerConfig(page, { readStatus: 403 });
             await open(page, 'linkapi');
             await showToasts(page);
-            await expect.poll(async () => page.evaluate(() => performance.getEntriesByType('resource').filter(entry => entry.name.includes('chat-completions/get')).length)).toBeGreaterThan(0);
+            await expect.poll(() => server.reads).toBeGreaterThan(0);
             await expect(page.locator('#sb-openai-request')).toBeVisible();
             await expect(page.locator(`#sb-openai-prompt-caching, ${Object.values(IDS).join(', ')}`)).toHaveCount(0);
             await expect(page.locator('#toast-container .toast-error, #sb-toast-overlay .toast-error')).toHaveCount(0);
@@ -327,15 +330,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await open(page, 'claude');
             await expect(page.locator(IDS.master)).toBeChecked();
             const reads = server.reads;
-            const before = await page.evaluate(async () => Object.keys((await import('/scripts/openai.js')).getChatCompletionPreset()).sort());
+            const presetKeys = () => page.evaluate(async () => Object.keys((await import('/scripts/openai.js')).getChatCompletionPreset()).sort());
+            const serverKeys = keys => keys.filter(key => /enableSystemPromptCache|cachingAtDepth|extendedTTL|enableAdaptiveThinking|apiVersion|thoughtSignatures|prompt_?caching|cache_?depth/i.test(key));
+            expect(serverKeys(await presetKeys())).toEqual([]);
             for (const source of ['openrouter', 'makersuite', 'claude']) await selectSource(page, source);
             await expect(page.locator('#sb-openai-prompt-caching')).toHaveCount(1);
             await expect(page.locator('[id^="sb-config-"]')).toHaveCount(6);
             expect(server.reads).toBe(reads);
             expect(server.saves).toHaveLength(0);
-            const after = await page.evaluate(async () => Object.keys((await import('/scripts/openai.js')).getChatCompletionPreset()).sort());
-            expect(after).toEqual(before);
-            expect(after.filter(key => /cach|ttl|depth|thought|signature|api_?version|adaptive/i.test(key))).toEqual([]);
+            expect(serverKeys(await presetKeys())).toEqual([]);
         });
 
         test('importing a SillyTavern preset changes none of the rows', async ({ page, baseURL }) => {

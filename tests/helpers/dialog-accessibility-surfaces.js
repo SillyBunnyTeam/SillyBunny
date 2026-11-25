@@ -40,7 +40,7 @@ const READ_ONLY_POSTS = new Set([
     '/api/settings/get', '/api/presets/defaults', '/api/avatars/get', '/api/backgrounds/folders',
     '/api/backgrounds/all', '/api/image-metadata/all', '/api/tokenizers/openai/count', '/api/groups/all',
     '/api/server-admin/install-type', '/api/server-admin/config/get', '/api/server-admin/config/thumbnail-settings/get',
-    '/api/server-admin/config/chat-completions/get', '/api/server-admin/status', '/api/secrets/read',
+    '/api/server-admin/status', '/api/secrets/read',
     '/api/in-chat-agents/groups/list', '/api/openrouter/providers', '/api/nanogpt/providers', '/api/sd/comfy/workflows',
     '/api/chats/recent',
 ]);
