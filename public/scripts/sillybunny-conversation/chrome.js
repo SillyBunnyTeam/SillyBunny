@@ -56,7 +56,7 @@ import {
     syncConversationPage,
     toggleConversationList,
 } from './conversation-pages.js';
-import { getSettings } from './settings-store.js';
+import { getGlobalConversationSettings, getSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { processSendQueue } from './send-queue.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
@@ -86,8 +86,11 @@ import {
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { ensureDetailsStyles } from './details/styles.js';
+import { applyEmojiFont } from './emoji/emoji-font.js';
+import { insertEmojiAtCaret } from './emoji/emoji-insert.js';
+import { hasNativeEmojiPicker, isEmojiShortcut } from './emoji/emoji-shortcut.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125h';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125i';
 const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261125a';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
@@ -332,11 +335,37 @@ function openConversationOverflowMenu(trigger) {
     });
 }
 
+/** A composer too narrow for its Emoji button does not draw it (a container rule of the stylesheet), and the "+" menu offers the action instead. */
+function isComposerEmojiButtonHidden() {
+    const button = document.getElementById(CHROME_IDS.emoji);
+    return button instanceof HTMLElement && getComputedStyle(button).display === 'none';
+}
+
+/**
+ * Opens the emoji chooser for the composer entry. The entry's selection is read first, because the chooser takes the focus.
+ * @param {HTMLElement} trigger The Emoji button, or the "+" button when the Emoji button is not drawn.
+ */
+async function openComposerEmojiChooser(trigger) {
+    const input = document.getElementById(CHROME_IDS.input);
+    if (!(input instanceof HTMLTextAreaElement) || input.disabled) {
+        return;
+    }
+    const range = { start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length };
+    const { openEmojiChooser } = await import('./emoji/emoji-chooser.js');
+    openEmojiChooser({
+        trigger,
+        kind: 'insert',
+        bounds: document.getElementById(CHROME_IDS.stage),
+        onPick: emoji => insertEmojiAtCaret(input, emoji, range),
+    });
+}
+
 function openConversationComposerMenu(trigger) {
     openActionMenu({
         trigger,
         title: 'Add to Message',
-        sections: buildComposerMenuSections({ enabled: Boolean(getCurrentCharAvatar()) }, {
+        sections: buildComposerMenuSections({ enabled: Boolean(getCurrentCharAvatar()), showEmoji: isComposerEmojiButtonHidden() }, {
+            insertEmoji: runFromMenu('open-emoji-chooser', {}, trigger),
             selfie: runFromMenu('quick-selfie'),
             remind: runFromMenu('quick-remind'),
             summarize: runFromMenu('quick-summarize'),
@@ -424,6 +453,11 @@ export async function runConversationAction(action, data = {}, target = null, ev
             break;
         case 'open-composer-menu':
             openConversationComposerMenu(target);
+            break;
+        case 'open-emoji-chooser':
+            if (target) {
+                await openComposerEmojiChooser(target);
+            }
             break;
         case 'open-persona-menu':
             openConversationPersonaMenu(target);
@@ -775,6 +809,16 @@ export function bindConversationChromeControls(sheld) {
     if (input instanceof HTMLTextAreaElement && input.dataset.sbConversationBound !== 'true') {
         input.dataset.sbConversationBound = 'true';
         input.addEventListener('keydown', (event) => {
+            const emojiButton = document.getElementById(CHROME_IDS.emoji);
+            if (isEmojiShortcut(event) && !hasNativeEmojiPicker(navigator.userAgent) && emojiButton instanceof HTMLElement && !input.disabled) {
+                event.preventDefault();
+                // The Emoji button is not drawn in a narrow composer, and the "+" button, which always is, takes its place.
+                const anchor = getComputedStyle(emojiButton).display === 'none' ? input.closest('form')?.querySelector('.sb-conversation-composer-more') : emojiButton;
+                if (anchor instanceof HTMLElement) {
+                    void openComposerEmojiChooser(anchor);
+                }
+                return;
+            }
             if (event.isComposing || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || !shouldSendOnEnter()) {
                 return;
             }
@@ -943,6 +987,7 @@ export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupI
         conversationState.timelineBottomScrollPending = true;
     }
     ensureConversationStylesheet();
+    applyEmojiFont({ useDeviceEmoji: Boolean(getGlobalConversationSettings().use_device_emoji) });
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh();

@@ -96,14 +96,16 @@ export function buildHeaderMenuSections({ muted, hasMessages, hasChat }, actions
 
 /**
  * The "+" menu of the composer: what the user can add to the conversation besides a message. Attach is a button of its
- * own beside the field, so it is not here.
- * @param {{ enabled: boolean }} state Whether a conversation is open.
+ * own beside the field, so it is not here. Neither is Emoji, except in a composer too narrow for that button, where the
+ * button is not drawn and the menu holds its action.
+ * @param {{ enabled: boolean, showEmoji?: boolean }} state Whether a conversation is open, and whether the menu offers Insert Emoji.
  */
-export function buildComposerMenuSections({ enabled }, { selfie, remind, summarize, forceReply }) {
+export function buildComposerMenuSections({ enabled, showEmoji = false }, { selfie, remind, summarize, forceReply, insertEmoji }) {
     const disabled = !enabled;
     return [
         {
             items: [
+                ...(showEmoji ? [{ label: 'Insert Emoji', icon: 'fa-solid fa-face-smile', disabled, onSelect: insertEmoji }] : []),
                 { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled, onSelect: selfie },
                 { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled, onSelect: remind },
                 { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled, onSelect: summarize },

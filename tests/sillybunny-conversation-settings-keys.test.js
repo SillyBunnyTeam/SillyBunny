@@ -15,7 +15,7 @@ const KEPT_PER_CONVERSATION = [
 ];
 const KEPT_MODE_WIDE = [
     'custom_instructions', 'grounded_dialogue_rules_enabled', 'grounded_dialogue_rules', 'lorebooks_enabled', 'connection_profile',
-    'quiet_hours_start', 'quiet_hours_end', 'simulate_reply_delay',
+    'quiet_hours_start', 'quiet_hours_end', 'simulate_reply_delay', 'use_device_emoji',
 ];
 const MOVED_TO_THE_CHARACTER = ['availability'];
 // Not a setting: the extras of a direct conversation are a list of their own that the settings read as a derived value.
@@ -46,6 +46,12 @@ describe('sillybunny conversation settings keys', () => {
     test('turn Conversation lorebooks on by default with one global switch', () => {
         expect(DEFAULT_SETTINGS.lorebooks_enabled).toBe(true);
         expect(CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
+    });
+
+    test('draw emoji with the bundled font until the user chooses the device\'s own, for every conversation', () => {
+        expect(DEFAULT_SETTINGS.use_device_emoji).toBe(false);
+        expect(GLOBAL_CONVERSATION_SETTINGS_KEYS).toContain('use_device_emoji');
+        expect(CONVERSATION_SETTINGS_KEYS).not.toContain('use_device_emoji');
     });
 
     test('turn the reply delay on, and messaging first off, until the user chooses', () => {

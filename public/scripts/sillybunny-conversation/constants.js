@@ -201,6 +201,7 @@ export const CHROME_IDS = Object.freeze({
     form: 'sb_conversation_form',
     input: 'sb_conversation_input',
     attach: 'sb_conversation_attach',
+    emoji: 'sb_conversation_emoji',
     fileInput: 'sb_conversation_file_input',
     attachmentPreview: 'sb_conversation_attachment_preview',
     replyPreview: 'sb_conversation_reply_preview',
@@ -232,6 +233,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     grounded_dialogue_rules: DEFAULT_GROUNDED_DIALOGUE_RULES,
     multi_char_names: '',
     roleplay_reactions: false,
+    use_device_emoji: false,
     lorebooks_enabled: true,
     lorebook_override: '',
     connection_profile: '',
@@ -258,6 +260,7 @@ export const GLOBAL_CONVERSATION_SETTINGS_KEYS = Object.freeze([
     'quiet_hours_start',
     'quiet_hours_end',
     'simulate_reply_delay',
+    'use_device_emoji',
 ]);
 export const GLOBAL_CONVERSATION_SETTINGS_KEY_SET = new Set(GLOBAL_CONVERSATION_SETTINGS_KEYS);
 export const CONVERSATION_SETTINGS_KEYS = Object.freeze(

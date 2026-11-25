@@ -1580,6 +1580,9 @@ export function ensureConversationChrome() {
                     <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation Attachments" />
                     <label class="sr-only" for="${CHROME_IDS.input}">Conversation Message</label>
                     <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message…"></textarea>
+                    <button id="${CHROME_IDS.emoji}" type="button" class="sb-conversation-flat-button sb-conversation-composer-tool sb-conversation-composer-emoji" data-sb-conversation-action="open-emoji-chooser" title="Insert Emoji" aria-label="Insert Emoji" aria-haspopup="dialog" aria-keyshortcuts="Control+Period">
+                        <i class="fa-solid fa-face-smile" aria-hidden="true"></i>
+                    </button>
                     <button id="${CHROME_IDS.send}" type="submit" class="sb-conversation-send-button" title="Send Conversation Message" aria-label="Send Conversation Message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                     </button>

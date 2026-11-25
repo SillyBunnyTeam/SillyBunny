@@ -218,6 +218,17 @@ describe('the "+" menu of the composer', () => {
         expect(actions.forceReply).toHaveBeenCalledTimes(1);
     });
 
+    test('adds Insert Emoji, first, only where the composer has no Emoji button of its own', () => {
+        const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn(), insertEmoji: jest.fn() };
+
+        expect(labels(buildComposerMenuSections({ enabled: true, showEmoji: false }, actions))).toEqual([['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']]);
+        const sections = buildComposerMenuSections({ enabled: true, showEmoji: true }, actions);
+        expect(labels(sections)).toEqual([['Insert Emoji', 'Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']]);
+        sections[0].items[0].onSelect();
+        expect(actions.insertEmoji).toHaveBeenCalledTimes(1);
+        expect(buildComposerMenuSections({ enabled: false, showEmoji: true }, actions)[0].items[0]).toMatchObject({ label: 'Insert Emoji', disabled: true });
+    });
+
     test('disables every item while no conversation is open, and gives each an icon', () => {
         const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn() };
         const items = buildComposerMenuSections({ enabled: false }, actions).flatMap(section => section.items);
