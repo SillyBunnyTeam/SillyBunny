@@ -64,6 +64,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
     getConversationMessages: () => [],
     getImageCooldownRemainingSeconds: () => 0,
     markImageGenerated: jest.fn(),
+    reloadConversationChat: jest.fn(),
     updateLastUserActivity: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-slash-commands.js', () => ({ handleConversationSlashAction: jest.fn() }));

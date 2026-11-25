@@ -203,9 +203,26 @@ export function getConversationMessageCount(avatar = getCurrentCharAvatar(), { c
 }
 
 /**
+ * Turns the replies that the server wrote into the chat into bubbles. The finalizer is loaded only when the chat holds
+ * one. A failure leaves the message pending, hidden from the timeline and the prompt, and the next load tries again, so
+ * the caller's own work does not fail for it.
+ */
+async function landPendingReplies(address, chat) {
+    if (!chat?.messages?.some(isPendingServerReply)) {
+        return;
+    }
+    try {
+        const { finalizePendingReplies } = await import('./reply-finalizer-browser.js');
+        await finalizePendingReplies(address);
+    } catch (error) {
+        console.warn('Conversation Mode: a reply that the server wrote could not be landed', error);
+    }
+}
+
+/**
  * Loads the chat that an avatar and a group name, so that it can be read and written. A reply that the server wrote
  * into the chat while no page was open is turned into bubbles first, so that a prompt or a new message never meets it
- * as one raw message. The finalizer is loaded only when the chat holds such a reply.
+ * as one raw message.
  * @returns {Promise<{ conversationId: string, chatId: string }|null>} The address of the chat, or null when there is none.
  */
 export async function ensureConversationChatLoaded(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -213,15 +230,25 @@ export async function ensureConversationChatLoaded(avatar, { chatId = '', groupI
     if (!address) {
         return null;
     }
-    const loaded = await conversationData.loadChat(address);
-    if (loaded?.messages?.some(isPendingServerReply)) {
-        try {
-            const { finalizePendingReplies } = await import('./reply-finalizer-browser.js');
-            await finalizePendingReplies(address);
-        } catch (error) {
-            // The message stays pending, hidden from the timeline and the prompt, and the next load tries again. The caller's own work must not fail for it.
-            console.warn('Conversation Mode: a reply that the server wrote could not be landed', error);
-        }
+    await landPendingReplies(address, await conversationData.loadChat(address));
+    return address;
+}
+
+/**
+ * Reads a loaded chat from the server again, for a reply that the server wrote while this page waited for it (the
+ * claim answered `committed`), and lands that reply as bubbles.
+ * @returns {Promise<{ conversationId: string, chatId: string }|null>} The address, or null when the chat does not exist or could not be read.
+ */
+export async function reloadConversationChat(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const address = avatar ? getConversationAddress(avatar, { chatId, groupId, personaId }) : null;
+    if (!address) {
+        return null;
+    }
+    try {
+        await landPendingReplies(address, await conversationData.reloadChat(address));
+    } catch (error) {
+        console.warn('Conversation Mode: the chat could not be read again after the server wrote a reply into it', error);
+        return null;
     }
     return address;
 }

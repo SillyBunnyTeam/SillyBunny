@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
-import { PERSONA, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
+import { PERSONA, recordCalls, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
 import { pendingReply } from './util/conversation-pending-reply.js';
 
 const charactersByAvatar = new Map();
@@ -54,7 +54,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({ scheduleConversationMemorySummary }));
 
 const { afterIncomingMessage, appendConversationMessage } = await import('../public/scripts/sillybunny-conversation/message-writer.js');
-const { addConversationReminder, ensureConversationChatLoaded } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
+const { addConversationReminder, ensureConversationChatLoaded, reloadConversationChat } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
 
 let server;
 
@@ -172,6 +172,42 @@ describe('the effects of an incoming message', () => {
     });
 });
 
+describe('a message that arrives while the page is hidden', () => {
+    afterEach(() => {
+        delete globalThis.document;
+    });
+
+    async function startRecording() {
+        seedConversations(server, [TWO_CHATS]);
+        const recorded = recordCalls(server.adapter());
+        data = createConversationData(recorded);
+        await data.start();
+        return recorded;
+    }
+
+    test('is saved with the flag that lets a request outlive a tab that is being closed', async () => {
+        const recorded = await startRecording();
+        globalThis.document = { visibilityState: 'hidden' };
+
+        await reply('main', 'The last bubble of the reply.');
+        await data.flush();
+
+        const saves = recorded.callsTo('/chat/save');
+        expect(saves).toHaveLength(1);
+        expect(saves[0].options).toEqual({ keepalive: true });
+    });
+
+    test('is saved the ordinary way while the page is visible', async () => {
+        const recorded = await startRecording();
+        globalThis.document = { visibilityState: 'visible' };
+
+        await reply('main', 'A reply that somebody watches.');
+        await data.flush();
+
+        expect(recorded.callsTo('/chat/save')[0].options).toBeUndefined();
+    });
+});
+
 describe('a chat that holds a reply that the server wrote', () => {
     const address = { conversationId: 'conv_1_direct01', chatId: 'main' };
     const PENDING = pendingReply({ text: 'raw reply', triggers: ['main-1'] });
@@ -226,6 +262,58 @@ describe('a chat that holds a reply that the server wrote', () => {
         await reply('main', 'A live reply.');
 
         expect(data.chat(address).messages.map(message => message.mes)).toEqual(['hello', 'hi there', 'A live reply.']);
+    });
+});
+
+describe('a chat that the server wrote a reply into while this page held it', () => {
+    const address = { conversationId: 'conv_1_direct01', chatId: 'main' };
+    const options = { chatId: 'main', groupId: '', personaId: PERSONA };
+
+    async function writeFromAnotherPage() {
+        const other = createConversationData(server.adapter());
+        await other.start();
+        await other.loadChat(address);
+        other.commitChat(address, (draft) => {
+            draft.messages.push(pendingReply({ text: 'raw reply', triggers: ['main-1'] }));
+        });
+        await other.flush();
+        other.destroy();
+    }
+
+    test('is read again, and the reply that the server wrote is landed before the caller goes on', async () => {
+        await startData([TWO_CHATS]);
+        await data.loadChat(address);
+        await writeFromAnotherPage();
+        const seen = [];
+        finalizePendingReplies.mockImplementation(async (landing) => {
+            seen.push(data.chat(landing).messages.map(message => message.id));
+            return [];
+        });
+
+        await expect(reloadConversationChat('Nova.png', options)).resolves.toEqual(address);
+
+        expect(finalizePendingReplies).toHaveBeenCalledWith(address);
+        expect(seen[0]).toHaveLength(2);
+        expect(seen[0][1]).toMatch(/-abcdef01$/);
+    });
+
+    test('is not handed to the finalizer when the reload finds no reply of the server in it', async () => {
+        await startData([TWO_CHATS]);
+        await data.loadChat(address);
+
+        await reloadConversationChat('Nova.png', options);
+
+        expect(finalizePendingReplies).not.toHaveBeenCalled();
+    });
+
+    test('answers null for a chat that does not exist, and does not throw when the request fails', async () => {
+        await startData([TWO_CHATS]);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        await expect(reloadConversationChat('Nova.png', { ...options, chatId: 'never-existed' })).resolves.toBeNull();
+        await data.deleteChat(address).catch(() => null);
+        await expect(reloadConversationChat('Nova.png', options)).resolves.toBeNull();
+        warn.mockRestore();
     });
 });
 

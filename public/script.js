@@ -7484,6 +7484,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @prop {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @prop {AbortSignal} [signal] Optional signal to abort the request.
  * @prop {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
+ * @prop {{ plan: object|null, state: string|null }|null} [commit] SillyBunny: the commit plan of a conversation reply, and where the server's answer to the claim is put.
  */
 
 /**
@@ -7492,7 +7493,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<object | string>} Raw API response data, or a JSON string extracted from the response when `jsonSchema` is provided.
  */
-export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
+export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false, commit = null } = {}) {
     if (!api) {
         api = main_api;
     }
@@ -7585,6 +7586,8 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
         }
         let data = {};
 
+        // SillyBunny: a conversation reply registers its commit plan on the signal that reaches fetchResumable()
+        registerGenerationCommitPlan(abortController.signal, commit?.plan ?? null);
         if (api === 'koboldhorde') {
             data = await generateHorde(prompt.toString(), generateData, abortController.signal, false);
         } else if (api === 'openai') {
@@ -7604,6 +7607,11 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
             }
 
             data = await response.json();
+        }
+
+        // SillyBunny: the server's answer to the claim of the reply, for the caller that gave the plan
+        if (commit?.plan) {
+            commit.state = await settleGenerationCommit(abortController.signal);
         }
 
         // should only happen for text completions
@@ -7635,13 +7643,13 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<string>} Generated output: a cleaned-up message string when `jsonSchema` is not provided, or an extracted JSON string conforming to `jsonSchema` when it is.
  */
-export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
+export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false, commit = null } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateRaw called with positional arguments. Please use an object instead.');
         [prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, trimNames, prefill, jsonSchema] = arguments;
     }
 
-    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope, preserveReasoningBudget });
+    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope, preserveReasoningBudget, commit });
 
     // JSON string (matching the provided schema) will already be extracted.
     if (jsonSchema) {

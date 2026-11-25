@@ -1,5 +1,6 @@
 import { is_send_press, online_status } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
+import { pageId } from '../resumable-generation.js';
 import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
     AUTO_WORKER_WAIT_POLL_MS,
@@ -53,8 +54,10 @@ import {
     getConversationMessages,
     getImageCooldownRemainingSeconds,
     markImageGenerated,
+    reloadConversationChat,
     updateLastUserActivity,
 } from './conversation-store.js';
+import { createConversationReplyPlan, createReplyToken } from './reply-commit-plan.js';
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
@@ -476,6 +479,25 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
     maybePostDelayedReplyNotice(anchorAvatar, replySettings, { chatId, groupId, personaId, statusAvatar: replyAvatar });
 
     const speakerName = replyCharacter?.name || (replyAvatar === anchorAvatar ? getCurrentCharName() : 'Character');
+    // The server writes this reply into the chat if this page is gone before the reply is. The token names the reply on
+    // every bubble that this page writes itself, so that a late commit of the server after a failed claim is refused.
+    const token = createReplyToken();
+    const commit = {
+        createPlan: route => createConversationReplyPlan({
+            address: { conversationId: queueItem.conversationKey, chatId },
+            queueItem,
+            speaker: { avatar: replyAvatar, name: speakerName },
+            anchorAvatar,
+            route,
+            messages: getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId }),
+            round: [],
+            token,
+            pageId,
+            now: Date.now(),
+            roundStarted: Date.now(),
+        }),
+        state: null,
+    };
     const attachmentContext = formatPromptText(queueItem?.attachmentContext, 3200);
     const systemDirective = queueItem?.force
         ? '[System directive: Generate a response/reply to the user in the Conversation Mode thread.]'
@@ -494,14 +516,22 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
             chatId,
             groupId,
             personaId,
+            commit,
         },
     ), anchorAvatar, { chatId, groupId, personaId });
+    if (commit.state === 'committed') {
+        // The server wrote the reply while this page waited, and it could not be taken back. It is a pending message in
+        // the chat now: reading the chat again lands it as bubbles, which this page must not write a second time.
+        await reloadConversationChat(anchorAvatar, { chatId, groupId, personaId });
+        return true;
+    }
     if (!validateTarget()) {
         return false;
     }
 
     const replyExtra = {
         conversation_mode_reply: true,
+        reply_token: token,
         ...(queueItem.replyReference ? { conversation_reply_to: queueItem.replyReference } : {}),
     };
     let posted = false;
@@ -554,6 +584,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
                     conversation_mode_image: true,
                     image_url: imageUrl,
                     image_prompt: prompt,
+                    reply_token: token,
                     ...(replyAvatar === anchorAvatar ? {} : { member_avatar: replyAvatar }),
                 },
                 chatId,

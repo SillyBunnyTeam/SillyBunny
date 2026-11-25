@@ -1,5 +1,6 @@
 import { characters, generateRaw } from '../../script.js';
 import { extractProfileResponseText } from '../extensions/in-chat-agents/llm-utils.js';
+import { registerGenerationCommitPlan, settleGenerationCommit } from '../resumable-generation.js';
 import { isAbortLikeError } from '../util/abort-error.js';
 import { extractProviderMessage } from '../sillybunny-provider-message.js';
 import {
@@ -64,7 +65,11 @@ export { splitMemberChatroomMessages } from './reply-steps.js';
  * global state is mutated. Falls back to generateRaw (the active profile) when
  * no profile is configured, the scoped request path is unavailable, or the
  * profile name cannot be resolved.
- * @param {Object} options - Same option shape as generateRaw (prompt, systemPrompt, responseLength, trimNames, signal, cacheScope).
+ * @param {Object} options - Same option shape as generateRaw (prompt, systemPrompt, responseLength, trimNames, signal, cacheScope), and `commit`.
+ * `commit` is `{ createPlan(route), state }` for a reply that the server may write into the chat when this page is gone:
+ * `createPlan('profile' | 'raw')` makes the commit plan of the request that the route sends, and `state` is set to what the
+ * server answered when the page claimed the reply (`claimed`, `committed`, `unknown`, `missing`), or stays null.
+ * A plan is used by one request, so the fallback to the active API asks for a new one.
  * @param {Object} settings - Conversation settings holding connection_profile (a profile NAME).
  * @returns {Promise<string>}
  */
@@ -72,6 +77,7 @@ export async function generateConversationRaw(options, settings) {
     const profileName = String(settings?.connection_profile || '').trim();
     const ctx = window?.SillyTavern?.getContext?.();
     const CMRS = ctx?.ConnectionManagerRequestService;
+    const commit = options.commit ?? null;
 
     if (profileName && CMRS) {
         const profile = getConnectionProfiles().find(candidate => candidate?.name === profileName);
@@ -91,12 +97,18 @@ export async function generateConversationRaw(options, settings) {
             }
 
             try {
+                if (commit) {
+                    registerGenerationCommitPlan(options.signal, commit.createPlan('profile'));
+                }
                 const result = await CMRS.sendRequest(profile.id, messages, options.responseLength, {
                     extractData: true,
                     includePreset: true,
                     stream: false,
                     signal: options.signal ?? null,
                 });
+                if (commit) {
+                    commit.state = await settleGenerationCommit(options.signal);
+                }
                 return typeof result === 'string' ? result : extractProfileResponseText(result);
             } catch (error) {
                 if (isAbortLikeError(error, options.signal)) {
@@ -107,17 +119,26 @@ export async function generateConversationRaw(options, settings) {
         }
     }
 
-    options = { ...options, responseLength: await getActiveApiResponseLength(options.responseLength) };
+    options = {
+        ...options,
+        responseLength: await getActiveApiResponseLength(options.responseLength),
+        commit: commit ? { plan: commit.createPlan('raw'), state: null } : null,
+    };
 
-    return generateRaw(options);
+    const reply = await generateRaw(options);
+    if (commit) {
+        commit.state = options.commit.state;
+    }
+    return reply;
 }
 
 /**
  * Asks the model for the next message of a conversation. The request is tracked by the chat it is for, so that deleting
  * that chat or its conversation stops it; a reply that was stopped, or that came back after its target was deleted,
- * answers an empty text, and the caller writes nothing.
+ * answers an empty text, and the caller writes nothing. `commit` is the handle of `generateConversationRaw()`: with it
+ * the server writes the reply when this page is gone, and `commit.state` tells the caller whether it did.
  */
-export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), anchorAvatar = avatar, speakerAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId() } = {}) {
+export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), anchorAvatar = avatar, speakerAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId(), commit = null } = {}) {
     // The transcript is read from the chat, and a related memory comes from the chats of other conversations.
     const address = await ensureConversationChatLoaded(anchorAvatar, { chatId, groupId, personaId });
     const tracked = generationTargets.begin(address);
@@ -139,6 +160,7 @@ export async function generateConversationReply(directive, settings, { responseL
             trimNames,
             cacheScope: 'conversation-mode',
             signal: tracked.signal,
+            commit,
         }, settings);
         return tracked.signal.aborted ? '' : reply;
     } catch (error) {

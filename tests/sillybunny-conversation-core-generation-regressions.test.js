@@ -15,6 +15,9 @@ const buildConversationSystemPrompt = jest.fn(() => 'system prompt');
 const worldInfo = { before: 'Lore before.', after: '', authorsNoteBefore: '', authorsNoteAfter: '', depth: [] };
 const getConversationWorldInfo = jest.fn(async () => worldInfo);
 const getActiveApiResponseLength = jest.fn(async responseLength => responseLength);
+const getConnectionProfiles = jest.fn(() => []);
+const registerGenerationCommitPlan = jest.fn();
+const settleGenerationCommit = jest.fn(async () => null);
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'char.png', name: 'Aster' }],
@@ -43,7 +46,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/member
 }));
 const confirmConversationAction = jest.fn(async () => true);
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({ confirmConversationAction }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles: () => [] }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles }));
+await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ registerGenerationCommitPlan, settleGenerationCommit }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({
     buildConversationPromptMessages,
     buildConversationSystemPrompt,
@@ -83,6 +87,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-
 const {
     editConversationMessage,
     commitCharacterReplyCommands,
+    generateConversationRaw,
     generateConversationReply,
     generateSelfieFromContext,
     getConversationErrorDetail,
@@ -120,6 +125,9 @@ describe('Conversation core generated reply regressions', () => {
         updateConversationChatMessage.mockClear();
         runtimeStatusOverrides.clear();
         generateRaw.mockReset();
+        getConnectionProfiles.mockReset().mockReturnValue([]);
+        registerGenerationCommitPlan.mockClear();
+        settleGenerationCommit.mockReset().mockResolvedValue(null);
         getActiveApiResponseLength.mockClear();
         buildConversationPromptMessages.mockClear();
         buildConversationSystemPrompt.mockClear();
@@ -301,6 +309,111 @@ describe('Conversation core generated reply regressions', () => {
 
         expect(generateConversationImage).not.toHaveBeenCalled();
         chatMessages.pop();
+    });
+
+    describe('a reply that carries a commit plan', () => {
+        const PROFILE = { name: 'Fast', id: 'profile-1' };
+        const profileSettings = { connection_profile: 'Fast' };
+        const handle = () => ({ createPlan: jest.fn(route => ({ route })), state: null });
+        const sendRequest = jest.fn();
+
+        beforeEach(() => {
+            sendRequest.mockReset().mockResolvedValue('profile reply');
+            getConnectionProfiles.mockReturnValue([PROFILE]);
+            globalThis.window = { SillyTavern: { getContext: () => ({ ConnectionManagerRequestService: { sendRequest } }) } };
+        });
+
+        test('registers the plan of the profile route on the signal of the caller before the request, and keeps what the claim answered', async () => {
+            const commit = handle();
+            const signal = new AbortController().signal;
+            const order = [];
+            registerGenerationCommitPlan.mockImplementation(() => order.push('register'));
+            sendRequest.mockImplementation(async () => {
+                order.push('request');
+                return 'profile reply';
+            });
+            settleGenerationCommit.mockImplementation(async () => {
+                order.push('settle');
+                return 'committed';
+            });
+
+            await expect(generateConversationRaw({ prompt: 'p', systemPrompt: 's', responseLength: 50, signal, commit }, profileSettings)).resolves.toBe('profile reply');
+
+            expect(registerGenerationCommitPlan).toHaveBeenCalledWith(signal, { route: 'profile' });
+            expect(commit.createPlan).toHaveBeenCalledTimes(1);
+            expect(settleGenerationCommit).toHaveBeenCalledWith(signal);
+            expect(order).toEqual(['register', 'request', 'settle']);
+            expect(commit.state).toBe('committed');
+            expect(generateRaw).not.toHaveBeenCalled();
+        });
+
+        test('sends a new plan with the same handle when the profile fails and the active API takes over, and reports the state of that request', async () => {
+            const commit = handle();
+            sendRequest.mockRejectedValue(new Error('the profile is down'));
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            generateRaw.mockImplementation(async (options) => {
+                options.commit.state = 'claimed';
+                return 'raw reply';
+            });
+
+            await expect(generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal, commit }, profileSettings)).resolves.toBe('raw reply');
+
+            expect(commit.createPlan.mock.calls.map(([route]) => route)).toEqual(['profile', 'raw']);
+            expect(generateRaw.mock.calls[0][0].commit).toEqual({ plan: { route: 'raw' }, state: 'claimed' });
+            expect(commit.state).toBe('claimed');
+            expect(settleGenerationCommit).not.toHaveBeenCalled();
+            warn.mockRestore();
+        });
+
+        test('does not fall back when the request was stopped, and keeps no state', async () => {
+            const commit = handle();
+            const controller = new AbortController();
+            sendRequest.mockImplementation(async () => {
+                controller.abort();
+                throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+            });
+
+            await expect(generateConversationRaw({ prompt: 'p', responseLength: 50, signal: controller.signal, commit }, profileSettings)).rejects.toThrow('aborted');
+
+            expect(generateRaw).not.toHaveBeenCalled();
+            expect(commit.state).toBeNull();
+        });
+
+        test('hands the plan of the raw route to generateRaw when no profile is configured, and reports the state', async () => {
+            const commit = handle();
+            generateRaw.mockImplementation(async (options) => {
+                options.commit.state = 'committed';
+                return 'raw reply';
+            });
+
+            await generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal, commit }, { connection_profile: '' });
+
+            expect(sendRequest).not.toHaveBeenCalled();
+            expect(commit.createPlan.mock.calls).toEqual([['raw']]);
+            expect(commit.state).toBe('committed');
+        });
+
+        test('sends no plan, registers nothing and asks for no state when the caller gives no handle', async () => {
+            await generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal }, profileSettings);
+            sendRequest.mockRejectedValue(new Error('down'));
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            await generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal }, profileSettings);
+
+            expect(registerGenerationCommitPlan).not.toHaveBeenCalled();
+            expect(settleGenerationCommit).not.toHaveBeenCalled();
+            expect(generateRaw.mock.calls[0][0].commit).toBeNull();
+            warn.mockRestore();
+        });
+
+        test('is asked for by generateConversationReply, which passes the handle of its caller down to the request', async () => {
+            const commit = handle();
+            generateRaw.mockResolvedValue('reply');
+
+            await generateConversationReply('Reply now.', { connection_profile: '' }, { avatar: 'char.png', chatId: 'main', groupId: '', personaId: 'persona-a.png', commit });
+
+            expect(commit.createPlan).toHaveBeenCalledWith('raw');
+            expect(generateRaw.mock.calls[0][0].commit.plan).toEqual({ route: 'raw' });
+        });
     });
 
     test('saves only changed content and closes the editor in all cases', async () => {

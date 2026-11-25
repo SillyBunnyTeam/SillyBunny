@@ -1,6 +1,7 @@
 import { getConversationGroupIdForAvatar, getConversationPersonaId, getCurrentCharAvatar, getCurrentCharName } from './context.js';
 import { isConversationActive, markConversationRead, notifyNewConversationMessage } from './notifications.js';
 import { scheduleConversationMemorySummary } from './prompt.js';
+import { conversationData } from './conversation-data-browser.js';
 import { scheduleInterfaceRefresh, scheduleConversationListRender } from './render-scheduler.js';
 import { conversationState } from './state.js';
 import { appendConversationChatMessage, ensureConversationChatLoaded, markConversationSeen } from './conversation-store.js';
@@ -28,6 +29,11 @@ export async function appendConversationMessage(messageText, { name = getCurrent
     }
 
     afterIncomingMessage(avatar, message, { chatId, groupId: resolvedGroupId, personaId, address });
+    // A hidden page can be closed at any moment, and a page that is closing sends only requests that carry the keepalive
+    // flag. The data module already flushed when the page became hidden; a message that arrives after that needs its own.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        void conversationData.flush({ keepalive: true });
+    }
     return message;
 }
 

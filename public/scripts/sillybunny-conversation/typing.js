@@ -11,6 +11,7 @@ import {
 import { getCharacterForAvatar } from './media.js';
 import { isConversationActive } from './notifications.js';
 import { getAvailabilityCopy } from './personas.js';
+import { waitForDelay } from './reply-delay.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
 import { getConversationSessionMarker, getLastUserActivity, setConversationSessionMarker } from './settings-store.js';
@@ -53,7 +54,7 @@ export async function waitForReplyDelay(messageText, settings, avatar, { chatId 
     if (isConversationActive(avatar, groupId, { chatId, personaId })) {
         scheduleInterfaceRefresh({ syncControls: false });
     }
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await waitForDelay(delay);
 }
 
 export function getTypingParticipantMap(avatar = getCurrentCharAvatar(), { chatId = '', create = false, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
