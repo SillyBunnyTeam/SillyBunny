@@ -77,17 +77,22 @@ export function isPromptCachingOn(settings) {
 }
 
 /**
+ * The depth that turning the switch on writes when there is none to write back. Depth 0 marks the last message of the
+ * chat, so the cache reaches as far as it can; `config.yaml` names the same value as the one that suits most chats.
+ */
+export const FIRST_ENABLE_DEPTH = 0;
+
+/**
  * The keys that the master switch writes.
  * @param {boolean} on
- * @param {number|null} [restoredDepth]  The depth to write back when the switch turns on again; null leaves the depth key alone.
+ * @param {number|null} [restoredDepth]  The depth to write back when the switch turns on again.
  */
 export function masterSwitchPatch(on, restoredDepth = null) {
     if (!on) {
         return { claude: { enableSystemPromptCache: false, cachingAtDepth: -1 }, gemini: { enableSystemPromptCache: false } };
     }
-    const claude = { enableSystemPromptCache: true };
-    if (Number.isInteger(restoredDepth) && /** @type {number} */ (restoredDepth) >= 0) claude.cachingAtDepth = restoredDepth;
-    return { claude, gemini: { enableSystemPromptCache: true } };
+    const depth = Number.isInteger(restoredDepth) && /** @type {number} */ (restoredDepth) >= 0 ? restoredDepth : FIRST_ENABLE_DEPTH;
+    return { claude: { enableSystemPromptCache: true, cachingAtDepth: depth }, gemini: { enableSystemPromptCache: true } };
 }
 
 /**
@@ -374,6 +379,7 @@ export function createServerRequestSettings({
     function changeMaster(on) {
         const plan = planMasterChange({ on, depthShown: depth.getValue() ?? -1, rememberedDepth: state.rememberedDepth });
         state.rememberedDepth = plan.rememberedDepth;
+        if (on) depth.setValue(plan.patch.claude.cachingAtDepth);
         syncSensitivity();
         save(plan.patch);
     }

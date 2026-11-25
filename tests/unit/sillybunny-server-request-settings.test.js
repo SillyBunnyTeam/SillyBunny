@@ -67,9 +67,9 @@ describe('what the master switch writes', () => {
         });
     });
 
-    test('turning it on sets both flags and leaves the depth alone without a remembered one', () => {
-        expect(masterSwitchPatch(true)).toEqual({ claude: { enableSystemPromptCache: true }, gemini: { enableSystemPromptCache: true } });
-        expect(masterSwitchPatch(true, -1)).toEqual({ claude: { enableSystemPromptCache: true }, gemini: { enableSystemPromptCache: true } });
+    test('turning it on sets both flags, and depth 0 when there is no depth to write back', () => {
+        expect(masterSwitchPatch(true)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } });
+        expect(masterSwitchPatch(true, -1)).toEqual({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } });
     });
 
     test('turning it on writes back the remembered depth', () => {
@@ -308,15 +308,17 @@ describe('the rows of Presets', () => {
         controller.destroy();
     });
 
-    test('the master switch saves both system flags and nothing else, with no restart', async () => {
+    test('a first enable saves both system flags and depth 0 and nothing else, with no restart', async () => {
         await ready();
         control('sb-config-prompt-caching-enabled').click();
+        expect(control('sb-config-claude-caching-depth').value).toBe('0');
         await settle();
         expect(requests.filter(call => call.url === SAVE)).toEqual([{
             url: SAVE,
             method: 'POST',
-            body: { settings: { claude: { enableSystemPromptCache: true }, gemini: { enableSystemPromptCache: true } } },
+            body: { settings: { claude: { enableSystemPromptCache: true, cachingAtDepth: 0 }, gemini: { enableSystemPromptCache: true } } },
         }]);
+        expect(control('sb-config-claude-caching-depth').value).toBe('0');
         controller.destroy();
     });
 

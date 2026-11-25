@@ -886,7 +886,8 @@ function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCach
 /**
  * Applies OpenRouter sticky session routing and explicit cache markers.
  * Claude is matched by id. Gemini marks only the leading system prefix. Any other model whose catalog entry has a
- * cache-write price takes the same markers as Claude, without a ttl, because only Anthropic prices a 1-hour write.
+ * cache-write price, except an OpenAI model, takes the same markers as Claude, without a ttl, because only Anthropic
+ * prices a 1-hour write.
  * @param {{ requestBody: any, bodyParams: Record<string, any>, tools?: any[], affinityKey?: string | (() => string | undefined), userHandle?: string, config?: PromptCachingConfig, isModelCacheable?: (modelId: string) => Promise<boolean> }} params
  */
 export async function applyOpenRouterRequestCaching({
@@ -931,6 +932,11 @@ export async function applyOpenRouterRequestCaching({
         }
 
         applySystemPromptCacheForOpenRouter(messages);
+        return;
+    }
+
+    // OpenAI models cache without markers, although the catalog lists a cache-write price for them.
+    if (/^~?openai\//i.test(String(model ?? '').trim())) {
         return;
     }
 
