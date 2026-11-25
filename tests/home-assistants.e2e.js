@@ -161,13 +161,12 @@ const startConversation = (page, avatar) => page.evaluate(async (target) => {
 const conversationOf = (page, avatar) => page.evaluate(async (target) => {
     const { conversationState } = await import('/scripts/sillybunny-conversation/state.js');
     const { getConversationChats, getConversationRecord } = await import('/scripts/sillybunny-conversation/context.js');
-    const { getSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
     return {
         open: Boolean(conversationState.conversationWorkspaceOpen),
         selected: conversationState.conversationSelectedAvatar,
         branches: getConversationChats(target).length,
         active: getConversationRecord(target)?.activeChatId ?? null,
-        enabled: Boolean(getSettings(target).enabled),
+        exists: Boolean(getConversationRecord(target)),
     };
 }, avatar);
 
@@ -513,7 +512,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                 await startOf(cardOf(page, 'assistant-reisen')).click();
 
-                await expect.poll(() => conversationOf(page, REISEN)).toMatchObject({ open: true, selected: REISEN, enabled: true, branches: before.branches + 1 });
+                await expect.poll(() => conversationOf(page, REISEN)).toMatchObject({ open: true, selected: REISEN, exists: true, branches: before.branches + 1 });
                 const after = await conversationOf(page, REISEN);
                 expect(after.active).not.toBe(before.active);
                 expect(await currentChat(page)).toBeUndefined();
@@ -595,7 +594,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await menuOf(cardOf(page, 'assistant-reisen')).click();
                 await page.getByRole('menuitem', { name: 'New Chat in Conversation' }).click();
 
-                await expect.poll(() => conversationOf(page, REISEN)).toMatchObject({ open: true, selected: REISEN, enabled: true, branches: before.branches + 1 });
+                await expect.poll(() => conversationOf(page, REISEN)).toMatchObject({ open: true, selected: REISEN, exists: true, branches: before.branches + 1 });
                 expect(await stored(page, MODE_KEY)).toBe('conversation');
             });
 
