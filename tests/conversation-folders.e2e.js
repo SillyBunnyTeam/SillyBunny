@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { waitForAppReady } from './helpers/app-ready.js';
 import {
     ITEM,
     LIST,
@@ -130,6 +131,7 @@ test.describe('the folders in the list', () => {
         // Quick Image Gen asks about the browser-only settings of the first load on a second one, as it does not in a fresh test.
         await page.addInitScript(() => window.localStorage.clear());
         await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
         await openConversationList(page);
         await expect(headingOf(page, work)).toHaveAttribute('aria-expanded', 'false');
         await expect(headingOf(page, friends)).toHaveAttribute('aria-expanded', 'false');
@@ -148,6 +150,7 @@ test.describe('the folders in the list', () => {
 
         await page.addInitScript(() => window.localStorage.clear());
         await page.reload({ waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
         await openConversationList(page);
         await expect(headingOf(page, 'favorites')).toHaveAttribute('aria-expanded', 'false');
         await expect(section(page, 'favorites').locator(ROW)).toHaveCount(0);
