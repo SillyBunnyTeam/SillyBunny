@@ -20,6 +20,12 @@ export function createConversationMessageRevisionEntries(messages) {
         }));
 }
 
+/** A round that a page carries on after the chat was opened: the members still to speak, and when it began. */
+function normalizeQueueRound(round) {
+    const remaining = (Array.isArray(round?.remaining) ? round.remaining : []).filter(avatar => typeof avatar === 'string' && avatar);
+    return remaining.length && Number.isFinite(round?.started) ? { remaining, started: round.started } : null;
+}
+
 export function createConversationQueueItem({
     avatar,
     attachmentContext = '',
@@ -32,6 +38,7 @@ export function createConversationQueueItem({
     messageRevisions = [],
     personaId,
     replyTarget = null,
+    round = null,
     text = '',
     conversationKey,
 } = {}) {
@@ -51,6 +58,7 @@ export function createConversationQueueItem({
             revision: String(replyTarget.revision),
         } : null,
         conversationKey: String(conversationKey || '').trim(),
+        round: normalizeQueueRound(round),
         text: String(text || ''),
         attachmentContext: String(attachmentContext || ''),
         createdAt: Number.isFinite(Number(createdAt)) ? Number(createdAt) : Date.now(),

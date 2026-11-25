@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+/* global globalThis */
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { hashCommitText, normalizeCommitPlan } from '../public/scripts/generation-commit-plan.js';
 import { getConversationMessageRevision } from '../public/scripts/sillybunny-conversation/message-identity-utils.js';
@@ -44,7 +45,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/genera
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     buildCharacterImagePrompt: () => 'a prompt',
     generateConversationImage,
-    getCharacterForAvatar: avatar => ({ avatar, name: avatar === 'char.png' ? 'Aster' : 'Birch' }),
+    getCharacterForAvatar: avatar => ({ avatar, name: { 'char.png': 'Aster', 'member.png': 'Birch', 'third.png': 'Cyan' }[avatar] ?? 'Someone' }),
     getConversationMemberAvatars: () => [],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
@@ -88,7 +89,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage }));
 
-const { processQueuedConversationReply } = await import('../public/scripts/sillybunny-conversation/attachments.js');
+const { enqueueConversationReply, processQueuedConversationReply } = await import('../public/scripts/sillybunny-conversation/attachments.js');
+const { sendQueue } = await import('../public/scripts/sillybunny-conversation/state.js');
 
 const USER_MESSAGE = { id: 'u1', role: 'user', name: 'You', mes: 'hello', created_at: 2, extra: {} };
 
@@ -223,16 +225,248 @@ describe('a queued reply of a direct conversation', () => {
 });
 
 describe('a queued reply of a group', () => {
+    const MEMBERS = ['char.png', 'member.png', 'third.png'];
+    const setGroup = (members = MEMBERS) => {
+        group = { id: CONVERSATION, members: [...members], disabled_members: [] };
+    };
+    const groupItem = (overrides = {}) => queueItem({ groupId: CONVERSATION, text: 'Aster and Birch, hello', ...overrides });
+
+    beforeEach(() => {
+        setGroup();
+        sendQueue.length = 0;
+        // A member that is not mentioned may be drawn as a second speaker by chance; these tests choose who speaks.
+        jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    /** Replies that wait until the test lets each member finish, and record who was asked when. */
+    function gatedReplies() {
+        const asked = [];
+        const gates = [];
+        generateConversationReply.mockImplementation(async (_directive, _settings, options) => {
+            asked.push({ speaker: options.speakerAvatar, plan: options.commit.createPlan('profile') });
+            options.commit.state = 'claimed';
+            await new Promise(resolve => gates.push(resolve));
+            return 'A reply.';
+        });
+        const finishNext = async () => {
+            gates.shift()();
+            await new Promise(resolve => setImmediate(resolve));
+        };
+        return { asked, finishNext };
+    }
+
     test('gives each member that answers a plan of its own, under its own avatar and token', async () => {
-        group = { id: CONVERSATION, members: ['char.png', 'member.png'], disabled_members: [] };
         const seen = answerWith('claimed');
 
-        await processQueuedConversationReply(queueItem({ groupId: CONVERSATION, text: 'Aster and Birch, hello' }));
+        await processQueuedConversationReply(groupItem());
 
         const plans = seen.map(item => item.profile);
-        expect(plans.map(plan => plan.reply.speaker).sort()).toEqual(['char.png', 'member.png']);
+        expect(plans.map(plan => plan.reply.speaker)).toEqual(['char.png', 'member.png']);
         expect(new Set(plans.map(plan => plan.reply.token)).size).toBe(2);
         expect(plans.every(plan => plan.reply.anchor === 'char.png')).toBe(true);
         expect(plans.every(plan => normalizeCommitPlan(plan) !== null)).toBe(true);
+    });
+
+    test('asks the second member only when the reply of the first is in the chat, so that it reads it', async () => {
+        const { asked, finishNext } = gatedReplies();
+        const done = processQueuedConversationReply(groupItem());
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(asked.map(item => item.speaker)).toEqual(['char.png']);
+        await finishNext();
+        expect(postCharacterReply).toHaveBeenCalledTimes(1);
+        await new Promise(resolve => setImmediate(resolve));
+        expect(asked.map(item => item.speaker)).toEqual(['char.png', 'member.png']);
+        await finishNext();
+        await done;
+
+        expect(postMemberConversationReply).toHaveBeenCalledTimes(1);
+    });
+
+    test('lists the members still to speak in the plan of each reply, with the same start of the round for all', async () => {
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem());
+
+        const [first, second] = seen.map(item => item.profile);
+        expect(first.round).toEqual(['member.png']);
+        expect(second.round).toEqual([]);
+        expect(first.reply.round_started).toBe(second.reply.round_started);
+    });
+
+    test('lets at most two members speak, whoever is mentioned', async () => {
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem({ text: 'Aster, Birch and Cyan, hello' }));
+
+        expect(seen).toHaveLength(2);
+    });
+
+    test('marks the last bubble of a reply with the rest of the round, and no reply that ends the round', async () => {
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem());
+
+        const first = postCharacterReply.mock.calls[0][2].roundMarker;
+        expect(first).toEqual({ remaining: ['member.png'], started: seen[0].profile.reply.round_started, triggers: ['u1'] });
+        expect(postMemberConversationReply.mock.calls[0][3].roundMarker).toBeNull();
+    });
+
+    test('stops before the second member when the user wrote a message meanwhile, and lets the reply being written finish', async () => {
+        const { asked, finishNext } = gatedReplies();
+        const done = processQueuedConversationReply(groupItem());
+        await new Promise(resolve => setImmediate(resolve));
+        messages = [...messages, { id: 'u2', role: 'user', name: 'You', mes: 'wait, one more thing', created_at: 3, extra: {} }];
+
+        await finishNext();
+        await done;
+
+        expect(postCharacterReply).toHaveBeenCalledTimes(1);
+        expect(asked.map(item => item.speaker)).toEqual(['char.png']);
+        expect(postMemberConversationReply).not.toHaveBeenCalled();
+    });
+
+    test('stops before the second member when a reply for this chat waits in the queue, forced or not', async () => {
+        for (const force of [false, true]) {
+            generateConversationReply.mockClear();
+            const { asked, finishNext } = gatedReplies();
+            const done = processQueuedConversationReply(groupItem());
+            await new Promise(resolve => setImmediate(resolve));
+            sendQueue.push(queueItem({ groupId: CONVERSATION, force, messageIds: force ? ['u1'] : [] }));
+
+            await finishNext();
+            await done;
+
+            expect(asked.map(item => item.speaker)).toEqual(['char.png']);
+            sendQueue.length = 0;
+        }
+    });
+
+    test('stops before the second member when the message that the round answers was edited meanwhile', async () => {
+        const { asked, finishNext } = gatedReplies();
+        const done = processQueuedConversationReply(groupItem());
+        await new Promise(resolve => setImmediate(resolve));
+        messages = [messages[0], { ...USER_MESSAGE, mes: 'hello, edited' }];
+
+        await finishNext();
+        await done;
+
+        expect(asked.map(item => item.speaker)).toEqual(['char.png']);
+    });
+
+    test('skips a member that left the group, and does not stop for it', async () => {
+        const { asked, finishNext } = gatedReplies();
+        const done = processQueuedConversationReply(groupItem({ text: 'Aster, Birch and Cyan, hello' }));
+        await new Promise(resolve => setImmediate(resolve));
+        expect(asked.map(item => item.speaker)).toEqual(['char.png']);
+        setGroup(['char.png', 'third.png']);
+
+        await finishNext();
+        await done;
+
+        expect(asked.map(item => item.speaker)).toEqual(['char.png']);
+    });
+
+    test('discards the reply of a member that left the group while the reply was being written', async () => {
+        const { finishNext } = gatedReplies();
+        const done = processQueuedConversationReply(groupItem({ text: 'Birch, hello' }));
+        await new Promise(resolve => setImmediate(resolve));
+        setGroup(['char.png', 'third.png']);
+
+        await finishNext();
+        await done;
+
+        expect(postMemberConversationReply).not.toHaveBeenCalled();
+        expect(postCharacterReply).not.toHaveBeenCalled();
+    });
+
+    test('goes on to the second member after a reply that the server wrote, once the chat is read again', async () => {
+        const seen = [];
+        generateConversationReply.mockImplementation(async (_directive, _settings, options) => {
+            seen.push(options.speakerAvatar);
+            options.commit.state = seen.length === 1 ? 'committed' : 'claimed';
+            return 'A reply.';
+        });
+
+        await processQueuedConversationReply(groupItem());
+
+        expect(seen).toEqual(['char.png', 'member.png']);
+        expect(postCharacterReply).not.toHaveBeenCalled();
+        expect(reloadConversationChat).toHaveBeenCalledTimes(1);
+        expect(postMemberConversationReply).toHaveBeenCalledTimes(1);
+    });
+
+    test('carries on a round that a page resumed: only the members that remain, from the start that the round had', async () => {
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem({ round: { remaining: ['member.png'], started: 1234 }, coalesced: true }));
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0].profile.reply).toMatchObject({ speaker: 'member.png', round_started: 1234 });
+        expect(seen[0].profile.round).toEqual([]);
+    });
+
+    test('does nothing for a resumed round whose members have all left the group', async () => {
+        setGroup(['char.png']);
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem({ round: { remaining: ['member.png'], started: 1234 }, coalesced: true }));
+
+        expect(seen).toHaveLength(0);
+    });
+
+    test('leaves no member marked as busy when the round is over', async () => {
+        answerWith('claimed');
+        const { memberReplyBusyKeys } = await import('../public/scripts/sillybunny-conversation/state.js');
+
+        await processQueuedConversationReply(groupItem());
+
+        expect(memberReplyBusyKeys.size).toBe(0);
+    });
+});
+
+describe('a reply that is put in the queue and waited for', () => {
+    beforeEach(() => {
+        globalThis.document = { getElementById: () => null };
+        globalThis.HTMLTextAreaElement = class {};
+        sendQueue.length = 0;
+        group = { id: CONVERSATION, members: ['char.png', 'member.png'], disabled_members: [] };
+        jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    });
+
+    afterEach(() => {
+        delete globalThis.document;
+        delete globalThis.HTMLTextAreaElement;
+        jest.restoreAllMocks();
+    });
+
+    test('is done when the queue has processed it, and not before', async () => {
+        let release;
+        generateConversationReply.mockImplementation(async (_directive, _settings, options) => {
+            options.commit.state = 'claimed';
+            await new Promise((resolve) => { release = resolve; });
+            return 'A reply.';
+        });
+        let done = false;
+
+        const waiting = enqueueConversationReply(queueItem({ groupId: CONVERSATION, text: 'Birch, hello', coalesced: true })).then(() => { done = true; });
+        await new Promise(resolve => setImmediate(resolve));
+        expect(done).toBe(false);
+        release();
+        await waiting;
+
+        expect(done).toBe(true);
+        expect(postMemberConversationReply).toHaveBeenCalledTimes(1);
+        expect(sendQueue).toHaveLength(0);
+    });
+
+    test('is done also when its reply came to nothing', async () => {
+        answerWith('claimed', '');
+
+        await expect(enqueueConversationReply(queueItem({ groupId: CONVERSATION, text: 'Birch, hello', coalesced: true, messageIds: ['gone'] }))).resolves.toBeUndefined();
     });
 });

@@ -21,6 +21,7 @@ import {
     splitChatroomMessages,
 } from './generation-utils.js';
 import { getSpeakerPrefixMatch, stripSpeakerPrefixText } from './members-utils.js';
+import { createRoundMarker } from './rounds.js';
 
 /** One message per line, for a member that answers like a chatroom; paragraphs when every line is empty after clean-up. */
 export function splitMemberChatroomMessages(text) {
@@ -153,7 +154,7 @@ export function buildPendingBubbles(message, reply, groups, { anchorAvatar, refe
     });
 
     if (bubbles.length && reply.round.length) {
-        bubbles[bubbles.length - 1].extra.conversation_round = { remaining: [...reply.round], started: reply.roundStarted, triggers: [...reply.triggers] };
+        bubbles[bubbles.length - 1].extra.conversation_round = createRoundMarker({ remaining: reply.round, started: reply.roundStarted, triggers: reply.triggers });
     }
 
     return { bubbles, selfieRequests, sideEffects };

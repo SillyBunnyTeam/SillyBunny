@@ -485,6 +485,16 @@ function getReplyExtraWithCommandMetadata(extra, commandMetadata) {
     return resolvedExtra;
 }
 
+/** The index of the last group that has a bubble: the bubble that carries the marker of a round. */
+function getLastBubbleGroupIndex(groups) {
+    for (let index = groups.length - 1; index >= 0; index--) {
+        if (groups[index].bubbles.length) {
+            return index;
+        }
+    }
+    return -1;
+}
+
 async function appendResolvedConversationReply(messageText, speaker, settings, { avatar, extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), attachReplyReference = true, validateTarget = null } = {}) {
     const speakerAvatar = speaker?.avatar || avatar;
     const speakerName = speaker?.name || 'Character';
@@ -511,7 +521,7 @@ async function appendResolvedConversationReply(messageText, speaker, settings, {
     }, avatar, { chatId, groupId, personaId });
 }
 
-export async function postMemberConversationReply(rawText, member, memberSettings, { avatar = getCurrentCharAvatar(), extra = {}, chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), validateTarget = null } = {}) {
+export async function postMemberConversationReply(rawText, member, memberSettings, { avatar = getCurrentCharAvatar(), extra = {}, chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), validateTarget = null, roundMarker = null } = {}) {
     if (!avatar || !member) {
         return false;
     }
@@ -526,8 +536,9 @@ export async function postMemberConversationReply(rawText, member, memberSetting
     });
     let posted = false;
     const replyReferenceSpeakers = new Set();
+    const lastBubbleGroup = getLastBubbleGroupIndex(groups);
 
-    for (const group of groups) {
+    for (const [groupIndex, group] of groups.entries()) {
         if (typeof validateTarget === 'function' && !validateTarget()) {
             return posted;
         }
@@ -537,9 +548,11 @@ export async function postMemberConversationReply(rawText, member, memberSetting
         let commandReplyAppended = false;
         let commandSideEffectsCommitted = false;
 
-        for (const messageText of group.bubbles) {
+        for (const [bubbleIndex, messageText] of group.bubbles.entries()) {
             const attachReplyReference = !replyReferenceSpeakers.has(speakerAvatar);
-            const appended = await appendResolvedConversationReply(messageText, speaker, memberSettings, { avatar, extra: commandReplyAppended ? plainReplyExtra : replyExtra, chatId, groupId, personaId, attachReplyReference, validateTarget });
+            const isLastBubble = roundMarker && groupIndex === lastBubbleGroup && bubbleIndex === group.bubbles.length - 1;
+            const bubbleExtra = { ...(commandReplyAppended ? plainReplyExtra : replyExtra), ...(isLastBubble ? { conversation_round: roundMarker } : {}) };
+            const appended = await appendResolvedConversationReply(messageText, speaker, memberSettings, { avatar, extra: bubbleExtra, chatId, groupId, personaId, attachReplyReference, validateTarget });
             if (!appended) {
                 return posted;
             }
@@ -680,7 +693,7 @@ async function generateSelfieCaption(context, settings, avatar, imagePrompt) {
     return 'Here, I took this for you.';
 }
 
-export async function postCharacterReply(rawText, settings, { extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), validateTarget = null } = {}, avatar = getCurrentCharAvatar()) {
+export async function postCharacterReply(rawText, settings, { extra = {}, chatId = '', groupId = undefined, personaId = getConversationPersonaId(), validateTarget = null, roundMarker = null } = {}, avatar = getCurrentCharAvatar()) {
     if (!avatar) {
         return '';
     }
@@ -695,8 +708,9 @@ export async function postCharacterReply(rawText, settings, { extra = {}, chatId
     });
     const postedText = [];
     const replyReferenceSpeakers = new Set();
+    const lastBubbleGroup = getLastBubbleGroupIndex(groups);
 
-    for (const group of groups) {
+    for (const [groupIndex, group] of groups.entries()) {
         if (typeof validateTarget === 'function' && !validateTarget()) {
             return postedText.join('\n');
         }
@@ -706,9 +720,11 @@ export async function postCharacterReply(rawText, settings, { extra = {}, chatId
         let commandReplyAppended = false;
         let commandSideEffectsCommitted = false;
 
-        for (const messageText of group.bubbles) {
+        for (const [bubbleIndex, messageText] of group.bubbles.entries()) {
             const attachReplyReference = !replyReferenceSpeakers.has(speakerAvatar);
-            const appended = await appendResolvedConversationReply(messageText, speaker, settings, { avatar, extra: commandReplyAppended ? plainReplyExtra : replyExtra, chatId, groupId, personaId, attachReplyReference, validateTarget });
+            const isLastBubble = roundMarker && groupIndex === lastBubbleGroup && bubbleIndex === group.bubbles.length - 1;
+            const bubbleExtra = { ...(commandReplyAppended ? plainReplyExtra : replyExtra), ...(isLastBubble ? { conversation_round: roundMarker } : {}) };
+            const appended = await appendResolvedConversationReply(messageText, speaker, settings, { avatar, extra: bubbleExtra, chatId, groupId, personaId, attachReplyReference, validateTarget });
             if (!appended) {
                 return postedText.join('\n');
             }

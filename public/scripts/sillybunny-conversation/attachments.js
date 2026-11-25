@@ -1,5 +1,6 @@
 import { is_send_press, online_status } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
+import { MAX_REPLY_TRIGGERS } from '../conversation-commit-plan.js';
 import { pageId } from '../resumable-generation.js';
 import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
@@ -58,6 +59,7 @@ import {
     updateLastUserActivity,
 } from './conversation-store.js';
 import { createConversationReplyPlan, createReplyToken } from './reply-commit-plan.js';
+import { createRoundMarker, roundMayContinue, roundMemory } from './rounds.js';
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
@@ -455,13 +457,17 @@ async function waitForConversationSpeakerAvailability(queueItem, settings, avata
     return true;
 }
 
-async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupId, conversationSettings, replyCandidate = null, skipAvailabilityWait = false } = {}) {
+async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupId, conversationSettings, replyCandidate = null, skipAvailabilityWait = false, round = [], roundStarted = Date.now() } = {}) {
     const chatId = queueItem?.chatId || '';
     const personaId = queueItem?.personaId || '';
     const replyCharacter = replyCandidate?.character || getCharacterForAvatar(anchorAvatar);
     const replyAvatar = replyCharacter?.avatar || anchorAvatar;
     const replySettings = replyCandidate?.settings || conversationSettings;
     const validateTarget = () => {
+        // A member that left the group while its reply was being written does not speak: its reply is discarded.
+        if (groupId && !getConversationGroupById(groupId, { personaId })?.members?.includes(replyAvatar)) {
+            return false;
+        }
         const messages = getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId });
         if (resolveConversationQueueTriggerMessages(queueItem, messages) === null) {
             return false;
@@ -490,14 +496,17 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
             anchorAvatar,
             route,
             messages: getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId }),
-            round: [],
+            round,
             token,
             pageId,
             now: Date.now(),
-            roundStarted: Date.now(),
+            roundStarted,
         }),
         state: null,
     };
+    // The last bubble of a reply that is not the last of its round names the members still to speak, so that a page that
+    // opens the chat after this one closed can carry the round on (`findRoundToResume()`).
+    const roundMarker = round.length ? createRoundMarker({ remaining: round, started: roundStarted, triggers: queueItem.messageIds.slice(-MAX_REPLY_TRIGGERS) }) : null;
     const attachmentContext = formatPromptText(queueItem?.attachmentContext, 3200);
     const systemDirective = queueItem?.force
         ? '[System directive: Generate a response/reply to the user in the Conversation Mode thread.]'
@@ -545,6 +554,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
                 groupId,
                 personaId,
                 validateTarget,
+                roundMarker,
             }, anchorAvatar);
             posted = Boolean(postedText);
         } else {
@@ -558,6 +568,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
                 groupId,
                 personaId,
                 validateTarget,
+                roundMarker,
             });
         }
     }
@@ -610,6 +621,49 @@ async function processGroupConversationSpeakerReply(queueItem, options) {
         return await processConversationSpeakerReply(queueItem, options);
     } finally {
         memberReplyBusyKeys.delete(busyKey);
+    }
+}
+
+/** The members that a page that opened the chat carries a round on with: the ones still to speak that are in the group and available. */
+function getResumedRoundCandidates(anchorAvatar, groupId, queueItem) {
+    const candidates = getGroupReplyCandidates(anchorAvatar, groupId, queueItem.personaId);
+    return queueItem.round.remaining
+        .map(avatar => candidates.find(candidate => candidate.character.avatar === avatar))
+        .filter(candidate => candidate && (queueItem.force || getConversationActivityContext(candidate.settings, candidate.character.avatar, new Date(), { personaId: queueItem.personaId }).status !== 'offline'))
+        .slice(0, GROUP_MAX_CONCURRENT_SPEAKERS);
+}
+
+/**
+ * The members of a group answer one message one after another, so that each reads the reply before its own. Each reply
+ * lists the members still to speak in its commit plan, which is what lets the server and the next page that opens the
+ * chat carry the round on. The reply that is being written when the user sends a message is allowed to finish; the
+ * members that have not started are dropped (`roundMayContinue()`), and the new message starts a round of its own.
+ */
+async function runGroupRound(queueItem, { anchorAvatar, groupId, conversationSettings, replyCandidates }) {
+    const { chatId, personaId } = queueItem;
+    const roundStarted = queueItem.round?.started ?? Date.now();
+    // This page runs the round, so it never carries it on again from a marker that it reads in the chat.
+    roundMemory.note(roundStarted);
+    for (const [index, replyCandidate] of replyCandidates.entries()) {
+        if (index > 0 && !roundMayContinue({ queueItem, messages: getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId }), queue: sendQueue })) {
+            return;
+        }
+        // A member that left the group since the round was planned is skipped, which is not a reason to stop.
+        if (!getConversationGroupById(groupId, { personaId })?.members?.includes(replyCandidate.character.avatar)) {
+            continue;
+        }
+        try {
+            await processGroupConversationSpeakerReply(queueItem, {
+                anchorAvatar,
+                groupId,
+                conversationSettings,
+                replyCandidate,
+                round: replyCandidates.slice(index + 1).map(candidate => candidate.character.avatar),
+                roundStarted,
+            });
+        } catch (error) {
+            reportConversationGenerationError('group reply', error);
+        }
     }
 }
 
@@ -702,16 +756,10 @@ export async function processQueuedConversationReply(queueItem) {
         }
 
         if (groupId) {
-            const replyCandidates = chooseGroupReplyCandidates(avatar, groupId, queueItem, { force: Boolean(queueItem?.force) });
-            await Promise.allSettled(replyCandidates.map(replyCandidate => processGroupConversationSpeakerReply(queueItem, {
-                anchorAvatar: avatar,
-                groupId,
-                conversationSettings,
-                replyCandidate,
-            }).catch((error) => {
-                reportConversationGenerationError('group reply', error);
-                return false;
-            })));
+            const replyCandidates = queueItem.round
+                ? getResumedRoundCandidates(avatar, groupId, queueItem)
+                : chooseGroupReplyCandidates(avatar, groupId, queueItem, { force: Boolean(queueItem?.force) });
+            await runGroupRound(queueItem, { anchorAvatar: avatar, groupId, conversationSettings, replyCandidates });
             return;
         }
 
@@ -764,6 +812,9 @@ export async function processSendQueue({ processItem = processQueuedConversation
                     continue;
                 }
                 const result = await processItem(queueItem);
+                if (result !== CONVERSATION_QUEUE_RETRY) {
+                    queueItem.onProcessed?.();
+                }
                 if (result === CONVERSATION_QUEUE_RETRY) {
                     requeueConversationQueueItem(sendQueue, queueItem);
                     if (!await waitForRoleplay()) {
@@ -783,6 +834,19 @@ export async function processSendQueue({ processItem = processQueuedConversation
         conversationState.sendQueueProcessing = false;
         focusConversationInput();
     }
+}
+
+/**
+ * Puts a reply in the send queue and waits for the queue to process it.
+ * @param {object} queueItem
+ * @returns {Promise<void>} Resolves once the reply is done, whether or not it wrote anything.
+ */
+export function enqueueConversationReply(queueItem) {
+    return new Promise((resolve) => {
+        queueItem.onProcessed = resolve;
+        sendQueue.push(queueItem);
+        void processSendQueue();
+    });
 }
 
 export async function submitConversationInput() {

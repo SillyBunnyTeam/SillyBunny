@@ -92,6 +92,7 @@ const {
     generateSelfieFromContext,
     getConversationErrorDetail,
     postCharacterReply,
+    postMemberConversationReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
 const { generationTargets } = await import('../public/scripts/sillybunny-conversation/deletion-guards.js');
 
@@ -278,6 +279,36 @@ describe('Conversation core generated reply regressions', () => {
         expect(addConversationReminder).toHaveBeenCalledWith('char.png', '', '15m', 'check in', {
             chatId: 'branch-a',
             personaId: 'persona-a.png',
+        });
+    });
+
+    describe('the marker of a round', () => {
+        const roundMarker = { remaining: ['partner.png'], started: 1234, triggers: ['user-1'] };
+        const markers = () => appendConversationMessage.mock.calls.map(call => call[1].extra.conversation_round);
+
+        test('goes on the last bubble of a reply of the character, and on no other', async () => {
+            await postCharacterReply('One\n\nTwo\n\nThree', settings, { chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', roundMarker }, 'char.png');
+
+            expect(markers()).toEqual([undefined, undefined, roundMarker]);
+        });
+
+        test('goes on the last bubble of a reply of a member, even when the lines are bubbles of their own', async () => {
+            await postMemberConversationReply('One\nTwo', { avatar: 'partner.png', name: 'Partner' }, settings, { avatar: 'char.png', chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', roundMarker });
+
+            expect(markers()).toEqual([undefined, roundMarker]);
+        });
+
+        test('is not written for a reply that ends its round', async () => {
+            await postCharacterReply('One\n\nTwo', settings, { chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', roundMarker: null }, 'char.png');
+
+            expect(markers()).toEqual([undefined, undefined]);
+        });
+
+        test('stays on the last bubble of text when a picture follows it', async () => {
+            await postCharacterReply('One\n\nTwo [selfie: context="beach"]', settings, { chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', roundMarker }, 'char.png');
+
+            expect(markers().filter(Boolean)).toEqual([roundMarker]);
+            expect(appendConversationMessage.mock.calls.findIndex(call => call[1].extra.conversation_round)).toBe(1);
         });
     });
 

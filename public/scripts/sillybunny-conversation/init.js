@@ -21,6 +21,7 @@ import { loadCurrentPanelSettings } from './interface.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
 import { installReplyFinalizer } from './reply-finalizer-browser.js';
+import { installRoundResume } from './round-resume-browser.js';
 import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './conversation-list.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { closeConversationSettings } from './settings-panel.js';
@@ -55,6 +56,7 @@ export function init() {
     conversationState.initialized = true;
     installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
     installReplyFinalizer();
+    installRoundResume();
     conversationData.subscribe((event) => {
         if (event.type === 'list' || event.type === 'status') {
             updateConversationNotificationIndicators();
