@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 
 import { hashCommitText, normalizeCommitPlan } from '../public/scripts/generation-commit-plan.js';
 import { getConversationMessageRevision } from '../public/scripts/sillybunny-conversation/message-identity-utils.js';
-import { createConversationMessageRevisionEntries, createConversationQueueItem } from '../public/scripts/sillybunny-conversation/send-queue-utils.js';
+import { createConversationMessageRevisionEntries, createConversationQueueItem, createConversationQueueReplyTarget } from '../public/scripts/sillybunny-conversation/send-queue-utils.js';
 
 const PERSONA = 'persona-a.png';
 const CONVERSATION = 'conv_1732550000000_abc123';
@@ -18,6 +18,8 @@ const generateConversationImage = jest.fn();
 let settings = { enabled: true };
 let messages = [];
 let group = null;
+/** The talkativeness that a card holds, by avatar; a card that is not listed has none. */
+const cards = {};
 
 await jest.unstable_mockModule('../public/script.js', () => ({ is_send_press: false, online_status: 'Connected' }));
 await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ pageId: PAGE }));
@@ -44,7 +46,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/genera
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     buildCharacterImagePrompt: () => 'a prompt',
     generateConversationImage,
-    getCharacterForAvatar: avatar => ({ avatar, name: { 'char.png': 'Aster', 'member.png': 'Birch', 'third.png': 'Cyan' }[avatar] ?? 'Someone' }),
+    getCharacterForAvatar: avatar => ({ avatar, name: { 'char.png': 'Aster', 'member.png': 'Birch', 'third.png': 'Cyan' }[avatar] ?? 'Someone', ...(avatar in cards ? { talkativeness: cards[avatar] } : {}) }),
     getConversationMemberAvatars: () => [],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
@@ -125,6 +127,9 @@ beforeEach(() => {
     postMemberConversationReply.mockResolvedValue(true);
     settings = { enabled: true };
     group = null;
+    for (const avatar of Object.keys(cards)) {
+        delete cards[avatar];
+    }
     messages = [{ id: 'g1', role: 'character', name: 'Aster', mes: 'Hi.', created_at: 1, extra: {} }, USER_MESSAGE];
 });
 
@@ -212,6 +217,22 @@ describe('a queued reply of a direct conversation', () => {
         expect(appendConversationMessage.mock.calls[0][1].extra).toMatchObject({ conversation_mode_image: true, reply_token: seen[0].profile.reply.token });
     });
 
+    test('answers a reply to the message of an extra as a message to the character, because extras do not speak', async () => {
+        const extraMessage = { id: 'm1', role: 'member', name: 'Someone', mes: 'Hi there.', created_at: 1, extra: { member_avatar: 'extra.png' } };
+        const reply = { id: 'u2', role: 'user', name: 'You', mes: 'and you?', created_at: 3, extra: { conversation_reply_to: { messageId: 'm1' } } };
+        messages = [extraMessage, reply];
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(queueItem({
+            messageIds: ['u2'],
+            messageRevisions: createConversationMessageRevisionEntries([reply]),
+            replyTarget: createConversationQueueReplyTarget([reply], messages),
+            text: 'and you?',
+        }));
+
+        expect(seen.map(item => item.options.speakerAvatar)).toEqual(['char.png']);
+    });
+
     test('makes a new token for each reply', async () => {
         const seen = answerWith('claimed');
 
@@ -294,6 +315,27 @@ describe('a queued reply of a group', () => {
         expect(first.round).toEqual(['member.png']);
         expect(second.round).toEqual([]);
         expect(first.reply.round_started).toBe(second.reply.round_started);
+    });
+
+    test('lets the member who spoke last answer a message that names nobody, and gives the turn to another when its card is at 0', async () => {
+        const seen = answerWith('claimed');
+        await processQueuedConversationReply(groupItem({ text: 'hello' }));
+        expect(seen.map(item => item.profile.reply.speaker)).toEqual(['char.png']);
+
+        cards['char.png'] = 0;
+        seen.length = 0;
+        await processQueuedConversationReply(groupItem({ text: 'hello' }));
+
+        expect(seen.map(item => item.profile.reply.speaker)).toEqual(['third.png']);
+    });
+
+    test('lets a member at 0 answer when it is named, and reads the card at that moment', async () => {
+        cards['member.png'] = 0;
+        const seen = answerWith('claimed');
+
+        await processQueuedConversationReply(groupItem({ text: 'Birch, hello' }));
+
+        expect(seen.map(item => item.profile.reply.speaker)).toContain('member.png');
     });
 
     test('lets at most two members speak, whoever is mentioned', async () => {
