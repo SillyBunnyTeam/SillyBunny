@@ -14,19 +14,19 @@
             },
             "emoji-en.json": {
                 "bytes": 173344,
-                "sha256": "a782fe395bcc7f4bd008d600ce1066ac866657c72222f0d6537dea5f821ac330"
+                "sha256": "96172b7802c3a1090777219d3ce85a2f7cb3895340974d700dfdeabd6fb51e80"
             },
             "emoji-es.json": {
                 "bytes": 159799,
-                "sha256": "bd5f4007220c596c9b5df80c787caae9984e141d7c671189b6ffc932761e73c1"
+                "sha256": "d4552b646f5932f16c5308f40360c7442479de00852623d1883058a5ca2ccae6"
             },
             "emoji-fr.json": {
                 "bytes": 195316,
-                "sha256": "f2d66025ba332eec4de0aca805eb0d0e0d3d4295a14f415227d277a76649f7a6"
+                "sha256": "c0da0af7831e505a18cb36083645b21a07154f4c18598309c4abb6140d6ebc21"
             },
             "emoji-it.json": {
                 "bytes": 214937,
-                "sha256": "2fbacce341a857bf77eba2763857f4e7713b3499b8f318aafac418b38e5fe752"
+                "sha256": "0f6f105878a5f51276ebaa56d16b6efa21fe9136562ce9c6909a17095de6b951"
             },
             "emoji-ja.json": {
                 "bytes": 179513,
@@ -38,15 +38,15 @@
             },
             "emoji-nl.json": {
                 "bytes": 179544,
-                "sha256": "33b1a9fe4dc93903133ba81fdee25ddae4cbbd63192d434505641d748fc8e96a"
+                "sha256": "078d69a8d8a7ead8aa79474d9a64bbd4fbc917b8822d4f9c5a691666de70f3b6"
             },
             "emoji-pt.json": {
                 "bytes": 187763,
-                "sha256": "0e7aaf115454584780e8da07575795e63b912bc0771e1cf911416cbad447285a"
+                "sha256": "8180c9b1c19868c7fa5cdd0e3664b0ed98002c592e2a54fa39b12437d2e0a717"
             },
             "emoji-ru.json": {
                 "bytes": 270827,
-                "sha256": "dfd084e8d9e3aff6ded10f07c46f1d7a124592ee6a177427b21dc21f52fe3048"
+                "sha256": "25067ebe6a61b0c643e524807c4ce6a4a4639cb078d15045cacf5b9b04563e09"
             },
             "emoji-th.json": {
                 "bytes": 270949,
@@ -54,11 +54,11 @@
             },
             "emoji-uk.json": {
                 "bytes": 283172,
-                "sha256": "293ad3071fbda68bd9875076bd5afd7c3ccdac862e40bb2dc42e0ce0bb030976"
+                "sha256": "c55d486c3aed63623726cc7f8970084222de2a9ce5a2e5515e768be707047f2e"
             },
             "emoji-vi.json": {
                 "bytes": 183622,
-                "sha256": "800bae4393444141905c86f3fd56ad31d54a1635f4740a8a91a800e66d604b98"
+                "sha256": "1c4ee3cc07bc2688d561d4777365e8f34ad8e2d393b3c292b2954353e8b58d94"
             },
             "emoji-zh-hant.json": {
                 "bytes": 144054,

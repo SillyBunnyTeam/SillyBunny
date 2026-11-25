@@ -30,6 +30,16 @@ const check = process.argv.includes('--check');
 const hexcode = text => [...text].map(character => character.codePointAt(0).toString(16).toUpperCase()).join('-');
 const readJson = file => JSON.parse(readFileSync(file, 'utf8'));
 
+/**
+ * CLDR writes a section name in the case of running text ("smileys & emotion"). A heading is Title Case in English, as every
+ * heading of the program is, and in another language it starts with a capital letter.
+ */
+function capitalizeHeading(text, locale) {
+    const tag = locale === 'zh-hant' ? 'zh-Hant' : locale;
+    const upper = word => (word ? word[0].toLocaleUpperCase(tag) + word.slice(1) : word);
+    return locale === 'en' ? text.split(' ').map(upper).join(' ') : upper(text);
+}
+
 function buildTable(packageDirectory, locale, drawn) {
     const data = readJson(path.join(packageDirectory, locale, 'data.json'));
     const messages = readJson(path.join(packageDirectory, locale, 'messages.json'));
@@ -50,7 +60,7 @@ function buildTable(packageDirectory, locale, drawn) {
         }
         rows.push(row);
     }
-    return { v: TABLE_FORMAT, emojibase: sources.emojibase.version, locale, groups: groups.map(group => group.message), tones: TONE_ORDER.map(key => toneName[key]), rows };
+    return { v: TABLE_FORMAT, emojibase: sources.emojibase.version, locale, groups: groups.map(group => capitalizeHeading(group.message, locale)), tones: TONE_ORDER.map(key => toneName[key]), rows };
 }
 
 const quote = text => `'${text.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')}'`;

@@ -70,6 +70,15 @@ describe('the emoji tables', () => {
         }
     });
 
+    test('name the sections like headings: Title Case in English and a capital first letter elsewhere', () => {
+        expect(tables.en.groups).toEqual(['Smileys & Emotion', 'People & Body', 'Animals & Nature', 'Food & Drink', 'Travel & Places', 'Activities', 'Objects', 'Symbols', 'Flags']);
+        for (const locale of EMOJI_LOCALES) {
+            for (const name of tables[locale].groups) {
+                expect([locale, name]).toEqual([locale, name[0].toLocaleUpperCase() + name.slice(1)]);
+            }
+        }
+    });
+
     test('hold the same emoji in the same order in every locale, 1,914 and 2,030 variants', () => {
         const english = flatten(tables.en);
         expect(english.length).toBe(1914 + 2030);
