@@ -219,7 +219,7 @@ describe('a search', () => {
 
         view.setConversationListQuery('');
         render([]);
-        expect(list.querySelector('.sb-conversation-list-empty .sb-status-page__title').textContent).toBe('Use + to start a conversation');
+        expect(list.querySelector('.sb-conversation-list-empty .sb-status-page__title').textContent).toBe('Use + to Start a Conversation');
 
         render([entry('a')]);
         expect(list.querySelector('.sb-conversation-list-empty').hidden).toBe(true);

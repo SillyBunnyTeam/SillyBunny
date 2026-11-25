@@ -276,7 +276,7 @@ export function renderConversationListView(list, entries) {
     const noRows = sections.favorites.length + sections.conversations.length === 0;
     view.empty.hidden = !noRows;
     if (noRows) {
-        const title = sections.searching ? 'No Conversations Found' : 'Use + to start a conversation';
+        const title = sections.searching ? 'No Conversations Found' : 'Use + to Start a Conversation';
         const current = view.status.firstElementChild;
         if (current?.dataset.sbListEmptyTitle !== title) {
             const page = createStatusPage({ state: 'empty', icon: 'comments', title, compact: true }).element;
