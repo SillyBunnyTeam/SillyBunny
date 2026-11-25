@@ -39,6 +39,7 @@ import {
     loadChat,
     readCharacterState,
     readConversation,
+    readConversationFolders,
     removeConversationAvatar,
     removeExtra,
     removeMember,
@@ -47,6 +48,7 @@ import {
     setConversationAvatar,
     updateCharacterState,
     updateConversation,
+    updateConversationFolders,
 } from '../conversation-store.js';
 import { MAX_AVATAR_IMAGE_BYTES } from '../conversation-schema.js';
 
@@ -279,6 +281,22 @@ router.post('/characters/update', route((user, body) => ({
     avatar: body.avatar,
     state: updateCharacterState(user, body.avatar, body.patch),
 })));
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Folders
+
+/** The folders of every persona: `{ version, personas: { <personaId>: { favoritesExpanded?, folders, members } } }`. */
+router.post('/folders/get', route(user => readConversationFolders(user)));
+
+/**
+ * `{ personaId, ops }`: one to 32 operations on the folders of that persona (`createFolder`, `updateFolder`, `moveFolder`,
+ * `deleteFolder`, `setMembers`, `setFavoritesExpanded`, see `public/scripts/sillybunny-conversation/folder-model.js`),
+ * applied in order and all or nothing. Answers `{ personaId, folders }`, the persona's record after the change.
+ */
+router.post('/folders/update', route((user, body) => {
+    onlyFields(body, ['personaId', 'ops'], 'folders/update');
+    return { personaId: body.personaId, folders: updateConversationFolders(user, body.personaId, body.ops) };
+}));
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Migration of the old store in settings.json

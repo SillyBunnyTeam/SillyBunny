@@ -4,6 +4,7 @@
  * ```
  * conversations/
  *   characters.json                  per-character state: routine, status override
+ *   folders.json                     the folders of each persona and the conversations filed in them
  *   <conversationId>/
  *     conversation.json              metadata, the list of chats and their state
  *     chats/<chatId>.jsonl           one chat, in the roleplay chat format
@@ -43,6 +44,7 @@ import {
     getChatFilePath,
     getConversationDirectory,
     getConversationJsonPath,
+    getFoldersJsonPath,
     isChatId,
     isConversationId,
     resolveConversationChatTarget,
@@ -55,6 +57,7 @@ import {
     buildConversation,
     ConversationStoreError,
     getAvatarContentType,
+    isSafeName,
     MAX_AVATAR_IMAGE_BYTES,
     MAX_REMINDERS,
     normalizeStoredCharacterState,
@@ -64,11 +67,20 @@ import {
     parseCharacterAvatar,
     parseCreateInput,
     parseMemberAvatars,
+    parsePersonaId,
     parseNewChatMessages,
     parseNewChatMetadata,
     sniffImageType,
     summarizeChatRecords,
 } from './conversation-schema.js';
+import {
+    FolderInputError,
+    applyFolderOps,
+    getPersonaFolders,
+    normalizeFolderFile,
+    parseFolderOps,
+    withPersonaFolders,
+} from '../public/scripts/sillybunny-conversation/folder-model.js';
 import { DestructiveChatSaveError, IntegrityMismatchError, InvalidChatDataError, trySaveChat } from './endpoints/chats.js';
 import { getConfigValue, tryWriteFileSync } from './util.js';
 
@@ -97,6 +109,9 @@ function guard(work) {
 function toStoreError(error) {
     if (error instanceof ConversationStoreError) {
         return error;
+    }
+    if (error instanceof FolderInputError) {
+        return new ConversationStoreError(error.code, error.message);
     }
     if (error instanceof ConversationPathError) {
         // The message of a path error names a path on the server, so it stays out of what a route sends.
@@ -1284,6 +1299,72 @@ export function renameCharacterState(user, from, to) {
         const { [oldName]: moved, ...rest } = state.characters;
         writeJson(filePath, { version: state.version, characters: { ...rest, [newName]: moved } });
         return true;
+    } finally {
+        release();
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Folders
+
+function readFolderFile(user) {
+    const filePath = guard(() => getFoldersJsonPath(user.directories));
+    const result = readJsonFile(filePath);
+    if (result.corrupt) {
+        const setAside = `${filePath}.corrupt-${Date.now()}-${process.pid}`;
+        fs.renameSync(filePath, setAside);
+        console.warn(`folders.json could not be read and was set aside as ${setAside}; the folders start empty.`);
+        return normalizeFolderFile(null);
+    }
+    return normalizeFolderFile(result.missing ? null : result.value, { isPersonaKey: isSafeName });
+}
+
+/**
+ * @param {StoreUser} user
+ * @returns {{ version: number, personas: Record<string, { favoritesExpanded?: boolean, folders: object[], members: Record<string, string> }> }}
+ * The folders of every persona. A `folders.json` that cannot be read is set aside, and the folders start empty.
+ */
+export function readConversationFolders(user) {
+    return readFolderFile(user);
+}
+
+/** A conversation that is filed has to exist and to belong to the persona whose folders are changed. */
+function requireFilableConversations(user, personaId, ops) {
+    for (const op of ops) {
+        if (op.op !== 'setMembers' || op.folderId === null) {
+            continue;
+        }
+        for (const id of op.ids) {
+            if (readConversation(user, id).personaId !== personaId) {
+                throw new ConversationStoreError('invalid_input', 'A conversation can only be filed in the folders of its own persona.');
+            }
+        }
+    }
+}
+
+/**
+ * Applies the operations of a request to the folders of one persona (see `folder-model.js` for the operations). The
+ * request is all or nothing, and nothing is written when it changes nothing.
+ * @param {StoreUser} user
+ * @param {unknown} personaId
+ * @param {unknown} input
+ * @returns {{ favoritesExpanded: boolean, folders: object[], members: Record<string, string> }} The persona's record after the change.
+ * @throws {ConversationStoreError} `invalid_id`, `invalid_input`, `not_found` or `exists`.
+ */
+export function updateConversationFolders(user, personaId, input) {
+    const persona = parsePersonaId(personaId);
+    const ops = guard(() => parseFolderOps(input));
+    requireFilableConversations(user, persona, ops);
+    const filePath = guard(() => getFoldersJsonPath(user.directories));
+    const release = acquireChatFileLock(filePath);
+    try {
+        const file = readFolderFile(user);
+        const next = guard(() => applyFolderOps(getPersonaFolders(file, persona), ops));
+        const nextFile = withPersonaFolders(file, persona, next);
+        if (JSON.stringify(nextFile) !== JSON.stringify(file)) {
+            writeJson(filePath, nextFile);
+        }
+        return getPersonaFolders(nextFile, persona);
     } finally {
         release();
     }

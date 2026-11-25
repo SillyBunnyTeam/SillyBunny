@@ -705,6 +705,18 @@ export function parseCharacterAvatar(avatar) {
 }
 
 /**
+ * @param {unknown} personaId
+ * @returns {string} The persona's avatar file name, which keys a persona's folders in `folders.json`.
+ * @throws {ConversationStoreError} `invalid_id` for a value that cannot be a persona's file name.
+ */
+export function parsePersonaId(personaId) {
+    if (!isSafeName(personaId)) {
+        throw new ConversationStoreError('invalid_id', 'personaId is not a persona id.');
+    }
+    return personaId;
+}
+
+/**
  * @param {unknown} avatars The characters to add to a conversation, as avatar file names.
  * @returns {string[]} At least one name, none twice, none that reads as a path.
  */

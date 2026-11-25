@@ -4,6 +4,7 @@
  * ```
  * conversations/
  *   characters.json
+ *   folders.json
  *   <conversationId>/
  *     conversation.json
  *     chats/<chatId>.jsonl
@@ -30,6 +31,7 @@ export const CHAT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 export const CONVERSATION_FILE_NAME = 'conversation.json';
 export const CHARACTERS_FILE_NAME = 'characters.json';
+export const FOLDERS_FILE_NAME = 'folders.json';
 export const CHATS_DIRECTORY_NAME = 'chats';
 
 /**
@@ -151,6 +153,17 @@ function assertInsideConversationsFolder(root, candidate) {
 export function getCharactersJsonPath(directories) {
     const root = getConversationsRoot(directories);
     const filePath = path.join(root, CHARACTERS_FILE_NAME);
+    assertInsideConversationsFolder(root, filePath);
+    return filePath;
+}
+
+/**
+ * @param {{ conversations?: string }} directories The user's directories.
+ * @returns {string} `conversations/folders.json`
+ */
+export function getFoldersJsonPath(directories) {
+    const root = getConversationsRoot(directories);
+    const filePath = path.join(root, FOLDERS_FILE_NAME);
     assertInsideConversationsFolder(root, filePath);
     return filePath;
 }
