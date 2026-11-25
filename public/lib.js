@@ -5,6 +5,7 @@
 import lodash from 'lodash';
 import Fuse from 'fuse.js';
 import DOMPurify from 'dompurify';
+// SillyBunny: bundle highlight.js core with 31 common languages instead of all 192 to shrink /lib.js.
 import hljs from 'highlight.js/lib/core';
 import hljsBash from 'highlight.js/lib/languages/bash';
 import hljsC from 'highlight.js/lib/languages/c';
@@ -61,6 +62,7 @@ import * as chevrotain from 'chevrotain';
 import { gzipSync, gzip } from 'fflate';
 import { sha256 } from 'js-sha256';
 
+// SillyBunny: register 31 common highlight.js languages, aliases, and plaintext fallback for unknown fences.
 const HLJS_LANGUAGES = [
     ['javascript', hljsJavascript],
     ['typescript', hljsTypescript],
@@ -117,6 +119,10 @@ hljs.highlightElement = function highlightElementWithFallback(element) {
     }
 
     const className = typeof element.className === 'string' ? element.className : '';
+    if (/\bno-?highlight\b/i.test(className)) {
+        return originalHighlightElement(element);
+    }
+
     const langMatch = className.match(/\b(?:lang|language)-([^\s]+)/i);
     const requestedLang = langMatch?.[1];
 

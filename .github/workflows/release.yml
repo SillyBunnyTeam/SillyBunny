@@ -77,7 +77,7 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/release-assets"
           mkdir -p "$out"
-          npm run build:frontend -- --tarball "$out/sillybunny-frontend-assets.tar.gz"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" npm run build:frontend -- --tarball "$out/sillybunny-frontend-assets.tar.gz"
           # Bootstrap installers ship once scripts/bootstrap/ exists (Phase 4).
           if [ -d scripts/bootstrap ]; then
             find scripts/bootstrap -maxdepth 1 -type f \( -name '*.sh' -o -name '*.ps1' -o -name '*.cmd' \) -exec cp {} "$out/" \;

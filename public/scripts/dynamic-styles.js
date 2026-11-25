@@ -15,6 +15,7 @@ function getAbsoluteAssetUrl(href) {
     }
 }
 
+// SillyBunny: match deferred stylesheet links by their original data-sb-source-href when HTML rewriting hashes hrefs.
 function stripUrlQuery(url) {
     return String(url).split(/[?#]/)[0];
 }

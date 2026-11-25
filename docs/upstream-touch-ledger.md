@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/lib.js`, `webpack.config.js`, `public/scripts/dynamic-styles.js`, `public/scripts/extensions.js`, and `src/server-main.js` - extension-safe ESM importmap, flattened CSS, and slim `/lib.js`
+| Field | Value |
+| --- | --- |
+| File | `public/lib.js`, `webpack.config.js`, `public/scripts/dynamic-styles.js`, `public/scripts/extensions.js`, `src/server-main.js`. |
+| Area | Frontend asset pipeline, `/lib.js` bundling, deferred CSS adoption, and extension module loading. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `scripts/build-frontend-assets.js`, `src/frontend-assets.js`, and `src/middleware/frontend-assets.js`. |
+| Adapter shape | `public/lib.js`: switches `highlight.js` to `highlight.js/lib/core` with 31 common languages, standard aliases, `nohighlight`-safe unknown-fence plaintext fallback, and runtime `registerLanguage` support while keeping all 28 default exports, 29 named exports, and `initLibraryShims()`. `webpack.config.js`: prunes `moment` locales via `ContextReplacementPlugin` derived from `public/locales/lang.json` plus `en-au`/`en-ca`/`en-gb`/`pt-br`, aliases large non-`moment` vendor packages to official pre-minified builds on Bun, and hashes `webpack.config.js` and `public/locales/lang.json` in `getPublicLibInputsSignature()`. `public/scripts/dynamic-styles.js`: matches rewritten deferred stylesheet links by `data-sb-source-href` in `findStylesheetLink()`. `public/scripts/extensions.js`: resolves built-in extension module URLs through `import.meta.resolve()` in `prefetchExtensionAsset()` and `addExtensionScript()`. `src/server-main.js`: serves `GET /` through RAM-cached `readRewrittenFrontendHtml()` when prebuilt frontend assets are active. |
+| Protecting tests | `tests/perf-esm-importmap-and-slim-lib.test.js`, `tests/frontend-assets.test.js`, `tests/frontend-asset-middleware.test.js`, `tests/script-module-identity.test.js`, `tests/startup-module-graph.test.js`, `tests/markdown-engine-wiring.test.js`, `tests/extension-boot-lifecycle.test.js`, `tests/extension-boot-lifecycle-wiring.test.js`. |
+| Validation | 2026-11-25 (fresh build, stale manifest fallback, Bun/Node `/lib.js` parity, non-English `moment` locales, CSS selector integrity): `npm run lint`, `npm run lint --prefix tests`, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, Jest (`--maxWorkers=2`, 14 suites), and live Node `buildFrontendAssets` + Bun Webpack `/lib.js` browser-VM verification. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-25, PR #1042. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

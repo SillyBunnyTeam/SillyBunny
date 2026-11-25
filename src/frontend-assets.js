@@ -19,6 +19,8 @@ const IGNORED_PATH_SEGMENTS = new Set([
     '.git',
     '.github',
     '.playwright-cli',
+    '.DS_Store',
+    'Thumbs.db',
     'output',
     'node_modules',
 ]);
@@ -59,11 +61,19 @@ const TEXT_HASH_EXTENSIONS = new Set([
     '.html',
     '.js',
     '.json',
+    '.less',
+    '.license',
     '.map',
     '.md',
     '.mjs',
+    '.patch',
     '.svg',
+    '.ts',
     '.txt',
+]);
+
+const TEXT_HASH_BASENAMES = new Set([
+    'license',
 ]);
 
 // Legacy v1 manifest HTML replacements (used only when no v2 importMap is present).
@@ -180,7 +190,8 @@ function walkPublicInputsSync(directory, publicRoot, files = []) {
 
 function readNormalizedBytesForHash(filePath) {
     const ext = path.extname(filePath).toLowerCase();
-    if (TEXT_HASH_EXTENSIONS.has(ext)) {
+    const base = path.basename(filePath).toLowerCase();
+    if (TEXT_HASH_EXTENSIONS.has(ext) || TEXT_HASH_BASENAMES.has(base)) {
         const text = fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n');
         return Buffer.from(text, 'utf8');
     }
@@ -189,7 +200,8 @@ function readNormalizedBytesForHash(filePath) {
 }
 
 /**
- * Computes a fast deterministic SHA-256 fingerprint over all buildable public/ inputs (plus webpack.config.js).
+ * Computes a fast deterministic SHA-256 fingerprint over all buildable public/ inputs (plus webpack.config.js,
+ * package.json, and scripts/build-frontend-assets.js).
  * Normalizes line endings on text files so CI Linux builds match Windows/macOS checkouts identically.
  * @param {object} [options]
  * @param {string} [options.repoRoot=serverDirectory]
@@ -203,11 +215,18 @@ export function computeFrontendInputsHash({
     const hasher = crypto.createHash('sha256');
     hasher.update(`frontend-inputs-v${FRONTEND_MANIFEST_VERSION}\0`);
 
-    const webpackConfigPath = path.join(repoRoot, 'webpack.config.js');
-    if (fs.existsSync(webpackConfigPath)) {
-        hasher.update('webpack.config.js\0');
-        hasher.update(readNormalizedBytesForHash(webpackConfigPath));
-        hasher.update('\0');
+    const rootBuildInputs = [
+        'webpack.config.js',
+        'package.json',
+        'scripts/build-frontend-assets.js',
+    ];
+    for (const relPosix of rootBuildInputs) {
+        const fullPath = path.join(repoRoot, ...relPosix.split('/'));
+        if (fs.existsSync(fullPath)) {
+            hasher.update(`${relPosix}\0`);
+            hasher.update(readNormalizedBytesForHash(fullPath));
+            hasher.update('\0');
+        }
     }
 
     const files = walkPublicInputsSync(publicRoot, publicRoot);
@@ -353,8 +372,11 @@ function getTagAttribute(tag, attrName) {
 
 function replaceTagAttribute(tag, attrName, newValue) {
     return tag.replace(
-        new RegExp(`(\\b${attrName}\\s*=\\s*)(["'])[^"']*\\2`, 'i'),
-        `$1$2${newValue}$2`,
+        new RegExp(`(\\b${attrName}\\s*=\\s*)(?:"[^"]*"|'[^']*')`, 'i'),
+        (match, prefix) => {
+            const quote = match[prefix.length];
+            return `${prefix}${quote}${newValue}${quote}`;
+        },
     );
 }
 
@@ -378,17 +400,25 @@ function injectSingleImportMap(html, importMap) {
     if (headOpenMatch) {
         const headStart = headOpenMatch.index + headOpenMatch[0].length;
         const headCloseIndex = withoutExisting.search(/<\/head>/i);
+        const headEnd = headCloseIndex >= 0 ? headCloseIndex : withoutExisting.length;
         const searchEnd = Math.min(
-            headCloseIndex >= 0 ? headCloseIndex : withoutExisting.length,
+            headEnd,
             firstModuleMatch ? firstModuleMatch.index : withoutExisting.length,
         );
         const headPrefix = withoutExisting.slice(headStart, Math.max(headStart, searchEnd));
         const baseMatch = /<base\b[^>]*>/i.exec(headPrefix);
-        const insertIndex = baseMatch
+        const minInsertIndex = baseMatch
             ? headStart + baseMatch.index + baseMatch[0].length
             : headStart;
 
-        return `${withoutExisting.slice(0, insertIndex)}\n    ${scriptTag}${withoutExisting.slice(insertIndex)}`;
+        // Place the importmap immediately before the first modulepreload/module tag inside <head>
+        // so <meta charset="utf-8">, viewport, critical <style>, and style preloads stay near byte 0.
+        if (firstModuleMatch && firstModuleMatch.index >= minInsertIndex && firstModuleMatch.index <= headEnd) {
+            const insertIndex = firstModuleMatch.index;
+            return `${withoutExisting.slice(0, insertIndex)}${scriptTag}\n    ${withoutExisting.slice(insertIndex)}`;
+        }
+
+        return `${withoutExisting.slice(0, minInsertIndex)}\n    ${scriptTag}${withoutExisting.slice(minInsertIndex)}`;
     }
 
     if (firstModuleMatch) {

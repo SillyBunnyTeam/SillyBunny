@@ -104,7 +104,7 @@ function shouldSkipJsMinification(sourcePosix) {
 }
 
 /**
- * Strips CSS block comments while preserving string literals and url(...) tokens verbatim.
+ * Strips CSS block comments while preserving quoted string literals verbatim.
  * @param {string} source Raw CSS text
  * @returns {string}
  */
@@ -170,8 +170,11 @@ export function minifyCss(source) {
 
     const compacted = masked
         .replace(/\s+/g, ' ')
-        .replace(/\s*([{}:;,>~])\s*/g, '$1')
+        .replace(/:\s+(?=[;}])/g, '__SB_CSS_EMPTY_VAL__')
+        .replace(/\s*([{};,>~])\s*/g, '$1')
+        .replace(/:\s+/g, ':')
         .replace(/;}/g, '}')
+        .replace(/__SB_CSS_EMPTY_VAL__/g, ': ')
         .trim();
 
     return compacted.replace(/__SB_CSS_TOKEN_(\d+)__/g, (_, index) => preserved[Number(index)]);
@@ -285,6 +288,7 @@ export function flattenCssFile(cssPosixPath, {
     assets = {},
     ancestors = new Set(),
     inlinedImports = [],
+    hoistedImports = [],
     isRoot = true,
 }) {
     const normalizedPath = toPosix(cssPosixPath).replace(/^\/+/, '');
@@ -297,7 +301,7 @@ export function flattenCssFile(cssPosixPath, {
     const charsetMatch = source.match(/^\s*(@charset\s+["'][^"']+["']\s*;)/i);
     if (charsetMatch) {
         if (isRoot) {
-            rootCharset = `${charsetMatch[1]}\n`;
+            rootCharset = charsetMatch[1];
         }
         source = source.slice(charsetMatch[0].length);
     }
@@ -324,14 +328,18 @@ export function flattenCssFile(cssPosixPath, {
 
         const resolvedTarget = resolveCssTargetPath(normalizedPath, parsedImport.targetUrl);
         if (!resolvedTarget || resolvedTarget.resolved === 'css/user.css') {
-            chunks.push(match[0]);
+            hoistedImports.push(match[0]);
             continue;
         }
 
         const targetPosix = resolvedTarget.resolved;
         const targetFullPath = path.join(publicRoot, targetPosix);
         if (nextAncestors.has(targetPosix) || !fsSync.existsSync(targetFullPath) || !fsSync.statSync(targetFullPath).isFile()) {
-            chunks.push(match[0]);
+            const mediaSuffix = parsedImport.mediaCondition ? ` ${parsedImport.mediaCondition}` : '';
+            const preservedUrl = resolvedTarget.wasRootRelative
+                ? parsedImport.targetUrl
+                : `/${targetPosix}${resolvedTarget.query}${resolvedTarget.fragment}`;
+            hoistedImports.push(`@import url("${preservedUrl}")${mediaSuffix};`);
             continue;
         }
 
@@ -341,6 +349,7 @@ export function flattenCssFile(cssPosixPath, {
             assets,
             ancestors: nextAncestors,
             inlinedImports,
+            hoistedImports,
             isRoot: false,
         });
 
@@ -356,7 +365,11 @@ export function flattenCssFile(cssPosixPath, {
         chunks.push(rewriteCssUrls(trailing, normalizedPath, assets));
     }
 
-    const combined = rewriteFontDisplayBlock(`${rootCharset}${chunks.join('\n')}`);
+    const body = chunks.join('\n');
+    const combinedRaw = isRoot
+        ? [rootCharset, ...hoistedImports, body].filter(Boolean).join('\n')
+        : body;
+    const combined = rewriteFontDisplayBlock(combinedRaw);
     return {
         css: combined,
         inlinedImports,

@@ -50,6 +50,7 @@ import {
 } from './users.js';
 
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
+// SillyBunny: serve RAM-cached rewritten index.html and hashed /frontend-assets/ when frontend build is enabled.
 import { FRONTEND_ASSET_PREFIX, readRewrittenFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
 import getResponseCompressionMiddleware from './middleware/response-compression.js';
@@ -372,6 +373,7 @@ app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
         return response.redirect(redirectUrl);
     }
 
+    // SillyBunny: return RAM-cached rewritten index.html (with importmap and hashed asset URLs) when active.
     if (shouldServeFrontendAssets()) {
         const indexPath = path.join(serverDirectory, 'public', 'index.html');
         response.type('html');

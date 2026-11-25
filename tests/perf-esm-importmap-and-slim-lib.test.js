@@ -173,7 +173,11 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
     let manifest;
 
     const manifestPath = getFrontendManifestPath();
+    const manifestDir = path.dirname(manifestPath);
+    const distParentDir = path.dirname(manifestDir);
     let previousManifestContent = null;
+    let hadManifestDirBeforeTest = false;
+    let hadDistParentBeforeTest = false;
     let previousSbDev;
 
     beforeAll(() => {
@@ -210,19 +214,29 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
 
         if (previousManifestContent === null) {
             fs.rmSync(manifestPath, { force: true });
+            if (!hadManifestDirBeforeTest && fs.existsSync(manifestDir) && fs.readdirSync(manifestDir).length === 0) {
+                fs.rmdirSync(manifestDir);
+            }
+            if (!hadDistParentBeforeTest && fs.existsSync(distParentDir) && fs.readdirSync(distParentDir).length === 0) {
+                fs.rmdirSync(distParentDir);
+            }
         } else {
-            fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+            fs.mkdirSync(manifestDir, { recursive: true });
             fs.writeFileSync(manifestPath, previousManifestContent, 'utf8');
         }
         previousManifestContent = null;
+        hadManifestDirBeforeTest = false;
+        hadDistParentBeforeTest = false;
         clearFrontendManifestCache();
     });
 
     function installManifestForServerTest(customManifest) {
         previousSbDev = process.env.SB_DEV;
         delete process.env.SB_DEV;
+        hadDistParentBeforeTest = fs.existsSync(distParentDir);
+        hadManifestDirBeforeTest = fs.existsSync(manifestDir);
         previousManifestContent = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : null;
-        fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+        fs.mkdirSync(manifestDir, { recursive: true });
         fs.writeFileSync(manifestPath, JSON.stringify(customManifest), 'utf8');
         clearFrontendManifestCache();
     }
@@ -285,12 +299,26 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
 
         const headOpenIndex = rewritten.search(/<head\b[^>]*>/i);
         const baseTagIndex = rewritten.search(/<base\b[^>]*>/i);
+        const metaCharsetMatch = /<meta\b[^>]*\bcharset\s*=\s*["']utf-8["'][^>]*>/i.exec(rewritten);
+        const criticalStyleIndex = rewritten.search(/<style\b[^>]*>/i);
+        const stylePreloadIndex = rewritten.search(/<link\b[^>]*\brel="preload"[^>]*\bas="style"[^>]*>/i);
         const importMapIndex = rewritten.search(/<script\b[^>]*\btype="importmap"[^>]*>/i);
         const firstModulePreloadIndex = rewritten.search(/<link\b[^>]*\brel="modulepreload"[^>]*>/i);
         const firstModuleScriptIndex = rewritten.search(/<script\b[^>]*\btype="module"[^>]*>/i);
 
+        expect(metaCharsetMatch).not.toBeNull();
+        const metaCharsetEndBytes = Buffer.byteLength(
+            rewritten.slice(0, metaCharsetMatch.index + metaCharsetMatch[0].length),
+            'utf8',
+        );
+        // HTML5 charset prescan requires <meta charset="utf-8"> to finish within the first 1,024 bytes.
+        expect(metaCharsetEndBytes).toBeLessThan(1024);
+
         expect(importMapIndex).toBeGreaterThan(headOpenIndex);
         expect(importMapIndex).toBeGreaterThan(baseTagIndex);
+        expect(importMapIndex).toBeGreaterThan(metaCharsetMatch.index);
+        expect(importMapIndex).toBeGreaterThan(criticalStyleIndex);
+        expect(importMapIndex).toBeGreaterThan(stylePreloadIndex);
         expect(importMapIndex).toBeLessThan(firstModulePreloadIndex);
         expect(importMapIndex).toBeLessThan(firstModuleScriptIndex);
 
@@ -301,11 +329,27 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(rewritten).toContain('href="css/user.css"');
         expect(rewritten).not.toContain('/frontend-assets/css/user');
 
-        // RAM cache hit check: second identical rewrite must reuse cached HTML with zero extra misses.
+        // Attribute rewriting must not interpolate $ replacement patterns or choke on nested quotes.
+        const specialManifest = {
+            ...manifest,
+            assets: {
+                ...manifest.assets,
+                'style.css': { output: 'style-$&$1-abcdef123456.css' },
+            },
+        };
+        installManifestForServerTest(specialManifest);
+        const specialHtml = '<head><base href="/"><meta charset="utf-8"><link rel="stylesheet" href="style.css?v=a\'b"></head>';
+        const rewrittenSpecial = rewriteFrontendHtml(specialHtml, { enabled: true });
+        expect(rewrittenSpecial).toContain('href="/frontend-assets/style-$&$1-abcdef123456.css"');
+
+        // Reinstall the standard manifest to check RAM cache hits on index.html.
+        installManifestForServerTest(manifest);
+        const cachedFirst = rewriteFrontendHtml(rawHtml, { enabled: true });
         const statsBefore = getFrontendHtmlCacheStats();
         const rewrittenAgain = rewriteFrontendHtml(rawHtml, { enabled: true });
         const statsAfter = getFrontendHtmlCacheStats();
 
+        expect(cachedFirst).toBe(rewritten);
         expect(rewrittenAgain).toBe(rewritten);
         expect(statsAfter.hits).toBe(statsBefore.hits + 1);
         expect(statsAfter.misses).toBe(statsBefore.misses);
@@ -419,6 +463,49 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         process.env.SB_DEV = '1';
         expect(shouldServeFrontendAssets()).toBe(false);
         expect(rewriteFrontendHtml(sampleHtml, { enabled: true })).toBe(sampleHtml);
+
+        // 3. computeFrontendInputsHash ignores .DS_Store/Thumbs.db, normalizes CRLF across tracked text files,
+        // and invalidates when package.json or scripts/build-frontend-assets.js changes.
+        const hashFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-hash-fixture-'));
+        try {
+            const fixturePublic = path.join(hashFixture, 'public');
+            fs.mkdirSync(path.join(fixturePublic, 'nested'), { recursive: true });
+            fs.mkdirSync(path.join(hashFixture, 'scripts'), { recursive: true });
+            fs.writeFileSync(path.join(hashFixture, 'webpack.config.js'), 'export default {};\n', 'utf8');
+            fs.writeFileSync(path.join(hashFixture, 'package.json'), '{"version":"1.0.0"}\n', 'utf8');
+            fs.writeFileSync(path.join(hashFixture, 'scripts', 'build-frontend-assets.js'), '// builder v1\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'global.d.ts'), 'declare const x: number;\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'style.less'), '.a { color: red; }\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'fix.patch'), '--- a\n+++ b\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'tool.LICENSE'), 'MIT\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'nested', 'LICENSE'), 'Apache-2.0\n', 'utf8');
+
+            const lfHash = computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic });
+
+            // Adding OS junk files must not change inputsHash.
+            fs.writeFileSync(path.join(fixturePublic, '.DS_Store'), 'junk', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'nested', 'Thumbs.db'), 'junk', 'utf8');
+            expect(computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic })).toBe(lfHash);
+
+            // Converting tracked text files (.ts, .less, .patch, .license, LICENSE) to CRLF must keep the same hash.
+            fs.writeFileSync(path.join(fixturePublic, 'global.d.ts'), 'declare const x: number;\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'style.less'), '.a { color: red; }\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'fix.patch'), '--- a\r\n+++ b\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'tool.LICENSE'), 'MIT\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'nested', 'LICENSE'), 'Apache-2.0\r\n', 'utf8');
+            expect(computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic })).toBe(lfHash);
+
+            // Editing package.json or scripts/build-frontend-assets.js must invalidate inputsHash.
+            fs.writeFileSync(path.join(hashFixture, 'package.json'), '{"version":"1.0.1"}\n', 'utf8');
+            const afterPkgHash = computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic });
+            expect(afterPkgHash).not.toBe(lfHash);
+
+            fs.writeFileSync(path.join(hashFixture, 'scripts', 'build-frontend-assets.js'), '// builder v2\n', 'utf8');
+            const afterBuilderHash = computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic });
+            expect(afterBuilderHash).not.toBe(afterPkgHash);
+        } finally {
+            fs.rmSync(hashFixture, { recursive: true, force: true });
+        }
     });
 
     test('(e) flattened style.css has 0 local @imports, valid rewritten url(...)s, font-display: swap in bundled CSS, preserves @media & calc(), and excludes /css/user.css', () => {
@@ -457,14 +544,43 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
             expect(builtCss).toContain(`${FRONTEND_ASSET_PREFIX}webfonts/`);
         }
 
-        // Synthetic @media + nested relative url() + /css/user.css exclusion check.
+        // minifyCss must never strip descendant-combinator whitespace before : / :: or corrupt space-only custom props.
+        expect(minifyCss('.last_swipe :is(.swipes-counter, .swipe_right) { display: none; }'))
+            .toBe('.last_swipe :is(.swipes-counter,.swipe_right){display:none}');
+        expect(minifyCss('.mes_text :where(p, li) { color: red; }'))
+            .toBe('.mes_text :where(p,li){color:red}');
+        expect(minifyCss('.foo ::before { content: ""; }'))
+            .toBe('.foo ::before{content:""}');
+        expect(minifyCss(':root { --x: ; --y: 1px; }'))
+            .toBe(':root{--x: ;--y:1px}');
+
+        // Verify 0 corrupted descendant pseudo-selectors across every built CSS asset in dist/frontend/.
+        expect(flattenedStyleCss).toContain('.last_swipe :is(.swipes-counter,.swipe_right)');
+        expect(flattenedStyleCss).toContain('.mes_text :where(p,li,blockquote,q,span)');
+        const descendantPseudoRe = /([a-zA-Z0-9_\])*])\s+(::?(?:is|where|not|has|hover|focus|focus-visible|focus-within|active|checked|disabled|enabled|first-child|last-child|nth-child|nth-of-type|empty|root|before|after|placeholder|selection|backdrop|scope|-webkit-|-moz-))/gi;
+        const corruptedCssFiles = [];
+        for (const [sourcePath, entry] of Object.entries(manifest.assets)) {
+            if (!sourcePath.endsWith('.css')) {
+                continue;
+            }
+            const rawFlattened = flattenCssFile(sourcePath, { publicRoot, assets: manifest.assets }).css;
+            const builtCss = fs.readFileSync(path.join(tmpDistDir, entry.output), 'utf8');
+            const sourceCount = [...rawFlattened.matchAll(descendantPseudoRe)].length;
+            const builtCount = [...builtCss.matchAll(descendantPseudoRe)].length;
+            if (builtCount < sourceCount) {
+                corruptedCssFiles.push(`${sourcePath} (expected >=${sourceCount}, got ${builtCount})`);
+            }
+        }
+        expect(corruptedCssFiles).toEqual([]);
+
+        // Synthetic @charset + @media + nested relative url() + hoisted /css/user.css exclusion check.
         const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-css-fixture-'));
         try {
             fs.mkdirSync(path.join(fixtureRoot, 'nested'), { recursive: true });
-            fs.writeFileSync(path.join(fixtureRoot, 'nested', 'mobile.css'), '.m { background: url("../img/pic.png"); font-display: block; }\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'nested', 'mobile.css'), '.m :is(.a, .b) { background: url("../img/pic.png"); font-display: block; }\n', 'utf8');
             fs.writeFileSync(
                 path.join(fixtureRoot, 'entry.css'),
-                '@import url("./nested/mobile.css") screen and (max-width: 768px);\n@import url("/css/user.css");\n.x { width: calc(10px + 20px); }\n',
+                '@charset "UTF-8";\n@import url("./nested/mobile.css") screen and (max-width: 768px);\n@import url("/css/user.css");\n.x { width: calc(10px + 20px); }\n',
                 'utf8',
             );
 
@@ -475,8 +591,15 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
             const minified = minifyCss(flattened.css);
 
             expect(flattened.inlinedImports).toEqual(['nested/mobile.css']);
-            expect(minified).toContain('@media screen and (max-width:768px){.m{background:url("/frontend-assets/img/pic-abcdef123456.png");font-display:swap}}');
+            expect(minified).toContain('@media screen and (max-width:768px){.m :is(.a,.b){background:url("/frontend-assets/img/pic-abcdef123456.png");font-display:swap}}');
             expect(minified).toContain('@import url("/css/user.css");');
+            // Un-inlined @import must be hoisted after @charset and BEFORE any @media or style rules to remain valid CSS.
+            const charsetIdx = minified.indexOf('@charset "UTF-8";');
+            const userImportIdx = minified.indexOf('@import url("/css/user.css");');
+            const mediaIdx = minified.indexOf('@media screen');
+            expect(charsetIdx).toBe(0);
+            expect(userImportIdx).toBeGreaterThan(charsetIdx);
+            expect(userImportIdx).toBeLessThan(mediaIdx);
             expect(minified).toContain('calc(10px + 20px)');
         } finally {
             fs.rmSync(fixtureRoot, { recursive: true, force: true });
@@ -490,7 +613,8 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(libEntry.bytes).toBeLessThan(1100 * 1024);
 
         const webpackSource = fs.readFileSync(webpackConfigPath, 'utf8');
-        expect(webpackSource).toContain('IgnorePlugin');
+        expect(webpackSource).toContain('ContextReplacementPlugin');
+        expect(webpackSource).not.toContain('IgnorePlugin');
         expect(webpackSource).not.toContain('terser-webpack-plugin');
         expect(webpackSource).not.toContain('chevrotain-esm-alias-v1');
 
@@ -602,13 +726,61 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(() => hljs.highlightElement(fakeCodeElement)).not.toThrow();
         expect(fakeCodeElement.innerHTML).toContain('&lt;');
 
+        // Standalone nohighlight class must still skip highlighting even alongside an unknown language-* tag.
+        const noHighlightElement = {
+            textContent: 'SELECT 1 < 2;',
+            children: [],
+            className: 'nohighlight language-nonexistent-rare-fence',
+            classList: { contains: () => false, add: () => {} },
+            dataset: {},
+            innerHTML: '',
+        };
+        expect(() => hljs.highlightElement(noHighlightElement)).not.toThrow();
+        expect(noHighlightElement.innerHTML).toBe('');
+        expect(noHighlightElement.dataset.highlighted).toBeUndefined();
+
         // Runtime custom language registration (e.g. STscript) still works.
         hljs.registerLanguage('stscript-test', () => ({ keywords: 'echo' }));
         expect(hljs.getLanguage('stscript-test')).toBeTruthy();
 
-        // Moment preserves English locale while dropping unused non-English locales.
-        expect(moment('2026-01-02T12:00:00Z').locale('en').format('YYYY-MM-DD')).toBe('2026-01-02');
-        expect(moment.locales().length).toBeLessThan(5);
+        // Moment preserves English plus all 16 SillyBunny UI locales and regional en/pt while pruning unused locales.
+        const sampleIso = '2026-01-15T12:00:00Z';
+        expect(moment(sampleIso).locale('en').format('YYYY-MM-DD')).toBe('2026-01-15');
+        expect(moment(sampleIso).locale('en-gb').format('LL')).toBe('15 January 2026');
+        expect(moment(sampleIso).locale('ja-jp').format('LL')).toBe('2026年1月15日');
+        expect(moment(sampleIso).locale('zh-cn').format('LL')).toBe('2026年1月15日');
+        expect(moment(sampleIso).locale('zh-tw').format('LL')).toBe('2026年1月15日');
+        expect(moment(sampleIso).locale('de-de').format('LL')).toBe('15. Januar 2026');
+        expect(moment(sampleIso).locale('fr-fr').format('LL')).toBe('15 janvier 2026');
+        expect(moment(sampleIso).locale('ar-sa').locale()).toBe('ar-sa');
+        expect(moment(sampleIso).locale('ar-sa').format('LL')).not.toBe('January 15, 2026');
+        expect(moment(sampleIso).locale('pt-br').format('LL')).toBe('15 de janeiro de 2026');
+        expect(moment.duration(125000).locale('ja-jp').humanize()).toBe('2分');
+
+        const uiLangCatalog = JSON.parse(fs.readFileSync(path.join(publicRoot, 'locales', 'lang.json'), 'utf8'));
+        for (const entry of uiLangCatalog) {
+            expect(moment(sampleIso).locale(entry.lang).locale()).not.toBe('en');
+        }
+        // Also touch regional locales to verify total bundled count stays tightly bounded.
+        for (const regional of ['en-au', 'en-ca', 'en-gb', 'pt-br']) {
+            expect(moment(sampleIso).locale(regional).locale()).toBe(regional);
+        }
+        // Unused locales remain stripped and safely fall back to English.
+        for (const unused of ['tlh', 'af', 'eo']) {
+            expect(moment(sampleIso).locale(unused).locale()).toBe('en');
+        }
+        // moment.locales() includes negative-cache keys for failed alias lookups (e.g. de-de, tlh);
+        // count distinct genuinely loaded locale definitions via localeData().
+        const loadedLocales = new Set(
+            moment.locales()
+                .map(loc => moment.localeData(loc)?._abbr)
+                .filter(Boolean),
+        );
+        expect(loadedLocales.size).toBe(21);
+        expect(loadedLocales.size).toBeLessThanOrEqual(25);
+        expect(loadedLocales.has('tlh')).toBe(false);
+        expect(loadedLocales.has('af')).toBe(false);
+        expect(loadedLocales.has('eo')).toBe(false);
     });
 
     test('(g) --tarball produces a deterministic pure-Node POSIX .tar.gz archive and release.yml attaches it', async () => {
@@ -631,6 +803,6 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(names.has(`dist/frontend/${manifest.assets['style.css'].output}`)).toBe(true);
 
         const releaseYml = fs.readFileSync(releaseWorkflowPath, 'utf8');
-        expect(releaseYml).toContain('npm run build:frontend -- --tarball "$out/sillybunny-frontend-assets.tar.gz"');
+        expect(releaseYml).toContain('SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" npm run build:frontend -- --tarball "$out/sillybunny-frontend-assets.tar.gz"');
     });
 });
