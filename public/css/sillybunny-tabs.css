@@ -2948,6 +2948,14 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     text-align: center;
 }
 
+/* In a boxed list the hint is a row, such as the empty line above a list's add row; `.ds-row` would set its colour, alignment and size. */
+.ds-row.sb-inline-hint {
+    justify-content: center;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+    text-align: center;
+}
+
 .sb-persona-picker-appendix-toggles {
     display: flex;
     flex-wrap: wrap;
@@ -3993,6 +4001,7 @@ body.reduced-motion .sb-search-entry {
     text-align: start;
 }
 
+/* Upstream `#user-settings-block h4` and `#left-nav-panel h4` make an h4 an uppercase, tracked kicker; a group heading is sentence case. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > .ds-pref-group-heading {
     min-height: 0;
     border: 0;
@@ -4001,6 +4010,8 @@ body.reduced-motion .sb-search-entry {
     box-shadow: none;
     font-size: var(--sb-type-body);
     line-height: 1.3;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--sb-shell-text);
 }
 

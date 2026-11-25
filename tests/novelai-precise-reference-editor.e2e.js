@@ -241,7 +241,7 @@ async function verifySurfaceEditor({ page, viewport, surfaceName, openSurface })
     }
 
     // Status copy must wrap cleanly rather than clip horizontally on narrow viewports.
-    const statusClip = await root.locator('.nai-precise-reference__status .ds-row-subtitle').evaluate(el => {
+    const statusClip = await root.locator('.nai-precise-reference__status > [role]').evaluate(el => {
         const rowRect = el.closest('.ds-row').getBoundingClientRect();
         const textRect = el.getBoundingClientRect();
         return { overflow: el.scrollWidth - el.clientWidth, rightGap: textRect.right - rowRect.right };

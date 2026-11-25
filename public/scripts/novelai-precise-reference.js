@@ -71,7 +71,7 @@ function validateImage(image) {
     if (typeof image !== 'string' || image.length < 44 || image.length % 4 !== 0
         || image.length * 0.75 > MAX_PRECISE_REFERENCE_BYTES
         || !/^[A-Za-z0-9+/]*={0,2}$/.test(image)) {
-        throw new Error('Precise Reference requires a prepared PNG image smaller than 25 MiB');
+        throw new Error('Precise Reference requires a prepared PNG image smaller than 25 MiB');
     }
     const header = atob(image.slice(0, 44));
     if (!header.startsWith('\x89PNG\r\n\x1a\n') || header.slice(12, 16) !== 'IHDR') {
@@ -100,7 +100,7 @@ export function buildNovelAIPreciseReferenceParameters(model, references, { anla
     for (const reference of references) {
         validateImage(reference?.image);
         bytes += reference.image.length * 0.75;
-        if (bytes > MAX_PRECISE_REFERENCE_BYTES) throw new Error('Reference images are limited to 25 MiB total');
+        if (bytes > MAX_PRECISE_REFERENCE_BYTES) throw new Error('Reference images are limited to 25 MiB total');
         validateMetadata(reference);
         parameters.director_reference_images.push(reference.image);
         parameters.director_reference_descriptions.push({ caption: { base_caption: reference.type, char_captions: [] }, legacy_uc: false });
@@ -139,12 +139,12 @@ export async function resolveNovelAIPreciseReferences(model, references, { anlas
             }
             const buffer = await response.arrayBuffer();
             bytes += buffer.byteLength;
-            if (bytes > MAX_PRECISE_REFERENCE_BYTES) throw new Error('Reference images are limited to 25 MiB total');
+            if (bytes > MAX_PRECISE_REFERENCE_BYTES) throw new Error('Reference images are limited to 25 MiB total');
             image = arrayBufferToBase64(buffer);
         } else {
             validateImage(reference?.image);
             bytes += reference.image.length * 0.75;
-            if (bytes > MAX_PRECISE_REFERENCE_BYTES) throw new Error('Reference images are limited to 25 MiB total');
+            if (bytes > MAX_PRECISE_REFERENCE_BYTES) throw new Error('Reference images are limited to 25 MiB total');
             image = reference.image;
         }
         resolved.push({ image, type: reference.type, strength: reference.strength, fidelity: reference.fidelity });

@@ -18,7 +18,7 @@ import {
 } from './sillybunny-editor/rows.js';
 import { createToggleRow } from './sillybunny-editor/toggle-row.js';
 
-export const PRECISE_REFERENCE_STYLESHEET_HREF = '/css/novelai-precise-reference.css?v=20261122a';
+export const PRECISE_REFERENCE_STYLESHEET_HREF = '/css/novelai-precise-reference.css?v=20261125a';
 export const PRECISE_REFERENCE_STYLESHEET_ID = 'novelai-precise-reference-css';
 
 let nextSliderId = 0;
@@ -87,7 +87,7 @@ function referenceBaseKey(reference) {
 /** Prepares the provider's fixed-size, black-padded PNG without cropping the reference. */
 export async function prepareNovelAIPreciseReference(file) {
     if (!file.type.startsWith('image/') || file.size > MAX_PRECISE_REFERENCE_BYTES) {
-        throw new Error(t`Choose an image smaller than 25 MiB`);
+        throw new Error(t`Choose an image smaller than 25 MiB`);
     }
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -291,7 +291,9 @@ export function mountNovelAIPreciseReferenceEditor(container, {
         });
     }
 
-    const prefGroup = createPrefGroup({ field: 'novelai-precise-reference' });
+    // A dependent set: the group takes the switch's title, and the rows after the switch stay in view, insensitive while it is off.
+    const prefGroup = createPrefGroup({ title: t`Precise Reference`, field: 'novelai-precise-reference', headingLevel: 4 });
+    setStaticI18n(prefGroup.section.querySelector('.ds-pref-group-heading'), 'Precise Reference');
 
     const switchRow = createSwitchRow({
         id,
@@ -319,10 +321,10 @@ export function mountNovelAIPreciseReferenceEditor(container, {
     upload.accept = 'image/png,image/jpeg,image/webp,image/avif,image/gif';
     upload.multiple = true;
     upload.hidden = true;
-    upload.setAttribute('aria-label', t`Add Reference Images`);
+    upload.setAttribute('aria-label', t`Add Reference Images…`);
 
     const addRow = createButtonRow({
-        label: t`Add Reference Images`,
+        label: t`Add Reference Images…`,
         icon: 'plus',
         field: 'novelai-precise-reference-add',
         onActivate: () => upload.click(),
@@ -332,17 +334,13 @@ export function mountNovelAIPreciseReferenceEditor(container, {
     const statusRow = document.createElement('div');
     statusRow.className = 'ds-row nai-precise-reference__status';
     statusRow.dataset.sbEditorField = 'novelai-precise-reference-status';
-    const statusTextWrapper = document.createElement('span');
-    statusTextWrapper.className = 'ds-row-text';
-    const statusText = document.createElement('small');
-    statusText.className = 'ds-row-subtitle';
+    const statusText = document.createElement('span');
     statusText.setAttribute('role', 'status');
-    statusTextWrapper.append(statusText);
-    statusRow.append(statusTextWrapper);
+    statusRow.append(statusText);
 
     /** @type {Map<string, object>} */
     const itemEntries = new Map();
-    let enabledMounted = false;
+    let listMounted = false;
 
     upload.addEventListener('change', async () => {
         const files = Array.from(upload.files || []);
@@ -365,7 +363,7 @@ export function mountNovelAIPreciseReferenceEditor(container, {
                 const imageBytes = base64ByteLength(image);
                 bytes += imageBytes;
                 if (bytes > MAX_PRECISE_REFERENCE_BYTES) {
-                    throw new Error(t`Reference images are limited to 25 MiB total. Remove a reference before adding more.`);
+                    throw new Error(t`Reference images are limited to 25 MiB total. Remove a reference before adding more.`);
                 }
                 const stored = await uploadNovelAIPreciseReference(image, { fetchFn, getRequestHeaders });
                 uploadedPaths.push(stored.path);
@@ -388,14 +386,14 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             if (!destroyed) {
                 refresh();
                 if (restoreFocus && container.isConnected) {
-                    if (enabledMounted && !addRow.row.disabled) addRow.row.focus({ preventScroll: true });
+                    if (!addRow.row.disabled) addRow.row.focus({ preventScroll: true });
                     else if (!switchRow.control.disabled) switchRow.control.focus({ preventScroll: true });
                 }
             }
         }
     });
 
-    function createReferenceItem(reference, initialIndex) {
+    function createReferenceItem(reference, initialIndex, initialDisabled) {
         const item = {
             index: initialIndex,
             previewState: {
@@ -464,42 +462,46 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             },
         });
 
-        const removeRow = createButtonRow({
-            label: t`Remove`,
-            icon: 'trash',
-            danger: true,
-            field: 'novelai-precise-reference-remove',
-            onActivate: () => {
-                const removedIndex = item.index;
-                const latest = state();
-                const removed = latest.references[removedIndex];
-                const remaining = latest.references.filter((_, i) => i !== removedIndex);
-                save({ ...latest, references: remaining });
-                refresh();
-                const targetIndex = Math.min(removedIndex, remaining.length - 1);
-                const ordered = [...itemEntries.values()];
-                const nextFocus = targetIndex >= 0 ? ordered[targetIndex]?.expander.toggle : addRow.row;
-                nextFocus?.focus({ preventScroll: true });
-                const removedPath = normalizeNovelAIPreciseReferencePath(removed?.path);
-                if (removedPath) {
-                    if (typeof onRemoveFile === 'function') {
-                        Promise.resolve(onRemoveFile(removedPath)).catch(cause => {
-                            console.warn('Failed to clean up removed NovelAI Precise Reference file:', cause);
-                        });
-                    } else if (!remaining.some(ref => normalizeNovelAIPreciseReferencePath(ref?.path) === removedPath)) {
-                        void deleteNovelAIPreciseReferenceFile(removedPath, { fetchFn, getRequestHeaders });
-                    }
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'nai-precise-reference__remove';
+        removeButton.dataset.sbEditorField = 'novelai-precise-reference-remove';
+        removeButton.title = t`Remove`;
+        setStaticI18n(removeButton, '[title]Remove');
+        const removeGlyph = document.createElement('i');
+        removeGlyph.className = 'fa-solid fa-trash-can';
+        removeGlyph.setAttribute('aria-hidden', 'true');
+        removeButton.append(removeGlyph);
+        removeButton.addEventListener('click', () => {
+            const removedIndex = item.index;
+            const latest = state();
+            const removed = latest.references[removedIndex];
+            const remaining = latest.references.filter((_, i) => i !== removedIndex);
+            save({ ...latest, references: remaining });
+            refresh();
+            const targetIndex = Math.min(removedIndex, remaining.length - 1);
+            const ordered = [...itemEntries.values()];
+            const nextFocus = targetIndex >= 0 ? ordered[targetIndex]?.expander.toggle : addRow.row;
+            nextFocus?.focus({ preventScroll: true });
+            const removedPath = normalizeNovelAIPreciseReferencePath(removed?.path);
+            if (removedPath) {
+                if (typeof onRemoveFile === 'function') {
+                    Promise.resolve(onRemoveFile(removedPath)).catch(cause => {
+                        console.warn('Failed to clean up removed NovelAI Precise Reference file:', cause);
+                    });
+                } else if (!remaining.some(ref => normalizeNovelAIPreciseReferencePath(ref?.path) === removedPath)) {
+                    void deleteNovelAIPreciseReferenceFile(removedPath, { fetchFn, getRequestHeaders });
                 }
-            },
+            }
         });
-        setStaticI18n(removeRow.row.querySelector('.ds-row-label'), 'Remove');
 
         const expander = createExpanderRow({
             label: t`Reference ${initialIndex + 1}`,
             subtitle: formatReferenceSummary(reference),
             field: 'novelai-precise-reference-item',
             open: false,
-            children: [previewRow, typeRow, strengthRow, fidelityRow, removeRow],
+            children: [previewRow, typeRow, strengthRow, fidelityRow],
+            suffix: removeButton,
         });
 
         const thumb = document.createElement('img');
@@ -544,8 +546,8 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             fidelityRow.setValue(nextReference.fidelity);
             fidelityRow.setReferenceNumber(referenceNumber);
             fidelityRow.setDisabled(disabled);
-            removeRow.row.setAttribute('aria-label', t`Remove Reference ${referenceNumber}`);
-            removeRow.setDisabled(disabled);
+            removeButton.setAttribute('aria-label', t`Remove Reference ${referenceNumber}`);
+            removeButton.disabled = Boolean(disabled);
             expander.setDisabled(disabled);
             expander.toggle.disabled = Boolean(disabled);
         };
@@ -554,22 +556,21 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             typeRow.destroy();
             strengthRow.destroy();
             fidelityRow.destroy();
-            removeRow.destroy();
             expander.destroy();
         };
 
-        item.sync(reference, initialIndex, busy);
+        item.sync(reference, initialIndex, initialDisabled);
         return item;
     }
 
-    function unmountEnabledControls() {
+    function unmountList() {
         for (const entry of itemEntries.values()) entry.destroy();
         itemEntries.clear();
-        if (enabledMounted) {
+        if (listMounted) {
             addRow.row.remove();
             statusRow.remove();
             upload.remove();
-            enabledMounted = false;
+            listMounted = false;
         }
     }
 
@@ -590,24 +591,21 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             setStaticI18n(switchSubtitle, noteKey);
         }
 
-        if (!current.enabled) {
-            unmountEnabledControls();
-            return;
-        }
+        // The stylesheet styles only the reference rows and the status line, so an empty list with the switch off does not request it.
+        if (current.enabled || current.references.length) void ensureStylesheet();
 
-        void ensureStylesheet();
-
-        if (!enabledMounted) {
+        if (!listMounted) {
             prefGroup.group.append(addRow.row, statusRow);
             container.append(upload);
-            enabledMounted = true;
+            listMounted = true;
         }
 
-        upload.disabled = busy || !supported;
-        addRow.setDisabled(busy || !supported);
+        const insensitive = busy || !current.enabled;
+        upload.disabled = insensitive || !supported;
+        addRow.setDisabled(insensitive || !supported);
         if (addLabel) {
-            addLabel.textContent = busy ? t`Preparing References…` : t`Add Reference Images`;
-            setStaticI18n(addLabel, busy ? 'Preparing References…' : 'Add Reference Images');
+            addLabel.textContent = busy ? t`Preparing References…` : t`Add Reference Images…`;
+            setStaticI18n(addLabel, busy ? 'Preparing References…' : 'Add Reference Images…');
         }
 
         const occurrences = new Map();
@@ -620,10 +618,10 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             const key = `${base}#${seen}`;
             let entry = itemEntries.get(key);
             if (!entry) {
-                entry = createReferenceItem(reference, index);
+                entry = createReferenceItem(reference, index, insensitive);
             } else {
                 itemEntries.delete(key);
-                entry.sync(reference, index, busy);
+                entry.sync(reference, index, insensitive);
             }
             nextEntries.set(key, entry);
             orderedNodes.push(entry.expander.row);
@@ -642,8 +640,14 @@ export function mountNovelAIPreciseReferenceEditor(container, {
             cursor = node.nextSibling;
         }
 
+        // A message is a status line, and an empty list a centred hint. The cost applies only while the switch is on.
+        const hint = !error && !current.references.length;
+        statusRow.hidden = !error && !hint && !current.enabled;
+        statusRow.classList.toggle('sb-server-note', !hint);
+        statusRow.classList.toggle('sb-inline-hint', hint);
+        if (error) statusRow.dataset.tone = 'danger';
+        else delete statusRow.dataset.tone;
         statusText.setAttribute('role', error ? 'alert' : 'status');
-        statusRow.classList.toggle('is-error', Boolean(error));
         if (error) {
             delete statusText.dataset.i18n;
             statusText.textContent = error;
@@ -660,7 +664,7 @@ export function mountNovelAIPreciseReferenceEditor(container, {
     function destroy() {
         if (destroyed) return;
         destroyed = true;
-        unmountEnabledControls();
+        unmountList();
         switchRow.destroy();
         addRow.destroy();
         prefGroup.destroy();

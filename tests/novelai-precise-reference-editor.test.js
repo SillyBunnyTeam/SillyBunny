@@ -129,7 +129,10 @@ describe('NovelAI Precise Reference editor', () => {
         const toggle = container.querySelector('#sd_novel_precise_reference_enabled');
         expect(toggle).not.toBeNull();
         expect(toggle.getAttribute('role')).toBe('switch');
-        expect(container.querySelector('input[type="file"]')).toBeNull();
+        expect(container.querySelector('.ds-pref-group-heading')?.textContent).toBe('Precise Reference');
+        expect(container.querySelector('[data-sb-editor-field="novelai-precise-reference-add"]').disabled).toBe(true);
+        expect(container.querySelector('input[type="file"]').disabled).toBe(true);
+        expect(container.querySelector('.nai-precise-reference__status').classList.contains('sb-inline-hint')).toBe(true);
         expect(loadStylesheetAsyncMock).not.toHaveBeenCalled();
 
         // Toggling the switch keeps keyboard focus on the switch and loads the versioned stylesheet.
@@ -141,7 +144,48 @@ describe('NovelAI Precise Reference editor', () => {
         expect(PRECISE_REFERENCE_STYLESHEET_HREF).toContain('?v=');
         expect(container.querySelector('fieldset, select, .menu_button')).toBeNull();
         expect(container.querySelector('.ds-button-row')).not.toBeNull();
+        expect(container.querySelector('[data-sb-editor-field="novelai-precise-reference-add"]').disabled).toBe(false);
         expect(statusLine(container)).toEqual({ role: 'status', text: 'No references selected' });
+    });
+
+    test('keeps saved references in view and insensitive while the switch is off', () => {
+        const { host, container } = mountEditor({ enabled: false, references: [existingReference] }, { cloneOnSave: true });
+
+        const reference = container.querySelector('.ds-row-expander');
+        expect(reference).not.toBeNull();
+        expect(reference.querySelector('.ds-row-expander__toggle').disabled).toBe(true);
+        expect(reference.querySelector('[data-sb-editor-field="novelai-precise-reference-remove"]').disabled).toBe(true);
+        expect(container.querySelector('[data-sb-editor-field="novelai-precise-reference-add"]').disabled).toBe(true);
+        expect(container.querySelector('.nai-precise-reference__status').hidden).toBe(true);
+        // The thumbnails need the stylesheet even while the switch is off.
+        expect(loadStylesheetAsyncMock).toHaveBeenCalledWith(PRECISE_REFERENCE_STYLESHEET_HREF, { id: PRECISE_REFERENCE_STYLESHEET_ID });
+
+        const toggle = container.querySelector('#test_precise_reference_enabled');
+        toggle.checked = true;
+        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(host.state.enabled).toBe(true);
+        expect(container.querySelector('.ds-row-expander')).toBe(reference);
+        expect(reference.querySelector('.ds-row-expander__toggle').disabled).toBe(false);
+        expect(reference.querySelector('[data-sb-editor-field="novelai-precise-reference-remove"]').disabled).toBe(false);
+        expect(container.querySelector('.nai-precise-reference__status').hidden).toBe(false);
+    });
+
+    test('names each Remove button and marks an error as a danger status line', async () => {
+        const { container } = mountEditor({ enabled: true, references: [existingReference] });
+
+        const remove = container.querySelector('.ds-row-expander__header [data-sb-editor-field="novelai-precise-reference-remove"]');
+        expect(remove.localName).toBe('button');
+        expect(remove.getAttribute('aria-label')).toBe('Remove Reference 1');
+        expect(remove.title).toBe('Remove');
+
+        chooseImage(container, [new File(['text'], 'notes.txt', { type: 'text/plain' })]);
+        await finishPreparation();
+
+        const status = container.querySelector('.nai-precise-reference__status');
+        expect(status.classList.contains('sb-server-note')).toBe(true);
+        expect(status.dataset.tone).toBe('danger');
+        expect(statusLine(container).role).toBe('alert');
     });
 
     test('stores uploaded PNGs as user files and keeps references collapsed with live summaries', async () => {
