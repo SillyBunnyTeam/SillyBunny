@@ -253,11 +253,6 @@ describe('the outer ring on solid fills and pictures', () => {
         expect(conversation).not.toContain('background');
     });
 
-    test('the Conversation day pill draws the same colour and offset on its checked accent fill', () => {
-        const pill = declarationsOf(sheet('sillybunny-conversation.css'), '.sb-conversation-day-pill:focus-within');
-        expect(pill).toBe('outline: 2px solid var(--sb-focus-ring-color); outline-offset: 1px;');
-    });
-
     test('no outer ring rule outranks the forced-colours outline, which is important', () => {
         for (const [name, selector] of [
             ['sillybunny-theme.css', buttonFamily],

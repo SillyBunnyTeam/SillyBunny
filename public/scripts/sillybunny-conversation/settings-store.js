@@ -1,7 +1,5 @@
 import { characters, getThumbnailUrl } from '../../script.js';
 import {
-    AUTO_CHAT_LAST_SENT_MARKER,
-    DEFAULT_AUTO_CHAT_COOLDOWN,
     DEFAULT_SETTINGS,
     GLOBAL_CONVERSATION_SETTINGS_KEYS,
     CONVERSATION_SETTINGS_KEYS,
@@ -66,15 +64,11 @@ export function getGlobalConversationSettings() {
 
 /**
  * What the conversation of an avatar has that is not a setting of the conversation file: the status that the user set
- * for the character and its extras.
- * `enabled` is not a setting any more (a conversation exists or it does not). The automatic-message worker still tests it
- * and is the last reader.
+ * for the character (`availability`, which is "online" until one is set, and which does not follow the routine, so the
+ * auto-responder answers only for a status that the user chose), and the extras.
  */
 function getDerivedSettings(avatar, view) {
-    const derived = {
-        enabled: true,
-        availability: conversationData.characterState(avatar).statusOverride ?? 'online',
-    };
+    const derived = { availability: conversationData.characterState(avatar).statusOverride ?? 'online' };
     if (view?.extras?.length) {
         derived.multi_char_names = view.extras.join(',');
     }
@@ -259,23 +253,6 @@ export function setConversationSessionMarker(avatar, markerKey, value, { chatId 
         return;
     }
     chatPatch(avatar, { chatId, groupId, personaId }, { sessionMarkers: { ...chat.sessionMarkers, [markerKey]: String(value) } });
-}
-
-export function getConversationChatActivityTime(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const chat = getActiveConversationChat(avatar, { chatId, groupId, personaId });
-    return parsePositiveInt(chat?.updatedAt || chat?.createdAt, Date.now(), 1);
-}
-
-export function getLastAutoCharacterChatTime(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    return parsePositiveInt(getConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, { chatId, groupId, personaId }), 0, 0);
-}
-
-export function setLastAutoCharacterChatTime(avatar, timestamp = Date.now(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    setConversationSessionMarker(avatar, AUTO_CHAT_LAST_SENT_MARKER, timestamp, { chatId, groupId, personaId });
-}
-
-export function getAutoCharacterChatCooldownMs(settings) {
-    return parsePositiveInt(settings?.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1) * 60 * 1000;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

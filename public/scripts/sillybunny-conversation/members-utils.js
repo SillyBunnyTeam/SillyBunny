@@ -61,34 +61,6 @@ export function isCharacterMentionedInText(character, text, candidates = []) {
         .some(part => hasMentionBoundaryMatch(messageText, part));
 }
 
-export function getLastMemberMessageIndex(messages, member) {
-    for (let index = messages.length - 1; index >= 0; index--) {
-        const message = messages[index];
-        if (message?.extra?.member_avatar === member.avatar) {
-            return index;
-        }
-    }
-
-    return -1;
-}
-
-export function getRecentlySilentMentionedMemberFromConversation(messages, members, recentWindow) {
-    const recentMessages = messages.slice(-recentWindow);
-    const mentionedMember = members.find(member => recentMessages.some(message => isCharacterMentionedInText(member, message?.mes || '', members)));
-    if (!mentionedMember) {
-        return null;
-    }
-
-    const lastMentionIndex = recentMessages.reduce((lastIndex, message, index) => {
-        return isCharacterMentionedInText(mentionedMember, message?.mes || '', members) ? index : lastIndex;
-    }, -1);
-    const spokeAfterMention = recentMessages.slice(lastMentionIndex + 1).some((message) => {
-        const isMemberMessage = message?.extra?.member_avatar === mentionedMember.avatar;
-        return isMemberMessage && !['user', 'system'].includes(message.role);
-    });
-    return spokeAfterMention ? null : mentionedMember;
-}
-
 export function stripSpeakerPrefixText(messageText, speakerName, normalize = value => value) {
     const text = String(messageText || '');
     const namePattern = escapeRegExp(speakerName);

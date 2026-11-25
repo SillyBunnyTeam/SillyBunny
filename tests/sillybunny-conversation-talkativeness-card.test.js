@@ -17,10 +17,20 @@ describe('getTalkativeness()', () => {
         cards.set('quiet.png', { avatar: 'quiet.png', talkativeness: '0.2' });
         cards.set('loud.png', { avatar: 'loud.png', talkativeness: 0.9 });
         cards.set('mute.png', { avatar: 'mute.png', talkativeness: 0 });
+        cards.set('text-zero.png', { avatar: 'text-zero.png', talkativeness: '0' });
 
         expect(getTalkativeness('quiet.png')).toBe(0.2);
         expect(getTalkativeness('loud.png')).toBe(0.9);
         expect(getTalkativeness('mute.png')).toBe(0);
+        expect(getTalkativeness('text-zero.png')).toBe(0);
+    });
+
+    test('stays between 0 and 1 whatever the card holds', () => {
+        cards.set('odd.png', { avatar: 'odd.png', talkativeness: '7' });
+        cards.set('text.png', { avatar: 'text.png', talkativeness: 'abc' });
+
+        expect(getTalkativeness('odd.png')).toBe(1);
+        expect(getTalkativeness('text.png')).toBe(0.5);
     });
 
     test('reads the card again on every call, so that an edit of the card is felt at once', () => {
@@ -71,6 +81,9 @@ describe('getEffectivePatienceMinutes()', () => {
         cards.set('plain.png', { avatar: 'plain.png', talkativeness: 0.5 });
 
         expect(getEffectivePatienceMinutes(conversation(), 'plain.png')).toBe(120);
+        expect(getEffectivePatienceMinutes(null, 'plain.png')).toBe(120);
+        expect(getEffectivePatienceMinutes(conversation(0), 'plain.png')).toBe(120);
+        expect(getEffectivePatienceMinutes(conversation(-30), 'plain.png')).toBe(120);
         expect(getEffectivePatienceMinutes(conversation(5), 'plain.png')).toBe(15);
         expect(getEffectivePatienceMinutes(conversation(9999), 'plain.png')).toBe(360);
     });

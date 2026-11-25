@@ -24,8 +24,8 @@ export function getTalkativeness(avatar) {
  */
 export function getEffectivePatienceMinutes(conversation, avatar) {
     const stored = conversation?.settings && typeof conversation.settings === 'object' ? conversation.settings : conversation;
-    const patience = Number.parseInt(stored?.inactivity_threshold, 10);
-    const minutes = Number.isFinite(patience)
+    const patience = Number(stored?.inactivity_threshold);
+    const minutes = patience > 0
         ? Math.min(MAX_INACTIVITY_THRESHOLD, Math.max(MIN_INACTIVITY_THRESHOLD, patience))
         : DEFAULT_INACTIVITY_THRESHOLD;
     return minutes * getPatienceFactor(getTalkativeness(avatar));

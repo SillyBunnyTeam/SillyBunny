@@ -133,8 +133,6 @@ export const DEFAULT_CHAT_ID = 'main';
 export const LAST_USER_ACTIVITY_PREFIX = 'sb_conv_last_user_activity_';
 export const LAST_AUTO_MESSAGE_PREFIX = 'sb_conv_last_auto_msg_';
 export const LAST_SCHEDULE_TRIGGER_PREFIX = 'sb_conv_last_trigger_';
-export const LAST_IDLE_SESSION_PREFIX = 'sb_conv_last_idle_session_';
-export const LAST_CHIME_SESSION_PREFIX = 'sb_conv_last_chime_session_';
 export const LAST_PREVIEW_PREFIX = 'sb_conv_last_preview_';
 export const UNREAD_PREFIX = 'sb_conv_unread_';
 export const SCHEDULE_PREFIX = 'sb_conv_schedule_';
@@ -149,7 +147,6 @@ export const DEFAULT_INACTIVITY_THRESHOLD = 120;
 export const MIN_INACTIVITY_THRESHOLD = 15;
 export const MAX_INACTIVITY_THRESHOLD = 360;
 export const DEFAULT_MAX_FOLLOWUPS = 3;
-export const DEFAULT_AUTO_CHAT_COOLDOWN = 10;
 export const SEND_QUEUE_BATCH_MS = 900;
 // SillyBunny: idle window (ms) waited after the last same-thread user send before a
 // conversation reply starts generating. Five seconds gives users room to send a
@@ -157,7 +154,6 @@ export const SEND_QUEUE_BATCH_MS = 900;
 export const SEND_QUEUE_COALESCE_MS = 5000;
 export const CONVERSATION_ERROR_DETAIL_MAX_LENGTH = 180;
 export const STATUS_NOTICE_COOLDOWN_MS = 30 * 60 * 1000;
-export const REMINDER_RETRY_DELAY_MS = 60 * 1000;
 export const CONVERSATION_ATTACHMENT_MAX_FILES = 4;
 export const CONVERSATION_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 export const CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS = Object.freeze([
@@ -170,14 +166,11 @@ export const CONVERSATION_ATTACHMENT_ACCEPT = [
     'image/*', 'video/*', 'audio/*',
     ...CONVERSATION_ATTACHMENT_ALLOWED_EXTENSIONS,
 ].join(',');
-export const MEMBER_FOLLOWUP_RECENT_WINDOW = 6;
-export const PARALLEL_CHIME_MAX_MEMBERS = 2;
 export const GROUP_MAX_CONCURRENT_SPEAKERS = 2;
 export const GROUP_ASIDE_CONTEXT_LIMIT = 8;
 export const GROUP_ASIDE_RANDOM_CHANCE = 0.18;
 export const GROUP_ASIDE_COOLDOWN_MS = 8 * 60 * 1000;
 export const GROUP_ASIDE_MENTION_COOLDOWN_MS = 45 * 1000;
-export const AUTO_CHAT_LAST_SENT_MARKER = 'auto_chat_at';
 export const MAX_STACKED_PARTICIPANT_AVATARS = 4;
 export const MEMORY_SUMMARY_MIN_MESSAGES = 24;
 export const MEMORY_SUMMARY_INTERVAL_MESSAGES = 12;

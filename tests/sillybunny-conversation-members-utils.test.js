@@ -5,7 +5,6 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
 }));
 
 const {
-    getRecentlySilentMentionedMemberFromConversation,
     getSpeakerPrefixMatch,
     isCharacterMentionedInText,
     parseAvatarList,
@@ -31,21 +30,6 @@ describe('sillybunny conversation partner utils', () => {
 
         expect(isCharacterMentionedInText(aliceHart, 'Alice should decide.', [aliceHart, aliceChen])).toBe(false);
         expect(isCharacterMentionedInText(aliceHart, '@AliceHart should decide.', [aliceHart, aliceChen])).toBe(true);
-    });
-
-    test('finds a recently mentioned partner who has not replied yet', () => {
-        const ada = { name: 'Ada Lovelace', avatar: 'ada.png' };
-        const grace = { name: 'Grace Hopper', avatar: 'grace.png' };
-        const messages = [
-            { role: 'user', mes: 'Grace already answered.' },
-            { role: 'character', mes: 'yep', extra: { member_avatar: 'grace.png' } },
-            { role: 'user', mes: '@Ada can you check this?' },
-        ];
-
-        expect(getRecentlySilentMentionedMemberFromConversation(messages, [ada, grace], 6)).toBe(ada);
-
-        messages.push({ role: 'character', mes: 'looking now', extra: { member_avatar: 'ada.png' } });
-        expect(getRecentlySilentMentionedMemberFromConversation(messages, [ada, grace], 6)).toBe(null);
     });
 
     test('strips generated speaker prefixes line by line', () => {

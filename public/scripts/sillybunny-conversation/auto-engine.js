@@ -56,7 +56,7 @@ import {
     resolveConversationReminderChatId,
 } from './conversation-store.js';
 import { getConversationActivityContext, withTypingParticipant } from './typing.js';
-import { getEffectivePatienceMinutes, getTalkativeness } from './worker-talkativeness.js';
+import { getEffectivePatienceMinutes, getTalkativeness } from './talkativeness.js';
 import { createWorkerLock } from './worker-lock.js';
 import { createWorkerRunner } from './worker-runner.js';
 import { pickAutomaticSpeaker, planAutomaticMessage, readMessagingFirstSettings } from './worker-rules.js';

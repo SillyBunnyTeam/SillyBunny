@@ -48,7 +48,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.
     getConversationMemberAvatars: () => [],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
-    getAllowedMemberCharacters: () => [],
     getConversationMemberSettings: (_avatar, hostSettings) => hostSettings,
     isCharacterMentionedInText: (character, text) => String(text).includes(character.name),
 }));

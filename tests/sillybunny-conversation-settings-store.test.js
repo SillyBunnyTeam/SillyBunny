@@ -96,7 +96,6 @@ describe('getSettings', () => {
         expect(settings.inactivity_threshold).toBe(90);
         expect(settings.custom_instructions).toBe('mode-wide value');
         expect(settings.geechan_chatroom_prompt).toBe('Stay in character.');
-        expect(settings.enabled).toBe(true);
         expect(isConversationModeEnabled('Nova.png', { groupId: '' })).toBe(true);
     });
 

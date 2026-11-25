@@ -69,15 +69,6 @@ export async function editUserPersonaStatus() {
     updateUserFooter();
 }
 
-export function safeParseWeeklySchedule(value) {
-    try {
-        const parsed = JSON.parse(value || '[]');
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
-
 export function getConnectionProfiles() {
     return extension_settings.connectionManager?.profiles ?? [];
 }
