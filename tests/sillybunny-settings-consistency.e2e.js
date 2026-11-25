@@ -632,7 +632,7 @@ test.describe('Prompting and Sampling consistency', () => {
         const chatGroups = [
             'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
             'System Messages', 'Reply Prefill', 'Request Options', 'Enable function calling',
-            'Send inline media', 'Request model reasoning', 'Reasoning Template',
+            'Send inline media', 'Request model reasoning', 'Prompt Caching', 'Reasoning Template',
         ];
         const textGroups = [
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template',

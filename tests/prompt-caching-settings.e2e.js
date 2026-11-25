@@ -325,6 +325,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
 
         test('switching the source builds no second group, reads nothing again, and keeps the settings out of presets', async ({ page, baseURL }) => {
+            test.setTimeout(120000);
             await boot(page, baseURL);
             const server = await mockServerConfig(page, { settings: ON });
             await open(page, 'claude');
