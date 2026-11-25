@@ -947,6 +947,38 @@ describe('Chat completions backend prompt caching integration', () => {
         ]);
     });
 
+    test('OpenAI Responses keeps only the text of mid-chat system and developer items and drops items without text', async () => {
+        const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } };
+        const res = await post('/api/backends/chat-completions/generate', {
+            chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES,
+            model: 'gpt-5',
+            stream: false,
+            max_tokens: 128,
+            messages: [
+                { role: 'system', content: [{ type: 'text', text: 'Leading rules' }, image] },
+                { role: 'developer', content: 'Leading developer rules' },
+                { role: 'user', content: [{ type: 'text', text: 'Look at this' }, image] },
+                { role: 'system', content: [{ type: 'text', text: 'Narrator note' }, image] },
+                { role: 'system', content: [image] },
+                { role: 'developer', content: [image, { type: 'text', text: 'Developer note' }] },
+                { role: 'system', content: '' },
+                { role: 'assistant', content: 'Reply' },
+                { role: 'user', content: 'Turn 2' },
+            ],
+        });
+        expect(res.status).toBe(200);
+
+        const body = JSON.parse(nodeFetchMock.mock.calls[0][1].body);
+        expect(body.instructions).toBe('Leading rules\n\nLeading developer rules');
+        expect(body.input).toEqual([
+            { role: 'user', content: [{ type: 'input_text', text: 'Look at this' }, { type: 'input_image', image_url: 'data:image/png;base64,AAAA' }] },
+            { role: 'system', content: [{ type: 'input_text', text: 'Narrator note' }] },
+            { role: 'developer', content: [{ type: 'input_text', text: 'Developer note' }] },
+            { role: 'assistant', content: 'Reply' },
+            { role: 'user', content: 'Turn 2' },
+        ]);
+    });
+
     test('server-admin /config/chat-completions/save persists YAML flags, parses quoted YAML booleans, and preserves omitted fields', async () => {
         const getRes = await post('/api/server-admin/config/chat-completions/get', {});
         expect(getRes.status).toBe(200);

@@ -2530,7 +2530,18 @@ function convertMessagesToResponsesFormat(messages) {
                 ? msg.role
                 : 'user';
             const inputItem = { role };
-            if (typeof msg.content === 'string') {
+            if (role === 'system' || role === 'developer') {
+                // SillyBunny: system messages never carried media before, so only their text is sent, and an item without text is dropped.
+                const content = typeof msg.content === 'string'
+                    ? msg.content
+                    : (Array.isArray(msg.content)
+                        ? msg.content.filter(part => part?.type === 'text' && part.text).map(part => ({ type: 'input_text', text: part.text }))
+                        : []);
+                if (content.length === 0) {
+                    continue;
+                }
+                inputItem.content = content;
+            } else if (typeof msg.content === 'string') {
                 inputItem.content = msg.content;
             } else if (Array.isArray(msg.content)) {
                 inputItem.content = msg.content.map(part => {
