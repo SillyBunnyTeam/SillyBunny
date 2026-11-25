@@ -306,7 +306,8 @@ test.describe('conversation timeline on a touch screen', () => {
         await client.detach();
     }
 
-    test('a long press starts it, taps toggle, and Select to End takes the rest of the chat', async ({ page, baseURL }) => {
+    test('a long press starts it, taps toggle, and Select to End takes the rest of the chat', async ({ page, baseURL, browserName }) => {
+        test.skip(browserName !== 'chromium', 'The long press is sent as a touch event over the DevTools protocol.');
         await openConversation(page, baseURL);
         // The list page shows first on a phone; open the thread.
         await longPress(page, row(page, 5).locator('.sb-conversation-message-text'));
