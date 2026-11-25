@@ -1821,23 +1821,14 @@ function isStreamingActiveForRecoveryObserver() {
     );
 }
 
-function disconnectPostGenerationRecoveryObserver() {
-    postGenerationRecoveryObserver?.disconnect();
-    postGenerationRecoveryObserverArmed = false;
-}
-
 function observePostGenerationRecoveryTargets() {
     if (!postGenerationRecoveryObserver) {
         return;
     }
 
-    // SillyBunny: never keep the recovery observer armed while streaming tokens;
-    // generation end/stop/render hooks re-arm it once streaming finishes.
-    if (isStreamingActiveForRecoveryObserver()) {
-        disconnectPostGenerationRecoveryObserver();
-        return;
-    }
-
+    // SillyBunny: disarm only #chat while streaming tokens; keep document.body[data-generating]
+    // observed so missed-end recovery still triggers if streaming ends abnormally.
+    const streamingActive = isStreamingActiveForRecoveryObserver();
     try {
         postGenerationRecoveryObserver.disconnect();
         if (document.body) {
@@ -1847,14 +1838,16 @@ function observePostGenerationRecoveryTargets() {
             });
         }
 
-        const chatElement = document.getElementById?.('chat') ?? document.querySelector?.('#chat');
-        if (chatElement) {
-            postGenerationRecoveryObserver.observe(chatElement, {
-                childList: true,
-                subtree: false,
-            });
+        if (!streamingActive) {
+            const chatElement = document.getElementById?.('chat') ?? document.querySelector?.('#chat');
+            if (chatElement) {
+                postGenerationRecoveryObserver.observe(chatElement, {
+                    childList: true,
+                    subtree: false,
+                });
+            }
         }
-        postGenerationRecoveryObserverArmed = true;
+        postGenerationRecoveryObserverArmed = !streamingActive;
     } catch (error) {
         console.warn('[InChatAgents] Could not start post-generation recovery observer:', error);
     }
@@ -4321,7 +4314,7 @@ async function onMessageReceived(messageIndex, generationType) {
 
 function onStreamTokenReceived() {
     if (postGenerationRecoveryObserverArmed && isStreamingActiveForRecoveryObserver()) {
-        disconnectPostGenerationRecoveryObserver();
+        observePostGenerationRecoveryTargets();
     }
 
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
@@ -5466,6 +5459,7 @@ export function initAgentRunner() {
     if (event_types.CHAT_CHANGED) {
         eventSource.on(event_types.CHAT_CHANGED, migrateLegacyRegexSnapshotsForCurrentChat);
         eventSource.on(event_types.CHAT_CHANGED, onChatChangedToolSync);
+        eventSource.on(event_types.CHAT_CHANGED, observePostGenerationRecoveryTargets);
     }
 
     if (event_types.WORLDINFO_UPDATED) {

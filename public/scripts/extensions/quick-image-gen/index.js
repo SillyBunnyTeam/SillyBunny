@@ -1582,6 +1582,7 @@ let galleryRepository = null;
 let galleryInitializationPromise = Promise.resolve();
 let accountStorageScope = null;
 let promptHistory = [];
+// SillyBunny divergence: defer synchronous localStorage parses until loadSettings() or first on-demand store read.
 let localStoresHydrated = false;
 let charSettings = {};
 let connectionProfiles = {};
@@ -1623,6 +1624,7 @@ function quarantineContextMediaData(reason) {
         console.warn(`[Quick Image Gen] Failed to quarantine Context Media data: ${quarantineError.message}`);
     }
 }
+// SillyBunny divergence: hydrate deferred localStorage stores lazily for callers before loadSettings() finishes.
 function ensureLocalStoresHydrated() {
     if (localStoresHydrated) return;
     localStoresHydrated = true;
@@ -4764,6 +4766,7 @@ async function loadSettings() {
     }
     if (synchronizedFromServer > 0) log(`Synchronized ${synchronizedFromServer} setting store(s) from SillyTavern`);
     if (serverStoresSeeded > 0) log(`Seeded ${serverStoresSeeded} setting store(s) into SillyTavern`);
+    // SillyBunny divergence: mark deferred local stores hydrated once loadSettings() reconciles them.
     if (typeof localStoresHydrated !== "undefined") {
         localStoresHydrated = true;
     }
@@ -5981,6 +5984,7 @@ function shouldReviewPrompt(settings) {
 }
 
 function getGenerationSettingsForRun(context = null) {
+    // SillyBunny divergence: lazily hydrate local stores if invoked before loadSettings() finishes.
     if (typeof ensureLocalStoresHydrated === "function") {
         ensureLocalStoresHydrated();
     }
@@ -14136,6 +14140,7 @@ async function executeExternalImageGeneration(prompt, negative, settings, contex
 }
 
 function getCapabilitySettingsSnapshot({ avatar = "", character = null, characterName = "" } = {}) {
+    // SillyBunny divergence: lazily hydrate local stores if queried before loadSettings() finishes.
     if (typeof ensureLocalStoresHydrated === "function") {
         ensureLocalStoresHydrated();
     }
@@ -21323,6 +21328,7 @@ function scheduleRefreshMessageGenerateActions() {
     }
 }
 
+// SillyBunny divergence: process only newly added #chat message elements instead of rescanning the full chat on streaming ticks.
 function flushPendingAddedMessageGenerateActions() {
     qigMessageActionAddedCancel = null;
     qigMessageActionAddedQueued = false;
@@ -21371,6 +21377,7 @@ function initMessageGenerateActionObserver() {
     if (qigMessageActionObserver) {
         qigMessageActionObserver.disconnect();
     }
+    // SillyBunny divergence: observe direct #chat child additions only (subtree: false) so streaming text updates do not fire the observer.
     qigMessageActionObserver = new MutationObserver((mutations) => {
         let hasAddedElements = false;
         for (const mutation of mutations) {
@@ -23141,6 +23148,24 @@ function bindHostEventHandlers(eventSource, eventTypes) {
         lifecycle.subscribe(eventSource, eventTypes.CHAT_COMPLETION_PROMPT_READY, onChatCompletionPromptReady);
     }
     lifecycle.subscribe(eventSource, eventTypes.CHAT_CHANGED, handleHostChatChanged);
+    // SillyBunny divergence: with #chat observed at subtree:false, refresh remote context media privacy on in-place swipe/render events.
+    const handleMessageInPlaceRefresh = (messageIndex) => {
+        const numericIndex = Number(messageIndex);
+        if (Number.isInteger(numericIndex) && numericIndex >= 0) {
+            const messageElement = document.querySelector(`#chat .mes[mesid="${numericIndex}"]`);
+            if (messageElement) {
+                ensureMessageGenerateAction(messageElement, getContext?.());
+                return;
+            }
+        }
+        scheduleRefreshMessageGenerateActions();
+    };
+    if (eventTypes.MESSAGE_SWIPED) {
+        lifecycle.subscribe(eventSource, eventTypes.MESSAGE_SWIPED, handleMessageInPlaceRefresh);
+    }
+    if (eventTypes.CHARACTER_MESSAGE_RENDERED) {
+        lifecycle.subscribe(eventSource, eventTypes.CHARACTER_MESSAGE_RENDERED, handleMessageInPlaceRefresh);
+    }
     hostEventLifecycleScope = lifecycle;
 }
 

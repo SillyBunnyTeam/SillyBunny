@@ -3,6 +3,7 @@ import vm from 'node:vm';
 import { ReadableStream, TextDecoderStream, TransformStream } from 'node:stream/web';
 import { TextEncoder } from 'node:util';
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import createDOMPurify from 'dompurify';
 import showdown from 'showdown';
 import { parse as parseCss, stringify as stringifyCss } from '@adobe/css-tools';
 import { parseDocument } from 'htmlparser2';
@@ -54,8 +55,28 @@ function createDomEnvironment() {
         constructor(nodeType, ownerDocument) {
             this.nodeType = nodeType;
             this.ownerDocument = ownerDocument;
-            this.parentNode = null;
-            this.childNodes = [];
+            this._parentNode = null;
+            this._childNodes = [];
+        }
+
+        get parentNode() {
+            return this._parentNode;
+        }
+
+        set parentNode(val) {
+            this._parentNode = val;
+        }
+
+        get childNodes() {
+            return this._childNodes;
+        }
+
+        set childNodes(val) {
+            this._childNodes = val;
+        }
+
+        hasChildNodes() {
+            return this._childNodes.length > 0;
         }
 
         get parentElement() {
@@ -84,8 +105,13 @@ function createDomEnvironment() {
 
         get isConnected() {
             let cur = this;
-            while (cur.parentNode) cur = cur.parentNode;
-            return cur === this.ownerDocument?.body;
+            while (cur) {
+                if (this.ownerDocument && (cur === this.ownerDocument.documentElement || cur === this.ownerDocument.body)) {
+                    return true;
+                }
+                cur = cur.parentNode;
+            }
+            return false;
         }
 
         appendChild(child) {
@@ -169,6 +195,32 @@ function createDomEnvironment() {
                 cur = cur.parentNode;
             }
             return false;
+        }
+
+        cloneNode(deep = false) {
+            if (this.nodeType === TEXT_NODE) {
+                return new DomText(this.data, this.ownerDocument);
+            }
+            if (this.nodeType === COMMENT_NODE) {
+                return new DomComment(this.data, this.ownerDocument);
+            }
+            if (this.nodeType === DOCUMENT_FRAGMENT_NODE) {
+                const frag = new DomFragment(this.ownerDocument);
+                if (deep) {
+                    for (const child of this.childNodes) {
+                        frag.appendChild(child.cloneNode(true));
+                    }
+                }
+                return frag;
+            }
+            const copy = this.ownerDocument.createElement(this.localName);
+            for (const [k, v] of this._attrs.entries()) copy._attrs.set(k, v);
+            if (deep) {
+                for (const child of this.childNodes) {
+                    copy.appendChild(child.cloneNode(true));
+                }
+            }
+            return copy;
         }
     }
 
@@ -378,17 +430,6 @@ function createDomEnvironment() {
         setAttributeNS(_ns, name, value) { this.setAttribute(name, value); }
         removeAttributeNS(_ns, name) { this.removeAttribute(name); }
 
-        cloneNode(deep = false) {
-            const copy = this.ownerDocument.createElement(this.localName);
-            for (const [k, v] of this._attrs.entries()) copy._attrs.set(k, v);
-            if (deep) {
-                for (const child of this.childNodes) {
-                    copy.appendChild(child.cloneNode(true));
-                }
-            }
-            return copy;
-        }
-
         isEqualNode(other) {
             if (!other || other.nodeType !== ELEMENT_NODE || this.tagName !== other.tagName) return false;
             if (this._attrs.size !== other._attrs.size) return false;
@@ -528,61 +569,174 @@ function createDomEnvironment() {
         return null;
     }
 
-    const doc = {
-        nodeType: 9,
-        body: null,
-        createElement(tag) {
-            const lower = String(tag).toLowerCase();
-            return lower === 'details' ? new DomDetailsElement('details', doc) : new DomElement(lower, doc);
-        },
-        createElementNS(_ns, tag) {
-            return doc.createElement(tag);
-        },
-        createTextNode(text) {
-            return new DomText(text, doc);
-        },
-        createComment(text) {
-            return new DomComment(text, doc);
-        },
-        createDocumentFragment() {
-            return new DomFragment(doc);
-        },
-        createTreeWalker(root, whatToShow) {
-            const SHOW_TEXT = 4;
-            const list = [];
-            const walk = (n) => {
-                for (const child of n.childNodes) {
-                    if (whatToShow === SHOW_TEXT ? child.nodeType === TEXT_NODE : true) {
-                        list.push(child);
+    function makeDocument() {
+        const d = {
+            nodeType: 9,
+            body: null,
+            documentElement: null,
+            createElement(tag) {
+                const lower = String(tag).toLowerCase();
+                return lower === 'details' ? new DomDetailsElement('details', d) : new DomElement(lower, d);
+            },
+            createElementNS(_ns, tag) {
+                return d.createElement(tag);
+            },
+            createTextNode(text) {
+                return new DomText(text, d);
+            },
+            createComment(text) {
+                return new DomComment(text, d);
+            },
+            createDocumentFragment() {
+                return new DomFragment(d);
+            },
+            getElementsByTagName(tag) {
+                const lower = String(tag).toLowerCase();
+                const out = [];
+                const doc = this && (this.documentElement || this.body) ? this : d;
+                const root = doc.documentElement || doc.body;
+                const walk = (n) => {
+                    if (!n) return;
+                    if (n.nodeType === ELEMENT_NODE && (lower === '*' || n.localName === lower)) {
+                        out.push(n);
                     }
-                    if (child.childNodes.length > 0) walk(child);
-                }
-            };
-            walk(root);
-            let idx = -1;
-            return {
-                currentNode: root,
-                nextNode() {
-                    idx++;
-                    if (idx >= list.length) return null;
-                    this.currentNode = list[idx];
-                    return this.currentNode;
+                    for (const child of n.childNodes) walk(child);
+                };
+                walk(root);
+                return out;
+            },
+            createNodeIterator(root, _whatToShow) {
+                let current = null;
+                let started = false;
+                const nextInPreOrder = (node) => {
+                    if (node.childNodes.length > 0) return node.childNodes[0];
+                    let cur = node;
+                    while (cur && cur !== root) {
+                        const next = cur.nextSibling;
+                        if (next) return next;
+                        cur = cur.parentNode;
+                    }
+                    return null;
+                };
+                // Track live tree safely even when DOMPurify removes `current` mid-iteration.
+                let nextCandidate = null;
+                const advanceAfter = (node) => {
+                    let cur = node;
+                    while (cur && cur !== root) {
+                        const next = cur.nextSibling;
+                        if (next) return next;
+                        cur = cur.parentNode;
+                    }
+                    return null;
+                };
+                return {
+                    nextNode() {
+                        if (!started) {
+                            started = true;
+                            current = root.childNodes[0] ?? null;
+                        } else if (current && current.parentNode) {
+                            current = nextInPreOrder(current);
+                        } else {
+                            current = nextCandidate;
+                        }
+                        nextCandidate = current ? advanceAfter(current) : null;
+                        return current;
+                    },
+                };
+            },
+            createTreeWalker(root, whatToShow) {
+                const SHOW_TEXT = 4;
+                const list = [];
+                const walk = (n) => {
+                    for (const child of n.childNodes) {
+                        if (whatToShow === SHOW_TEXT ? child.nodeType === TEXT_NODE : true) {
+                            list.push(child);
+                        }
+                        if (child.childNodes.length > 0) walk(child);
+                    }
+                };
+                walk(root);
+                let idx = -1;
+                return {
+                    currentNode: root,
+                    nextNode() {
+                        idx++;
+                        if (idx >= list.length) return null;
+                        this.currentNode = list[idx];
+                        return this.currentNode;
+                    },
+                };
+            },
+            importNode(node, deep) {
+                const cloned = node.cloneNode(deep);
+                const reown = (n) => {
+                    n.ownerDocument = d;
+                    for (const c of n.childNodes) reown(c);
+                };
+                reown(cloned);
+                return cloned;
+            },
+            implementation: {
+                createHTMLDocument() {
+                    return makeDocument();
                 },
-            };
-        },
-        querySelector(sel) { return doc.body.querySelector(sel); },
-        querySelectorAll(sel) { return doc.body.querySelectorAll(sel); },
-        hasFocus: () => true,
+                createDocument(_ns, qualifiedName) {
+                    const created = makeDocument();
+                    if (qualifiedName) {
+                        created.documentElement = created.createElement(qualifiedName);
+                        created.body = created.documentElement;
+                    }
+                    return created;
+                },
+            },
+            querySelector(sel) { return d.body.querySelector(sel); },
+            querySelectorAll(sel) { return d.body.querySelectorAll(sel); },
+            hasFocus: () => true,
+        };
+        const htmlEl = d.createElement('html');
+        const bodyEl = d.createElement('body');
+        htmlEl.appendChild(bodyEl);
+        d.documentElement = htmlEl;
+        d.body = bodyEl;
+        return d;
+    }
+
+    const doc = makeDocument();
+
+    class FakeDOMParser {
+        parseFromString(markup) {
+            const parsedDoc = makeDocument();
+            parsedDoc.body.innerHTML = String(markup ?? '');
+            return parsedDoc;
+        }
+    }
+
+    class FakeNamedNodeMap {}
+    class FakeHTMLFormElement extends DomElement {}
+
+    const windowObj = {
+        document: doc,
+        DocumentFragment: DomFragment,
+        Node: Object.assign(DomNode, { ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_FRAGMENT_NODE }),
+        Element: DomElement,
+        HTMLElement: DomElement,
+        HTMLDetailsElement: DomDetailsElement,
+        HTMLFormElement: FakeHTMLFormElement,
+        NamedNodeMap: FakeNamedNodeMap,
+        NodeFilter: { SHOW_TEXT: 4, SHOW_ELEMENT: 1, SHOW_COMMENT: 128 },
+        DOMParser: FakeDOMParser,
+        location: { origin: 'http://127.0.0.1:4444' },
     };
-    doc.body = doc.createElement('body');
 
     return {
+        window: windowObj,
         document: doc,
         Element: DomElement,
         HTMLElement: DomElement,
         HTMLDetailsElement: DomDetailsElement,
-        Node: { ELEMENT_NODE, TEXT_NODE, COMMENT_NODE, DOCUMENT_FRAGMENT_NODE },
-        NodeFilter: { SHOW_TEXT: 4 },
+        Node: windowObj.Node,
+        NodeFilter: windowObj.NodeFilter,
+        DOMParser: FakeDOMParser,
     };
 }
 
@@ -612,6 +766,7 @@ function loadStreamFadeInModule() {
         'FENCE_OPEN_OR_CLOSE_RE',
         'HTML_TAG_TOKEN_RE',
         'LIST_ITEM_START_RE',
+        'INDENTED_CODE_START_RE',
         'CONTINUATION_BLOCK_START_RE',
         'segmenterCache',
         'segmentedBlockRecords',
@@ -626,6 +781,8 @@ function loadStreamFadeInModule() {
         'segmentTailElementBounded',
         'advanceLiveTailCollapsedPrefix',
         'areElementsFastEqual',
+        'clearSettleTimer',
+        'reconcilePendingSegmentedElements',
         'trackSegmentedElementForSettle',
         'applyStreamDomPatch',
         'applyStreamFadeIn',
@@ -634,7 +791,7 @@ function loadStreamFadeInModule() {
     ];
     loadDeclarations(context, 'scripts/util/stream-fadein.js', names);
     const exports = Object.fromEntries(names.map(name => [name, vm.runInContext(name, context)]));
-    return { ...exports, dom };
+    return { ...exports, dom, context };
 }
 
 /**
@@ -673,23 +830,36 @@ function sanitizeTestMessageHtml(html) {
 
 describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Closed Reasoning', () => {
     describe('SmoothEventSourceStream & StreamPacer', () => {
-        function createSseContext({ speed = 50, noThink = false, focus = false, rafQueue = null } = {}) {
+        function createSseContext({
+            speed = 50,
+            noThink = false,
+            focus = false,
+            rafQueue = null,
+            cancelAnimationFrameSpy = null,
+            setTimeoutImpl = setTimeout,
+            clearTimeoutImpl = clearTimeout,
+            IntlImpl = Intl,
+        } = {}) {
             const cloneSpy = jest.fn(val => structuredClone(val));
             const delayCalls = [];
+            let currentFocus = focus;
             const context = vm.createContext({
                 TextDecoderStream,
                 TransformStream,
                 MessageEvent,
-                Intl,
+                Intl: IntlImpl,
                 structuredClone: cloneSpy,
                 console: { debug: jest.fn() },
+                setTimeout: setTimeoutImpl,
+                clearTimeout: clearTimeoutImpl,
                 document: {
-                    hasFocus: () => focus,
+                    hasFocus: () => currentFocus,
                     visibilityState: 'visible',
                 },
                 requestAnimationFrame: rafQueue
                     ? (cb) => { rafQueue.push(cb); return rafQueue.length; }
                     : undefined,
+                cancelAnimationFrame: cancelAnimationFrameSpy ?? (() => {}),
                 delay: (ms) => {
                     delayCalls.push(ms);
                     return Promise.resolve();
@@ -716,7 +886,13 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             ];
             loadDeclarations(context, 'scripts/sse-stream.js', names);
             const exports = Object.fromEntries(names.map(n => [n, vm.runInContext(n, context)]));
-            return { ...exports, cloneSpy, delayCalls, context };
+            return {
+                ...exports,
+                cloneSpy,
+                delayCalls,
+                context,
+                setFocus: (value) => { currentFocus = value; },
+            };
         }
 
         async function runSmoothFrames(SmoothEventSourceStream, payloads) {
@@ -830,34 +1006,99 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(catchupPacer.pause(true, 480)).toBeNull();
             expect(catchupPacer.owedMs).toBeCloseTo(5, 5);
         });
+
+        test('waitForAnimationFrameOrDelay falls back to bounded timer if rAF stalls, re-checks focus mid-chunk, and skips Intl.Segmenter on no_think reasoning', async () => {
+            // 1. Hung rAF (e.g., tab hidden right after queueing) must settle via bounded fallback timer and cancel rAF.
+            const rafQueue = [];
+            const cancelSpy = jest.fn();
+            const timerCallbacks = [];
+            const clearTimeoutSpy = jest.fn();
+            const { waitForAnimationFrameOrDelay } = createSseContext({
+                rafQueue,
+                cancelAnimationFrameSpy: cancelSpy,
+                setTimeoutImpl: (cb, ms) => {
+                    timerCallbacks.push({ cb, ms });
+                    return timerCallbacks.length;
+                },
+                clearTimeoutImpl: clearTimeoutSpy,
+            });
+
+            const pending = waitForAnimationFrameOrDelay(16);
+            expect(rafQueue).toHaveLength(1);
+            expect(timerCallbacks).toHaveLength(1);
+            expect(timerCallbacks[0].ms).toBe(50);
+
+            // Simulate rAF never firing: fallback timer resolves and cancels rAF.
+            timerCallbacks[0].cb();
+            await pending;
+            expect(cancelSpy).toHaveBeenCalledWith(1);
+
+            // 2. When no_think is true, Intl.Segmenter must never be invoked for reasoning chunks.
+            const segmentSpy = jest.fn();
+            const FakeIntl = {
+                Segmenter: class {
+                    segment(text) {
+                        segmentSpy(text);
+                        return Array.from(text, segment => ({ segment }));
+                    }
+                },
+            };
+            const noThinkCtx = createSseContext({
+                speed: 50,
+                noThink: true,
+                focus: true,
+                IntlImpl: FakeIntl,
+            });
+            const events = await runSmoothFrames(noThinkCtx.SmoothEventSourceStream, [
+                { choices: [{ index: 0, delta: { reasoning_content: 'Thought '.repeat(1000), content: '' } }] },
+                '[DONE]',
+            ]);
+            expect(events).toHaveLength(2);
+            expect(segmentSpy).not.toHaveBeenCalled();
+
+            // 3. Re-checking document.hasFocus() mid-chunk stops pacing immediately when tab loses focus.
+            const blurCtx = createSseContext({ speed: 50, focus: true });
+            blurCtx.context.delay = (ms) => {
+                blurCtx.delayCalls.push(ms);
+                // Tab loses focus right after the first character pause.
+                blurCtx.setFocus(false);
+                return Promise.resolve();
+            };
+            const blurEvents = await runSmoothFrames(blurCtx.SmoothEventSourceStream, [
+                { choices: [{ index: 0, delta: { content: 'abcdef' } }] },
+                '[DONE]',
+            ]);
+            expect(blurEvents).toHaveLength(7);
+            // Only 1 delay occurred before focus was lost; remaining characters did not wait.
+            expect(blurCtx.delayCalls).toHaveLength(1);
+        });
     });
 
     describe('Differential parity: splitStreamingBlocks & incremental formatting vs full formatting', () => {
         function createFormattingHarness() {
             const cssParseSpy = jest.fn(cssText => parseCss(cssText));
             let externalMediaAllowed = false;
-            const purifyHooks = {
-                beforeSanitizeElements: [],
-                afterSanitizeElements: [],
-                uponSanitizeElement: [],
-                uponSanitizeAttribute: [],
-                afterSanitizeAttributes: [],
-            };
+            const dom = createDomEnvironment();
+            const DOMPurify = createDOMPurify(dom.window);
 
             const chatsContext = vm.createContext({
                 css: { parse: cssParseSpy, stringify: stringifyCss },
                 removeUnscopableCss,
                 isExternalMediaAllowed: jest.fn(() => externalMediaAllowed),
-                DOMPurify: {
-                    addHook(name, fn) {
-                        purifyHooks[name]?.push(fn);
-                    },
-                },
+                DOMPurify,
                 HTMLUnknownElement: class {},
-                Element: class {},
-                NodeFilter: { SHOW_TEXT: 4 },
-                document: { createTreeWalker: () => ({ nextNode: () => null }) },
+                HTMLMediaElement: class {},
+                Element: dom.Element,
+                NodeFilter: dom.NodeFilter,
+                document: dom.document,
+                window: dom.window,
+                console: { warn: jest.fn() },
+                getCurrentEntityId: () => 'char-1',
+                accountStorage: { getItem: () => 'shown', setItem: () => {} },
+                toastr: { warning: jest.fn(), clear: jest.fn() },
+                t: (strings, ...vals) => strings.reduce((acc, s, i) => acc + s + (vals[i] ?? ''), ''),
             });
+            chatsContext.globalThis = chatsContext;
             loadDeclarations(chatsContext, 'scripts/chats.js', [
                 'STYLE_ENCODE_REGEX',
                 'STYLE_DECODE_REGEX',
@@ -865,6 +1106,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 'CLASS_SELECTOR_REGEX',
                 'SANITIZED_STYLE_CACHE_LIMIT',
                 'sanitizedStyleCache',
+                'EXTERNAL_MEDIA_TAG_NAMES',
                 'sanitizeSimpleSelector',
                 'sanitizeSelector',
                 'encodeStyleTags',
@@ -899,7 +1141,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 encodeStyleTags,
                 decodeStyleTags,
                 addDOMPurifyHooks,
-                purifyHooks,
+                DOMPurify,
                 cssParseSpy,
                 isExternalMediaAllowedSpy: chatsContext.isExternalMediaAllowed,
                 setExternalMediaAllowed: (v) => { externalMediaAllowed = v; },
@@ -1041,23 +1283,48 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(refSplit.canReusePrefix).toBe(false);
             expect(refSplit.prefix).toBe('');
             expect(refSplit.tail).toBe(withRef);
+
+            // CommonMark: a leading tab is an indented code block, never a code fence
+            const tabCodeThenPara = '\t```js\n\tconst x = 1;\n\nAfter indented code paragraph.';
+            const tabSplit = splitStreamingBlocks(tabCodeThenPara);
+            expect(tabSplit.canReusePrefix).toBe(true);
+            expect(tabSplit.prefix).toBe('\t```js\n\tconst x = 1;\n\n');
+            expect(tabSplit.tail).toBe('After indented code paragraph.');
+
+            // Adjacent 4-space indented code blocks coalesce into a single Markdown code block
+            const indentedCode = 'Intro.\n\n    line1();\n\n    line2();\n\nOutro.';
+            const indentedSplit = splitStreamingBlocks(indentedCode);
+            expect(indentedSplit.canReusePrefix).toBe(true);
+            expect(indentedSplit.prefixBlocks).toEqual([
+                'Intro.\n\n',
+                '    line1();\n\n    line2();\n\n',
+            ]);
+            expect(indentedSplit.tail).toBe('Outro.');
         });
 
-        test('LRU-caches sanitized <style> blocks and hoists isExternalMediaAllowed once per DOMPurify pass', () => {
+        test('LRU-caches sanitized <style> blocks, encodes mixed-case <sTyLe>, and safely caches isExternalMediaAllowed against real DOMPurify across disallowed tags', () => {
             const {
                 encodeStyleTags,
                 decodeStyleTags,
                 addDOMPurifyHooks,
-                purifyHooks,
+                DOMPurify,
                 cssParseSpy,
                 isExternalMediaAllowedSpy,
                 setExternalMediaAllowed,
             } = createFormattingHarness();
 
+            expect(DOMPurify.isSupported).toBe(true);
+
             // Fast-path when no <style> / <custom-style> is present
             expect(encodeStyleTags('<p>Plain paragraph</p>')).toBe('<p>Plain paragraph</p>');
             expect(decodeStyleTags('<p>Plain paragraph</p>')).toBe('<p>Plain paragraph</p>');
             expect(cssParseSpy).not.toHaveBeenCalled();
+
+            // Mixed-case <sTyLe> must not bypass encodeStyleTags fast-path
+            const mixedEncoded = encodeStyleTags('<sTyLe>.hero { color: blue; }</sTyLe><p>Ok</p>');
+            expect(mixedEncoded).toContain('<custom-style>');
+            expect(decodeStyleTags(mixedEncoded, { prefix: '.mes_text ' })).toContain('.mes_text .custom-hero');
+            cssParseSpy.mockClear();
 
             // Repeated streaming ticks with identical <style> block hit the LRU cache
             const encoded = encodeStyleTags('<style>.box { color: green; background: url(https://img.example/a.png); }</style><p>Body</p>');
@@ -1073,16 +1340,51 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(cssParseSpy).toHaveBeenCalledTimes(2);
             expect(third).toContain('https://img.example/a.png');
 
-            // Verify DOMPurify hook hoists isExternalMediaAllowed() once per sanitize call across 50 elements
+            // Verify real DOMPurify with addDOMPurifyHooks():
             addDOMPurifyHooks();
+            const sharedConfig = { MESSAGE_SANITIZE: true, ADD_TAGS: ['custom-style'] };
+
+            // 1. Prose-only message with 50 non-media elements must NOT call isExternalMediaAllowed() at all.
             isExternalMediaAllowedSpy.mockClear();
-            const config = { MESSAGE_SANITIZE: true };
-            purifyHooks.beforeSanitizeElements[0](null, null, config);
-            for (let i = 0; i < 50; i++) {
-                purifyHooks.uponSanitizeElement[0]({}, null, config);
-            }
-            purifyHooks.afterSanitizeElements[0](null, null, config);
+            const proseHtml = Array.from({ length: 50 }, (_, i) => `<p><span>Line ${i}</span></p>`).join('');
+            DOMPurify.sanitize(proseHtml, sharedConfig);
+            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(0);
+
+            // 2. Message with disallowed tags (<script>, <status>) + multiple <img> while allowed=true:
+            //    caches once per pass, strips disallowed tags, preserves <img>, and NEVER leaks stale state.
+            setExternalMediaAllowed(true);
+            isExternalMediaAllowedSpy.mockClear();
+            const allowedPass = DOMPurify.sanitize(
+                '<script>alert(1)</script><status>hp:10</status><img src="https://evil.example/1.png"><img src="https://evil.example/2.png">',
+                sharedConfig,
+            );
             expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
+            expect(allowedPass).not.toContain('<script');
+            expect(allowedPass).not.toContain('<status');
+            expect(allowedPass).toContain('https://evil.example/1.png');
+            expect(allowedPass).toContain('https://evil.example/2.png');
+
+            // 3. Switching to untrusted character (externalMediaAllowed=false) even with the SAME config object
+            //    must STILL block external <img> tags (regression guard against depth-counter latch bug!).
+            setExternalMediaAllowed(false);
+            isExternalMediaAllowedSpy.mockClear();
+            const blockedPass = DOMPurify.sanitize(
+                '<script>alert(2)</script><status>hp:5</status><img src="https://evil.example/tracker.png"><p>Safe</p>',
+                sharedConfig,
+            );
+            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
+            expect(blockedPass).not.toContain('https://evil.example/tracker.png');
+            expect(blockedPass).toContain('<p>Safe</p>');
+
+            // 4. Switching back to allowed=true after a blocked pass with disallowed tags must re-allow external media.
+            setExternalMediaAllowed(true);
+            isExternalMediaAllowedSpy.mockClear();
+            const reAllowedPass = DOMPurify.sanitize(
+                '<img src="https://good.example/art.png">',
+                sharedConfig,
+            );
+            expect(isExternalMediaAllowedSpy).toHaveBeenCalledTimes(1);
+            expect(reAllowedPass).toContain('https://good.example/art.png');
         });
     });
 
@@ -1125,6 +1427,59 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 applyStreamDomPatch(referenceContainer, finalHtml);
                 expect(container.outerHTML).toBe(referenceContainer.outerHTML);
             } finally {
+                if (prevHTMLElement === undefined) delete globalThis.HTMLElement;
+                else globalThis.HTMLElement = prevHTMLElement;
+                if (prevDocument === undefined) delete globalThis.document;
+                else globalThis.document = prevDocument;
+            }
+        });
+
+        test('keeps live .text_segment spans <= 48 across continuous 50 ms multi-paragraph streaming without settle-timer starvation', () => {
+            const { applyStreamFadeIn, dom } = loadStreamFadeInModule();
+            const prevHTMLElement = globalThis.HTMLElement;
+            const prevDocument = globalThis.document;
+            globalThis.HTMLElement = dom.HTMLElement;
+            globalThis.document = dom.document;
+            jest.useFakeTimers();
+            try {
+                const container = dom.document.createElement('div');
+                dom.document.body.appendChild(container);
+
+                const paragraphs = [];
+                let maxObservedSpans = 0;
+
+                // Stream 20 paragraphs, advancing 50 ms on every tick (< 320 ms SETTLE_FADE_MS).
+                // Each paragraph starts with 10 words and grows to 20 words across two 50 ms ticks.
+                for (let p = 0; p < 20; p++) {
+                    const firstHalf = Array.from({ length: 10 }, (_, w) => `p${p}w${w}`).join(' ');
+                    const secondHalf = Array.from({ length: 10 }, (_, w) => `p${p}w${w + 10}`).join(' ');
+
+                    paragraphs.push(`<p>${firstHalf}</p>`);
+                    applyStreamFadeIn(container, paragraphs.join(''));
+                    maxObservedSpans = Math.max(maxObservedSpans, container.querySelectorAll('span.text_segment').length);
+                    expect(container.querySelectorAll('span.text_segment').length).toBeLessThanOrEqual(48);
+
+                    jest.advanceTimersByTime(50);
+
+                    paragraphs[p] = `<p>${firstHalf} ${secondHalf}</p>`;
+                    applyStreamFadeIn(container, paragraphs.join(''));
+                    maxObservedSpans = Math.max(maxObservedSpans, container.querySelectorAll('span.text_segment').length);
+                    expect(container.querySelectorAll('span.text_segment').length).toBeLessThanOrEqual(48);
+
+                    jest.advanceTimersByTime(50);
+                }
+
+                expect(maxObservedSpans).toBeGreaterThan(0);
+                expect(maxObservedSpans).toBeLessThanOrEqual(48);
+                // Early paragraphs must already have collapsed despite continuous 50 ms tail ticks.
+                expect(container.children[0].querySelectorAll('span.text_segment')).toHaveLength(0);
+                expect(container.children[5].querySelectorAll('span.text_segment')).toHaveLength(0);
+
+                // Final render collapses all remaining tail spans to 0.
+                applyStreamFadeIn(container, paragraphs.join(''), { isFinal: true });
+                expect(container.querySelectorAll('span.text_segment')).toHaveLength(0);
+            } finally {
+                jest.useRealTimers();
                 if (prevHTMLElement === undefined) delete globalThis.HTMLElement;
                 else globalThis.HTMLElement = prevHTMLElement;
                 if (prevDocument === undefined) delete globalThis.document;
@@ -1216,6 +1571,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
 
             return {
                 handler: new ReasoningHandler(new Date(Date.now() - 2000)),
+                ReasoningHandler,
                 ReasoningState,
                 details,
                 reasoningContent: mes.querySelector('.mes_reasoning'),
@@ -1300,6 +1656,215 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(reasoningContent.innerHTML).toBe('<p>Silent thought 2 final</p>');
             expect(headerTitle.textContent).toBe('Thought for 2 seconds');
             expect(details.getAttribute('data-reasoning-pending-render')).toBeNull();
+        });
+
+        test('attaches toggle listener only while pending, detaches on expand/finish, and prevents stale aborted handlers from overwriting after swipe/regenerate', async () => {
+            const {
+                handler: handler1,
+                ReasoningHandler,
+                ReasoningState,
+                details,
+                reasoningContent,
+                messageFormattingSpy,
+                applyStreamFadeInSpy,
+            } = createReasoningHarness({ detailsOpen: false, platform: 'Win32', streamFadeIn: true });
+
+            // 1. Non-thinking render (e.g., updateReasoningUI on Done message) must attach 0 toggle listeners.
+            const nonStreamingHandler = new ReasoningHandler(new Date(Date.now() - 1000));
+            nonStreamingHandler.state = ReasoningState.Done;
+            nonStreamingHandler.reasoning = 'Historical reasoning';
+            nonStreamingHandler.updateDom(0);
+            expect(details._listeners.get('toggle')?.size ?? 0).toBe(0);
+            expect(applyStreamFadeInSpy).toHaveBeenLastCalledWith(
+                reasoningContent,
+                '<p>Historical reasoning</p>',
+                expect.objectContaining({ isFinal: true }),
+            );
+
+            // 2. Handler #1 streams closed thinking (pending render -> 1 listener attached) and then errors/aborts without finish().
+            messageFormattingSpy.mockClear();
+            applyStreamFadeInSpy.mockClear();
+            reasoningContent.innerHTML = '';
+            handler1.state = ReasoningState.Thinking;
+            handler1.startTime = handler1.initialTime;
+            handler1.reasoning = 'Stale aborted thought from generation 1';
+            handler1.updateDom(0);
+            expect(details._listeners.get('toggle')?.size ?? 0).toBe(1);
+            expect(messageFormattingSpy).not.toHaveBeenCalled();
+
+            // 3. Swipe/regenerate creates Handler #2 on the SAME <details> element -> supersedes Handler #1's listener.
+            const handler2 = new ReasoningHandler(new Date(Date.now() - 500));
+            handler2.state = ReasoningState.Thinking;
+            handler2.startTime = handler2.initialTime;
+            handler2.reasoning = 'Fresh thought from generation 2';
+            handler2.updateDom(0);
+            expect(details._listeners.get('toggle')?.size ?? 0).toBe(1);
+
+            // Expanding <details> must render ONLY Handler #2's reasoning and detach the toggle listener.
+            details.open = true;
+            details.dispatchEvent({ type: 'toggle' });
+            expect(messageFormattingSpy).toHaveBeenCalledTimes(1);
+            expect(reasoningContent.innerHTML).toBe('<p>Fresh thought from generation 2</p>');
+            expect(details._listeners.get('toggle')?.size ?? 0).toBe(0);
+
+            // Finishing closed reasoning passes isFinal: true and leaves 0 toggle listeners attached.
+            details.open = false;
+            handler2.reasoning = 'Final thought from generation 2';
+            handler2.updateDom(0);
+            expect(details._listeners.get('toggle')?.size ?? 0).toBe(1);
+            await handler2.finish(0);
+            expect(details._listeners.get('toggle')?.size ?? 0).toBe(0);
+            expect(applyStreamFadeInSpy).toHaveBeenLastCalledWith(
+                reasoningContent,
+                '<p>Final thought from generation 2</p>',
+                expect.objectContaining({ isFinal: true }),
+            );
+        });
+
+        test('wires createIncrementalBlockFormatter, applyStreamFadeIn({ isFinal }), and iOS WebKit adaptive plain-text preview live in public/script.js', async () => {
+            const { applyStreamDomPatch, applyStreamFadeIn, createIncrementalBlockFormatter, dom } = loadStreamFadeInModule();
+            const { source: scriptSource } = readClientModule('script.js');
+            const classStart = scriptSource.indexOf('class StreamingProcessor {');
+            const classEnd = scriptSource.indexOf('\n/**', scriptSource.indexOf('\n}\n', classStart));
+            const classSource = scriptSource.slice(classStart, classEnd);
+            const applyWriteSource = scriptSource.match(/^function applyStreamingVisibleWrite\([\s\S]*?^}$/m)[0];
+
+            const mes = dom.document.createElement('div');
+            mes.className = 'mes';
+            mes.setAttribute('mesid', '0');
+            const mesText = dom.document.createElement('div');
+            mesText.className = 'mes_text';
+            mes.appendChild(mesText);
+            const chatEl = dom.document.createElement('div');
+            chatEl.id = 'chat';
+            chatEl.appendChild(mes);
+            dom.document.body.appendChild(chatEl);
+
+            const messageFormattingSpy = jest.fn(text => `<p>${text.trim()}</p>`);
+            const applyStreamFadeInSpy = jest.fn((el, html, opts) => applyStreamFadeIn(el, html, opts));
+            const formatMobileStreamingPreviewSpy = jest.fn(text => `<p class="plain-preview">${text}</p>`);
+            let navRef = { platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)', maxTouchPoints: 0 };
+
+            const prevHTMLElement = globalThis.HTMLElement;
+            const prevDocument = globalThis.document;
+            globalThis.HTMLElement = dom.HTMLElement;
+            globalThis.document = dom.document;
+            try {
+                const ctx = vm.createContext({
+                    console,
+                    AbortController,
+                    structuredClone,
+                    performance,
+                    document: dom.document,
+                    HTMLElement: dom.HTMLElement,
+                    get navigator() { return navRef; },
+                    chat: [{ mes: '', name: 'Char', is_system: false, is_user: false, extra: {}, swipe_id: 0, swipes: [''], swipe_info: [{}] }],
+                    chatGeneration: 1,
+                    activeGenerationRun: {},
+                    streamingProcessor: null,
+                    getCurrentChatId: () => 'chat-1',
+                    power_user: {
+                        streaming_fps: 30,
+                        stream_fade_in: true,
+                        ios_webkit_reduce_streaming_work: false,
+                        android_reduce_streaming_work: false,
+                        ios_webkit_disable_stream_fade_in: false,
+                        android_disable_stream_fade_in: false,
+                        android_streaming_basic_markdown: false,
+                    },
+                    main_api: 'openai',
+                    scrollLock: false,
+                    scrollLockImmunityUntil: 0,
+                    IN_CHAT_AGENT_TRANSFORM_HISTORY_KEY: 'history',
+                    IN_CHAT_AGENT_PRE_GENERATION_INTERCEPT_HISTORY_KEY: 'intercept',
+                    GENERATION_PLACEHOLDER_KEY: 'server_generation_placeholder',
+                    ReasoningHandler: class {
+                        reasoning = '';
+                        process = async () => {};
+                        updateDom() {}
+                        updateReasoning() {}
+                        hasReasoningContent() { return false; }
+                        getDuration() { return 0; }
+                    },
+                    event_types: { STREAM_TOKEN_RECEIVED: 'token' },
+                    eventSource: { emit: jest.fn(async () => {}) },
+                    delay: async () => {},
+                    Stopwatch: class { async tick(cb) { await cb(); } },
+                    getStoppingStrings: () => [],
+                    getStreamingUpdateInterval,
+                    cleanUpMessage: ({ getMessage }) => getMessage,
+                    shouldReduceStreamingDomWork,
+                    shouldUsePlainTextStreamingPreview,
+                    shouldGuardMobileChatScroll: () => false,
+                    shouldPinMobileChatToBottom: () => false,
+                    isMobileChatManualScrollSuppressionActive: () => false,
+                    isAndroidStreamingPlatform: () => false,
+                    isIOSWebKitPlatform: nav => Boolean(nav && /iPhone|iPad/i.test(`${nav.platform} ${nav.userAgent}`)),
+                    prepareMessageDisplayText: text => ({ mes: text, isSystem: false }),
+                    formatMobileStreamingPreview: formatMobileStreamingPreviewSpy,
+                    converter: null,
+                    sanitizeMessageHtml: html => html,
+                    getPositiveTokenCount: value => Number(value) || 0,
+                    updateMessageTokenAccounting: async () => ({ outputTokens: 1, reasoningTokens: 0 }),
+                    balanceStreamingMarkdown: value => value,
+                    messageFormatting: messageFormattingSpy,
+                    applyStreamDomPatch,
+                    applyStreamFadeIn: applyStreamFadeInSpy,
+                    createIncrementalBlockFormatter,
+                    formatGenerationTimer: () => ({ timerValue: '0s', timerTitle: '' }),
+                    updateMessageMetaBadges: () => {},
+                    scrollChatToBottom: () => {},
+                    CHAT_RENDER_LIFECYCLE_ROUTE: { STREAM_PROGRESS: 'stream' },
+                    isChatRenderLifecycleRolloutEnabled: () => false,
+                });
+                ctx.globalThis = ctx;
+
+                vm.runInContext(`${classSource}\n${applyWriteSource}\nthis.StreamingProcessor = StreamingProcessor;`, ctx);
+                const processor = new ctx.StreamingProcessor('normal', false, new Date(), '', { prefixReasoning: '', removePrefix: text => text });
+                ctx.streamingProcessor = processor;
+                processor.messageId = 0;
+                processor.message = ctx.chat[0];
+                processor.swipeId = 0;
+
+                // 1. Multi-paragraph streaming reuses cached prefix block via createIncrementalBlockFormatter.
+                await processor.onProgressStreaming(0, 'First settled paragraph.\n\nSecond active tick 1', false);
+                const callsAfterTick1 = messageFormattingSpy.mock.calls.map(c => c[0]);
+                expect(callsAfterTick1).toEqual(['First settled paragraph.\n\n', 'Second active tick 1']);
+
+                messageFormattingSpy.mockClear();
+                await processor.onProgressStreaming(0, 'First settled paragraph.\n\nSecond active tick 2', false);
+                // Settled prefix was served from cache; only the active tail was formatted!
+                expect(messageFormattingSpy.mock.calls.map(c => c[0])).toEqual(['Second active tick 2']);
+
+                // 2. Final render runs full-document messageFormatting and passes isFinal: true to applyStreamFadeIn.
+                messageFormattingSpy.mockClear();
+                await processor.onProgressStreaming(0, 'First settled paragraph.\n\nSecond active final', true);
+                expect(messageFormattingSpy.mock.calls.map(c => c[0])).toEqual(['First settled paragraph.\n\nSecond active final']);
+                expect(applyStreamFadeInSpy).toHaveBeenLastCalledWith(
+                    mesText,
+                    expect.any(String),
+                    expect.objectContaining({ isFinal: true }),
+                );
+                expect(mesText.querySelectorAll('span.text_segment')).toHaveLength(0);
+
+                // 3. On iOS WebKit with slow renderDurationMs (> 33 ms), plain-text preview fallback activates live,
+                //    and final render still uses full messageFormatting.
+                navRef = { platform: 'iPhone', userAgent: 'iPhone AppleWebKit/605.1.15', maxTouchPoints: 5 };
+                processor.streamingRenderDurationMs = 50;
+                messageFormattingSpy.mockClear();
+                formatMobileStreamingPreviewSpy.mockClear();
+                await processor.onProgressStreaming(0, 'Slow iOS frame prose', false);
+                expect(formatMobileStreamingPreviewSpy).toHaveBeenCalledTimes(1);
+                expect(messageFormattingSpy).not.toHaveBeenCalled();
+
+                await processor.onProgressStreaming(0, 'Slow iOS frame final', true);
+                expect(messageFormattingSpy).toHaveBeenCalledTimes(1);
+            } finally {
+                if (prevHTMLElement === undefined) delete globalThis.HTMLElement;
+                else globalThis.HTMLElement = prevHTMLElement;
+                if (prevDocument === undefined) delete globalThis.document;
+                else globalThis.document = prevDocument;
+            }
         });
 
         test('extends adaptive frame-budget backoff and plain-text fallback to iOS WebKit', () => {
@@ -1413,6 +1978,12 @@ function createMiniDom() {
 
         get isConnected() {
             return this._isConnected;
+        }
+
+        remove() {
+            if (this.parentNode && typeof this.parentNode.removeChild === 'function') {
+                this.parentNode.removeChild(this);
+            }
         }
     }
 
@@ -1673,6 +2244,19 @@ function createMiniDom() {
             if (node instanceof MiniElement) node._markConnected(this._isConnected);
             else node._isConnected = this._isConnected;
             notifyObservers({ type: 'childList', target: this, addedNodes: [node], removedNodes: [], attributeName: null });
+            return node;
+        }
+
+        removeChild(node) {
+            const idx = this.childNodes.indexOf(node);
+            if (idx !== -1) {
+                this.childNodes.splice(idx, 1);
+                node.parentElement = null;
+                node.parentNode = null;
+                if (node instanceof MiniElement) node._markConnected(false);
+                else node._isConnected = false;
+                notifyObservers({ type: 'childList', target: this, addedNodes: [], removedNodes: [node], attributeName: null });
+            }
             return node;
         }
 
@@ -2222,7 +2806,7 @@ describe('PR 8 observer firewalls', () => {
         expect(wrapper.getElementsByTagNameCalls).toBe(1);
     });
 
-    test('guided-generations scopes qrObserver to #send_form (subtree:false), disconnects once integrated, drops style filter, and uses events instead of setInterval', async () => {
+    test('guided-generations scopes qrObserver to #send_form (subtree:false), keeps it active for QR bar re-renders while clearing poll timer, drops style filter, and uses events instead of setInterval', async () => {
         const dom = createMiniDom();
         installDomGlobals(dom);
         globalThis.ResizeObserver = class {
@@ -2281,7 +2865,7 @@ describe('PR 8 observer firewalls', () => {
         dom.document.body.appendChild(sendForm);
 
         const setIntervalSpy = jest.spyOn(globalThis, 'setInterval').mockImplementation(() => 123);
-        jest.spyOn(globalThis, 'clearInterval').mockImplementation(() => {});
+        const clearIntervalSpy = jest.spyOn(globalThis, 'clearInterval').mockImplementation(() => {});
         jest.spyOn(globalThis, 'setTimeout').mockImplementation(() => 456);
         jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -2297,7 +2881,8 @@ describe('PR 8 observer firewalls', () => {
         expect(docElObs).toBeDefined();
         expect(docElObs.targets[0].options.attributeFilter).not.toContain('style');
 
-        // qrObserver must observe #send_form with subtree: false and disconnect once #qr--bar arrives.
+        // qrObserver must observe #send_form with subtree: false, stop qrPollTimer once integrated,
+        // and stay attached so a recreated #qr--bar re-integrates cleanly.
         const qrObs = dom.observers.find(obs => obs.targets.some(t => t.target === sendForm));
         expect(qrObs).toBeDefined();
         expect(qrObs.targets[0].options).toEqual({ childList: true, subtree: false });
@@ -2309,7 +2894,16 @@ describe('PR 8 observer firewalls', () => {
         await dom.flushMicrotasks();
 
         expect(qrBar.parentElement.id).toBe('gg-qr-container');
-        expect(qrObs.active).toBe(false);
+        expect(clearIntervalSpy).toHaveBeenCalledWith(123);
+        expect(qrObs.active).toBe(true);
+
+        // Simulate Quick Reply destroying and recreating #qr--bar (e.g., character switch or popout toggle).
+        qrBar.remove();
+        const recreatedQrBar = dom.document.createElement('div');
+        recreatedQrBar.id = 'qr--bar';
+        sendForm.appendChild(recreatedQrBar);
+        await dom.flushMicrotasks();
+        expect(recreatedQrBar.parentElement.id).toBe('gg-qr-container');
 
         // Event-driven flush button updates respond to eventSource events.
         activeGuides = ['gg-guided-response'];
@@ -2400,9 +2994,13 @@ describe('PR 8 observer firewalls', () => {
 
         expect(ensured).toEqual(['1']);
         expect(chat.querySelectorAllCalls).toBe(0);
+
+        // bindHostEventHandlers must subscribe MESSAGE_SWIPED and CHARACTER_MESSAGE_RENDERED for in-place privacy refresh.
+        expect(source).toContain('eventTypes.MESSAGE_SWIPED');
+        expect(source).toContain('eventTypes.CHARACTER_MESSAGE_RENDERED');
     });
 
-    test('in-chat-agents postGenerationRecoveryObserver uses subtree:false and disarms while streaming', () => {
+    test('in-chat-agents postGenerationRecoveryObserver uses subtree:false, disarms only #chat while streaming (keeping body[data-generating] watched), and re-arms on CHAT_CHANGED', () => {
         const dom = createMiniDom();
         const chat = dom.document.createElement('div');
         chat.id = 'chat';
@@ -2418,7 +3016,6 @@ describe('PR 8 observer firewalls', () => {
             'postGenerationRecoveryObserver',
             'postGenerationRecoveryObserverArmed',
             'isStreamingActiveForRecoveryObserver',
-            'disconnectPostGenerationRecoveryObserver',
             'observePostGenerationRecoveryTargets',
         ]);
 
@@ -2428,17 +3025,25 @@ describe('PR 8 observer firewalls', () => {
         expect(obs.active).toBe(true);
         const chatTarget = obs.targets.find(t => t.target === chat);
         expect(chatTarget.options).toEqual({ childList: true, subtree: false });
+        expect(obs.targets.find(t => t.target === dom.document.body)?.options).toEqual({ attributes: true, attributeFilter: ['data-generating'] });
 
-        // While streaming is active, calling observePostGenerationRecoveryTargets disarms it.
+        // While streaming is active, #chat is disarmed but document.body[data-generating] stays watched for missed-end recovery.
         context.streamingProcessor = { isFinished: false, isStopped: false };
         vm.runInContext('observePostGenerationRecoveryTargets();', context);
-        expect(obs.active).toBe(false);
+        expect(obs.active).toBe(true);
+        expect(obs.targets.find(t => t.target === chat)).toBeUndefined();
+        expect(obs.targets.find(t => t.target === dom.document.body)?.options).toEqual({ attributes: true, attributeFilter: ['data-generating'] });
 
-        // Once streaming finishes, calling observePostGenerationRecoveryTargets re-arms it with subtree: false.
+        // Once streaming finishes, #chat re-arms with subtree: false alongside document.body[data-generating].
         context.streamingProcessor = { isFinished: true, isStopped: false };
         vm.runInContext('observePostGenerationRecoveryTargets();', context);
         expect(obs.active).toBe(true);
         expect(obs.targets.find(t => t.target === chat).options).toEqual({ childList: true, subtree: false });
+        expect(obs.targets.find(t => t.target === dom.document.body)?.options).toEqual({ attributes: true, attributeFilter: ['data-generating'] });
+
+        // CHAT_CHANGED registration must include observePostGenerationRecoveryTargets so mid-stream chat switches re-arm #chat.
+        const { source: runnerSource } = readClientModule('scripts/extensions/in-chat-agents/agent-runner.js');
+        expect(runnerSource).toContain('eventSource.on(event_types.CHAT_CHANGED, observePostGenerationRecoveryTargets);');
     });
 });
 
@@ -2516,7 +3121,9 @@ describe('PR 8 regex memoization and engine cache invalidation', () => {
     test('regex/engine.js caches buckets by (placement, mode), skips substituteParamsExtended without {{, gates console.debug, and invalidates on changes', async () => {
         const regexFromString = jest.fn(mockRegexFromString);
         const substituteParams = jest.fn(value => value);
-        const substituteParamsExtended = jest.fn(value => value.replace('{{char}}', 'Alice'));
+        const substituteParamsExtended = jest.fn(value => value
+            .replace(/\{\{char\}\}|<CHAR>|<BOT>/gi, 'Alice')
+            .replace(/\{\{user\}\}|<USER>/gi, 'Bob'));
         const saveSettingsDebounced = jest.fn();
         const extension_settings = {
             disabledExtensions: [],
@@ -2610,6 +3217,19 @@ describe('PR 8 regex memoization and engine cache invalidation', () => {
         globalScript.findRegex = '/{{char}}/g';
         expect(engine.getRegexedString('hi Alice', engine.regex_placement.AI_OUTPUT, { isMarkdown: true })).toBe('hi dog');
         expect(substituteParamsExtended).toHaveBeenCalledTimes(1);
+
+        // Legacy non-curly macros (<USER>, <CHAR>, <BOT>) and escaped braces must NOT be treated as static.
+        globalScript.findRegex = '/<USER> and <CHAR>/g';
+        expect(engine.getRegexedString('Bob and Alice', engine.regex_placement.AI_OUTPUT, { isMarkdown: true })).toBe('dog');
+        expect(substituteParamsExtended).toHaveBeenCalledTimes(2);
+
+        globalScript.findRegex = '/<bot>/gi';
+        expect(engine.getRegexedString('Meet ALICE', engine.regex_placement.AI_OUTPUT, { isMarkdown: true })).toBe('Meet dog');
+        expect(substituteParamsExtended).toHaveBeenCalledTimes(3);
+
+        globalScript.findRegex = '/a\\{2\\}/g';
+        engine.getRegexedString('aa', engine.regex_placement.AI_OUTPUT, { isMarkdown: true });
+        expect(substituteParamsExtended).toHaveBeenCalledTimes(4);
 
         // allowScopedScripts / disallowScopedScripts invalidate cache immediately.
         expect(engine.getRegexedString('hello', engine.regex_placement.AI_OUTPUT, { isMarkdown: true })).toBe('hello');

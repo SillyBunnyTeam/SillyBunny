@@ -122,6 +122,7 @@ function getDelay(s) {
  * @param {boolean} [options.segments=false] Yield text run descriptors instead of single characters
  * @returns {AsyncGenerator<{data: object, chunk: string, reasoning?: boolean}|{text: string, suffix: string, reasoning?: boolean, build: (slice: string, isLast: boolean) => object}>}
  */
+// SillyBunny: eliminate per-character structuredClone via shallow delta builders and split by Unicode code points / grapheme clusters.
 async function* parseStreamData(json, { segments = false } = {}) {
     /**
      * @param {string} text
@@ -265,6 +266,7 @@ async function* parseStreamData(json, { segments = false } = {}) {
     throw new Error('Unknown event data format');
 }
 
+// SillyBunny: coalesce sub-frame smooth-streaming waits into ~16 ms rAF slices with bounded timer fallback and backlog catch-up.
 /** A single-step wait shorter than this is coalesced into a ~16 ms frame slice instead of its own timer. */
 const SMOOTH_MIN_PAUSE_MS = 12;
 /** Target presentation frame slice when coalescing sub-frame waits via rAF. */
@@ -277,7 +279,25 @@ function waitForAnimationFrameOrDelay(waitMs) {
         typeof globalThis.requestAnimationFrame === 'function'
         && globalThis.document?.visibilityState !== 'hidden'
     ) {
-        return new Promise(resolve => globalThis.requestAnimationFrame(() => resolve()));
+        const fallbackMs = Math.max(Number.isFinite(waitMs) ? waitMs : SMOOTH_FRAME_SLICE_MS, 50);
+        return new Promise((resolve) => {
+            let settled = false;
+            let frameId = null;
+            let timerId = null;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                if (frameId !== null && typeof globalThis.cancelAnimationFrame === 'function') {
+                    globalThis.cancelAnimationFrame(frameId);
+                }
+                if (timerId !== null) {
+                    clearTimeout(timerId);
+                }
+                resolve();
+            };
+            frameId = globalThis.requestAnimationFrame(finish);
+            timerId = setTimeout(finish, fallbackMs);
+        });
     }
     return delay(waitMs);
 }
@@ -328,6 +348,7 @@ export class StreamPacer {
      */
     pause(paced, backlog) {
         if (!paced) {
+            this.owedMs = 0;
             return null;
         }
         const catchUp = backlog > SMOOTH_CATCH_UP_UNITS ? SMOOTH_CATCH_UP_UNITS / backlog : 1;
@@ -354,15 +375,14 @@ export class SmoothEventSourceStream extends EventSourceStream {
     constructor() {
         super();
         const pacer = new StreamPacer();
+        const isFocused = () => (typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+            ? document.hasFocus()
+            : false);
         const transformStream = new TransformStream({
             async transform(chunk, controller) {
                 const event = chunk;
                 const data = event.data;
                 try {
-                    const hasFocus = typeof document !== 'undefined' && typeof document.hasFocus === 'function'
-                        ? document.hasFocus()
-                        : false;
-
                     if (data === '[DONE]') {
                         pacer.reset();
                         return controller.enqueue(event);
@@ -375,25 +395,26 @@ export class SmoothEventSourceStream extends EventSourceStream {
                         return controller.enqueue(event);
                     }
 
+                    // SillyBunny: stream per-segment shallow clones with rAF pacing and single-event no_think reasoning passthrough.
                     for await (const segment of parseStreamData(json, { segments: true })) {
                         if (typeof segment.build !== 'function') {
-                            const wait = pacer.pause(hasFocus, 1);
+                            const wait = pacer.pause(isFocused(), 1);
                             if (wait) await wait;
                             controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(segment.data) }));
                             pacer.lastUnit = segment.chunk;
                             continue;
                         }
 
-                        const units = splitStreamUnits(segment.text);
                         if (power_user.smooth_streaming_no_think && segment.reasoning) {
-                            // Reasoning is shown without pacing, so it goes out whole.
+                            // Reasoning is shown without pacing, so it goes out whole without segmenting the full string.
                             controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(segment.build(segment.text + segment.suffix, true)) }));
-                            pacer.lastUnit = units[units.length - 1] + segment.suffix;
+                            pacer.lastUnit = segment.text.slice(-1) + segment.suffix;
                             continue;
                         }
 
+                        const units = splitStreamUnits(segment.text);
                         for (let index = 0; index < units.length; index++) {
-                            const wait = pacer.pause(hasFocus, units.length - index);
+                            const wait = pacer.pause(isFocused(), units.length - index);
                             if (wait) await wait;
                             const isLast = index === units.length - 1;
                             const unit = isLast ? units[index] + segment.suffix : units[index];

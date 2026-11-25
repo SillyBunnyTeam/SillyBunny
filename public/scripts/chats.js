@@ -539,6 +539,7 @@ export async function appendFileContent(message, messageText) {
     return messageText;
 }
 
+// SillyBunny: hoist style sanitization regexes and LRU-cache sanitized <style> blocks across streaming ticks.
 const STYLE_ENCODE_REGEX = /<style>(.+?)<\/style>/gims;
 const STYLE_DECODE_REGEX = /<custom-style>(.+?)<\/custom-style>/gms;
 const PSEUDO_SELECTOR_REGEX = /:(has|not|where|is|matches|any)\(([^)]+)\)/g;
@@ -546,6 +547,7 @@ const CLASS_SELECTOR_REGEX = /\.([\w-]+)/g;
 const SANITIZED_STYLE_CACHE_LIMIT = 128;
 /** @type {Map<string, string>} */
 const sanitizedStyleCache = new Map();
+const EXTERNAL_MEDIA_TAG_NAMES = new Set(['AUDIO', 'VIDEO', 'SOURCE', 'TRACK', 'EMBED', 'OBJECT', 'IMG']);
 
 function sanitizeSimpleSelector(selector) {
     // Split by spaces but preserve complex selectors
@@ -580,7 +582,8 @@ function sanitizeSelector(selector) {
  * @copyright https://github.com/kwaroran/risuAI
  */
 export function encodeStyleTags(text) {
-    if (!text || (!text.includes('<style') && !text.includes('<STYLE') && !text.includes('<Style'))) {
+    // SillyBunny: fast-path messages without any <style> tag (case-insensitive) to avoid full-text regex scanning.
+    if (!text || !text.includes('<') || !/<style/i.test(text)) {
         return text;
     }
 
@@ -598,6 +601,7 @@ export function encodeStyleTags(text) {
  * @copyright https://github.com/kwaroran/risuAI
  */
 export function decodeStyleTags(text, { prefix } = { prefix: '.mes_text ' }) {
+    // SillyBunny: fast-path messages without encoded <custom-style> tags.
     if (!text || !text.includes('<custom-style>')) {
         return text;
     }
@@ -1997,29 +2001,11 @@ export function registerFileConverter(mimeType, converter) {
 }
 
 export function addDOMPurifyHooks() {
-    /** @type {boolean | null} */
-    let cachedSanitizeMediaAllowed = null;
-    let sanitizeElementsDepth = 0;
-
-    DOMPurify.addHook('beforeSanitizeElements', (_currentNode, _data, config) => {
-        if (!config?.MESSAGE_SANITIZE) {
-            return;
-        }
-        if (sanitizeElementsDepth === 0) {
-            cachedSanitizeMediaAllowed = isExternalMediaAllowed();
-        }
-        sanitizeElementsDepth++;
-    });
-
-    DOMPurify.addHook('afterSanitizeElements', (_currentNode, _data, config) => {
-        if (!config?.MESSAGE_SANITIZE || sanitizeElementsDepth <= 0) {
-            return;
-        }
-        sanitizeElementsDepth--;
-        if (sanitizeElementsDepth === 0) {
-            cachedSanitizeMediaAllowed = null;
-        }
-    });
+    // SillyBunny: cache external-media policy once per detached DOMPurify document (never via mutable depth counters).
+    /** @type {WeakMap<Document, boolean>} */
+    const sanitizeMediaAllowedByDoc = new WeakMap();
+    /** @type {WeakMap<object, boolean>} */
+    const sanitizeMediaAllowedByConfig = new WeakMap();
 
     // Allow target="_blank" in links
     DOMPurify.addHook('afterSanitizeAttributes', function (node) {
@@ -2093,12 +2079,29 @@ export function addDOMPurifyHooks() {
             }
         }
 
-        const isMediaAllowed = cachedSanitizeMediaAllowed ?? isExternalMediaAllowed();
-        if (isMediaAllowed) {
+        // SillyBunny: filter to external-media tags before querying policy, and cache once per detached sanitize document.
+        if (!(node instanceof Element) || !EXTERNAL_MEDIA_TAG_NAMES.has(node.tagName)) {
             return;
         }
 
-        if (!(node instanceof Element)) {
+        const ownerDoc = node.ownerDocument;
+        let isMediaAllowed;
+        if (ownerDoc && ownerDoc !== globalThis.document) {
+            isMediaAllowed = sanitizeMediaAllowedByDoc.get(ownerDoc);
+            if (isMediaAllowed === undefined) {
+                isMediaAllowed = isExternalMediaAllowed();
+                sanitizeMediaAllowedByDoc.set(ownerDoc, isMediaAllowed);
+            }
+        } else if (config && typeof config === 'object' && !ownerDoc) {
+            isMediaAllowed = sanitizeMediaAllowedByConfig.get(config);
+            if (isMediaAllowed === undefined) {
+                isMediaAllowed = isExternalMediaAllowed();
+                sanitizeMediaAllowedByConfig.set(config, isMediaAllowed);
+            }
+        } else {
+            isMediaAllowed = isExternalMediaAllowed();
+        }
+        if (isMediaAllowed) {
             return;
         }
 

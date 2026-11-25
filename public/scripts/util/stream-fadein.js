@@ -1,5 +1,6 @@
 import { morphdom } from '../../lib.js';
 
+// SillyBunny: bound live stream fade-in spans to the active tail and provide incremental block splitting/caching.
 /** Maximum `.text_segment` spans kept live in the active streaming tail (< 60 budget). */
 const MAX_TAIL_SEGMENTS = 48;
 /** Batch size used when collapsing older `.text_segment` spans inside a single long block. */
@@ -20,9 +21,11 @@ const UNSPLITTABLE_HTML_TAGS = new Set([
 
 const REFERENCE_DEF_RE = /^[ \t]{0,3}\[[^\r\n\]]+\]:[ \t]*/m;
 const REFERENCE_LINK_USE_RE = /\]\[[^\r\n\]]*\]/;
-const FENCE_OPEN_OR_CLOSE_RE = /^[ \t]{0,3}(`{3,}|~{3,})(.*)$/;
+// CommonMark fenced code blocks allow 0-3 leading spaces (a leading tab starts an indented code block).
+const FENCE_OPEN_OR_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const HTML_TAG_TOKEN_RE = /<!--|-->|<(\/?)([a-zA-Z][a-zA-Z0-9:-]*)\b([^>]*?)(\/?)>/g;
 const LIST_ITEM_START_RE = /^[ \t]{0,3}(?:[-*+]|\d+[.)])[ \t]/;
+const INDENTED_CODE_START_RE = /^(?: {4}|\t)/;
 const CONTINUATION_BLOCK_START_RE = /^(?:[ \t]{4,}|[ \t]{0,3}(?:[-*+]|\d+[.)])[ \t]|[ \t]{0,3}>|[ \t]{0,3}\||[ \t]{0,3}(?:===+|---+)[ \t]*(?:\r?\n|$))/;
 
 /** @type {Map<string, Intl.Segmenter>} */
@@ -34,10 +37,14 @@ const segmenterCache = new Map();
  */
 const segmentedBlockRecords = new WeakMap();
 
-/** @type {WeakMap<HTMLElement, Set<Element>>} */
+/**
+ * Per-root map of segmented elements to the timestamp (`settledAt`) when each left the active tail,
+ * or `null` while it is still the active tail.
+ * @type {WeakMap<HTMLElement, Map<Element, number | null>>}
+ */
 const pendingSegmentedElementsByRoot = new WeakMap();
 
-/** @type {WeakMap<HTMLElement, ReturnType<typeof setTimeout>>} */
+/** @type {WeakMap<HTMLElement, { timer: ReturnType<typeof setTimeout>, deadline: number }>} */
 const settleTimerByRoot = new WeakMap();
 
 /**
@@ -297,7 +304,106 @@ function areElementsFastEqual(from, to) {
 }
 
 /**
- * Schedules cleanup of `.text_segment` spans on blocks that are no longer the active tail.
+ * Cancels any pending settle timer for `messageTextElement`.
+ * @param {HTMLElement} messageTextElement
+ */
+function clearSettleTimer(messageTextElement) {
+    const existing = settleTimerByRoot.get(messageTextElement);
+    if (existing !== undefined) {
+        clearTimeout(existing.timer);
+        settleTimerByRoot.delete(messageTextElement);
+    }
+}
+
+/**
+ * Collapses non-tail segmented blocks whose fade window has elapsed, enforces the
+ * `MAX_TAIL_SEGMENTS` total live-span cap across `messageTextElement`, and schedules a
+ * non-starved timer for the earliest remaining settle deadline.
+ * @param {HTMLElement} messageTextElement
+ * @param {Element | null} currentTail
+ * @param {number} [now]
+ */
+function reconcilePendingSegmentedElements(messageTextElement, currentTail, now = Date.now()) {
+    const tracked = pendingSegmentedElementsByRoot.get(messageTextElement);
+    if (!tracked || tracked.size === 0) {
+        clearSettleTimer(messageTextElement);
+        return;
+    }
+
+    /** @type {Array<[Element, number]>} */
+    const settledNonTail = [];
+    for (const [el, settledAt] of Array.from(tracked.entries())) {
+        if (!el.isConnected) {
+            tracked.delete(el);
+            segmentedBlockRecords.delete(el);
+            continue;
+        }
+        if (el === currentTail) {
+            if (settledAt !== null) {
+                tracked.set(el, null);
+            }
+            continue;
+        }
+        const effectiveSettledAt = settledAt ?? now;
+        if (settledAt === null) {
+            tracked.set(el, effectiveSettledAt);
+        }
+        if (now - effectiveSettledAt >= SETTLE_FADE_MS) {
+            collapseTextSegments(el);
+            tracked.delete(el);
+            continue;
+        }
+        settledNonTail.push([el, effectiveSettledAt]);
+    }
+
+    // Enforce the live `.text_segment` budget across all tracked blocks by collapsing oldest non-tail blocks first.
+    if (settledNonTail.length > 0) {
+        let totalSpans = currentTail ? currentTail.querySelectorAll('span.text_segment').length : 0;
+        const nonTailCounts = settledNonTail.map(([el]) => el.querySelectorAll('span.text_segment').length);
+        for (const count of nonTailCounts) {
+            totalSpans += count;
+        }
+        let earliestDeadline = Infinity;
+        for (let i = 0; i < settledNonTail.length; i++) {
+            const [el, settledAt] = settledNonTail[i];
+            if (totalSpans > MAX_TAIL_SEGMENTS) {
+                collapseTextSegments(el);
+                tracked.delete(el);
+                totalSpans -= nonTailCounts[i];
+            } else {
+                const deadline = settledAt + SETTLE_FADE_MS;
+                if (deadline < earliestDeadline) {
+                    earliestDeadline = deadline;
+                }
+            }
+        }
+
+        if (earliestDeadline === Infinity) {
+            clearSettleTimer(messageTextElement);
+            return;
+        }
+
+        // Only reschedule when no timer is active or an earlier deadline exists; active-tail ticks must never starve older blocks.
+        const existing = settleTimerByRoot.get(messageTextElement);
+        if (!existing || earliestDeadline < existing.deadline) {
+            clearSettleTimer(messageTextElement);
+            const delayMs = Math.max(0, earliestDeadline - now);
+            const timer = setTimeout(() => {
+                settleTimerByRoot.delete(messageTextElement);
+                const tail = messageTextElement.isConnected ? findActiveTailElement(messageTextElement) : null;
+                reconcilePendingSegmentedElements(messageTextElement, tail, Date.now());
+            }, delayMs);
+            timer?.unref?.();
+            settleTimerByRoot.set(messageTextElement, { timer, deadline: earliestDeadline });
+        }
+        return;
+    }
+
+    clearSettleTimer(messageTextElement);
+}
+
+/**
+ * Tracks the active tail element and reconciles settled non-tail blocks without starving their timer.
  * @param {HTMLElement} messageTextElement
  * @param {Element} segmentedElement
  */
@@ -308,37 +414,14 @@ function trackSegmentedElementForSettle(messageTextElement, segmentedElement) {
 
     let pending = pendingSegmentedElementsByRoot.get(messageTextElement);
     if (!pending) {
-        pending = new Set();
+        pending = new Map();
         pendingSegmentedElementsByRoot.set(messageTextElement, pending);
     }
-    pending.add(segmentedElement);
-
-    const existingTimer = settleTimerByRoot.get(messageTextElement);
-    if (existingTimer !== undefined) {
-        clearTimeout(existingTimer);
+    if (!pending.has(segmentedElement)) {
+        pending.set(segmentedElement, null);
     }
 
-    const timer = setTimeout(() => {
-        settleTimerByRoot.delete(messageTextElement);
-        const tracked = pendingSegmentedElementsByRoot.get(messageTextElement);
-        if (!tracked || tracked.size === 0) {
-            return;
-        }
-        const currentTail = messageTextElement.isConnected ? findActiveTailElement(messageTextElement) : null;
-        for (const el of Array.from(tracked)) {
-            if (!el.isConnected) {
-                tracked.delete(el);
-                segmentedBlockRecords.delete(el);
-                continue;
-            }
-            if (el !== currentTail) {
-                collapseTextSegments(el);
-                tracked.delete(el);
-            }
-        }
-    }, SETTLE_FADE_MS);
-    timer?.unref?.();
-    settleTimerByRoot.set(messageTextElement, timer);
+    reconcilePendingSegmentedElements(messageTextElement, segmentedElement, Date.now());
 }
 
 /**
@@ -367,12 +450,9 @@ export function applyStreamDomPatch(messageTextElement, htmlContent) {
  * @param {boolean} [options.isFinal] Collapse all temporary `.text_segment` spans for final parity
  */
 export function applyStreamFadeIn(messageTextElement, htmlContent, { bypassFadeIn = false, isFinal = false } = {}) {
+    // SillyBunny: bypass/final renders collapse temporary .text_segment spans for full final DOM parity.
     if (bypassFadeIn || isFinal) {
-        const existingTimer = settleTimerByRoot.get(messageTextElement);
-        if (existingTimer !== undefined) {
-            clearTimeout(existingTimer);
-            settleTimerByRoot.delete(messageTextElement);
-        }
+        clearSettleTimer(messageTextElement);
         pendingSegmentedElementsByRoot.delete(messageTextElement);
         if (isFinal) {
             collapseTextSegments(messageTextElement);
@@ -601,7 +681,7 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
         rawBlocks.push(source.slice(blockStart));
     }
 
-    // Merge adjacent blocks that can coalesce in Markdown (loose lists, indented continuations, tables, blockquotes).
+    // Merge adjacent blocks that can coalesce in Markdown (loose lists, indented continuations/code, tables, blockquotes).
     /** @type {string[]} */
     const blocks = [];
     for (const block of rawBlocks) {
@@ -612,7 +692,8 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
             const bothLists = LIST_ITEM_START_RE.test(prevTrimmed) && (LIST_ITEM_START_RE.test(currTrimmed) || /^[ \t]{2,}/.test(block));
             const bothQuotes = prevTrimmed.startsWith('>') && currTrimmed.startsWith('>');
             const bothTables = prevTrimmed.startsWith('|') && currTrimmed.startsWith('|');
-            if (bothLists || bothQuotes || bothTables) {
+            const bothIndentedCode = INDENTED_CODE_START_RE.test(prev) && INDENTED_CODE_START_RE.test(block);
+            if (bothLists || bothQuotes || bothTables || bothIndentedCode) {
                 blocks[blocks.length - 1] = prev + block;
                 continue;
             }
@@ -692,7 +773,7 @@ export function createIncrementalBlockFormatter(formatFn) {
                 return formatFn(source);
             }
 
-            let prefixHtml = '';
+            const htmlParts = [];
             for (const block of split.prefixBlocks) {
                 let cached = blockHtmlCache.get(block);
                 if (cached === undefined) {
@@ -703,11 +784,16 @@ export function createIncrementalBlockFormatter(formatFn) {
                     }
                     blockHtmlCache.set(block, cached);
                 }
-                prefixHtml += cached;
+                if (cached) {
+                    htmlParts.push(cached);
+                }
             }
 
             const tailHtml = split.tail ? formatFn(split.tail) : '';
-            return prefixHtml && tailHtml ? `${prefixHtml}\n${tailHtml}` : (prefixHtml || tailHtml);
+            if (tailHtml) {
+                htmlParts.push(tailHtml);
+            }
+            return htmlParts.join('\n');
         },
         reset() {
             blockHtmlCache.clear();

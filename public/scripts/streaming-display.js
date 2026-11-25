@@ -24,6 +24,7 @@ import { animation_duration, messageFormatting } from '/script.js';
 
 /** CSS class prefix */
 const CSS_PREFIX = 'streaming-display';
+// SillyBunny: coalesce streaming display updates onto rAF with a 66 ms (~15 fps) interval floor.
 /** Minimum interval between live StreamingDisplay DOM/scroll updates (~15 fps). */
 const STREAMING_DISPLAY_MIN_INTERVAL_MS = 66;
 

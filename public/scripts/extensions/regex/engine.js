@@ -90,9 +90,18 @@ export class RegexProvider {
     }
 }
 
+// SillyBunny: cache filtered and compiled script buckets by (placement, mode) across streaming ticks.
 const EMPTY_SCRIPTS = Object.freeze([]);
+const LEGACY_MACRO_RE = /<(?:user|bot|char|group|charifnotgroup)>/i;
 let regexCacheRevision = 0;
 let compiledScriptsCache = null;
+
+function hasMacroSyntax(pattern) {
+    return pattern.includes('{{')
+        || LEGACY_MACRO_RE.test(pattern)
+        || pattern.includes('\\{')
+        || pattern.includes('\\}');
+}
 
 /**
  * Invalidates cached filtered/compiled script buckets used by getRegexedString.
@@ -232,7 +241,7 @@ function getCompiledBucket(placement, isMarkdown, isPrompt) {
             const subMode = Number(script.substituteRegex);
             const hasStaticRegex = subMode === substitute_find_regex.NONE
                 || ((subMode === substitute_find_regex.RAW || subMode === substitute_find_regex.ESCAPED)
-                    && !script.findRegex.includes('{{'));
+                    && !hasMacroSyntax(script.findRegex));
             let compiledRegex = null;
             if (hasStaticRegex) {
                 compiledRegex = RegexProvider.instance.get(script.findRegex);
@@ -515,6 +524,7 @@ export function getRegexedString(rawString, placement, { characterOverride, isMa
         return finalString;
     }
 
+    // SillyBunny: use cached (placement, mode) compiled buckets and gate debug logging behind regex_debug.
     const bucket = getCompiledBucket(placement, Boolean(isMarkdown), Boolean(isPrompt));
     if (bucket.length === 0) {
         return finalString;
@@ -582,9 +592,10 @@ export function runRegexScript(regexScript, rawString, { characterOverride } = {
             case substitute_find_regex.NONE:
                 return findRegexStr;
             case substitute_find_regex.RAW:
-                return findRegexStr.includes('{{') ? substituteParamsExtended(findRegexStr) : findRegexStr;
+                // SillyBunny: skip macro substitution when findRegex contains neither {{...}}, legacy angle-bracket macros, nor escaped braces.
+                return hasMacroSyntax(findRegexStr) ? substituteParamsExtended(findRegexStr) : findRegexStr;
             case substitute_find_regex.ESCAPED:
-                return findRegexStr.includes('{{') ? substituteParamsExtended(findRegexStr, {}, sanitizeRegexMacro) : findRegexStr;
+                return hasMacroSyntax(findRegexStr) ? substituteParamsExtended(findRegexStr, {}, sanitizeRegexMacro) : findRegexStr;
             default:
                 console.warn(`runRegexScript: Unknown substituteRegex value ${regexScript.substituteRegex}. Using raw regex.`);
                 return findRegexStr;

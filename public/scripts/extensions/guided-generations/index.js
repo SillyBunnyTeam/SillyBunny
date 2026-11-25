@@ -616,42 +616,38 @@ function integrateQrBar() {
     return true;
 }
 
-function stopQrIntegrationWatchers() {
+function stopQrPollTimer() {
     if (qrPollTimer) {
         window.clearInterval(qrPollTimer);
         qrPollTimer = null;
     }
-    qrObserver?.disconnect();
-    qrObserver = null;
 }
 
 function startQrIntegration() {
     if (integrateQrBar()) {
-        stopQrIntegrationWatchers();
-        return;
+        stopQrPollTimer();
+    } else {
+        stopQrPollTimer();
+        qrPollTimer = window.setInterval(() => {
+            if (integrateQrBar()) {
+                stopQrPollTimer();
+            }
+        }, 1000);
+
+        window.setTimeout(() => {
+            stopQrPollTimer();
+        }, 30000);
     }
-
-    qrPollTimer = window.setInterval(() => {
-        if (integrateQrBar()) {
-            stopQrIntegrationWatchers();
-        }
-    }, 1000);
-
-    window.setTimeout(() => {
-        if (qrPollTimer) {
-            window.clearInterval(qrPollTimer);
-            qrPollTimer = null;
-        }
-    }, 30000);
 
     qrObserver?.disconnect();
     const sendForm = document.getElementById('send_form');
     if (sendForm && typeof MutationObserver === 'function') {
         qrObserver = new MutationObserver(() => {
             if (integrateQrBar()) {
-                stopQrIntegrationWatchers();
+                stopQrPollTimer();
             }
         });
+        // Keep the shallow #send_form observer attached so recreated #qr--bar instances re-integrate cleanly.
         qrObserver.observe(sendForm, { childList: true, subtree: false });
     }
 }
