@@ -29,6 +29,9 @@ function ensureController() {
     if (controller?.isAttached()) {
         return controller.selection;
     }
+    // The chrome was built again, so the old mode is bound to rows that are gone.
+    controller?.selection.destroy();
+    controller = null;
     const sheld = document.getElementById('sheld');
     const timeline = document.getElementById(CHROME_IDS.timeline);
     const stage = document.getElementById(CHROME_IDS.stage);

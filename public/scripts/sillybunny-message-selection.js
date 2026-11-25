@@ -82,6 +82,8 @@ function ensureController() {
     if (controller?.isAttached()) {
         return controller.selection;
     }
+    controller?.selection.destroy();
+    controller = null;
 
     const headerHost = document.getElementById(HEADER_HOST_ID) ?? Object.assign(document.createElement('div'), { id: HEADER_HOST_ID });
     list.before(headerHost);
