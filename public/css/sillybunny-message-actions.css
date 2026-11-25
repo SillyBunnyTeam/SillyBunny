@@ -467,6 +467,37 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
     padding: 2px 4px;
 }
 
+/* The sheet and a coarse pointer need cells of 44px, and seven of them are wider than a phone: the row becomes a grid of equal
+   columns, one row whatever the width, and its cells shrink to the column. `fitReactionRows()` drops the emoji that would
+   leave a cell under 40px. */
+.sb-action-sheet .sb-action-menu-reactions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    justify-items: center;
+}
+
+.sb-action-sheet .sb-action-menu-reaction {
+    inline-size: min(var(--sb-action-row), 100%);
+    block-size: auto;
+    aspect-ratio: 1;
+}
+
+@media (pointer: coarse) {
+    .sb-action-popover .sb-action-menu-reactions {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        justify-items: center;
+    }
+
+    .sb-action-popover .sb-action-menu-reaction {
+        inline-size: min(var(--sb-action-row), 100%);
+        block-size: auto;
+        aspect-ratio: 1;
+    }
+}
+
 .sb-action-menu-reaction {
     display: inline-flex;
     align-items: center;

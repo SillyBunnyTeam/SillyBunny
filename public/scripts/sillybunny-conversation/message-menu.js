@@ -6,6 +6,7 @@
 
 import { translate } from '../i18n.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
+import { bindReactionChips, buildMenuReactions, syncToolbarReactions } from './reactions-ui.js';
 
 /** Which control opens a message's actions follows the pointer, never the width (DESIGN.md, Layout and Chat Transcript). */
 const COARSE_POINTER_QUERY = '(pointer: coarse)';
@@ -41,22 +42,17 @@ function findLiveButton(item, button) {
         return button;
     }
     const action = CSS.escape(button.dataset.sbConversationAction || '');
-    const reaction = button.dataset.reaction ? `[data-reaction="${CSS.escape(button.dataset.reaction)}"]` : '';
     const messageId = CSS.escape(item.dataset.messageId || '');
-    return document.querySelector(`${MESSAGE_SELECTOR}[data-message-id="${messageId}"] .sb-conversation-message-actions [data-sb-conversation-action="${action}"]${reaction}`);
+    return document.querySelector(`${MESSAGE_SELECTOR}[data-message-id="${messageId}"] .sb-conversation-message-actions [data-sb-conversation-action="${action}"]`);
 }
 
 function forward(item, button) {
     findLiveButton(item, button)?.click();
 }
 
-function buildSections(item, actionBar) {
-    const reactions = [...actionBar.querySelectorAll(':scope > .sb-conversation-reaction-button')].map(button => ({
-        text: button.textContent || '',
-        pressed: button.getAttribute('aria-pressed') === 'true',
-        onSelect: () => forward(item, button),
-    }));
-    const sections = [{ reactions }];
+function buildSections(item, actionBar, trigger) {
+    // The reaction row comes from the quick row, not from the toolbar's buttons: the toolbar has room for two emoji only.
+    const sections = [{ reactions: buildMenuReactions(item, trigger) }];
     for (const button of actionBar.querySelectorAll(':scope > .sb-conversation-message-action[data-sb-conversation-action]')) {
         const index = Number(button.getAttribute('data-sb-section'));
         const section = (sections[index + 1] ??= { items: [] });
@@ -95,7 +91,7 @@ export function openConversationMessageMenu(trigger, { point = null, keyboard = 
     item.classList.add(OPEN_CLASS);
     openActionMenu({
         trigger,
-        sections: buildSections(item, actionBar),
+        sections: buildSections(item, actionBar, trigger),
         subtitle: getSubtitle(item),
         point,
         keyboard,
@@ -120,6 +116,14 @@ function syncMenuTitle(target) {
     }
     if (trigger.getAttribute('aria-label') !== label) {
         trigger.setAttribute('aria-label', label);
+    }
+}
+
+/** The two emoji of a toolbar follow the user's recent reactions, which change without the message changing. */
+function syncToolbarQuickRow(target) {
+    const item = asElement(target)?.closest(MESSAGE_SELECTOR);
+    if (item instanceof HTMLElement) {
+        syncToolbarReactions(item);
     }
 }
 
@@ -187,7 +191,8 @@ function handleContextMenu(event) {
 
 function handleMenuKey(event) {
     const isMenuKey = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
-    if (!isMenuKey || isTypingTarget(document.activeElement)) {
+    // On a reaction chip the same keys open the list of who reacted (reactions-ui.js).
+    if (!isMenuKey || isTypingTarget(document.activeElement) || asElement(document.activeElement)?.closest('.sb-conversation-message-reaction-chip')) {
         return;
     }
     const item = asElement(document.activeElement)?.closest(MESSAGE_SELECTOR);
@@ -209,12 +214,15 @@ export function initializeConversationMessageMenu() {
     window.addEventListener('click', handleClickCapture, true);
     window.addEventListener('keydown', handleMenuKey, true);
     document.addEventListener('contextmenu', handleContextMenu);
+    bindReactionChips();
     document.addEventListener('pointerover', (event) => {
         syncMenuTitle(event.target);
+        syncToolbarQuickRow(event.target);
         syncMetaClearance(event.target);
     }, { passive: true });
     document.addEventListener('focusin', (event) => {
         syncMenuTitle(event.target);
+        syncToolbarQuickRow(event.target);
         syncMetaClearance(event.target);
     });
     window.addEventListener('keydown', syncHoveredMetaClearance, { passive: true });

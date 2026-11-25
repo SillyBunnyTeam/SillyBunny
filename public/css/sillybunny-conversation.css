@@ -1666,11 +1666,15 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     box-shadow: var(--sb-focus-ring-inset);
 }
 
+/* A counted chip: the emoji and the count are separate spans, so that the count keeps the text font. The chip that the user
+   pressed has the 16% Accent tint, a 1px Accent ring and the stronger ink, so colour is never the only cue. */
 .sb-conversation-message-reaction-chip {
-    min-block-size: 22px;
+    position: relative;
+    min-block-size: 24px;
     display: inline-flex;
     align-items: center;
-    padding: 3px 9px;
+    gap: 4px;
+    padding: 2px 8px;
     border: 1px solid color-mix(in srgb, var(--sb-accent) 26%, var(--sb-shell-border));
     border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--sb-accent) 8%, transparent);
@@ -1679,11 +1683,65 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     font: inherit;
     font-size: 11px;
     line-height: 1;
+    /* A long press opens the list of who reacted, which the browser's own callout and text selection would cover. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.sb-conversation-reaction-emoji {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.sb-conversation-reaction-count {
+    font-variant-numeric: tabular-nums;
 }
 
 .sb-conversation-message-reaction-chip[aria-pressed='true'] {
+    border-color: var(--sb-accent);
     background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
     color: var(--SmartThemeBodyColor);
+}
+
+/* The list of who reacted: the user first, then the characters. */
+.sb-reaction-people {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 168px;
+    margin: 0;
+    padding: 2px;
+    list-style: none;
+}
+
+.sb-reaction-person {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-block-size: var(--sb-density-floor);
+    padding-inline: 8px;
+    font-size: calc(var(--mainFontSize) * 0.95);
+}
+
+.sb-reaction-person-picture {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 24px;
+    block-size: 24px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-flat-hover-bg);
+    object-fit: cover;
+    font-size: 12px;
+}
+
+.sb-reaction-person-name {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 @media (hover: hover) {
@@ -2304,6 +2362,22 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
         min-inline-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    /* A reaction chip draws at the density floor and reaches the touch target with a hit area that the row gap leaves room for. */
+    .sb-conversation-message-reactions {
+        gap: 12px 4px;
+    }
+
+    .sb-conversation-message-reaction-chip {
+        min-block-size: var(--sb-density-floor);
+        padding-inline: 12px;
+    }
+
+    .sb-conversation-message-reaction-chip::after {
+        content: '';
+        position: absolute;
+        inset: -6px -2px;
     }
 
     /* A touch screen has no hover: the toolbar gives way to a trigger beside the bubble that opens the message's actions. */

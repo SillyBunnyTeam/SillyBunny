@@ -125,11 +125,6 @@ export const CONVERSATION_UNREAD_CHANGED_EVENT = 'sb:conversation-unread-changed
 
 export const WEEKDAY_LABELS = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 export const USER_STATUS_OPTIONS = Object.freeze(['online', 'idle', 'dnd', 'offline']);
-export const CONVERSATION_REACTION_LABELS = Object.freeze({
-    heart: '❤️',
-    spark: '✨',
-    laugh: '😂',
-});
 export const USER_STATUS_STORAGE_KEY = 'sb_conv_user_status';
 export const PERSONA_APPENDICES_SELECTIONS_KEY = 'activeAppendices';
 export const PERSONA_APPENDICES_DEFAULT_SCOPE_KEY = '__default__';

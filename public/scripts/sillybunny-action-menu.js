@@ -19,6 +19,8 @@ const POPOVER_MARGIN = 8;
 const POPOVER_MIN_HEIGHT = 120;
 const SHEET_TITLE_ID = 'sb-action-sheet-title';
 const MENU_ID = 'sb-action-menu';
+const MIN_REACTION_CELL = 40;
+const REACTION_GAP = 4;
 const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
 
 /**
@@ -37,9 +39,10 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
 
 /**
  * @typedef {object} ActionMenuReaction
- * @property {string} text
- * @property {string} [label]
- * @property {boolean} [pressed]
+ * @property {string} text - The emoji. Empty for a button that draws an icon.
+ * @property {string} [label] - The accessible name; an emoji needs one, because its glyph is read as a name only by some screen readers.
+ * @property {string} [icon] - Font Awesome classes, for a button with no text, such as More Reactions.
+ * @property {boolean} [pressed] - Whether the reaction is chosen. A button without it is a command, not a toggle.
  * @property {(event: MouseEvent) => void} onSelect
  */
 
@@ -130,12 +133,20 @@ function buildMenu(sections, label) {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'sb-action-menu-reaction';
-                button.setAttribute('role', 'menuitemcheckbox');
-                button.setAttribute('aria-checked', String(Boolean(reaction.pressed)));
+                const isToggle = typeof reaction.pressed === 'boolean';
+                button.setAttribute('role', isToggle ? 'menuitemcheckbox' : 'menuitem');
+                if (isToggle) {
+                    button.setAttribute('aria-checked', String(reaction.pressed));
+                }
                 if (reaction.label) {
                     button.setAttribute('aria-label', reaction.label);
+                    button.title = reaction.label;
                 }
-                button.textContent = reaction.text;
+                if (reaction.icon) {
+                    button.append(createIcon(reaction.icon));
+                } else {
+                    button.textContent = reaction.text;
+                }
                 button.addEventListener('click', event => activate(event, reaction.onSelect));
                 group.append(button);
             }
@@ -186,6 +197,26 @@ function buildMenu(sections, label) {
     });
     menu.addEventListener('keydown', handleMenuKeydown);
     return menu;
+}
+
+/**
+ * A reaction row in a grid keeps to one row at any width by shrinking its cells, down to 40px. Below that the emoji that
+ * would not fit leave the row, from the end, and a button that is a command (More Reactions) stays. Called when the menu
+ * is in the document and shown, so that the width is known.
+ */
+function fitReactionRows(menu) {
+    for (const group of menu.querySelectorAll('.sb-action-menu-reactions')) {
+        const style = getComputedStyle(group);
+        if (style.display !== 'grid') {
+            continue;
+        }
+        const width = group.clientWidth - parseFloat(style.paddingInlineStart) - parseFloat(style.paddingInlineEnd);
+        const capacity = Math.floor((width + REACTION_GAP) / (MIN_REACTION_CELL + REACTION_GAP));
+        const toggles = [...group.children].filter(button => button.getAttribute('role') === 'menuitemcheckbox');
+        for (let surplus = group.children.length - capacity; surplus > 0 && toggles.length; surplus--) {
+            toggles.pop().remove();
+        }
+    }
 }
 
 function activate(event, onSelect) {
@@ -559,6 +590,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
             setTriggerExpanded(trigger, true);
         }
         frame.controller.open();
+        fitReactionRows(menu);
         return;
     }
 
@@ -570,6 +602,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     popover.addEventListener('focusout', handlePopoverFocusOut);
     blockUpstreamDrawerClose(popover);
     hostOverlayLayer(popover);
+    fitReactionRows(menu);
     const origin = positionPopover(popover, trigger, point, bounds, alignment);
     open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds, alignment, trackTrigger };
     watchVisualViewport();

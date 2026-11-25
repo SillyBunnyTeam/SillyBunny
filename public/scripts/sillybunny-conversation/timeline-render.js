@@ -7,7 +7,6 @@ import {
 import {
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ACCEPT,
-    CONVERSATION_REACTION_LABELS,
     SELFIE_COMMAND_RE,
 } from './constants.js';
 import { truncateConversationReplyPreview } from './preview-utils.js';
@@ -30,6 +29,7 @@ import { getCharacterForAvatar, getConversationParticipants, getEffectiveConvers
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './conversation-list.js';
 import { escapeRegExp, getCharacterMentionHandles } from './members.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
+import { createReactionChips, createToolbarReactionButtons } from './reactions-ui.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
 import { escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getSettings } from './settings-store.js';
@@ -523,18 +523,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     // at rest; data-sb-secondary items join in section order when the pill is expanded.
     const actionBar = document.createElement('span');
     actionBar.className = 'sb-conversation-message-actions';
-    const activeReactionCounts = message.extra?.conversation_reactions || {};
-    for (const reaction of Object.keys(CONVERSATION_REACTION_LABELS)) {
-        const reactionButton = document.createElement('button');
-        reactionButton.type = 'button';
-        reactionButton.className = 'sb-conversation-reaction-button';
-        reactionButton.textContent = normalizeConversationReactionLabel(reaction);
-        reactionButton.setAttribute('aria-pressed', String(Number(activeReactionCounts[reaction]) > 0));
-        reactionButton.dataset.sbConversationAction = 'react-message';
-        reactionButton.dataset.messageId = message.id;
-        reactionButton.dataset.reaction = reaction;
-        actionBar.appendChild(reactionButton);
-    }
+    actionBar.append(...createToolbarReactionButtons(message));
 
     const isCharacterMessage = !['user', 'system'].includes(message.role || '');
     const actionSections = [
@@ -645,24 +634,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         text.appendChild(selfieActions);
     }
 
-    const activeReactions = Object.entries(message.extra?.conversation_reactions || {})
-        .filter(([, count]) => Number(count) > 0);
-    let reactions = null;
-    if (activeReactions.length) {
-        reactions = document.createElement('div');
-        reactions.className = 'sb-conversation-message-reactions';
-        for (const [reaction, count] of activeReactions) {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'sb-conversation-message-reaction-chip';
-            chip.textContent = `${normalizeConversationReactionLabel(reaction)} ${count}`;
-            chip.setAttribute('aria-pressed', 'true');
-            chip.dataset.sbConversationAction = 'react-message';
-            chip.dataset.messageId = message.id;
-            chip.dataset.reaction = reaction;
-            reactions.appendChild(chip);
-        }
-    }
+    const reactions = createReactionChips(message);
 
     const receiptText = getConversationMessageReceipt(message, avatar, { groupId });
     let receipt = null;
@@ -1136,18 +1108,6 @@ export function toggleConversationMessagePin(messageId) {
     saveConversationContextMessages(context);
 }
 
-export function reactConversationMessage(messageId, reaction) {
-    const context = getConversationMessageById(messageId);
-    if (!context || !reaction) {
-        return;
-    }
-
-    const reactions = { ...(context.message.extra?.conversation_reactions || {}) };
-    reactions[reaction] = reactions[reaction] ? 0 : 1;
-    context.message.extra = { ...context.message.extra, conversation_reactions: reactions };
-    saveConversationContextMessages(context);
-}
-
 /**
  * Deletes messages of the open chat in one commit. Besides the messages it keeps the composer, the read marker and the
  * send queue free of references to them.
@@ -1420,10 +1380,6 @@ export async function quickConversationReminder() {
     }
 
     addConversationReminder(avatar, groupId, delay, memo, { chatId, personaId });
-}
-
-export function normalizeConversationReactionLabel(reaction) {
-    return CONVERSATION_REACTION_LABELS[reaction] || reaction;
 }
 
 export function getConversationMentionTargets(avatar = getCurrentCharAvatar()) {

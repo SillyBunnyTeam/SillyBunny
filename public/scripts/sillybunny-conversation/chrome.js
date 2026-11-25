@@ -77,7 +77,6 @@ import {
     quickConversationReminder,
     quickConversationSelfie,
     quickConversationSummarize,
-    reactConversationMessage,
     regenerateConversationMessage,
     replyToConversationMessage,
     toggleConversationSearchBar,
@@ -85,6 +84,7 @@ import {
     toggleConversationMessagePin,
     updateConversationSearchQuery,
 } from './timeline-render.js';
+import { openReactionChooser, reactConversationMessage } from './reactions-ui.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { ensureDetailsStyles } from './details/styles.js';
@@ -672,6 +672,9 @@ export async function runConversationAction(action, data = {}, target = null, ev
             break;
         case 'react-message':
             reactConversationMessage(data.messageId, data.reaction);
+            break;
+        case 'open-reaction-chooser':
+            await openReactionChooser(data.messageId, target);
             break;
         case 'branch-from-message':
             await branchConversationFromMessage(data.messageId);

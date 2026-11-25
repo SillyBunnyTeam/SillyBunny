@@ -97,6 +97,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt
     buildConversationSystemPrompt,
     renderConversationAttachments: jest.fn(),
 }));
+// The chips and the toolbar's reaction buttons are drawn by the reactions interface, which needs the action menu and a browser.
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reactions-ui.js', () => ({
+    createReactionChips: () => null,
+    createToolbarReactionButtons: () => [],
+}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     registerConversationRenderer: jest.fn(),
     scheduleInterfaceRefresh: jest.fn(),
