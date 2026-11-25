@@ -1,0 +1,39 @@
+{
+    "emojibase": {
+        "version": "18.0.0",
+        "tarball": "https://registry.npmjs.org/emojibase-data/-/emojibase-data-18.0.0.tgz",
+        "integrity": "sha512-TPPRRYv2zPd0jKI+pTpMquwWNZXYAsC3IVsCMeg2X8y8fEzKwOks4/5bz0YavF5r6d71aGPpb6oDnUEwSLLMoA==",
+        "shasum": "a64ddfa7579ea27a90c0b7728ff8054bdab199eb",
+        "bytes": 7446782,
+        "licenseSha256": "5c4e1582dcae9429a5d00ec0a64185c3a711f9757b2308fdf275d90b120f6149",
+        "licenseBytes": 1075
+    },
+    "unicodeLicense": {
+        "url": "https://www.unicode.org/license.txt",
+        "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+        "bytes": 1995
+    },
+    "twemoji": {
+        "repository": "jdecked/twemoji",
+        "tag": "v17.0.3",
+        "commit": "b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+        "archive": "https://github.com/jdecked/twemoji/archive/b6b55fef1e8636b540a6d016a4729ca8cdf2e60b.tar.gz",
+        "archiveSha256": "705d79de1460e5e775f362f0d0f01fbe3ef8d65bf4648c490e4649704584f747",
+        "archiveBytes": 5924838,
+        "svgFiles": 4009,
+        "svgTreeSha256": "273bb74061af3a38558db66f25739373700a90a7319fd7e8c21c3c684914f25e",
+        "graphicsLicenseSha256": "8ae9438818c26e4873b91d8c6ad620526c011e27e125677f13031eda903f007c",
+        "graphicsLicenseBytes": 18524
+    },
+    "nanoemoji": {
+        "version": "0.16.0",
+        "python": "3.12",
+        "requirements": "scripts/emoji/requirements.txt"
+    },
+    "font": {
+        "family": "SB Emoji",
+        "directory": "public/webfonts/SBEmoji",
+        "file": "SBEmoji-17.0.3-1.woff2",
+        "cacheKey": "20261125a"
+    }
+}
