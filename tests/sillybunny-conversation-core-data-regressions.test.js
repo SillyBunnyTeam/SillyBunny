@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
 import { PERSONA, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
+import { createCharacterRoster } from './util/character-roster.js';
 
 const extensionSettings = {};
-const charactersByAvatar = new Map();
+const charactersByAvatar = createCharacterRoster();
 const saveSettingsDebounced = jest.fn();
 let data;
 
@@ -13,7 +14,7 @@ let data;
 const conversationData = new Proxy({}, { get: (_target, key) => data[key] });
 
 await jest.unstable_mockModule('../public/script.js', () => ({
-    characters: [],
+    characters: charactersByAvatar.characters,
     saveSettingsDebounced,
     this_chid: undefined,
 }));

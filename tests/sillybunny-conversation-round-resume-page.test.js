@@ -67,6 +67,6 @@ describe('the round resumer of this page', () => {
 describe('the wiring of the mode', () => {
     test('installs the hook when the mode starts', async () => {
         const { readFileSync } = await import('node:fs');
-        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/init.js', import.meta.url), 'utf8')).toContain('installRoundResume();');
+        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/runtime.js', import.meta.url), 'utf8')).toContain('installRoundResume();');
     });
 });

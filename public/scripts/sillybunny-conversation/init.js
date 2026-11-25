@@ -1,31 +1,24 @@
-import { chat } from '../../script.js';
 import { event_types, eventSource } from '../events.js';
 import { extension_settings } from '../extensions.js';
-import { selected_group } from '../group-chats.js';
-import {
-    captureGroupAsideRequest,
-    captureRoleplayAsideRequest,
-    checkGroupChatMention,
-    startConversationAutoWorker,
-    stopConversationAutoWorker,
-    triggerGroupAside,
-    triggerRoleplayAside,
-} from './auto-engine.js';
-import { CONVERSATION_DETAILS_CLOSE_EVENT, CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
-import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById } from './context.js';
+import { CONVERSATION_DETAILS_CLOSE_EVENT, CONVERSATION_STORE_KEY } from './constants.js';
+import { getConversationGroupById } from './context.js';
 import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
 import { generationTargets, installPageLeaveEffects, installRemovalEffects } from './deletion-guards.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
-import { disableConversationModeForCurrentCharacter, openConversationWorkspaceFromRequest, selectConversation } from './lazy-parts.js';
+import {
+    disableConversationModeForCurrentCharacter,
+    handleRoleplayCharacterMessage,
+    handleRoleplayUserMessage,
+    installConversationReplyStream,
+    openConversationWorkspaceFromRequest,
+    selectConversation,
+    startConversationWorker,
+    stopConversationWorker,
+} from './lazy-parts.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
-import { installReplyEvents } from './reply-events-browser.js';
-import { installReplyFinalizer } from './reply-finalizer-browser.js';
-import { installRoundResume } from './round-resume-browser.js';
-import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './conversation-list.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
-import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
+import { hasAnyConversationModeUsage } from './settings-store.js';
 import { conversationState, sendQueue, setExternalConversationGenerationActive } from './state.js';
-import { setConversationTimeout } from './timers.js';
 
 function hasConversationRuntimeUsage() {
     return conversationState.conversationWorkspaceOpen || hasAnyConversationModeUsage();
@@ -42,7 +35,7 @@ function ensureConversationRuntimeStarted() {
         return;
     }
 
-    startConversationAutoWorker();
+    startConversationWorker();
     updateConversationNotificationIndicators();
 }
 
@@ -54,12 +47,12 @@ export function init() {
     conversationState.initialized = true;
     installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
     installPageLeaveEffects({ target: window, targets: generationTargets });
-    installReplyFinalizer();
-    installRoundResume();
-    installReplyEvents();
     conversationData.subscribe((event) => {
         if (event.type === 'list' || event.type === 'status') {
             updateConversationNotificationIndicators();
+            if (hasAnyConversationModeUsage()) {
+                installConversationReplyStream();
+            }
             if (conversationState.conversationWorkspaceOpen) {
                 scheduleConversationListRender();
             }
@@ -73,9 +66,7 @@ export function init() {
         }
 
         scheduleInterfaceRefreshIfOpen();
-        if (selected_group) {
-            checkGroupChatMention(messageId);
-        }
+        handleRoleplayUserMessage(messageId);
     });
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
         if (!hasConversationRuntimeUsage()) {
@@ -83,47 +74,7 @@ export function init() {
         }
 
         scheduleInterfaceRefreshIfOpen();
-
-        // Occasional private asides keep Conversation Mode feeling connected
-        // without forcing a public group-chat reply.
-        const roll = Math.random();
-        if (roll < GROUP_ASIDE_RANDOM_CHANCE) {
-            if (selected_group) {
-                const sourceGroupId = String(selected_group || '');
-                const roleplayGroup = getRoleplayGroupById(sourceGroupId);
-                const members = getCurrentGroupConversationMembers({ group: roleplayGroup, requireRoleplayReactions: true });
-                const speaker = getCharacterForGroupChatMessage(chat[messageId]);
-                const speakerMember = speaker?.avatar ? members.find(item => item.character?.avatar === speaker.avatar) : null;
-                const chosenMember = speakerMember && Math.random() < 0.65
-                    ? speakerMember
-                    : members[Math.floor(Math.random() * members.length)];
-                if (chosenMember?.character) {
-                    const reason = speakerMember?.character?.avatar === chosenMember.character.avatar ? 'reaction' : 'random';
-                    const personaId = getConversationPersonaId();
-                    const request = captureGroupAsideRequest(chosenMember.character, {
-                        personaId,
-                        reason,
-                        sourceGroup: roleplayGroup,
-                        sourceGroupId,
-                        sourceMessageId: messageId,
-                    });
-                    if (request) {
-                        setConversationTimeout(() => void triggerGroupAside(chosenMember.character, request), 2000);
-                    }
-                }
-            } else {
-                const roleplayCharacter = getCharacterForGroupChatMessage(chat[messageId]) || getRoleplayCurrentCharacter();
-                const avatar = roleplayCharacter?.avatar || '';
-                const personaId = getConversationPersonaId();
-                if (!avatar || !getSettings(avatar, { groupId: '', personaId }).roleplay_reactions) {
-                    return;
-                }
-                const request = captureRoleplayAsideRequest({ avatar, personaId, sourceMessageId: messageId });
-                if (request) {
-                    setConversationTimeout(() => void triggerRoleplayAside(request), 2000);
-                }
-            }
-        }
+        handleRoleplayCharacterMessage(messageId);
     });
     eventSource.on(event_types.GENERATION_STARTED, (_type, _params, isDryRun) => {
         if (isDryRun) {
@@ -185,7 +136,7 @@ export function init() {
     });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
-    window.addEventListener('beforeunload', stopConversationAutoWorker);
+    window.addEventListener('beforeunload', stopConversationWorker);
 
     // The page does not wait for the conversations: the rest of the mode starts when the list has arrived.
     void conversationData.whenReady().then(async () => {

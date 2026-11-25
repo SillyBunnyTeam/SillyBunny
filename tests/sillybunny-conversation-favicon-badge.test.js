@@ -11,9 +11,10 @@ const conversationState = {
 };
 
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ playMessageSound: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ selectConversation: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/lazy-parts.js', () => ({ selectConversation: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({ CHROME_IDS: { listToggle: 'list-toggle' }, SAFE_TOAST_OPTIONS: {} }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    getCharacterForAvatar: () => null,
     clearLegacyConversationUnreadStorage: () => 0,
     getActiveConversationChat: () => ({}),
     getConversationGroupById: () => null,
@@ -29,10 +30,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     persistConversationStore: jest.fn(),
     shouldSurfaceConversationNotification: () => false,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: () => null }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({ getSettings: () => ({}), isConversationModeEnabled: () => true }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({ conversationState }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/preview-utils.js', () => ({ stripPreviewText: value => String(value || '') }));
 
 const { getFaviconLink, updateConversationFaviconBadge } = await import('../public/scripts/sillybunny-conversation/notifications.js');
 

@@ -110,11 +110,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timers
 
 const { init } = await import('../public/scripts/sillybunny-conversation/init.js');
 
-// The workspace loads with a dynamic import, so a request for it reaches `selectConversation` a few ticks later.
-const settleWorkspaceLoad = () => new Promise(resolve => setTimeout(resolve, 0));
+// The workspace and the runtime load with dynamic imports, so a request for them reaches their functions a few ticks later.
+const settleLazyLoad = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('conversation persona runtime', () => {
-    test('starts autonomous runtime and clears context-bound reply UI after persona change', () => {
+    test('starts autonomous runtime and clears context-bound reply UI after persona change', async () => {
         init();
         expect(startConversationAutoWorker).not.toHaveBeenCalled();
 
@@ -124,10 +124,11 @@ describe('conversation persona runtime', () => {
         scheduleInterfaceRefresh.mockClear();
         handlers.get('persona-changed')();
 
-        expect(startConversationAutoWorker).toHaveBeenCalledTimes(1);
-        expect(conversationState.autoWorkerStarted).toBe(true);
         expect(conversationState.conversationReplyTarget).toBeNull();
         expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
+        await settleLazyLoad();
+        expect(startConversationAutoWorker).toHaveBeenCalledTimes(1);
+        expect(conversationState.autoWorkerStarted).toBe(true);
     });
 
     test('asks the details window to close when the persona changes, because its conversation belongs to the old persona', () => {
@@ -139,7 +140,7 @@ describe('conversation persona runtime', () => {
         expect(dispatchedEvents.map(event => event.type)).toContain('sb:conversation-details-close');
     });
 
-    test('targets the originating roleplay character instead of Conversation selection', () => {
+    test('targets the originating roleplay character instead of Conversation selection', async () => {
         init();
         hasUsage = true;
         conversationState.conversationWorkspaceOpen = true;
@@ -149,6 +150,7 @@ describe('conversation persona runtime', () => {
         const random = jest.spyOn(Math, 'random').mockReturnValue(0);
 
         handlers.get('character-message-rendered')(0);
+        await settleLazyLoad();
 
         expect(triggerRoleplayAside).toHaveBeenCalledWith(expect.objectContaining({
             avatar: 'roleplay.png',
@@ -168,7 +170,7 @@ describe('conversation persona runtime', () => {
             personaId: 'persona-c.png',
             showToast: false,
         }));
-        await settleWorkspaceLoad();
+        await settleLazyLoad();
 
         expect(selectConversation).toHaveBeenCalledWith('char.png', {
             chatId: 'branch-b',
@@ -186,7 +188,7 @@ describe('conversation persona runtime', () => {
         windowHandlers.get('sb:roleplay-character-selected')(new globalThis.CustomEvent({
             avatar: 'new-character.png',
         }));
-        await settleWorkspaceLoad();
+        await settleLazyLoad();
 
         expect(selectConversation).toHaveBeenCalledWith('new-character.png', {
             showToast: false,

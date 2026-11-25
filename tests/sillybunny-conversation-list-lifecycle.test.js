@@ -3,14 +3,15 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
 import { PERSONA, seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
 import { addCharacters } from './util/conversation-store-sandbox.js';
+import { createCharacterRoster } from './util/character-roster.js';
 
-const charactersByAvatar = new Map();
+const charactersByAvatar = createCharacterRoster();
 let data;
 
 const conversationData = new Proxy({}, { get: (_target, key) => data[key] });
 
 await jest.unstable_mockModule('../public/script.js', () => ({
-    characters: [],
+    characters: charactersByAvatar.characters,
     chat: [],
     default_user_avatar: 'user-default.png',
     getThumbnailUrl: () => '',

@@ -153,13 +153,7 @@ export function maybePostDelayedReplyNotice(avatar, settings, { chatId = '', gro
     setConversationSessionMarker(avatar, markerKey, `${lastUserActivity}:${Date.now()}`, { chatId, groupId, personaId });
 }
 
-export function stripPreviewText(messageText) {
-    return String(messageText || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 130);
-}
+export { stripPreviewText } from './preview-utils.js';
 
 export { splitChatroomMessages } from './generation-utils.js';
 

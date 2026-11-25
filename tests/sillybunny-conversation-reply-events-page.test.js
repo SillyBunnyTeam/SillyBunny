@@ -223,7 +223,8 @@ describe('Regenerate', () => {
 
 describe('the wiring of the mode', () => {
     test('installs the stream when the mode starts', () => {
-        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/init.js', import.meta.url), 'utf8')).toContain('installReplyEvents();');
+        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/runtime.js', import.meta.url), 'utf8')).toContain('installReplyEvents();');
+        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/init.js', import.meta.url), 'utf8')).toContain('installConversationReplyStream();');
     });
 
 });

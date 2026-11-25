@@ -98,7 +98,7 @@ async function importConversationMedia({ characters, currentAvatar, state, rende
         getConversationGroupIdForAvatar: jest.fn(() => null),
         getConversationPersonaId: jest.fn(() => 'persona-a'),
         getConversationRecord: jest.fn(() => null),
-        getCurrentCharacter: jest.fn(() => characters.find(character => character.avatar === currentAvatar) || null),
+        getCharacterForAvatar: jest.fn((avatar = currentAvatar) => characters.find(character => character.avatar === avatar) || null),
         getCurrentCharAvatar: jest.fn(() => currentAvatar),
         getCurrentCharName: jest.fn(() => characters.find(character => character.avatar === currentAvatar)?.name || 'Character'),
     }));

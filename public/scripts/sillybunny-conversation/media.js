@@ -6,7 +6,7 @@ import {
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getConversationRecord,
-    getCurrentCharacter,
+    getCharacterForAvatar,
     getCurrentCharAvatar,
     getCurrentCharName,
 } from './context.js';
@@ -19,6 +19,8 @@ import { getCharacterStatus } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationMessages } from './conversation-store.js';
+
+export { getCharacterForAvatar };
 
 function isAbortError(error, signal) {
     return signal?.aborted || error?.name === 'AbortError';
@@ -84,14 +86,6 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
             scheduleTimelineRender();
         }
     }
-}
-
-export function getCharacterForAvatar(avatar = getCurrentCharAvatar()) {
-    if (!avatar) {
-        return getCurrentCharacter();
-    }
-
-    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || null;
 }
 
 export function getCharacterIndexForAvatar(avatar) {

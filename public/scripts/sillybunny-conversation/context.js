@@ -9,7 +9,6 @@ import {
     UNREAD_PREFIX,
 } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
-import { getCharacterForAvatar } from './media.js';
 import { conversationState } from './state.js';
 
 const GROUP_FALLBACK_NAME = 'Conversation Group';
@@ -32,6 +31,14 @@ export function getRoleplayAvatarForWelcome() {
 
 export function getRoleplayGroupById(groupId) {
     return Array.isArray(groups) ? groups.find(group => String(group?.id || '') === String(groupId || '')) || null : null;
+}
+
+export function getCharacterForAvatar(avatar = getCurrentCharAvatar()) {
+    if (!avatar) {
+        return getCurrentCharacter();
+    }
+
+    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || null;
 }
 
 export function getCurrentCharacter() {

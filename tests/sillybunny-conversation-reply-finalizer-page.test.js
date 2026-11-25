@@ -161,6 +161,6 @@ describe('the finalizer of this page', () => {
 
 describe('the wiring of the mode', () => {
     test('installs the hook when the mode starts', () => {
-        expect(readSource('public/scripts/sillybunny-conversation/init.js')).toContain('installReplyFinalizer();');
+        expect(readSource('public/scripts/sillybunny-conversation/runtime.js')).toContain('installReplyFinalizer();');
     });
 });

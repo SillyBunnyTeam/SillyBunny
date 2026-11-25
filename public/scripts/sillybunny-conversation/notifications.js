@@ -2,6 +2,7 @@ import { playMessageSound } from '../power-user.js';
 import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
+    getCharacterForAvatar,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
     getConversationRecord,
@@ -11,10 +12,9 @@ import {
 } from './context.js';
 import { conversationData } from './conversation-data-browser.js';
 import { selectConversation } from './lazy-parts.js';
-import { getCharacterForAvatar } from './media.js';
+import { stripPreviewText } from './preview-utils.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
-import { stripPreviewText } from './typing.js';
 
 /** The messages after the read marker that the user has not seen, in one chat or in the whole conversation. */
 export function getUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
