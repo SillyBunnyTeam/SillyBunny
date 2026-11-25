@@ -108,7 +108,7 @@ test.describe('roleplay Delete messages', () => {
 
         await expect(page.locator('#dialogue_del_mes')).toBeVisible();
         await expect(page.locator('#dialogue_del_mes_cancel')).toBeVisible();
-        await expect(mesTitle(page)).toHaveText('0 selected');
+        await expect(mesTitle(page)).toHaveText('0 Selected');
         await expect(page.locator('#dialogue_del_mes_ok')).toBeDisabled();
         await expect(page.locator('#send_form')).toBeHidden();
         await expect(page.locator('#chat > .mes > .sb-selection-check')).toHaveCount(PLAIN_CHAT.length);
@@ -119,7 +119,7 @@ test.describe('roleplay Delete messages', () => {
 
         await page.evaluate(() => window.SillyTavern.getContext().SlashCommandParser.commands.del.callback({}, ''));
         await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
-        await expect(mesTitle(page)).toHaveText('0 selected');
+        await expect(mesTitle(page)).toHaveText('0 Selected');
     });
 
     test('it is refused while a reply is generating', async ({ page, baseURL }) => {
@@ -143,10 +143,10 @@ test.describe('roleplay Delete messages', () => {
         await mes(page, 8).locator('.mes_text').click();
         await mes(page, 4).locator('.mes_text').click();
         expect(await checkedIds(page)).toEqual(['3', '5', '6', '8']);
-        await expect(mesTitle(page)).toHaveText('4 selected');
+        await expect(mesTitle(page)).toHaveText('4 Selected');
 
         await page.locator('#sb_message_selection_header .sb-selection-select-all').click();
-        await expect(mesTitle(page)).toHaveText(`${PLAIN_CHAT.length} selected`);
+        await expect(mesTitle(page)).toHaveText(`${PLAIN_CHAT.length} Selected`);
     });
 
     test('a message and Shift-click on the last message is upstream\'s "this and everything after", and deleting it ends the chat there', async ({ page, baseURL }) => {
@@ -186,7 +186,7 @@ test.describe('roleplay Delete messages', () => {
 
         await mes(page, 2).locator('.mes_text').click();
         expect(await checkedIds(page)).toEqual(['2', '3', '4']);
-        await expect(mesTitle(page)).toHaveText('3 selected');
+        await expect(mesTitle(page)).toHaveText('3 Selected');
         await mes(page, 4).locator('.mes_text').click();
         expect(await checkedIds(page)).toEqual([]);
         await mes(page, 8).locator('.mes_text').click();
@@ -196,7 +196,7 @@ test.describe('roleplay Delete messages', () => {
         await mes(page, 3).locator('.mes_text').click();
         await mes(page, 6).locator('.mes_text').click({ modifiers: ['Shift'] });
         expect(await checkedIds(page)).toEqual(['2', '3', '4', '5', '6']);
-        await expect(mesTitle(page)).toHaveText('5 selected');
+        await expect(mesTitle(page)).toHaveText('5 Selected');
 
         await confirmDelete(page);
         expect(await chatTexts(page)).toEqual(['U0', 'C1', 'U7', 'T8', 'C9', 'U10']);
@@ -265,6 +265,6 @@ test.describe('roleplay Delete messages on a touch screen', () => {
         await expect(toEnd).toBeVisible();
         await toEnd.tap();
         expect(await checkedIds(page)).toEqual(['4', '5', '6', '7', '8', '9']);
-        await expect(mesTitle(page)).toHaveText('6 selected');
+        await expect(mesTitle(page)).toHaveText('6 Selected');
     });
 });

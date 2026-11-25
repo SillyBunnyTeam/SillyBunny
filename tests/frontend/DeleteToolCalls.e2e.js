@@ -89,7 +89,7 @@ test.describe('deleting assistant messages with tool calls', () => {
         await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
         // The tool call is a row of its own, and choosing it chooses the message it belongs to.
         await page.locator('#chat .mes', { hasText: 'Tool result' }).locator('.mes_text').click();
-        await expect(page.locator('#dialogue_del_mes_count')).toHaveText('2 selected');
+        await expect(page.locator('#dialogue_del_mes_count')).toHaveText('2 Selected');
         await expect(page.locator('#chat .mes.is-selection-selected')).toHaveCount(2);
         await page.locator('#dialogue_del_mes_ok').click();
         await page.locator('dialog[open]').getByRole('button', { name: 'Delete' }).click();

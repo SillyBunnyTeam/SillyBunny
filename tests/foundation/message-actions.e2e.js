@@ -478,6 +478,8 @@ test('Document: a fine pointer gets an overlaid toolbar on hover or focus', asyn
 
 test('delete mode is the selection mode: Cancel, a live count and Select All in the header, round checks, Delete in the bar', async ({ page }) => {
     await seedChat(page);
+    // A toast of the page would cover the header's buttons on a phone.
+    await page.evaluate(() => window.toastr?.clear?.());
     await page.evaluate(() => window.$('#option_delete_mes').trigger('click'));
     const header = page.locator('#sb_message_selection_header');
     const bar = page.locator('#dialogue_del_mes');
@@ -487,7 +489,7 @@ test('delete mode is the selection mode: Cancel, a live count and Select All in 
     // The ids of the bar that this mode replaced stay on its parts.
     const order = await header.locator('.sb-selection-header > *').evaluateAll(items => items.map(item => item.id || item.className.match(/sb-selection-[a-z-]+/)?.[0]));
     expect(order).toEqual(['dialogue_del_mes_cancel', 'dialogue_del_mes_count', 'sb-selection-select-all']);
-    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('0 selected');
+    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('0 Selected');
     await expect(bar.locator('#dialogue_del_mes_ok')).toBeVisible();
     await expect(bar.locator('#dialogue_del_mes_ok')).toBeDisabled();
 
@@ -501,9 +503,9 @@ test('delete mode is the selection mode: Cancel, a live count and Select All in 
 
     // Choosing a message selects that message only; a Shift-click on another takes the range between them.
     await page.locator('#chat .mes[mesid="3"] .mes_text').click();
-    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('1 selected');
+    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('1 Selected');
     await page.locator('#chat .mes[mesid="5"] .mes_text').click({ modifiers: ['Shift'] });
-    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('3 selected');
+    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('3 Selected');
     await header.locator('#dialogue_del_mes_cancel').click();
     await expect(bar).toBeHidden();
     await expect(header).toBeHidden();

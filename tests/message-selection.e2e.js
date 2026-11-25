@@ -140,7 +140,7 @@ test.describe('conversation timeline', () => {
         await chooseFromMessageMenu(page, 4, 'Select Message');
 
         await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
-        await expect(title(page)).toHaveText('1 selected');
+        await expect(title(page)).toHaveText('1 Selected');
         expect(await selectedIds(page)).toEqual(['sel-4']);
         // The header and the composer give way to the selection header and the action bar.
         await expect(page.locator('#sb_conversation_header')).toBeHidden();
@@ -159,7 +159,7 @@ test.describe('conversation timeline', () => {
         await page.locator('#sb_conversation_header [data-sb-conversation-action="open-conversation-menu"]').click();
         await page.locator('.sb-action-popover .sb-action-menu-item', { hasText: 'Select Messages' }).click();
 
-        await expect(title(page)).toHaveText('0 selected');
+        await expect(title(page)).toHaveText('0 Selected');
         await expect(deleteButton(page)).toBeDisabled();
         await row(page, 2).click();
         await expect(deleteButton(page)).toBeEnabled();
@@ -171,7 +171,7 @@ test.describe('conversation timeline', () => {
 
         await row(page, 5).click({ modifiers: ['Shift'] });
         expect(await selectedIds(page)).toEqual(['sel-2', 'sel-3', 'sel-4', 'sel-5']);
-        await expect(title(page)).toHaveText('4 selected');
+        await expect(title(page)).toHaveText('4 Selected');
 
         // Messages that are not next to each other are fine.
         await row(page, 9).click();
@@ -179,7 +179,7 @@ test.describe('conversation timeline', () => {
         expect(await selectedIds(page)).toEqual(['sel-2', 'sel-4', 'sel-5', 'sel-9']);
 
         await page.locator('#sb_conversation_selection_header .sb-selection-select-all').click();
-        await expect(title(page)).toHaveText(`${MESSAGE_COUNT} selected`);
+        await expect(title(page)).toHaveText(`${MESSAGE_COUNT} Selected`);
         expect(await selectedIds(page)).toHaveLength(MESSAGE_COUNT);
     });
 
@@ -242,7 +242,7 @@ test.describe('conversation timeline', () => {
         await expect(alert).toContainText('Delete 4 Messages?');
         await expect(alert).toContainText('TODO(copy)');
         await alert.getByRole('button', { name: 'Cancel' }).click();
-        await expect(title(page)).toHaveText('4 selected');
+        await expect(title(page)).toHaveText('4 Selected');
         expect(await messageIdsInChat(page)).toHaveLength(MESSAGE_COUNT);
 
         await deleteButton(page).click();
@@ -252,7 +252,7 @@ test.describe('conversation timeline', () => {
         expect(await messageIdsInChat(page)).toEqual(['sel-0', 'sel-1', 'sel-5', 'sel-6', 'sel-7', 'sel-9', 'sel-10', 'sel-11']);
     });
 
-    test('deleting the replied-to message clears the reply target, and the list keeps a right preview and unread count', async ({ page, baseURL }) => {
+    test('deleting the replied-to message clears the reply target, drops the queued reply that it triggered, and the list keeps a right preview and unread count', async ({ page, baseURL }) => {
         await openConversation(page, baseURL);
         await page.evaluate(async () => {
             const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
@@ -261,6 +261,10 @@ test.describe('conversation timeline', () => {
             const address = getConversationAddress(getCurrentCharAvatar());
             // Messages after sel-8 are unread.
             conversationData.patchConversation(address.conversationId, { chats: { [address.chatId]: { readThrough: 'sel-8' } } });
+            // Two replies wait in the send queue: one was triggered by sel-8, the other by sel-5.
+            const { sendQueue } = await import('/scripts/sillybunny-conversation/state.js');
+            sendQueue.length = 0;
+            sendQueue.push({ chatId: address.chatId, messageIds: ['sel-8'], text: 'drop me' }, { chatId: address.chatId, messageIds: ['sel-5'], text: 'keep me' });
         });
         await chooseFromMessageMenu(page, 6, 'Reply');
         await expect(page.locator('#sb_conversation_reply_preview')).toBeVisible();
@@ -282,6 +286,8 @@ test.describe('conversation timeline', () => {
         });
         // sel-8 went, so the marker moved to the message before it, and the character message sel-10 after it is still unread.
         expect(summary).toEqual({ readThrough: 'sel-7', unread: 1, preview: 'Message 10', count: MESSAGE_COUNT - 3 });
+        const queued = await page.evaluate(async () => (await import('/scripts/sillybunny-conversation/state.js')).sendQueue.map(item => item.text));
+        expect(queued).toEqual(['keep me']);
     });
 });
 
@@ -315,6 +321,6 @@ test.describe('conversation timeline on a touch screen', () => {
         await expect(toEnd).toBeVisible();
         await toEnd.tap();
         expect(await selectedIds(page)).toEqual(['sel-5', 'sel-6', 'sel-7', 'sel-8', 'sel-9', 'sel-10', 'sel-11']);
-        await expect(title(page)).toHaveText('7 selected');
+        await expect(title(page)).toHaveText('7 Selected');
     });
 });

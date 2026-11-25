@@ -91,7 +91,7 @@ export function createMessageSelection({
         header,
         actionBar,
         iconOnlyAtNarrow: true,
-        title: () => t`${countMessages(selection.selectedKeys)} selected`,
+        title: () => t`${countMessages(selection.selectedKeys)} Selected`,
         // A right-click on a row keeps its own meaning outside the mode, so only a deliberate call or a finger's long press starts it.
         canEnter: () => armed || (longPressEnters && lastPointerType === 'touch'),
         actions: [

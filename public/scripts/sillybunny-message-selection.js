@@ -1,7 +1,4 @@
-/*
- * Roleplay's "Delete messages": the selection mode of the conversation timeline on the chat's message rows.
- * public/script.js calls openMessageSelection() from openMessageDelete(), which Options > Delete messages and /del reach.
- */
+/* Roleplay's "Delete messages": the selection mode of the conversation timeline, on the chat's message rows. */
 
 import { chat, deleteMessage, saveChatConditional, showSwipeButtons } from '../script.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
@@ -63,8 +60,9 @@ function getRowLabel(row) {
 }
 
 /**
- * Deletes one message at a time through deleteMessage(), as /cut does: each renumbers the rows, sends MESSAGE_DELETED
- * and keeps the item lists of the prompts in step. One save follows, with the user's own shrink allowed.
+ * Deletes one message at a time through deleteMessage(): each call renumbers the rows, sends MESSAGE_DELETED and keeps
+ * the itemized prompts in step, so a block in the middle of the chat is spliced out. One save follows, and the shrink is
+ * the user's own, so the server's guard against an accidental empty save must let it through.
  */
 async function deleteSelected(keys) {
     for (const index of getMessageIndexes(keys)) {
