@@ -77,14 +77,12 @@ async function openConversation(page, baseURL) {
         const { stopConversationAutoWorker } = await import('/scripts/sillybunny-conversation/auto-engine.js');
         const { appendConversationChatMessage, ensureConversationChatLoaded } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const { renderConversationTimeline } = await import('/scripts/sillybunny-conversation/timeline-render.js');
-        const { getSettings, saveSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
         const context = window.SillyTavern.getContext();
         const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         if (!character?.avatar) throw new Error('No bundled Conversation character found.');
         await openConversationWorkspaceForAvatar(character.avatar, { showToast: false });
         await ensureConversationChatLoaded(character.avatar);
         stopConversationAutoWorker();
-        saveSettings(character.avatar, { ...getSettings(character.avatar), editable_messages: true });
         appendConversationChatMessage(character.avatar, { role: 'assistant', name: 'Seraphina', mes: text, extra: {} });
         renderConversationTimeline();
     }, { text: MESSAGE_TEXT });
