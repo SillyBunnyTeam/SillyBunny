@@ -208,7 +208,6 @@ export function renderConversationParticipantStack(container, participants, {
             avatarItem.classList.add('is-interactive');
             avatarItem.dataset.sbConversationAction = 'zoom-avatar';
             avatarItem.dataset.avatarFile = participant.avatar;
-            avatarItem.dataset.avatarType = 'avatar';
             avatarItem.tabIndex = 0;
             avatarItem.role = 'button';
             avatarItem.setAttribute('aria-label', `Show Full Picture for ${participant.name || 'Character'}`);

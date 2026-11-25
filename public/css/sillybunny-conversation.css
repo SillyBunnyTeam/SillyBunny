@@ -2518,25 +2518,6 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     z-index: var(--sb-z-raised, 10);
 }
 
-/* Conversation zoomed avatars sit beside the split view instead of the roleplay chat column. */
-#sheld[data-sb-conversation-mode='on'] ~ .sb-conversation-zoomed-avatar {
-    left: max(12px, env(safe-area-inset-left, 0px));
-    top: max(72px, env(safe-area-inset-top, 0px));
-    max-width: min(var(--maxWidth, calc(90vh * 0.666)), 42vw);
-    max-width: min(var(--maxWidth, calc(90dvh * 0.666)), 42vw);
-}
-
-@media (max-width: 768px) {
-    body > #sheld[data-sb-conversation-mode='on'] ~ .sb-conversation-zoomed-avatar {
-        left: 50%;
-        right: auto;
-        top: max(64px, env(safe-area-inset-top, 0px));
-        max-width: min(90vw, calc(70vh * 0.666));
-        max-width: min(90vw, calc(70dvh * 0.666));
-        transform: translateX(-50%);
-    }
-}
-
 @media (prefers-reduced-motion: reduce) {
     #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-message, .sb-conversation-picker, .sb-conversation-search-bar),
     .sb-conversation-typing-dots span,

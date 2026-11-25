@@ -1,10 +1,8 @@
-import { animation_duration, characters } from '../../script.js';
+import { characters } from '../../script.js';
 import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
-import { getUserAvatar } from '../personas.js';
-import { loadMovingUIState, power_user } from '../power-user.js';
-import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
+import { shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { CHROME_IDS, CONVERSATION_OPENED_EVENT } from './constants.js';
@@ -223,121 +221,18 @@ function focusConversationInputAfterRender() {
     });
 }
 
-function getConversationFullAvatarUrl(file, type) {
+/**
+ * Opens or closes the zoomed avatar of a character, the way roleplay does: the same window, key and place, so a position that
+ * Moving UI saved in one mode is used in the other. The viewer loads on the first picture that is opened.
+ * @param {string|undefined} file The avatar file of the character.
+ */
+async function showZoomedAvatar(file) {
     if (!file || file === 'none') {
-        return '';
-    }
-
-    if (type === 'persona') {
-        return getUserAvatar(file);
-    }
-
-    return `/characters/${encodeURIComponent(file)}`;
-}
-
-function getConversationZoomedAvatarElement(avatarKey) {
-    return $('.zoomed_avatar').filter(function () {
-        return $(this).attr('forChar') === avatarKey;
-    });
-}
-
-function removeConversationZoomedAvatar($avatar) {
-    $avatar.fadeOut(animation_duration, () => {
-        $avatar.remove();
-    });
-}
-
-function showConversationZoomedAvatar(target) {
-    const file = target.dataset.avatarFile || '';
-    const type = target.dataset.avatarType || 'avatar';
-    const avatarSrc = getConversationFullAvatarUrl(file, type);
-    if (!avatarSrc) {
         return;
     }
 
-    const avatarKey = `${type}:${file}`;
-    const existingAvatar = getConversationZoomedAvatarElement(avatarKey);
-    if (existingAvatar.length) {
-        removeConversationZoomedAvatar(existingAvatar);
-        return;
-    }
-
-    if (!power_user.movingUI) {
-        $('.zoomed_avatar').each(function () {
-            const currentForChar = $(this).attr('forChar');
-            if (currentForChar && currentForChar !== avatarKey) {
-                $(this).remove();
-            }
-        });
-    }
-
-    const template = $('#zoomed_avatar_template').html();
-    if (!template) {
-        return;
-    }
-
-    const safeId = avatarKey.replace(/[^\w-]/g, '_');
-    const newElement = $(template);
-    newElement.attr('forChar', avatarKey);
-    newElement.attr('id', `zoomFor_${safeId}`);
-    newElement.addClass('draggable sb-conversation-zoomed-avatar');
-    newElement.find('.drag-grabber').attr('id', `zoomFor_${safeId}header`);
-
-    const zoomedAvatarImgElement = newElement.find('.zoomed_avatar_img');
-    zoomedAvatarImgElement.attr('src', avatarSrc);
-    zoomedAvatarImgElement.attr('data-izoomify-url', avatarSrc);
-    zoomedAvatarImgElement.on('dragstart', (event) => {
-        event.preventDefault();
-        return false;
-    });
-
-    newElement.on('click touchend', '.dragClose', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        removeConversationZoomedAvatar(newElement);
-    });
-
-    $('body').append(newElement);
-    newElement.fadeIn(animation_duration);
-    loadMovingUIState();
-    newElement.css('display', 'flex');
-    dragElement(newElement);
-
-    if (power_user.zoomed_avatar_magnification) {
-        newElement.find('.zoomed_avatar_container').izoomify();
-    }
-}
-
-function closeConversationZoomedAvatars() {
-    const $avatars = $('.zoomed_avatar.sb-conversation-zoomed-avatar:visible');
-    if (!$avatars.length) {
-        return false;
-    }
-
-    $avatars.each(function () {
-        removeConversationZoomedAvatar($(this));
-    });
-    return true;
-}
-
-let conversationZoomEscapeBound = false;
-
-function bindConversationZoomEscape() {
-    if (conversationZoomEscapeBound || typeof document === 'undefined') {
-        return;
-    }
-
-    conversationZoomEscapeBound = true;
-    document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
-            return;
-        }
-
-        if (closeConversationZoomedAvatars()) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    }, true);
+    const { toggleZoomedAvatar } = await import('../sillybunny-avatar-viewer.js');
+    toggleZoomedAvatar({ file });
 }
 
 /**
@@ -512,7 +407,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'zoom-avatar':
             event?.preventDefault?.();
             event?.stopPropagation?.();
-            showConversationZoomedAvatar(target);
+            void showZoomedAvatar(data.avatarFile);
             break;
         case 'toggle-search':
             toggleConversationSearchBar();
@@ -810,7 +705,6 @@ export function bindConversationChromeControls(sheld) {
 
     sheld.dataset.sbConversationChromeBound = 'true';
     initializeConversationSelection();
-    bindConversationZoomEscape();
     sheld.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
             return;

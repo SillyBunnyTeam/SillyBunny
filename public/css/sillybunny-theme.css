@@ -409,7 +409,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
 
 /* Centred under the top bar. */
 @media (max-width: 1024px) {
-    .zoomed_avatar:not(.sb-conversation-zoomed-avatar) {
+    .zoomed_avatar {
         inset: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) 0 0;
         width: fit-content;
         height: fit-content;

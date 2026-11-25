@@ -168,3 +168,17 @@ describe('opening a second avatar', () => {
         expect(zoomed().map(element => element.id)).toEqual(['zoomFor_Seraphina', 'zoomFor_Reisen']);
     });
 });
+
+describe('the two modes', () => {
+    const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+
+    test('share the window: conversation mode has no copy of it and no rule that places it', () => {
+        const chrome = read('../public/scripts/sillybunny-conversation/chrome.js');
+        const conversationCss = read('../public/css/sillybunny-conversation.css');
+
+        expect(chrome).toContain('import(\'../sillybunny-avatar-viewer.js\')');
+        expect(chrome).not.toContain('zoomed_avatar');
+        expect(conversationCss).not.toMatch(/zoomed[-_]avatar/);
+        expect(read('../public/css/sillybunny-theme.css')).not.toContain('sb-conversation-zoomed-avatar');
+    });
+});

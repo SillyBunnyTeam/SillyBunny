@@ -472,7 +472,6 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     if (message.role !== 'user' && messageAvatar) {
         avatarWrap.dataset.sbConversationAction = 'zoom-avatar';
         avatarWrap.dataset.avatarFile = messageAvatar;
-        avatarWrap.dataset.avatarType = 'avatar';
         avatarWrap.tabIndex = 0;
         avatarWrap.role = 'button';
         avatarWrap.setAttribute('aria-label', `Show Full Picture for ${message.name || getCurrentCharName()}`);
