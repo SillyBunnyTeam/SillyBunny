@@ -5417,12 +5417,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-height: 0;
 }
 
-/* SillyBunny: adopted server-config text/number fields keep .ds-row's horizontal flow instead of
-   style.css's column flex direction. */
-.sb-chat-completion-config-field.ds-row {
-    flex-direction: row;
-}
-
 /* SillyBunny: Formatting groups use the same heading + one preference-pill anatomy as Presets.
    Without it the Advanced Formatting card wraps each body in a second tinted box with its own shadow,
    so fields look nested and heavier than every other settings group. */

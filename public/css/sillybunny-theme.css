@@ -3504,80 +3504,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     align-self: center;
 }
 
-.sb-chat-completion-server-config.is-nested {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-.sb-chat-completion-server-config.is-nested .sb-chat-completion-config-header {
-    align-items: center;
-}
-
-.sb-chat-completion-server-config {
-    width: 100%;
-    max-width: 100%;
-    align-items: stretch;
-    text-align: left;
-}
-
-.sb-chat-completion-server-config .sb-chat-completion-config-header {
-    justify-content: flex-start;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.sb-chat-completion-config-inline-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.sb-chat-completion-config-inline-copy strong {
-    font-size: var(--sb-type-control);
-}
-
-.sb-chat-completion-config-inline-copy small {
-    color: var(--sb-muted-fg);
-    line-height: 1.45;
-}
-
-.sb-chat-completion-server-config .sb-chat-completion-config-grid {
-    width: 100%;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    justify-content: stretch;
-    justify-items: stretch;
-}
-
-.sb-chat-completion-server-config .sb-chat-completion-config-actions {
-    display: grid;
-    width: 100%;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
-    justify-content: stretch;
-    align-items: stretch;
-    gap: 8px;
-}
-
-.sb-chat-completion-server-config .sb-chat-completion-config-actions .menu_button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    flex: 1 1 auto;
-    width: 100%;
-    min-width: 0;
-    min-height: 34px;
-    padding: 7px 10px;
-    border-radius: var(--sb-radius-card);
-    font-size: var(--sb-type-control);
-    line-height: 1.2;
-    white-space: normal;
-}
-
 #openai_model_picker {
     display: flex;
     align-items: center;
@@ -4711,17 +4637,6 @@ body.reduced-motion *::after {
 
     #custom_css_save_state .custom_css_save_state_label {
         display: none;
-    }
-
-    .sb-chat-completion-server-config .sb-chat-completion-config-actions {
-        gap: 8px;
-    }
-
-    .sb-chat-completion-server-config .sb-chat-completion-config-actions .menu_button {
-        min-height: max(34px, var(--sb-control-min-height));
-        padding: 7px 10px;
-        border-radius: var(--sb-radius-control);
-        font-size: var(--sb-type-control);
     }
 
     .sb-shell-panel-scroller .menu_button:where(:not(.sb-status-page__action)),
