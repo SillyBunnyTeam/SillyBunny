@@ -624,19 +624,56 @@ describe('companion card ui', () => {
     });
 
     test('re-renders every remaining message when one is deleted', async () => {
-        const { initCompanionCardUi } = await importCompanionUi();
-        chat.push(
-            { name: 'Assistant', mes: 'first', is_user: false, is_system: false },
-            { name: 'Assistant', mes: 'second', is_user: false, is_system: false },
-        );
+        jest.useFakeTimers();
+        try {
+            const { initCompanionCardUi } = await importCompanionUi();
+            chat.push(
+                { name: 'Assistant', mes: 'first', is_user: false, is_system: false },
+                { name: 'Assistant', mes: 'second', is_user: false, is_system: false },
+            );
 
-        initCompanionCardUi();
-        globalThis.$.mockClear();
+            initCompanionCardUi();
+            globalThis.$.mockClear();
 
-        await eventSource.emit('message_deleted', 5);
+            await eventSource.emit('message_deleted', 5);
+            await jest.advanceTimersByTimeAsync(1000);
 
-        const selectors = globalThis.$.mock.calls.map(([selector]) => selector);
-        expect(selectors).toEqual(expect.arrayContaining(['.mes[mesid="0"]', '.mes[mesid="1"]']));
-        expect(selectors).not.toContain('.mes[mesid="5"]');
+            const selectors = globalThis.$.mock.calls.map(([selector]) => selector);
+            expect(selectors).toEqual(expect.arrayContaining(['.mes[mesid="0"]', '.mes[mesid="1"]']));
+            expect(selectors).not.toContain('.mes[mesid="5"]');
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    test('a burst of deletions re-renders once, from the chat as it is when the burst ends', async () => {
+        jest.useFakeTimers();
+        try {
+            const { initCompanionCardUi } = await importCompanionUi();
+            for (const name of ['first', 'second', 'third']) {
+                chat.push({ name: 'Assistant', mes: name, is_user: false, is_system: false });
+            }
+            initCompanionCardUi();
+            const countRenders = () => globalThis.$.mock.calls.filter(([selector]) => selector === '.mes[mesid="0"]').length;
+
+            globalThis.$.mockClear();
+            await eventSource.emit('message_deleted', 2);
+            await jest.advanceTimersByTimeAsync(1000);
+            const rendersForOneEvent = countRenders();
+            expect(rendersForOneEvent).toBeGreaterThan(0);
+
+            globalThis.$.mockClear();
+            for (let count = 0; count < 20; count++) {
+                await eventSource.emit('message_deleted', 2);
+            }
+            chat.length = 1;
+            await jest.advanceTimersByTimeAsync(1000);
+
+            expect(countRenders()).toBe(rendersForOneEvent);
+            const selectors = globalThis.$.mock.calls.map(([selector]) => selector);
+            expect(selectors).not.toContain('.mes[mesid="1"]');
+        } finally {
+            jest.useRealTimers();
+        }
     });
 });
