@@ -8,6 +8,17 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.
     }),
 }));
 
+/** The shared motion of the folder lists, recorded: `ends` holds the `onEnd` of each close, which a test runs when the motion is over. */
+const motion = { calls: [], ends: [] };
+const animateFolderBody = jest.fn((body, expanding, { onEnd = null } = {}) => {
+    motion.calls.push({ body, expanding, rows: body.childElementCount });
+    if (!expanding && onEnd) {
+        motion.ends.push(onEnd);
+    }
+    return {};
+});
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/folder-body-motion.js', () => ({ animateFolderBody }));
+
 const view = await import('../public/scripts/sillybunny-conversation/conversation-list-view.js');
 
 const entry = (id, overrides = {}) => ({
@@ -44,6 +55,9 @@ beforeEach(() => {
     document.body.append(list);
     view.setConversationListQuery('');
     view.clearTemporaryOpen();
+    motion.calls.length = 0;
+    motion.ends.length = 0;
+    animateFolderBody.mockClear();
 });
 
 describe('drawing the sections', () => {
@@ -200,6 +214,8 @@ describe('Favorites collapsing', () => {
         expect(view.clearTemporaryOpen()).toBe(true);
         expect(view.clearTemporaryOpen()).toBe(false);
         render([entry('a', { favorite: true })], layoutOf([], false));
+        // The rows leave when the close motion ends.
+        motion.ends.at(-1)();
         expect(rowIds('favorites')).toEqual([]);
     });
 
@@ -472,5 +488,139 @@ describe('the highlight of a moved row', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+});
+
+describe('the motion of a section that opens or closes', () => {
+    const open = [folder('f1', 'Work')];
+    const closed = [folder('f1', 'Work', { expanded: false })];
+    const rows = () => [entry('a', { folderId: 'f1' }), entry('b', { folderId: 'f1' })];
+    const rowsOf = key => list.querySelector(`[data-section="${key}"] .sb-conversation-list-rows`);
+
+    test('plays none when the list is drawn for the first time, whether a folder is open or closed', () => {
+        render(rows(), layoutOf([folder('f1', 'Work'), folder('f2', 'Friends', { expanded: false })]));
+
+        expect(animateFolderBody).not.toHaveBeenCalled();
+    });
+
+    test('plays none for a draw that changes no section, such as a new message or a rename', () => {
+        render(rows(), layoutOf(open));
+        render([entry('c', { folderId: 'f1' }), ...rows()], layoutOf([folder('f1', 'Renamed')]));
+
+        expect(animateFolderBody).not.toHaveBeenCalled();
+    });
+
+    test('opening a folder puts its rows in place first and then plays the shared motion on the section\'s rows', () => {
+        render(rows(), layoutOf(closed));
+        expect(rowIds('folder:f1')).toEqual([]);
+
+        render(rows(), layoutOf(open));
+
+        expect(motion.calls).toEqual([{ body: rowsOf('folder:f1'), expanding: true, rows: 2 }]);
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('true');
+        expect(list.querySelector('[data-section="folder:f1"]').dataset.closing).toBeUndefined();
+    });
+
+    test('closing a folder keeps its rows on screen until the motion ends, tells the style sheet, and then takes them out of the document', () => {
+        render(rows(), layoutOf(open));
+
+        render(rows(), layoutOf(closed));
+
+        const section = list.querySelector('[data-section="folder:f1"]');
+        expect(motion.calls).toEqual([{ body: rowsOf('folder:f1'), expanding: false, rows: 2 }]);
+        expect(rowIds('folder:f1')).toEqual(['a', 'b']);
+        expect(section.dataset.collapsed).toBe('true');
+        expect(section.dataset.closing).toBe('true');
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('false');
+
+        motion.ends[0]();
+
+        expect(rowIds('folder:f1')).toEqual([]);
+        expect(section.dataset.closing).toBeUndefined();
+    });
+
+    test('a draw while the close runs leaves the rows where they are, and the count and the badge already show the closed state', () => {
+        render([entry('a', { folderId: 'f1', unread: 2, badge: '2' }), entry('b', { folderId: 'f1' })], layoutOf(open));
+        render([entry('a', { folderId: 'f1', unread: 2, badge: '2' }), entry('b', { folderId: 'f1' })], layoutOf(closed));
+
+        render([entry('a', { folderId: 'f1', unread: 2, badge: '2' }), entry('b', { folderId: 'f1' }), entry('c', { folderId: 'f1' })], layoutOf(closed));
+
+        expect(animateFolderBody).toHaveBeenCalledTimes(1);
+        expect(rowIds('folder:f1')).toEqual(['a', 'b']);
+        expect(heading('folder:f1').querySelector('.sb-conversation-list-heading-badge').hidden).toBe(false);
+        motion.ends[0]();
+        expect(rowIds('folder:f1')).toEqual([]);
+    });
+
+    test('opening again while it closes continues the motion, and the end of the close that was cut short takes nothing out', () => {
+        render(rows(), layoutOf(open));
+        render(rows(), layoutOf(closed));
+
+        render(rows(), layoutOf(open));
+        expect(motion.calls.map(call => call.expanding)).toEqual([false, true]);
+        expect(list.querySelector('[data-section="folder:f1"]').dataset.closing).toBeUndefined();
+
+        motion.ends[0]();
+
+        expect(rowIds('folder:f1')).toEqual(['a', 'b']);
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('true');
+    });
+
+    test('Favorites opens and closes with the same motion as a folder', () => {
+        const favorites = [entry('a', { favorite: true })];
+        render(favorites, layoutOf([], true));
+
+        render(favorites, layoutOf([], false));
+        expect(motion.calls).toEqual([{ body: rowsOf('favorites'), expanding: false, rows: 1 }]);
+        motion.ends[0]();
+        expect(rowIds('favorites')).toEqual([]);
+
+        render(favorites, layoutOf([], true));
+        expect(motion.calls[1]).toEqual({ body: rowsOf('favorites'), expanding: true, rows: 1 });
+    });
+
+    test('a section that is open for a drag opens with the motion and closes with it when the drag ends', () => {
+        render(rows(), layoutOf(closed));
+
+        view.setTemporaryOpen('folder:f1', true);
+        render(rows(), layoutOf(closed));
+        expect(motion.calls.map(call => call.expanding)).toEqual([true]);
+        expect(rowIds('folder:f1')).toEqual(['a', 'b']);
+
+        view.clearTemporaryOpen();
+        render(rows(), layoutOf(closed));
+        expect(motion.calls.map(call => call.expanding)).toEqual([true, false]);
+    });
+
+    test('an empty folder has no rows to move, so it plays nothing in either direction', () => {
+        render([], layoutOf(open));
+        render([], layoutOf(closed));
+        render([], layoutOf(open));
+
+        expect(animateFolderBody).not.toHaveBeenCalled();
+    });
+
+    test('a search that opens a folder, and the end of the search that closes it, play nothing', () => {
+        render(rows(), layoutOf(closed));
+
+        view.setConversationListQuery('name');
+        render(rows(), layoutOf(closed));
+        expect(rowIds('folder:f1')).toEqual(['a', 'b']);
+
+        view.setConversationListQuery('');
+        render(rows(), layoutOf(closed));
+        expect(rowIds('folder:f1')).toEqual([]);
+        expect(animateFolderBody).not.toHaveBeenCalled();
+    });
+
+    test('does not stop the node of a row from being kept across the close and the open', () => {
+        render(rows(), layoutOf(open));
+        const a = list.querySelector('[data-conversation-id="a"]');
+
+        render(rows(), layoutOf(closed));
+        motion.ends[0]();
+        render(rows(), layoutOf(open));
+
+        expect(list.querySelector('[data-conversation-id="a"]')).toBe(a);
     });
 });

@@ -516,6 +516,14 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     overflow: hidden;
 }
 
+/* A section that is closing keeps its rows on screen until the close motion has ended, which takes them out of the document. */
+.sb-conversation-list-section[data-collapsed='true'][data-closing='true'] > .sb-conversation-list-rows,
+.sb-conversation-list-items[data-dragging='true'] .sb-conversation-list-section[data-collapsed='true'][data-closing='true'] > .sb-conversation-list-rows {
+    display: flex;
+    min-block-size: 0;
+    max-block-size: none;
+}
+
 .sb-conversation-list-zone-hint {
     display: none;
     margin: 0;

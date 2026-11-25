@@ -891,3 +891,103 @@ test.describe('the menu of a folder heading by touch on a phone', () => {
         await expect(heading).toHaveAttribute('aria-expanded', 'true');
     });
 });
+
+test.describe('the motion of a section that opens and closes', () => {
+    test.use({ contextOptions: { reducedMotion: 'no-preference' } });
+
+    /**
+     * Clicks the heading of a section and reports what the page showed two frames later (the list draws on the frame after a
+     * click, and the motion starts with that draw), and what the folders module held at once.
+     */
+    async function clickAndObserve(page, key, persona) {
+        return headingOf(page, key).evaluate(async (node, { key, persona }) => {
+            const { conversationFolders } = await import('/scripts/sillybunny-conversation/conversation-folders-browser.js');
+            const section = node.closest('section');
+            const container = section.querySelector('.sb-conversation-list-rows');
+            const before = [...container.children];
+            node.click();
+            const layout = conversationFolders.layout(persona);
+            const stored = key === 'favorites' ? layout.favoritesExpanded : layout.folders.find(folder => `folder:${folder.id}` === key)?.expanded;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            return {
+                stored,
+                expanded: node.getAttribute('aria-expanded'),
+                animations: container.getAnimations().length,
+                closing: section.dataset.closing ?? '',
+                rowsBefore: before.length,
+                rowsNow: container.children.length,
+            };
+        }, { key, persona });
+    }
+
+    test('a folder that closes keeps its rows on screen while the motion plays and then takes them out, and one that opens plays the motion on its rows; the state is stored at the click', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }], members: { seraphina: 0, tewi: 0 } });
+        const key = folderKeys(ids)[0];
+
+        const closing = await clickAndObserve(page, key, persona);
+        expect(closing).toEqual({ stored: false, expanded: 'false', animations: 1, closing: 'true', rowsBefore: 2, rowsNow: 2 });
+        await expect(section(page, key).locator(ROW)).toHaveCount(0);
+        await expect(section(page, key)).not.toHaveAttribute('data-closing', 'true');
+        await expect(headingOf(page, key).locator('i')).toHaveCSS('transform', 'matrix(0, -1, 1, 0, 0, 0)');
+
+        const opening = await clickAndObserve(page, key, persona);
+        expect(opening).toEqual({ stored: true, expanded: 'true', animations: 1, closing: '', rowsBefore: 0, rowsNow: 2 });
+        await expectNames(page, key, ['Seraphina', 'Assistant Tewi']);
+        await expect(section(page, key).locator(ROW)).toHaveCount(2);
+    });
+
+    test('a folder that opens again while it closes keeps its rows', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }], members: { seraphina: 0 } });
+        const key = folderKeys(ids)[0];
+
+        await clickAndObserve(page, key, persona);
+        const reopened = await clickAndObserve(page, key, persona);
+
+        expect(reopened.stored).toBe(true);
+        await expect(headingOf(page, key)).toHaveAttribute('aria-expanded', 'true');
+        await expectNames(page, key, ['Seraphina']);
+        await expect(section(page, key)).not.toHaveAttribute('data-closing', 'true');
+    });
+
+    test('Favorites opens and closes with the same motion', async ({ page, baseURL }) => {
+        const { made, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }] });
+        await patchConversation(page, made.tewi.conversationId, { favorite: true });
+        await expectNames(page, 'favorites', ['Assistant Tewi']);
+
+        const closing = await clickAndObserve(page, 'favorites', persona);
+        expect(closing).toEqual({ stored: false, expanded: 'false', animations: 1, closing: 'true', rowsBefore: 1, rowsNow: 1 });
+        await expect(section(page, 'favorites').locator(ROW)).toHaveCount(0);
+
+        const opening = await clickAndObserve(page, 'favorites', persona);
+        expect(opening).toMatchObject({ stored: true, animations: 1, rowsNow: 1 });
+    });
+
+    test('reduced motion plays none: the rows are out of the list at once and the stored state is the same', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }], members: { seraphina: 0 } });
+        const key = folderKeys(ids)[0];
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+
+        const closing = await clickAndObserve(page, key, persona);
+        expect(closing).toEqual({ stored: false, expanded: 'false', animations: 0, closing: '', rowsBefore: 1, rowsNow: 0 });
+
+        const opening = await clickAndObserve(page, key, persona);
+        expect(opening).toEqual({ stored: true, expanded: 'true', animations: 0, closing: '', rowsBefore: 0, rowsNow: 1 });
+    });
+
+    test('a folder that a drag rests on opens with the motion, and closes with it again when the drop is somewhere else', async ({ page, baseURL }) => {
+        const { ids, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work', expanded: false }, { name: 'Friends' }], members: { tewi: 0 } });
+        const [work, friends] = folderKeys(ids);
+
+        await beginMouseDrag(page, 'Seraphina');
+        await moveMouseOver(page, section(page, work));
+        await expect(headingOf(page, work)).toHaveAttribute('aria-expanded', 'true');
+        await expectNames(page, work, ['Assistant Tewi']);
+        await moveMouseOver(page, section(page, friends));
+        await page.mouse.up();
+
+        await expectNames(page, friends, ['Seraphina']);
+        await expect(headingOf(page, work)).toHaveAttribute('aria-expanded', 'false');
+        await expect(section(page, work).locator(ROW)).toHaveCount(0);
+        expect((await readStoredFolders(page, persona)).folders[0].expanded).toBe(false);
+    });
+});

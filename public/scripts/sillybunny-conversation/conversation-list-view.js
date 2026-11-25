@@ -5,6 +5,7 @@
  * The rows of a closed section are not in the document; the view keeps their nodes for the pass that opens it.
  */
 
+import { animateFolderBody } from '../sillybunny-editor/folder-body-motion.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { CHROME_IDS } from './constants.js';
 import { renderConversationParticipantStack } from './media.js';
@@ -47,7 +48,7 @@ const NO_FOLDERS = Object.freeze({ folders: Object.freeze([]), favoritesExpanded
 
 const viewState = { query: '', openKeys: new Set(), movedId: '', movedTimer: 0, scrolledToMovedId: '' };
 
-/** @type {WeakMap<HTMLElement, { rows: Map<string, HTMLElement>, sections: Map<string, HTMLElement>, empty: HTMLElement, status: HTMLElement }>} */
+/** @type {WeakMap<HTMLElement, { rows: Map<string, HTMLElement>, sections: Map<string, HTMLElement>, empty: HTMLElement, status: HTMLElement, searching: boolean | null }>} */
 const parts = new WeakMap();
 
 /** @returns {boolean} Whether the query changed. */
@@ -243,7 +244,7 @@ function ensureParts(list) {
     empty.className = 'sb-conversation-list-empty';
     const status = document.createElement('div');
     empty.append(status);
-    existing = { rows: new Map(), sections: new Map(), empty, status };
+    existing = { rows: new Map(), sections: new Map(), empty, status, searching: null };
     parts.set(list, existing);
     return existing;
 }
@@ -327,6 +328,50 @@ function placeRows(container, rows) {
 }
 
 /**
+ * Puts the rows of a section where its state says, and plays the shared open and close motion of the folder lists when the
+ * state changed since the last draw. The state is stored by the click and not by the motion, so the heading, the count and the
+ * badge are final at once; only the rows wait. A closing section keeps its rows in the document, and says so in `data-closing` for
+ * the style sheet, until the motion ends; the draws in between leave them alone, and a section that opens again takes over.
+ * @param {HTMLElement} element The section.
+ * @param {HTMLElement[]} rows The rows that it shows when open.
+ * @param {boolean} collapsed Whether it is closed now.
+ * @param {boolean} animate False for the first draw, for a draw that a search changed, and while a search filters.
+ */
+function settleSectionRows(element, rows, collapsed, animate) {
+    const container = element.querySelector('.sb-conversation-list-rows');
+    const known = element.dataset.collapsed !== undefined;
+    const wasCollapsed = element.dataset.collapsed === 'true';
+    const closing = element.dataset.closing === 'true';
+    element.dataset.collapsed = String(collapsed);
+    if (!collapsed) {
+        delete element.dataset.closing;
+        placeRows(container, rows);
+        if (animate && known && (wasCollapsed || closing) && rows.length > 0) {
+            animateFolderBody(container, true);
+        }
+        return;
+    }
+    if (closing) {
+        return;
+    }
+    if (animate && known && !wasCollapsed && container.childElementCount > 0) {
+        element.dataset.closing = 'true';
+        animateFolderBody(container, false, {
+            onEnd: () => {
+                // A close that was cut short by an open must not take the rows out.
+                if (element.dataset.collapsed !== 'true') {
+                    return;
+                }
+                delete element.dataset.closing;
+                placeRows(container, []);
+            },
+        });
+        return;
+    }
+    placeRows(container, []);
+}
+
+/**
  * Draws the list. Rows are keyed by conversation id and reused; a row that leaves the list is removed. Focus that a
  * move of a node drops is put back on the same control.
  * @param {HTMLElement} list The scroller that holds the sections.
@@ -342,6 +387,10 @@ export function renderConversationListView(list, entries, layout = NO_FOLDERS) {
         favoritesExpanded: layout.favoritesExpanded,
         openKeys: viewState.openKeys,
     });
+
+    // A search opens and closes sections by itself and turns the toggles off, so the draws that it causes play no motion.
+    const animate = !model.searching && view.searching === false;
+    view.searching = model.searching;
 
     const wanted = new Set();
     for (const entry of entries) {
@@ -365,9 +414,8 @@ export function renderConversationListView(list, entries, layout = NO_FOLDERS) {
             view.sections.set(section.key, element);
         }
         elements.push(element);
-        placeRows(element.querySelector('.sb-conversation-list-rows'), section.expanded ? section.entries.map(entry => view.rows.get(entry.id)) : []);
+        settleSectionRows(element, section.entries.map(entry => view.rows.get(entry.id)), section.collapsible && !section.expanded, animate);
         element.dataset.empty = String(section.entries.length === 0);
-        element.dataset.collapsed = String(section.collapsible && !section.expanded);
         // Favorites hides while it is empty; Conversations hides while it is empty and the other sections hold the rows,
         // and a search hides every section that holds no match. A list with nothing to show keeps Conversations, which holds the status page.
         const hideWhenEmpty = section.kind === 'favorites'
