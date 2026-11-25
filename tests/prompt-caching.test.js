@@ -469,6 +469,9 @@ describe('Chat completions backend prompt caching integration', () => {
             SECRET_KEYS.NANOGPT,
             SECRET_KEYS.ELECTRONHUB,
             SECRET_KEYS.MAKERSUITE,
+            SECRET_KEYS.XAI,
+            SECRET_KEYS.MISTRALAI,
+            SECRET_KEYS.AZURE_OPENAI,
         ]) {
             secretManager.writeSecret(key, 'test-provider-key');
         }
@@ -477,7 +480,7 @@ describe('Chat completions backend prompt caching integration', () => {
         app.use(express.json());
         app.use((req, _res, next) => {
             req.user = {
-                profile: { handle: 'admin', admin: true },
+                profile: { handle: req.get('x-test-user') ?? 'admin', admin: true },
                 directories: { root: userRoot, backups: userRoot },
             };
             next();
@@ -546,10 +549,10 @@ describe('Chat completions backend prompt caching integration', () => {
         nodeFetchMock.mockImplementation((url, options) => actualNodeFetch(url, options));
     });
 
-    function post(route, body) {
+    function post(route, body, headers = {}) {
         return fetch(`${baseUrl}${route}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...headers },
             body: JSON.stringify(body),
         });
     }
@@ -859,6 +862,102 @@ describe('Chat completions backend prompt caching integration', () => {
             expect(await promptCaching.isOpenRouterModelCacheable('qwen/qwen3-max', options)).toBe(true);
             expect(fetchImpl).toHaveBeenCalledTimes(2);
         });
+    });
+
+    describe.each([
+        {
+            name: 'xAI',
+            source: CHAT_COMPLETION_SOURCES.XAI,
+            model: 'grok-4',
+            extra: {},
+            read: ({ headers, body }) => ({ key: headers['x-grok-conv-id'], absentFromBody: !('prompt_cache_key' in body) }),
+        },
+        {
+            name: 'Mistral',
+            source: CHAT_COMPLETION_SOURCES.MISTRALAI,
+            model: 'mistral-large-latest',
+            extra: {},
+            read: ({ headers, body }) => ({ key: body.prompt_cache_key, absentFromBody: !('x-grok-conv-id' in headers) }),
+        },
+        {
+            name: 'Azure OpenAI',
+            source: CHAT_COMPLETION_SOURCES.AZURE_OPENAI,
+            model: 'gpt-4.1',
+            extra: { azure_base_url: 'https://example.openai.azure.com', azure_deployment_name: 'dep', azure_api_version: '2024-10-21' },
+            read: ({ body }) => ({ key: body.prompt_cache_key, absentFromBody: true }),
+        },
+    ])('$name cache routing key', ({ source, model, extra, read }) => {
+        async function send(overrides = {}, user) {
+            nodeFetchMock.mockClear();
+            const res = await post('/api/backends/chat-completions/generate', {
+                chat_completion_source: source,
+                model,
+                stream: false,
+                max_tokens: 64,
+                messages: [{ role: 'user', content: 'Hi' }],
+                ...extra,
+                ...overrides,
+            }, user ? { 'x-test-user': user } : {});
+            expect(res.status).toBe(200);
+            const [, options] = nodeFetchMock.mock.calls[0];
+            return { body: JSON.parse(options.body), headers: options.headers, raw: JSON.stringify({ body: options.body, headers: options.headers }) };
+        }
+
+        test('is stable for a chat, differs between chats and users, and never carries the chat id', async () => {
+            const first = await send({ chat_id: 'private-chat-name' });
+            const again = await send({ chat_id: 'private-chat-name' });
+            const otherChat = await send({ chat_id: 'another-chat-name' });
+            const otherUser = await send({ chat_id: 'private-chat-name' }, 'bob');
+
+            const { key } = read(first);
+            expect(key).toMatch(/^sb_[a-f0-9]{32}$/);
+            expect(read(again).key).toBe(key);
+            expect(read(otherChat).key).not.toBe(key);
+            expect(read(otherUser).key).not.toBe(key);
+            for (const sent of [first, again, otherChat, otherUser]) {
+                expect(sent.raw).not.toContain('private-chat-name');
+                expect(sent.raw).not.toContain('another-chat-name');
+            }
+        });
+
+        test.each([
+            ['no chat id', {}],
+            ['an empty chat id', { chat_id: '' }],
+            ['a reverse proxy', { chat_id: 'private-chat-name', reverse_proxy: 'https://proxy.example/v1', proxy_password: 'proxy-key' }],
+            ['cacheScope none', { chat_id: 'private-chat-name', cacheScope: 'none' }],
+        ])('is absent with %s', async (_name, overrides) => {
+            const sent = await send(overrides);
+            expect(read(sent).key).toBeUndefined();
+            expect(sent.raw).not.toMatch(/sb_[a-f0-9]{32}/);
+        });
+
+        test('follows chat_id on quiet requests, as the client decides which requests carry it', async () => {
+            const sent = await send({ chat_id: 'private-chat-name', type: 'quiet', cacheScope: 'auxiliary' });
+            expect(read(sent).key).toMatch(/^sb_[a-f0-9]{32}$/);
+        });
+    });
+
+    test('Azure OpenAI drops a client-supplied prompt_cache_key and sends only the derived one', async () => {
+        const send = async (overrides) => {
+            nodeFetchMock.mockClear();
+            const res = await post('/api/backends/chat-completions/generate', {
+                chat_completion_source: CHAT_COMPLETION_SOURCES.AZURE_OPENAI,
+                model: 'gpt-4.1',
+                azure_base_url: 'https://example.openai.azure.com',
+                azure_deployment_name: 'dep',
+                azure_api_version: '2024-10-21',
+                stream: false,
+                max_tokens: 64,
+                messages: [{ role: 'user', content: 'Hi' }],
+                prompt_cache_key: 'client-chosen',
+                ...overrides,
+            });
+            expect(res.status).toBe(200);
+            return JSON.parse(nodeFetchMock.mock.calls[0][1].body);
+        };
+
+        expect((await send({})).prompt_cache_key).toBeUndefined();
+        expect((await send({ chat_id: 'private-chat-name' })).prompt_cache_key).toMatch(/^sb_[a-f0-9]{32}$/);
     });
 
     describe('NanoGPT prompt caching', () => {

@@ -904,9 +904,8 @@ export async function applyOpenRouterRequestCaching({
     config = getPromptCachingConfig(),
     isModelCacheable = isOpenRouterModelCacheable,
 }) {
-    if (shouldAttachSessionCacheKey(requestBody) && !bodyParams.session_id) {
-        const resolvedKey = resolveAffinityKey(affinityKey);
-        const sessionId = deriveSessionCacheKey(requestBody.chat_id, resolvedKey, { namespace: 'openrouter', userHandle });
+    if (!bodyParams.session_id) {
+        const sessionId = deriveRequestSessionKey({ requestBody, namespace: 'openrouter', affinityKey, userHandle });
         if (sessionId) {
             bodyParams.session_id = sessionId;
         }
@@ -1019,23 +1018,40 @@ export function applyElectronHubRequestCaching({
 }
 
 /**
+ * Derives the opaque routing key of a request, or null when the request carries none.
+ * @param {{ requestBody: any, namespace: string, affinityKey?: string | (() => string | undefined), userHandle?: string }} params
+ * @returns {string | null}
+ */
+function deriveRequestSessionKey({ requestBody, namespace, affinityKey, userHandle = '' }) {
+    if (!shouldAttachSessionCacheKey(requestBody)) {
+        return null;
+    }
+    return deriveSessionCacheKey(requestBody.chat_id, resolveAffinityKey(affinityKey), { namespace, userHandle });
+}
+
+/**
+ * Adds an opaque cache routing key to an outgoing request body or header set, under the field name the provider documents.
+ * Nothing is added behind a reverse proxy, which may not accept the field, or when the target already holds one.
+ * @param {{ requestBody: any, target: Record<string, any>, field: string, namespace: string, affinityKey?: string | (() => string | undefined), userHandle?: string }} params
+ */
+export function applySessionRoutingKey({ requestBody, target, field, namespace, affinityKey, userHandle = '' }) {
+    if (requestBody?.reverse_proxy || target[field]) {
+        return;
+    }
+    const routingKey = deriveRequestSessionKey({ requestBody, namespace, affinityKey, userHandle });
+    if (routingKey) {
+        target[field] = routingKey;
+    }
+}
+
+/**
  * Attaches an opaque prompt_cache_key for direct OpenAI Chat Completions and Responses requests.
- * Skipped for legacy text completions, behind reverse proxies, and on non-main turns.
+ * Legacy text completions send a string prompt and do not accept the field.
  * @param {{ requestBody: any, targetBody: Record<string, any>, affinityKey?: string | (() => string | undefined), userHandle?: string }} params
  */
 export function applyOpenAiSessionCacheKey({ requestBody, targetBody, affinityKey, userHandle = '' }) {
-    if (requestBody?.reverse_proxy || targetBody.prompt_cache_key) {
-        return;
-    }
     if (!Array.isArray(requestBody?.messages)) {
         return;
     }
-    if (!shouldAttachSessionCacheKey(requestBody)) {
-        return;
-    }
-    const resolvedKey = resolveAffinityKey(affinityKey);
-    const cacheKey = deriveSessionCacheKey(requestBody.chat_id, resolvedKey, { namespace: 'openai', userHandle });
-    if (cacheKey) {
-        targetBody.prompt_cache_key = cacheKey;
-    }
+    applySessionRoutingKey({ requestBody, target: targetBody, field: 'prompt_cache_key', namespace: 'openai', affinityKey, userHandle });
 }

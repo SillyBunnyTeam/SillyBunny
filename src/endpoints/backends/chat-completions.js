@@ -69,6 +69,7 @@ import {
     applyNanoGptRequestCaching,
     applyOpenAiSessionCacheKey,
     applyOpenRouterRequestCaching,
+    applySessionRoutingKey,
     isOpenRouterGeminiModel,
 } from '../../prompt-caching.js';
 import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
@@ -1062,6 +1063,16 @@ async function sendMistralAIRequest(request, response) {
             };
         }
 
+        // SillyBunny: Mistral documents prompt_cache_key as a hint that raises the chance of a prompt cache hit.
+        applySessionRoutingKey({
+            requestBody: request.body,
+            target: requestBody,
+            field: 'prompt_cache_key',
+            namespace: 'mistralai',
+            affinityKey: getAffinityKey,
+            userHandle: request.user?.profile?.handle,
+        });
+
         const config = {
             method: 'POST',
             headers: {
@@ -1391,6 +1402,16 @@ async function sendXaiRequest(request, response) {
             body: JSON.stringify(requestBody),
             signal: controller.signal,
         };
+
+        // SillyBunny: xAI routes requests with the same x-grok-conv-id to the server that holds their prompt cache.
+        applySessionRoutingKey({
+            requestBody: request.body,
+            target: config.headers,
+            field: 'x-grok-conv-id',
+            namespace: 'xai',
+            affinityKey: getAffinityKey,
+            userHandle: request.user?.profile?.handle,
+        });
 
         logVerboseGenerationRequest('xAI', request, requestBody);
 
@@ -1831,6 +1852,16 @@ async function sendAzureOpenAIRequest(request, response) {
             apiRequestBody[key] = request.body[key];
         }
     }
+
+    // SillyBunny: attached after the whitelist copy so a client-supplied prompt_cache_key never passes through.
+    applySessionRoutingKey({
+        requestBody: request.body,
+        target: apiRequestBody,
+        field: 'prompt_cache_key',
+        namespace: 'azure_openai',
+        affinityKey: getAffinityKey,
+        userHandle: request.user?.profile?.handle,
+    });
 
     // Handle Structured Output (JSON Mode) by translating the custom `json_schema` object.
     if (request.body.json_schema) {
