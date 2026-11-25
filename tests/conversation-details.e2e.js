@@ -520,6 +520,40 @@ test.describe('The window as a whole', () => {
         await expect(page.locator('#sb_conversation_input')).toBeFocused();
     });
 
+    test('Back returns to the page below and Close ends the whole window', async ({ page }) => {
+        const { avatars } = await openDetailsApp(page);
+        const { conversationId } = await seedAndOpen(page, { avatar: avatars[0], members: [avatars[1], avatars[2]], name: 'Weekend plans' });
+        await openDetails(page, conversationId);
+
+        await shownPage(page).getByRole('button', { name: /^Chats/ }).click();
+        await expect(shownPage(page).getByRole('button', { name: 'New Chat' })).toBeVisible();
+        await shownPage(page).getByRole('button', { name: 'Back' }).click();
+        await expect(shownPage(page).locator('.sb-details-hero__name', { hasText: 'Weekend plans' })).toBeVisible();
+        await shownPage(page).getByRole('button', { name: 'Advanced' }).click();
+        await expect(shownPage(page).getByRole('button', { name: 'Clear Memory' })).toBeVisible();
+        await shownPage(page).getByRole('button', { name: 'Close' }).click();
+        await expect(page.locator(DETAILS_HOST)).toHaveCount(0);
+    });
+
+    test('the details of a conversation that is not open change that conversation, and choosing one of its chats opens it', async ({ page }) => {
+        const { avatars } = await openDetailsApp(page);
+        const other = await seedAndOpen(page, { avatar: avatars[1], chats: [{ name: 'First', messages: TALK }, { name: 'Second', messages: TALK.slice(0, 2) }] });
+        const open = await seedAndOpen(page, { avatar: avatars[0], chats: [{ name: 'Main', messages: TALK }] });
+        expect((await readOpenConversation(page)).id).toBe(open.conversationId);
+
+        await openDetails(page, other.conversationId);
+        await shownPage(page).getByRole('radio', { name: 'Muted' }).check();
+        await expectSetting(page, other.conversationId, 'notifications_muted', true);
+        await expectSetting(page, open.conversationId, 'notifications_muted', undefined);
+
+        await shownPage(page).getByRole('button', { name: /^Chats/ }).click();
+        await shownPage(page).getByRole('listitem', { name: 'Second' }).click();
+        await expect(page.locator(DETAILS_HOST)).toHaveCount(0);
+        await expect.poll(async () => (await readOpenConversation(page))?.id).toBe(other.conversationId);
+        await expect.poll(async () => (await readStored(page, other.conversationId)).activeChatId).toBe(other.chatIds[1]);
+        await expect(page.locator('#sb_conversation_timeline .sb-conversation-message')).toHaveCount(2);
+    });
+
     test('the window closes when the conversation it shows is deleted', async ({ page }) => {
         const { avatars } = await openDetailsApp(page);
         const { conversationId } = await seedAndOpen(page, { avatar: avatars[0], members: [avatars[1], avatars[2]], name: 'Weekend plans' });
@@ -537,6 +571,23 @@ test.describe('The window as a whole', () => {
         }, conversationId);
         expect(answers).toEqual([false, false, false]);
         await expect(page.locator(DETAILS_HOST)).toHaveCount(0);
+    });
+});
+
+test.describe('On the smallest phone', () => {
+    test.use({ viewport: { width: 360, height: 640 }, hasTouch: true, isMobile: true });
+
+    test('the pages fit a 360px sheet, and its header keeps Close in reach', async ({ page }) => {
+        const { avatars } = await openDetailsApp(page);
+        const { conversationId } = await seedAndOpen(page, { avatar: avatars[0], members: [avatars[1], avatars[2]], name: 'A group with a long name that has to wrap inside the sheet', chats: [{ name: 'Main', messages: TALK }] });
+        for (const pageId of ['general', 'behaviour', 'advanced']) {
+            await openDetails(page, conversationId, { page: pageId });
+            const overflow = await shownPage(page).locator('.sb-dialog__body').evaluate(body => body.scrollWidth - body.clientWidth);
+            expect(overflow, `${pageId} does not scroll sideways`).toBeLessThanOrEqual(1);
+            const close = await shownPage(page).getByRole('button', { name: 'Close' }).boundingBox();
+            expect(close.x + close.width, 'Close is inside the sheet').toBeLessThanOrEqual(360);
+            expect(close.height).toBeGreaterThanOrEqual(44);
+        }
     });
 });
 
