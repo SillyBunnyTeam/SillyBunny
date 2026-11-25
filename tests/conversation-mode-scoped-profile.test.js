@@ -40,7 +40,6 @@ const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
 const actionMenuSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-action-menu.js'), 'utf8'));
 const constantsSource = readConversationSource('constants.js');
-const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
 const conversationListSource = readConversationSource('conversation-list.js');
 const pickersSource = readConversationSource('pickers.js');
