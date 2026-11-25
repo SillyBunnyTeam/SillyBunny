@@ -257,6 +257,9 @@
 .sb-details-collection .ds-entity-row { margin: 0; border-radius: 0; }
 .sb-details-collection > .sb-inline-hint { padding: 12px; }
 
+/* The members that General lists, in a list of their own: the row above the Add Member row keeps its hairline. */
+.sb-details-inline-list > .ds-entity-row:last-child { border-bottom: 1px solid var(--SmartThemeBorderColor); }
+
 /* A member row inside a boxed group (General lists up to four): the same entity row in the group's card. */
 .sb-details-page .ds-pref-group > .ds-entity-row { border-radius: 0; }
 
@@ -300,6 +303,9 @@
     grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
     gap: 6px;
 }
+
+.sb-details-media-item { min-inline-size: 0; }
+.sb-details-media-item > .sb-details-media-cell { inline-size: 100%; }
 
 .sb-details-media-cell {
     position: relative;

@@ -104,9 +104,10 @@ export function buildMedia({ conversationId, nav }) {
             grid.setAttribute('aria-label', 'Media');
             for (const item of items) {
                 const label = `${item.kind === 'video' ? 'Video' : 'Picture'} by ${describeSender(item)}, ${formatWhen(item.createdAt)}`;
+                const entry = el('div', 'sb-details-media-item');
+                entry.setAttribute('role', 'listitem');
                 const cell = el('button', 'sb-details-media-cell');
                 cell.type = 'button';
-                cell.setAttribute('role', 'listitem');
                 cell.dataset.sbListKey = item.key;
                 cell.title = label;
                 cell.setAttribute('aria-label', label);
@@ -122,7 +123,8 @@ export function buildMedia({ conversationId, nav }) {
                     cell.append(icon('play'));
                 }
                 cell.addEventListener('click', () => nav.viewPicture({ title: item.title || label, src: item.url, kind: item.kind, alt: label }));
-                grid.append(cell);
+                entry.append(cell);
+                grid.append(entry);
             }
             body.replaceChildren(grid);
         },

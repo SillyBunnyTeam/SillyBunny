@@ -56,7 +56,7 @@ export function buildProfile({ conversationId, nav }, { avatar }) {
     pictureButton.append(createCharacterAvatar(avatar, { size: 128 }));
     pictureButton.addEventListener('click', () => nav.viewPicture({ title: name, src: getFullPictureUrl(avatar), alt: name }));
     const statusLine = el('p', 'sb-details-hero__subtitle');
-    hero.append(pictureButton, el('h4', 'sb-details-hero__name', name), statusLine);
+    hero.append(pictureButton, el('h3', 'sb-details-hero__name', name), statusLine);
     if (!isThisConversation) {
         hero.append(createPillButton('Open Conversation', {
             onClick: async () => {

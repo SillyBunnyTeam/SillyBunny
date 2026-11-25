@@ -41,11 +41,11 @@ export function createPage(extraClass = '') {
 }
 
 /**
- * A boxed list under a heading. A group with no title names its box with `label`. The headings are level 4, because the theme
- * boxes every `h3` outside a dialog and the page's own heading is level 2.
+ * A boxed list under a heading. A group with no title names its box with `label`. The headings are level 3, under the dialog's
+ * title, which is level 2.
  */
 export function createGroup({ title, subtitle, label, rows = [], field }) {
-    const made = createPrefGroup({ title, subtitle, field: field ?? (title ?? label ?? 'group').toLowerCase().replace(/\W+/g, '-'), rows, headingLevel: 4 });
+    const made = createPrefGroup({ title, subtitle, field: field ?? (title ?? label ?? 'group').toLowerCase().replace(/\W+/g, '-'), rows, headingLevel: 3 });
     if (!title && label) {
         made.group.setAttribute('aria-label', label);
     }

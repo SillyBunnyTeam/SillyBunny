@@ -29,8 +29,7 @@ function createHero(view, nav) {
     } else {
         hero.append(picture);
     }
-    // Level 4: the theme boxes every h3 outside a dialog and the chat, and the page is under the dialog's own h2.
-    hero.append(el('h4', 'sb-details-hero__name', getHeading(view)));
+    hero.append(el('h3', 'sb-details-hero__name', getHeading(view)));
     const subtitle = getSubtitle(view);
     if (subtitle) {
         hero.append(el('p', 'sb-details-hero__subtitle', subtitle));
@@ -45,9 +44,13 @@ function createPeopleGroup(view, nav) {
     if (!listsMembersInline(view)) {
         return null;
     }
-    const rows = view.characters.map(avatar => createPersonRow({ conversationId: view.id, avatar, kind: 'member', nav }));
-    rows.push(createButtonRow({ label: 'Add Member', icon: 'user-plus', field: 'add-member', arrow: true, onActivate: () => nav.push('add-member') }));
-    return createGroup({ title: 'Members', rows, field: 'members' });
+    // The member rows are list items, so they sit in a list of their own inside the group.
+    const list = el('div', 'sb-details-inline-list');
+    list.setAttribute('role', 'list');
+    list.setAttribute('aria-label', 'Members');
+    list.append(...view.characters.map(avatar => createPersonRow({ conversationId: view.id, avatar, kind: 'member', nav })));
+    const add = createButtonRow({ label: 'Add Member', icon: 'user-plus', field: 'add-member', arrow: true, onActivate: () => nav.push('add-member') });
+    return createGroup({ title: 'Members', rows: [list, add], field: 'members' });
 }
 
 function createPageLinks(view, nav) {

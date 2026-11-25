@@ -174,7 +174,7 @@ test.describe('Edit Details and Add Member', () => {
 
         await shownPage(page).getByRole('button', { name: 'Add Member' }).click();
         const picker = shownPage(page);
-        await expect(picker.getByRole('checkbox')).toHaveCount(1);
+        await expect(picker.getByRole('checkbox')).toHaveCount(avatars.length - 2);
         await expect(picker.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
         await picker.getByRole('searchbox', { name: 'Search Characters' }).fill('zzz');
         await expect(picker.getByText('No Results Found')).toBeVisible();
