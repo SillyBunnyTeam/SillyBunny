@@ -12,6 +12,7 @@ import {
 import { conversationData } from './conversation-data-browser.js';
 import { isConversationActive } from './notifications.js';
 import { isPendingServerReply } from './pending-reply.js';
+import { readReactions, writeReactions } from './reaction-model.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
 import { getConversationSessionMarker, resetFollowupCount, setConversationSessionMarker, setLastUserActivity } from './settings-store.js';
 import { stripPreviewText } from './typing.js';
@@ -301,6 +302,37 @@ export function appendConversationChatMessage(avatar, messageInput, { chatId = '
         void narrateConversationMessage(message, { isStillVisible });
     }
     return message;
+}
+
+/**
+ * Changes the reactions of a message of a loaded chat. The chat is written only when `change` answers other entries than
+ * it was given, so that a reaction that is refused or already there costs no save.
+ * @param {(entries: import('./reaction-model.js').ReactionEntry[]) => import('./reaction-model.js').ReactionEntry[]} change
+ * Answers the entries that it was given when nothing is to change.
+ * @returns {boolean} Whether the reactions changed.
+ */
+export function updateConversationChatMessageReactions(avatar, messageId, change, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
+    const message = address ? conversationData.chat(address)?.messages.find(item => item.id === messageId) : null;
+    if (!address || !message) {
+        return false;
+    }
+
+    const current = readReactions(message);
+    const next = change(current);
+    if (next === current) {
+        return false;
+    }
+    conversationData.commitChat(address, (draft) => {
+        const target = draft.messages.find(item => item.id === messageId);
+        if (target) {
+            writeReactions(target, next);
+        }
+    });
+    if (isConversationActive(avatar, groupId, { chatId: address.chatId, personaId })) {
+        scheduleTimelineRender();
+    }
+    return true;
 }
 
 export function updateConversationChatMessage(avatar, messageId, messageText, extra = null, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {

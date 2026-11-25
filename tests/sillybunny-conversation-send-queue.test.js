@@ -95,6 +95,9 @@ describe('sillybunny conversation send-queue utils', () => {
         message.extra.conversation_reactions = { heart: 1 };
         expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toEqual([message]);
 
+        message.extra.conversation_reactions = [{ emoji: '❤️', by: 'user', at: 1 }, { emoji: '😂', by: 'charA.png', at: 2 }];
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toEqual([message]);
+
         message.extra.files[0].url = '/files/revised.txt';
         expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toBeNull();
         message.extra.files[0].url = '/files/notes.txt';
