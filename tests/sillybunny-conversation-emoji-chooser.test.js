@@ -33,10 +33,12 @@ const table = {
     getIndex: () => [{ name: 'grinning face', nameWords: ['grinning', 'face'], keywordWords: ['smile'], haystack: 'grinning face|smile' }],
 };
 const load = jest.fn(async () => table);
+const whenStyled = jest.fn(async () => true);
 
 await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openPopover }));
 await jest.unstable_mockModule('../public/scripts/dynamic-styles.js', () => ({ loadStylesheetAsync }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/emoji/emoji-store.js', () => ({ pushRecentEmoji, readRecentEmoji }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/emoji/emoji-style-ready.js', () => ({ whenStyled }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/emoji/emoji-table.js', () => ({ emojiTables: { load, loadEnglish: load } }));
 
 const { openEmojiChooser } = await import('../public/scripts/sillybunny-conversation/emoji/emoji-chooser.js');
@@ -53,7 +55,7 @@ beforeEach(() => {
     document.body.replaceChildren();
     trigger = document.createElement('button');
     document.body.append(trigger);
-    for (const mock of [openPopover, loadStylesheetAsync, pushRecentEmoji, readRecentEmoji, load]) {
+    for (const mock of [openPopover, loadStylesheetAsync, whenStyled, pushRecentEmoji, readRecentEmoji, load]) {
         mock.mockClear();
     }
     load.mockImplementation(async () => table);
@@ -82,6 +84,21 @@ describe('openEmojiChooser', () => {
         expect(options.content.querySelector('.sb-emoji-cell[data-emoji="😀"]')).not.toBeNull();
         expect(options.content.querySelector('[data-section="recent"] .sb-emoji-cell').dataset.emoji).toBe('🙏');
         expect(handle.isOpen).toBe(true);
+    });
+
+    test('opens the popover only once the rules of its sheet apply, because the popover measures its content when it opens', async () => {
+        let applied;
+        whenStyled.mockImplementationOnce(() => new Promise((resolve) => {
+            applied = resolve;
+        }));
+        openEmojiChooser({ trigger, kind: 'insert', onPick() {} });
+        await settle();
+        expect(loadStylesheetAsync).toHaveBeenCalledTimes(1);
+        expect(whenStyled).toHaveBeenCalledWith('sb-emoji-chooser', 'display', 'flex');
+        expect(openPopover).not.toHaveBeenCalled();
+        applied(true);
+        await settle();
+        expect(openPopover).toHaveBeenCalledTimes(1);
     });
 
     test('puts the focus in the search entry with a mouse, and on the chooser itself with touch until the grid is there', async () => {

@@ -11,6 +11,7 @@ import { openPopover } from '../../sillybunny-action-menu.js';
 import { MENU_SHEET_QUERY } from '../../sillybunny-editor/breakpoints.js';
 import { createChooserView } from './emoji-chooser-view.js';
 import { pushRecentEmoji, readRecentEmoji } from './emoji-store.js';
+import { whenStyled } from './emoji-style-ready.js';
 import { emojiTables } from './emoji-table.js';
 
 const STYLESHEET_ID = 'sb-emoji-chooser-css';
@@ -95,6 +96,8 @@ export function openEmojiChooser({ trigger, kind, onPick, isPicked, bounds = nul
     // The surface opens once its stylesheet is there; a sheet that fails to load must not keep the chooser shut.
     Promise.resolve(loadStylesheetAsync(STYLESHEET_HREF, { id: STYLESHEET_ID }))
         .catch(error => console.warn('Conversation Mode: the emoji chooser stylesheet failed to load', error))
+        // WebKit applies the sheet a frame or two after its load event, and the popover measures its content when it opens.
+        .then(() => whenStyled('sb-emoji-chooser', 'display', 'flex'))
         .then(() => {
             if (cancelled) {
                 finish();
