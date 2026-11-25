@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 
 const listeners = { visibility: [], active: [], data: [] };
 const state = { usage: true, active: [] };
+let chatMessages = [{ id: 'u1', role: 'user', extra: {} }];
 const data = {
-    chat: jest.fn(() => ({ messages: [{ id: 'u1', role: 'user', extra: {} }] })),
+    chat: jest.fn(() => ({ messages: chatMessages })),
     get: jest.fn(() => ({ id: 'conv_2', kind: 'group', characters: ['Nova.png', 'Orion.png'], personaId: 'p.png' })),
     loadChat: jest.fn(async () => ({ messages: [{ id: 'u1', role: 'user', extra: {} }] })),
     refresh: jest.fn(async () => {}),
@@ -45,10 +46,16 @@ class FakeEventSource {
         FakeEventSource.instances.push(this);
     }
 
-    addEventListener() {}
+    addEventListener(type, listener) {
+        this.listener = listener;
+    }
 
     close() {
         this.closed = true;
+    }
+
+    send(pending) {
+        this.listener({ data: JSON.stringify({ pending }) });
     }
 }
 
@@ -84,6 +91,7 @@ beforeEach(() => {
     globalThis.toastr = toastr;
     state.usage = true;
     state.active = [];
+    chatMessages = [{ id: 'u1', role: 'user', extra: {} }];
     for (const mock of [queueForcedConversationReply, finalizePendingReplies, acknowledgeGenerations, data.reloadChat, data.refresh]) {
         mock.mockClear();
     }
@@ -119,6 +127,42 @@ describe('the event stream of this page', () => {
     });
 });
 
+describe('a reply that the server wrote', () => {
+    const committed = { id: 'gen-1', state: 'committed', kind: 'reply', reason: '', page: 'page-b', conversation: 'conv_2', chat: 'main' };
+    /** A stream that is opened now: the page is hidden, which closes the one that an earlier test left, and shown again. */
+    function freshStream() {
+        installReplyEvents();
+        globalThis.document.visibilityState = 'hidden';
+        listeners.visibility.forEach(listener => listener());
+        globalThis.document.visibilityState = 'visible';
+        listeners.visibility.forEach(listener => listener());
+        return FakeEventSource.instances.find(source => !source.closed);
+    }
+
+    test('is landed without reading the chat again when it is in the chat already, which a read that races a save would undo', async () => {
+        const source = freshStream();
+        chatMessages = [{ id: 'u1', role: 'user', extra: {} }, { id: 'p1', role: 'character', extra: { server_generation: { pending: true } } }];
+
+        source.send([committed]);
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(data.reloadChat).not.toHaveBeenCalled();
+        expect(finalizePendingReplies).toHaveBeenCalledWith({ conversationId: 'conv_2', chatId: 'main' });
+        expect(acknowledgeGenerations).toHaveBeenCalledWith(['gen-1']);
+    });
+
+    test('is read for when it is not in the chat yet, and then landed', async () => {
+        const source = freshStream();
+
+        source.send([{ ...committed, id: 'gen-2' }]);
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(data.reloadChat).toHaveBeenCalledWith({ conversationId: 'conv_2', chatId: 'main' });
+        expect(finalizePendingReplies).toHaveBeenCalledWith({ conversationId: 'conv_2', chatId: 'main' });
+        expect(data.reloadChat.mock.invocationCallOrder[0]).toBeLessThan(finalizePendingReplies.mock.invocationCallOrder[0]);
+    });
+});
+
 describe('the notice of a lost reply', () => {
     const item = { id: 'lost-1', conversation: 'conv_2', chat: 'main', member: 'Nova.png', round: ['Orion.png'] };
 
@@ -145,7 +189,8 @@ describe('the notice of a lost reply', () => {
         const event = { stopPropagation: jest.fn(), preventDefault: jest.fn() };
         link.listeners.click(event);
         expect(regenerate).toHaveBeenCalledTimes(1);
-        expect(toastr.clear).toHaveBeenCalledWith({ id: 'the toast' });
+        // toastr leaves a toast that holds the focused element, and the link that was just clicked has the focus.
+        expect(toastr.clear).toHaveBeenCalledWith({ id: 'the toast' }, { force: true });
     });
 });
 
@@ -180,4 +225,5 @@ describe('the wiring of the mode', () => {
     test('installs the stream when the mode starts', () => {
         expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/init.js', import.meta.url), 'utf8')).toContain('installReplyEvents();');
     });
+
 });

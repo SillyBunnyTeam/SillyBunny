@@ -8,6 +8,7 @@ import { queueForcedConversationReply } from './attachments.js';
 import { SAFE_TOAST_OPTIONS } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';
+import { isPendingServerReply } from './pending-reply.js';
 import { acknowledgeGenerations, finalizePendingReplies, wasReplyLanded } from './reply-finalizer-browser.js';
 import { createReplyEvents } from './reply-events.js';
 import { hasAnyConversationModeUsage } from './settings-store.js';
@@ -46,7 +47,8 @@ export function showLostReplyNotice({ regenerate }) {
             event.stopPropagation();
             event.preventDefault();
             if (toast) {
-                globalThis.toastr.clear(toast);
+                // toastr keeps a toast that holds the focused element, and the link that was just clicked has the focus.
+                globalThis.toastr.clear(toast, { force: true });
             }
             regenerate();
         });
@@ -68,7 +70,12 @@ const events = createReplyEvents({
     hasUsage: hasAnyConversationModeUsage,
     page: {
         async reloadChat(address) {
-            await conversationData.reloadChat(address);
+            // A reply that is in the chat already needs landing and no read. A read made while this page lands it can
+            // come back with the message that the landing replaced, and the server's list reports a reply as soon as it
+            // is written, which is while a page that has the chat open is landing it.
+            if (!conversationData.chat(address)?.messages.some(isPendingServerReply)) {
+                await conversationData.reloadChat(address);
+            }
             await finalizePendingReplies(address);
         },
         wasLanded: wasReplyLanded,

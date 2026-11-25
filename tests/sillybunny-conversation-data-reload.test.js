@@ -115,6 +115,64 @@ describe('reloadChat', () => {
     });
 });
 
+describe('reloadChat while the page changes the chat', () => {
+    /** A page whose answers to /chat/get wait for the test, so that the test can change the chat while a read is out. */
+    async function startHeldReads() {
+        seedConversations(server, [DIRECT]);
+        const held = [];
+        const inner = server.adapter();
+        firstAdapter = recordCalls({
+            ...inner,
+            async fetchJson(path, body, options) {
+                const answer = await inner.fetchJson(path, body, options);
+                if (path === '/chat/get' && held.armed) {
+                    await new Promise(resolve => held.push(resolve));
+                }
+                return answer;
+            },
+        });
+        first = createConversationData(firstAdapter);
+        await first.start();
+        await first.loadChat(ADDRESS);
+        return held;
+    }
+
+    test('does not bring back a message that the page replaced while the request was out, which the copy that came back still has', async () => {
+        const held = await startHeldReads();
+        held.armed = true;
+        const reload = first.reloadChat(ADDRESS);
+        await new Promise(resolve => setImmediate(resolve));
+        first.commitChat(ADDRESS, (draft) => {
+            draft.messages.splice(1, 1, { id: 'replacement', role: 'character', name: 'Nova', mes: 'what the message became', created_at: Date.UTC(2026, 0, 3), extra: {} });
+        });
+        held.armed = false;
+        held.splice(0).forEach(release => release());
+
+        await reload;
+        await first.flush();
+
+        expect(first.chat(ADDRESS).messages.map(message => message.id)).toEqual(['main-0', 'replacement']);
+        expect((await new Promise(resolve => resolve(firstAdapter.callsTo('/chat/save').at(-1).body.chat.slice(1).map(message => message.id))))).toEqual(['main-0', 'replacement']);
+    });
+
+    test('reads again after the change, and then takes what the server has', async () => {
+        const held = await startHeldReads();
+        held.armed = true;
+        const reload = first.reloadChat(ADDRESS);
+        await new Promise(resolve => setImmediate(resolve));
+        first.commitChat(ADDRESS, (draft) => {
+            draft.messages.push({ id: 'typed', role: 'user', name: 'You', mes: 'typed meanwhile', created_at: Date.UTC(2026, 0, 3), extra: {} });
+        });
+        held.armed = false;
+        held.splice(0).forEach(release => release());
+
+        await reload;
+
+        expect(firstAdapter.callsTo('/chat/get').length).toBeGreaterThanOrEqual(3);
+        expect(first.chat(ADDRESS).messages.map(message => message.id)).toEqual(['main-0', 'main-1', 'typed']);
+    });
+});
+
 describe('saveChat', () => {
     test('resolves when the changes of the chat are on the server', async () => {
         await startPages();

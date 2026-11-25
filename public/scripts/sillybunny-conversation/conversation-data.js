@@ -37,6 +37,7 @@ export const FREQUENT_DELAY_MS = 400;
 export const FREQUENT_MAX_WAIT_MS = 3000;
 export const RETRY_DELAYS_MS = Object.freeze([2000, 5000, 15000]);
 export const MAX_LOADED_CHATS = 8;
+const MAX_RELOAD_ATTEMPTS = 3;
 const MIGRATION_RETRY_FALLBACK_MS = 60_000;
 
 export class ChatNotLoadedError extends Error {
@@ -628,6 +629,7 @@ export function createConversationData(adapter) {
             chat: { address, header: chatHeader ?? blankHeader(), messages },
             synced: describeSyncedMessages(messages),
             dirty: false,
+            version: 0,
             shrink: false,
             saving: false,
             dropped: false,
@@ -710,6 +712,7 @@ export function createConversationData(adapter) {
 
     function markDirty(session, { shrink = false } = {}) {
         session.dirty = true;
+        session.version++;
         session.failed = '';
         session.shrink = session.shrink || shrink;
         const view = views.get(session.address.conversationId);
@@ -871,6 +874,11 @@ export function createConversationData(adapter) {
      * while the page was frozen, a save of another tab). What waits to be saved goes first, so that the server's copy
      * already has it; a message that the page wrote since stays, merged by id as after a conflict. A chat that is not
      * loaded is loaded.
+     *
+     * A copy that came back is older than any change that the page made while the request was out: a message that the
+     * page deleted or replaced in that time is still in the copy, and adopting it would bring that message back. The
+     * page's own change goes first, and the chat is read again. A chat that keeps changing is left to the saves of the
+     * page, which settle it through the merge of a conflict.
      * @param {ChatAddress} address
      * @returns {Promise<LoadedChat|null>} Null when the chat was dropped while the request was out.
      */
@@ -880,20 +888,27 @@ export function createConversationData(adapter) {
         if (!session?.chat) {
             return loadChat(address);
         }
-        await saveChat(address);
-        const answer = await request('/chat/get', { id: address.conversationId, chatId: address.chatId });
-        if (answer.status !== 200) {
-            throw failureOf(answer);
-        }
-        if (session.dropped || sessions.get(key) !== session) {
-            return null;
-        }
-        const result = adoptServerRecords(session, answer.json.chat);
-        if (result.lostEdits > 0 || result.lostDeletes > 0) {
-            emit('conflict', { address: session.address, appended: result.appended, lostEdits: result.lostEdits, lostDeletes: result.lostDeletes });
-        }
-        if (session.dirty) {
-            void saveSession(session);
+        for (let attempt = 0; attempt < MAX_RELOAD_ATTEMPTS; attempt++) {
+            await saveChat(address);
+            const version = session.version;
+            const answer = await request('/chat/get', { id: address.conversationId, chatId: address.chatId });
+            if (answer.status !== 200) {
+                throw failureOf(answer);
+            }
+            if (session.dropped || sessions.get(key) !== session) {
+                return null;
+            }
+            if (session.version !== version || session.dirty || session.saving) {
+                continue;
+            }
+            const result = adoptServerRecords(session, answer.json.chat);
+            if (result.lostEdits > 0 || result.lostDeletes > 0) {
+                emit('conflict', { address: session.address, appended: result.appended, lostEdits: result.lostEdits, lostDeletes: result.lostDeletes });
+            }
+            if (session.dirty) {
+                void saveSession(session);
+            }
+            return session.chat;
         }
         return session.chat;
     }
