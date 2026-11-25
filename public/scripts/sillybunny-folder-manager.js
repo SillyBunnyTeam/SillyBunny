@@ -354,7 +354,10 @@ export function createFolderManager(scope, adapter) {
         entry.row.dataset.folderId = folder.id;
         entry.dot.style.setProperty('--sb-folder-color', folder.color || 'var(--sb-muted-fg)');
         const count = entry.row.querySelector('.sb-folder-manager__count');
-        if (count) count.textContent = countLabel(liveMemberCount(folder.id), scope);
+        // The name field blurs on the mouse down of a press on the count, and the blur draws the rows again. Writing the same
+        // text still replaces its text node, and WebKit then gives the press up: no click follows.
+        const label = countLabel(liveMemberCount(folder.id), scope);
+        if (count && count.textContent !== label) count.textContent = label;
     }
 
     function renderFolders() {

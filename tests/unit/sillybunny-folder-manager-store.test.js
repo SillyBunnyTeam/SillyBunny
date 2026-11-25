@@ -173,6 +173,23 @@ describe('the Folder Manager with a store of its own', () => {
         expect(store.state.folders.map(folder => folder.id)).toEqual([first.id, second.id]);
     });
 
+    test('a redraw that changes no count leaves the text of the count as it is, so that a press on it is not lost when the name field loses focus', () => {
+        const folder = store.createFolder('conversations', 'Work');
+        store.setFolder('conversations', ['conv_1'], folder.id);
+        mount();
+        const count = manager.root.querySelector('.sb-folder-manager__count');
+        const text = count.firstChild;
+
+        // The name field blurs on the mouse down that starts the press, and the blur draws the rows again.
+        manager.root.querySelector('.sb-folder-manager__name').dispatchEvent(new Event('blur'));
+        expect(manager.root.querySelector('.sb-folder-manager__count')).toBe(count);
+        expect(count.firstChild).toBe(text);
+
+        store.setFolder('conversations', ['conv_2'], folder.id);
+        store.notify();
+        expect(count.textContent).toBe('2 conversations');
+    });
+
     test('changes the open state of a folder through the store', () => {
         const folder = store.createFolder('conversations', 'Work');
         mount();
