@@ -594,6 +594,31 @@ test.describe('On the smallest phone', () => {
 test.describe('On a phone', () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
+    test('the flows of the pages work by touch: Remove with Undo, a chat renamed from the sheet menu, and a Behaviour row saved', async ({ page }) => {
+        const { avatars, names } = await openDetailsApp(page);
+        const { conversationId } = await seedAndOpen(page, { avatar: avatars[0], members: [avatars[1], avatars[2]], name: 'Weekend plans', chats: [{ name: 'Main', messages: TALK }, { name: 'Second' }] });
+        await showToasts(page);
+        await openDetails(page, conversationId);
+
+        await shownPage(page).getByRole('button', { name: `Remove ${names[avatars[2]]}` }).tap();
+        await expect(shownPage(page).getByRole('listitem')).toHaveCount(2);
+        await page.getByRole('button', { name: 'Undo' }).tap();
+        await expect(shownPage(page).getByRole('listitem')).toHaveCount(3);
+
+        await shownPage(page).getByRole('button', { name: /^Chats/ }).tap();
+        await shownPage(page).getByRole('button', { name: 'Actions for Second' }).tap();
+        await page.getByRole('menuitem', { name: 'Rename…' }).tap();
+        await page.getByRole('textbox').last().fill('Weekend');
+        await page.getByRole('button', { name: 'Rename', exact: true }).tap();
+        await expect(shownPage(page).getByRole('listitem', { name: 'Weekend' })).toBeVisible();
+        await expect.poll(async () => (await readStored(page, conversationId)).chats.map(chat => chat.name)).toEqual(['Main', 'Weekend']);
+
+        await shownPage(page).getByRole('button', { name: 'Back' }).tap();
+        await shownPage(page).getByRole('button', { name: 'Behaviour' }).tap();
+        await shownPage(page).getByRole('switch', { name: 'Messaging First' }).tap();
+        await expectSetting(page, conversationId, 'proactive_messaging', true);
+    });
+
     test('the window is a bottom sheet with the same pages, large targets, and no sideways scroll', async ({ page }) => {
         const { avatars, names } = await openDetailsApp(page);
         const { conversationId } = await seedAndOpen(page, { avatar: avatars[0], members: [avatars[1], avatars[2]], name: 'Weekend plans', chats: [{ name: 'Main', messages: TALK }] });
