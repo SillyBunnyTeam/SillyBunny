@@ -5,6 +5,7 @@ import { normalizeConversationQuietHour } from '../../context.js';
 import { getConnectionProfiles, getUserPersonaStatus, getUserStatus, setUserPersonaStatus, setUserStatus } from '../../personas.js';
 import { readModeSettings, writeModeKey } from '../access.js';
 import { getPageTitle } from '../details-logic.js';
+import { applyEmojiFont } from '../../emoji/emoji-font.js';
 import { copyPlaceholder, createGroup, createPage, el } from '../page-kit.js';
 
 const STATUS_CHOICES = Object.freeze([
@@ -87,6 +88,18 @@ export function buildPreferences({ nav }) {
     const lorebooks = createSwitchRow({ label: 'Use Character Lorebooks', field: 'lorebooks-enabled', checked: settings.lorebooks_enabled, onChange: value => writeModeKey('lorebooks_enabled', value) });
     lorebooks.row.querySelector('.ds-row-text')?.append(copyPlaceholder('small', 'ds-row-subtitle'));
 
+    // What the switch does is for the maintainer to say.
+    const deviceEmoji = createSwitchRow({
+        label: 'Use Device Emoji',
+        field: 'use-device-emoji',
+        checked: settings.use_device_emoji,
+        onChange: (value) => {
+            writeModeKey('use_device_emoji', value);
+            applyEmojiFont({ useDeviceEmoji: value });
+        },
+    });
+    deviceEmoji.row.querySelector('.ds-row-text')?.append(copyPlaceholder('small', 'ds-row-subtitle'));
+
     clamp.append(
         createGroup({
             title: 'Replies',
@@ -113,6 +126,11 @@ export function buildPreferences({ nav }) {
                 rules,
                 rulesEdit,
             ],
+        }).section,
+        createGroup({
+            title: 'Emoji',
+            field: 'prefs-emoji',
+            rows: [deviceEmoji],
         }).section,
         createGroup({
             title: 'Quiet Hours',
