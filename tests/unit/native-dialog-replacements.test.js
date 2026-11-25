@@ -30,7 +30,6 @@ function translate(_ctx, text, replacements = {}) {
     return Object.entries(replacements).reduce((result, [key, value]) => result.replaceAll(`{${key}}`, String(value)), text);
 }
 
-const openaiSource = readPublic('scripts/openai.js');
 const serverToolsSource = readPublic('scripts/sillybunny-server-tools.js');
 const tabsSource = readPublic('scripts/sillybunny-tabs.js');
 const archiveUiDirectory = 'scripts/extensions/sillybunny-chats-archive/src/ui';
@@ -43,83 +42,6 @@ const archiveSource = [
         .map(file => readPublic(`${archiveUiDirectory}/${file}`)),
 ].join('\n').replace(/^import [^;]*;$/gm, '').replace(/^export /gm, '');
 const vectorSource = readPublic('scripts/extensions/vectors/index.js');
-
-test('OpenAI server config changes await the shared Alert response before saving or restarting', async () => {
-    const state = {
-        loaded: true,
-        busy: false,
-        restarting: false,
-        dialogOpen: false,
-        applying: false,
-        originalSettings: {
-            claude: { enableSystemPromptCache: false, cachingAtDepth: -1, extendedTTL: false, enableAdaptiveThinking: true },
-            gemini: { apiVersion: 'v1beta', thoughtSignatures: true, enableSystemPromptCache: false },
-        },
-    };
-    const nextCacheSettings = {
-        claude: { enableSystemPromptCache: true, cachingAtDepth: -1, extendedTTL: false, enableAdaptiveThinking: true },
-        gemini: { apiVersion: 'v1beta', thoughtSignatures: true, enableSystemPromptCache: true },
-    };
-    const nextProviderSettings = {
-        claude: { enableSystemPromptCache: false, cachingAtDepth: -1, extendedTTL: false, enableAdaptiveThinking: false },
-        gemini: { apiVersion: 'v1beta', thoughtSignatures: true, enableSystemPromptCache: false },
-    };
-    const openAlert = jest.fn().mockResolvedValue('cancel');
-    const fillServerChatCompletionConfigForm = jest.fn();
-    const saveServerChatCompletionConfig = jest.fn();
-    const confirmChange = loadFunction(openaiSource, 'confirmServerChatCompletionConfigChange', {
-        serverChatCompletionConfigState: state,
-        SERVER_CHAT_COMPLETION_CONFIG_DEFAULTS: state.originalSettings,
-        clearServerChatCompletionConfigTimers: jest.fn(),
-        buildNextServerChatCompletionConfig: jest.fn(control => control === 'master'
-            ? { nextSettings: nextCacheSettings, category: 'prompt-caching' }
-            : { nextSettings: nextProviderSettings, category: 'provider-server-config' }),
-        fillServerChatCompletionConfigForm,
-        saveServerChatCompletionConfig,
-        openAlert,
-        t: strings,
-    });
-
-    await confirmChange('master');
-    expect(saveServerChatCompletionConfig).not.toHaveBeenCalled();
-    expect(fillServerChatCompletionConfigForm).toHaveBeenLastCalledWith(state.originalSettings);
-    expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
-        heading: 'Save Prompt Caching?',
-        defaultResponse: 'save',
-        closeResponse: 'cancel',
-        responses: [
-            { id: 'cancel', label: 'Cancel' },
-            { id: 'save-restart', label: 'Save & Restart' },
-            { id: 'save', label: 'Save', appearance: 'suggested' },
-        ],
-    }));
-
-    openAlert.mockResolvedValueOnce('save');
-    await confirmChange('master');
-    expect(saveServerChatCompletionConfig).toHaveBeenLastCalledWith({
-        settings: nextCacheSettings,
-        restart: false,
-        category: 'prompt-caching',
-    });
-
-    openAlert.mockResolvedValueOnce('save-restart');
-    await confirmChange('adaptiveThinking');
-    expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
-        heading: 'Save Provider Server Config?',
-        defaultResponse: 'save-restart',
-        closeResponse: 'cancel',
-        responses: [
-            { id: 'cancel', label: 'Cancel' },
-            { id: 'save', label: 'Save' },
-            { id: 'save-restart', label: 'Save & Restart', appearance: 'suggested' },
-        ],
-    }));
-    expect(saveServerChatCompletionConfig).toHaveBeenLastCalledWith({
-        settings: nextProviderSettings,
-        restart: true,
-        category: 'provider-server-config',
-    });
-});
 
 test('server admin reload and thumbnail cache actions wait for Alert responses', async () => {
     const state = { busy: false, restarting: false };

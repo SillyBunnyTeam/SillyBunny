@@ -242,6 +242,7 @@ function directChild(body, selector) {
  * @param {() => Promise<Record<string, string>>} [options.getHeaders]
  * @param {(message: string, title: string) => void} [options.notify]
  * @param {() => string} [options.getSource]  The chosen Chat Completion source.
+ * @param {() => boolean} [options.isShown]  Whether the Presets page is on screen. The first read waits for it, so that a search which builds the page reaches no admin route.
  */
 export function createServerRequestSettings({
     request,
@@ -252,6 +253,10 @@ export function createServerRequestSettings({
     getHeaders = async () => (await import('../script.js')).getRequestHeaders(),
     notify = (message, title) => globalThis.toastr?.error(message, title),
     getSource = () => /** @type {HTMLSelectElement|null} */ (document.getElementById('chat_completion_source'))?.value ?? '',
+    isShown = () => {
+        const panel = request.closest('[data-sb-panel]');
+        return panel?.getAttribute('aria-hidden') === 'false' && panel.checkVisibility();
+    },
 }) {
     const transport = { fetch: fetchImpl, getHeaders };
     const state = {
@@ -267,14 +272,14 @@ export function createServerRequestSettings({
     const master = createSwitchRow({
         label: t`Enable Prompt Caching`,
         subtitle: t`Reuse repeated prompt prefixes across supported providers`,
-        field: 'server-prompt-caching',
+        field: 'sb-config-prompt-caching-enabled',
         id: masterId,
         onChange: on => changeMaster(on),
     });
     const depth = createSpinRow({
         label: t`Caching at Depth`,
         subtitle: t`Higher values place Claude cache markers earlier in chat. Set to -1 to disable.`,
-        field: 'server-caching-depth',
+        field: 'sb-config-claude-caching-depth',
         id: 'sb-config-claude-caching-depth',
         min: -1,
         step: 1,
@@ -284,21 +289,21 @@ export function createServerRequestSettings({
     const extendedTtl = createSwitchRow({
         label: t`Extended Cache TTL`,
         subtitle: t`Extend Claude cache lifetime from five minutes to one hour. Cache writes cost more.`,
-        field: 'server-extended-cache-ttl',
+        field: 'sb-config-claude-extended-ttl',
         id: 'sb-config-claude-extended-ttl',
         onChange: checked => save({ claude: { extendedTTL: checked } }),
     });
     const adaptiveThinking = createSwitchRow({
         label: t`Adaptive Thinking`,
         subtitle: t`Let supported Claude models adjust thinking based on your reasoning effort`,
-        field: 'server-adaptive-thinking',
+        field: 'sb-config-claude-adaptive-thinking',
         id: 'sb-config-claude-adaptive-thinking',
         onChange: checked => save({ claude: { enableAdaptiveThinking: checked } }),
     });
     const apiVersion = createEntryRow({
         label: t`API Version`,
         subtitle: t`Set the Google AI Studio API version. Leave blank to use v1beta.`,
-        field: 'server-gemini-api-version',
+        field: 'sb-config-gemini-api-version',
         id: 'sb-config-gemini-api-version',
         placeholder: DEFAULT_SETTINGS.gemini.apiVersion,
         floating: true,
@@ -310,7 +315,7 @@ export function createServerRequestSettings({
     const thoughtSignatures = createSwitchRow({
         label: t`Thought Signatures`,
         subtitle: t`Send saved thought signatures back to Gemini to preserve reasoning context`,
-        field: 'server-thought-signatures',
+        field: 'sb-config-gemini-thought-signatures',
         id: 'sb-config-gemini-thought-signatures',
         onChange: checked => save({ gemini: { thoughtSignatures: checked } }),
     });
@@ -477,7 +482,7 @@ export function createServerRequestSettings({
     document.addEventListener('sb:shell-tab-activated', onTabActivated);
 
     // The group and the rows are built but not in the page: the first successful read puts them there.
-    void refresh();
+    if (isShown()) void refresh();
 
     return {
         group,

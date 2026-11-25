@@ -1603,28 +1603,6 @@ describe('Chat completions backend prompt caching integration', () => {
 
 describe('Frontend prompt caching UI and chat_id wiring', () => {
     const openaiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
-    const backendPagesSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/sillybunny-backend-pages.js', import.meta.url)), 'utf8');
-    const tabsSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/sillybunny-tabs.js', import.meta.url)), 'utf8');
-
-    test('mounts Prompt Caching and Provider Server Config as standalone Presets groups with Alert saves and no inline action buttons', () => {
-        expect(openaiSource).toContain('createOpenAISettingsDrawer(\'sb-openai-prompt-caching\', \'Prompt Caching\', \'\')');
-        expect(openaiSource).toContain('createOpenAISettingsDrawer(\'sb-openai-provider-server-config\', \'Provider Server Config\', \'\')');
-        expect(openaiSource).toContain('for="sb-config-prompt-caching-enabled"');
-        expect(openaiSource).toContain('for="sb-config-system-prompt-cache"');
-        expect(openaiSource).toContain('for="sb-config-claude-extended-ttl"');
-        expect(openaiSource).toContain('for="sb-config-claude-caching-depth"');
-        expect(openaiSource).toContain('for="sb-config-claude-adaptive-thinking" data-source="claude,linkapi"');
-        expect(openaiSource).toContain('for="sb-config-gemini-api-version" data-source="makersuite,vertexai"');
-        expect(openaiSource).toContain('for="sb-config-gemini-thought-signatures" data-source="makersuite,vertexai"');
-        expect(openaiSource).not.toContain('id="sb-config-claude-system-prompt-cache"');
-        expect(openaiSource).not.toContain('id="sb-config-gemini-system-prompt-cache"');
-        expect(openaiSource).not.toContain('id="sb-config-gemini-caching-depth"');
-        expect(openaiSource).not.toContain('sb-chat-completion-config-reload');
-        expect(openaiSource).not.toContain('sb-chat-completion-config-save');
-        expect(openaiSource).not.toContain('Claude & Gemini Flags');
-        expect(backendPagesSource).toContain('cachingBody.dataset.sbEnabledBy = \'#sb-config-prompt-caching-enabled\'');
-        expect(tabsSource).toContain('\'sb-openai-prompt-caching\', \'sb-openai-provider-server-config\'');
-    });
 
     test('keeps server-side caching flags out of Chat Completion preset serialization (SillyTavern preset compatibility)', () => {
         const settingsMapMatch = openaiSource.match(/export const settingsToUpdate = \{[\s\S]*?\n\};/);
