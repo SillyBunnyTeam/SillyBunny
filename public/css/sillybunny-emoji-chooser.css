@@ -1,0 +1,287 @@
+/*
+ * The emoji chooser: a popover on a desktop and a bottom sheet in the mobile layout (sillybunny-action-menu.js hosts both),
+ * with a search entry, sections of emoji cells and a toolbar of one button for each section. It loads with the chooser
+ * (emoji/emoji-chooser.js), not with the mode. DESIGN.md: Menus and Popovers (Choosers).
+ */
+
+/* The surface that hosts the chooser: no padding of its own, because the sections scroll inside it. */
+.sb-action-popover:has(> .sb-emoji-chooser) {
+    inline-size: min(360px, calc(100vw - 16px));
+    min-inline-size: 0;
+    max-inline-size: none;
+    padding: 0;
+    overflow: hidden;
+}
+
+.sb-action-sheet:has(.sb-emoji-chooser) {
+    block-size: min(70dvh, 520px);
+}
+
+.sb-action-sheet:has(.sb-emoji-chooser) .sb-action-sheet-body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow: hidden;
+}
+
+/* The emoji face leads the stack, as on every surface that shows emoji (sillybunny-conversation.css, the stack of the mode). */
+.sb-emoji-chooser,
+.sb-emoji-variants {
+    font-family: var(--sb-emoji-lead), var(--mainFontFamily);
+}
+
+.sb-emoji-chooser {
+    --sb-emoji-cell: 38px;
+    --sb-emoji-gap: 3px;
+    --sb-emoji-picked-ring: inset 0 0 0 1px var(--sb-accent);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: min(420px, calc(100dvh - 48px));
+    min-block-size: 0;
+    color: var(--SmartThemeBodyColor);
+    text-shadow: none;
+}
+
+.sb-action-sheet .sb-emoji-chooser {
+    block-size: 100%;
+}
+
+@media (pointer: coarse) {
+    .sb-emoji-chooser {
+        --sb-emoji-cell: var(--sb-mobile-touch-target, 44px);
+    }
+}
+
+.sb-emoji-chooser:focus {
+    outline: none;
+}
+
+.sb-emoji-search {
+    flex: none;
+    padding: 6px 6px 3px;
+}
+
+.sb-emoji-search-entry {
+    display: block;
+    inline-size: 100%;
+    min-block-size: var(--sb-density-floor, 40px);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 6px 12px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-input-bg);
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    /* 16px keeps iOS from zooming the page when the entry takes the focus. */
+    font-size: max(16px, 1em);
+}
+
+.sb-emoji-search-entry:focus {
+    outline: none;
+    box-shadow: var(--sb-composer-focus-ring);
+}
+
+.sb-emoji-scroller {
+    position: relative;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    padding: 0 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.sb-emoji-heading {
+    margin: 0;
+    padding: 9px 6px 3px;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-caption);
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.sb-emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--sb-emoji-cell), 1fr));
+    gap: var(--sb-emoji-gap);
+}
+
+/* A section that is not built yet keeps the height that its cells will have, so the scrollbar and the jumps are right. */
+.sb-emoji-section[data-built='false'] .sb-emoji-grid {
+    min-block-size: calc(var(--sb-emoji-rows, 1) * var(--sb-emoji-cell) + (var(--sb-emoji-rows, 1) - 1) * var(--sb-emoji-gap));
+}
+
+.sb-emoji-cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: var(--sb-emoji-cell);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+@media (hover: hover) {
+    .sb-emoji-cell:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-emoji-cell:active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* An emoji that the message has already: a ring as well as the fill, so colour is not the only cue. */
+.sb-emoji-cell[aria-selected='true'] {
+    background: var(--sb-flat-selected-bg);
+    box-shadow: var(--sb-emoji-picked-ring);
+}
+
+/* After the picked ring, so that the focus ring shows on a cell that is both. */
+.sb-emoji-cell:focus-visible {
+    outline: none;
+    background: var(--sb-flat-selected-bg);
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-emoji-variant-mark {
+    position: absolute;
+    inset-block-end: 3px;
+    inset-inline-end: 3px;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: var(--sb-radius-pill);
+    background: currentColor;
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.sb-emoji-categories {
+    display: flex;
+    flex: none;
+    justify-content: space-between;
+    gap: var(--sb-emoji-gap);
+    padding: 6px;
+    border-block-start: 1px solid var(--sb-shell-border);
+}
+
+.sb-emoji-categories[hidden] {
+    display: none;
+}
+
+.sb-emoji-category {
+    display: grid;
+    flex: 1 1 0;
+    place-items: center;
+    min-inline-size: 0;
+    block-size: var(--sb-density-floor, 32px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-input-placeholder);
+    font-size: 14px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+    .sb-emoji-category {
+        block-size: var(--sb-mobile-touch-target, 44px);
+    }
+}
+
+@media (hover: hover) {
+    .sb-emoji-category:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sb-emoji-category:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-emoji-category[aria-current='true'] {
+    background: var(--sb-flat-selected-bg);
+    color: var(--SmartThemeBodyColor);
+}
+
+.sb-emoji-category:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-emoji-message,
+.sb-emoji-empty {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 6px;
+    min-block-size: 100%;
+    margin: 0;
+    padding: 18px;
+    box-sizing: border-box;
+    color: var(--sb-input-placeholder);
+    text-align: center;
+}
+
+.sb-emoji-message-title {
+    margin: 0;
+    color: var(--SmartThemeBodyColor);
+    font-weight: 700;
+}
+
+.sb-emoji-message-description {
+    margin: 0;
+}
+
+.sb-emoji-variants {
+    position: absolute;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(6, var(--sb-emoji-cell));
+    gap: var(--sb-emoji-gap);
+    padding: 6px;
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-shadow-popover);
+}
+
+.sb-emoji-variants[data-count='25'] {
+    grid-template-columns: repeat(5, var(--sb-emoji-cell));
+}
+
+@media (forced-colors: active) {
+    .sb-emoji-cell[aria-selected='true'],
+    .sb-emoji-category[aria-current='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    .sb-emoji-cell:focus-visible,
+    .sb-emoji-category:focus-visible {
+        outline: 2px solid CanvasText;
+        outline-offset: -2px;
+    }
+
+    .sb-emoji-variants {
+        border: 1px solid CanvasText;
+    }
+}
