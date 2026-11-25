@@ -74,7 +74,8 @@ import {
 import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
-import { getConversationMessages, updateLastUserActivity } from './conversation-store.js';
+import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
+import { enterConversationSelection, initializeConversationSelection } from './selection.js';
 import {
     branchConversationFromMessage,
     clearConversationReplyTarget,
@@ -97,8 +98,8 @@ import {
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261118zzj';
-const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261118zzu';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125a';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261125a';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**
@@ -474,6 +475,7 @@ function openConversationOverflowMenu(trigger) {
     const { avatar, groupId } = getActiveConversationIdentity();
     const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
     const addMemberLabel = groupId ? 'Add Member to Group…' : 'Add Member…';
+    const hasMessages = Boolean(avatar) && getConversationMessageCount(avatar, { groupId }) > 0;
     openActionMenu({
         trigger,
         title: 'Conversation',
@@ -482,6 +484,7 @@ function openConversationOverflowMenu(trigger) {
                 items: [
                     ...(avatar ? [{ label: addMemberLabel, icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
                     { label: 'New Chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
+                    { label: 'Select Messages', icon: 'fa-solid fa-square-check', disabled: !hasMessages, onSelect: runFromMenu('select-messages', {}, trigger) },
                     { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
                     { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
                     // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.
@@ -818,6 +821,12 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'copy-message':
             await copyConversationMessage(data.messageId);
             break;
+        case 'select-message':
+            enterConversationSelection(data.messageId, target);
+            break;
+        case 'select-messages':
+            enterConversationSelection(null, target);
+            break;
         case 'speak-message':
             await speakConversationMessage(data.messageId);
             break;
@@ -990,6 +999,7 @@ export function bindConversationChromeControls(sheld) {
     }
 
     sheld.dataset.sbConversationChromeBound = 'true';
+    initializeConversationSelection();
     bindConversationZoomEscape();
     sheld.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {

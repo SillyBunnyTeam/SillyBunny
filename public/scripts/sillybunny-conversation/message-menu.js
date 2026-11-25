@@ -88,7 +88,8 @@ function getTrigger(item) {
 export function openConversationMessageMenu(trigger, { point = null, keyboard = false } = {}) {
     const item = trigger.closest(MESSAGE_SELECTOR);
     const actionBar = item?.querySelector('.sb-conversation-message-actions');
-    if (!(item instanceof HTMLElement) || !actionBar || item.classList.contains('is-editing')) {
+    // Selection mode turns the per-message actions off; a keyboard route must not bring one back.
+    if (!(item instanceof HTMLElement) || !actionBar || item.classList.contains('is-editing') || document.getElementById('sheld')?.dataset.selectionMode === 'true') {
         return;
     }
     item.classList.add(OPEN_CLASS);

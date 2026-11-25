@@ -39,6 +39,7 @@ import {
 import { conversationData } from './conversation-data-browser.js';
 import { promptConversationText } from './dialogs.js';
 import { commitCharacterReplyCommands, extractCharacterReplyCommands, generateConversationRaw, generateSelfieFromContext, getCharacterReplyCommandMetadata, reportConversationGenerationError } from './generation.js';
+import { dropQueueItemsOfDeletedMessages, removeChatMessages } from './message-deletion.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './conversation-list.js';
@@ -54,6 +55,7 @@ import {
     conversationState,
     endConversationGenerationOperation,
     regenerationBusyKeys,
+    sendQueue,
 } from './state.js';
 import { getConversationTimelineMessages } from './timeline-search.js';
 import { narrateConversationMessage } from './tts.js';
@@ -564,6 +566,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         ],
         [
             { action: 'copy-message', icon: 'fa-copy', label: 'Copy Message' },
+            { action: 'select-message', icon: 'fa-square-check', label: 'Select Message', secondary: true },
             { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin Message' : 'Pin Message', secondary: true },
             { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch From Here', secondary: true },
         ],
@@ -1234,14 +1237,37 @@ export function reactConversationMessage(messageId, reaction) {
     saveConversationContextMessages(context);
 }
 
-export function deleteConversationMessage(messageId) {
-    const context = getConversationMessageById(messageId);
-    if (!context) {
-        return;
+/**
+ * Deletes messages of the open chat in one commit. Besides the messages it keeps the composer, the read marker and the
+ * send queue free of references to them.
+ * @param {string[]} messageIds
+ * @returns {string[]} The ids that were deleted.
+ */
+export function deleteConversationMessages(messageIds) {
+    const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const personaId = getConversationPersonaId();
+    const address = avatar ? conversationData.resolve({ avatar, groupId, personaId }) : null;
+    if (!address) {
+        return [];
     }
 
-    context.messages = context.messages.filter(item => item.id !== messageId);
-    saveConversationContextMessages(context, { shrink: true });
+    const removed = removeChatMessages(conversationData, address, messageIds);
+    if (!removed.length) {
+        return [];
+    }
+
+    const replyTarget = conversationState.conversationReplyTarget;
+    if (replyTarget && removed.includes(replyTarget.messageId)) {
+        clearConversationReplyTarget();
+    }
+    dropQueueItemsOfDeletedMessages(sendQueue, { chatId: address.chatId, messageIds: removed });
+    scheduleTimelineRender();
+    return removed;
+}
+
+export function deleteConversationMessage(messageId) {
+    deleteConversationMessages([messageId]);
 }
 
 export async function regenerateConversationMessage(messageId) {

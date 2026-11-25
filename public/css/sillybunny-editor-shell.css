@@ -1391,6 +1391,13 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     display: none;
 }
 
+/* Select to End is the touch route to a range, where a pointer has Shift-click. */
+@media (pointer: fine) {
+    .sb-selection-action[data-action-id='select-to-end'] {
+        display: none;
+    }
+}
+
 @media (max-width: 450px), (max-height: 360px) {
     .sb-selection-action-bar--icon-only-narrow {
         flex-wrap: nowrap;

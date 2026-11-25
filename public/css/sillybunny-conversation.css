@@ -3048,6 +3048,53 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     }
 }
 
+/* ---------- Selection mode ---------- */
+/* The selection header takes the place of the headerbar, and the action bar the place of the composer. */
+#sheld[data-sb-conversation-mode='on'][data-selection-mode='true'] :is(#sb_conversation_header, #sb_conversation_form) {
+    display: none;
+}
+
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_selection_header {
+    grid-area: header;
+    min-inline-size: 0;
+    background: var(--sb-layer-view);
+    border-block-end: var(--sb-headerbar-shade);
+}
+
+#sheld[data-sb-conversation-mode='on'] #sb_conversation_selection_actions {
+    position: relative;
+    flex: 0 0 auto;
+    justify-content: center;
+    background: var(--sb-layer-view);
+}
+
+/* Per-message actions are off while messages are selected. */
+#sheld[data-sb-conversation-mode='on'][data-selection-mode='true'] :is(.sb-conversation-message-actions, .sb-conversation-mobile-menu-trigger) {
+    display: none;
+}
+
+/* A Shift-click would extend the browser's text selection over the rows between the two clicks. */
+#sheld[data-sb-conversation-mode='on'][data-selection-mode='true'] .sb-conversation-message {
+    -webkit-user-select: none;
+    user-select: none;
+    --sb-selection-gutter: 44px;
+    padding-inline-start: var(--sb-selection-gutter);
+    border-radius: var(--sb-radius-control);
+    cursor: pointer;
+}
+
+#sheld[data-sb-conversation-mode='on'] .sb-conversation-message > .sb-selection-check {
+    position: absolute;
+    inset-inline-start: 8px;
+    inset-block-start: 50%;
+    transform: translateY(-50%);
+}
+
+#sheld[data-sb-conversation-mode='on'][data-selection-mode='true'] .sb-conversation-message:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-message, .sb-conversation-picker, .sb-conversation-search-bar) {
     animation: none;
 }
