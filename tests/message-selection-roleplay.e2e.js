@@ -163,8 +163,70 @@ test.describe('roleplay Delete messages', () => {
         await expect.poll(() => saves.at(-1)?.allowShrink).toBe(true);
     });
 
+    test('a tail is cut in one step: one MESSAGE_DELETED with the new length, one save, and the itemized prompts of the cut messages go', async ({ page, baseURL }) => {
+        const { saves } = await openRoleplay(page, baseURL);
+        await page.evaluate(async () => {
+            const { itemizedPrompts } = await import('/scripts/itemized-prompts.js');
+            itemizedPrompts.push({ mesId: 2 }, { mesId: 5 }, { mesId: 7 });
+        });
+        await openDeleteMessages(page);
+        await mes(page, 5).locator('.mes_text').click();
+        await mes(page, 9).locator('.mes_text').click({ modifiers: ['Shift'] });
+        const savesBefore = saves.length;
+
+        await confirmDelete(page);
+        await expect.poll(() => page.evaluate(() => window.__deleted)).toEqual([5]);
+        expect(await page.evaluate(async () => (await import('/scripts/itemized-prompts.js')).itemizedPrompts.map(prompt => prompt.mesId))).toEqual([2]);
+        await expect.poll(() => saves.length).toBe(savesBefore + 1);
+        expect(saves.at(-1).allowShrink).toBe(true);
+        expect(saves.at(-1).chat.slice(1).map(message => message.mes)).toEqual(PLAIN_CHAT.slice(0, 5).map(item => item.mes));
+        // The new last message is an assistant message, so it takes the last_mes mark and the swipe controls, as after upstream's handler.
+        await expect(mes(page, 4)).toHaveClass(/last_mes/);
+        await expect(page.locator('#chat .last_mes .swipe_right')).toBeVisible();
+    });
+
+    test('Select All of a chat cuts it to nothing with one MESSAGE_DELETED', async ({ page, baseURL }) => {
+        const { saves } = await openRoleplay(page, baseURL);
+        await openDeleteMessages(page);
+        await page.locator('#sb_message_selection_header .sb-selection-select-all').click();
+
+        await confirmDelete(page);
+        await expect.poll(() => page.evaluate(() => window.__deleted)).toEqual([0]);
+        expect(await chatTexts(page)).toEqual([]);
+        await expect(page.locator(MES)).toHaveCount(0);
+        await expect.poll(() => saves.at(-1)?.allowShrink).toBe(true);
+    });
+
+    test('a tail that holds tool calls is cut in one step, with the tool calls', async ({ page, baseURL }) => {
+        await openRoleplay(page, baseURL, TOOL_CHAT);
+        await openDeleteMessages(page);
+        await mes(page, 8).locator('.mes_text').click();
+        await mes(page, 10).locator('.mes_text').click({ modifiers: ['Shift'] });
+        expect(await checkedIds(page)).toEqual(['8', '9', '10']);
+
+        await confirmDelete(page);
+        await expect.poll(() => page.evaluate(() => window.__deleted)).toEqual([8]);
+        expect(await chatTexts(page)).toEqual(['U0', 'C1', 'T2a', 'T2b', 'C4', 'U5', 'C6', 'U7']);
+    });
+
+    test('Select to End of a message that is not in the middle of anything ends the chat there, in one step', async ({ page, baseURL }) => {
+        await openRoleplay(page, baseURL);
+        await openDeleteMessages(page);
+        await mes(page, 3).locator('.mes_text').click();
+        await page.locator('#dialogue_del_mes [data-action-id="select-to-end"]').evaluate(button => button.click());
+        expect(await checkedIds(page)).toEqual(['3', '4', '5', '6', '7', '8', '9']);
+
+        await confirmDelete(page);
+        await expect.poll(() => page.evaluate(() => window.__deleted)).toEqual([3]);
+        expect(await mesIds(page)).toEqual(['0', '1', '2']);
+    });
+
     test('a block in the middle is spliced out, the rows renumber, and every message sends MESSAGE_DELETED once', async ({ page, baseURL }) => {
         const { saves } = await openRoleplay(page, baseURL);
+        await page.evaluate(async () => {
+            const { itemizedPrompts } = await import('/scripts/itemized-prompts.js');
+            itemizedPrompts.push({ mesId: 1 }, { mesId: 4 }, { mesId: 7 });
+        });
         await openDeleteMessages(page);
         await mes(page, 2).locator('.mes_text').click();
         await mes(page, 4).locator('.mes_text').click({ modifiers: ['Shift'] });
@@ -175,7 +237,10 @@ test.describe('roleplay Delete messages', () => {
         expect(await chatTexts(page)).toEqual(['Message 0', 'Message 1', 'Message 7', 'Message 8', 'Message 9']);
         expect(await mesIds(page)).toEqual(['0', '1', '2', '3', '4']);
         expect(await page.locator(MES).evaluateAll(rows => rows.map(node => node.querySelector('.mes_text')?.textContent?.trim()))).toEqual(['Message 0', 'Message 1', 'Message 7', 'Message 8', 'Message 9']);
-        expect(await page.evaluate(() => window.__deleted)).toHaveLength(5);
+        // A middle block goes one message at a time, so that the rows renumber; each event carries the length that the chat has after it.
+        expect(await page.evaluate(() => window.__deleted)).toEqual([9, 8, 7, 6, 5]);
+        // The prompt of a cut message goes, and the one of a message behind the block moves up with its message.
+        expect(await page.evaluate(async () => (await import('/scripts/itemized-prompts.js')).itemizedPrompts.map(prompt => prompt.mesId))).toEqual([1, 2]);
         await expect.poll(() => saves.at(-1)?.allowShrink).toBe(true);
         expect(saves.at(-1).chat.slice(1).map(message => message.mes)).toEqual(['Message 0', 'Message 1', 'Message 7', 'Message 8', 'Message 9']);
     });

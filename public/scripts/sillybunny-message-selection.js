@@ -1,8 +1,11 @@
 /* Roleplay's "Delete messages": the selection mode of the conversation timeline, on the chat's message rows. */
 
-import { chat, deleteMessage, saveChatConditional, showSwipeButtons } from '../script.js';
+import { chat, chat_metadata, chatElement, deleteMessage, removeRenderedMessagesFrom, saveChatConditional, showSwipeButtons } from '../script.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
+import { eventSource, event_types } from './events.js';
+import { deleteItemizedPromptForMessage } from './itemized-prompts.js';
 import { createMessageSelection } from './sillybunny-editor/message-selection.js';
+import { getMessageIndexes, getOwnerIndex, getTailStart } from './sillybunny-message-selection-utils.js';
 
 const EDITOR_SHELL_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261125a', id: 'deferred-editor-shell-css' };
 const HEADER_HOST_ID = 'sb_message_selection_header';
@@ -12,45 +15,9 @@ let controller = null;
 let deleteToolCalls = true;
 let onModeEnd = () => {};
 
-/** A tool call is its own message in the chat; it belongs to the assistant message that follows it. */
-function isToolCallMessage(message) {
-    return Boolean(message?.is_system) && Array.isArray(message.extra?.tool_invocations);
-}
-
-function isAssistantMessage(message) {
-    return Boolean(message) && !message.is_user && !message.is_system;
-}
-
-/** The index of the message that a row is selected and deleted with: its assistant message when it is a tool call of one. */
-function getOwnerIndex(index) {
-    if (!deleteToolCalls || !isToolCallMessage(chat[index])) {
-        return index;
-    }
-    let cursor = index;
-    while (isToolCallMessage(chat[cursor]) && cursor < chat.length - 1) {
-        cursor++;
-    }
-    return isAssistantMessage(chat[cursor]) ? cursor : index;
-}
-
 function getRowKey(row) {
     const index = Number(row.getAttribute('mesid'));
-    return Number.isInteger(index) ? String(getOwnerIndex(index)) : null;
-}
-
-/** Every chat index that the keys stand for, highest first, so that deleting one never moves the next. */
-function getMessageIndexes(keys) {
-    const indexes = new Set();
-    for (const key of keys) {
-        const owner = Number(key);
-        indexes.add(owner);
-        if (deleteToolCalls && isAssistantMessage(chat[owner])) {
-            for (let cursor = owner - 1; cursor >= 0 && isToolCallMessage(chat[cursor]); cursor--) {
-                indexes.add(cursor);
-            }
-        }
-    }
-    return [...indexes].sort((left, right) => right - left);
+    return Number.isInteger(index) ? String(getOwnerIndex(chat, index, deleteToolCalls)) : null;
 }
 
 function getRowLabel(row) {
@@ -60,12 +27,40 @@ function getRowLabel(row) {
 }
 
 /**
- * Deletes one message at a time through deleteMessage(): each call renumbers the rows, sends MESSAGE_DELETED and keeps
- * the itemized prompts in step, so a block in the middle of the chat is spliced out. One save follows, and the shrink is
- * the user's own, so the server's guard against an accidental empty save must let it through.
+ * Cuts the chat at a message, as the delete bar that this mode replaced did: the itemized prompts of the messages that go
+ * are dropped, the rows go, the chat ends there, and the chat is saved before anything hears of it. The shrink is the
+ * user's own, so the server's guard against an accidental empty save must let it through. The listeners of
+ * MESSAGE_DELETED hear it once, with the length the chat has now.
+ */
+async function cutTail(start) {
+    for (let index = chat.length - 1; index >= start; index--) {
+        deleteItemizedPromptForMessage(index);
+    }
+    removeRenderedMessagesFrom(start);
+    chat.length = start;
+    chat_metadata.tainted = true;
+    await saveChatConditional({ allowShrink: true });
+    chatElement.scrollTop(chatElement[0].scrollHeight);
+    await eventSource.emit(event_types.MESSAGE_DELETED, chat.length);
+    chatElement.find('.mes').removeClass('last_mes');
+    chatElement.find('.mes').last().addClass('last_mes');
+    showSwipeButtons();
+}
+
+/**
+ * A run that ends at the last message is cut in one step. Anything else goes one message at a time through
+ * deleteMessage(), because every message that stays behind the block has to move up: each call splices the chat array,
+ * renumbers the rows (`mesid` and the shown number), moves the itemized prompts of the later messages down, and sends
+ * MESSAGE_DELETED with the length that the chat has after it. One save follows.
  */
 async function deleteSelected(keys) {
-    for (const index of getMessageIndexes(keys)) {
+    const indexes = getMessageIndexes(chat, keys, deleteToolCalls);
+    const tailStart = getTailStart(indexes, chat.length);
+    if (tailStart >= 0) {
+        await cutTail(tailStart);
+        return;
+    }
+    for (const index of indexes) {
         await deleteMessage(index, undefined, false, false);
     }
     await saveChatConditional({ allowShrink: true });
@@ -94,7 +89,7 @@ function ensureController() {
         rowSelector: MESSAGE_ROW,
         getKey: getRowKey,
         rowLabel: getRowLabel,
-        countMessages: keys => getMessageIndexes(keys).length,
+        countMessages: keys => getMessageIndexes(chat, keys, deleteToolCalls).length,
         header: headerHost,
         actionBar,
         // The entry is Options > Delete messages; a long press or a right-click on a message keeps its meaning outside the mode.

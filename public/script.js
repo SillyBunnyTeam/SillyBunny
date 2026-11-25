@@ -3886,6 +3886,17 @@ export async function deleteLastMessage() {
     await eventSource.emit(event_types.MESSAGE_DELETED, deletedMessageId);
 }
 
+// SillyBunny: the one-step cut of sillybunny-message-selection.js removes rows without the per-message work of deleteMessage.
+/**
+ * Removes the rendered messages from an id on, and stops watching their sizes.
+ * @param {number} startId The id of the first message to remove.
+ */
+export function removeRenderedMessagesFrom(startId) {
+    const messageElements = chatElement.find('.mes').filter((_, element) => Number(element.getAttribute('mesid')) >= startId);
+    unobserveChatMessageResize(messageElements);
+    messageElements.remove();
+}
+
 function getMessageDeletionStartId(id, deleteToolCalls = true) {
     const message = chat[id];
     if (!deleteToolCalls || message?.is_user || message?.is_system) {
