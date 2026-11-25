@@ -5,7 +5,7 @@ import { normalizeConversationQuietHour } from '../../context.js';
 import { getConnectionProfiles, getUserPersonaStatus, getUserStatus, setUserPersonaStatus, setUserStatus } from '../../personas.js';
 import { readModeSettings, writeModeKey } from '../access.js';
 import { getPageTitle } from '../details-logic.js';
-import { createGroup, createPage, el } from '../page-kit.js';
+import { copyPlaceholder, createGroup, createPage, el } from '../page-kit.js';
 
 const STATUS_CHOICES = Object.freeze([
     { value: 'online', label: 'Online' },
@@ -83,6 +83,10 @@ export function buildPreferences({ nav }) {
         },
     });
 
+    // What the switch does is for the maintainer to say.
+    const lorebooks = createSwitchRow({ label: 'Use Character Lorebooks', field: 'lorebooks-enabled', checked: settings.lorebooks_enabled, onChange: value => writeModeKey('lorebooks_enabled', value) });
+    lorebooks.row.querySelector('.ds-row-text')?.append(copyPlaceholder('small', 'ds-row-subtitle'));
+
     clamp.append(
         createGroup({
             title: 'Replies',
@@ -90,7 +94,7 @@ export function buildPreferences({ nav }) {
             rows: [
                 createSwitchRow({ label: 'Simulate Reply Delay', field: 'simulate-reply-delay', checked: settings.simulate_reply_delay, onChange: value => writeModeKey('simulate_reply_delay', value) }),
                 createSelectRow({ select: createProfileSelect(settings.connection_profile), label: 'Connection Profile', field: 'connection-profile', onChange: value => writeModeKey('connection_profile', value) }),
-                createSwitchRow({ label: 'Use Character Lorebooks', field: 'lorebooks-enabled', checked: settings.lorebooks_enabled, onChange: value => writeModeKey('lorebooks_enabled', value) }),
+                lorebooks,
             ],
         }).section,
         createGroup({

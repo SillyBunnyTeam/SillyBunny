@@ -33,7 +33,11 @@ test.describe('General and the people of a conversation', () => {
             await expect(general.getByRole('listitem', { name: names[avatar] })).toBeVisible();
             await expect(general.getByRole('button', { name: `Remove ${names[avatar]}` })).toBeVisible();
         }
-        await expect(general.getByRole('button', { name: 'Add Member' })).toBeVisible();
+        const addMember = general.getByRole('button', { name: 'Add Member' });
+        await expect(addMember).toBeVisible();
+        // The row opens a page, so it is a button row with the start icon and the trailing arrow (DESIGN.md, Boxed-list rules), and no ellipsis in its label.
+        await expect(addMember.locator('.ds-row-label')).toHaveText('Add Member');
+        await expect(addMember.locator('.ds-row__chevron')).toHaveCount(1);
         await expect(general.locator('[data-sb-editor-field="chats"] [data-sb-details-count]')).toHaveText('2');
 
         await general.getByRole('radio', { name: 'Muted' }).check();
@@ -470,6 +474,9 @@ test.describe('Preferences', () => {
         await openPreferences(page);
         const preferences = shownPage(page);
         await expect(preferences.getByRole('button', { name: 'Back' })).toHaveCount(0);
+
+        // The explanation of the lorebooks switch is for the maintainer to write, and its place is kept.
+        await expect(preferences.locator('[data-sb-editor-field="lorebooks-enabled"] .ds-row-subtitle[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
 
         await preferences.getByRole('switch', { name: 'Simulate Reply Delay' }).uncheck();
         await expect.poll(async () => (await readModeSettings(page)).simulate_reply_delay).toBe(false);
