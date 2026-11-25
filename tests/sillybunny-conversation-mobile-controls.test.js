@@ -205,6 +205,14 @@ describe('Conversation mobile controls', () => {
         expect(getDeclarations(contrast, '.sb-conversation-message-actions')).toEqual({ 'box-shadow': 'var(--sb-osd-contrast-ring)' });
     });
 
+    test('the composer is a container, and its Emoji button is not drawn in a row that is narrower than a 360px composer', () => {
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer')).toMatchObject({ container: 'sb-conv-composer / inline-size' });
+        // 360px less the 8px of padding on each side in the pages layout: the entry keeps 144px beside four buttons.
+        const folded = findContainerRule('sb-conv-composer (max-width: 343px)');
+        expect(getDeclarations(folded, '.sb-conversation-composer-emoji')).toEqual({ display: 'none' });
+        expect(findContainerRule('sb-conv-composer (max-width: 359px)')).toBeUndefined();
+    });
+
     test('the drop hint is an accent ring inside a tonal fill, without a dashed border or an outer shadow', () => {
         const hint = getRuleDeclarations('.sb-conversation-drop-hint');
         expect(hint).toMatchObject({

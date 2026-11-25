@@ -1,0 +1,114 @@
+{
+    "data": {
+        "format": 1,
+        "emojibase": "18.0.0",
+        "integrity": "sha512-TPPRRYv2zPd0jKI+pTpMquwWNZXYAsC3IVsCMeg2X8y8fEzKwOks4/5bz0YavF5r6d71aGPpb6oDnUEwSLLMoA==",
+        "files": {
+            "default-names.js": {
+                "bytes": 3830,
+                "sha256": "c9db65a0e778dde83ad90909a13714f638e03730a7b827017ab472c67b4349c6"
+            },
+            "emoji-de.json": {
+                "bytes": 184801,
+                "sha256": "1ea6667fc4110beb9b7971836c0e8572abbc19969b87274aa0d1a2ed75e1aae3"
+            },
+            "emoji-en.json": {
+                "bytes": 173344,
+                "sha256": "a782fe395bcc7f4bd008d600ce1066ac866657c72222f0d6537dea5f821ac330"
+            },
+            "emoji-es.json": {
+                "bytes": 159799,
+                "sha256": "bd5f4007220c596c9b5df80c787caae9984e141d7c671189b6ffc932761e73c1"
+            },
+            "emoji-fr.json": {
+                "bytes": 195316,
+                "sha256": "f2d66025ba332eec4de0aca805eb0d0e0d3d4295a14f415227d277a76649f7a6"
+            },
+            "emoji-it.json": {
+                "bytes": 214937,
+                "sha256": "2fbacce341a857bf77eba2763857f4e7713b3499b8f318aafac418b38e5fe752"
+            },
+            "emoji-ja.json": {
+                "bytes": 179513,
+                "sha256": "0b6bf45730b26573109f827cc5adf57df3d91ff538a68330db174b420adcdbf2"
+            },
+            "emoji-ko.json": {
+                "bytes": 199916,
+                "sha256": "f63ad1a7bbff6c42f7d0c127675cf0eeb6919c537530a77ed4fe889535f6f594"
+            },
+            "emoji-nl.json": {
+                "bytes": 179544,
+                "sha256": "33b1a9fe4dc93903133ba81fdee25ddae4cbbd63192d434505641d748fc8e96a"
+            },
+            "emoji-pt.json": {
+                "bytes": 187763,
+                "sha256": "0e7aaf115454584780e8da07575795e63b912bc0771e1cf911416cbad447285a"
+            },
+            "emoji-ru.json": {
+                "bytes": 270827,
+                "sha256": "dfd084e8d9e3aff6ded10f07c46f1d7a124592ee6a177427b21dc21f52fe3048"
+            },
+            "emoji-th.json": {
+                "bytes": 270949,
+                "sha256": "c97a1354e2e8c195439811a9886624354219a0e8ecb06ac8d78eeeb3754c446d"
+            },
+            "emoji-uk.json": {
+                "bytes": 283172,
+                "sha256": "293ad3071fbda68bd9875076bd5afd7c3ccdac862e40bb2dc42e0ce0bb030976"
+            },
+            "emoji-vi.json": {
+                "bytes": 183622,
+                "sha256": "800bae4393444141905c86f3fd56ad31d54a1635f4740a8a91a800e66d604b98"
+            },
+            "emoji-zh-hant.json": {
+                "bytes": 144054,
+                "sha256": "561d16dd314365bbb3e4e74dd846764cdf384871418d4dbfc5338501bef5b468"
+            },
+            "emoji-zh.json": {
+                "bytes": 164311,
+                "sha256": "ac807e71741d71b6645f478404754636ab6c920b2a3bb1706f83587f6c251752"
+            },
+            "LICENSE-EMOJIBASE.txt": {
+                "bytes": 1075,
+                "sha256": "5c4e1582dcae9429a5d00ec0a64185c3a711f9757b2308fdf275d90b120f6149"
+            },
+            "LICENSE-UNICODE.txt": {
+                "bytes": 1995,
+                "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+            }
+        }
+    },
+    "font": {
+        "file": "SBEmoji-17.0.3-1.woff2",
+        "bytes": 609916,
+        "sha256": "590f720cc56fa50a9cf34b1e789ba9951de2be733329f5fd457633b9f9d64c60",
+        "glyphs": 27071,
+        "cmapEntries": 1451,
+        "coverage": {
+            "count": 3944,
+            "sha256": "a53e5685e7600df55887ebace9db096ec8b7dedc92f2db122b23526f786c59eb",
+            "notDrawn": 19,
+            "notDrawnVersions": [
+                18
+            ]
+        },
+        "squaredSvgs": [
+            "1f349.svg"
+        ],
+        "renamedSvgs": 972,
+        "twemoji": {
+            "commit": "b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+            "svgTreeSha256": "273bb74061af3a38558db66f25739373700a90a7319fd7e8c21c3c684914f25e"
+        },
+        "nanoemoji": "0.16.0",
+        "tools": {
+            "nanoemoji": "0.16.0",
+            "fonttools": "4.69.1",
+            "picosvg": "0.23.0",
+            "ufo2ft": "3.11.0",
+            "skia-pathops": "0.9.2",
+            "uharfbuzz": "0.57.0",
+            "brotli": "1.2.1"
+        }
+    }
+}
