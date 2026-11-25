@@ -279,7 +279,10 @@ export function formatWhen(timestamp, now = Date.now(), { locale, timeZone } = {
 // ---------------------------------------------------------------------------------------------------------------------
 // Signatures: what a page shows, as one string, so that a page is rebuilt only when it would look different
 
-/** What General draws. A message that arrives changes none of it, so an open page is not rebuilt under the user's hand. */
+/**
+ * What General draws apart from its Notifications row, which updates in place so that a press on it keeps its focus. A
+ * message that arrives changes none of it, so an open page is not rebuilt under the user's hand.
+ */
 export function getGeneralSignature(view) {
     return JSON.stringify([
         view.kind,
@@ -289,7 +292,6 @@ export function getGeneralSignature(view) {
         view.characters,
         view.extras,
         (view.chats ?? []).map(chat => [chat.id, chat.name]),
-        view.settings?.notifications_muted === true,
     ]);
 }
 

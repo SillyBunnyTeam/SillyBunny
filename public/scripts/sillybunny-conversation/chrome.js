@@ -98,6 +98,7 @@ import {
 } from './timeline-render.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
+import { ensureDetailsStyles } from './details/styles.js';
 
 const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261125c';
 const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261125a';
@@ -172,9 +173,11 @@ function ensureConversationStylesheet() {
     conversationStylesheetStatus = 'loading';
     insertConversationStylesheetLink();
     // The settings pane is built from shared rows whose button, text-area and insensitive styles live in the editor shell.
+    // The details window's sheet loads here too, so that it is there before the window's first page draws.
     Promise.all([
         loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID }),
         loadStylesheetAsync(EDITOR_SHELL_STYLESHEET_HREF, { id: EDITOR_SHELL_STYLESHEET_ID }),
+        ensureDetailsStyles(),
     ])
         .then(() => {
             conversationStylesheetStatus = 'ready';
@@ -399,6 +402,23 @@ function bindConversationZoomEscape() {
             event.stopPropagation();
         }
     }, true);
+}
+
+/**
+ * Opens the details window of a conversation. The window and its pages load on first use.
+ * @param {string} conversationId
+ * @param {{ page?: string, avatar?: string }} [options] See `openConversationDetails` in `details/window.js` for the pages.
+ * @returns {Promise<boolean>} Whether the window is open.
+ */
+export async function openConversationDetails(conversationId, options = {}) {
+    const { openConversationDetails: open } = await import('./details/window.js');
+    return open(conversationId, options);
+}
+
+/** Opens the mode-wide Preferences in the details window. */
+export async function openConversationPreferences() {
+    const { openConversationPreferences: open } = await import('./details/window.js');
+    return open();
 }
 
 export async function selectConversation(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
@@ -716,7 +736,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const chat = getConversationChats(avatar, { groupId }).find(item => item.id === chatId);
             if (avatar && chatId && chat) {
                 const name = await promptConversationText({
-                    title: 'Rename Branch',
+                    title: 'Rename Chat',
                     defaultValue: chat.name || 'Conversation',
                     confirmLabel: 'Rename',
                 });

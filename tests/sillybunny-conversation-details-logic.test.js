@@ -209,7 +209,11 @@ describe('details window: the signature of General', () => {
         expect(getGeneralSignature({ ...group('a.png', 'b.png'), avatar: 'avatar.png', chats: [{ id: 'c1', name: 'One' }] })).not.toBe(before);
         expect(getGeneralSignature({ ...group('a.png', 'c.png'), chats: [{ id: 'c1', name: 'One' }] })).not.toBe(before);
         expect(getGeneralSignature({ ...group('a.png', 'b.png'), chats: [{ id: 'c1', name: 'One' }, { id: 'c2', name: 'Two' }] })).not.toBe(before);
-        expect(getGeneralSignature({ ...group('a.png', 'b.png'), chats: [{ id: 'c1', name: 'One' }], settings: { notifications_muted: true } })).not.toBe(before);
+    });
+
+    test('leaves out the Notifications row, which changes in place', () => {
+        const chats = [{ id: 'c1', name: 'One' }];
+        expect(getGeneralSignature({ ...group('a.png', 'b.png'), chats, settings: { notifications_muted: true } })).toBe(getGeneralSignature({ ...group('a.png', 'b.png'), chats, settings: {} }));
     });
 
     test('stays the same while only a message arrives, so that an open page is not rebuilt under the user', () => {
