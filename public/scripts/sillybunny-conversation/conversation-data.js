@@ -129,6 +129,7 @@ export function createConversationData(adapter) {
     const listeners = new Set();
     const removalListeners = new Set();
     const chatReadListeners = new Set();
+    const loadListeners = new Set();
     const queuedEvents = new Map();
     let eventScheduled = false;
     let status = { state: 'idle', code: '', retryAt: 0 };
@@ -213,6 +214,27 @@ export function createConversationData(adapter) {
                 listener(address);
             } catch (error) {
                 console.error('Conversation data chat listener failed:', error);
+            }
+        }
+    }
+
+    /**
+     * Listeners run at once, each time the list and the state of the characters were read from the server (the start, a
+     * refresh, the read after a group was converted). What else the server changed with it, such as the folders that a
+     * conversion moved, is read again through this.
+     * @param {() => void} listener
+     */
+    function onLoad(listener) {
+        loadListeners.add(listener);
+        return () => loadListeners.delete(listener);
+    }
+
+    function announceLoad() {
+        for (const listener of [...loadListeners]) {
+            try {
+                listener();
+            } catch (error) {
+                console.error('Conversation data load listener failed:', error);
             }
         }
     }
@@ -1347,6 +1369,7 @@ export function createConversationData(adapter) {
         if (charactersAnswer.status === 200) {
             characterState = { version: charactersAnswer.json.version ?? 1, characters: charactersAnswer.json.characters ?? {} };
         }
+        announceLoad();
         return listAnswer.json;
     }
 
@@ -1510,6 +1533,7 @@ export function createConversationData(adapter) {
         removeMember,
         removeExtra,
         onRemoval,
+        onLoad,
         onChatRead,
         markRead,
         importLegacy,

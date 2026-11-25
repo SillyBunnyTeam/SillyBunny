@@ -13,7 +13,7 @@ const RELOAD_FLAG = 'sb_conversation_reloaded_after_migration';
 const TOAST_OPTIONS = Object.freeze({ escapeHtml: true });
 const LEGACY_STORE_PARTS = ['characters', 'groups', 'reminders', 'legacyThreadPersonaAssignments'];
 
-async function fetchJson(path, body, { keepalive = false } = {}) {
+export async function fetchJson(path, body, { keepalive = false } = {}) {
     // Loaded when the first request goes out, so that this module can be imported before the page's own modules are.
     const [{ getRequestHeaders }, { compressRequest }] = await Promise.all([import('../../script.js'), import('../request-compression.js')]);
     const text = JSON.stringify(body ?? {});
