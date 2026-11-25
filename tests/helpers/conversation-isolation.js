@@ -44,6 +44,10 @@ export async function isolateConversations(page, prefix = `qa-${randomUUID().sli
         if (Array.isArray(json?.conversations)) {
             json = { ...json, conversations: json.conversations.filter(conversation => String(conversation?.personaId ?? '').startsWith(prefix)) };
         }
+        // `/folders/get` answers the folders of every persona of the user, and the page sees only its own.
+        if (json?.personas && typeof json.personas === 'object' && !Array.isArray(json.personas)) {
+            json = { ...json, personas: Object.fromEntries(Object.entries(json.personas).filter(([personaId]) => personaId.startsWith(prefix))) };
+        }
         return route.fulfill({ status: response.status(), json: JSON.parse(JSON.stringify(json).split(prefix).join('')) });
     });
 }

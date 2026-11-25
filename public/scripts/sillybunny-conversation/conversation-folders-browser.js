@@ -21,20 +21,31 @@ export const conversationFolders = createConversationFolders({
     randomHex,
 });
 
-// A group that was converted into a direct conversation, a persona or a character that was deleted: the server moved or
-// dropped folder entries together with it, so the page reads the file again whenever it reads the conversations again.
-conversationData.onLoad(() => {
-    if (conversationFolders.status() === 'ready') {
-        void conversationFolders.refresh();
-    }
-});
+let hooksInstalled = false;
 
-const flushForLeaving = () => {
-    void conversationFolders.flush({ keepalive: true });
-};
-window.addEventListener('pagehide', flushForLeaving);
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-        flushForLeaving();
+/**
+ * Keeps the folders in step with the data module and writes what waits when the page is left. The workspace calls it when
+ * it binds its controls; it runs once.
+ */
+export function installConversationFoldersHooks() {
+    if (hooksInstalled || typeof window === 'undefined') {
+        return;
     }
-});
+    hooksInstalled = true;
+    // A group that was converted into a direct conversation, a persona or a character that was deleted: the server moved
+    // or dropped folder entries together with it, so the page reads the file again whenever it reads the conversations again.
+    conversationData.onLoad(() => {
+        if (conversationFolders.status() === 'ready') {
+            void conversationFolders.refresh();
+        }
+    });
+    const flushForLeaving = () => {
+        void conversationFolders.flush({ keepalive: true });
+    };
+    window.addEventListener('pagehide', flushForLeaving);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            flushForLeaving();
+        }
+    });
+}

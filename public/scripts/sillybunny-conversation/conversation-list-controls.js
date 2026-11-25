@@ -1,7 +1,8 @@
 /**
  * The behaviour of the conversation list that is not drawing: the row menu (right-click, long press, Shift+F10 and the
- * Menu key), the keyboard moves between sections, the Favorites heading, and the drag. Rows are found by their
- * conversation id, and every change goes through the data module, so a row never keeps a state of its own.
+ * Menu key), the keyboard moves between sections, the headings that open and close a section, and the drag. Rows are
+ * found by their conversation id, and every change goes through the data module (the favourite) or the folders module
+ * (the folder and the open state of a section), so a row never keeps a state of its own.
  */
 
 import { openActionMenu } from '../sillybunny-action-menu.js';
@@ -9,15 +10,25 @@ import { bindListKeyboard } from '../sillybunny-editor/list-rows.js';
 import { CHROME_IDS } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
 import { bindRowDrag } from './conversation-list-drag.js';
-import { markConversationUnread, setConversationFavorite, setConversationMuted } from './conversation-list-actions.js';
+import { markConversationUnread, setConversationFavorite, setConversationFolder, setConversationMuted } from './conversation-list-actions.js';
 import { buildRowMenuSections } from './conversation-menus.js';
-import { SECTION_FAVORITES, getSectionForMove, isFavoriteSection } from './conversation-list-model.js';
 import {
+    SECTION_CONVERSATIONS,
+    SECTION_FAVORITES,
+    adjacentSectionKey,
+    describeSectionMove,
+    folderIdOfSection,
+    getEntrySectionKey,
+    getSectionKeys,
+    planSectionMove,
+} from './conversation-list-model.js';
+import {
+    clearTemporaryOpen,
     findRow,
     getRowControl,
+    getTemporaryOpenKeys,
     highlightMovedRow,
-    isFavoritesCollapsed,
-    setFavoritesCollapsed,
+    setTemporaryOpen,
 } from './conversation-list-view.js';
 import { markConversationRead } from './notifications.js';
 
@@ -35,8 +46,10 @@ const FOCUS_RETURN_FRAMES = 60;
  * @param {(action: string, data?: Record<string, string|undefined>) => unknown} deps.runAction `runConversationAction` of `chrome.js`.
  * @param {(conversationId: string) => unknown} deps.openDetails `openConversationDetails` of `chrome.js`.
  * @param {() => void} deps.render Asks for the list to be drawn.
+ * @param {ReturnType<typeof import('./conversation-folders.js').createConversationFolders>} deps.folders The folders of the user.
+ * @param {() => string} deps.getPersonaId The persona whose list is drawn.
  */
-export function bindConversationListControls(list, { getEntries, runAction, openDetails, render }) {
+export function bindConversationListControls(list, { getEntries, runAction, openDetails, render, folders, getPersonaId }) {
     if (list.dataset.sbConversationListBound === 'true') {
         return;
     }
@@ -58,12 +71,74 @@ export function bindConversationListControls(list, { getEntries, runAction, open
     const entryOf = row => getEntries().find(entry => entry.id === row.dataset.conversationId) ?? null;
     const isSearching = () => list.dataset.searching === 'true';
 
-    function moveToSection(entry, favorite) {
-        if (entry.favorite === favorite || !setConversationFavorite(conversationData, entry.id, favorite)) {
+    const getLayout = () => folders.layout(getPersonaId());
+
+    /** Whether a section shows open now: stored open, or open for the length of a drag or of a key move. */
+    function isSectionOpen(key) {
+        if (key === SECTION_CONVERSATIONS) {
+            return true;
+        }
+        const layout = getLayout();
+        const stored = key === SECTION_FAVORITES ? layout.favoritesExpanded : layout.folders.find(folder => folder.id === folderIdOfSection(key))?.expanded;
+        return stored === true || getTemporaryOpenKeys().includes(key);
+    }
+
+    /** Stores the open state of Favorites or of a folder. The folders module throws while it is not loaded, and the list is not drawn then. */
+    function storeSectionOpen(key, open) {
+        try {
+            if (key === SECTION_FAVORITES) {
+                folders.setFavoritesExpanded(getPersonaId(), open);
+            } else {
+                folders.updateFolder(getPersonaId(), folderIdOfSection(key), { expanded: open });
+            }
+        } catch (error) {
+            console.warn('Conversation Mode: a section could not be opened or closed', error);
+        }
+    }
+
+    function toggleSection(key) {
+        if (getTemporaryOpenKeys().includes(key)) {
+            // What shows open is not what is stored: a click closes what the user sees.
+            setTemporaryOpen(key, false);
+        } else {
+            storeSectionOpen(key, !isSectionOpen(key));
+        }
+        render();
+    }
+
+    /**
+     * Moves a row to a section, and announces it. Alt, a drop and the row's menu all come here, so the favourite flag and the
+     * folder change together, as `planSectionMove()` says.
+     * @returns {boolean} False when the row is there already, or the change could not be made.
+     */
+    function moveToSection(entry, targetKey) {
+        const plan = planSectionMove(entry, targetKey);
+        if (!plan) {
+            return false;
+        }
+        if (plan.favorite !== entry.favorite && !setConversationFavorite(conversationData, entry.id, plan.favorite)) {
+            return false;
+        }
+        if (plan.folderId !== entry.folderId && !setConversationFolder(folders, getPersonaId(), entry.id, plan.folderId)) {
             return false;
         }
         highlightMovedRow(list, entry.id);
-        announce(`${entry.name} ${favorite ? 'added to' : 'removed from'} Favorites`);
+        announce(describeSectionMove(entry, plan, getLayout().folders));
+        render();
+        return true;
+    }
+
+    /**
+     * Add to Favorites and Remove From Favorites change the flag and nothing else: a favourite keeps its folder, so that the
+     * row returns to it when it is not one any more.
+     */
+    function setFavoriteFlag(entry, favorite) {
+        if (entry.favorite === favorite || !setConversationFavorite(conversationData, entry.id, favorite)) {
+            return false;
+        }
+        const home = favorite ? null : getLayout().folders.find(folder => folder.id === entry.folderId);
+        highlightMovedRow(list, entry.id);
+        announce(favorite ? `${entry.name} added to Favorites` : home ? `${entry.name} moved to ${home.name}` : `${entry.name} removed from Favorites`);
         render();
         return true;
     }
@@ -97,7 +172,7 @@ export function bindConversationListControls(list, { getEntries, runAction, open
     const rowActions = {
         markRead: entry => void markConversationRead(entry.avatar, { groupId: entry.groupId }),
         markUnread: entry => void markConversationUnread(conversationData, entry.id),
-        setFavorite: (entry, favorite) => void moveToSection(entry, favorite),
+        setFavorite: (entry, favorite) => void setFavoriteFlag(entry, favorite),
         setMuted: (entry, muted) => {
             setConversationMuted(conversationData, entry.id, muted);
             render();
@@ -116,13 +191,17 @@ export function bindConversationListControls(list, { getEntries, runAction, open
     }
 
     // Alt with an arrow is the fork's move key (DESIGN.md, Reordering). The sections sort themselves, so a move is a
-    // change of section: up and to the first place go to Favorites, down and to the last place go to Conversations.
+    // change of section: to the one above or below in the order of the list, or with Home and End to the first or the last.
     bindListKeyboard(list, {
         rowSelector: '[data-sb-list-key]',
         keySourceSelector: `${MENU_KEYS_SELECTOR}, .sb-conversation-list-heading-button`,
         onMove: (row, direction) => {
             const entry = row.dataset.conversationId && !isSearching() ? entryOf(row) : null;
-            return entry ? moveToSection(entry, isFavoriteSection(getSectionForMove(direction))) : false;
+            if (!entry) {
+                return false;
+            }
+            const target = adjacentSectionKey(getSectionKeys(getLayout().folders), getEntrySectionKey(entry), direction);
+            return target ? moveToSection(entry, target) : false;
         },
     });
 
@@ -160,9 +239,10 @@ export function bindConversationListControls(list, { getEntries, runAction, open
     });
 
     list.addEventListener('click', (event) => {
-        if (event.target instanceof Element && event.target.closest('.sb-conversation-list-heading-button')) {
-            setFavoritesCollapsed(!isFavoritesCollapsed());
-            render();
+        const button = event.target instanceof Element ? event.target.closest('.sb-conversation-list-heading-button') : null;
+        // While a search filters, every section that shows is open and its heading does not toggle.
+        if (button instanceof HTMLElement && button.dataset.collapsible !== 'false') {
+            toggleSection(button.closest(SECTION_SELECTOR)?.dataset.section ?? '');
         }
     });
 
@@ -173,14 +253,28 @@ export function bindConversationListControls(list, { getEntries, runAction, open
         getSectionOfRow: row => row.closest(SECTION_SELECTOR)?.dataset.section ?? '',
         onDrop: (row, section) => {
             const entry = entryOf(row);
-            if (entry && moveToSection(entry, isFavoriteSection(section))) {
+            if (!entry || !planSectionMove(entry, section)) {
+                return;
+            }
+            // A drop into a closed section opens it, and the open is stored, so that the row stays in sight with its highlight.
+            if (!isSectionOpen(section) || getTemporaryOpenKeys().includes(section)) {
+                storeSectionOpen(section, true);
+            }
+            clearTemporaryOpen();
+            if (moveToSection(entry, section)) {
                 getRowControl(row)?.focus({ preventScroll: true });
             }
         },
         onMenu: (row, point) => openRowMenu(row, { point }),
+        // Resting on a closed section shows it open for the length of the drag, so that the stored state of a section that
+        // the pointer only crossed does not change.
         onHoldOver: (section) => {
-            if (section === SECTION_FAVORITES && isFavoritesCollapsed()) {
-                setFavoritesCollapsed(false);
+            if (!isSectionOpen(section) && setTemporaryOpen(section, true)) {
+                render();
+            }
+        },
+        onDragEnd: () => {
+            if (clearTemporaryOpen()) {
                 render();
             }
         },

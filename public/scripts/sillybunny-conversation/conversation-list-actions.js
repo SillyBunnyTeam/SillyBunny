@@ -11,6 +11,21 @@ export function setConversationFavorite(data, conversationId, favorite) {
 }
 
 /**
+ * Files a conversation in a folder of its persona, or takes it out of its folder.
+ * @param {{ setMembers: (personaId: string, conversationIds: string[], folderId: string|null) => boolean }} folders
+ * @param {string} folderId A folder of the persona, or an empty string for none.
+ * @returns {boolean} False when the folders are not loaded, or the folder is not one of the persona's.
+ */
+export function setConversationFolder(folders, personaId, conversationId, folderId) {
+    try {
+        folders.setMembers(personaId, [conversationId], folderId || null);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Notifications are All or Muted. The setting is stored only while it differs from the default, so Unmute removes the key.
  * @returns {boolean} False when the conversation is not in the cache.
  */

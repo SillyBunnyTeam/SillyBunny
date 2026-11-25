@@ -428,7 +428,8 @@ test.describe('moving a row between the sections', () => {
         await heading.click();
         await expect(heading).toHaveAttribute('aria-expanded', 'false');
         await expect(rowNamed(page, 'Assistant Reisen')).toBeHidden();
-        await expect(badge).toHaveText('2');
+        // The number is what shows; the word after it is for assistive technology.
+        await expect(badge).toHaveText('2 unread');
 
         await heading.focus();
         await page.keyboard.press('Enter');

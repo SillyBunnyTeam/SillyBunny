@@ -364,7 +364,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     outline: none;
 }
 
-/* ---------- Sections: Favorites (collapsible, shown while it has rows) and Conversations ---------- */
+/* ---------- Sections: Favorites (collapsible, shown while it has rows), one for each folder (collapsible), and Conversations ---------- */
 .sb-conversation-list-section {
     min-inline-size: 0;
     display: flex;
@@ -373,12 +373,12 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.sb-conversation-list-section[data-section='favorites'][data-empty='true'] {
+.sb-conversation-list-section[data-hide-empty='true'][data-empty='true'] {
     display: none;
 }
 
-/* A drag shows the empty Favorites as a drop zone, so that the first favourite can be dropped. */
-.sb-conversation-list-items[data-dragging='true'] .sb-conversation-list-section[data-section='favorites'][data-empty='true'] {
+/* A drag shows an empty Favorites or Conversations as a drop zone, so that the first favourite can be dropped. While a search filters, the drag is off. */
+.sb-conversation-list-items[data-dragging='true'] .sb-conversation-list-section[data-hide-empty='true'][data-empty='true'] {
     display: flex;
 }
 
@@ -446,6 +446,31 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 
 .sb-conversation-list-section[data-collapsed='true'] .sb-conversation-list-heading-button > i {
     transform: rotate(-90deg);
+}
+
+/* A folder's colour dot, as the dot of the lists of characters, groups and personas. */
+.sb-conversation-list-folder-dot {
+    flex: 0 0 auto;
+    inline-size: 10px;
+    block-size: 10px;
+    border-radius: 50%;
+    background: var(--sb-folder-color, var(--sb-input-placeholder));
+}
+
+/* How many rows a folder shows; the unread badge of a closed folder follows it. */
+.sb-conversation-list-heading-count {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+.sb-conversation-list-heading-count + .sb-conversation-list-heading-badge {
+    margin-inline-start: 0;
+}
+
+/* While a search filters, a heading shows what is open and does not toggle it. */
+.sb-conversation-list-heading-button[data-collapsible='false'] {
+    cursor: default;
 }
 
 /* A collapsed section tells that something in it is unread. */
@@ -583,6 +608,10 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 
 /* Forced colours remove box shadows and fills, so the drop ring, the highlight and the lift are drawn as outlines. */
 @media (forced-colors: active) {
+    .sb-conversation-list-folder-dot {
+        outline: 1px solid CanvasText;
+    }
+
     .sb-conversation-list-section.is-drop-target {
         outline: 2px solid Highlight;
         outline-offset: -2px;

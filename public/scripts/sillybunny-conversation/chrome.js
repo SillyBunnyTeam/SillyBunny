@@ -31,6 +31,7 @@ import {
     updateConversationHeader,
 } from './interface.js';
 import { bindConversationListControls } from './conversation-list-controls.js';
+import { conversationFolders, installConversationFoldersHooks } from './conversation-folders-browser.js';
 import { buildComposerMenuSections, buildHeaderMenuSections, buildMainMenuSections, buildNewMenuSections } from './conversation-menus.js';
 import { setConversationListQuery } from './conversation-list-view.js';
 import { getCharacterForAvatar } from './media.js';
@@ -750,6 +751,14 @@ export function bindConversationChromeControls(sheld) {
     }
 
     sheld.dataset.sbConversationChromeBound = 'true';
+    // The folders are read on the first open, in step with the list, and never at startup.
+    installConversationFoldersHooks();
+    conversationFolders.subscribe((event) => {
+        if (event.type === 'folders' || event.type === 'status') {
+            scheduleConversationListRender();
+        }
+    });
+    void conversationFolders.load();
     initializeConversationSelection();
     sheld.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
@@ -912,6 +921,8 @@ export function bindConversationChromeControls(sheld) {
             runAction: runConversationAction,
             openDetails: openConversationDetails,
             render: scheduleConversationListRender,
+            folders: conversationFolders,
+            getPersonaId: getConversationPersonaId,
         });
     }
 

@@ -20,6 +20,7 @@ const entry = (id, overrides = {}) => ({
     preview: `Preview ${id}`,
     lastMessageRole: 'character',
     active: false,
+    folderId: '',
     avatar: `${id}.png`,
     characterIndex: '0',
     groupId: '',
@@ -31,14 +32,18 @@ const entry = (id, overrides = {}) => ({
 let list;
 
 const rowIds = section => [...list.querySelectorAll(`[data-section="${section}"] .sb-conversation-list-row`)].map(row => row.dataset.conversationId);
-const render = entries => view.renderConversationListView(list, entries);
+const folder = (id, name = id, overrides = {}) => ({ id, name, color: '', expanded: true, ...overrides });
+const layoutOf = (folders = [], favoritesExpanded = true) => ({ folders, favoritesExpanded });
+const render = (entries, layout = layoutOf()) => view.renderConversationListView(list, entries, layout);
+const sectionKeys = () => [...list.querySelectorAll('.sb-conversation-list-section')].map(section => section.dataset.section);
+const heading = key => list.querySelector(`[data-section="${key}"] .sb-conversation-list-heading-button`);
 
 beforeEach(() => {
     document.body.replaceChildren();
     list = document.createElement('div');
     document.body.append(list);
     view.setConversationListQuery('');
-    view.setFavoritesCollapsed(false);
+    view.clearTemporaryOpen();
 });
 
 describe('drawing the sections', () => {
@@ -170,16 +175,32 @@ describe('keeping the nodes of the rows', () => {
 
 describe('Favorites collapsing', () => {
     test('a collapsed section says so, and its heading carries the unread total of its unmuted rows', () => {
-        view.setFavoritesCollapsed(true);
-
-        render([entry('a', { favorite: true, unread: 2 }), entry('b', { favorite: true, unread: 5, muted: true }), entry('c')]);
+        render([entry('a', { favorite: true, unread: 2 }), entry('b', { favorite: true, unread: 5, muted: true }), entry('c')], layoutOf([], false));
 
         const button = list.querySelector('.sb-conversation-list-heading-button');
         expect(button.getAttribute('aria-expanded')).toBe('false');
         expect(list.querySelector('[data-section="favorites"]').dataset.collapsed).toBe('true');
         const badge = button.querySelector('.sb-conversation-list-heading-badge');
         expect(badge.hidden).toBe(false);
-        expect(badge.textContent).toBe('2');
+        expect(badge.firstChild.textContent).toBe('2');
+        expect(badge.querySelector('.sr-only').textContent).toBe(' unread');
+        expect(rowIds('favorites')).toEqual([]);
+    });
+
+    test('a section that is open for now shows its rows although it is stored closed, and the render is told by the view key', () => {
+        const before = view.getConversationListViewKey();
+
+        expect(view.setTemporaryOpen('favorites', true)).toBe(true);
+        expect(view.setTemporaryOpen('favorites', true)).toBe(false);
+        render([entry('a', { favorite: true })], layoutOf([], false));
+
+        expect(rowIds('favorites')).toEqual(['a']);
+        expect(view.getConversationListViewKey()).not.toBe(before);
+        expect(view.getTemporaryOpenKeys()).toEqual(['favorites']);
+        expect(view.clearTemporaryOpen()).toBe(true);
+        expect(view.clearTemporaryOpen()).toBe(false);
+        render([entry('a', { favorite: true })], layoutOf([], false));
+        expect(rowIds('favorites')).toEqual([]);
     });
 
     test('an open section shows no badge on its heading', () => {
@@ -190,38 +211,224 @@ describe('Favorites collapsing', () => {
     });
 });
 
+describe('the folders', () => {
+    const folders = [folder('f1', 'Work', { color: '#abc' }), folder('f2', 'Friends')];
+
+    test('are sections between Favorites and Conversations, in the stored order, each with its heading, its dot and its count', () => {
+        render([entry('a', { folderId: 'f1' }), entry('b', { folderId: 'f1' }), entry('c')], layoutOf(folders));
+
+        expect(sectionKeys()).toEqual(['favorites', 'folder:f1', 'folder:f2', 'conversations']);
+        expect([...list.querySelectorAll('.sb-conversation-list-heading-label')].map(label => label.textContent)).toEqual(['Favorites', 'Work', 'Friends', 'Conversations']);
+        expect(rowIds('folder:f1')).toEqual(['a', 'b']);
+        expect(rowIds('folder:f2')).toEqual([]);
+        expect(rowIds('conversations')).toEqual(['c']);
+        expect(list.querySelector('[data-section="folder:f1"] .sb-conversation-list-heading-count').textContent).toBe('2');
+        expect(list.querySelector('[data-section="folder:f2"] .sb-conversation-list-heading-count').textContent).toBe('0');
+        expect(list.querySelector('[data-section="folder:f1"] .sb-conversation-list-folder-dot').style.getPropertyValue('--sb-folder-color')).toBe('#abc');
+        expect(list.querySelector('[data-section="folder:f2"] .sb-conversation-list-folder-dot').style.getPropertyValue('--sb-folder-color')).toBe('');
+    });
+
+    test('have a heading that is a button of the roving list, named by the folder and keyed by its section', () => {
+        render([], layoutOf(folders));
+
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('true');
+        expect(heading('folder:f1').closest('.sb-conversation-list-heading').dataset.sbListKey).toBe('heading:folder:f1');
+        expect(heading('folder:f1').closest('.sb-conversation-list-heading').getAttribute('aria-level')).toBe('2');
+        expect(heading('conversations')).toBeNull();
+        expect(list.querySelector('[data-section="folder:f1"] .sb-conversation-list-rows').getAttribute('aria-label')).toBe('Work');
+    });
+
+    test('show while they are empty, and Favorites and Conversations hide while they are empty and rows are elsewhere', () => {
+        render([entry('a', { folderId: 'f1' })], layoutOf(folders));
+
+        expect(list.querySelector('[data-section="folder:f2"]').dataset.empty).toBe('true');
+        expect(list.querySelector('[data-section="folder:f2"]').dataset.hideEmpty).toBe('false');
+        expect(list.querySelector('[data-section="favorites"]').dataset.hideEmpty).toBe('true');
+        expect(list.querySelector('[data-section="conversations"]').dataset.empty).toBe('true');
+        expect(list.querySelector('[data-section="conversations"]').dataset.hideEmpty).toBe('true');
+    });
+
+    test('Conversations keeps showing when the list has no row at all, for the status page that it holds', () => {
+        render([], layoutOf(folders));
+
+        expect(list.querySelector('[data-section="conversations"]').dataset.hideEmpty).toBe('false');
+        expect(list.querySelector('.sb-conversation-list-empty').hidden).toBe(false);
+    });
+
+    test('name the drop zone of each section in the hint that a drag shows', () => {
+        render([], layoutOf(folders));
+
+        const hints = [...list.querySelectorAll('.sb-conversation-list-zone-hint')].map(hint => hint.textContent);
+        expect(hints).toEqual(['Drop here to add to Favorites', 'Drop here to add to Work', 'Drop here to add to Friends', 'Drop here to remove from its folder']);
+    });
+
+    test('a row that moves from one folder to another, or to Favorites, is the same node, and keeps focus', () => {
+        render([entry('a', { folderId: 'f1' }), entry('b')], layoutOf(folders));
+        const a = list.querySelector('[data-conversation-id="a"]');
+        const button = a.querySelector('.sb-conversation-list-item');
+        button.focus();
+
+        render([entry('a', { folderId: 'f2' }), entry('b')], layoutOf(folders));
+        expect(rowIds('folder:f2')).toEqual(['a']);
+        expect(list.querySelector('[data-conversation-id="a"]')).toBe(a);
+        expect(document.activeElement).toBe(button);
+
+        render([entry('a', { folderId: 'f2', favorite: true }), entry('b')], layoutOf(folders));
+        expect(rowIds('favorites')).toEqual(['a']);
+        expect(rowIds('folder:f2')).toEqual([]);
+        expect(list.querySelector('[data-conversation-id="a"]')).toBe(a);
+        expect(document.activeElement).toBe(button);
+    });
+
+    test('a favourite that keeps its folder goes back to the folder when it is not a favourite any more', () => {
+        render([entry('a', { favorite: true, folderId: 'f1' })], layoutOf(folders));
+        expect(rowIds('folder:f1')).toEqual([]);
+
+        render([entry('a', { favorite: false, folderId: 'f1' })], layoutOf(folders));
+
+        expect(rowIds('folder:f1')).toEqual(['a']);
+        expect(rowIds('favorites')).toEqual([]);
+    });
+
+    test('a closed folder has no rows in the document, keeps their nodes, and carries the unread count of the rows it holds', () => {
+        const closed = [folder('f1', 'Work', { expanded: false })];
+        render([entry('a', { folderId: 'f1', unread: 2 }), entry('b', { folderId: 'f1', unread: 3, muted: true }), entry('c', { folderId: 'f1' })], layoutOf(closed));
+
+        expect(rowIds('folder:f1')).toEqual([]);
+        expect(list.querySelector('[data-section="folder:f1"]').dataset.collapsed).toBe('true');
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('false');
+        const badge = heading('folder:f1').querySelector('.sb-conversation-list-heading-badge');
+        expect(badge.hidden).toBe(false);
+        expect(badge.firstChild.textContent).toBe('2');
+        expect(heading('folder:f1').querySelector('.sb-conversation-list-heading-count').textContent).toBe('3');
+
+        render([entry('a', { folderId: 'f1', unread: 2 }), entry('b', { folderId: 'f1', unread: 3, muted: true }), entry('c', { folderId: 'f1' })], layoutOf([folder('f1', 'Work')]));
+        expect(rowIds('folder:f1')).toEqual(['a', 'b', 'c']);
+        expect(heading('folder:f1').querySelector('.sb-conversation-list-heading-badge').hidden).toBe(true);
+    });
+
+    test('keep the node of a row across the close and the open of their folder', () => {
+        const entries = [entry('a', { folderId: 'f1' })];
+        render(entries, layoutOf([folder('f1')]));
+        const a = list.querySelector('[data-conversation-id="a"]');
+
+        render(entries, layoutOf([folder('f1', 'f1', { expanded: false })]));
+        render(entries, layoutOf([folder('f1')]));
+
+        expect(list.querySelector('[data-conversation-id="a"]')).toBe(a);
+    });
+
+    test('draw again when a folder is renamed or recoloured, and the section of a deleted folder leaves with it', () => {
+        render([entry('a', { folderId: 'f1' })], layoutOf(folders));
+        const section = list.querySelector('[data-section="folder:f2"]');
+
+        render([entry('a', { folderId: 'f1' })], layoutOf([folder('f1', 'Renamed', { color: '#fff' })]));
+
+        expect(sectionKeys()).toEqual(['favorites', 'folder:f1', 'conversations']);
+        expect(section.isConnected).toBe(false);
+        expect(heading('folder:f1').querySelector('.sb-conversation-list-heading-label').textContent).toBe('Renamed');
+        expect(list.querySelector('[data-section="folder:f1"] .sb-conversation-list-folder-dot').style.getPropertyValue('--sb-folder-color')).toBe('#fff');
+    });
+
+    test('put the rows of a deleted folder in Conversations, as the same nodes', () => {
+        render([entry('a', { folderId: 'f1' })], layoutOf(folders));
+        const a = list.querySelector('[data-conversation-id="a"]');
+
+        render([entry('a')], layoutOf([folder('f2')]));
+
+        expect(rowIds('conversations')).toEqual(['a']);
+        expect(list.querySelector('[data-conversation-id="a"]')).toBe(a);
+    });
+
+    test('keep the focus of a heading when the folders change around it', () => {
+        render([], layoutOf(folders));
+        const button = heading('folder:f2');
+        button.focus();
+
+        render([entry('a')], layoutOf([folder('f0'), ...folders]));
+
+        expect(sectionKeys()).toEqual(['favorites', 'folder:f0', 'folder:f1', 'folder:f2', 'conversations']);
+        expect(document.activeElement).toBe(button);
+    });
+
+    test('a section that is open for now shows its rows although its folder is stored closed', () => {
+        view.setTemporaryOpen('folder:f1', true);
+
+        render([entry('a', { folderId: 'f1' })], layoutOf([folder('f1', 'Work', { expanded: false })]));
+
+        expect(rowIds('folder:f1')).toEqual(['a']);
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('true');
+    });
+});
+
 describe('a search', () => {
-    test('shows the matches in one list and leaves the other rows out of the document without destroying them', () => {
-        render([entry('a', { name: 'Seraphina' }), entry('b', { name: 'Reisen', favorite: true }), entry('c', { name: 'Tewi' })]);
+    const folders = [folder('f1', 'Work', { expanded: false }), folder('f2', 'Friends')];
+    const entries = () => [
+        entry('a', { name: 'Seraphina', folderId: 'f1' }),
+        entry('b', { name: 'Reisen', favorite: true, folderId: 'f1' }),
+        entry('c', { name: 'Tewi' }),
+        entry('d', { name: 'Tewi Two', folderId: 'f1' }),
+    ];
+
+    test('groups the matches under their sections, opens the folder that has one, hides the sections that have none and leaves the other rows out of the document without destroying them', () => {
+        render(entries(), layoutOf(folders));
         const reisen = list.querySelector('[data-conversation-id="b"]');
 
-        view.setConversationListQuery('rei');
-        render([entry('a', { name: 'Seraphina' }), entry('b', { name: 'Reisen', favorite: true }), entry('c', { name: 'Tewi' })]);
+        view.setConversationListQuery('tewi');
+        render(entries(), layoutOf(folders));
 
         expect(list.dataset.searching).toBe('true');
         expect(rowIds('favorites')).toEqual([]);
-        expect(rowIds('conversations')).toEqual(['b']);
+        expect(rowIds('folder:f1')).toEqual(['d']);
+        expect(rowIds('conversations')).toEqual(['c']);
+        expect(heading('folder:f1').getAttribute('aria-expanded')).toBe('true');
+        expect(heading('folder:f1').dataset.collapsible).toBe('false');
+        expect(heading('folder:f1').querySelector('.sb-conversation-list-heading-count').textContent).toBe('1');
+        expect(list.querySelector('[data-section="folder:f2"]').dataset.hideEmpty).toBe('true');
+        expect(list.querySelector('[data-section="favorites"]').dataset.hideEmpty).toBe('true');
         expect(list.querySelector('[data-conversation-id="a"]')).toBeNull();
 
         view.setConversationListQuery('');
-        render([entry('a', { name: 'Seraphina' }), entry('b', { name: 'Reisen', favorite: true }), entry('c', { name: 'Tewi' })]);
+        render(entries(), layoutOf(folders));
         expect(rowIds('favorites')).toEqual(['b']);
         expect(list.querySelector('[data-conversation-id="b"]')).toBe(reisen);
-        expect(rowIds('conversations')).toEqual(['a', 'c']);
+        expect(rowIds('folder:f1')).toEqual([]);
+        expect(rowIds('conversations')).toEqual(['c']);
+        expect(heading('folder:f1').dataset.collapsible).toBe('true');
     });
 
-    test('says so when nothing matches, and invites a first conversation when there are none', () => {
-        render([entry('a', { name: 'Seraphina' })]);
+    test('puts a favourite that matches in Favorites and not in its folder', () => {
+        view.setConversationListQuery('rei');
+        render(entries(), layoutOf(folders));
+
+        expect(rowIds('favorites')).toEqual(['b']);
+        expect(rowIds('folder:f1')).toEqual([]);
+        expect(heading('favorites').getAttribute('aria-expanded')).toBe('true');
+    });
+
+    test('shows no unread badge on a heading while it filters, because every section it shows is open', () => {
+        view.setConversationListQuery('sera');
+        render([entry('a', { name: 'Seraphina', folderId: 'f1', unread: 4 })], layoutOf(folders));
+
+        expect(heading('folder:f1').querySelector('.sb-conversation-list-heading-badge').hidden).toBe(true);
+    });
+
+    test('says so when nothing matches, shows no empty folder, and invites a first conversation when there are none', () => {
+        render([entry('a', { name: 'Seraphina' })], layoutOf(folders));
         view.setConversationListQuery('zzz');
-        render([entry('a', { name: 'Seraphina' })]);
+        render([entry('a', { name: 'Seraphina' })], layoutOf(folders));
         expect(list.querySelector('.sb-conversation-list-empty').hidden).toBe(false);
         expect(list.querySelector('.sb-conversation-list-empty .sb-status-page__title').textContent).toBe('No Conversations Found');
+        expect(list.querySelector('[data-section="conversations"]').dataset.hideEmpty).toBe('false');
+        for (const key of ['favorites', 'folder:f1', 'folder:f2']) {
+            expect(list.querySelector(`[data-section="${key}"]`).dataset.hideEmpty).toBe('true');
+        }
 
         view.setConversationListQuery('');
-        render([]);
+        render([], layoutOf(folders));
         expect(list.querySelector('.sb-conversation-list-empty .sb-status-page__title').textContent).toBe('Use + to Start a Conversation');
 
-        render([entry('a')]);
+        render([entry('a')], layoutOf(folders));
         expect(list.querySelector('.sb-conversation-list-empty').hidden).toBe(true);
     });
 });

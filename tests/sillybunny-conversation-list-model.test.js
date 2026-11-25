@@ -3,73 +3,269 @@ import { describe, expect, test } from '@jest/globals';
 const {
     SECTION_CONVERSATIONS,
     SECTION_FAVORITES,
+    adjacentSectionKey,
     buildListSections,
     describeConversationRow,
+    describeFolderChange,
     describeHeaderSubtitle,
+    describeSectionMove,
+    folderIdOfSection,
+    folderSectionKey,
+    getEntrySectionKey,
     getReadToggle,
-    getSectionForMove,
+    getSectionKeys,
     getUnreadMarkerFor,
-    isFavoriteSection,
+    planFolderChange,
+    planSectionMove,
     resolveConversationName,
 } = await import('../public/scripts/sillybunny-conversation/conversation-list-model.js');
 
-const entry = (id, overrides = {}) => ({ id, name: id, favorite: false, muted: false, unread: 0, lastMessageRole: 'character', active: false, ...overrides });
+const entry = (id, overrides = {}) => ({ id, name: id, favorite: false, folderId: '', muted: false, unread: 0, lastMessageRole: 'character', active: false, ...overrides });
+const folder = (id, name = id, overrides = {}) => ({ id, name, color: '', expanded: true, ...overrides });
+const ids = section => section.entries.map(row => row.id);
+const byKey = (result, key) => result.sections.find(section => section.key === key);
 
-describe('the sections of the list', () => {
-    test('a favourite goes to Favorites and the rest to Conversations, each in the order the data module gave', () => {
+describe('the sections of the list with no folder', () => {
+    test('are Favorites and Conversations: a favourite goes to Favorites and the rest to Conversations, each in the order the data module gave', () => {
         const rows = [entry('a'), entry('b', { favorite: true }), entry('c'), entry('d', { favorite: true })];
 
-        const sections = buildListSections(rows);
+        const result = buildListSections(rows);
 
-        expect(sections.favorites.map(row => row.id)).toEqual(['b', 'd']);
-        expect(sections.conversations.map(row => row.id)).toEqual(['a', 'c']);
-        expect(sections.searching).toBe(false);
+        expect(result.sections.map(section => section.key)).toEqual(['favorites', 'conversations']);
+        expect(ids(byKey(result, 'favorites'))).toEqual(['b', 'd']);
+        expect(ids(byKey(result, 'conversations'))).toEqual(['a', 'c']);
+        expect(result.searching).toBe(false);
     });
 
-    test('Favorites is empty when nothing is a favourite, and Conversations is the whole list', () => {
-        const sections = buildListSections([entry('a'), entry('b')]);
+    test('Favorites is empty and not visible when nothing is a favourite, and Conversations is the whole list', () => {
+        const result = buildListSections([entry('a'), entry('b')]);
 
-        expect(sections.favorites).toEqual([]);
-        expect(sections.conversations).toHaveLength(2);
-    });
-
-    test('a search that filters shows the matches in one list, favourites included, and turns the drag off', () => {
-        const rows = [entry('Seraphina'), entry('Reisen', { favorite: true }), entry('Tewi', { favorite: true }), entry('Seraphina and Tewi')];
-
-        const sections = buildListSections(rows, { query: 'TEWI' });
-
-        expect(sections.searching).toBe(true);
-        expect(sections.favorites).toEqual([]);
-        expect(sections.conversations.map(row => row.id)).toEqual(['Tewi', 'Seraphina and Tewi']);
+        expect(byKey(result, 'favorites')).toMatchObject({ entries: [], visible: false, kind: 'favorites', collapsible: true });
+        expect(ids(byKey(result, 'conversations'))).toEqual(['a', 'b']);
+        expect(byKey(result, 'conversations')).toMatchObject({ visible: true, collapsible: false, expanded: true });
     });
 
     test('a query of spaces does not filter', () => {
-        const rows = [entry('a', { favorite: true }), entry('b')];
+        const result = buildListSections([entry('a', { favorite: true }), entry('b')], { query: '   ' });
 
-        const sections = buildListSections(rows, { query: '   ' });
+        expect(result.searching).toBe(false);
+        expect(ids(byKey(result, 'favorites'))).toEqual(['a']);
+    });
+});
 
-        expect(sections.searching).toBe(false);
-        expect(sections.favorites).toHaveLength(1);
+describe('the sections of the list with folders', () => {
+    const folders = [folder('f1', 'Work'), folder('f2', 'Friends', { expanded: false })];
+
+    test('are Favorites, the folders in their stored order, and Conversations', () => {
+        const result = buildListSections([entry('a')], { folders });
+
+        expect(result.sections.map(section => section.key)).toEqual(['favorites', 'folder:f1', 'folder:f2', 'conversations']);
+        expect(result.sections.map(section => section.kind)).toEqual(['favorites', 'folder', 'folder', 'conversations']);
+        expect(byKey(result, 'folder:f2').folder).toEqual(folders[1]);
     });
 
-    test('a query that matches nothing leaves both sections empty and still counts as a search', () => {
-        const sections = buildListSections([entry('a')], { query: 'zzz' });
+    test('a row is in its folder, a row without one is in Conversations, and a favourite is only in Favorites whatever its folder', () => {
+        const rows = [entry('a', { folderId: 'f1' }), entry('b'), entry('c', { favorite: true, folderId: 'f1' }), entry('d', { folderId: 'f2' }), entry('e', { folderId: 'f1' })];
 
-        expect(sections).toEqual({ searching: true, favorites: [], conversations: [] });
+        const result = buildListSections(rows, { folders });
+
+        expect(ids(byKey(result, 'folder:f1'))).toEqual(['a', 'e']);
+        expect(ids(byKey(result, 'folder:f2'))).toEqual(['d']);
+        expect(ids(byKey(result, 'favorites'))).toEqual(['c']);
+        expect(ids(byKey(result, 'conversations'))).toEqual(['b']);
+    });
+
+    test('a row that names a folder that is not in the list is in Conversations', () => {
+        const result = buildListSections([entry('a', { folderId: 'gone' })], { folders });
+
+        expect(ids(byKey(result, 'conversations'))).toEqual(['a']);
+    });
+
+    test('a folder shows while it is empty, and is open or closed as it is stored', () => {
+        const result = buildListSections([], { folders });
+
+        expect(byKey(result, 'folder:f1')).toMatchObject({ visible: true, expanded: true, collapsible: true, entries: [] });
+        expect(byKey(result, 'folder:f2')).toMatchObject({ visible: true, expanded: false, collapsible: true });
+    });
+
+    test('Favorites is open or closed as it is stored', () => {
+        expect(byKey(buildListSections([entry('a', { favorite: true })], { favoritesExpanded: false }), 'favorites')).toMatchObject({ expanded: false, visible: true });
+        expect(byKey(buildListSections([entry('a', { favorite: true })]), 'favorites').expanded).toBe(true);
+    });
+
+    test('a section in openKeys shows open without being stored open, and Conversations needs no key', () => {
+        const result = buildListSections([], { folders, favoritesExpanded: false, openKeys: ['folder:f2', 'favorites'] });
+
+        expect(byKey(result, 'folder:f2').expanded).toBe(true);
+        expect(byKey(result, 'favorites').expanded).toBe(true);
+        expect(folders[1].expanded).toBe(false);
+    });
+
+    test('counts the unread of the rows a section holds, and leaves out muted conversations and the rows of other sections', () => {
+        const rows = [entry('a', { folderId: 'f1', unread: 2 }), entry('b', { folderId: 'f1', unread: 5, muted: true }), entry('c', { folderId: 'f1', unread: 1, favorite: true }), entry('d', { unread: 4 })];
+
+        const result = buildListSections(rows, { folders });
+
+        expect(byKey(result, 'folder:f1').unread).toBe(2);
+        expect(byKey(result, 'favorites').unread).toBe(1);
+        expect(byKey(result, 'conversations').unread).toBe(4);
+    });
+});
+
+describe('a search', () => {
+    const folders = [folder('f1', 'Work', { expanded: false }), folder('f2', 'Friends'), folder('f3', 'Empty')];
+    const rows = [
+        entry('Seraphina', { folderId: 'f1' }),
+        entry('Reisen', { favorite: true, folderId: 'f1' }),
+        entry('Tewi', { favorite: true }),
+        entry('Seraphina and Tewi', { folderId: 'f2' }),
+        entry('Tewi Two'),
+    ];
+
+    test('groups the matches under their sections, a favourite in Favorites and not in its folder, and turns the drag off', () => {
+        const result = buildListSections(rows, { query: 'TEWI', folders });
+
+        expect(result.searching).toBe(true);
+        expect(ids(byKey(result, 'favorites'))).toEqual(['Tewi']);
+        expect(ids(byKey(result, 'folder:f2'))).toEqual(['Seraphina and Tewi']);
+        expect(ids(byKey(result, 'conversations'))).toEqual(['Tewi Two']);
+        expect(ids(byKey(result, 'folder:f1'))).toEqual([]);
+    });
+
+    test('shows only the sections that hold a match, open and with a heading that does not toggle, whatever is stored', () => {
+        const result = buildListSections(rows, { query: 'sera', folders, favoritesExpanded: false });
+
+        expect(result.sections.filter(section => section.visible).map(section => section.key)).toEqual(['folder:f1', 'folder:f2']);
+        for (const section of result.sections) {
+            expect(section.collapsible).toBe(false);
+            expect(section.expanded).toBe(true);
+        }
+    });
+
+    test('counts the unread of the matches only', () => {
+        const result = buildListSections([entry('Work chat', { folderId: 'f1', unread: 3 }), entry('Other', { folderId: 'f1', unread: 9 })], { query: 'work', folders });
+
+        expect(byKey(result, 'folder:f1').unread).toBe(3);
+    });
+
+    test('a query that matches nothing leaves every section not visible and still counts as a search', () => {
+        const result = buildListSections([entry('a')], { query: 'zzz', folders });
+
+        expect(result.searching).toBe(true);
+        expect(result.sections.every(section => !section.visible && section.entries.length === 0)).toBe(true);
+    });
+});
+
+describe('the keys of the sections', () => {
+    test('of Favorites and Conversations are the strings that the page writes in data-section', () => {
+        expect([SECTION_FAVORITES, SECTION_CONVERSATIONS]).toEqual(['favorites', 'conversations']);
+    });
+
+    test('are Favorites, the folders and Conversations in order, and a folder key gives its id back', () => {
+        expect(getSectionKeys([folder('f1'), folder('f2')])).toEqual(['favorites', 'folder:f1', 'folder:f2', 'conversations']);
+        expect(getSectionKeys([])).toEqual(['favorites', 'conversations']);
+        expect(folderIdOfSection(folderSectionKey('f1'))).toBe('f1');
+        expect(folderIdOfSection('favorites')).toBe('');
+        expect(folderIdOfSection('conversations')).toBe('');
+        expect(folderIdOfSection(undefined)).toBe('');
+    });
+
+    test('the section of a row is Favorites for a favourite whatever its folder, else its folder, else Conversations', () => {
+        expect(getEntrySectionKey(entry('a', { favorite: true, folderId: 'f1' }))).toBe('favorites');
+        expect(getEntrySectionKey(entry('a', { folderId: 'f1' }))).toBe('folder:f1');
+        expect(getEntrySectionKey(entry('a'))).toBe('conversations');
     });
 });
 
 describe('a move between sections', () => {
-    test('up and to the first place go to Favorites, down and to the last place go to Conversations', () => {
-        expect(getSectionForMove(-1)).toBe(SECTION_FAVORITES);
-        expect(getSectionForMove(-Infinity)).toBe(SECTION_FAVORITES);
-        expect(getSectionForMove(1)).toBe(SECTION_CONVERSATIONS);
-        expect(getSectionForMove(Infinity)).toBe(SECTION_CONVERSATIONS);
+    test('to Favorites sets the flag and keeps the folder, so that unfavouriting puts the row back', () => {
+        expect(planSectionMove(entry('a', { folderId: 'f1' }), 'favorites')).toEqual({ favorite: true, folderId: 'f1' });
+        expect(planSectionMove(entry('a'), 'favorites')).toEqual({ favorite: true, folderId: '' });
     });
 
-    test('only the Favorites section means a favourite', () => {
-        expect(isFavoriteSection(SECTION_FAVORITES)).toBe(true);
-        expect(isFavoriteSection(SECTION_CONVERSATIONS)).toBe(false);
+    test('to a folder clears the flag and sets the folder, from Favorites, Conversations or another folder', () => {
+        expect(planSectionMove(entry('a', { favorite: true, folderId: 'f9' }), 'folder:f1')).toEqual({ favorite: false, folderId: 'f1' });
+        expect(planSectionMove(entry('a'), 'folder:f1')).toEqual({ favorite: false, folderId: 'f1' });
+        expect(planSectionMove(entry('a', { folderId: 'f2' }), 'folder:f1')).toEqual({ favorite: false, folderId: 'f1' });
+    });
+
+    test('to Conversations clears the flag and the folder', () => {
+        expect(planSectionMove(entry('a', { favorite: true, folderId: 'f1' }), 'conversations')).toEqual({ favorite: false, folderId: '' });
+        expect(planSectionMove(entry('a', { folderId: 'f1' }), 'conversations')).toEqual({ favorite: false, folderId: '' });
+    });
+
+    test('changes nothing for a row that is there already, or for a key that is no section', () => {
+        expect(planSectionMove(entry('a', { favorite: true }), 'favorites')).toBeNull();
+        expect(planSectionMove(entry('a', { folderId: 'f1' }), 'folder:f1')).toBeNull();
+        expect(planSectionMove(entry('a'), 'conversations')).toBeNull();
+        expect(planSectionMove(entry('a'), 'nonsense')).toBeNull();
+        expect(planSectionMove(entry('a'), 'folder:')).toBeNull();
+    });
+});
+
+describe('Alt with an arrow key', () => {
+    const keys = ['favorites', 'folder:f1', 'folder:f2', 'conversations'];
+
+    test('goes to the section above or below, and Home and End to the first and the last', () => {
+        expect(adjacentSectionKey(keys, 'folder:f1', -1)).toBe('favorites');
+        expect(adjacentSectionKey(keys, 'folder:f1', 1)).toBe('folder:f2');
+        expect(adjacentSectionKey(keys, 'folder:f2', 1)).toBe('conversations');
+        expect(adjacentSectionKey(keys, 'conversations', -1)).toBe('folder:f2');
+        expect(adjacentSectionKey(keys, 'folder:f2', -Infinity)).toBe('favorites');
+        expect(adjacentSectionKey(keys, 'folder:f1', Infinity)).toBe('conversations');
+    });
+
+    test('from Favorites goes down to the first folder, and from Conversations goes up to the last folder', () => {
+        expect(adjacentSectionKey(keys, 'favorites', 1)).toBe('folder:f1');
+        expect(adjacentSectionKey(keys, 'favorites', Infinity)).toBe('conversations');
+        expect(adjacentSectionKey(keys, 'conversations', -Infinity)).toBe('favorites');
+    });
+
+    test('declines at the ends: up from Favorites, down from Conversations, and Home or End from the section they name', () => {
+        expect(adjacentSectionKey(keys, 'favorites', -1)).toBeNull();
+        expect(adjacentSectionKey(keys, 'favorites', -Infinity)).toBeNull();
+        expect(adjacentSectionKey(keys, 'conversations', 1)).toBeNull();
+        expect(adjacentSectionKey(keys, 'conversations', Infinity)).toBeNull();
+    });
+
+    test('with no folder, up and down are Favorites and Conversations as they always were', () => {
+        const plain = getSectionKeys([]);
+
+        expect(adjacentSectionKey(plain, 'conversations', -1)).toBe('favorites');
+        expect(adjacentSectionKey(plain, 'favorites', 1)).toBe('conversations');
+    });
+
+    test('declines for a section that is not in the list', () => {
+        expect(adjacentSectionKey(keys, 'folder:gone', 1)).toBeNull();
+    });
+});
+
+describe('the words that announce a move', () => {
+    const folders = [folder('f1', 'Work')];
+
+    test('into Favorites, out of Favorites, into a folder and into Conversations', () => {
+        expect(describeSectionMove(entry('Tewi'), { favorite: true, folderId: '' }, folders)).toBe('Tewi added to Favorites');
+        expect(describeSectionMove(entry('Tewi', { favorite: true }), { favorite: false, folderId: '' }, folders)).toBe('Tewi removed from Favorites');
+        expect(describeSectionMove(entry('Tewi'), { favorite: false, folderId: 'f1' }, folders)).toBe('Tewi moved to Work');
+        expect(describeSectionMove(entry('Tewi', { favorite: true }), { favorite: false, folderId: 'f1' }, folders)).toBe('Tewi moved to Work');
+        expect(describeSectionMove(entry('Tewi', { folderId: 'f1' }), { favorite: false, folderId: '' }, folders)).toBe('Tewi moved to Conversations');
+    });
+});
+
+describe('a change of the folder alone', () => {
+    const folders = [folder('f1', 'Work')];
+
+    test('changes only the folder, and nothing when the row has it already', () => {
+        expect(planFolderChange(entry('a'), 'f1')).toEqual({ folderId: 'f1' });
+        expect(planFolderChange(entry('a', { folderId: 'f1' }), '')).toEqual({ folderId: '' });
+        expect(planFolderChange(entry('a', { folderId: 'f1' }), 'f1')).toBeNull();
+    });
+
+    test('says that a favourite stays in Favorites, so that the user knows why the row did not move', () => {
+        expect(describeFolderChange(entry('Tewi', { favorite: true }), 'f1', folders)).toBe('Tewi moved to Work, and stays in Favorites');
+        expect(describeFolderChange(entry('Tewi', { favorite: true }), '', folders)).toBe('Tewi moved out of its folder, and stays in Favorites');
+        expect(describeFolderChange(entry('Tewi'), 'f1', folders)).toBe('Tewi moved to Work');
+        expect(describeFolderChange(entry('Tewi', { folderId: 'f1' }), '', folders)).toBe('Tewi moved to Conversations');
     });
 });
 

@@ -25,10 +25,11 @@ const LIFT_VIBRATION_MS = 10;
  * @param {(row: HTMLElement, section: string) => void} options.onDrop A drop on a section other than the row's own.
  * @param {(row: HTMLElement, point: { x: number, y: number }) => void} options.onMenu A long press on a lifted row ended without a move.
  * @param {(section: string) => void} options.onHoldOver The pointer rested on a section for half a second while dragging, which opens it if it is collapsed.
+ * @param {() => void} options.onDragEnd A drag ended, by a drop or by Escape, after `onDrop` ran: what the drag opened for now is undone here.
  * @param {(text: string) => void} options.announce
  * @param {() => HTMLElement} [options.getGhostHost] The element the ghost row lives in; the row styles are scoped to it.
  */
-export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSectionOfRow, onDrop, onMenu, onHoldOver, announce, getGhostHost = () => list.closest('#sheld') ?? document.body }) {
+export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSectionOfRow, onDrop, onMenu, onHoldOver, onDragEnd, announce, getGhostHost = () => list.closest('#sheld') ?? document.body }) {
     /** @type {null | { pointerId: number, row: HTMLElement, gesture: ReturnType<typeof createRowGesture>, cancelled: boolean, ghost: HTMLElement | null, offsetX: number, offsetY: number, lastY: number, from: string, holdTimer: number, scrollFrame: number }} */
     let session = null;
     let swallowUntil = 0;
@@ -162,6 +163,7 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
             } else {
                 announce('Move cancelled.');
             }
+            onDragEnd();
         },
         menu(x, y) {
             const { row } = session;
@@ -175,6 +177,7 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
         cancel() {
             clearChrome();
             announce('Move cancelled.');
+            onDragEnd();
         },
     };
 

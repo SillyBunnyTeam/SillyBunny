@@ -36,6 +36,7 @@ import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelin
 import { hashConversationRenderFingerprint } from './render-utils.js';
 import { createSpinner } from '../sillybunny-editor/status-page.js';
 import { getConversationListViewKey, renderConversationListView } from './conversation-list-view.js';
+import { conversationFolders } from './conversation-folders-browser.js';
 
 /** The name of a row is the name that the header shows. */
 function getListRowName({ name, character, settings, groupId }) {
@@ -50,6 +51,7 @@ function buildListEntry(item, personaId) {
         id: key,
         name: getListRowName(item),
         favorite,
+        folderId: conversationFolders.folderOf(personaId, key),
         muted: Boolean(settings?.notifications_muted),
         unread,
         badge: getBadgeLabel(unread),
@@ -70,13 +72,22 @@ export function getConversationListEntries() {
     return getConversationRailItems({ personaId }).map(item => buildListEntry(item, personaId));
 }
 
-function buildConversationListFingerprint(entries) {
-    const parts = [String(entries.length), getConversationPersonaId(), getConversationListViewKey()];
+/**
+ * The folders of the persona and whether Favorites is open, as the list draws them. The same object comes back until the
+ * persona's folders change.
+ */
+export function getConversationListLayout() {
+    return conversationFolders.layout(getConversationPersonaId());
+}
+
+function buildConversationListFingerprint(entries, layout) {
+    const parts = [String(entries.length), getConversationPersonaId(), getConversationListViewKey(), layout.signature];
     for (const entry of entries) {
         parts.push([
             entry.id,
             entry.name,
             entry.favorite ? '1' : '0',
+            entry.folderId,
             entry.muted ? '1' : '0',
             entry.unread,
             entry.preview,
@@ -130,15 +141,24 @@ export function renderConversationList() {
         return;
     }
 
+    // The rows wait for the folders, so that no frame shows a conversation outside the folder that holds it. A folders
+    // read that failed draws the list with no folders, and the module reads again by itself.
+    const foldersStatus = conversationFolders.status();
+    if (foldersStatus === 'idle' || foldersStatus === 'loading') {
+        void conversationFolders.load();
+        return;
+    }
+
     const entries = getConversationListEntries();
-    const fingerprint = buildConversationListFingerprint(entries);
+    const layout = getConversationListLayout();
+    const fingerprint = buildConversationListFingerprint(entries, layout);
     if (fingerprint === conversationState.lastConversationListFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
         return;
     }
 
     conversationState.lastConversationListFingerprint = fingerprint;
     list.dataset.sbConversationFingerprint = fingerprint;
-    renderConversationListView(list, entries);
+    renderConversationListView(list, entries, layout);
     updateConversationNotificationIndicators();
 }
 

@@ -12,6 +12,7 @@ export const ITEM = '.sb-conversation-list-item';
 export const SECTION = '.sb-conversation-list-section';
 export const NEW_MENU = '[data-sb-conversation-action="open-new-menu"]';
 export const MAIN_MENU = '[data-sb-conversation-action="open-main-menu"]';
+export const FOLDERS_ROUTE = '/api/sillybunny-conversation/folders';
 const BASE_TIME = Date.UTC(2026, 8, 30, 12, 0, 0);
 const minutes = count => BASE_TIME + count * 60_000;
 
@@ -184,4 +185,53 @@ export async function activeElementDescription(page) {
             tag: active?.tagName ?? '',
         };
     });
+}
+
+let folderCounter = 0;
+
+/** A folder id that is new to this run, in the form that the server checks. */
+export function newFolderId() {
+    return `fld_${Date.now()}_${(++folderCounter).toString(16).padStart(4, '0')}${Math.random().toString(16).slice(2, 10)}`;
+}
+
+/**
+ * Writes folders for a persona through the route, before or after the workspace opens. A page reads the file when the
+ * workspace opens, so call this before `openConversationList()`; after it, call `readFoldersAgain()`.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} personaId
+ * @param {object[]} ops The operations of `/folders/update`.
+ * @returns {Promise<{ status: number, json: any }>}
+ */
+export async function seedFolders(page, personaId, ops) {
+    return page.evaluate(async ({ route, personaId, ops }) => {
+        const { getRequestHeaders } = await import('/script.js');
+        const response = await fetch(`${route}/update`, { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ personaId, ops }) });
+        return { status: response.status, json: await response.json().catch(() => null) };
+    }, { route: FOLDERS_ROUTE, personaId, ops });
+}
+
+/** What the server holds for one persona, after the page has written what it waits to write. */
+export async function readStoredFolders(page, personaId) {
+    return page.evaluate(async ({ route, personaId }) => {
+        try {
+            const { conversationFolders } = await import('/scripts/sillybunny-conversation/conversation-folders-browser.js');
+            await conversationFolders.flush();
+        } catch {
+            // The module is not loaded before the workspace opens; nothing waits to be written then.
+        }
+        const { getRequestHeaders } = await import('/script.js');
+        const response = await fetch(`${route}/get`, { method: 'POST', headers: getRequestHeaders(), body: '{}' });
+        const file = await response.json();
+        return file.personas?.[personaId] ?? null;
+    }, { route: FOLDERS_ROUTE, personaId });
+}
+
+/** The heading button of a section: `favorites` or `folder:<id>`. */
+export function headingOf(page, key) {
+    return page.locator(`${LIST} ${SECTION}[data-section="${key}"] .sb-conversation-list-heading-button`);
+}
+
+/** The labels of every heading of the list, in order. */
+export function headingLabels(page) {
+    return page.locator(`${LIST} .sb-conversation-list-heading-label`).allTextContents();
 }

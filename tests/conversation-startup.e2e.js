@@ -8,7 +8,7 @@ test.describe.configure({ timeout: 120000 });
 const MODULES = '/scripts/sillybunny-conversation/';
 // What `lazy-parts.js` loads later: the runtime (the worker, the asides, the reply stream) and the workspace (the interface).
 const RUNTIME_MODULES = ['runtime.js', 'auto-engine.js', 'generation.js', 'send-queue.js'];
-const WORKSPACE_MODULES = ['chrome.js', 'interface.js', 'timeline-render.js', 'pickers.js', 'conversation-list-view.js'];
+const WORKSPACE_MODULES = ['chrome.js', 'interface.js', 'timeline-render.js', 'pickers.js', 'conversation-list-view.js', 'conversation-folders.js', 'conversation-folders-browser.js', 'folder-model.js'];
 
 /** The page records its fetches in a buffer of 250 entries unless it is told to keep more, and a start makes about 900. */
 async function keepEveryFetch(page) {

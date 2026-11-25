@@ -94,6 +94,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render
     scheduleTimelineRender,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-utils.js', () => ({ hashConversationRenderFingerprint: value => value }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-folders-browser.js', () => ({
+    conversationFolders: { status: () => 'ready', load: jest.fn(), layout: () => ({ folders: [], favoritesExpanded: true, signature: '' }), folderOf: () => '' },
+}));
 
 const { handleCharacterMessagePolish } = await import('../public/scripts/sillybunny-conversation/interface.js');
 
