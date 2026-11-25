@@ -3,6 +3,7 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 import { acceptPopup } from './helpers/popup.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { TOAST_SELECTOR } from './helpers/toasts.js';
 
 // End-to-end coverage for the connection profile change notice: one summary toast per user switch,
 // silent scripted switches, the "Also sets" card line, and the id-keyed View popup.
@@ -178,7 +179,7 @@ async function selectProfileMenuAction(page, label) {
 }
 
 /** @param {import('@playwright/test').Page} page */
-const summaryOf = page => page.locator('#toast-container .toast-info:has(.sb-profile-switch-summary)');
+const summaryOf = page => page.locator(`${TOAST_SELECTOR}.toast-info:has(.sb-profile-switch-summary)`);
 
 /** @param {import('@playwright/test').Page} page @param {number} ms */
 const sleep = (page, ms) => page.evaluate(ms => new Promise(resolve => setTimeout(resolve, ms)), ms);
@@ -242,7 +243,7 @@ async function expectSummaryFor(page, name, timeout = SUMMARY_TIMEOUT_MS) {
 /** Removes every toast at once, so the next assertion only sees what comes after. */
 async function clearToasts(page) {
     await page.evaluate(() => window.toastr.remove());
-    await expect(page.locator('#toast-container .toast')).toHaveCount(0);
+    await expect(page.locator(TOAST_SELECTOR)).toHaveCount(0);
 }
 
 /**

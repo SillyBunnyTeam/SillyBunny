@@ -19312,6 +19312,7 @@ jQuery(async function () {
             '.ui-widget',
             '.text_pole',
             '#toast-container',
+            '#sb-toast-overlay', // SillyBunny: toasts are in their own container, and a tap on one is not a tap away from a drawer.
             '.select2-results',
         ];
 

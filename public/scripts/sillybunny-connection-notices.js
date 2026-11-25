@@ -72,7 +72,6 @@ export function notifyNotConnected({ toast = globalThis.toastr, openTarget = ope
     const showMe = document.createElement('button');
     showMe.type = 'button';
     showMe.className = 'menu_button';
-    showMe.style.whiteSpace = 'nowrap';
     showMe.textContent = t`Show Me`;
 
     const message = document.createElement('div');

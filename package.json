@@ -32,7 +32,7 @@
         "@zeldafan0225/ai_horde": "^5.2.0",
         "agent-base": "^7.1.3",
         "archiver": "^7.0.1",
-        "bing-translate-api": "^4.1.0",
+        "bing-translate-api": "4.1.0",
         "body-parser": "^1.20.2",
         "bowser": "^2.12.1",
         "bytes": "^3.1.2",
@@ -101,7 +101,7 @@
         "ws": "^8.18.3",
         "yaml": "^2.8.3",
         "yargs": "^17.7.1",
-        "yauzl": "^3.2.1"
+        "yauzl": "^3.4.0"
     },
     "engines": {
         "bun": ">= 1.3.14",
@@ -144,7 +144,9 @@
         "lint": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js",
         "lint:fix": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js --fix",
         "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
+        "generate:clamp-curve": "node scripts/generate-clamp-curve.js",
         "check:copy-placeholders": "node scripts/check-copy-placeholders.js",
+        "report:toast-forms": "node scripts/report-toast-forms.js",
         "agents:bump-template-versions": "node scripts/bump-agent-template-versions.js",
         "changelog:merged-prs": "node scripts/update-changelog-merged-prs.js",
         "version:bump": "node scripts/bump-version.js",

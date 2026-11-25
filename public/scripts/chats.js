@@ -51,6 +51,7 @@ import {
 import { extension_settings, renderExtensionTemplateAsync, saveMetadataDebounced } from './extensions.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
 import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { removeUnscopableCss } from './sillybunny-style-tag-scope.js'; // SillyBunny: keeps message CSS scoped under @adobe/css-tools 4.5.
 import { ScraperManager } from './scrapers.js';
 import { DragAndDropHandler } from './dragdrop.js';
 import { renderTemplateAsync } from './templates.js';
@@ -627,9 +628,13 @@ export function decodeStyleTags(text, { prefix } = { prefix: '.mes_text ' }) {
             const ast = css.parse(styleCleaned);
             const sheet = ast?.stylesheet;
             if (sheet) {
+                // SillyBunny: sanitizeRuleSet() scopes only rule selectors, and css-tools 4.5 parses at-rules and nested rules that have none.
+                removeUnscopableCss(sheet);
                 sanitizeRuleSet(ast.stylesheet);
             }
-            return `<style>${css.stringify(ast)}</style>`;
+            // The CSS is placed into HTML as text, so it must not be able to end the style element
+            const styleText = css.stringify(ast).replace(/<\//g, '<\\/');
+            return `<style>${styleText}</style>`;
         } catch (error) {
             return `CSS ERROR: ${error}`;
         }

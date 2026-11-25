@@ -119,3 +119,38 @@ describe('play', () => {
         expect(element.inert).toBe(false);
     });
 });
+
+describe('play under reduced motion', () => {
+    const fade = [{ opacity: 0 }, { opacity: 1 }];
+    const slide = [{ transform: 'translateY(40px)' }, { transform: 'none' }];
+
+    test('does nothing and finishes at once when it has no fade for reduced motion', () => {
+        window.matchMedia = () => ({ matches: true });
+        const calls = [];
+        expect(play(element, slide, { onFinish: () => calls.push('finish'), onEnd: () => calls.push('end') })).toBeNull();
+        expect(element.animate).not.toHaveBeenCalled();
+        expect(calls).toEqual(['finish', 'end']);
+    });
+
+    test('plays the fade of a surface that fades under reduced motion, over at most 200ms, in place of its movement', async () => {
+        window.matchMedia = () => ({ matches: true });
+        const calls = [];
+        play(element, slide, { duration: 300, reducedKeyframes: fade, onFinish: () => calls.push('finish'), onEnd: () => calls.push('end') });
+        expect(element.animate).toHaveBeenCalledWith(fade, expect.objectContaining({ duration: 200 }));
+        expect(calls).toEqual([]);
+        animation.finish();
+        await settle();
+        expect(calls).toEqual(['finish', 'end']);
+    });
+
+    test('keeps a duration under 200ms, and plays the movement when motion is allowed', () => {
+        window.matchMedia = () => ({ matches: true });
+        play(element, slide, { duration: 150, reducedKeyframes: fade });
+        expect(element.animate).toHaveBeenLastCalledWith(fade, expect.objectContaining({ duration: 150 }));
+
+        window.matchMedia = () => ({ matches: false });
+        play(element, slide, { duration: 300, reducedKeyframes: fade });
+        expect(element.animate).toHaveBeenLastCalledWith(slide, expect.objectContaining({ duration: 300 }));
+    });
+});
+

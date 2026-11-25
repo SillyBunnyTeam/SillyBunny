@@ -1,11 +1,11 @@
 /** @jest-environment jsdom */
 /* global globalThis */
 /* eslint-disable playwright/prefer-web-first-assertions -- Jest/jsdom assertions are synchronous. */
-import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
+import { describe, test, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SB_DATA_SECURITY_CONTAINER_ID, SB_FLAT_SECTION_CLASS, SB_FLAT_SECTION_TOP_CLASS, SB_SETTINGS_SECTION_ORDER, flattenNestedSettingsDrawers, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
+import { CLASSIC_SCROLLBARS_ATTRIBUTE, SB_DATA_SECURITY_CONTAINER_ID, SB_FLAT_SECTION_CLASS, SB_FLAT_SECTION_TOP_CLASS, SB_SETTINGS_SECTION_ORDER, flattenNestedSettingsDrawers, measureScrollbarWidth, splitUserSettingsContent, syncClassicScrollbars } from '../../public/scripts/sillybunny-settings-content.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
@@ -374,5 +374,53 @@ describe('Search aliases of regrouped settings', () => {
     test('a group without a former name has no alias attribute', () => {
         const { messages } = splitAuthoredSettings();
         expect(aliasesOf(messages, '[data-sb-category="smooth-streaming"]')).toBeNull();
+    });
+});
+
+describe('classic scrollbars', () => {
+    const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    const originalClientWidth = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
+
+    /** jsdom has no layout, so a box that is 100px wide has the scrollbar that the test gives it. */
+    function giveScrollbar(width) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 100 });
+        Object.defineProperty(Element.prototype, 'clientWidth', { configurable: true, get: () => 100 - width });
+    }
+
+    afterEach(() => {
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
+        Object.defineProperty(Element.prototype, 'clientWidth', originalClientWidth);
+        document.documentElement.removeAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE);
+    });
+
+    test('measures what a scrollbar takes from a box, and leaves no probe behind', () => {
+        giveScrollbar(10);
+
+        expect(measureScrollbarWidth()).toBe(10);
+        expect(document.body.children).toHaveLength(0);
+    });
+
+    test('writes the attribute when scrollbars take room and removes it when they do not', () => {
+        giveScrollbar(10);
+        expect(syncClassicScrollbars()).toBe(true);
+        expect(document.documentElement.hasAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE)).toBe(true);
+
+        giveScrollbar(0);
+        expect(syncClassicScrollbars()).toBe(false);
+        expect(document.documentElement.hasAttribute(CLASSIC_SCROLLBARS_ATTRIBUTE)).toBe(false);
+    });
+
+    test('writes nothing when the answer is the same', () => {
+        giveScrollbar(10);
+        const records = [];
+        const observer = new MutationObserver(batch => records.push(...batch));
+        observer.observe(document.documentElement, { attributes: true });
+
+        syncClassicScrollbars();
+        syncClassicScrollbars();
+        records.push(...observer.takeRecords());
+        observer.disconnect();
+
+        expect(records).toHaveLength(1);
     });
 });

@@ -1,0 +1,537 @@
+/**
+ * @jest-environment jsdom
+ */
+import { afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+// The real jQuery and the real toastr run in jsdom, as in the queue tests, so a click and a handler are the real ones.
+const libRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public', 'lib');
+
+let reducedMotion = false;
+/** @type {{ element: HTMLElement, keyframes: Keyframe[], duration: number, easing: string, composite?: string, fill?: string, finish: () => void, done: boolean }[]} */
+let animations = [];
+let toastr;
+let motion;
+let notification;
+const measured = { width: 9999, em: 16 };
+
+const message = $toast => $toast[0].querySelector('.toast-message');
+const HTML = { escapeHtml: false, timeOut: 0, extendedTimeOut: 0 };
+
+async function flush() {
+    for (let turn = 0; turn < 4; turn += 1) {
+        await Promise.resolve();
+    }
+}
+
+async function finishAnimations() {
+    for (const animation of animations.filter(candidate => !candidate.done)) {
+        animation.finish();
+    }
+    await flush();
+}
+
+beforeAll(async () => {
+    HTMLElement.prototype.getClientRects = function getClientRects() {
+        return this.isConnected && this.style.display !== 'none' ? [{ width: 100, height: 20 }] : [];
+    };
+    window.matchMedia = () => ({ matches: reducedMotion });
+    HTMLElement.prototype.animate = function (keyframes, options) {
+        let resolve;
+        const finished = new Promise((done) => {
+            resolve = done;
+        });
+        const animation = {
+            element: this,
+            keyframes,
+            duration: options.duration,
+            easing: options.easing,
+            composite: options.composite,
+            fill: options.fill,
+            done: false,
+            finished,
+            finish() {
+                animation.done = true;
+                resolve();
+            },
+            cancel() {
+                animation.done = true;
+            },
+        };
+        animations.push(animation);
+        return animation;
+    };
+    window.eval(readFileSync(path.join(libRoot, 'jquery-3.5.1.min.js'), 'utf8'));
+    window.eval(readFileSync(path.join(libRoot, 'toastr.min.js'), 'utf8'));
+    toastr = window.toastr;
+    motion = await import('../../public/scripts/sillybunny-toast-motion.js');
+    notification = await import('../../public/scripts/sillybunny-toast-notification.js');
+    // Every message is a notification here: the measure says it is wider than a toast.
+    motion.initializeToastMotion({ jQuery: window.jQuery, toastr, measure: () => measured });
+    toastr.options = { positionClass: 'toast-top-center', showDuration: 300, hideDuration: 300, timeOut: 5000, extendedTimeOut: 5000, escapeHtml: true };
+});
+
+beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
+    reducedMotion = false;
+    animations = [];
+    motion.setNotificationPosition('toast-top-center');
+});
+
+afterEach(async () => {
+    toastr.clear(undefined, { force: true });
+    await flush();
+    toastr.remove();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    motion.resetToastQueue();
+    document.body.innerHTML = '';
+});
+
+describe('the button row', () => {
+    const rowsOf = $toast => [...$toast[0].querySelectorAll(`.${notification.ACTIONS_CLASS}`)];
+
+    test('a run of buttons goes into one row in its place, inside the element that held it', () => {
+        const $toast = toastr.info('<div class="wrapper">Choose <button id="a">A</button> <button id="b">B</button><button id="c">C</button></div>', 'Title', HTML);
+        const wrapper = $toast[0].querySelector('.wrapper');
+        const [row] = rowsOf($toast);
+        expect(rowsOf($toast)).toHaveLength(1);
+        expect(row.parentElement).toBe(wrapper);
+        expect([...row.children].map(child => child.id)).toEqual(['a', 'b', 'c']);
+        expect(wrapper.firstChild.textContent).toBe('Choose ');
+        expect(wrapper.firstChild.nextSibling).toBe(row);
+    });
+
+    test('a button in the message itself goes into a row in the message, and the text before it stays where it is', () => {
+        const $toast = toastr.info('Removed <button id="undo">Undo</button>', '', HTML);
+        const [row] = rowsOf($toast);
+        expect(row.parentElement).toBe(message($toast));
+        expect(message($toast).firstChild.textContent).toBe('Removed ');
+        expect(row.querySelector('#undo')).not.toBeNull();
+    });
+
+    test('buttons that text separates are two rows, and a block element beside the buttons is left as it is', () => {
+        const $toast = toastr.info('<div class="sbHomeToast"><div>Well done.</div><button id="a">A</button> or <button id="b">B</button></div>', 'Title', HTML);
+        expect(rowsOf($toast)).toHaveLength(2);
+        expect($toast[0].querySelector('.sbHomeToast').firstElementChild.textContent).toBe('Well done.');
+    });
+
+    test('whitespace between buttons stays in the row, and a message with no button has no row', () => {
+        const spaced = toastr.info('<div>\n  <button>A</button>\n  <button>B</button>\n</div>', 'Title', HTML);
+        expect(rowsOf(spaced)).toHaveLength(1);
+        expect(rowsOf(spaced)[0].querySelectorAll('button')).toHaveLength(2);
+        expect(rowsOf(toastr.info('<div>Just text</div>', 'Other', HTML))).toHaveLength(0);
+    });
+
+    test('a button inside another button is not split from it', () => {
+        const nested = toastr.info('<div><span role="button" id="outer"><button id="inner">x</button></span></div>', 'Title', HTML);
+        expect(rowsOf(nested)).toHaveLength(1);
+        expect(nested[0].querySelector('#inner').parentElement.id).toBe('outer');
+    });
+
+    test('arranging again changes nothing', () => {
+        const $toast = toastr.info('<div>Removed <button>Undo</button></div>', '', HTML);
+        const before = message($toast).innerHTML;
+        notification.arrangeButtons(message($toast));
+        expect(message($toast).innerHTML).toBe(before);
+    });
+
+    test('follows the content when a caller changes it after the notification shows', async () => {
+        const $toast = toastr.info('<div>Removed <button>Undo</button></div>', '', HTML);
+        expect(rowsOf($toast)).toHaveLength(1);
+        $toast.find('.toast-message').html('<span>Now <i>this</i> <button id="late">Late</button></span>');
+        await flush();
+        expect($toast[0].querySelector('#late').parentElement.classList.contains(notification.ACTIONS_CLASS)).toBe(true);
+        $toast.find('.toast-message').text('No buttons any more');
+        await flush();
+        expect(rowsOf($toast)).toHaveLength(0);
+    });
+
+    test('a row that a caller empties is taken away, so it adds no gap', async () => {
+        const $toast = toastr.info('<div>Text <button id="x">X</button></div>', 'Title', HTML);
+        $toast.find('#x').remove();
+        await flush();
+        expect(rowsOf($toast)).toHaveLength(0);
+    });
+
+    describe('handlers', () => {
+        test('a handler bound on a button fires, and so does one that jQuery delegates from the caller\'s own wrapper', () => {
+            const body = document.createElement('div');
+            body.append('Removed ');
+            const undo = document.createElement('button');
+            undo.textContent = 'Undo';
+            body.append(undo);
+            const direct = jest.fn();
+            const delegated = jest.fn();
+            undo.addEventListener('click', direct);
+            window.jQuery(body).on('click', 'button', delegated);
+            toastr.info(body, 'Title', HTML);
+            undo.click();
+            expect(direct).toHaveBeenCalledTimes(1);
+            expect(delegated).toHaveBeenCalledTimes(1);
+            expect(body.contains(undo)).toBe(true);
+            expect(undo.parentElement.className).toBe(notification.ACTIONS_CLASS);
+        });
+
+        test('a handler that a caller binds on the returned element after the call still finds the buttons', () => {
+            const $toast = toastr.info('<div><button id="restore">Restore</button><button id="discard">Discard</button></div>', 'Title', HTML);
+            const restore = jest.fn();
+            const delegated = jest.fn();
+            $toast.find('#restore').on('click', restore);
+            $toast.on('click', '.toast-message button', delegated);
+            $toast.find('#restore')[0].click();
+            expect(restore).toHaveBeenCalledTimes(1);
+            expect(delegated).toHaveBeenCalledTimes(1);
+            expect($toast.find('.toast-message button')).toHaveLength(2);
+        });
+
+        test('the button of a notification of the bundled call sites keeps its handler: the Getting Started and connection patterns', () => {
+            const showMe = document.createElement('button');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sbHomeToast';
+            wrapper.append(Object.assign(document.createElement('div'), { textContent: 'Well done!' }), showMe);
+            const clicked = jest.fn();
+            showMe.addEventListener('click', clicked, { once: true });
+            toastr.success(wrapper, 'Set up a preset', HTML);
+            showMe.click();
+            expect(clicked).toHaveBeenCalledTimes(1);
+        });
+    });
+});
+
+describe('a click on the card', () => {
+    const dismissed = $toast => $toast.hasClass('sb-toast-leaving') || !$toast[0].isConnected;
+    const options = { timeOut: 0, extendedTimeOut: 0 };
+    const click = (node, detail = 1) => node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
+    const settle = () => jest.advanceTimersByTime(notification.CARD_CLICK_DELAY);
+    const select = (node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+    };
+
+    afterEach(() => window.getSelection().removeAllRanges());
+
+    test('waits for the time of a double click before it acts, and then dismisses', () => {
+        const plain = toastr.info('A message', 'Title', options);
+        click(plain[0]);
+        jest.advanceTimersByTime(notification.CARD_CLICK_DELAY - 1);
+        // Not yet.
+        expect(dismissed(plain)).toBe(false);
+        jest.advanceTimersByTime(1);
+        expect(dismissed(plain)).toBe(true);
+    });
+
+    test('runs the caller\'s onclick once and then dismisses, with onclick', () => {
+        const onclick = jest.fn();
+        const clickable = toastr.warning('Details', 'Another', { ...options, onclick });
+        click(clickable.find('.toast-message')[0]);
+        // Not before the delay.
+        expect(onclick).not.toHaveBeenCalled();
+        settle();
+        expect(onclick).toHaveBeenCalledTimes(1);
+        expect(dismissed(clickable)).toBe(true);
+    });
+
+    test('a double click does neither: the second click cancels the first, so a word can be selected', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('Select a word', 'Title', { ...options, onclick });
+        click($toast[0], 1);
+        jest.advanceTimersByTime(100);
+        click($toast[0], 2);
+        select(message($toast));
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('a double click that selects nothing still does neither, and a third click does not bring the action back', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('A message', 'Title', { ...options, onclick });
+        click($toast[0], 1);
+        click($toast[0], 2);
+        click($toast[0], 3);
+        jest.advanceTimersByTime(notification.CARD_CLICK_DELAY * 2);
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('a selection that exists when the delay ends cancels the action', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('Copy this error', 'Title', { ...options, onclick });
+        click($toast[0]);
+        select(message($toast));
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('runs at most once: two single clicks in the delay, or a click while the card leaves, run onclick once', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('A message', 'Title', { ...options, onclick });
+        click($toast[0], 0);
+        jest.advanceTimersByTime(100);
+        click($toast[0], 0);
+        settle();
+        expect(onclick).toHaveBeenCalledTimes(1);
+        expect(dismissed($toast)).toBe(true);
+        click($toast[0], 0);
+        settle();
+        // A click while it leaves does nothing.
+        expect(onclick).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not run the action of a card that Dismiss closed during the delay', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('A message', 'Title', { ...options, onclick });
+        click($toast[0]);
+        $toast.find('.toast-close-button')[0].click();
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+    });
+
+    test('does nothing with tapToDismiss false and no onclick, and runs the onclick and dismisses with tapToDismiss false and an onclick', () => {
+        const inert = toastr.info('Stays', 'Title', { ...options, tapToDismiss: false });
+        click(inert[0]);
+        settle();
+        expect(dismissed(inert)).toBe(false);
+        expect(inert[0].classList.contains('toast-non-interactable')).toBe(true);
+        expect(inert[0].getAttribute('title')).toBeNull();
+
+        const onclick = jest.fn();
+        const clickable = toastr.info('Open it', 'Other', { ...options, tapToDismiss: false, onclick });
+        expect(clickable[0].classList.contains('interactable')).toBe(true);
+        expect(clickable[0].classList.contains('toast-non-interactable')).toBe(false);
+        click(clickable[0]);
+        settle();
+        expect(onclick).toHaveBeenCalledTimes(1);
+        expect(dismissed(clickable)).toBe(true);
+    });
+
+    test('marks the card as one that a click acts on only where a click dismisses, and leaves the hint of the app to its subscriber', () => {
+        const dismissing = toastr.info('Tap', 'Title', options);
+        expect(dismissing[0].classList.contains('interactable')).toBe(true);
+        expect(dismissing[0].classList.contains('toast-non-interactable')).toBe(false);
+    });
+
+    test('is not a click on a button, a link, an input or the close button, which keep their own action and need no delay', () => {
+        const onclick = jest.fn();
+        const $toast = toastr.info('<a href="#x" id="link">Link</a> <button id="b">B</button> <input id="i"> <label id="l">L</label>', 'Title', { ...HTML, onclick });
+        for (const selector of ['#link', '#b', '#i', '#l']) {
+            $toast.find(selector)[0].click();
+        }
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+        expect(dismissed($toast)).toBe(false);
+    });
+
+    test('the close button dismisses at once and runs onCloseClick, and not onclick', () => {
+        const onclick = jest.fn();
+        const onCloseClick = jest.fn();
+        const $toast = toastr.info('Message', 'Title', { ...options, onclick, onCloseClick });
+        $toast.find('.toast-close-button')[0].click();
+        expect(onCloseClick).toHaveBeenCalledTimes(1);
+        // With no wait.
+        expect(dismissed($toast)).toBe(true);
+        settle();
+        expect(onclick).not.toHaveBeenCalled();
+    });
+
+    test('is not a click when text of the card is selected, so that an error can be copied', () => {
+        const $toast = toastr.error('Copy this error', 'Title', options);
+        select(message($toast));
+        click($toast[0]);
+        settle();
+        expect(dismissed($toast)).toBe(false);
+        window.getSelection().removeAllRanges();
+        click($toast[0]);
+        settle();
+        expect(dismissed($toast)).toBe(true);
+    });
+
+    test('the handler of toastr\'s tap to dismiss is gone, so a click dismisses once and the app\'s other handlers stay', () => {
+        const other = jest.fn();
+        const $toast = toastr.info('Message', 'Title', options);
+        $toast.on('click', other);
+        click($toast[0]);
+        // The other handler runs at once.
+        expect(other).toHaveBeenCalledTimes(1);
+        settle();
+        expect(dismissed($toast)).toBe(true);
+    });
+});
+
+describe('a message that was dismissed', () => {
+    const options = { timeOut: 0, extendedTimeOut: 0 };
+
+    test('is not brought back by a pointer that enters it while it leaves, whichever way it was dismissed', () => {
+        const cleared = toastr.info('Cleared', 'One', options);
+        toastr.clear(cleared, { force: true });
+        cleared.trigger('mouseenter');
+        expect(cleared.hasClass('sb-toast-leaving')).toBe(true);
+
+        const pressed = toastr.info('Pressed', 'Two', options);
+        pressed.find('.toast-close-button')[0].click();
+        pressed.trigger('mouseenter');
+        expect(pressed.hasClass('sb-toast-leaving')).toBe(true);
+
+        const clicked = toastr.info('Clicked', 'Three', options);
+        clicked[0].click();
+        jest.advanceTimersByTime(notification.CARD_CLICK_DELAY);
+        clicked.trigger('mouseenter');
+        expect(clicked.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
+    test('is not brought back either when a call of clear() without force, or without a toast, is what hid it', () => {
+        const single = toastr.info('One', 'One', options);
+        toastr.clear(single);
+        single.trigger('mouseenter');
+        expect(single.hasClass('sb-toast-leaving')).toBe(true);
+
+        const first = toastr.info('First', 'Two', options);
+        const second = toastr.info('Second', 'Three', options);
+        toastr.clear();
+        first.trigger('mouseenter');
+        second.trigger('mouseenter');
+        expect(first.hasClass('sb-toast-leaving')).toBe(true);
+        expect(second.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
+    test('is not marked when it has focus inside, which clear() leaves on screen, so a timeout that ends it later can still be saved', () => {
+        const $toast = toastr.info('<button id="held">Held</button>', 'Held', { ...HTML });
+        $toast.find('#held')[0].focus();
+        toastr.clear();
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+        $toast.find('#held')[0].blur();
+        // The hide method is what toastr's timer calls, and a pointer that enters the toast then keeps it.
+        $toast.sbToastOut({});
+        expect($toast.hasClass('sb-toast-leaving')).toBe(true);
+        $toast.trigger('mouseenter');
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+    });
+
+    test('is still kept by a pointer when it was a timeout that ended it', async () => {
+        const $toast = toastr.info('Times out', 'Four', { timeOut: 300, extendedTimeOut: 300 });
+        jest.advanceTimersByTime(300);
+        await flush();
+        expect($toast.hasClass('sb-toast-leaving')).toBe(true);
+        $toast.trigger('mouseenter');
+        expect($toast.hasClass('sb-toast-leaving')).toBe(false);
+    });
+});
+
+describe('the order and the container', () => {
+    test('the newest notification is first in the document, whatever newestOnTop says, so a bottom position can draw it last', () => {
+        const first = toastr.info('One', 'T1', { timeOut: 0, extendedTimeOut: 0 });
+        const second = toastr.info('Two', 'T2', { timeOut: 0, extendedTimeOut: 0, newestOnTop: false });
+        expect([...document.querySelectorAll('#toast-container > .toast')]).toEqual([second[0], first[0]]);
+    });
+});
+
+describe('the motion', () => {
+    const NOTIFICATION = { timeOut: 0, extendedTimeOut: 0 };
+    const sized = (height) => {
+        const real = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+        Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => height });
+        return () => (real ? Object.defineProperty(HTMLElement.prototype, 'offsetHeight', real) : delete HTMLElement.prototype.offsetHeight);
+    };
+
+    test('in at a bottom position: a slide up from one height below and a scale from 0.9, with ease-out-back, and a fade with ease-out-quad, over 200ms', () => {
+        const restore = sized(90);
+        motion.setNotificationPosition('toast-bottom-center');
+        toastr.info('A notification', 'Title', NOTIFICATION);
+        restore();
+        expect(animations.map(({ keyframes, duration, easing }) => ({ keyframes, duration, easing }))).toEqual([
+            { keyframes: [{ opacity: 0 }, { opacity: 1 }], duration: 200, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' },
+            { keyframes: [{ transform: 'translateY(90px) scale(0.9)' }, { transform: 'none' }], duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
+        ]);
+    });
+
+    test.each([
+        ['toast-top-center', 'translateY(-90px)'],
+        ['toast-bottom-right', 'translateY(90px)'],
+    ])('out at %s: a fade and a slide back by its own height, both with ease-out-back, over 200ms, and no scale', async (position, slide) => {
+        const restore = sized(90);
+        motion.setNotificationPosition(position);
+        const $toast = toastr.info('A notification', 'Title', NOTIFICATION);
+        await finishAnimations();
+        animations = [];
+        toastr.clear($toast, { force: true });
+        restore();
+        expect(animations.map(({ keyframes, duration, easing, fill }) => ({ keyframes, duration, easing, fill }))).toEqual([
+            { keyframes: [{ opacity: 1 }, { opacity: 0 }], duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' },
+            { keyframes: [{ transform: 'none' }, { transform: slide }], duration: 200, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' },
+        ]);
+        await finishAnimations();
+        expect($toast[0].isConnected).toBe(false);
+    });
+
+    test('under reduced motion it fades in and out, with no movement', async () => {
+        reducedMotion = true;
+        const $toast = toastr.info('A notification', 'Title', NOTIFICATION);
+        expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 0 }, { opacity: 1 }]]);
+        await finishAnimations();
+        animations = [];
+        toastr.clear($toast, { force: true });
+        expect(animations.map(animation => animation.keyframes)).toEqual([[{ opacity: 1 }, { opacity: 0 }]]);
+        expect(animations[0].duration).toBeLessThanOrEqual(200);
+    });
+
+    test('a notification that leaves is taken out of the flow at its place, and from the bottom edge at a bottom position', async () => {
+        motion.setNotificationPosition('toast-bottom-center');
+        const first = toastr.info('One', 'T1');
+        toastr.info('Two', 'T2');
+        const container = document.getElementById('toast-container');
+        Object.defineProperty(container, 'clientHeight', { configurable: true, value: 200 });
+        Object.defineProperty(first[0], 'offsetTop', { configurable: true, value: 100 });
+        Object.defineProperty(first[0], 'offsetHeight', { configurable: true, value: 80 });
+        toastr.clear(first, { force: true });
+        expect(first[0].style.position).toBe('absolute');
+        expect(first[0].style.bottom).toBe('20px');
+        expect(first[0].style.top).toBe('');
+    });
+
+    describe('the others move over 200ms with ease-out-quad, as position only', () => {
+        const stack = (tops) => {
+            const container = document.createElement('div');
+            document.body.append(container);
+            container.getBoundingClientRect = () => ({ top: 0 });
+            return tops.map(([top]) => {
+                const child = document.createElement('div');
+                Object.defineProperty(child, 'offsetTop', { configurable: true, get: () => child.dataset.top * 1 });
+                child.dataset.top = String(top);
+                child.getClientRects = () => [{ width: 1, height: 1 }];
+                container.append(child);
+                return child;
+            });
+        };
+
+        test('a sibling that the change moves slides from its old place with a translate that adds to a transform that is running', () => {
+            const [leaver, other] = stack([[0], [100]]);
+            notification.shiftOthersAround(leaver, () => {
+                other.dataset.top = '40';
+            });
+            const slide = animations.filter(animation => animation.element === other);
+            expect(slide).toHaveLength(1);
+            expect(slide[0].keyframes).toEqual([{ translate: '0 60px' }, { translate: '0 0' }]);
+            expect(slide[0].duration).toBe(200);
+            expect(slide[0].easing).toBe('cubic-bezier(0.25, 0.46, 0.45, 0.94)');
+            expect(slide[0].composite).toBe('add');
+            expect(animations.filter(animation => animation.element === leaver)).toHaveLength(0);
+        });
+
+        test('a sibling that does not move does not animate, and a change under reduced motion is not animated at all', () => {
+            const [leaver, other] = stack([[0], [100]]);
+            notification.shiftOthersAround(leaver, () => {});
+            expect(animations).toHaveLength(0);
+            reducedMotion = true;
+            notification.shiftOthersAround(leaver, () => {
+                other.dataset.top = '40';
+            });
+            expect(animations).toHaveLength(0);
+        });
+    });
+});

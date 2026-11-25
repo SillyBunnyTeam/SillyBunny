@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { NOTIFICATION_FORM_SELECTOR, TOAST_FORM_SELECTOR } from './helpers/toasts.js';
 
 test.use({ contextOptions: { reducedMotion: 'no-preference' } });
 
@@ -11,12 +12,13 @@ test.beforeEach(async ({ page }) => {
     await showToasts(page);
 });
 
-const toast = (page, title) => page.locator('#toast-container .toast', { has: page.locator('.toast-title', { hasText: title }) });
+// The queue of the toast form: a plain message with no title. A message with a title is an in-app notification, which has a queue of its own.
+const toast = (page, text) => page.locator(TOAST_FORM_SELECTOR, { has: page.locator('.toast-message', { hasText: text }) });
 
 test('a second toast waits behind the first and shows when the first has gone', async ({ page }) => {
     await page.evaluate(() => {
-        window.toastr.info('First message', 'First', { timeOut: 900, extendedTimeOut: 900 });
-        window.toastr.info('Second message', 'Second', { timeOut: 900, extendedTimeOut: 900 });
+        window.toastr.info('First message', '', { timeOut: 900, extendedTimeOut: 900 });
+        window.toastr.info('Second message', '', { timeOut: 900, extendedTimeOut: 900 });
     });
     await expect(toast(page, 'First')).toBeVisible();
     await expect(toast(page, 'Second'), 'the second toast is in the page, but hidden').toBeHidden();
@@ -26,29 +28,34 @@ test('a second toast waits behind the first and shows when the first has gone', 
     await expect(toast(page, 'Second'), 'it goes after its own timeout').toHaveCount(0, { timeout: 4000 });
 });
 
-test('the app listener still hears a queued toast: it is a tap target with its title when it shows', async ({ page }) => {
+test('the app listener still hears a queued message: a notification is a tap target, and a toast is not', async ({ page }) => {
     await page.evaluate(() => {
-        window.toastr.info('First message', 'First', { timeOut: 700, extendedTimeOut: 700 });
-        window.toastr.info('Second message', 'Second', { timeOut: 5000, extendedTimeOut: 5000 });
+        window.toastr.info('First message', '', { timeOut: 700, extendedTimeOut: 700 });
+        window.toastr.info('Second message', '', { timeOut: 5000, extendedTimeOut: 5000 });
+        window.toastr.info('Notification message', 'Title', { timeOut: 5000, extendedTimeOut: 5000 });
     });
     await expect(toast(page, 'Second')).toBeVisible({ timeout: 4000 });
-    await expect(toast(page, 'Second')).toHaveAttribute('title', /.+/);
-    await expect(toast(page, 'Second')).toHaveClass(/interactable/);
+    await expect(toast(page, 'Second'), 'a toast has no tap hint').not.toHaveAttribute('title', /.+/);
+    await expect(toast(page, 'Second')).not.toHaveClass(/interactable/);
+    const notification = page.locator(NOTIFICATION_FORM_SELECTOR, { hasText: 'Notification message' });
+    await expect(notification).toHaveAttribute('title', /.+/);
+    await expect(notification).toHaveClass(/interactable/);
 });
 
 test('a toast with a button shows at once and the shown toast waits at the head of the queue', async ({ page }) => {
     await page.evaluate(() => {
-        window.toastr.info('First message', 'First', { timeOut: 5000, extendedTimeOut: 5000 });
-        window.toastr.info('Second message', 'Second', { timeOut: 5000, extendedTimeOut: 5000 });
+        window.toastr.info('First message', '', { timeOut: 5000, extendedTimeOut: 5000 });
+        window.toastr.info('Second message', '', { timeOut: 5000, extendedTimeOut: 5000 });
     });
     await expect(toast(page, 'First')).toBeVisible();
     await page.evaluate(() => {
-        window.toastr.info('<button type="button" id="undo-button">Undo</button>', 'Deleted', { timeOut: 1200, extendedTimeOut: 1200, escapeHtml: false });
+        window.toastr.info('<button type="button" id="undo-button">Undo</button>', '', { timeOut: 1200, extendedTimeOut: 1200, escapeHtml: false });
     });
-    await expect(toast(page, 'Deleted'), 'the toast with a button shows at once').toBeVisible({ timeout: 700 });
+    const undo = page.locator(TOAST_FORM_SELECTOR, { has: page.locator('#undo-button') });
+    await expect(undo, 'the toast with a button shows at once').toBeVisible({ timeout: 700 });
     await expect(toast(page, 'First'), 'the first toast is pushed back and hidden').toBeHidden({ timeout: 1500 });
     await expect(toast(page, 'First')).toHaveCount(1);
-    await expect(toast(page, 'Deleted')).toHaveCount(0, { timeout: 4000 });
+    await expect(undo).toHaveCount(0, { timeout: 4000 });
     await expect(toast(page, 'First'), 'the pushed back toast comes back before the toast that waited').toBeVisible({ timeout: 2000 });
     await expect(toast(page, 'Second')).toBeHidden();
 });
@@ -58,8 +65,8 @@ test('a toast shows over 300ms, and over 500ms when it takes the place of one th
         const durationOf = node => node.getAnimations()
             .map(animation => animation.effect.getTiming().duration)
             .filter(duration => duration === 300 || duration === 500);
-        const first = window.toastr.info('First message', 'First', { timeOut: 800, extendedTimeOut: 800 });
-        const second = window.toastr.info('Second message', 'Second', { timeOut: 800, extendedTimeOut: 800 });
+        const first = window.toastr.info('First message', '', { timeOut: 800, extendedTimeOut: 800 });
+        const second = window.toastr.info('Second message', '', { timeOut: 800, extendedTimeOut: 800 });
         const firstShow = durationOf(first[0]);
         await new Promise((resolve) => {
             const watch = () => (first[0].classList.contains('sb-toast-leaving') ? resolve() : requestAnimationFrame(watch));
@@ -77,8 +84,8 @@ test('a toast shows over 300ms, and over 500ms when it takes the place of one th
 test('a toast that waits starts its timeout when it shows, not when it is made', async ({ page }) => {
     const times = await page.evaluate(async () => {
         const started = performance.now();
-        window.toastr.info('First message', 'First', { timeOut: 700, extendedTimeOut: 700 });
-        const second = window.toastr.info('Second message', 'Second', { timeOut: 700, extendedTimeOut: 700 });
+        window.toastr.info('First message', '', { timeOut: 700, extendedTimeOut: 700 });
+        const second = window.toastr.info('Second message', '', { timeOut: 700, extendedTimeOut: 700 });
         let shownAt = null;
         let goneAt = null;
         await new Promise((resolve) => {
@@ -103,22 +110,24 @@ test('a toast that waits starts its timeout when it shows, not when it is made',
 test('many errors at once are all kept, ahead of the notices that were waiting', async ({ page }) => {
     const order = await page.evaluate(async () => {
         const { getToastQueue } = await import('/scripts/sillybunny-toast-motion.js');
-        window.toastr.info('Now showing', 'Showing', { timeOut: 30000, extendedTimeOut: 30000 });
-        for (let index = 0; index < 8; index += 1) window.toastr.info(`Notice ${index}`, `Notice ${index}`, { timeOut: 30000, extendedTimeOut: 30000 });
-        for (let index = 0; index < 5; index += 1) window.toastr.error(`Error ${index}`, `Error ${index}`, { timeOut: 30000, extendedTimeOut: 30000 });
-        window.toastr.error('Error 0', 'Error 0', { timeOut: 30000, extendedTimeOut: 30000 });
-        return getToastQueue().waiting.map(node => node.querySelector('.toast-title')?.textContent);
+        window.toastr.info('Now showing', '', { timeOut: 30000, extendedTimeOut: 30000 });
+        for (let index = 0; index < 8; index += 1) window.toastr.info(`Notice ${index}`, '', { timeOut: 30000, extendedTimeOut: 30000 });
+        for (let index = 0; index < 5; index += 1) window.toastr.error(`Error ${index}`, '', { timeOut: 30000, extendedTimeOut: 30000 });
+        window.toastr.error('Error 0', '', { timeOut: 30000, extendedTimeOut: 30000 });
+        return getToastQueue().waiting.map(node => node.querySelector('.toast-message')?.textContent);
     });
-    const waitingErrors = order.filter(title => title.startsWith('Error'));
+    const waitingErrors = order.filter(message => message.startsWith('Error'));
     expect(waitingErrors, 'five different errors, the repeat of the first is not queued twice').toHaveLength(5);
     expect(order.slice(0, 5), 'the errors are the first to show after the current toast').toEqual(waitingErrors);
-    expect(order.filter(title => title.startsWith('Notice')).length, 'the oldest notices were dropped').toBeLessThanOrEqual(6);
+    expect(order.filter(message => message.startsWith('Notice')).length, 'the oldest notices were dropped').toBeLessThanOrEqual(6);
 });
 
 test.describe('with a finger', () => {
     test.use({ hasTouch: true });
 
-    test('a toast with a button stays while the finger is on it, and goes after the finger lifts', async ({ page }) => {
+    test('a toast with a button stays while the finger is on it, and goes after the finger lifts', async ({ page, browserName }) => {
+        // The touch is sent through the Chrome DevTools Protocol, which only Chromium has.
+        test.skip(browserName !== 'chromium', 'Input.dispatchTouchEvent is a Chrome DevTools Protocol command');
         await page.evaluate(() => {
             const body = document.createElement('div');
             body.textContent = 'Removed';
@@ -128,9 +137,11 @@ test.describe('with a finger', () => {
             body.append(action);
             window.toastr.info(body, '', { timeOut: 700, extendedTimeOut: 700, escapeHtml: false });
         });
-        const held = page.locator('#toast-container .toast', { hasText: 'Removed' });
+        const held = page.locator(TOAST_FORM_SELECTOR, { hasText: 'Removed' });
         await expect(held).toBeVisible();
-        const box = await held.locator('button').boundingBox();
+        // The toast slides in over 300ms, and a box that is read during the slide is the one of the moving toast.
+        await expect.poll(() => held.evaluate(node => node.getAnimations().length)).toBe(0);
+        const box = await held.locator('.toast-message button').boundingBox();
         const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         const session = await page.context().newCDPSession(page);
         await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
@@ -146,10 +157,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.setViewportSize(viewport);
         await page.evaluate(() => {
             window.toastr.info('<div>Removed Main Prompt <button type="button" class="menu_button" id="toast-action">Undo</button></div>', '', { timeOut: 0, extendedTimeOut: 0, escapeHtml: false });
-            window.toastr.info('A plain toast', 'Plain', { timeOut: 0, extendedTimeOut: 0 });
+            window.toastr.info('A plain toast', '', { timeOut: 0, extendedTimeOut: 0 });
         });
         const action = page.locator('#toast-action');
-        const withButton = page.locator('#toast-container .toast', { has: action });
+        const withButton = page.locator(TOAST_FORM_SELECTOR, { has: action });
         await expect(action).toBeVisible();
         const layout = await page.evaluate(() => {
             const button = document.getElementById('toast-action').getBoundingClientRect();
@@ -169,16 +180,20 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
 }
 
-test('a toast without a button keeps its block layout', async ({ page }) => {
-    await page.evaluate(() => window.toastr.info('A plain toast', 'Plain', { timeOut: 0, extendedTimeOut: 0 }));
-    await expect(toast(page, 'Plain')).toBeVisible();
-    expect(await toast(page, 'Plain').evaluate(node => getComputedStyle(node).display)).toBe('block');
+test('a toast is a row of its parts, and an in-app notification keeps its block layout', async ({ page }) => {
+    await page.evaluate(() => {
+        window.toastr.info('A plain toast', '', { timeOut: 0, extendedTimeOut: 0 });
+        window.toastr.info('A notification', 'Title', { timeOut: 0, extendedTimeOut: 0 });
+    });
+    await expect(toast(page, 'A plain toast')).toBeVisible();
+    expect(await toast(page, 'A plain toast').evaluate(node => getComputedStyle(node).display)).toBe('flex');
+    expect(await page.locator(NOTIFICATION_FORM_SELECTOR, { hasText: 'A notification' }).evaluate(node => getComputedStyle(node).display)).toBe('block');
 });
 
-test('a toast with two buttons keeps its block layout, so the buttons do not share a cell', async ({ page }) => {
+test('a message with two buttons is an in-app notification, and keeps its block layout so the buttons do not share a cell', async ({ page }) => {
     await page.evaluate(() => window.toastr.info('<div>Unsaved changes</div><div><button type="button" id="first-action">Restore</button><button type="button" id="second-action">Discard</button></div>', '', { timeOut: 0, extendedTimeOut: 0, escapeHtml: false }));
     await expect(page.locator('#first-action')).toBeVisible();
-    expect(await page.locator('#toast-container .toast').first().evaluate(node => getComputedStyle(node).display)).toBe('block');
+    expect(await page.locator(NOTIFICATION_FORM_SELECTOR).first().evaluate(node => getComputedStyle(node).display)).toBe('block');
     await page.locator('#second-action').click({ trial: true });
     await page.locator('#first-action').click({ trial: true });
 });

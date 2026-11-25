@@ -3,7 +3,7 @@ import { openPicker } from './picker.js';
 import { createSelectRow } from './select-row.js';
 
 const attachments = new WeakMap();
-const TAG_SELECTOR = '.rm_tag_filter .tag:not(.actionable)';
+const TAG_SELECTOR = '.rm_tag_filter .tag:not(.actionable):not(.placeholder-expander)';
 const STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' };
 
 async function loadPickerStyles() {

@@ -6,7 +6,7 @@
             "important": 12,
             "breakpoint-off-set": 1,
             "breakpoint-1000": 1,
-            "spacing-off-scale": 32
+            "spacing-off-scale": 31
         },
         "public/css/sillybunny-character-import.css": {
             "important": 1,
@@ -16,7 +16,7 @@
             "radius-literal": 2,
             "shadow-literal": 1,
             "important": 14,
-            "spacing-off-scale": 27
+            "spacing-off-scale": 26
         },
         "public/css/sillybunny-chat-styles.css": {
             "shadow-literal": 1,
@@ -62,7 +62,7 @@
             "radius-literal": 1,
             "shadow-literal": 2,
             "important": 1,
-            "spacing-off-scale": 45,
+            "spacing-off-scale": 42,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-message-actions.css": {
@@ -93,7 +93,7 @@
         },
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
-            "spacing-off-scale": 16
+            "spacing-off-scale": 15
         },
         "public/css/sillybunny-prompt-editor.css": {
             "important": 17,
@@ -125,7 +125,7 @@
             "important": 186,
             "hover-ungated": 4,
             "focus-outline": 1,
-            "spacing-off-scale": 165,
+            "spacing-off-scale": 157,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

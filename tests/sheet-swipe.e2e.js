@@ -209,7 +209,7 @@ const SURFACES = [
         async open(page) {
             await page.evaluate(async () => {
                 const { createAgentEditorProperties } = await import('/scripts/extensions/in-chat-agents/ui/agent-editor-properties.js');
-                await window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261118zzv', { id: 'deferred-prompt-editor-css' });
+                await window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261122j', { id: 'deferred-prompt-editor-css' });
                 window.qaSheet = { changes: [] };
                 const properties = createAgentEditorProperties({
                     categories: [['general', 'General']],

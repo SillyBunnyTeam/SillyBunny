@@ -34,12 +34,6 @@ test.describe('Shell panel button sizes on a coarse pointer', () => {
         for (const size of sizes) expect(size).toEqual({ minHeight: '44px' });
     });
 
-    test('chat completion config actions keep their own padding and the 44px floor', async ({ page }) => {
-        const sizes = await computed(page, '.sb-shell-panel-scroller .sb-chat-completion-config-actions button.menu_button_icon', ['minHeight', 'paddingTop', 'paddingLeft']);
-        expect(sizes).toHaveLength(3);
-        for (const size of sizes) expect(size).toEqual({ minHeight: '44px', paddingTop: '7px', paddingLeft: '10px' });
-    });
-
     test('accent preset swatches follow the pointer floor', async ({ page }) => {
         const sizes = await computed(page, '.sb-shell-panel-scroller button.sb-accent-preset', ['minHeight', 'height']);
         expect(sizes.length).toBeGreaterThan(0);

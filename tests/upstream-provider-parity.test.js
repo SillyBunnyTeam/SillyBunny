@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { parse } from 'acorn';
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
 import { migrateNanoGptProviderSettings } from '../public/scripts/openai-preset-utils.js';
+import { shouldForwardChatId } from '../public/scripts/local-url-utils.js';
 import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
 
 const sources = Object.fromEntries(['openai', 'custom-request', 'reasoning', 'tokenizers'].map(name => {
@@ -50,6 +51,7 @@ function makeRuntime(overrides = {}) {
         ToolManager: { canPerformToolCalls: () => false },
         getGroupNames: () => [],
         getCurrentChatId: () => 'parity-chat',
+        shouldForwardChatId,
         getCustomStoppingStrings: () => [],
         appendAutoAppendReasoningInstruction: messages => messages,
         substituteParams: value => typeof value === 'string' ? value.replaceAll('{{char}}', 'Character') : value,
@@ -208,6 +210,24 @@ describe('upstream provider request integration', () => {
             expect(runtime.tokenizer()).toBe(tokenizer);
         });
     }
+
+    test.each(['fireworks', 'openrouter', 'openai', 'openai_responses', 'xai', 'mistralai', 'azure_openai'])('createGenerationParameters sends chat_id for %s unless the request opts out of caching', async (source) => {
+        const runtime = makeRuntime({ chat_completion_source: source });
+        const messages = [{ role: 'user', content: 'Hello' }];
+
+        for (const type of ['normal', 'swipe', 'continue', 'impersonate']) {
+            expect((await runtime.build('model-x', type, messages)).generate_data.chat_id).toBe('parity-chat');
+        }
+        expect((await runtime.build('model-x', 'normal', messages, { cacheScope: 'auxiliary' })).generate_data.chat_id).toBe('parity-chat');
+        expect((await runtime.build('model-x', 'normal', messages, { cacheScope: 'none' })).generate_data).not.toHaveProperty('chat_id');
+        const quiet = (await runtime.build('model-x', 'quiet', messages)).generate_data;
+        expect(quiet.chat_id).toBe(source === 'fireworks' ? undefined : 'parity-chat');
+    });
+
+    test.each(['claude', 'custom', 'deepseek', 'makersuite'])('createGenerationParameters never sends chat_id for %s', async (source) => {
+        const runtime = makeRuntime({ chat_completion_source: source });
+        expect((await runtime.build('model-x', 'normal', [{ role: 'user', content: 'Hello' }])).generate_data).not.toHaveProperty('chat_id');
+    });
 
     test('requests and extracts Fireworks reasoning without attaching quiet requests to a chat', async () => {
         const runtime = makeRuntime({ chat_completion_source: 'fireworks', reasoning_effort: 'min' });

@@ -11,6 +11,7 @@ import { event_types } from '../public/scripts/events.js';
 import { collectHiddenGenerationMessages } from '../public/scripts/generation-hidden-messages.js';
 import { OVERSWIPE_BEHAVIOR, SWIPE_DIRECTION, SWIPE_SOURCE, SWIPE_STATE } from '../public/scripts/constants.js';
 import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
+import { shouldForwardChatId } from '../public/scripts/local-url-utils.js';
 
 function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer = false, composer = '' } = {}) {
     const eventSource = new EventEmitter();
@@ -44,6 +45,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         generation_started: null, abortController: null, streamingProcessor: null,
         activeGenerationRun: null, agentGenerationContextProvider: null, chatGeneration: 1,
         getCurrentChatId: () => 'story',
+        shouldForwardChatId,
         amount_gen: 8192, max_context: 32768, kobold_horde_model: '',
         openai_messages_count: 1, itemizedPrompts: [], extension_prompts: {},
         power_user: {

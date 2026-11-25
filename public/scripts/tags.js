@@ -1341,6 +1341,14 @@ function printTagList(element, { tags = undefined, addTag = undefined, forEntity
             $element.addClass('tags-expanded');
             expanded_tags_cache.push(elementKey);
 
+            // SillyBunny: printTagFilters() prints into a list that it does not empty, so the repeat print would keep this
+            // expander and add the skipped tags after it, out of sort order. Remove the expander and the chips of this print
+            // only, because the chips that an earlier print added to the same list must stay.
+            if (!empty) {
+                const printedIds = new Set(printableTags.map(tag => tag.id));
+                $element.children('.tag').filter((_, chip) => chip.id === id || printedIds.has(chip.id)).remove();
+            }
+
             // Do not bubble further, we are just expanding
             event.stopPropagation();
             printTagList($element, { tags: tags, addTag: addTag, forEntityOrKey: forEntityOrKey, empty: empty, tagActionSelector: tagActionSelector, tagOptions: tagOptions, inactiveTags: inactiveTags });

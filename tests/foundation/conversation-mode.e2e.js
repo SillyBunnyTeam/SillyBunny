@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { TOAST_CONTAINERS } from '../helpers/toasts.js';
 
 test.beforeEach(async ({ page, baseURL }) => {
     let settingsVersion = Date.now();
@@ -21,7 +22,7 @@ test.beforeEach(async ({ page, baseURL }) => {
 // at boot. A toast is centred at the top, over the header, and takes a click aimed at what lies beneath it.
 async function clearToasts(page) {
     await page.evaluate(() => window.toastr?.clear());
-    await expect(page.locator('#toast-container > div')).toHaveCount(0);
+    await expect(page.locator(`${TOAST_CONTAINERS} > div`)).toHaveCount(0);
 }
 
 async function seedConversation(page, { messageOverrides = [] } = {}) {
