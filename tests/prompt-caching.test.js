@@ -375,10 +375,20 @@ describe('Prompt caching primitives and edge cases', () => {
         expect(promptCaching.isNanoGptClaudeModel('claude-opus-4-6')).toBe(true);
         expect(promptCaching.isElectronHubClaudeModel('anthropic/claude-sonnet-4-6')).toBe(true);
         expect(promptCaching.isElectronHubClaudeModel('claude-sonnet-4-6')).toBe(true);
+    });
 
-        expect(promptCaching.stripOpenRouterModelSuffix('google/gemini-4-neon:online')).toBe('google/gemini-4-neon');
-        expect(promptCaching.stripOpenRouterModelSuffix('google/gemini-4-neon:nitro:online')).toBe('google/gemini-4-neon');
-        expect(promptCaching.stripOpenRouterModelSuffix('google/gemini-4-neon')).toBe('google/gemini-4-neon');
+    test('isOpenRouterModelCacheable recovers after a fetch implementation that throws synchronously', async () => {
+        let nowMs = 2_000_000;
+        const throwingFetch = jest.fn(() => {
+            throw new Error('sync failure');
+        });
+        expect(await promptCaching.isOpenRouterModelCacheable('qwen/qwen3-max', { fetchImpl: throwingFetch, now: () => nowMs })).toBe(false);
+        expect(throwingFetch).toHaveBeenCalledTimes(1);
+
+        nowMs += promptCaching.OPENROUTER_MODELS_FAILURE_BACKOFF_MS + 1;
+        const goodFetch = jest.fn(async () => jsonResponse({ data: [{ id: 'qwen/qwen3-max', pricing: { input_cache_write: '0.0000015' } }] }));
+        expect(await promptCaching.isOpenRouterModelCacheable('qwen/qwen3-max', { fetchImpl: goodFetch, now: () => nowMs })).toBe(true);
+        expect(goodFetch).toHaveBeenCalledTimes(1);
     });
 
     test('isOpenRouterModelCacheable handles case-insensitivity, stacked suffixes, deduplication, and outage backoff', async () => {
@@ -494,6 +504,10 @@ describe('Chat completions backend prompt caching integration', () => {
                     data: [
                         { id: 'google/gemini-4-neon', pricing: { input_cache_write: '0.0000000833', input_cache_read: '0.00000015' } },
                         { id: '~google/gemini-pro-latest', pricing: { input_cache_write: '0.0000001875', input_cache_read: '0.0000001' } },
+                        { id: 'qwen/qwen3-max', pricing: { input_cache_write: '0.0000015', input_cache_read: '0.0000001' } },
+                        { id: 'openai/gpt-5.6', pricing: { input_cache_write: '0.00000625', input_cache_read: '0.0000005' } },
+                        { id: 'openai/gpt-4o', pricing: { input_cache_read: '0.00000125' } },
+                        { id: '~x-ai/grok-latest', pricing: { input_cache_write: '0', input_cache_read: '0.0000002' } },
                     ],
                 });
             }
@@ -738,6 +752,113 @@ describe('Chat completions backend prompt caching integration', () => {
         expect(body.messages[1].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
         expect(body.messages[2].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
         expect(body.messages[4].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+    });
+
+    describe('OpenRouter models other than Claude and Gemini', () => {
+        const history = [
+            { role: 'system', content: 'System' },
+            { role: 'user', content: 'Turn 1' },
+            { role: 'assistant', content: 'Reply 1' },
+            { role: 'user', content: 'Turn 2' },
+        ];
+
+        async function sendOpenRouter(model, overrides = {}) {
+            nodeFetchMock.mockClear();
+            const res = await post('/api/backends/chat-completions/generate', {
+                chat_completion_source: CHAT_COMPLETION_SOURCES.OPENROUTER,
+                model,
+                stream: false,
+                max_tokens: 256,
+                messages: structuredClone(history),
+                ...overrides,
+            });
+            expect(res.status).toBe(200);
+            const completionCall = nodeFetchMock.mock.calls.find(([url]) => String(url).endsWith('/chat/completions'));
+            return {
+                body: JSON.parse(completionCall[1].body),
+                catalogFetches: nodeFetchMock.mock.calls.filter(([url]) => String(url).endsWith('/models')).length,
+            };
+        }
+
+        test.each(['qwen/qwen3-max', 'openai/gpt-5.6', '~x-ai/grok-latest', 'qwen/qwen3-max:nitro'])('%s gets the system and depth markers without a ttl', async (model) => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true } });
+
+            const { body } = await sendOpenRouter(model);
+            expect(body.messages[0].content).toEqual([{ type: 'text', text: 'System', cache_control: { type: 'ephemeral' } }]);
+            expect(body.messages[1].content).toEqual([{ type: 'text', text: 'Turn 1', cache_control: { type: 'ephemeral' } }]);
+            expect(body.messages[2].content).toBe('Reply 1');
+            expect(body.messages[3].content).toEqual([{ type: 'text', text: 'Turn 2', cache_control: { type: 'ephemeral' } }]);
+        });
+
+        test('the claude settings decide which markers a catalog model gets', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: -1 } });
+            const systemOnly = (await sendOpenRouter('qwen/qwen3-max')).body;
+            expect(promptCaching.countCacheControlMarkers({ messages: systemOnly.messages })).toBe(1);
+            expect(systemOnly.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral' });
+
+            mergeCachingConfig({ claude: { enableSystemPromptCache: false, cachingAtDepth: 0 } });
+            const depthOnly = (await sendOpenRouter('qwen/qwen3-max')).body;
+            expect(depthOnly.messages[0].content).toBe('System');
+            expect(promptCaching.countCacheControlMarkers({ messages: depthOnly.messages })).toBe(2);
+        });
+
+        test('markers also reach a catalog model on a quiet request', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
+            const { body } = await sendOpenRouter('qwen/qwen3-max', { type: 'quiet', cacheScope: 'auxiliary' });
+            expect(promptCaching.countCacheControlMarkers({ messages: body.messages })).toBe(3);
+        });
+
+        test('a model with only a cache read price, or no catalog entry, gets no markers', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
+
+            for (const model of ['openai/gpt-4o', 'acme/unlisted-model']) {
+                const { body, catalogFetches } = await sendOpenRouter(model);
+                expect(catalogFetches).toBeLessThanOrEqual(1);
+                expect(body.messages).toEqual(history);
+            }
+        });
+
+        test('no catalog fetch happens while both claude settings are off', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: false, cachingAtDepth: -1 } });
+
+            const { body, catalogFetches } = await sendOpenRouter('qwen/qwen3-max');
+            expect(catalogFetches).toBe(0);
+            expect(body.messages).toEqual(history);
+        });
+
+        test('Claude models need no catalog fetch, so they keep their markers while the catalog is down', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true } });
+            const defaultMock = nodeFetchMock.getMockImplementation();
+            nodeFetchMock.mockImplementation(async (url, options) => {
+                if (String(url).endsWith('/models')) {
+                    throw new Error('catalog outage');
+                }
+                return defaultMock(url, options);
+            });
+
+            const claude = await sendOpenRouter('anthropic/claude-sonnet-4-6');
+            expect(claude.catalogFetches).toBe(0);
+            expect(claude.body.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+
+            const qwen = await sendOpenRouter('qwen/qwen3-max');
+            expect(qwen.catalogFetches).toBe(1);
+            expect(qwen.body.messages).toEqual(history);
+        });
+
+        test('a stale catalog copy keeps serving during an outage', async () => {
+            mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: -1 } });
+            let nowMs = 5_000_000;
+            const catalog = { data: [{ id: 'qwen/qwen3-max', pricing: { input_cache_write: '0.0000015' } }] };
+            const fetchImpl = jest.fn()
+                .mockResolvedValueOnce(jsonResponse(catalog))
+                .mockRejectedValue(new Error('catalog outage'));
+            const options = { fetchImpl, now: () => nowMs };
+
+            expect(await promptCaching.isOpenRouterModelCacheable('qwen/qwen3-max', options)).toBe(true);
+            nowMs += promptCaching.OPENROUTER_MODELS_CACHE_TTL_MS + 1;
+            expect(await promptCaching.isOpenRouterModelCacheable('qwen/qwen3-max', options)).toBe(true);
+            expect(fetchImpl).toHaveBeenCalledTimes(2);
+        });
     });
 
     describe('NanoGPT prompt caching', () => {

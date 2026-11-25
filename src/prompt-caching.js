@@ -106,30 +106,63 @@ export function isElectronHubClaudeModel(model) {
 }
 
 /**
- * Strips OpenRouter routing suffixes (`:online`, `:nitro`, `:floor`, stacked modifiers) from a model ID.
- * @param {unknown} modelId
- * @returns {string}
+ * Downloads the OpenRouter model catalog into a map of lowercase model id to "has a cache-write price".
+ * Never rejects: a failure starts the backoff and resolves to null.
+ * @param {{ fetchImpl: typeof fetch, now: () => number, ttlMs: number, failureBackoffMs: number }} options
+ * @returns {Promise<Map<string, boolean> | null>}
  */
-export function stripOpenRouterModelSuffix(modelId) {
-    let normalized = String(modelId ?? '').trim();
-    if (!normalized) {
-        return '';
-    }
-    const slashIndex = normalized.lastIndexOf('/');
-    while (true) {
-        const colonIndex = normalized.lastIndexOf(':');
-        if (colonIndex <= slashIndex) {
-            break;
+async function fetchOpenRouterCacheableModels({ fetchImpl, now, ttlMs, failureBackoffMs }) {
+    const startBackoff = () => {
+        if (failureBackoffMs > 0) {
+            openRouterCacheableRetryAfter = now() + failureBackoffMs;
         }
-        normalized = normalized.slice(0, colonIndex);
+    };
+
+    try {
+        const response = await fetchImpl(`${API_OPENROUTER}/models`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(5000),
+        });
+
+        if (!response.ok) {
+            console.warn(`OpenRouter models API returned ${response.status}: ${response.statusText}`);
+            startBackoff();
+            return null;
+        }
+
+        /** @type {any} */
+        const data = await response.json();
+        if (!Array.isArray(data?.data)) {
+            console.warn('OpenRouter API response format unexpected');
+            startBackoff();
+            return null;
+        }
+
+        const nextMap = new Map();
+        for (const entry of data.data) {
+            if (typeof entry?.id !== 'string' || !entry.id) {
+                continue;
+            }
+            const writePrice = entry?.pricing?.input_cache_write;
+            nextMap.set(entry.id.trim().toLowerCase(), writePrice != null && writePrice !== '');
+        }
+
+        openRouterCacheableMap = nextMap;
+        openRouterCacheableExpiresAt = now() + ttlMs;
+        openRouterCacheableRetryAfter = 0;
+        return nextMap;
+    } catch (error) {
+        console.warn('Failed to load the OpenRouter model catalog:', error?.message ?? error);
+        startBackoff();
+        return null;
     }
-    return normalized;
 }
 
 /**
- * Checks whether an OpenRouter model advertises explicit cache-write support.
- * Caches the catalog for 15 minutes, peels stacked routing suffixes after exact match,
- * and applies a short failure backoff during /models outages.
+ * Checks whether an OpenRouter model advertises a cache-write price, which marks it as one that needs explicit cache markers.
+ * The catalog is cached for 15 minutes, shared by concurrent callers, and kept as a stale copy during an outage.
+ * An exact id match wins before stacked routing suffixes (`:online`, `:nitro`) are peeled off.
  * @param {string} modelId
  * @param {{ fetchImpl?: typeof fetch, now?: () => number, ttlMs?: number, failureBackoffMs?: number }} [options]
  * @returns {Promise<boolean>}
@@ -177,55 +210,14 @@ export async function isOpenRouterModelCacheable(
     }
 
     if (!openRouterCacheableInFlight) {
-        openRouterCacheableInFlight = (async () => {
-            try {
-                const response = await fetchImpl(`${API_OPENROUTER}/models`, {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' },
-                    signal: AbortSignal.timeout(5000),
-                });
-
-                if (!response.ok) {
-                    console.warn(`OpenRouter models API returned ${response.status}: ${response.statusText}`);
-                    if (failureBackoffMs > 0) {
-                        openRouterCacheableRetryAfter = now() + failureBackoffMs;
-                    }
-                    return null;
-                }
-
-                /** @type {any} */
-                const data = await response.json();
-                if (!Array.isArray(data?.data)) {
-                    console.warn('OpenRouter API response format unexpected');
-                    if (failureBackoffMs > 0) {
-                        openRouterCacheableRetryAfter = now() + failureBackoffMs;
-                    }
-                    return null;
-                }
-
-                const nextMap = new Map();
-                for (const entry of data.data) {
-                    if (typeof entry?.id !== 'string' || !entry.id) {
-                        continue;
-                    }
-                    const writePrice = entry?.pricing?.input_cache_write;
-                    nextMap.set(entry.id.trim().toLowerCase(), writePrice != null && writePrice !== '');
-                }
-
-                openRouterCacheableMap = nextMap;
-                openRouterCacheableExpiresAt = now() + ttlMs;
-                openRouterCacheableRetryAfter = 0;
-                return nextMap;
-            } catch (error) {
-                console.warn(`Failed to check OpenRouter cache support for ${normalized}:`, error?.message ?? error);
-                if (failureBackoffMs > 0) {
-                    openRouterCacheableRetryAfter = now() + failureBackoffMs;
-                }
-                return null;
-            } finally {
+        const pending = fetchOpenRouterCacheableModels({ fetchImpl, now, ttlMs, failureBackoffMs });
+        openRouterCacheableInFlight = pending;
+        // The slot is cleared from outside the fetch, so a fetch that settles before this line cannot leave it set.
+        void pending.finally(() => {
+            if (openRouterCacheableInFlight === pending) {
                 openRouterCacheableInFlight = null;
             }
-        })();
+        });
     }
 
     const loadedMap = await openRouterCacheableInFlight;
@@ -870,7 +862,7 @@ function resolveAffinityKey(affinityKey) {
 
 /**
  * Applies Anthropic-compatible inline system/depth markers on OpenAI-style messages (OpenRouter Claude, NanoGPT, ElectronHub).
- * @param {{ messages: any[], tools?: any[], enableSystemPromptCache: boolean, cachingAtDepth: number, cacheTTL: '1h'|'5m' }} params
+ * @param {{ messages: any[], tools?: any[], enableSystemPromptCache: boolean, cachingAtDepth: number, cacheTTL: '1h'|'5m'|undefined }} params
  * @returns {number} Final total cache_control breakpoint count
  */
 function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL }) {
@@ -898,7 +890,9 @@ function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCach
 }
 
 /**
- * Applies OpenRouter sticky session routing and explicit cache markers for Claude and Gemini models.
+ * Applies OpenRouter sticky session routing and explicit cache markers.
+ * Claude is matched by id. Gemini marks only the leading system prefix. Any other model whose catalog entry has a
+ * cache-write price takes the same markers as Claude, without a ttl, because only Anthropic prices a 1-hour write.
  * @param {{ requestBody: any, bodyParams: Record<string, any>, tools?: any[], affinityKey?: string | (() => string | undefined), userHandle?: string, config?: PromptCachingConfig, isModelCacheable?: (modelId: string) => Promise<boolean> }} params
  */
 export async function applyOpenRouterRequestCaching({
@@ -928,16 +922,10 @@ export async function applyOpenRouterRequestCaching({
     }
 
     const model = requestBody?.model;
+    const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
 
     if (isOpenRouterClaudeModel(model)) {
-        const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
-        applyOpenAiStyleClaudeCaching({
-            messages,
-            tools,
-            enableSystemPromptCache,
-            cachingAtDepth,
-            cacheTTL,
-        });
+        applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL });
         return;
     }
 
@@ -945,18 +933,19 @@ export async function applyOpenRouterRequestCaching({
         // OpenRouter honors only the final explicit cache_control breakpoint on Gemini, so only
         // static leading system prompts use explicit markers; rolling history uses sticky session_id
         // plus Gemini's native implicit caching (zero write surcharge).
-        const { enableSystemPromptCache } = config.gemini;
-        if (!enableSystemPromptCache) {
-            return;
-        }
-
-        const cacheable = await isModelCacheable(model);
-        if (!cacheable) {
+        if (!config.gemini.enableSystemPromptCache || !await isModelCacheable(model)) {
             return;
         }
 
         applySystemPromptCacheForOpenRouter(messages);
+        return;
     }
+
+    if ((!enableSystemPromptCache && cachingAtDepth === -1) || !await isModelCacheable(model)) {
+        return;
+    }
+
+    applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL: undefined });
 }
 
 /**
