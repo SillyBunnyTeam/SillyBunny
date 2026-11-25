@@ -135,7 +135,7 @@ export function getConversationWelcomeChats({ max = Infinity } = {}) {
             file_name: groupName ? `${groupName} · ${character.name || 'Character'}` : chatName,
             mes: entry.preview || 'Conversation ready',
             chat_items: entry.messageCount ?? 0,
-            file_size: isGroup ? 'Group DM' : 'DM',
+            file_size: isGroup ? 'Group' : 'Conversation',
             date_short: date.toLocaleDateString(),
             date_long: date.toLocaleString(),
             last_mes: timestamp,

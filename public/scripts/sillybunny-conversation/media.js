@@ -199,7 +199,7 @@ export function renderConversationParticipantStack(container, participants, {
             avatarItem.classList.add('is-interactive');
             avatarItem.tabIndex = 0;
             avatarItem.role = 'button';
-            avatarItem.setAttribute('aria-label', `Open Solo DM With ${participant.name || 'Character'}`);
+            avatarItem.setAttribute('aria-label', `Open Conversation With ${participant.name || 'Character'}`);
             avatarItem.addEventListener('click', (event) => {
                 event.stopPropagation();
                 onAvatarClick(participant);
@@ -282,7 +282,7 @@ export function getConversationDisplayName(avatar = getCurrentCharAvatar(), sett
     });
 }
 
-export function buildCharacterImagePrompt(template, scene = 'the current DM conversation', avatar = getCurrentCharAvatar()) {
+export function buildCharacterImagePrompt(template, scene = 'the current conversation', avatar = getCurrentCharAvatar()) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const details = getCharacterImageDetails(avatar);

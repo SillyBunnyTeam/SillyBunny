@@ -128,7 +128,7 @@ test('New group keeps Create Group off until two members are chosen, then opens 
     await expect(page.locator(COMPOSER)).toBeFocused();
 });
 
-test('opening the first DM focuses the composer after a slow stylesheet load, not after a fixed delay', async ({ page, baseURL }) => {
+test('opening the first conversation focuses the composer after a slow stylesheet load, not after a fixed delay', async ({ page, baseURL }) => {
     test.setTimeout(90000);
     await boot(page, baseURL, { stylesheetDelay: 1500 });
     await page.evaluate(async () => {

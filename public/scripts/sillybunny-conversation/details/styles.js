@@ -1,6 +1,6 @@
 import { loadStylesheetAsync } from '../../dynamic-styles.js';
 
-const DETAILS_STYLESHEET = Object.freeze({ href: 'css/sillybunny-conversation-details.css?v=20261125a', id: 'sb-conversation-details-css' });
+const DETAILS_STYLESHEET = Object.freeze({ href: 'css/sillybunny-conversation-details.css?v=20261125b', id: 'sb-conversation-details-css' });
 // The collection rows (members, chats, files, pinned messages) are the shared entity rows, whose sheet the mode does not load otherwise.
 const ENTITY_LIST_STYLESHEET = Object.freeze({ href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' });
 

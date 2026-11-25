@@ -498,7 +498,7 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
         }
         const prompt = buildCharacterImagePrompt(
             replySettings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
-            'the current DM conversation',
+            'the current conversation',
             replyAvatar,
         );
         const imageUrl = await generateConversationImage(prompt, replySettings.image_gen_negative || '', { avatar: replyAvatar, character: replyCharacter });

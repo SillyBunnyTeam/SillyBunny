@@ -73,11 +73,13 @@ test.describe('Conversation lorebooks', () => {
             await expect.poll(() => replyRequests().length, { timeout: 30_000 }).toBe(1);
             expect(getSystemPrompt(replyRequests()[0])).toContain(entryText);
 
-            await page.locator('[data-sb-conversation-action="open-settings"]').first().click();
-            const lorebookSwitch = page.locator('#sb_conv_lorebooks_enabled');
+            // The switch is mode-wide, so it is in Preferences, which the Main Menu of the list opens.
+            await page.evaluate(async () => (await import('./scripts/sillybunny-conversation/chrome.js')).openConversationPreferences());
+            const lorebookSwitch = page.getByRole('switch', { name: 'Use Character Lorebooks' });
             await expect(lorebookSwitch).toBeChecked();
             await lorebookSwitch.uncheck();
-            await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
+            await page.keyboard.press('Escape');
+            await expect(lorebookSwitch).toHaveCount(0);
 
             await input.fill('Is the lexicon still there?');
             await send.click();

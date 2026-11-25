@@ -69,206 +69,69 @@ async function seedConversation(page, { messageOverrides = [] } = {}) {
     }, character.avatar);
     await expect(page.locator('#sheld[data-sb-conversation-mode="on"]')).toBeVisible();
     await expect(page.locator('#sb_conversation_timeline .sb-conversation-message')).toHaveCount(4, { timeout: 15000 });
+    await clearToasts(page);
 }
 
-test('desktop split view groups bubbles and keeps settings as a pane', async ({ page, isMobile }) => {
+// The details window is the Dialog tier, so it is a dialog of the page and a sheet under 450px.
+const detailsWindow = page => page.locator('dialog[open]').filter({ has: page.locator('.sb-details-page') });
+
+test('desktop split view groups bubbles, and the title of the header opens the details above it', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Desktop split view.');
     await seedConversation(page);
 
-    // At 1440 the chat column is about 790px wide: too narrow to dock a third column beside the rail.
+    // At 1440 the list and the chat share #sheld.
     const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
-    await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'overlay');
+    await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'panes');
     await expect(page.locator('#sb_conversation_list')).toBeVisible();
     await expect(page.locator('#sb_conversation_header')).toBeVisible();
-    await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeVisible();
-    await expect(page.locator('#sb_conversation_form .sb-conversation-composer-actions')).toBeVisible();
-    await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]')).toBeHidden();
     await expect(page.locator('#sb_conversation_timeline .sb-conversation-day-divider')).toHaveCount(2);
 
     const own = page.locator('#sb_conversation_timeline .sb-conversation-message[data-role="user"]').first();
     await expect(own).toBeVisible();
     await expect(own.locator('.sb-conversation-message-avatar')).toBeHidden();
 
-    await page.locator('[data-sb-conversation-action="open-settings"]').click();
-    await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
-    await expect(page.locator('#sb_conversation_settings_backdrop')).toBeVisible();
-    // The boolean rows are the shared switch rows.
-    await expect(page.locator('#sb_conv_proactive_messaging')).toHaveClass(/sb-switch/);
-    await expect(page.locator('#sb_conv_proactive_messaging')).toHaveAttribute('role', 'switch');
-    await expect(page.locator('#sb_conv_grounded_dialogue_rules')).toBeHidden();
-    await expect(page.locator('[data-sb-conversation-action="edit-grounded-dialogue-rules"]')).toBeVisible();
-
-    // The pane stays beside the rail, and the content header keeps its full width, so the name and status stay readable.
-    const boxes = await page.evaluate(() => {
-        const box = selector => {
-            const rect = document.querySelector(selector).getBoundingClientRect();
-            return { left: rect.left, right: rect.right, width: rect.width };
-        };
-        return {
-            rail: box('#sb_conversation_list'),
-            drawer: box('#sb_conversation_settings_drawer'),
-            header: box('#sb_conversation_header'),
-            name: box('[data-sb-conversation-name]'),
-            input: box('#sb_conversation_input'),
-        };
-    });
-    expect(boxes.drawer.left, 'the pane does not cover the rail').toBeGreaterThanOrEqual(boxes.rail.right);
-    expect(boxes.header.width, 'the header is not squeezed by the pane').toBeGreaterThan(480);
-    expect(boxes.name.width, 'the name keeps room').toBeGreaterThan(60);
-    expect(boxes.name.right, 'the name is not under the pane').toBeLessThanOrEqual(boxes.drawer.left);
-    expect(boxes.input.width, 'the composer entry stays usable').toBeGreaterThan(150);
+    // The header has the title, the search and one menu: no gear.
+    await expect(page.locator('[data-sb-conversation-action="open-settings"]')).toHaveCount(0);
+    const title = page.locator('#sb_conversation_header .sb-conversation-header-title');
+    await title.click();
+    const details = detailsWindow(page);
+    await expect(details).toBeVisible();
+    await expect(details.getByRole('heading', { name: 'Details' }).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(details).toHaveCount(0);
+    await expect(title, 'focus returns to the title').toBeFocused();
 });
 
 test.describe('wide desktop', () => {
     test.use({ viewport: { width: 2400, height: 1200 } });
 
-    test('a chat column of 1120px or more docks settings as a third column', async ({ page, isMobile }) => {
+    test('the list and the chat stay side by side, and the details open over both', async ({ page, isMobile }) => {
         test.skip(isMobile, 'Desktop split view.');
         await seedConversation(page);
 
         const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
-        await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'split');
-        await page.locator('[data-sb-conversation-action="open-settings"]').click();
-        await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
-        await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'settings');
-        await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('sb_conversation_timeline').getBoundingClientRect().width))).toBeGreaterThanOrEqual(480);
-        await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('sb_conversation_settings_drawer').getBoundingClientRect().width))).toBe(360);
-    });
-
-    test('a docked pane has no shade and Escape closes it from inside the pane only', async ({ page, isMobile }) => {
-        test.skip(isMobile, 'Desktop split view.');
-        await seedConversation(page);
-
-        const gear = page.locator('[data-sb-conversation-action="open-settings"]');
-        const drawer = page.locator('#sb_conversation_settings_drawer');
-        await gear.click();
-        await expect(drawer).toBeVisible();
-        await expect(page.locator('#sb_conversation_settings_backdrop')).toBeHidden();
-
-        // The pane is a column of the layout, as libadwaita's docked sidebar: a press on the content or the rail does not close it.
-        await page.locator('#sb_conversation_timeline').click({ position: { x: 100, y: 100 } });
-        await page.locator('#sb_conversation_list').click({ position: { x: 80, y: 500 } });
-        await expect(drawer).toBeVisible();
-
-        // The content stays usable beside a docked pane, so Escape elsewhere is not the pane's to take.
-        await page.locator('#sb_conversation_input').focus();
-        await page.keyboard.press('Escape');
-        await expect(drawer).toBeVisible();
-
-        await drawer.locator('input, button').first().focus();
-        await page.keyboard.press('Escape');
-        await expect(drawer).toBeHidden();
-        await expect(gear).toBeFocused();
+        await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'panes');
+        await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
+        const before = await page.evaluate(() => Math.round(document.getElementById('sb_conversation_timeline').getBoundingClientRect().width));
+        await page.locator('#sb_conversation_header .sb-conversation-header-title').click();
+        await expect(detailsWindow(page)).toBeVisible();
+        // The window is modal and does not take a column of the layout: the timeline keeps its width.
+        await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('sb_conversation_timeline').getBoundingClientRect().width))).toBe(before);
     });
 });
 
-test('an overlay pane shades everything outside it, hides on a press anywhere there or on Escape, and returns focus to the gear', async ({ page, isMobile }) => {
-    test.skip(isMobile, 'Desktop overlay pane.');
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await seedConversation(page);
-
-    const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
-    await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'overlay');
-    const gear = page.locator('[data-sb-conversation-action="open-settings"]');
-    const drawer = page.locator('#sb_conversation_settings_drawer');
-    const shade = page.locator('#sb_conversation_settings_backdrop');
-    await expect(shade).toBeHidden();
-
-    await gear.click();
-    await expect(drawer).toBeVisible();
-    await expect(shade).toBeVisible();
-    await expect(drawer).toHaveCSS('box-shadow', /56px/);
-    const boxes = await page.evaluate(() => {
-        const box = selector => {
-            const rect = document.querySelector(selector).getBoundingClientRect();
-            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
-        };
-        return {
-            shade: box('#sb_conversation_settings_backdrop'),
-            drawer: box('#sb_conversation_settings_drawer'),
-            rail: box('#sb_conversation_list'),
-            header: box('#sb_conversation_header'),
-            composer: box('#sb_conversation_form'),
-            sheld: box('#sheld'),
-            timeline: box('#sb_conversation_timeline'),
-            shadeColor: getComputedStyle(document.getElementById('sb_conversation_settings_backdrop')).backgroundColor,
-        };
-    });
-    // The shade fills #sheld's padding box, inside its 1px frame: the rail, header, timeline and composer all lie under it.
-    expect(boxes.shade.left - boxes.sheld.left).toBeLessThanOrEqual(2);
-    expect(boxes.shade.top - boxes.sheld.top).toBeLessThanOrEqual(2);
-    expect(boxes.sheld.right - boxes.shade.right).toBeLessThanOrEqual(2);
-    expect(boxes.sheld.bottom - boxes.shade.bottom).toBeLessThanOrEqual(2);
-    expect(boxes.shadeColor, 'the shade dims, it is not transparent').not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
-    expect(boxes.drawer.left, 'the pane stays beside the rail').toBeGreaterThanOrEqual(boxes.rail.right);
-    await expect(page.locator('#sb_conversation_list')).toBeVisible();
-
-    // A press anywhere outside the pane hides it, and does not act on what lies under the shade.
-    await page.evaluate(() => {
-        window.__underClicks = 0;
-        for (const id of ['sb_conversation_timeline', 'sb_conversation_form', 'sb_conversation_header', 'sb_conversation_list']) {
-            document.getElementById(id).addEventListener('click', () => { window.__underClicks += 1; }, true);
-        }
-    });
-    const presses = {
-        'the timeline': [boxes.timeline.left + 100, boxes.timeline.bottom - 60],
-        'the composer': [boxes.rail.right + 60, (boxes.composer.top + boxes.composer.bottom) / 2],
-        'the header': [boxes.rail.right + 40, (boxes.header.top + boxes.header.bottom) / 2],
-        'the Pals rail': [boxes.rail.left + 80, boxes.rail.top + 200],
-    };
-    for (const [place, [x, y]] of Object.entries(presses)) {
-        // The pane is already open on the first pass, and its shade covers the gear.
-        if (await drawer.isHidden()) await gear.click();
-        await expect(drawer).toBeVisible();
-        await expect(shade).toBeVisible();
-        // Opening the pane is itself a click on the header, so the count starts here.
-        await page.evaluate(() => { window.__underClicks = 0; });
-        await clearToasts(page);
-        await page.mouse.click(x, y);
-        await expect(drawer, `a press on ${place}`).toBeHidden();
-        await expect(shade).toBeHidden();
-        expect(await page.evaluate(() => window.__underClicks), `a press on ${place} only dismisses the pane`).toBe(0);
-        await expect(gear, `focus returns to the gear after a press on ${place}`).toBeFocused();
-    }
-    // A press inside the pane leaves it open.
-    await gear.click();
-    await expect(drawer).toBeVisible();
-    await drawer.locator('.sb-conversation-settings-title').click();
-    await expect(drawer).toBeVisible();
-    await expect(shade).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(drawer).toBeHidden();
-
-    // Escape closes it from the pane, from the composer, and with nothing focused.
-    const places = {
-        'the pane': () => drawer.locator('input, button').first().focus(),
-        'the composer': () => page.locator('#sb_conversation_input').focus(),
-        'nowhere': () => page.evaluate(() => document.activeElement?.blur()),
-    };
-    for (const [place, focus] of Object.entries(places)) {
-        await gear.click();
-        await expect(drawer).toBeVisible();
-        await focus();
-        await page.keyboard.press('Escape');
-        await expect(drawer, `Escape from ${place}`).toBeHidden();
-        await expect(shade).toBeHidden();
-        await expect(gear, `focus returns to the gear after Escape from ${place}`).toBeFocused();
-    }
-});
-
-test('the settings page returns focus to the control that opened it, which is the menu when the gear is hidden', async ({ page, isMobile }) => {
+test('the details window returns focus to the control that opened it: the title, or the menu button for the Details item', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Desktop widths.');
     await page.setViewportSize({ width: 1024, height: 700 });
     await seedConversation(page);
 
-    const drawer = page.locator('#sb_conversation_settings_drawer');
     const menuButton = page.locator('[data-sb-conversation-action="open-conversation-menu"]');
     await menuButton.click();
-    await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-    await expect(drawer).toBeVisible();
-    await drawer.locator('input, button').first().focus();
+    await page.getByRole('menuitem', { name: 'Details' }).click();
+    const details = detailsWindow(page);
+    await expect(details).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(drawer).toBeHidden();
+    await expect(details).toHaveCount(0);
     await expect(menuButton).toBeFocused();
 });
 
@@ -281,7 +144,7 @@ test.describe('a narrow chat area', () => {
         const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
 
         // [viewport width, height, layout]: #sheld is about 55% of the viewport, and the pages layout takes over below 670px of it.
-        for (const [width, height, layout] of [[1440, 900, 'overlay'], [1269, 900, 'overlay'], [1169, 900, 'pages'], [1024, 600, 'pages'], [800, 900, 'pages']]) {
+        for (const [width, height, layout] of [[1440, 900, 'panes'], [1269, 900, 'panes'], [1169, 900, 'pages'], [1024, 600, 'pages'], [800, 900, 'pages']]) {
             await page.setViewportSize({ width, height });
             await expect(sheld, `${width}x${height}`).toHaveAttribute('data-sb-conversation-layout', layout);
             await expect.poll(() => page.locator('#sb_conversation_input').evaluate(element => Math.round(element.getBoundingClientRect().width)), { message: `${width}x${height}: composer entry width` }).toBeGreaterThanOrEqual(160);
@@ -291,42 +154,35 @@ test.describe('a narrow chat area', () => {
         await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
         await expect(page.locator('#sb_conversation_header .sb-conversation-header-back')).toBeVisible();
         await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]')).toBeVisible();
+        await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeVisible();
         await page.locator('#sb_conversation_list_toggle').click();
         await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'list');
         await expect(page.locator('#sb_conversation_list')).toBeVisible();
     });
 
-    test('opening the pane at a narrow width shows the page, not an overlay', async ({ page, isMobile }) => {
+    test('the details open from the header at a narrow width too, over the chat page', async ({ page, isMobile }) => {
         test.skip(isMobile, 'Desktop widths.');
         await page.setViewportSize({ width: 1024, height: 700 });
         await seedConversation(page);
 
-        // The pages layout hides the header gear, so the conversation menu is the way in even though the viewport is over 768px.
-        await expect(page.locator('[data-sb-conversation-action="open-settings"]')).toBeHidden();
-        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
-        await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-        const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
-        await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'settings');
-        await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
-        await expect(page.locator('#sb_conversation_settings_backdrop')).toBeHidden();
-
-        // Widening the window while the pane is open moves to the overlay, with its shade.
+        await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-layout', 'pages');
+        await page.locator('#sb_conversation_header .sb-conversation-header-title').click();
+        await expect(detailsWindow(page)).toBeVisible();
+        // Widening the window while the details are open leaves them open.
         await page.setViewportSize({ width: 1440, height: 900 });
-        await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'overlay');
-        await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
-        await expect(page.locator('#sb_conversation_settings_backdrop')).toBeVisible();
+        await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-layout', 'panes');
+        await expect(detailsWindow(page)).toBeVisible();
     });
 });
 
-test('the header title is named by what it shows, and Branches is its description', async ({ page }) => {
+test('the header title is named by what it shows, and Details is its description', async ({ page }) => {
     await seedConversation(page);
     const title = page.locator('#sb_conversation_header .sb-conversation-header-title');
     const shown = (await page.locator('#sb_conversation_header [data-sb-conversation-name]').textContent()).trim();
     expect(shown.length).toBeGreaterThan(0);
-    // The visible label stays inside the accessible name (WCAG 2.5.3), and the name no longer carries ", branches".
+    // The visible label stays inside the accessible name (WCAG 2.5.3).
     await expect(title).toHaveAccessibleName(new RegExp(`^${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
-    await expect(title).not.toHaveAccessibleName(/branches/i);
-    await expect(title).toHaveAccessibleDescription('Branches');
+    await expect(title).toHaveAccessibleDescription('Details');
 });
 
 test.describe('the hover toolbar', () => {
@@ -497,7 +353,7 @@ for (const compact of [false, true]) {
     });
 }
 
-test('mobile pages keep pals, chat, and settings as full screens', async ({ page, isMobile }) => {
+test('mobile pages keep the list and the chat as full screens, and the details open as a sheet', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'Mobile pages.');
     await seedConversation(page);
 
@@ -506,8 +362,9 @@ test('mobile pages keep pals, chat, and settings as full screens', async ({ page
     await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
     await expect(page.locator('#sb_conversation_header .sb-conversation-header-back')).toBeVisible();
     await expect(page.locator('#sb_conversation_timeline .sb-conversation-mobile-menu-trigger').first()).toBeVisible();
+    // Attach and the "+" menu are in the composer at every width.
     await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]')).toBeVisible();
-    await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeHidden();
+    await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeVisible();
 
     await page.locator('#sb_conversation_list_toggle').click();
     await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'list');
@@ -515,12 +372,109 @@ test('mobile pages keep pals, chat, and settings as full screens', async ({ page
 
     await page.locator('.sb-conversation-list-item').first().click();
     await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
-    await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
-    await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-    await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'settings');
-    await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
-    await expect(page.locator('#sb_conv_notifications_muted')).toHaveClass(/sb-switch/);
-    await expect(page.locator('#sb_conv_notifications_muted')).toHaveAttribute('role', 'switch');
+    await page.locator('#sb_conversation_header .sb-conversation-header-title').click();
+    const details = detailsWindow(page);
+    await expect(details).toBeVisible();
+    // The page of the chat stays under the sheet, and the sheet holds the same rows as the window.
+    await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'chat');
+    await expect(details.getByRole('switch').first()).toBeVisible();
+});
+
+test.describe('the header', () => {
+    test('has the title, the search and one menu with Details, New Chat, Add Member, Mute, Select Messages and the two deletes', async ({ page }) => {
+        await seedConversation(page);
+
+        const header = page.locator('#sb_conversation_header');
+        await expect(header.locator('.sb-conversation-header-actions button')).toHaveCount(2);
+        await expect(header.locator('[data-sb-conversation-action="toggle-search"]')).toBeVisible();
+        await expect(header.locator('[data-sb-conversation-action="open-settings"]')).toHaveCount(0);
+        await expect(header.locator('[data-sb-conversation-action="open-chat-menu"]')).toHaveCount(0);
+
+        await header.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
+        const items = page.getByRole('menuitem');
+        await expect(items).toHaveText(['Details', 'New Chat', 'Add Member', 'Mute', 'Select Messages', 'Delete Chat', 'Delete Conversation']);
+    });
+
+    test('Add Member opens the details on the Add Member page', async ({ page }) => {
+        await seedConversation(page);
+
+        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
+        await page.getByRole('menuitem', { name: 'Add Member' }).click();
+        const details = detailsWindow(page);
+        await expect(details).toBeVisible();
+        await expect(details.getByRole('heading', { name: 'Add Member' }).first()).toBeVisible();
+    });
+
+    test('Mute changes the item to Unmute and back', async ({ page }) => {
+        await seedConversation(page);
+
+        const menuButton = page.locator('[data-sb-conversation-action="open-conversation-menu"]');
+        await menuButton.click();
+        await page.getByRole('menuitem', { name: 'Mute', exact: true }).click();
+        await menuButton.click();
+        await expect(page.getByRole('menuitem', { name: 'Unmute' })).toBeVisible();
+        await page.getByRole('menuitem', { name: 'Unmute' }).click();
+        await menuButton.click();
+        await expect(page.getByRole('menuitem', { name: 'Mute', exact: true })).toBeVisible();
+    });
+
+    test('names the conversation as the list does, and shows the status of the character beneath', async ({ page }) => {
+        await seedConversation(page);
+
+        const shown = (await page.locator('#sb_conversation_header [data-sb-conversation-name]').textContent()).trim();
+        // The list is hidden behind its page on a phone, so the row is read from the DOM.
+        const listed = await page.locator('.sb-conversation-list-item[aria-current="true"]').first().evaluate(row => row.querySelector('.sb-conversation-list-item-name')?.textContent.trim());
+        expect(shown).toBe(listed);
+        await expect(page.locator('#sb_conversation_header [data-sb-conversation-status]')).toHaveText(/^(Online|Idle|Do Not Disturb|Offline)\b/);
+    });
+});
+
+test.describe('the composer', () => {
+    test('is Attach, the "+" menu, the entry and Send, with none of the four quick buttons', async ({ page }) => {
+        await seedConversation(page);
+
+        const composer = page.locator('#sb_conversation_form');
+        await expect(composer.locator('.sb-conversation-composer-row > button, .sb-conversation-composer-row > textarea')).toHaveCount(4);
+        await expect(composer.locator('[data-sb-conversation-action="attach-file"]')).toBeVisible();
+        await expect(composer.locator('[data-sb-conversation-action="open-composer-menu"]')).toBeVisible();
+        await expect(composer.locator('#sb_conversation_input')).toBeVisible();
+        await expect(composer.locator('#sb_conversation_send')).toBeVisible();
+        for (const action of ['quick-selfie', 'quick-remind', 'quick-summarize', 'force-response']) {
+            await expect(composer.locator(`[data-sb-conversation-action="${action}"]`)).toHaveCount(0);
+        }
+    });
+
+    test('the "+" menu holds Selfie, Remind, Summarize and Force Reply', async ({ page }) => {
+        await seedConversation(page);
+
+        await page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]').click();
+        await expect(page.getByRole('menuitem')).toHaveText(['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']);
+    });
+});
+
+test.describe('the timeline', () => {
+    test('has a search and no filter tabs', async ({ page }) => {
+        await seedConversation(page);
+
+        await page.locator('[data-sb-conversation-action="toggle-search"]').click();
+        await expect(page.locator('#sb_conversation_tools .sb-conversation-search-entry')).toBeVisible();
+        await expect(page.locator('[data-sb-conversation-action="set-channel"]')).toHaveCount(0);
+        await expect(page.locator('.sb-conversation-channel-tabs')).toHaveCount(0);
+
+        await page.locator('#sb_conversation_tools .sb-conversation-search-entry').fill('glade');
+        await expect(page.locator('#sb_conversation_timeline .sb-conversation-message')).toHaveCount(1);
+        await page.locator('#sb_conversation_tools .sb-conversation-search-entry').fill('');
+        await expect(page.locator('#sb_conversation_timeline .sb-conversation-message')).toHaveCount(4);
+    });
+
+    test('offers Edit on every message, the character\'s and the user\'s', async ({ page }) => {
+        await seedConversation(page);
+
+        const messages = page.locator('#sb_conversation_timeline .sb-conversation-message');
+        for (let index = 0; index < 4; index++) {
+            await expect(messages.nth(index).locator('[data-sb-conversation-action="edit-message"]')).toHaveCount(1);
+        }
+    });
 });
 
 test('composer entry only scrolls once it reaches its max height', async ({ page }) => {

@@ -96,7 +96,7 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
     const charName = character?.name || getCurrentCharName();
     const prompt = buildCharacterImagePrompt(
         settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
-        'a spontaneous selfie in the current DM conversation',
+        'a spontaneous selfie in the current conversation',
         avatar,
     );
     const imageUrl = await generateConversationImage(prompt, settings.image_gen_negative || '', { avatar, character });
@@ -587,7 +587,7 @@ export async function triggerGroupAside(character, options = {}) {
             }
         }
     } catch (err) {
-        reportConversationGenerationError('group aside DM', err, { toast: false });
+        reportConversationGenerationError('group aside message', err, { toast: false });
     } finally {
         groupAsideBusyKeys.delete(key);
     }
@@ -640,7 +640,7 @@ export async function triggerRoleplayAside(options = {}) {
             return Boolean(postedText);
         }
     } catch (err) {
-        reportConversationGenerationError('roleplay side DM', err, { toast: false });
+        reportConversationGenerationError('roleplay side message', err, { toast: false });
     }
     return false;
 }

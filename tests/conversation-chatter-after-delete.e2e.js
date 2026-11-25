@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { shownPage } from './helpers/conversation-details.js';
 import { resetConversations, seedConversation, uniquePersona } from './helpers/conversation-seed.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { MockServer } from './util/mock-server.js';
@@ -15,6 +16,7 @@ test.describe.configure({ timeout: 120_000 });
 const NEW_MENU = '[data-sb-conversation-action="open-new-menu"]';
 const CONVERSATION_MENU = '#sb_conversation_header [data-sb-conversation-action="open-conversation-menu"]';
 const COMPOSER = '#sb_conversation_input';
+const COMPOSER_MENU = '#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]';
 const MEMBER_MESSAGES = '#sb_conversation_timeline .sb-conversation-message:not([data-role="user"]):not([data-role="system"])';
 const ALL_MESSAGES = '#sb_conversation_timeline .sb-conversation-message';
 const GROUP_ROWS = '.sb-conversation-list-item:not([data-group-id=""])';
@@ -172,9 +174,15 @@ async function sendAndWaitForAnswer(page, text) {
  * Deletes the open chat through the header menu and its alert. The user stays in the conversation, in a new empty chat.
  * @param {import('@playwright/test').Page} page
  */
+/** Forces a reply through the "+" menu of the composer. */
+async function forceReply(page) {
+    await page.locator(COMPOSER_MENU).click();
+    await page.getByRole('menuitem', { name: 'Force a Reply' }).click();
+}
+
 async function deleteChat(page) {
     await page.locator(CONVERSATION_MENU).click();
-    await page.getByRole('menuitem', { name: /Delete Chat/ }).click();
+    await page.getByRole('menuitem', { name: 'Delete Chat' }).click();
     const confirm = page.locator('dialog.sb-conversation-dialog[open]');
     await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(confirm).toHaveCount(0);
@@ -282,7 +290,7 @@ test('a forced reply queued behind a user message is dropped by Delete Chat', as
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
     const generations = await holdGenerations(page);
     try {
-        await page.locator('#sb_conversation_form [data-sb-conversation-action="force-response"]').click();
+        await forceReply(page);
         await expect.poll(() => generations.held.length, { message: 'the forced reply is being generated', timeout: 20_000 }).toBeGreaterThan(0);
         await deleteChat(page);
         generations.release();
@@ -410,11 +418,12 @@ test('Add Member keeps the group and its history instead of starting a second gr
     await sendAndWaitForAnswer(page, 'Anyone free this weekend?');
 
     await page.locator(CONVERSATION_MENU).click();
-    await page.getByRole('menuitem', { name: /Add Member/ }).click();
-    const picker = page.locator('.sb-picker--multiple');
-    await picker.getByRole('option', { name: names[2] }).click();
-    await picker.getByRole('button', { name: 'Add to Group' }).click();
-    await expect(picker).toHaveCount(0);
+    await page.getByRole('menuitem', { name: 'Add Member' }).click();
+    const picker = shownPage(page);
+    await picker.getByRole('checkbox', { name: names[2] }).check();
+    await picker.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(shownPage(page).getByRole('listitem')).toHaveCount(3);
+    await page.keyboard.press('Escape');
     // The list and the open chat are redrawn on the clock's next frames.
     await advance(page, 5_000, 1_000);
 
@@ -438,11 +447,11 @@ test('Add Member on a direct conversation starts a group and leaves the direct c
     await expect(page.locator(ALL_MESSAGES).first()).toContainText('Hello');
 
     await page.locator(CONVERSATION_MENU).click();
-    await page.getByRole('menuitem', { name: /Add Member/ }).click();
-    const picker = page.locator('.sb-picker--multiple');
-    await picker.getByRole('option', { name: names[1] }).click();
-    await picker.getByRole('button', { name: 'Create Group' }).click();
-    await expect(picker).toHaveCount(0);
+    await page.getByRole('menuitem', { name: 'Add Member' }).click();
+    const picker = shownPage(page);
+    await picker.getByRole('checkbox', { name: names[1] }).check();
+    await picker.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.locator('dialog.sb-dialog-host[open]:has(.sb-details-window)')).toHaveCount(0);
     await advance(page, 5_000, 1_000);
 
     await expect(page.locator(GROUP_ROWS), 'groups in the list').toHaveCount(1);
@@ -530,7 +539,7 @@ test('a forced reply queued in an empty chat does not survive Delete Chat', asyn
     await deleteChat(page);
     const generations = await holdGenerations(page);
     try {
-        await page.locator('#sb_conversation_form [data-sb-conversation-action="force-response"]').click();
+        await forceReply(page);
         await expect.poll(() => generations.held.length, { message: 'the forced reply is being generated', timeout: 20_000 }).toBeGreaterThan(0);
         await deleteChat(page);
         generations.release();

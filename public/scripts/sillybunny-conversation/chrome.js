@@ -557,9 +557,9 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const { cleared, removedLegacy } = await clearAllConversationUnreadCounts();
             scheduleConversationListRender();
             if (cleared > 0 || removedLegacy > 0) {
-                toastr.success('Marked all Conversation pings as read');
+                toastr.success('Marked all conversations as read');
             } else {
-                toastr.info('No Conversation pings to clear');
+                toastr.info('No unread conversations');
             }
             break;
         }

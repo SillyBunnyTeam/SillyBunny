@@ -133,7 +133,7 @@ export function buildAdvanced({ conversationId, nav }) {
         label: 'Author’s Note',
         field: 'authors-note',
         value: settings.authors_note,
-        placeholder: '[Author’s Note: Keep responses short, direct, and conversational as if chatting in a DM.]',
+        placeholder: '[Author’s Note: Keep responses short, direct, and conversational, as in a chat.]',
         rows: 2,
         expandLabel: EXPAND_LABEL,
         onChange: value => save('authors_note', value),
