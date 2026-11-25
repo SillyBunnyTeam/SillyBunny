@@ -378,7 +378,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: flex;
     align-items: center;
     min-block-size: 32px;
-    color: var(--sb-muted-fg);
+    color: var(--sb-input-placeholder);
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-title);
 }
@@ -484,7 +484,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: none;
     margin: 0;
     padding: 12px;
-    color: var(--sb-muted-fg);
+    color: var(--sb-input-placeholder);
     font-size: var(--sb-type-caption);
     text-align: center;
 }
@@ -684,7 +684,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 /* Muted is told by the bell, and by the word in the row's name for assistive technology. */
 .sb-conversation-list-item-muted {
     flex: 0 0 auto;
-    color: var(--sb-muted-fg);
+    color: var(--sb-input-placeholder);
     font-size: 0.75em;
 }
 
@@ -695,14 +695,15 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 .sb-conversation-list-item-preview {
     min-inline-size: 0;
     overflow: hidden;
-    color: var(--sb-muted-fg);
+    color: var(--sb-input-placeholder);
     font-size: calc(var(--mainFontSize) * 0.84);
     line-height: var(--sb-line-compact);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.sb-conversation-list-item[data-unread='true'] .sb-conversation-list-item-preview {
+/* DESIGN.md asks secondary text for 4.5:1 and names --sb-input-placeholder for it; an unread or selected row has a stronger preview. */
+.sb-conversation-list-item:is([data-unread='true'], [aria-current='true']) .sb-conversation-list-item-preview {
     color: var(--SmartThemeBodyColor);
 }
 
