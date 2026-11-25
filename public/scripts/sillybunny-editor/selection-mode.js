@@ -425,7 +425,7 @@ export function createSelectionMode({
 
     function toggleRow(row, extendRange) {
         const key = keyFromRow(row);
-        const orderedKeys = range && extendRange ? rows().map(keyFromRow) : [];
+        const orderedKeys = range && extendRange ? (getAllKeys ? allKeys() : rows().map(keyFromRow)) : [];
         const anchorIndex = anchorKey === null ? -1 : orderedKeys.indexOf(anchorKey);
         const targetIndex = key === null ? -1 : orderedKeys.indexOf(key);
         if (anchorIndex < 0 || targetIndex < 0) {

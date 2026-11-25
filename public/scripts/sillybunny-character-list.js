@@ -315,9 +315,15 @@ export function entityPresentationSignature(entry, tags = [], actionLabels = nul
     const avatarPart = entry.kind === 'group'
         ? `${textValue(data?.avatarUrl)}\u001e${(data?.avatarInfo?.memberAvatars ?? item?.members?.slice(0, 4) ?? []).join(',')}`
         : textValue(entry.avatarSrc);
+    const memberNamesPreview = entry.kind === 'group'
+        ? textValue(valueFrom(data, item, 'memberNamesText')).slice(0, SUBTITLE_NOTES_PREVIEW_LIMIT)
+        : '';
+    const notesPreview = entry.kind === 'character'
+        ? textValue(entry.notesText).slice(0, SUBTITLE_NOTES_PREVIEW_LIMIT)
+        : '';
     const subtitlePart = entry.kind === 'group'
-        ? `${textValue(data?.memberCountText ?? data?.memberCount)}\u001e${compactTextKey(valueFrom(data, item, 'memberNamesText'))}`
-        : `${compactTextKey(entry.auxText)}\u001e${compactTextKey(entry.notesText)}\u001e${entry.showAvatar ? entry.avatarFileText : ''}`;
+        ? `${textValue(data?.memberCountText ?? data?.memberCount)}\u001e${compactTextKey(memberNamesPreview)}`
+        : `${compactTextKey(entry.auxText)}\u001e${compactTextKey(notesPreview)}\u001e${entry.showAvatar ? entry.avatarFileText : ''}`;
     return [
         entry.kind,
         idPart,
@@ -483,10 +489,9 @@ function createRowEntry(entry, actionHandlers) {
         rowFactories.set(factory.row, factory);
         return factory.row;
     }
-    const pendingSubtitles = entry.kind === 'character' ? { versionNode: node('span', 'character_version'), notesNode: node('span', 'ch_description'), avatarUrlNode: null } : null;
     const factory = createEntityRow(rowOptions(entry));
     const { row } = factory;
-    if (pendingSubtitles && factory.slots.subtitle) {
+    if (entry.kind === 'character' && factory.slots.subtitle) {
         const versionNode = factory.slots.subtitle.querySelector('.character_version');
         const notesNode = factory.slots.subtitle.querySelector('.ch_description');
         const avatarUrlNode = factory.slots.subtitle.querySelector('.ch_avatar_url');
@@ -781,7 +786,74 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let currentMemberIndex = null;
     let windowStart = 0;
     let windowEnd = 0;
-    let measuredRowHeight = CHARACTER_LIST_ROW_HEIGHT;
+    let gridObserver = null;
+    let lastGridMode = Boolean(power_user.charListGrid);
+    const measuredHeights = new Map();
+    let heightKeys = [];
+    let heightOffsets = new Float64Array(1);
+    let heightsDirty = true;
+
+    const rebuildHeightOffsets = () => {
+        const len = heightKeys.length;
+        if (heightOffsets.length !== len + 1) heightOffsets = new Float64Array(len + 1);
+        let sum = 0;
+        heightOffsets[0] = 0;
+        for (let i = 0; i < len; i++) {
+            const h = measuredHeights.get(heightKeys[i]);
+            sum += h > 0 ? h : CHARACTER_LIST_ROW_HEIGHT;
+            heightOffsets[i + 1] = sum;
+        }
+        heightsDirty = false;
+    };
+    const ensureHeightOffsets = () => {
+        if (heightsDirty) rebuildHeightOffsets();
+    };
+    const rowOffsetAt = index => {
+        ensureHeightOffsets();
+        return heightOffsets[Math.max(0, Math.min(heightKeys.length, index))];
+    };
+    const rowHeightAt = index => {
+        ensureHeightOffsets();
+        if (index < 0 || index >= heightKeys.length) return CHARACTER_LIST_ROW_HEIGHT;
+        return heightOffsets[index + 1] - heightOffsets[index];
+    };
+    const totalRowsHeight = () => {
+        ensureHeightOffsets();
+        return heightOffsets[heightKeys.length];
+    };
+    const averageRowHeight = () => {
+        ensureHeightOffsets();
+        return heightKeys.length > 0 ? heightOffsets[heightKeys.length] / heightKeys.length : CHARACTER_LIST_ROW_HEIGHT;
+    };
+    const rowIndexAtOffset = offset => {
+        ensureHeightOffsets();
+        const len = heightKeys.length;
+        if (len <= 0 || offset <= 0) return 0;
+        if (offset >= heightOffsets[len]) return len - 1;
+        let low = 0;
+        let high = len - 1;
+        while (low <= high) {
+            const mid = (low + high) >> 1;
+            if (heightOffsets[mid + 1] <= offset) low = mid + 1;
+            else if (heightOffsets[mid] > offset) high = mid - 1;
+            else return mid;
+        }
+        return Math.max(0, Math.min(len - 1, low));
+    };
+    const measureMountedRows = () => {
+        let changed = false;
+        for (const child of rowsContainer.children) {
+            if (!(child instanceof HTMLElement)) continue;
+            const key = child.dataset.sbListKey;
+            const height = child.offsetHeight;
+            if (key && height > 0 && measuredHeights.get(key) !== height) {
+                measuredHeights.set(key, height);
+                changed = true;
+            }
+        }
+        if (changed) heightsDirty = true;
+        return changed;
+    };
 
     const menu = (trigger, title, sections) => openActionMenu({ trigger, title, sections, onClose: () => trigger.setAttribute('aria-expanded', 'false') });
     function refresh() {
@@ -834,6 +906,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     }
 
     function isVirtualized(pageLength = currentPageRows.length) {
+        // Bypass 1D vertical row virtualization in multi-column Grid view to prevent column jitter and inflated scroll heights.
+        if (power_user.charListGrid) return false;
         return pageLength + (currentHiddenEntry ? 1 : 0) > CHARACTER_LIST_MAX_MOUNTED_ROWS;
     }
 
@@ -847,32 +921,37 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 bottomPad: 0,
             };
         }
-        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
         const viewportHeight = box.clientHeight > 0 ? box.clientHeight : 600;
-        const desiredWindow = Math.min(
-            pageLength,
-            Math.min(CHARACTER_LIST_WINDOW_SIZE, Math.ceil(viewportHeight / rowHeight) + CHARACTER_LIST_OVERSCAN * 2),
-        );
-        const firstVisible = Math.max(0, Math.floor(box.scrollTop / rowHeight));
-        const start = Math.max(0, Math.min(pageLength - desiredWindow, firstVisible - CHARACTER_LIST_OVERSCAN));
-        const end = Math.min(pageLength, start + desiredWindow);
+        const scrollOffset = Math.max(0, box.scrollTop);
+        const totalHeight = totalRowsHeight();
+        const firstVisible = rowIndexAtOffset(scrollOffset);
+        const lastVisible = rowIndexAtOffset(scrollOffset + viewportHeight);
+        let start = Math.max(0, firstVisible - CHARACTER_LIST_OVERSCAN);
+        let end = Math.min(pageLength, lastVisible + 1 + CHARACTER_LIST_OVERSCAN);
+        if (end >= pageLength) {
+            const bottomViewStart = rowIndexAtOffset(Math.max(0, totalHeight - viewportHeight));
+            start = Math.max(0, Math.min(start, bottomViewStart - CHARACTER_LIST_OVERSCAN));
+        }
+        if (end - start > CHARACTER_LIST_WINDOW_SIZE) {
+            start = Math.max(0, Math.min(firstVisible, pageLength - CHARACTER_LIST_WINDOW_SIZE));
+            end = Math.min(pageLength, start + CHARACTER_LIST_WINDOW_SIZE);
+        }
         const includeHidden = Boolean(currentHiddenEntry) && end >= pageLength;
-        const remainingBelow = (pageLength - end) + (currentHiddenEntry && !includeHidden ? 1 : 0);
+        const hiddenHeight = currentHiddenEntry && !includeHidden ? CHARACTER_LIST_ROW_HEIGHT : 0;
         return {
             start,
             end,
             includeHidden,
-            topPad: start * rowHeight,
-            bottomPad: Math.max(0, remainingBelow * rowHeight),
+            topPad: rowOffsetAt(start),
+            bottomPad: Math.max(0, totalHeight - rowOffsetAt(end) + hiddenHeight),
         };
     }
 
     function scrollCharacterIndexIntoView(indexInPage) {
         if (indexInPage < 0) return;
-        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
         const viewportHeight = box.clientHeight > 0 ? box.clientHeight : 600;
-        const top = indexInPage * rowHeight;
-        const bottom = top + rowHeight;
+        const top = rowOffsetAt(indexInPage);
+        const bottom = top + rowHeightAt(indexInPage);
         const viewTop = box.scrollTop;
         const viewBottom = viewTop + viewportHeight;
         if (top < viewTop) box.scrollTop = top;
@@ -885,8 +964,14 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         windowEnd = end;
         const nextTop = topPad > 0 ? `${topPad}px` : '';
         const nextBottom = bottomPad > 0 ? `${bottomPad}px` : '';
-        if (rowsContainer.style.paddingTop !== nextTop) rowsContainer.style.paddingTop = nextTop;
-        if (rowsContainer.style.paddingBottom !== nextBottom) rowsContainer.style.paddingBottom = nextBottom;
+        if (rowsContainer.style.paddingTop !== nextTop) {
+            if (nextTop) rowsContainer.style.paddingTop = nextTop;
+            else rowsContainer.style.removeProperty('padding-top');
+        }
+        if (rowsContainer.style.paddingBottom !== nextBottom) {
+            if (nextBottom) rowsContainer.style.paddingBottom = nextBottom;
+            else rowsContainer.style.removeProperty('padding-bottom');
+        }
 
         const slice = start === 0 && end === currentPageRows.length
             ? currentPageRows
@@ -920,8 +1005,15 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             update: (row, entry) => updateRow(row, entry, dataModules, listVisible, setSizeText),
         });
         decorateFolderSections(rowsContainer);
-        const firstHeight = rowsContainer.firstElementChild?.offsetHeight ?? 0;
-        if (firstHeight > 0) measuredRowHeight = firstHeight;
+        if (isVirtualized() && measureMountedRows()) {
+            const hiddenHeight = currentHiddenEntry && !includeHidden ? CHARACTER_LIST_ROW_HEIGHT : 0;
+            const adjustedBottom = Math.max(0, totalRowsHeight() - rowOffsetAt(end) + hiddenHeight);
+            const adjustedBottomText = adjustedBottom > 0 ? `${adjustedBottom}px` : '';
+            if (rowsContainer.style.paddingBottom !== adjustedBottomText) {
+                if (adjustedBottomText) rowsContainer.style.paddingBottom = adjustedBottomText;
+                else rowsContainer.style.removeProperty('padding-bottom');
+            }
+        }
     }
 
     function ensureCharacterIndexMounted(indexInPage) {
@@ -1431,14 +1523,16 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             ? await createHiddenEntry(hidden, dataModules.script)
             : null;
         if (revision !== renderRevision) return;
+        lastGridMode = Boolean(power_user.charListGrid);
         currentPageRows = pageRows;
+        heightKeys = pageRows.map(entry => String(entry.key));
+        heightsDirty = true;
         currentHiddenEntry = hiddenEntry;
         currentMemberIndex = view === 'groups' ? buildGroupMemberIndex(dataModules.script.characters) : null;
         let scrollTop = model.fullRefresh ? 0 : box.scrollTop;
         if (revealIndex >= 0 && isVirtualized(pageRows.length)) {
-            const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
             const viewportHeight = box.clientHeight > 0 ? box.clientHeight : 600;
-            scrollTop = Math.max(0, revealIndex * rowHeight - Math.floor(viewportHeight / 2));
+            scrollTop = Math.max(0, rowOffsetAt(revealIndex) - Math.floor(viewportHeight / 2));
         }
         box.scrollTop = scrollTop;
         const updateRows = () => {
@@ -1645,7 +1739,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             if (!row || event.target !== row || !rowsContainer.contains(row)) return;
             const currentIndex = currentPageRows.findIndex(entry => entry.key === row.dataset.sbListKey);
             if (currentIndex < 0) return;
-            const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : CHARACTER_LIST_ROW_HEIGHT;
+            const rowHeight = averageRowHeight();
             const pageStep = Math.max(1, Math.floor((box.clientHeight > 0 ? box.clientHeight : 600) / rowHeight) - 1);
             let targetIndex = -1;
             if (event.key === 'Home') targetIndex = findNavigableIndex(0, 1);
@@ -1737,6 +1831,19 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         for (const ancestor of [document.documentElement, section.closest('#right-nav-panel'), section.closest('#sb-settings-page')].filter(Boolean)) {
             visibilityObserver.observe(ancestor, { attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'class', 'data-sb-settings-open'] });
         }
+        if (document.body) {
+            gridObserver = new MutationObserver(() => {
+                const nextGrid = Boolean(power_user.charListGrid);
+                if (nextGrid === lastGridMode || destroyed) return;
+                lastGridMode = nextGrid;
+                syncSortState();
+                if (currentPageRows.length > 0) {
+                    renderWindow();
+                    decorateSelection();
+                }
+            });
+            gridObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        }
         const activeEvents = [event_types.CHAT_CHANGED, event_types.CHAT_LOADED, event_types.GROUP_UPDATED].filter(Boolean);
         activeEvents.forEach(event => eventSource.on(event, syncActiveRows));
         unsubscribeFolders = subscribeFolders(({ scope }) => {
@@ -1771,6 +1878,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 unbindKeyboard();
                 resizeObserver?.disconnect();
                 extensionObserver?.disconnect();
+                gridObserver?.disconnect();
                 visibilityObserver.disconnect();
                 activeEvents.forEach(event => eventSource.removeListener(event, syncActiveRows));
                 unsubscribeFolders?.();

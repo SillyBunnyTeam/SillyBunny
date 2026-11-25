@@ -24,6 +24,48 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Inert `<template>` adoption for `public/index.html` prototype blocks
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`; `public/script.js`; `public/scripts/group-chats.js`; `public/scripts/logit-bias.js`; `public/scripts/openai.js`; `public/scripts/personas.js`; `public/scripts/swipe-picker.js`; `public/scripts/tags.js`; `public/scripts/world-info.js`. |
+| Area | Initial HTML DOM size and template cloning for messages, characters, groups, tags, world-info entries, logit-bias rows, avatars, chats and media attachments. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/dom-template.js` (`cloneTemplate`, `getTemplateJQuery`, `cloneTemplateContent`, `getTemplateRoot`). |
+| Adapter shape | Converts 23 prototype `.template_element` containers in `public/index.html` to inert `<template>` elements (keeping `#group_member_template` and live form/popup/dialog templates untouched for extension and live-DOM compatibility) and replaces direct `$('#id .sel').clone()` / `$('#id .sel')` lookups in the 8 upstream caller modules with `cloneTemplate()` / `getTemplateJQuery()`, marked with `SillyBunny:` comments. |
+| Protecting tests | `tests/perf-viewport-template-tabs-split.test.js`; `tests/world-info-legacy-layout.test.js`; `tests/unit/preset-lorebook-dialogs.test.js`. |
+| Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, template diet, viewport coordinator, tabs split). |
+| Owner | `TODO(copy)` |
+
+### Shared `ViewportCoordinator` subscription in `browser-fixes.js` and `power-user.js`
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/browser-fixes.js`; `public/scripts/power-user.js`. |
+| Area | Mobile and desktop viewport resize, visualViewport scroll/resize and orientationchange handling. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/viewport-coordinator.js` (`subscribeViewport`) and `public/scripts/moving-ui-viewport.js` (`subscribeMovingUIViewport`). |
+| Adapter shape | Routes `browser-fixes.js` viewport/orientation listeners through `subscribeViewport()` (preserving editable-focus protection unconditionally and removing transient `documentElement.style.position = 'fixed'` mutation) and replaces `$(window).on('resize', ...)` in `power-user.js` with `subscribeMovingUIViewport()`, each marked `SillyBunny:`. |
+| Protecting tests | `tests/perf-viewport-template-tabs-split.test.js`; `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/mobile-keyboard-focused-input-scroll.test.js`; `tests/mobile-shell-lifecycle-viewport-sync.test.js`; `tests/moving-ui-viewport.test.js`. |
+| Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, template diet, viewport coordinator, tabs split). |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/backgrounds.js` - O(1) background indexes and keyed thumbnail reconciliation
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/backgrounds.js`. |
+| Area | System and chat background gallery lookup, highlight tracking, folder thumbnails and re-sort rendering. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-background-gallery.js` (`buildBackgroundImageMap`, `reconcileBackgroundGrid`). |
+| Adapter shape | Maintains `Map` indexes (`systemBackgroundsByFilename`, `systemBackgroundsByUrl`, `thumbnailsByUrl`), reconciles flat thumbnail lists by filename via `DocumentFragment` without jQuery `.clone()` or full DOM teardown, sets `loading="lazy" decoding="async"` on Folder Manager thumbnails, and exposes `getImageMap` / `getImageByUrl` gallery hooks, each marked `SillyBunny:`. |
+| Protecting tests | `tests/perf-large-lists-virtualization.test.js`; `tests/unit/sillybunny-background-sections.test.js`. |
+| Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, template diet, viewport coordinator, tabs split). |
+| Owner | `TODO(copy)` |
+
 ### Extension row action overflow adapter
 | Field | Value |
 | --- | --- |

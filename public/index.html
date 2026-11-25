@@ -7701,6 +7701,7 @@
             <div class="export_format list-group-item" data-format="png">PNG</div>
             <div class="export_format list-group-item" data-format="json">JSON</div>
         </div>
+        <!-- SillyBunny: inert <template> elements keep unused template trees out of the live DOM until cloned via dom-template.js. -->
         <template id="zoomed_avatar_template" class="template_element">
             <div class="zoomed_avatar">
                 <div class="panelControlBar flex-container">
@@ -7874,6 +7875,7 @@
             </div>
         </div>
         <!-- templates for JS to reuse when needed -->
+        <!-- SillyBunny: inert <template> elements reduce initial live DOM size; cloned via dom-template.js. -->
         <template id="character_world_template" class="template_element">
             <div class="character_world range-block flexFlowColumn flex-container">
                 <div class="range-block-title">
@@ -8746,7 +8748,7 @@
             </div>
         </div>
         <!-- SillyBunny: kept for extensions; getGroupCharacterBlock builds rows with createEntityRow. -->
-        <template id="group_member_template" class="template_element">
+        <div id="group_member_template" class="template_element">
             <div class="group_member ds-entity-row">
                 <div class="avatar ds-entity-row__avatar">
                     <img alt="Avatar" src="" />
@@ -8786,7 +8788,7 @@
                     </div>
                 </div>
             </div>
-        </template>
+        </div>
         <template id="group_list_template" class="template_element">
             <div class="group_select entity_block flex-container wide100p alignitemsflexstart">
                 <div class="avatar">
@@ -8888,6 +8890,7 @@
         </template>
 
         <!-- Media Templates -->
+        <!-- SillyBunny: inert <template> elements keep media attachment prototypes out of the live DOM until cloned. -->
         <template id="message_file_template" class="template_element">
             <div class="mes_media_container mes_file_container">
                 <div class="fa-lg fa-solid fa-file-alt mes_file_icon"></div>

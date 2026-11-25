@@ -22,7 +22,7 @@ import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: nam
 import { getWorldInfoExportText } from './sillybunny-world-info-export.js'; // SillyBunny: gives an exported lorebook the original URLs of imported media.
 import { StructuredCloneMap } from './util/StructuredCloneMap.js';
 import { renderTemplateAsync } from './templates.js';
-import { getTemplateJQuery } from './dom-template.js';
+import { getTemplateJQuery } from './dom-template.js'; // SillyBunny: read inert <template> prototypes.
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from './personas.js';
@@ -71,6 +71,7 @@ export const scan_state = {
     MIN_ACTIVATIONS: 3,
 };
 
+// SillyBunny: read entry prototypes from inert <template id="entry_edit_template">.
 const WI_ENTRY_HEADER_TEMPLATE = getTemplateJQuery('entry_edit_template', '.world_entry');
 const WI_ENTRY_EDIT_TEMPLATE = getTemplateJQuery('entry_edit_template', '.world_entry_edit');
 

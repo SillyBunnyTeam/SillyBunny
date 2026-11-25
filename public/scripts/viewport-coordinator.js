@@ -2,12 +2,13 @@
  * Unified single-read / single-write requestAnimationFrame viewport coordinator.
  *
  * Coalesces `window.visualViewport` (`resize`, `scroll`) and `window` (`resize`,
- * `orientationchange`) notifications into at most one frame callback, updates
- * `--sb-vv-height` and `--sb-keyboard-inset` only when values move by at least
- * 1px, and fans out the measured snapshot to registered subscribers.
+ * `orientationchange`) notifications into at most one frame callback, tracks
+ * geometry deltas against a >= 1px threshold without writing unused CSS custom
+ * properties, and fans out the measured snapshot to registered subscribers.
  */
 
-export const VIEWPORT_CSS_DELTA_THRESHOLD_PX = 1;
+export const VIEWPORT_DELTA_THRESHOLD_PX = 1;
+export const VIEWPORT_CSS_DELTA_THRESHOLD_PX = VIEWPORT_DELTA_THRESHOLD_PX;
 
 const PASSIVE_EVENT_OPTIONS = Object.freeze({ passive: true });
 
@@ -138,29 +139,33 @@ export function createViewportCoordinator({
     let pendingSources = new Set();
     let pendingTypes = new Set();
     let lastSnapshot = null;
-    let lastWrittenHeight = null;
-    let lastWrittenKeyboardInset = null;
+    let lastCommittedHeight = null;
+    let lastCommittedKeyboardInset = null;
+    let lastCommittedOffsetTop = null;
+    let lastCommittedLayoutWidth = null;
+    let lastCommittedLayoutHeight = null;
 
-    const writeCssProperties = (snapshot) => {
-        const rootStyle = doc?.documentElement?.style;
-        let heightWritten = false;
-        let keyboardInsetWritten = false;
+    const computeGeometryDeltas = (snapshot) => {
+        const heightChanged = lastCommittedHeight === null || Math.abs(snapshot.height - lastCommittedHeight) >= threshold;
+        const keyboardInsetChanged = lastCommittedKeyboardInset === null || Math.abs(snapshot.keyboardInset - lastCommittedKeyboardInset) >= threshold;
+        const offsetTopChanged = lastCommittedOffsetTop === null || Math.abs(snapshot.offsetTop - lastCommittedOffsetTop) >= threshold;
+        const layoutWidthChanged = lastCommittedLayoutWidth === null || Math.abs(snapshot.layoutWidth - lastCommittedLayoutWidth) >= threshold;
+        const layoutHeightChanged = lastCommittedLayoutHeight === null || Math.abs(snapshot.layoutHeight - lastCommittedLayoutHeight) >= threshold;
 
-        if (rootStyle && typeof rootStyle.setProperty === 'function') {
-            if (lastWrittenHeight === null || Math.abs(snapshot.height - lastWrittenHeight) >= threshold) {
-                rootStyle.setProperty('--sb-vv-height', `${Math.round(snapshot.height)}px`);
-                lastWrittenHeight = snapshot.height;
-                heightWritten = true;
-            }
+        if (heightChanged) lastCommittedHeight = snapshot.height;
+        if (keyboardInsetChanged) lastCommittedKeyboardInset = snapshot.keyboardInset;
+        if (offsetTopChanged) lastCommittedOffsetTop = snapshot.offsetTop;
+        if (layoutWidthChanged) lastCommittedLayoutWidth = snapshot.layoutWidth;
+        if (layoutHeightChanged) lastCommittedLayoutHeight = snapshot.layoutHeight;
 
-            if (lastWrittenKeyboardInset === null || Math.abs(snapshot.keyboardInset - lastWrittenKeyboardInset) >= threshold) {
-                rootStyle.setProperty('--sb-keyboard-inset', `${Math.round(snapshot.keyboardInset)}px`);
-                lastWrittenKeyboardInset = snapshot.keyboardInset;
-                keyboardInsetWritten = true;
-            }
-        }
-
-        return { heightWritten, keyboardInsetWritten };
+        return {
+            heightChanged,
+            keyboardInsetChanged,
+            offsetTopChanged,
+            layoutWidthChanged,
+            layoutHeightChanged,
+            anyChanged: heightChanged || keyboardInsetChanged || offsetTopChanged || layoutWidthChanged || layoutHeightChanged,
+        };
     };
 
     const notifySubscribers = (snapshot, meta) => {
@@ -210,7 +215,7 @@ export function createViewportCoordinator({
         pendingTypes = new Set();
         lastEvent = null;
 
-        // Single read phase before any DOM write.
+        // Single read phase before any subscriber writes.
         const snapshot = readViewportSnapshot({
             win,
             doc,
@@ -218,15 +223,15 @@ export function createViewportCoordinator({
         });
         lastSnapshot = snapshot;
 
-        // Single write phase gated by >= 1px delta threshold.
-        const cssChanges = writeCssProperties(snapshot);
+        // Track >= 1px geometry deltas without writing unused root CSS properties.
+        const deltas = computeGeometryDeltas(snapshot);
 
         const meta = {
             event,
             events,
             sources,
             types,
-            cssChanges,
+            deltas,
         };
 
         notifySubscribers(snapshot, meta);
@@ -331,14 +336,14 @@ export function createViewportCoordinator({
                 visualViewport: attachedVisualViewport ?? resolveVisualViewport(),
             });
             lastSnapshot = snapshot;
-            const cssChanges = writeCssProperties(snapshot);
+            const deltas = computeGeometryDeltas(snapshot);
             try {
                 callback(snapshot, {
                     event: { type: 'immediate' },
                     events: [],
                     sources: new Set(['immediate']),
                     types: new Set(['immediate']),
-                    cssChanges,
+                    deltas,
                 });
             } catch (error) {
                 console.error('[ViewportCoordinator] Subscriber error:', error);
@@ -370,8 +375,11 @@ export function createViewportCoordinator({
         subscribers.clear();
         stopListeners();
         lastSnapshot = null;
-        lastWrittenHeight = null;
-        lastWrittenKeyboardInset = null;
+        lastCommittedHeight = null;
+        lastCommittedKeyboardInset = null;
+        lastCommittedOffsetTop = null;
+        lastCommittedLayoutWidth = null;
+        lastCommittedLayoutHeight = null;
     };
 
     const getSnapshot = () => lastSnapshot ?? readViewportSnapshot({

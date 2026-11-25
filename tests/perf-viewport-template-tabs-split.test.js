@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
     createViewportCoordinator,
+    VIEWPORT_DELTA_THRESHOLD_PX,
     VIEWPORT_CSS_DELTA_THRESHOLD_PX,
 } from '../public/scripts/viewport-coordinator.js';
 import {
@@ -194,9 +195,8 @@ describe('PR 14A: Unified ViewportCoordinator and Trap #13', () => {
             { subscriber: 'A', height: 520, inset: 324, events: 6 },
             { subscriber: 'B', height: 520, inset: 324, events: 6 },
         ]);
-        expect(harness.cssValues.get('--sb-vv-height')).toBe('520px');
-        expect(harness.cssValues.get('--sb-keyboard-inset')).toBe('324px');
-        expect(harness.cssWrites).toHaveLength(2);
+        // ViewportCoordinator never writes unread root CSS variables; consumers own their CSS writes.
+        expect(harness.cssWrites).toHaveLength(0);
 
         // Clean teardown detaches all listeners once the last subscriber unsubscribes.
         unsubA();
@@ -211,45 +211,61 @@ describe('PR 14A: Unified ViewportCoordinator and Trap #13', () => {
         expect(harness.cancelledRafs).toHaveLength(1);
     });
 
-    test('gates --sb-vv-height and --sb-keyboard-inset CSS writes behind >= 1px delta', () => {
+    test('gates meta.deltas flags behind >= 1px threshold and avoids dead root CSS writes', () => {
+        expect(VIEWPORT_DELTA_THRESHOLD_PX).toBe(1);
         expect(VIEWPORT_CSS_DELTA_THRESHOLD_PX).toBe(1);
         const harness = createCoordinatorHarness({ innerHeight: 800, vvHeight: 800 });
-        const unsub = harness.coordinator.subscribe(() => {});
+        const deltasLog = [];
+        const unsub = harness.coordinator.subscribe((_snapshot, meta) => {
+            deltasLog.push(meta.deltas);
+        });
 
-        // Initial frame writes both properties.
+        // Initial frame reports all deltas as changed without writing unread root CSS vars.
         harness.visualViewport.dispatch('resize');
         harness.flushFrame();
-        expect(harness.cssWrites).toEqual([
-            { name: '--sb-vv-height', value: '800px' },
-            { name: '--sb-keyboard-inset', value: '0px' },
-        ]);
+        expect(deltasLog[0]).toEqual({
+            heightChanged: true,
+            keyboardInsetChanged: true,
+            offsetTopChanged: true,
+            layoutWidthChanged: true,
+            layoutHeightChanged: true,
+            anyChanged: true,
+        });
+        expect(harness.cssWrites).toHaveLength(0);
 
-        // Sub-pixel jitter (< 1px) produces zero CSS writes.
+        // Sub-pixel jitter (< 1px) sets all delta flags to false.
         harness.visualViewport.height = 799.6;
         harness.visualViewport.dispatch('resize');
         harness.flushFrame();
         harness.visualViewport.height = 800.4;
         harness.visualViewport.dispatch('scroll');
         harness.flushFrame();
-        expect(harness.cssWrites).toHaveLength(2);
+        expect(deltasLog[1].anyChanged).toBe(false);
+        expect(deltasLog[2].anyChanged).toBe(false);
 
-        // Moving by >= 1px triggers exactly one write per changed property.
+        // Moving by >= 1px flags heightChanged and keyboardInsetChanged.
         harness.visualViewport.height = 799;
         harness.visualViewport.dispatch('resize');
         harness.flushFrame();
-        expect(harness.cssWrites.slice(2)).toEqual([
-            { name: '--sb-vv-height', value: '799px' },
-            { name: '--sb-keyboard-inset', value: '1px' },
-        ]);
+        expect(deltasLog[3]).toMatchObject({
+            heightChanged: true,
+            keyboardInsetChanged: true,
+            offsetTopChanged: false,
+            anyChanged: true,
+        });
 
-        // Changing height by 2px while offsetTop compensates (keyboardInset unchanged) writes only --sb-vv-height.
+        // Changing height by 2px while offsetTop compensates leaves keyboardInsetChanged false.
         harness.visualViewport.height = 797;
         harness.visualViewport.offsetTop = 2;
         harness.visualViewport.dispatch('scroll');
         harness.flushFrame();
-        expect(harness.cssWrites.slice(4)).toEqual([
-            { name: '--sb-vv-height', value: '797px' },
-        ]);
+        expect(deltasLog[4]).toMatchObject({
+            heightChanged: true,
+            keyboardInsetChanged: false,
+            offsetTopChanged: true,
+            anyChanged: true,
+        });
+        expect(harness.cssWrites).toHaveLength(0);
 
         unsub();
     });
@@ -310,7 +326,8 @@ describe('PR 14A: Unified ViewportCoordinator and Trap #13', () => {
         expect(browserFixesSource).not.toContain('window.addEventListener(\'resize\', fixFunkyPositioning');
         expect(browserFixesSource).not.toContain('window.addEventListener(\'orientationchange\'');
 
-        expect(tabsSource).toContain('sbMobileShellLifecycle.viewportSync.subscribe(');
+        expect(tabsSource).toContain('sbMobileShellLifecycle.viewportSync.subscribe((snapshot, meta) => {');
+        expect(tabsSource).toContain('syncMobileViewportState(snapshot);');
         expect(tabsSource).not.toContain('window.visualViewport?.addEventListener(');
 
         expect(powerUserSource).toContain('subscribeMovingUIViewport(');
@@ -344,7 +361,6 @@ describe('PR 14B: Safe public/index.html <template> Diet and Trap #10', () => {
         'logit_bias_template',
         'message_template',
         'group_avatars_template',
-        'group_member_template',
         'group_list_template',
         'bogus_folder_template',
         'bogus_folder_back_template',
@@ -358,7 +374,7 @@ describe('PR 14B: Safe public/index.html <template> Diet and Trap #10', () => {
         'message_audio_template',
     ];
 
-    test('converts all 24 inert template_element blocks to HTML <template> elements, cutting >550 live DOM nodes', () => {
+    test('converts all 23 safe inert template_element blocks to HTML <template> elements, cutting >520 live DOM nodes', () => {
         let totalInertTemplateElements = 0;
 
         for (const id of convertedTemplateIds) {
@@ -372,13 +388,13 @@ describe('PR 14B: Safe public/index.html <template> Diet and Trap #10', () => {
             totalInertTemplateElements += inertCount;
         }
 
-        // Removing 24 inert subtrees takes 550+ elements out of the live document tree.
-        expect(totalInertTemplateElements).toBeGreaterThanOrEqual(550);
+        // Removing 23 inert subtrees takes 520+ elements out of the live document tree.
+        expect(totalInertTemplateElements).toBeGreaterThanOrEqual(520);
         const liveElements = parsedDoc.querySelectorAll('*').length;
         expect(liveElements).toBeLessThan(6000);
     });
 
-    test('Trap #10: preserves all raw upstream settings form inputs and live onboarding select in live DOM', () => {
+    test('Trap #10: preserves all raw upstream settings form inputs, live onboarding select, and extension-facing #group_member_template in live DOM', () => {
         const requiredLiveIds = [
             'max_context',
             'amount_gen',
@@ -392,6 +408,7 @@ describe('PR 14B: Safe public/index.html <template> Diet and Trap #10', () => {
             'onboarding_template',
             'onboarding_ui_language_select',
             'background_template',
+            'group_member_template',
         ];
 
         for (const id of requiredLiveIds) {
@@ -508,5 +525,29 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
         for (const method of expectedShellMethods) {
             expect(shellApiBlock).toMatch(new RegExp(`\\b${method}\\b`));
         }
+    });
+
+    test('preserves PR #1030 prompt-caching wiring, eager revealSetting helpers, chat sidebar race guard, and error logging', () => {
+        const backendPanelsSource = readRepoFile('public', 'scripts', 'sillybunny-tabs', 'backend-panels.js');
+
+        // PR #1030 prompt-caching wiring must survive the backend-panels split.
+        expect(tabsSource).toContain('refreshPresets() {');
+        expect(tabsSource).toContain('if (prompting?.panel instanceof HTMLElement) updatePromptingPanel(prompting.panel);');
+        expect(backendPanelsSource).toContain('\'sb-openai-prompt-caching\'');
+
+        // revealSetting / revealBackendGroup helpers stay inline so they work before Universal Search opens.
+        expect(tabsSource).toContain('function expandHiddenAccordions(');
+        expect(tabsSource).toContain('function pulseSearchTarget(');
+        expect(tabsSource).toContain('function revealSettingsCategoryFor(');
+        expect(tabsSource).not.toContain('universalSearchController?.revealSettingsCategoryFor');
+        expect(tabsSource).not.toContain('universalSearchController?.expandHiddenAccordions');
+        expect(tabsSource).not.toContain('universalSearchController?.pulseSearchTarget');
+
+        // Chat sidebar lazy-load race protection tracks desired state synchronously via a request token.
+        expect(tabsSource).toContain('let chatSidebarOpenRequestToken = 0;');
+        expect(tabsSource).toContain('if (token !== chatSidebarOpenRequestToken || !getChatbarState().sidebarOpen)');
+
+        // Lazy sub-module loads log failures instead of swallowing rejections silently.
+        expect(tabsSource).not.toMatch(/load(?:SamplingPanel|BackendPanels|ChatActionsSearch|UniversalSearch)Controller\(\)[\s\S]{0,240}\.catch\(\(\) => \{\s*\}\)/);
     });
 });

@@ -1,7 +1,7 @@
 import { saveSettingsDebounced } from '../script.js';
 import { getTextTokens } from './tokenizers.js';
 import { getSortableDelay, uuidv4 } from './utils.js';
-import { cloneTemplate } from './dom-template.js';
+import { cloneTemplate } from './dom-template.js'; // SillyBunny: clone inert <template> elements.
 
 export const BIAS_CACHE = new Map();
 
@@ -71,6 +71,7 @@ export function createNewLogitBiasEntry(logitBias, containerSelector) {
  */
 function createLogitBiasListItem(entry, logitBias, containerSelector) {
     const id = entry.id;
+    // SillyBunny: clone from inert <template id="logit_bias_template">.
     const template = cloneTemplate('logit_bias_template', '.logit_bias_form');
     template.data('id', id);
     template.find('.logit_bias_text').val(entry.text).on('input', function () {

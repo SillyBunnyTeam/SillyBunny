@@ -177,9 +177,24 @@ export function getObservedTagStripCount() {
     return count;
 }
 
+function getOverflowTypographyKey() {
+    const body = document.body;
+    const docEl = document.documentElement;
+    const style = body && typeof getComputedStyle === 'function' ? getComputedStyle(body) : null;
+    const fontSize = style?.fontSize ?? '';
+    const fontFamily = style?.fontFamily ?? '';
+    const compact = Boolean(
+        body?.classList.contains('sb-compact-mode')
+        || docEl?.dataset?.sbCompactMode === 'true',
+    );
+    return `${fontSize}\u001f${fontFamily}\u001f${compact ? '1' : '0'}`;
+}
+
 function fitTagStrips(entries) {
     const pending = [];
     const uncachedDigits = new Map();
+    const typographyKey = getOverflowTypographyKey();
+    if (overflowWidthCache.size > 64) overflowWidthCache.clear();
     for (const { target: container, contentRect } of entries) {
         const strip = tagStrips.get(container);
         if (!strip || !container.isConnected) {
@@ -188,23 +203,29 @@ function fitTagStrips(entries) {
         }
         strip.wasConnected = true;
         const width = contentRect.width;
-        if (width <= 0 || strip.width === width) continue;
+        const typographyChanged = strip.typographyKey !== typographyKey;
+        if (width <= 0 || (!typographyChanged && strip.width === width)) continue;
+        if (typographyChanged) {
+            strip.chipWidths = null;
+            strip.gap = 0;
+            strip.typographyKey = typographyKey;
+        }
         strip.width = width;
         const candidates = strip.chips.slice(0, strip.max);
         if (strip.chipWidths === null) {
             for (const chip of candidates) chip.hidden = false;
         }
-        // Cache overflow badge widths by digit count across strips, including +10 → +9 boundaries.
+        // Cache overflow badge widths by typography context + digit count across strips, including +10 → +9 boundaries.
         for (let visible = 0; visible <= candidates.length; visible++) {
             const hidden = strip.names.length - visible;
             if (!hidden) continue;
-            const digits = String(hidden).length;
-            if (overflowWidthCache.has(digits) || uncachedDigits.has(digits)) continue;
+            const cacheKey = `${typographyKey}\u001f${String(hidden).length}`;
+            if (overflowWidthCache.has(cacheKey) || uncachedDigits.has(cacheKey)) continue;
             const probe = createTagOverflow(hidden);
             probe.classList.add('sb-tag-overflow--measure');
             probe.setAttribute('aria-hidden', 'true');
             container.append(probe);
-            uncachedDigits.set(digits, probe);
+            uncachedDigits.set(cacheKey, probe);
         }
         pending.push({ container, strip, width, candidates });
     }
@@ -216,8 +237,8 @@ function fitTagStrips(entries) {
             strip.chipWidths = candidates.map(chip => chip.getBoundingClientRect().width);
         }
     }
-    for (const [digits, probe] of uncachedDigits) {
-        overflowWidthCache.set(digits, probe.getBoundingClientRect().width);
+    for (const [cacheKey, probe] of uncachedDigits) {
+        overflowWidthCache.set(cacheKey, probe.getBoundingClientRect().width);
     }
     for (const probe of uncachedDigits.values()) probe.remove();
 
@@ -228,7 +249,7 @@ function fitTagStrips(entries) {
         for (let visible = 1; visible <= chipWidths.length; visible++) {
             usedWidth += chipWidths[visible - 1] + (visible > 1 ? gap : 0);
             const hidden = strip.names.length - visible;
-            const overflowWidth = hidden > 0 ? (overflowWidthCache.get(String(hidden).length) ?? 0) : 0;
+            const overflowWidth = hidden > 0 ? (overflowWidthCache.get(`${typographyKey}\u001f${String(hidden).length}`) ?? 0) : 0;
             const requiredWidth = usedWidth + (hidden > 0 ? gap + overflowWidth : 0);
             if (requiredWidth <= width) visibleCount = visible;
         }
@@ -258,6 +279,7 @@ function refitStripsAfterFontLoad() {
             }
             strip.width = null;
             strip.chipWidths = null;
+            strip.typographyKey = null;
             strip.gap = 0;
             tagStripObserver.unobserve(container);
             tagStripObserver.observe(container);
@@ -298,6 +320,7 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
         overflow: createTagOverflow(0),
         width: null,
         chipWidths: null,
+        typographyKey: null,
         gap: 0,
         wasConnected: container.isConnected,
     };

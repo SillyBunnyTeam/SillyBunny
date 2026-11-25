@@ -27,8 +27,6 @@ const SB_SEARCH_DESCRIPTION_SELECTOR = [
     `.${SB_FLAT_SECTION_HEADER_CLASS} > .flex-container > small`,
 ].join(', ');
 const SB_SEARCH_PLACEHOLDER_SELECTOR = '[data-sb-copy-placeholder]';
-const SB_SEARCH_HIGHLIGHT_CLASS = 'highlighted-drawer';
-const SB_SEARCH_HIGHLIGHT_DURATION_MS = 1800;
 
 /** Text inside `element`, leaving out descendants matching `skipSelector`. */
 function getSearchNodeText(element, skipSelector) {
@@ -210,7 +208,6 @@ export function createUniversalSearchController({
     getShellConfig,
     getCharacterPanel,
     getUniversalSearchState,
-    getUserSettingsContentRoots,
     getSearchEntryDedupeKey,
     getExtraTabSearchEntries,
     getEntityPersonaSearchEntries,
@@ -706,119 +703,11 @@ export function createUniversalSearchController({
         setUniversalSearchActiveIndex(results.querySelector('.sb-search-result') ? 0 : -1);
     }
 
-    function expandHiddenAccordions(target) {
-        // SillyBunny: elements in the subpage store are hidden by CSS, not by a closed drawer;
-        // clicking their toggles fires jQuery slideToggle and injects inline display:block,
-        // overriding the store hide rule and bleeding the old panel into view.
-        if (target?.closest('.' + SB_SUBPAGE_STORE_CLASS)) {
-            return;
-        }
-
-        const helpRow = target.closest('.sb-sampling-help-row');
-        const help = helpRow?.querySelector(':scope > .sb-sampling-help');
-        if (help?.hidden) {
-            helpRow.querySelector('.sb-sampling-help-toggle')?.click();
-        }
-
-        const hiddenContents = [];
-        const closedExpanders = [];
-        let current = target.parentElement;
-
-        while (current) {
-            if (current.classList.contains('inline-drawer-content') && getComputedStyle(current).display === 'none') {
-                hiddenContents.push(current);
-            }
-            if (current instanceof HTMLDetailsElement) current.open = true;
-            if (current.matches('.ds-row-expander-content[hidden]')) {
-                closedExpanders.push(current.parentElement?.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle'));
-            }
-
-            current = current.parentElement;
-        }
-
-        for (const toggle of closedExpanders.reverse()) {
-            if (toggle instanceof HTMLElement) toggle.click();
-        }
-
-        for (const content of hiddenContents.reverse()) {
-            const toggle = content.previousElementSibling?.classList.contains('inline-drawer-toggle')
-                ? content.previousElementSibling
-                : content.parentElement?.querySelector(':scope > .inline-drawer-toggle');
-
-            if (toggle instanceof HTMLElement) {
-                toggle.click();
-            }
-        }
-    }
-
-    function pulseSearchTarget(target) {
-        if (!(target instanceof HTMLElement)) {
-            return;
-        }
-
-        const drawer = target.closest('.inline-drawer');
-        const flatSection = target.closest(`.${SB_FLAT_SECTION_CLASS}`);
-        const highlightTarget = flatSection instanceof HTMLElement
-            ? flatSection
-            : drawer instanceof HTMLElement ? drawer : target;
-
-        document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
-            .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
-
-        highlightTarget.classList.add(SB_SEARCH_HIGHLIGHT_CLASS);
-        window.setTimeout(() => {
-            highlightTarget.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS);
-        }, SB_SEARCH_HIGHLIGHT_DURATION_MS);
-    }
-
-    function revealSettingsCategoryFor(target) {
-        if (!(target instanceof HTMLElement)) {
-            return;
-        }
-
-        // Content is split across three permanent containers, so a match can live in any of them
-        // rather than all settings living in one block.
-        const roots = getUserSettingsContentRoots();
-        const settingsContent = roots.find(root => root.contains(target));
-        if (!settingsContent) {
-            return;
-        }
-
-        const taggedDrawer = target.closest('.inline-drawer[data-settings-tab]');
-        if (taggedDrawer instanceof HTMLElement) {
-            const category = taggedDrawer.getAttribute('data-settings-tab');
-            if (category) {
-                settingsContent.setAttribute('data-active-tab', category);
-                const settingsBlock = document.getElementById('user-settings-block');
-                if (settingsBlock) {
-                    settingsBlock.setAttribute('data-active-tab', category);
-                }
-                document.querySelectorAll('.sb-settings-tab-btn').forEach(btn => {
-                    btn.classList.toggle('active', btn.getAttribute('data-tab') === category);
-                });
-                return;
-            }
-        }
-
-        settingsContent.setAttribute('data-search-active', 'true');
-        const tabNav = document.getElementById('sb-settings-tabs');
-        if (tabNav) {
-            const clearSearchActive = () => {
-                settingsContent.removeAttribute('data-search-active');
-                tabNav.removeEventListener('click', clearSearchActive);
-            };
-            tabNav.addEventListener('click', clearSearchActive);
-        }
-    }
-
     return {
         primeUniversalSearchEntityMetadata,
         buildTabSearchIndex,
         collectGlobalSearchMatches,
         renderUniversalSearchResults,
         setUniversalSearchActiveIndex,
-        expandHiddenAccordions,
-        pulseSearchTarget,
-        revealSettingsCategoryFor,
     };
 }

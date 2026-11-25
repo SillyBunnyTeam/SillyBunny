@@ -293,6 +293,9 @@ const {
     getObservedTagStripCount,
 } = await import('../public/scripts/sillybunny-editor/entity-row.js');
 const {
+    createSelectionMode,
+} = await import('../public/scripts/sillybunny-editor/selection-mode.js');
+const {
     initBackgroundGallery,
     createBackgroundFolderAdapter,
     buildBackgroundImageMap,
@@ -358,6 +361,10 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
         charPages.groups = 1;
         charSizes.characters = 50;
         charSizes.groups = 50;
+        powerUser.charListGrid = false;
+        document.body.className = '';
+        document.body.style.fontSize = '';
+        delete document.documentElement.dataset.sbCompactMode;
         let folderSeq = 0;
         powerUser.sb_folders = folderStore.normalizeFoldersData(null, () => `f-${++folderSeq}`);
         folderStore.configureFolderStore({
@@ -511,6 +518,57 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             expect(entryBox.style.paddingTop).toBe('');
             expect(entryBox.style.paddingBottom).toBe('');
         });
+
+        test('tracks per-item measured heights without retroactive paddingTop jumps on heterogeneous World Info rows', async () => {
+            const container = setupWorldInfoDom();
+            const data = makeLargeBook(220, 256);
+            wiLiveState = { name: 'Perf Lorebook', data };
+            wiMounted = mountWorldInfoEditor(container);
+            await settle();
+
+            const listPane = container.querySelector('.sb-wi-list-body');
+            const entryBox = container.querySelector('.sb-wi-list-box');
+            Object.defineProperty(listPane, 'clientHeight', { configurable: true, value: 480 });
+
+            // Assign heterogeneous heights: even entries are 44px, odd entries are 96px.
+            const heightForUid = uid => (Number(uid) % 2 === 0 ? 44 : 96);
+            const offsetHeightSpy = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+                if (this.classList?.contains('sb-wi-row')) {
+                    return heightForUid(this.dataset.uid);
+                }
+                return 0;
+            });
+
+            // Scroll near the top to measure initial window (0..N) with mixed heights.
+            listPane.scrollTop = 10;
+            listPane.dispatchEvent(new Event('scroll'));
+
+            // Now scroll further down so start > 0 and firstElementChild flips between 44px and 96px rows.
+            listPane.scrollTop = 1400;
+            listPane.dispatchEvent(new Event('scroll'));
+            const firstMounted = entryBox.querySelector('.sb-wi-row');
+            const firstIndex = Number(firstMounted.dataset.uid);
+            expect(firstIndex).toBeGreaterThan(0);
+
+            // Exact sum of measured preceding rows must match paddingTop (never firstIndex * firstMounted.offsetHeight).
+            let expectedPaddingTop = 0;
+            for (let i = 0; i < firstIndex; i++) expectedPaddingTop += heightForUid(i);
+            expect(entryBox.style.paddingTop).toBe(`${expectedPaddingTop}px`);
+
+            // Advance by one row so firstElementChild switches height (44 <-> 96); paddingTop grows by only that one row.
+            const prevPaddingTop = expectedPaddingTop;
+            const prevFirstHeight = heightForUid(firstIndex);
+            listPane.scrollTop = 1400 + prevFirstHeight + 10;
+            listPane.dispatchEvent(new Event('scroll'));
+            const nextFirst = entryBox.querySelector('.sb-wi-row');
+            const nextIndex = Number(nextFirst.dataset.uid);
+            expect(nextIndex).toBeGreaterThan(firstIndex);
+            let nextExpectedPaddingTop = prevPaddingTop;
+            for (let i = firstIndex; i < nextIndex; i++) nextExpectedPaddingTop += heightForUid(i);
+            expect(entryBox.style.paddingTop).toBe(`${nextExpectedPaddingTop}px`);
+
+            offsetHeightSpy.mockRestore();
+        });
     });
 
     describe('2. Character List Virtualization, Primitive Signatures & Group Membership Map', () => {
@@ -642,6 +700,149 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
                 subtitle: null,
             });
             expect(emptyGroupRow.slots.subtitle).toBeNull();
+
+            // Mutating a character inside the visible 320-char notes preview (same total length) must invalidate the signature.
+            const notesA = `${'A'.repeat(150)}X${'B'.repeat(4000)}`;
+            const notesB = `${'A'.repeat(150)}Y${'B'.repeat(4000)}`;
+            const sigNotesA = entityPresentationSignature({ ...entry, notesText: notesA }, [], ['Edit']);
+            const sigNotesB = entityPresentationSignature({ ...entry, notesText: notesB }, [], ['Edit']);
+            expect(sigNotesA).not.toBe(sigNotesB);
+        });
+
+        test('bypasses 1D row virtualization when Grid View (power_user.charListGrid) is active and restores cleanly on toggle', async () => {
+            setupCharacterListDom();
+            const entities = seedCharacters(120);
+            charSizes.characters = 120;
+            charModel = {
+                view: 'characters',
+                entities,
+                sourceCount: 120,
+                hasAnyFilter: false,
+                folderOpen: false,
+                fullRefresh: false,
+                pageLoaded: jest.fn(),
+            };
+
+            powerUser.charListGrid = true;
+            document.body.classList.add('charListGrid');
+            charMounted = await mountCharacterList(undefined, { render: false });
+            jest.spyOn(charMounted.section, 'getClientRects').mockReturnValue([{}]);
+            await charRenderer.render(charModel);
+
+            const block = document.getElementById('rm_print_characters_block');
+            expect(block.querySelectorAll(':scope > .ds-entity-row')).toHaveLength(120);
+            expect(block.style.paddingTop).toBe('');
+            expect(block.style.paddingBottom).toBe('');
+
+            // Switch to List View: virtualization activates and caps mounted rows.
+            powerUser.charListGrid = false;
+            document.body.classList.remove('charListGrid');
+            await settle();
+            expect(block.querySelectorAll(':scope > .ds-entity-row').length).toBeLessThanOrEqual(CHARACTER_LIST_MAX_MOUNTED_ROWS);
+
+            // Switch back to Grid View: clears virtual padding and mounts the full grid page.
+            powerUser.charListGrid = true;
+            document.body.classList.add('charListGrid');
+            await settle();
+            expect(block.querySelectorAll(':scope > .ds-entity-row')).toHaveLength(120);
+            expect(block.style.paddingTop).toBe('');
+            expect(block.style.paddingBottom).toBe('');
+        });
+
+        test('tracks per-item measured heights without retroactive scroll jumps on heterogeneous Character List rows', async () => {
+            setupCharacterListDom();
+            const entities = seedCharacters(220);
+            charSizes.characters = 220;
+            charModel = {
+                view: 'characters',
+                entities,
+                sourceCount: 220,
+                hasAnyFilter: false,
+                folderOpen: false,
+                fullRefresh: false,
+                pageLoaded: jest.fn(),
+            };
+
+            // Simulate mixed 40px compact rows and 84px tagged character rows.
+            const heightForChid = chid => (chid % 2 === 0 ? 40 : 84);
+            const offsetHeightSpy = jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+                const chidAttr = this.getAttribute?.('chid');
+                if (chidAttr !== null && chidAttr !== undefined && chidAttr !== '') {
+                    return heightForChid(Number(chidAttr));
+                }
+                return 0;
+            });
+
+            charMounted = await mountCharacterList(undefined, { render: false });
+            jest.spyOn(charMounted.section, 'getClientRects').mockReturnValue([{}]);
+            const box = charMounted.section.querySelector('.sb-character-list__box');
+            const block = document.getElementById('rm_print_characters_block');
+            Object.defineProperty(box, 'clientHeight', { configurable: true, value: 480 });
+            await charRenderer.render(charModel);
+
+            // Scroll into the measured range so start > 0 with alternating 40px and 84px preceding rows.
+            box.scrollTop = 1200;
+            box.dispatchEvent(new Event('scroll'));
+
+            const firstRow = block.querySelector(':scope > .ds-entity-row');
+            const firstId = Number(firstRow.getAttribute('chid'));
+            expect(firstId).toBeGreaterThan(0);
+            let expectedPaddingTop = 0;
+            for (let i = 0; i < firstId; i++) expectedPaddingTop += heightForChid(i);
+            expect(block.style.paddingTop).toBe(`${expectedPaddingTop}px`);
+
+            offsetHeightSpy.mockRestore();
+        });
+
+        test('Shift-click range selection spans virtualized boundaries using getAllKeys when anchor row is unmounted', () => {
+            const root = document.createElement('div');
+            const header = document.createElement('header');
+            const list = document.createElement('div');
+            const actionBar = document.createElement('div');
+            root.append(header, list, actionBar);
+            document.body.append(root);
+            const allOrderedKeys = ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6'];
+
+            const makeRow = key => {
+                const row = document.createElement('div');
+                row.className = 'ds-entity-row';
+                row.dataset.sbListKey = key;
+                return row;
+            };
+
+            // Mount only window [k0, k1, k2] initially.
+            const row0 = makeRow('k0');
+            const row1 = makeRow('k1');
+            const row2 = makeRow('k2');
+            list.append(row0, row1, row2);
+
+            const mode = createSelectionMode({
+                root,
+                list,
+                header,
+                actionBar,
+                rowSelector: '.ds-entity-row',
+                getKey: row => row.dataset.sbListKey,
+                getAllKeys: () => allOrderedKeys,
+                range: true,
+                onChange: jest.fn(),
+            });
+            mode.enter();
+
+            // Click k1 to set anchor.
+            row1.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            expect([...mode.selectedKeys]).toEqual(['k1']);
+
+            // Virtualize forward: unmount [k0..k2] and mount [k4..k6].
+            const row4 = makeRow('k4');
+            const row5 = makeRow('k5');
+            const row6 = makeRow('k6');
+            list.replaceChildren(row4, row5, row6);
+
+            // Shift-click k5 even though anchor k1 is no longer in the DOM.
+            row5.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+            expect([...mode.selectedKeys].sort()).toEqual(['k1', 'k2', 'k3', 'k4', 'k5']);
+            mode.destroy();
         });
 
         test('pre-indexed group membership Map resolves 200 groups x 10 members across 1,000 characters in O(G*M + C) without calling O(G*M*C) getGroupRowData', async () => {
@@ -763,6 +964,49 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             expect(getObservedTagStripCount()).toBe(0);
             expect(observed.size).toBe(0);
         });
+
+        test('keys overflowWidthCache and chip measurements by typography and compact mode so theme/density changes never use stale widths', () => {
+            let resizeCallback = null;
+            globalThis.ResizeObserver = jest.fn(function (cb) {
+                resizeCallback = cb;
+                this.observe = jest.fn();
+                this.unobserve = jest.fn();
+                this.disconnect = jest.fn();
+            });
+
+            const chipRectSpy = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                const isCompact = document.body.classList.contains('sb-compact-mode');
+                const width = this.classList.contains('sb-tag-overflow--measure')
+                    ? (isCompact ? 18 : 34)
+                    : (isCompact ? 30 : 48);
+                return { width, height: 24, top: 0, left: 0, right: width, bottom: 24 };
+            });
+
+            const { row, slots } = createEntityRow({ key: 'character:density.png', label: 'Density', tags: true });
+            slots.tags.style.columnGap = '6px';
+            for (const tagName of ['One', 'Two', 'Three', 'Four', 'Five']) {
+                const chip = document.createElement('span');
+                chip.className = 'tag';
+                chip.textContent = tagName;
+                slots.tags.append(chip);
+            }
+            document.body.append(row);
+            limitTagChips(slots.tags);
+
+            // Standard density (chip 48 + gap 6 + overflow 34 = 88px -> 1 chip fits at width 110px).
+            resizeCallback([{ target: slots.tags, contentRect: { width: 110 } }]);
+            expect(slots.tags.querySelector('.sb-tag-overflow').textContent).toBe('+4');
+
+            // Toggle compact density (2 chips * 30 + 2 * 6 + overflow 18 = 90px <= 110px -> 2 chips fit!).
+            chipRectSpy.mockClear();
+            document.body.classList.add('sb-compact-mode');
+            resizeCallback([{ target: slots.tags, contentRect: { width: 110 } }]);
+            expect(chipRectSpy).toHaveBeenCalled();
+            expect(slots.tags.querySelector('.sb-tag-overflow').textContent).toBe('+3');
+
+            releaseTagChips(row);
+            row.remove();
+        });
     });
 
     describe('4. Background Gallery O(1) Map Lookup, Keyed Reconciliation & Lazy Folder Thumbnails', () => {
@@ -794,6 +1038,7 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
                 },
             });
             bgImageMap = buildBackgroundImageMap(rawImages);
+            const mapGetSpy = jest.spyOn(bgImageMap, 'get');
             bgFolderIndex = { folders: [], imageFolderMap: {} };
             createThumbnailMock.mockClear();
 
@@ -802,6 +1047,8 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             await initBackgroundGallery();
             const initialRenderMs = performance.now() - t0;
 
+            // getActiveImageMap must reuse hook maps built by buildBackgroundImageMap (size 2*N) without rebuilding.
+            expect(mapGetSpy).toHaveBeenCalled();
             const container = document.getElementById('bg_menu_content');
             expect(container.querySelectorAll('.bg_example')).toHaveLength(1000);
             expect(createThumbnailMock).toHaveBeenCalledTimes(1000);

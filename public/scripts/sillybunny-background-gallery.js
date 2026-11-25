@@ -269,7 +269,17 @@ export function buildBackgroundImageMap(images) {
 
 function getActiveImageMap(images) {
     const hookMap = hooks?.getImageMap?.();
-    if (hookMap instanceof Map && hookMap.size === images.length) return hookMap;
+    if (hookMap instanceof Map) {
+        if (images.length === 0) {
+            if (hookMap.size === 0) return hookMap;
+        } else if (hookMap.size >= images.length) {
+            const first = images[0]?.filename;
+            const last = images[images.length - 1]?.filename;
+            if ((!first || hookMap.has(first)) && (!last || hookMap.has(last))) {
+                return hookMap;
+            }
+        }
+    }
     return buildBackgroundImageMap(images);
 }
 

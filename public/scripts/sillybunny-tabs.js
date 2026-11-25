@@ -67,6 +67,7 @@ import { syncUserControls } from './user.js';
 import {
     SB_USER_SETTINGS_CONTAINER_IDS,
     SB_DATA_SECURITY_CONTAINER_ID,
+    SB_FLAT_SECTION_CLASS,
     SB_FLAT_SECTION_HEADER_CLASS,
     applyPageWidth,
     applySettingsSectionOrder,
@@ -249,7 +250,6 @@ function loadUniversalSearchController() {
                 getShellConfig,
                 getCharacterPanel,
                 getUniversalSearchState,
-                getUserSettingsContentRoots,
                 getSearchEntryDedupeKey,
                 getExtraTabSearchEntries,
                 getEntityPersonaSearchEntries,
@@ -2146,7 +2146,7 @@ function scheduleUniversalSearchRender({ flush = false } = {}) {
 function primeUniversalSearchEntityMetadata() {
     void loadUniversalSearchController()
         .then(controller => controller.primeUniversalSearchEntityMetadata())
-        .catch(() => {});
+        .catch(error => console.error('[SillyBunny] Could not prime Universal Search metadata:', error));
 }
 
 function focusUniversalSearchInput(input) {
@@ -2524,14 +2524,50 @@ function handleMobileKeyboardFocusOut() {
     queueMobileViewportStateSync();
 }
 
-function syncIOSKeyboardBottomInset() {
+function resolveViewportBoundsFromSnapshot(snapshot = null) {
+    if (
+        snapshot
+        && typeof snapshot === 'object'
+        && Number.isFinite(snapshot.layoutWidth)
+        && Number.isFinite(snapshot.layoutHeight)
+        && Number.isFinite(snapshot.width)
+        && Number.isFinite(snapshot.height)
+    ) {
+        const layoutWidth = Math.max(0, Math.round(readFiniteViewportNumber(snapshot.layoutWidth, window.innerWidth)));
+        const layoutHeight = Math.max(0, Math.round(readFiniteViewportNumber(snapshot.layoutHeight, window.innerHeight)));
+        const layoutViewport = {
+            width: layoutWidth,
+            height: layoutHeight,
+            left: 0,
+            top: 0,
+            right: layoutWidth,
+            bottom: layoutHeight,
+        };
+        const visualWidth = Math.max(0, Math.round(readFiniteViewportNumber(snapshot.width, layoutWidth)));
+        const visualHeight = Math.max(0, Math.round(readFiniteViewportNumber(snapshot.height, layoutHeight)));
+        const visualViewportSize = {
+            width: visualWidth,
+            height: visualHeight,
+            left: Math.max(0, Math.round(readFiniteViewportNumber(snapshot.offsetLeft, 0))),
+            top: Math.max(0, Math.round(readFiniteViewportNumber(snapshot.offsetTop, 0))),
+            right: visualWidth,
+            bottom: visualHeight,
+        };
+        return { layoutViewport, visualViewportSize };
+    }
+
+    const layoutViewport = getLayoutViewportSize();
+    const visualViewportSize = getVisualViewportSize(layoutViewport);
+    return { layoutViewport, visualViewportSize };
+}
+
+function syncIOSKeyboardBottomInset(snapshot = null) {
     const root = document.documentElement;
     let bottomInset = 0;
     let composerControlsActive = false;
 
     if (isIOSWebKitPlatform()) {
-        const layoutViewport = getLayoutViewportSize();
-        const visualViewportSize = getVisualViewportSize(layoutViewport);
+        const { layoutViewport, visualViewportSize } = resolveViewportBoundsFromSnapshot(snapshot);
 
         if (isVisualViewportKeyboardOpen(layoutViewport, visualViewportSize)) {
             if (isMobileViewport() && !isLegacyIOSWebKitPlatform()) {
@@ -2554,9 +2590,8 @@ function syncIOSKeyboardBottomInset() {
     root.classList.toggle('sb-ios-composer-keyboard-controls-active', composerControlsActive);
 }
 
-function getShellViewportSize() {
-    const layoutViewport = getLayoutViewportSize();
-    const visualViewportSize = getVisualViewportSize(layoutViewport);
+function getShellViewportSize(snapshot = null) {
+    const { layoutViewport, visualViewportSize } = resolveViewportBoundsFromSnapshot(snapshot);
 
     const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
     if (composerKeyboardInset > 0) {
@@ -2573,9 +2608,10 @@ function getShellViewportSize() {
     return visualViewportSize;
 }
 
-function syncShellViewportBounds() {
+function syncShellViewportBounds(snapshot = null) {
     const root = document.documentElement;
-    const viewportSize = getShellViewportSize();
+    const { layoutViewport, visualViewportSize } = resolveViewportBoundsFromSnapshot(snapshot);
+    const viewportSize = getShellViewportSize(snapshot);
     const topOffset = Math.max(0, Math.round(getResolvedShellTopbarOffset()));
     const setRootViewportProperty = (property, value) => {
         if (root.style.getPropertyValue(property) !== value) {
@@ -2591,7 +2627,7 @@ function syncShellViewportBounds() {
 
     // SillyBunny: browser-fixes.js may reset document scroll mid-edit once the
     // legacy shell has moved the focused composer above the keyboard.
-    const composerKeyboardInset = getComposerKeyboardInset(getLayoutViewportSize(), getVisualViewportSize());
+    const composerKeyboardInset = getComposerKeyboardInset(layoutViewport, visualViewportSize);
     root.classList.toggle('sb-ios-composer-keyboard-inset-active', composerKeyboardInset > 0);
 }
 
@@ -4437,20 +4473,43 @@ function scrollCurrentChatToBottom() {
     });
 }
 
+let chatSidebarOpenRequestToken = 0;
+
 function setChatSidebarOpenState(shouldOpen, options = {}) {
+    const token = ++chatSidebarOpenRequestToken;
+    const nextOpen = Boolean(shouldOpen);
     if (chatActionsSearchController) {
-        chatActionsSearchController.setChatSidebarOpenState(shouldOpen, options);
+        chatActionsSearchController.setChatSidebarOpenState(nextOpen, options);
         return;
     }
-    if (!shouldOpen) {
-        getChatbarState().sidebarOpen = false;
+    getChatbarState().sidebarOpen = nextOpen;
+    if (!nextOpen) {
         return;
     }
-    void loadChatActionsSearchController().then(controller => controller.setChatSidebarOpenState(shouldOpen, options));
+    void loadChatActionsSearchController()
+        .then(controller => {
+            if (token !== chatSidebarOpenRequestToken || !getChatbarState().sidebarOpen) {
+                return;
+            }
+            controller.setChatSidebarOpenState(true, options);
+        })
+        .catch(error => {
+            if (token === chatSidebarOpenRequestToken) {
+                getChatbarState().sidebarOpen = false;
+            }
+            console.error('[SillyBunny] Could not load Chat Sidebar module:', error);
+        });
 }
 
 function toggleChatSidebar() {
-    void loadChatActionsSearchController().then(controller => controller.toggleChatSidebar());
+    if (chatActionsSearchController) {
+        chatActionsSearchController.toggleChatSidebar();
+        return;
+    }
+    if (!getChatUiContext().canBrowseChats) {
+        return;
+    }
+    setChatSidebarOpenState(!getChatbarState().sidebarOpen, { restoreFocus: true });
 }
 
 function getMobileShellSurfaceForShell(shellKey) {
@@ -4514,7 +4573,9 @@ function clearChatSearchHighlights() {
 }
 
 function scheduleChatSearchHighlight(options = {}) {
-    void loadChatActionsSearchController().then(controller => controller.scheduleChatSearchHighlight(options));
+    void loadChatActionsSearchController()
+        .then(controller => controller.scheduleChatSearchHighlight(options))
+        .catch(error => console.error('[SillyBunny] Could not load Chat Search module:', error));
 }
 
 function setChatSearchQuery(value, { source = null } = {}) {
@@ -7050,7 +7111,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
         backendPanelsController.updateEditorPanel(panel);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(() => {});
+    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(error => console.error('[SillyBunny] Could not load Editor panel:', error));
 }
 
 function updatePromptingPanel(panel) {
@@ -7131,7 +7192,7 @@ function groupAdvancedFormattingIntoDrawers() {
         backendPanelsController.groupAdvancedFormattingIntoDrawers();
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(() => {});
+    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(error => console.error('[SillyBunny] Could not load Formatting panel:', error));
 }
 
 function updateFormattingGroupVisibility(formatting) {
@@ -7139,7 +7200,7 @@ function updateFormattingGroupVisibility(formatting) {
         backendPanelsController.updateFormattingGroupVisibility(formatting);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(() => {});
+    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(error => console.error('[SillyBunny] Could not load Formatting panel:', error));
 }
 
 function setSillyTavernImportBusy(isBusy) {
@@ -8044,16 +8105,112 @@ function setUniversalSearchActiveIndex(index) {
     universalSearchController?.setUniversalSearchActiveIndex(index);
 }
 
+const SB_SEARCH_HIGHLIGHT_CLASS = 'highlighted-drawer';
+const SB_SEARCH_HIGHLIGHT_DURATION_MS = 1800;
+
 function expandHiddenAccordions(target) {
-    universalSearchController?.expandHiddenAccordions(target);
+    // SillyBunny: elements in the subpage store are hidden by CSS, not by a closed drawer;
+    // clicking their toggles fires jQuery slideToggle and injects inline display:block,
+    // overriding the store hide rule and bleeding the old panel into view.
+    if (target?.closest('.' + SB_SUBPAGE_STORE_CLASS)) {
+        return;
+    }
+
+    const helpRow = target.closest('.sb-sampling-help-row');
+    const help = helpRow?.querySelector(':scope > .sb-sampling-help');
+    if (help?.hidden) {
+        helpRow.querySelector('.sb-sampling-help-toggle')?.click();
+    }
+
+    const hiddenContents = [];
+    const closedExpanders = [];
+    let current = target.parentElement;
+
+    while (current) {
+        if (current.classList.contains('inline-drawer-content') && getComputedStyle(current).display === 'none') {
+            hiddenContents.push(current);
+        }
+        if (current instanceof HTMLDetailsElement) current.open = true;
+        if (current.matches('.ds-row-expander-content[hidden]')) {
+            closedExpanders.push(current.parentElement?.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle'));
+        }
+
+        current = current.parentElement;
+    }
+
+    for (const toggle of closedExpanders.reverse()) {
+        if (toggle instanceof HTMLElement) toggle.click();
+    }
+
+    for (const content of hiddenContents.reverse()) {
+        const toggle = content.previousElementSibling?.classList.contains('inline-drawer-toggle')
+            ? content.previousElementSibling
+            : content.parentElement?.querySelector(':scope > .inline-drawer-toggle');
+
+        if (toggle instanceof HTMLElement) {
+            toggle.click();
+        }
+    }
 }
 
 function pulseSearchTarget(target) {
-    universalSearchController?.pulseSearchTarget(target);
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    const drawer = target.closest('.inline-drawer');
+    const flatSection = target.closest(`.${SB_FLAT_SECTION_CLASS}`);
+    const highlightTarget = flatSection instanceof HTMLElement
+        ? flatSection
+        : drawer instanceof HTMLElement ? drawer : target;
+
+    document.querySelectorAll('.' + SB_SEARCH_HIGHLIGHT_CLASS)
+        .forEach(el => el.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS));
+
+    highlightTarget.classList.add(SB_SEARCH_HIGHLIGHT_CLASS);
+    window.setTimeout(() => {
+        highlightTarget.classList.remove(SB_SEARCH_HIGHLIGHT_CLASS);
+    }, SB_SEARCH_HIGHLIGHT_DURATION_MS);
 }
 
 function revealSettingsCategoryFor(target) {
-    universalSearchController?.revealSettingsCategoryFor(target);
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+
+    // Content is split across three permanent containers, so a match can live in any of them
+    // rather than all settings living in one block.
+    const roots = getUserSettingsContentRoots();
+    const settingsContent = roots.find(root => root.contains(target));
+    if (!settingsContent) {
+        return;
+    }
+
+    const taggedDrawer = target.closest('.inline-drawer[data-settings-tab]');
+    if (taggedDrawer instanceof HTMLElement) {
+        const category = taggedDrawer.getAttribute('data-settings-tab');
+        if (category) {
+            settingsContent.setAttribute('data-active-tab', category);
+            const settingsBlock = document.getElementById('user-settings-block');
+            if (settingsBlock) {
+                settingsBlock.setAttribute('data-active-tab', category);
+            }
+            document.querySelectorAll('.sb-settings-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === category);
+            });
+            return;
+        }
+    }
+
+    settingsContent.setAttribute('data-search-active', 'true');
+    const tabNav = document.getElementById('sb-settings-tabs');
+    if (tabNav) {
+        const clearSearchActive = () => {
+            settingsContent.removeAttribute('data-search-active');
+            tabNav.removeEventListener('click', clearSearchActive);
+        };
+        tabNav.addEventListener('click', clearSearchActive);
+    }
 }
 
 /** Counts search jumps, so that the delayed steps of a jump stop when a newer jump replaces it. */
@@ -9069,11 +9226,16 @@ function applyDefaultDrawerStates() {
     ensureInlineDrawerPersistenceObserver();
 }
 
-function syncMobileViewportState() {
+function syncMobileViewportState(snapshot = null) {
+    if (sbMobileViewportStateFrameId && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(sbMobileViewportStateFrameId);
+        sbMobileViewportStateFrameId = 0;
+    }
+
     const viewportSyncStep = sbMobileShellLifecycle.viewportSync.step;
     const syncPlan = sbMobileShellLifecycle.viewportSync.resolveSyncPlan();
     const stepHandlers = {
-        [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
+        [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(snapshot),
         [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
         [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
         [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
@@ -9093,7 +9255,7 @@ function syncMobileViewportState() {
     // SillyBunny: after viewport sizing settles, give iOS shell scrollers enough
     // bottom inset to move focused bottom fields above the keyboard without
     // locking the document and exposing a blank Safari background.
-    syncIOSKeyboardBottomInset();
+    syncIOSKeyboardBottomInset(snapshot);
 }
 
 let sbMobileViewportStateFrameId = 0;
@@ -10271,8 +10433,8 @@ function initAll() {
 
     // SillyBunny: coalesce window resize/orientationchange and visualViewport resize/scroll
     // (including iOS offsetTop pans without resize) through ViewportCoordinator in one frame.
-    sbMobileShellLifecycle.viewportSync.subscribe((_snapshot, meta) => {
-        queueMobileViewportStateSync();
+    sbMobileShellLifecycle.viewportSync.subscribe((snapshot, meta) => {
+        syncMobileViewportState(snapshot);
 
         if (meta?.sources?.has('visualViewport')) {
             scheduleMobileFocusedInputScroll();

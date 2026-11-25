@@ -642,8 +642,8 @@ describe('mobile shell lifecycle wiring', () => {
         expect(getResolvedShellTopbarOffsetSource).toContain('document.getElementById(\'top-bar\')');
         expect(tabsSource).not.toContain('function syncMobileShellDrawerBounds(');
         expect(tabsSource).not.toContain('function syncDesktopShellSizing(');
-        expect(tabsSource).toContain('sbMobileShellLifecycle.viewportSync.subscribe((_snapshot, meta) => {');
-        expect(tabsSource).toContain('queueMobileViewportStateSync();');
+        expect(tabsSource).toContain('sbMobileShellLifecycle.viewportSync.subscribe((snapshot, meta) => {');
+        expect(tabsSource).toContain('syncMobileViewportState(snapshot);');
         expect(tabsSource).not.toContain('window.visualViewport?.addEventListener(\'resize\', queueMobileViewportStateSync');
         expect(tabsSource).not.toContain('window.visualViewport?.addEventListener(\'scroll\', queueMobileViewportStateSync');
     });

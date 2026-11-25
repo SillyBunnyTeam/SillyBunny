@@ -1,7 +1,7 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
 import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
-import { subscribeViewport } from './viewport-coordinator.js';
+import { subscribeViewport } from './viewport-coordinator.js'; // SillyBunny: share a single rAF-batched viewport listener across shell modules.
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -360,6 +360,7 @@ function applyBrowserFixes() {
             applyPositionFix();
         };
 
+        // SillyBunny: route resize/scroll/orientation events through ViewportCoordinator.
         subscribeViewport((snapshot, meta) => {
             if (meta?.types?.has('orientationchange')) {
                 updateViewportBaseline();

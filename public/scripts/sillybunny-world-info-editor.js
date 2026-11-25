@@ -237,7 +237,88 @@ export function mountWorldInfoEditor(container) {
     let bulkBusy = false;
     let virtualStart = 0;
     let virtualEnd = 0;
-    let measuredRowHeight = WI_ESTIMATED_ROW_HEIGHT;
+    const measuredRowHeights = new Map();
+    let virtualRowKeys = [];
+    let virtualRowOffsets = new Float64Array(1);
+    let virtualHeightsDirty = true;
+
+    const rebuildVirtualOffsets = () => {
+        const len = virtualRowKeys.length;
+        if (virtualRowOffsets.length !== len + 1) virtualRowOffsets = new Float64Array(len + 1);
+        let sum = 0;
+        virtualRowOffsets[0] = 0;
+        for (let i = 0; i < len; i++) {
+            const h = measuredRowHeights.get(virtualRowKeys[i]);
+            sum += h > 0 ? h : WI_ESTIMATED_ROW_HEIGHT;
+            virtualRowOffsets[i + 1] = sum;
+        }
+        virtualHeightsDirty = false;
+    };
+    const ensureVirtualOffsets = () => {
+        if (virtualHeightsDirty) rebuildVirtualOffsets();
+    };
+    const syncVirtualRowKeys = pageEntries => {
+        const len = pageEntries.length;
+        let same = len === virtualRowKeys.length;
+        if (same) {
+            for (let i = 0; i < len; i++) {
+                if (virtualRowKeys[i] !== `entry:${pageEntries[i].uid}`) {
+                    same = false;
+                    break;
+                }
+            }
+        }
+        if (!same) {
+            virtualRowKeys = pageEntries.map(entry => `entry:${entry.uid}`);
+            virtualHeightsDirty = true;
+        }
+    };
+    const virtualOffsetAt = index => {
+        ensureVirtualOffsets();
+        return virtualRowOffsets[Math.max(0, Math.min(virtualRowKeys.length, index))];
+    };
+    const virtualHeightAt = index => {
+        ensureVirtualOffsets();
+        if (index < 0 || index >= virtualRowKeys.length) return WI_ESTIMATED_ROW_HEIGHT;
+        return virtualRowOffsets[index + 1] - virtualRowOffsets[index];
+    };
+    const virtualTotalHeight = () => {
+        ensureVirtualOffsets();
+        return virtualRowOffsets[virtualRowKeys.length];
+    };
+    const virtualAverageHeight = () => {
+        ensureVirtualOffsets();
+        return virtualRowKeys.length > 0 ? virtualRowOffsets[virtualRowKeys.length] / virtualRowKeys.length : WI_ESTIMATED_ROW_HEIGHT;
+    };
+    const virtualIndexAtOffset = offset => {
+        ensureVirtualOffsets();
+        const len = virtualRowKeys.length;
+        if (len <= 0 || offset <= 0) return 0;
+        if (offset >= virtualRowOffsets[len]) return len - 1;
+        let low = 0;
+        let high = len - 1;
+        while (low <= high) {
+            const mid = (low + high) >> 1;
+            if (virtualRowOffsets[mid + 1] <= offset) low = mid + 1;
+            else if (virtualRowOffsets[mid] > offset) high = mid - 1;
+            else return mid;
+        }
+        return Math.max(0, Math.min(len - 1, low));
+    };
+    const measureVirtualRows = () => {
+        let changed = false;
+        for (const child of entryBox.children) {
+            if (!(child instanceof HTMLElement)) continue;
+            const key = child.dataset.sbListKey;
+            const height = child.offsetHeight;
+            if (key && height > 0 && measuredRowHeights.get(key) !== height) {
+                measuredRowHeights.set(key, height);
+                changed = true;
+            }
+        }
+        if (changed) virtualHeightsDirty = true;
+        return changed;
+    };
 
     const toggleSettings = () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' });
     const listHeader = createListHeader({
@@ -704,31 +785,41 @@ export function mountWorldInfoEditor(container) {
         return row;
     }
 
-    function computeVirtualWindow(pageLength) {
+    function computeVirtualWindow(pageEntries) {
+        const pageLength = pageEntries.length;
         if (pageLength <= WI_VIRTUAL_THRESHOLD) return { start: 0, end: pageLength, topPad: 0, bottomPad: 0 };
-        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : WI_ESTIMATED_ROW_HEIGHT;
+        syncVirtualRowKeys(pageEntries);
         const viewportHeight = listBody.clientHeight > 0 ? listBody.clientHeight : 600;
-        const windowCount = Math.min(pageLength, Math.min(WI_MAX_VIRTUAL_WINDOW, Math.ceil(viewportHeight / rowHeight) + WI_VIRTUAL_OVERSCAN * 2));
         const boxOffset = entryBox.offsetTop > 0 ? entryBox.offsetTop : 0;
         const scrollOffset = Math.max(0, listBody.scrollTop - boxOffset);
-        const firstVisible = Math.floor(scrollOffset / rowHeight);
-        const start = Math.max(0, Math.min(pageLength - windowCount, firstVisible - WI_VIRTUAL_OVERSCAN));
-        const end = Math.min(pageLength, start + windowCount);
+        const totalHeight = virtualTotalHeight();
+        const firstVisible = virtualIndexAtOffset(scrollOffset);
+        const lastVisible = virtualIndexAtOffset(scrollOffset + viewportHeight);
+        let start = Math.max(0, firstVisible - WI_VIRTUAL_OVERSCAN);
+        let end = Math.min(pageLength, lastVisible + 1 + WI_VIRTUAL_OVERSCAN);
+        if (end >= pageLength) {
+            const bottomViewStart = virtualIndexAtOffset(Math.max(0, totalHeight - viewportHeight));
+            start = Math.max(0, Math.min(start, bottomViewStart - WI_VIRTUAL_OVERSCAN));
+        }
+        if (end - start > WI_MAX_VIRTUAL_WINDOW) {
+            start = Math.max(0, Math.min(firstVisible, pageLength - WI_MAX_VIRTUAL_WINDOW));
+            end = Math.min(pageLength, start + WI_MAX_VIRTUAL_WINDOW);
+        }
         return {
             start,
             end,
-            topPad: start * rowHeight,
-            bottomPad: Math.max(0, (pageLength - end) * rowHeight),
+            topPad: virtualOffsetAt(start),
+            bottomPad: Math.max(0, totalHeight - virtualOffsetAt(end)),
         };
     }
 
-    function scrollPageIndexIntoView(indexInPage) {
+    function scrollPageIndexIntoView(indexInPage, pageEntries = null) {
         if (indexInPage < 0) return;
-        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : WI_ESTIMATED_ROW_HEIGHT;
+        if (pageEntries) syncVirtualRowKeys(pageEntries);
         const viewportHeight = listBody.clientHeight > 0 ? listBody.clientHeight : 600;
         const boxOffset = entryBox.offsetTop > 0 ? entryBox.offsetTop : 0;
-        const top = boxOffset + indexInPage * rowHeight;
-        const bottom = top + rowHeight;
+        const top = boxOffset + virtualOffsetAt(indexInPage);
+        const bottom = top + virtualHeightAt(indexInPage);
         const viewTop = listBody.scrollTop;
         const viewBottom = viewTop + viewportHeight;
         if (top < viewTop) listBody.scrollTop = top;
@@ -736,13 +827,19 @@ export function mountWorldInfoEditor(container) {
     }
 
     function reconcilePageWindow(pageEntries) {
-        const { start, end, topPad, bottomPad } = computeVirtualWindow(pageEntries.length);
+        const { start, end, topPad, bottomPad } = computeVirtualWindow(pageEntries);
         virtualStart = start;
         virtualEnd = end;
         const nextTop = topPad > 0 ? `${topPad}px` : '';
         const nextBottom = bottomPad > 0 ? `${bottomPad}px` : '';
-        if (entryBox.style.paddingTop !== nextTop) entryBox.style.paddingTop = nextTop;
-        if (entryBox.style.paddingBottom !== nextBottom) entryBox.style.paddingBottom = nextBottom;
+        if (entryBox.style.paddingTop !== nextTop) {
+            if (nextTop) entryBox.style.paddingTop = nextTop;
+            else entryBox.style.removeProperty('padding-top');
+        }
+        if (entryBox.style.paddingBottom !== nextBottom) {
+            if (nextBottom) entryBox.style.paddingBottom = nextBottom;
+            else entryBox.style.removeProperty('padding-bottom');
+        }
 
         const windowEntries = start === 0 && end === pageEntries.length ? pageEntries : pageEntries.slice(start, end);
         const reorderable = customSort() && !searchControl.query;
@@ -778,8 +875,14 @@ export function mountWorldInfoEditor(container) {
             },
         });
 
-        const firstRowHeight = entryBox.firstElementChild?.offsetHeight ?? 0;
-        if (firstRowHeight > 0) measuredRowHeight = firstRowHeight;
+        if (pageEntries.length > WI_VIRTUAL_THRESHOLD && measureVirtualRows()) {
+            const adjustedBottom = Math.max(0, virtualTotalHeight() - virtualOffsetAt(end));
+            const adjustedBottomText = adjustedBottom > 0 ? `${adjustedBottom}px` : '';
+            if (entryBox.style.paddingBottom !== adjustedBottomText) {
+                if (adjustedBottomText) entryBox.style.paddingBottom = adjustedBottomText;
+                else entryBox.style.removeProperty('padding-bottom');
+            }
+        }
     }
 
     function ensureUidMounted(uid, { scroll = false } = {}) {
@@ -789,7 +892,7 @@ export function mountWorldInfoEditor(container) {
         const index = pageEntries.findIndex(entry => String(entry.uid) === String(uid));
         if (index < 0) return null;
         if (scroll || index < virtualStart || index >= virtualEnd) {
-            scrollPageIndexIntoView(index);
+            scrollPageIndexIntoView(index, pageEntries);
             reconcilePageWindow(pageEntries);
             selection?.decorate();
         }
@@ -963,7 +1066,7 @@ export function mountWorldInfoEditor(container) {
         if (destroyed || dragging || !state.data) return;
         const pageEntries = pagination.slice(entries);
         if (pageEntries.length <= WI_VIRTUAL_THRESHOLD) return;
-        const { start, end } = computeVirtualWindow(pageEntries.length);
+        const { start, end } = computeVirtualWindow(pageEntries);
         if (start === virtualStart && end === virtualEnd) return;
         reconcilePageWindow(pageEntries);
         selection?.decorate();
@@ -979,7 +1082,8 @@ export function mountWorldInfoEditor(container) {
         if (!fromRow) return;
         const index = pageEntries.findIndex(entry => String(entry.uid) === row.dataset.uid);
         if (index < 0) return;
-        const rowHeight = measuredRowHeight > 0 ? measuredRowHeight : WI_ESTIMATED_ROW_HEIGHT;
+        syncVirtualRowKeys(pageEntries);
+        const rowHeight = virtualAverageHeight();
         const pageStep = Math.max(1, Math.floor((listBody.clientHeight > 0 ? listBody.clientHeight : 600) / rowHeight) - 1);
         let targetIndex = index;
         if (event.key === 'Home') targetIndex = 0;
@@ -995,7 +1099,7 @@ export function mountWorldInfoEditor(container) {
         if (targetIndex < virtualStart || targetIndex >= virtualEnd || event.key === 'Home' || event.key === 'End' || event.key === 'PageUp' || event.key === 'PageDown') {
             event.preventDefault();
             event.stopPropagation();
-            scrollPageIndexIntoView(targetIndex);
+            scrollPageIndexIntoView(targetIndex, pageEntries);
             reconcilePageWindow(pageEntries);
             selection?.decorate();
             const targetRow = rows.get(`entry:${pageEntries[targetIndex].uid}`)?.row;
@@ -1065,6 +1169,9 @@ export function mountWorldInfoEditor(container) {
         const changedBook = renderedName !== undefined && renderedName !== name;
         if (changedBook || state.data !== data) heldOrder = null;
         if (changedBook) {
+            measuredRowHeights.clear();
+            virtualRowKeys = [];
+            virtualHeightsDirty = true;
             selection.exit();
             closeOwnedOverlays();
             if (controllerKind === 'entry') {
@@ -1108,7 +1215,7 @@ export function mountWorldInfoEditor(container) {
                 const pageSlice = pagination.slice(entries);
                 if (pageSlice.length > WI_VIRTUAL_THRESHOLD) {
                     const idx = pageSlice.findIndex(entry => String(entry.uid) === String(revealUid));
-                    if (idx >= 0) scrollPageIndexIntoView(idx);
+                    if (idx >= 0) scrollPageIndexIntoView(idx, pageSlice);
                 }
             }
         }
