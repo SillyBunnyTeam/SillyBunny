@@ -16,7 +16,7 @@ import { disableConversationModeForCurrentCharacter, getDefaultConversationAvata
 import { CONVERSATION_STORE_KEY, GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
 import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById } from './context.js';
 import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
-import { generationTargets, installRemovalEffects } from './deletion-guards.js';
+import { generationTargets, installPageLeaveEffects, installRemovalEffects } from './deletion-guards.js';
 import { loadCurrentPanelSettings } from './interface.js';
 import { importLegacyLocalStorage } from './legacy-import.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators } from './notifications.js';
@@ -56,6 +56,7 @@ export function init() {
 
     conversationState.initialized = true;
     installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
+    installPageLeaveEffects({ target: window, targets: generationTargets });
     installReplyFinalizer();
     installRoundResume();
     installReplyEvents();

@@ -63,6 +63,12 @@ export function createGenerationTargets() {
                 }
             }
         },
+        /** Stops every reply in progress: the page is closing. */
+        abortAll() {
+            for (const entry of [...running]) {
+                entry.controller.abort();
+            }
+        },
         get size() {
             return running.size;
         },
@@ -97,4 +103,26 @@ export function installRemovalEffects({ onRemoval, queue, targets }) {
         targets.cancel(removed);
         dropQueuedReplies(queue, removed);
     });
+}
+
+/**
+ * A page that closes hands the replies that it is reading to the server (`releaseActiveGenerations()` in
+ * `resumable-generation.js`, on `pagehide`), and the server then writes each reply when it is finished. A request that is
+ * not stopped stays open for a moment after that, and when the reply ends in that moment the page claims it, which tells
+ * the server that the page saves it and takes the server's copy back out of the chat, and a page that is being destroyed
+ * does not save it. Stopping the request after the hand-over closes its connection, and the server keeps its copy.
+ * Roleplay stops its stream in its own `pagehide` handler for the same reason. A page that goes to the back-forward
+ * cache can come back and takes its replies back (`reattachActiveGenerations()`), so only a page that is hidden for good stops them.
+ * @param {{ target: Pick<Window, 'addEventListener' | 'removeEventListener'>, targets: ReturnType<typeof createGenerationTargets> }} parts
+ * Register this after `resumable-generation.js` has: the listeners run in the order that they were added.
+ * @returns {() => void} Removes the listener.
+ */
+export function installPageLeaveEffects({ target, targets }) {
+    const onPageHide = (event) => {
+        if (!event.persisted) {
+            targets.abortAll();
+        }
+    };
+    target.addEventListener('pagehide', onPageHide);
+    return () => target.removeEventListener('pagehide', onPageHide);
 }

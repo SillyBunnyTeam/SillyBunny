@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, jest, test } from '@jest/globals';
 
 import {
     createGenerationTargets,
     createTargetCheck,
     dropQueuedReplies,
+    installPageLeaveEffects,
     installRemovalEffects,
     isTargetOfRemoval,
     removeQueueItems,
@@ -173,5 +175,47 @@ describe('installing the effects of a removal', () => {
         result();
 
         expect(stop).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('a page that is closing', () => {
+    test('stops the replies that it is reading, so that none of them is claimed by a page that can no longer save it', () => {
+        const targets = createGenerationTargets();
+        const first = targets.begin({ conversationId: 'conv_a', chatId: 'one' });
+        const second = targets.begin({ conversationId: 'conv_b', chatId: 'two' });
+
+        targets.abortAll();
+
+        expect(first.signal.aborted).toBe(true);
+        expect(second.signal.aborted).toBe(true);
+    });
+
+    test('does this when the page is hidden for good, and not when it goes to the back-forward cache, which can bring it back', () => {
+        const targets = createGenerationTargets();
+        const page = new EventTarget();
+        installPageLeaveEffects({ target: page, targets });
+        const kept = targets.begin({ conversationId: 'conv_a', chatId: 'one' });
+
+        page.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: true }));
+        expect(kept.signal.aborted).toBe(false);
+
+        page.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: false }));
+        expect(kept.signal.aborted).toBe(true);
+    });
+
+    test('stops listening when the function that it returns is called', () => {
+        const targets = createGenerationTargets();
+        const page = new EventTarget();
+        const remove = installPageLeaveEffects({ target: page, targets });
+        const running = targets.begin({ conversationId: 'conv_a', chatId: 'one' });
+
+        remove();
+        page.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: false }));
+
+        expect(running.signal.aborted).toBe(false);
+    });
+
+    test('is wired when the mode starts', () => {
+        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/init.js', import.meta.url), 'utf8')).toContain('installPageLeaveEffects({ target: window, targets: generationTargets });');
     });
 });
