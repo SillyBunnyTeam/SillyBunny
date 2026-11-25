@@ -154,6 +154,20 @@ test.describe('conversation timeline', () => {
         await expect(page.locator('.sb-selection-check')).toHaveCount(0);
     });
 
+    test('Select Message is in the message menu and not in the hover toolbar, which stays one row with every action shown', async ({ page, baseURL }) => {
+        await openConversation(page, baseURL);
+        await page.evaluate(() => document.body.classList.add('expandMessageActions'));
+        const target = row(page, 4);
+        await target.hover();
+        const toolbar = target.locator('.sb-conversation-message-actions');
+        await expect(toolbar).toHaveCSS('opacity', '1');
+        // A thirteenth button would pass the 30rem that the toolbar may take and wrap to a second row over the message above.
+        expect(await toolbar.evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(48);
+        await expect(toolbar.locator('[data-sb-conversation-action="select-message"]')).toBeHidden();
+        await toolbar.locator('.sb-conversation-message-menu').click();
+        await expect(page.locator('.sb-action-popover .sb-action-menu-item', { hasText: 'Select Message' })).toBeVisible();
+    });
+
     test('the header menu starts it with nothing selected, and Delete waits for a selection', async ({ page, baseURL }) => {
         await openConversation(page, baseURL);
         await page.locator('#sb_conversation_header [data-sb-conversation-action="open-conversation-menu"]').click();

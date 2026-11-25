@@ -1556,6 +1556,12 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     display: none;
 }
 
+/* The message menu builds its rows from the toolbar's buttons. A button marked for the menu only is never drawn in the toolbar,
+   because the toolbar's width is fixed by the set of actions that fits one row. */
+.sb-conversation-message-actions > [data-sb-menu-only] {
+    display: none;
+}
+
 .sb-conversation-message.has-open-menu .sb-conversation-message-actions,
 .sb-conversation-message[data-sb-actions-expanded] .sb-conversation-message-actions {
     opacity: 1;

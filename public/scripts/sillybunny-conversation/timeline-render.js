@@ -566,7 +566,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         ],
         [
             { action: 'copy-message', icon: 'fa-copy', label: 'Copy Message' },
-            { action: 'select-message', icon: 'fa-square-check', label: 'Select Message', secondary: true },
+            { action: 'select-message', icon: 'fa-square-check', label: 'Select Message', secondary: true, menuOnly: true },
             { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin Message' : 'Pin Message', secondary: true },
             { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch From Here', secondary: true },
         ],
@@ -605,6 +605,9 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
             actionButton.dataset.sbSection = String(index);
             if (messageAction.secondary) {
                 actionButton.dataset.sbSecondary = '';
+            }
+            if (messageAction.menuOnly) {
+                actionButton.dataset.sbMenuOnly = '';
             }
             actionBar.appendChild(actionButton);
         }
