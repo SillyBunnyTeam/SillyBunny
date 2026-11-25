@@ -341,6 +341,8 @@ test.describe('a conversation that is deleted while a reply is being written', (
             await conversationData.deleteConversation(id);
         }, target.conversationId);
         model.answer(0, 'A reply for a conversation that is gone.');
+        // The assertion is that nothing arrives, so there is no state to poll for.
+        // eslint-disable-next-line playwright/no-wait-for-timeout
         await page.waitForTimeout(3000);
 
         expect((await serverChat(page, target)).status).toBe(404);
