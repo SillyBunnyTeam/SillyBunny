@@ -25,7 +25,6 @@
 
 - Main server entrypoint is `server.js`, which supervises restarts and then imports `src/server-main.js`; keep startup-order-sensitive imports near the top intact.
 - Browser-side app code is under `public/`; server-side code is under `src/`; runtime launchers and maintenance scripts are in the repo root and `scripts/`.
-- `src/electron/` has its own minimal Electron package and is not covered by the root scripts.
 - Root lint intentionally ignores vendored/generated areas including `public/lib/**`, `public/scripts/extensions/quick-image-gen/**`, `public/scripts/extensions/third-party/**`, `data/**`, `cache/**`, and `backups/**`; avoid reformatting those unless the task targets them.
 - `default/` contains bundled presets, agents, templates, characters, and install-time defaults; change it deliberately and verify migrations or reset behavior for existing users.
 
