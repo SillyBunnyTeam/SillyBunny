@@ -1373,40 +1373,27 @@ export async function regenerateConversationMessage(messageId) {
     }
 }
 
-export function branchConversationFromMessage(messageId) {
+export async function branchConversationFromMessage(messageId) {
     const context = getConversationMessageById(messageId);
     if (!context) {
         return;
     }
 
-    const index = context.messages.findIndex(item => item.id === messageId);
-    if (index < 0) {
-        return;
-    }
-
-    const sourceChat = getActiveConversationChat(context.avatar, {
-        chatId: context.chatId,
-        groupId: context.groupId,
-        personaId: context.personaId,
-    });
     const store = getConversationRecord(context.avatar, { groupId: context.groupId, personaId: context.personaId });
-    if (!sourceChat || !store) {
+    if (!store || !context.messages.some(item => item.id === messageId)) {
         return;
     }
 
-    // The branch is a chat of the same conversation that holds the messages up to this one. The memory summary of the
-    // chat it came from goes with it.
-    const created = conversationData.createChat(store.id, { name: `Branch ${getConversationChats(context.avatar, { groupId: context.groupId }).length + 1}`, activate: true });
-    if (!created) {
+    // The server writes the messages as the first save of the new chat, so a crash cannot leave a listed chat that is empty.
+    let created;
+    try {
+        created = await conversationData.branchChat({ conversationId: store.id, chatId: context.chatId }, messageId, { name: `Chat ${getConversationChats(context.avatar, { groupId: context.groupId }).length + 1}`, activate: true });
+    } catch (error) {
+        console.error('Conversation Mode: the chat could not be branched', error);
+        globalThis.toastr?.error?.('The chat could not be branched');
         return;
     }
     const chat = { id: created.address.chatId };
-    conversationData.commitChat(created.address, (draft) => {
-        draft.messages.splice(0, 0, ...context.messages.slice(0, index + 1).map(item => structuredClone(item)));
-        if (sourceChat.memorySummary) {
-            draft.header.chat_metadata.sb_conversation = { memory_summary: sourceChat.memorySummary, memory_message_count: sourceChat.memoryMessageCount, memory_updated_at: sourceChat.memoryUpdatedAt };
-        }
-    });
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
         detail: {
             avatar: context.avatar,

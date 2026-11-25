@@ -210,6 +210,7 @@ export function init() {
 installConversationDataHooks({
     eventSource,
     settingsLoaded: event_types.SETTINGS_LOADED,
+    refreshOn: [event_types.CHARACTER_DELETED, event_types.CHARACTER_RENAMED, event_types.PERSONA_DELETED],
     getModeObject: () => extension_settings[CONVERSATION_STORE_KEY],
 });
 eventSource.on(event_types.APP_READY, init);

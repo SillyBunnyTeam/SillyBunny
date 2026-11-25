@@ -53,8 +53,18 @@ export function reloadPageOnce(flag = RELOAD_FLAG) {
     window.location.reload();
 }
 
+async function fetchText(path, body) {
+    const [{ getRequestHeaders }, { compressRequest }] = await Promise.all([import('../../script.js'), import('../request-compression.js')]);
+    const response = await fetch(`${API_PREFIX}${path}`, await compressRequest({ method: 'POST', headers: getRequestHeaders(), body: JSON.stringify(body ?? {}), cache: 'no-cache' }));
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+    const plainName = /filename="([^"]+)"/i.exec(disposition)?.[1];
+    return { status: response.status, text: await response.text(), fileName: encodedName ? decodeURIComponent(encodedName) : plainName ?? '' };
+}
+
 export const conversationData = createConversationData({
     fetchJson,
+    fetchText,
     now: () => Date.now(),
     setTimer: (callback, delay) => setTimeout(callback, delay),
     clearTimer: handle => clearTimeout(handle),
@@ -78,14 +88,26 @@ function showDataEvent(event) {
     }
 }
 
+/**
+ * Downloads a chat as the JSONL file that the server stores, under the name that the server made from the chat's name.
+ * @param {{ conversationId: string, chatId: string }} address
+ */
+export async function downloadConversationChat(address) {
+    const { fileName, text } = await conversationData.exportChat(address);
+    const { download } = await import('../utils.js');
+    download(text, fileName || 'chat.jsonl', 'application/x-ndjson');
+}
+
 let hooksInstalled = false;
 
 /**
  * Starts the module when the settings are loaded and writes what waits when the page goes away. Runs once.
- * @param {{ eventSource: { on: Function }, settingsLoaded: string, getModeObject: () => any }} page
- * `getModeObject` returns the mode's object in `settings.json`.
+ * @param {{ eventSource: { on: Function }, settingsLoaded: string, refreshOn?: string[], getModeObject: () => any }} page
+ * `getModeObject` returns the mode's object in `settings.json`. `refreshOn` names the events after which the server has
+ * changed conversations that the page holds (a character or a persona that was deleted, a character that was renamed),
+ * so that the list is read again.
  */
-export function installConversationDataHooks({ eventSource, settingsLoaded, getModeObject }) {
+export function installConversationDataHooks({ eventSource, settingsLoaded, refreshOn = [], getModeObject }) {
     if (hooksInstalled || typeof window === 'undefined') {
         return;
     }
@@ -94,6 +116,11 @@ export function installConversationDataHooks({ eventSource, settingsLoaded, getM
     eventSource.on(settingsLoaded, () => {
         void conversationData.start();
     });
+    for (const eventName of refreshOn) {
+        eventSource.on(eventName, () => {
+            void conversationData.refresh();
+        });
+    }
     conversationData.subscribe(showDataEvent);
     const flushForLeaving = () => {
         void conversationData.flush({ keepalive: true });

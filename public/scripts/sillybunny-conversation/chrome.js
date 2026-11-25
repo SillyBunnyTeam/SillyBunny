@@ -829,7 +829,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             reactConversationMessage(data.messageId, data.reaction);
             break;
         case 'branch-from-message':
-            branchConversationFromMessage(data.messageId);
+            await branchConversationFromMessage(data.messageId);
             break;
         case 'regenerate-message':
             await regenerateConversationMessage(data.messageId);
