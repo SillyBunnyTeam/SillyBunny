@@ -73,6 +73,15 @@ export function createRouteAdapter(baseUrl, overrides = {}) {
             }
             return { status: response.status, json, keepalive: options.keepalive === true };
         },
+        async fetchText(path, body) {
+            const response = await fetch(`${baseUrl}${PREFIX}${path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body ?? {}),
+            });
+            const disposition = response.headers.get('content-disposition') ?? '';
+            return { status: response.status, text: await response.text(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] ?? '' };
+        },
         now: clock.now,
         setTimer: clock.setTimer,
         clearTimer: clock.clearTimer,
@@ -144,6 +153,14 @@ export function recordCalls(adapter) {
             calls.push({ path, body: structuredClone(body ?? {}), options });
             return adapter.fetchJson(path, body, options);
         },
+        ...(typeof adapter.fetchText === 'function'
+            ? {
+                fetchText: async (path, body) => {
+                    calls.push({ path, body: structuredClone(body ?? {}), options: {} });
+                    return adapter.fetchText(path, body);
+                },
+            }
+            : {}),
         paths: () => calls.map(call => call.path),
         callsTo: path => calls.filter(call => call.path === path),
     };
@@ -194,6 +211,7 @@ export function seedConversations(server, descriptors) {
             kind: descriptor.kind ?? (characters.length > 1 ? 'group' : 'direct'),
             personaId: descriptor.personaId ?? PERSONA,
             characters,
+            extras: descriptor.extras ?? [],
             name: descriptor.name ?? '',
             settings: descriptor.settings ?? {},
             reminders: descriptor.reminders ?? [],

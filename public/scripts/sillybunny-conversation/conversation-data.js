@@ -19,6 +19,9 @@
  * @property {() => string} random Six characters of `[a-z0-9]` for a new chat id.
  * @property {() => boolean} isSettingsStale Whether the settings that the page loaded still hold the old store.
  * @property {() => void} reloadPage Reloads the page, at most once for this cause.
+ * @property {(path: string, body: object) => Promise<{ status: number, text: string, fileName: string }>} [fetchText]
+ * POST to a route that answers a file instead of JSON. `text` holds the JSON of the error for a status other than 200.
+ * Only `exportChat` needs it.
  */
 
 import { rebaseChat, describeSyncedMessages } from './conversation-data-merge.js';
@@ -121,6 +124,7 @@ export function createConversationData(adapter) {
     const pendingCharacters = new Map();
     let characterState = { version: 1, characters: {} };
     const listeners = new Set();
+    const removalListeners = new Set();
     const queuedEvents = new Map();
     let eventScheduled = false;
     let status = { state: 'idle', code: '', retryAt: 0 };
@@ -163,6 +167,28 @@ export function createConversationData(adapter) {
 
     function reportError(code, message, detail = {}) {
         emit('error', { code, message, ...detail });
+    }
+
+    /**
+     * Listeners run at once, not at the end of the tick, because what they cancel (a reply in progress, a queued reply)
+     * must stop before the target is gone. A conversation or a chat is announced as soon as the module knows that it
+     * goes, which can be before the server has answered, and again when it leaves the cache, so a listener has to
+     * accept the same target twice.
+     * @param {(target: { conversationId: string, chatId?: string }) => void} listener `chatId` is missing when the whole conversation goes.
+     */
+    function onRemoval(listener) {
+        removalListeners.add(listener);
+        return () => removalListeners.delete(listener);
+    }
+
+    function announceRemoval(target) {
+        for (const listener of [...removalListeners]) {
+            try {
+                listener(target);
+            } catch (error) {
+                console.error('Conversation data removal listener failed:', error);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -231,6 +257,9 @@ export function createConversationData(adapter) {
             return { ...entry, ...pickSummary(withSummaries ? entry : previous) };
         });
         const next = { ...conversation, chats, reminders: conversation.reminders ?? [], settings: conversation.settings ?? {} };
+        for (const gone of (existing?.chats ?? []).filter(old => !chats.some(entry => entry.id === old.id))) {
+            announceRemoval({ conversationId: conversation.id, chatId: gone.id });
+        }
         const view = existing ? replaceContents(existing, next) : next;
         if (!existing) {
             views.set(view.id, view);
@@ -261,6 +290,7 @@ export function createConversationData(adapter) {
 
     function dropConversation(id) {
         const view = views.get(id);
+        announceRemoval({ conversationId: id });
         for (const chat of view?.chats ?? []) {
             const key = keyOf({ conversationId: id, chatId: chat.id });
             const session = sessions.get(key);
@@ -854,7 +884,12 @@ export function createConversationData(adapter) {
         return { conversation: view, created: json.created === true };
     }
 
+    /**
+     * Deletes the conversation with its chats and reminders. Listeners of `onRemoval` hear of it before the request goes
+     * out, so that a reply in progress cannot land in it while the server works.
+     */
     async function deleteConversation(id) {
+        announceRemoval({ conversationId: id });
         const pending = pendingPatches.get(id);
         if (pending) {
             adapter.clearTimer(pending.timer);
@@ -923,10 +958,19 @@ export function createConversationData(adapter) {
         return { address, entry };
     }
 
+    /**
+     * Deletes one chat. The reminders that name it go with it, because the server keeps them in the conversation, which
+     * stays. When it was the last chat the server adds an empty one.
+     */
     async function deleteChat(address) {
         const view = views.get(address.conversationId);
         if (!view) {
             return null;
+        }
+        announceRemoval(address);
+        const keptReminders = view.reminders.filter(reminder => reminder.chatId !== address.chatId);
+        if (keptReminders.length !== view.reminders.length) {
+            patchConversation(address.conversationId, { reminders: keptReminders });
         }
         const pending = pendingPatches.get(address.conversationId);
         if (pending) {
@@ -944,6 +988,172 @@ export function createConversationData(adapter) {
         ingestConversation(json.conversation);
         emit('list', { id: address.conversationId });
         return views.get(address.conversationId);
+    }
+
+    /** Sends what waits for a conversation and waits for its requests that are out, so that the next request sees the server as the page does. */
+    async function settleConversation(id) {
+        await flushConversation(id);
+        await queueOf(id).idle();
+    }
+
+    function requireView(id) {
+        const view = views.get(id);
+        if (!view) {
+            throw new ConversationDataError('not_found', 'The conversation no longer exists.', { status: 404 });
+        }
+        return view;
+    }
+
+    /**
+     * A request about one conversation. A 404 can say that the conversation is gone or that a part of it is not there (a
+     * member, a chat), so the module asks for the conversation before it forgets it.
+     */
+    async function requestAbout(conversationId, path, body) {
+        try {
+            return await queueOf(conversationId).run(() => requestOk(path, body));
+        } catch (error) {
+            if (error.status === 404 && error.code === 'not_found' && views.has(conversationId)) {
+                const check = await request('/get', { id: conversationId }).catch(() => null);
+                if (check?.status === 404) {
+                    dropConversation(conversationId);
+                    emit('list', { id: conversationId });
+                }
+            }
+            throw error;
+        }
+    }
+
+    function memoryOf(header) {
+        const { memory_summary: summary, memory_message_count: count, memory_updated_at: updatedAt } = header?.chat_metadata?.sb_conversation ?? {};
+        if (typeof summary !== 'string' || !summary.trim()) {
+            return null;
+        }
+        return { memory_summary: summary, ...(Number.isFinite(count) ? { memory_message_count: count } : {}), ...(Number.isFinite(updatedAt) ? { memory_updated_at: updatedAt } : {}) };
+    }
+
+    /**
+     * Branch from Here: a new chat that holds the messages up to and including `messageId`, read, with the memory
+     * summary of its source. The server writes the messages as the first save of the chat, so the chat is never listed
+     * empty, and the slug that it answers is kept for the first save of the page.
+     * @param {ChatAddress} address The chat to branch.
+     * @returns {Promise<{ address: ChatAddress, entry: Record<string, any> }>} The new chat, loaded.
+     */
+    async function branchChat(address, messageId, { name = '', activate = true } = {}) {
+        requireView(address.conversationId);
+        const source = await loadChat(address);
+        const index = source.messages.findIndex(item => item.id === messageId);
+        if (index < 0) {
+            throw new ConversationDataError('not_found', 'The message is not in the chat.', { details: { messageId } });
+        }
+        const records = source.messages.slice(0, index + 1).map(item => structuredClone(item));
+        const memory = memoryOf(source.header);
+        await settleConversation(address.conversationId);
+        const json = await requestAbout(address.conversationId, '/chat/create', {
+            id: address.conversationId,
+            ...(name ? { name } : {}),
+            activate,
+            readThrough: records.at(-1).id,
+            records,
+            ...(memory ? { chat_metadata: { sb_conversation: memory } } : {}),
+        });
+        const created = { conversationId: address.conversationId, chatId: json.chat.id };
+        const branchHeader = { ...blankHeader(), chat_metadata: { ...(memory ? { sb_conversation: structuredClone(memory) } : {}), integrity: json.integrity } };
+        const view = ingestConversation(json.conversation);
+        attachSession(newSession(created, [branchHeader, ...records]));
+        emit('chat', { address: created });
+        emit('list', { id: view.id });
+        return { address: created, entry: view.chats.find(item => item.id === created.chatId) };
+    }
+
+    /** Runs a route that answers the conversation it changed, and puts that answer in the cache. */
+    async function changeConversation(id, path, body) {
+        requireView(id);
+        await settleConversation(id);
+        const json = await requestAbout(id, path, { id, ...body });
+        const view = ingestConversation(json.conversation);
+        emit('list', { id });
+        return { view, json };
+    }
+
+    /** @param {string} image A `data:image/...;base64,` URL of a PNG, JPEG, GIF or WebP file. */
+    async function setGroupAvatar(id, image) {
+        return (await changeConversation(id, '/avatar/upload', { image })).view;
+    }
+
+    async function removeGroupAvatar(id) {
+        return (await changeConversation(id, '/avatar/remove', {})).view;
+    }
+
+    /**
+     * Adds characters to a group, which then read the history as it is. On a direct conversation it makes a new group
+     * of that character and the chosen ones and leaves the direct conversation as it is.
+     * @param {string[]} characters Avatar file names of cards that exist.
+     * @returns {Promise<{ conversation: Record<string, any>, created: boolean }>} The group, and whether it is a new one.
+     */
+    async function addMembers(id, characters) {
+        const { view, json } = await changeConversation(id, '/members/add', { characters });
+        return { conversation: view, created: json.created === true };
+    }
+
+    /**
+     * Takes a member out of a group; the past messages stay. Removing the second-to-last member converts the group: the
+     * server moves its chats into the direct conversation of the member that is left and deletes the group, and
+     * `conversation` is then that direct conversation, the one to open. The list is read again after a conversion,
+     * because the answer carries no summary of the chats that came over.
+     * @returns {Promise<{ conversation: Record<string, any>, converted: boolean, removedId?: string }>}
+     */
+    async function removeMember(id, avatar) {
+        requireView(id);
+        await settleConversation(id);
+        const json = await requestAbout(id, '/members/remove', { id, avatar });
+        if (!json.converted) {
+            const view = ingestConversation(json.conversation);
+            emit('list', { id });
+            return { conversation: view, converted: false };
+        }
+        dropConversation(json.removedId);
+        try {
+            await load();
+        } catch {
+            ingestConversation(json.conversation);
+        }
+        emit('list', {});
+        return { conversation: views.get(json.conversation.id), converted: true, removedId: json.removedId };
+    }
+
+    /** Takes an extra, a character that the old store listed beside the one of a direct conversation, off the list. */
+    async function removeExtra(id, avatar) {
+        return (await changeConversation(id, '/extras/remove', { avatar })).view;
+    }
+
+    /**
+     * The file of a chat as the server stores it, for a download. What waits to be saved is saved first.
+     * @returns {Promise<{ fileName: string, text: string }>}
+     */
+    async function exportChat(address) {
+        if (typeof adapter.fetchText !== 'function') {
+            throw new ConversationDataError('unavailable', 'This page cannot download files.');
+        }
+        const session = sessions.get(keyOf(address));
+        if (session?.chat && (session.dirty || session.saving)) {
+            await saveSession(session);
+        }
+        let answer;
+        try {
+            answer = await adapter.fetchText('/chat/export', { id: address.conversationId, chatId: address.chatId });
+        } catch (error) {
+            throw new ConversationDataError('network', error?.message ?? 'The request failed.', { details: error });
+        }
+        if (answer.status !== 200) {
+            let json = null;
+            try {
+                json = JSON.parse(answer.text);
+            } catch {
+                // The body was not JSON; the status says what failed.
+            }
+            throw failureOf({ status: answer.status, json });
+        }
+        return { fileName: answer.fileName, text: answer.text };
     }
 
     async function importLegacy(payload) {
@@ -1123,6 +1333,14 @@ export function createConversationData(adapter) {
         createConversation,
         deleteConversation,
         deleteChat,
+        branchChat,
+        exportChat,
+        setGroupAvatar,
+        removeGroupAvatar,
+        addMembers,
+        removeMember,
+        removeExtra,
+        onRemoval,
         markRead,
         importLegacy,
         flush,
