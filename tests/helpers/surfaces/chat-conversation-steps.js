@@ -231,15 +231,19 @@ export async function addConversationChats(page) {
         const context = await import('/scripts/sillybunny-conversation/context.js');
         const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const { selectConversation } = await import('/scripts/sillybunny-conversation/chrome.js');
-        const created = names.map((name, index) => {
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const created = [];
+        for (const [index, name] of names.entries()) {
             const chat = context.createConversationChat(avatar, name);
             const start = Date.UTC(2026, 0, 2 + index, 18, 0, 0);
             saveConversationMessages(avatar, texts.map((text, number) => ({
                 id: `branch-${index}-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? characterName : userName,
                 mes: text, send_date: new Date(start + number * 60_000).toISOString(), created_at: start + number * 60_000, extra: {},
             })), { chatId: chat.id });
-            return chat;
-        });
+            // The chats start read, as the conversation of the thread does, so that the surfaces show no unread badge.
+            await conversationData.markRead({ conversationId: context.getConversationRecord(avatar).id, chatId: chat.id });
+            created.push(chat);
+        }
         await selectConversation(avatar, { chatId: created[0].id });
     }, {
         avatar: FIXTURES.character.avatar,
