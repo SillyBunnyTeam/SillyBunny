@@ -929,7 +929,7 @@ describe('Chat completions backend prompt caching integration', () => {
             };
         }
 
-        test.each(['qwen/qwen3-max', 'openai/gpt-5.6', '~x-ai/grok-latest', 'qwen/qwen3-max:nitro'])('%s gets the system and depth markers without a ttl', async (model) => {
+        test.each(['qwen/qwen3-max', 'openai/gpt-5.6', 'qwen/qwen3-max:nitro'])('%s gets the system and depth markers without a ttl', async (model) => {
             mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true } });
 
             const { body } = await sendOpenRouter(model);
@@ -957,10 +957,10 @@ describe('Chat completions backend prompt caching integration', () => {
             expect(promptCaching.countCacheControlMarkers({ messages: body.messages })).toBe(3);
         });
 
-        test('a model with only a cache read price, or no catalog entry, gets no markers', async () => {
+        test('a model with only a cache read price, a free cache write, or no catalog entry, gets no markers', async () => {
             mergeCachingConfig({ claude: { enableSystemPromptCache: true, cachingAtDepth: 0 } });
 
-            for (const model of ['openai/gpt-4o', 'acme/unlisted-model']) {
+            for (const model of ['openai/gpt-4o', '~x-ai/grok-latest', 'acme/unlisted-model']) {
                 const { body, catalogFetches } = await sendOpenRouter(model);
                 expect(catalogFetches).toBeLessThanOrEqual(1);
                 expect(body.messages).toEqual(history);

@@ -106,7 +106,7 @@ export function isElectronHubClaudeModel(model) {
 }
 
 /**
- * Downloads the OpenRouter model catalog into a map of lowercase model id to "has a cache-write price".
+ * Downloads the OpenRouter model catalog into a map of lowercase model id to "charges for cache writes".
  * Never rejects: a failure starts the backoff and resolves to null.
  * @param {{ fetchImpl: typeof fetch, now: () => number, ttlMs: number, failureBackoffMs: number }} options
  * @returns {Promise<Map<string, boolean> | null>}
@@ -144,8 +144,8 @@ async function fetchOpenRouterCacheableModels({ fetchImpl, now, ttlMs, failureBa
             if (typeof entry?.id !== 'string' || !entry.id) {
                 continue;
             }
-            const writePrice = entry?.pricing?.input_cache_write;
-            nextMap.set(entry.id.trim().toLowerCase(), writePrice != null && writePrice !== '');
+            // A write price of zero means the provider caches on its own and takes no markers.
+            nextMap.set(entry.id.trim().toLowerCase(), Number(entry?.pricing?.input_cache_write) > 0);
         }
 
         openRouterCacheableMap = nextMap;
@@ -160,7 +160,7 @@ async function fetchOpenRouterCacheableModels({ fetchImpl, now, ttlMs, failureBa
 }
 
 /**
- * Checks whether an OpenRouter model advertises a cache-write price, which marks it as one that needs explicit cache markers.
+ * Checks whether an OpenRouter model charges for cache writes, which marks it as one that takes explicit cache markers.
  * The catalog is cached for 15 minutes, shared by concurrent callers, and kept as a stale copy during an outage.
  * An exact id match wins before stacked routing suffixes (`:online`, `:nitro`) are peeled off.
  * @param {string} modelId
