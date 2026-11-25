@@ -234,10 +234,6 @@ export function isConversationActive(avatar, groupId = getConversationGroupIdFor
     );
 }
 
-export function isConversationActiveForAvatar(avatar) {
-    return isConversationActive(avatar);
-}
-
 export async function openConversationFromNotification(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
     return selectConversation(avatar, { chatId, groupId, personaId, showToast: false });
 }

@@ -951,11 +951,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     margin: 0;
 }
 
-.sb-conversation-quiet-time-input {
-    inline-size: 6.5em;
-    text-align: end;
-}
-
 /* "Global" marks a setting shared by every Conversation; a neutral chip, not a colour. */
 .sb-conversation-setting-scope {
     display: inline-block;
@@ -2276,91 +2271,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     margin-block-start: 1px;
 }
 
-/* Weekly scheduler editor */
-.sb-conversation-weekly-schedule {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.sb-conversation-weekly-row {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px;
-    border: 0;
-    border-radius: var(--sb-radius-button);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-}
-
-.sb-conversation-day-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-
-.sb-conversation-day-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: 38px;
-    min-block-size: 32px;
-    padding: 4px 8px;
-    border: 0;
-    border-radius: var(--sb-radius-pill);
-    background: var(--sb-raised-bg);
-    cursor: pointer;
-    font-size: var(--sb-type-meta);
-    -webkit-user-select: none;
-    user-select: none;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-.sb-conversation-day-pill:focus-within {
-    outline: 2px solid var(--sb-focus-ring-color);
-    outline-offset: 1px;
-}
-
-.sb-conversation-day-pill .sb-conv-day-check {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.sb-conversation-day-pill:has(.sb-conv-day-check:checked) {
-    background: var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
-    color: var(--sb-on-solid-accent, var(--sb-on-accent));
-    font-weight: var(--sb-weight-title);
-}
-
-.sb-conversation-weekly-row-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-}
-
-.sb-conversation-weekly-row-meta .sb-conv-weekly-time {
-    inline-size: 116px;
-    flex: 0 0 auto;
-}
-
-.sb-conversation-weekly-row-meta .sb-conv-weekly-message {
-    flex: 1 1 160px;
-    min-inline-size: 0;
-}
-
-.sb-conv-weekly-enabled {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 12px;
-    min-block-size: 40px;
-    padding: 4px 0;
-    font-size: var(--sb-type-meta);
-    white-space: nowrap;
-}
-
 /* Chiming partner picker */
 .sb-conversation-member-list {
     display: flex;
@@ -2579,7 +2489,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-day-pill, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display, .sb-conv-weekly-enabled) {
+    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
         min-inline-size: var(--sb-mobile-touch-target, 44px);
     }

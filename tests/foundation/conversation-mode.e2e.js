@@ -93,8 +93,8 @@ test('desktop split view groups bubbles and keeps settings as a pane', async ({ 
     await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
     await expect(page.locator('#sb_conversation_settings_backdrop')).toBeVisible();
     // The boolean rows are the shared switch rows.
-    await expect(page.locator('#sb_conv_idle_followup')).toHaveClass(/sb-switch/);
-    await expect(page.locator('#sb_conv_idle_followup')).toHaveAttribute('role', 'switch');
+    await expect(page.locator('#sb_conv_proactive_messaging')).toHaveClass(/sb-switch/);
+    await expect(page.locator('#sb_conv_proactive_messaging')).toHaveAttribute('role', 'switch');
     await expect(page.locator('#sb_conv_grounded_dialogue_rules')).toBeHidden();
     await expect(page.locator('[data-sb-conversation-action="edit-grounded-dialogue-rules"]')).toBeVisible();
 

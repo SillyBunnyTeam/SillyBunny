@@ -69,7 +69,6 @@ function buildConversationListFingerprint(conversations) {
             character?.name || '',
             groupId || '',
             group?.name || '',
-            settings?.enabled ? '1' : '0',
             settings?.availability || '',
             settings?.multi_char_names || '',
             getConversationDisplayName(avatar, settings, { groupId }),

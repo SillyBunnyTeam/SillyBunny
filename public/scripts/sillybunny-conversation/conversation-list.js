@@ -75,7 +75,7 @@ export function getSelectedConversationGroup() {
     return getConversationGroupById(conversationState.conversationWorkspaceOpen ? conversationState.conversationSelectedGroupId : selected_group);
 }
 
-export function getCurrentGroupConversationMembers({ requireRoleplayReactions = false, groupId = null, group = null, requireEnabled = true } = {}) {
+export function getCurrentGroupConversationMembers({ requireRoleplayReactions = false, groupId = null, group = null } = {}) {
     const resolvedGroup = group || (groupId ? getConversationGroupById(groupId) : getSelectedConversationGroup());
     if (!resolvedGroup || !Array.isArray(resolvedGroup.members)) {
         return [];
@@ -89,7 +89,7 @@ export function getCurrentGroupConversationMembers({ requireRoleplayReactions = 
             const settings = getConversationSettingsForCharacter(character, { groupId: String(resolvedGroup.id || '') });
             return { character, index, settings };
         })
-        .filter(item => item.character?.avatar && (!requireEnabled || item.settings.enabled))
+        .filter(item => item.character?.avatar)
         .filter(item => !requireRoleplayReactions || item.settings.roleplay_reactions);
 }
 
@@ -115,7 +115,7 @@ export function getScheduleEditorTargets(baseAvatar = getCurrentCharAvatar()) {
             .forEach(character => addTarget(character, 'Conversation', baseGroupId));
     }
 
-    getCurrentGroupConversationMembers({ requireEnabled: false }).forEach(({ character }) => addTarget(character, 'Group chat', getConversationGroupIdForAvatar(character?.avatar)));
+    getCurrentGroupConversationMembers().forEach(({ character }) => addTarget(character, 'Group chat', getConversationGroupIdForAvatar(character?.avatar)));
 
     if (!targets.length && baseAvatar) {
         addTarget(getCharacterForAvatar(baseAvatar), 'Conversation', baseGroupId);

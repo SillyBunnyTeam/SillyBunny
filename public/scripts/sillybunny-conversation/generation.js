@@ -633,7 +633,7 @@ export async function generateSelfieFromContext(context, settings, avatar = getC
 
     const scene = context || 'a casual selfie in the current moment';
     imagePrompt = buildCharacterImagePrompt(
-        buildSelfieImagePromptTemplate(formatPromptText(imagePrompt, 600), resolvedSettings.selfie_prompt, scene),
+        buildSelfieImagePromptTemplate(formatPromptText(imagePrompt, 600), resolvedSettings.image_gen_prompt_template, scene),
         scene,
         avatar,
     );
