@@ -230,10 +230,12 @@ function summarizeConversation(user, conversation, index, existingFiles) {
 }
 
 /**
- * Reads every conversation folder. A folder that holds an id and no readable conversation is reported in `problems`,
- * so that nothing disappears silently.
+ * Reads the `conversation.json` of every conversation folder, and no chat file. A folder that holds an id and no
+ * readable conversation is reported in `problems`, so that nothing disappears silently.
+ * @param {StoreUser} user
+ * @returns {{ conversations: Record<string, any>[], problems: { id: string, error: string }[] }}
  */
-function scanConversations(user) {
+export function scanConversations(user) {
     const root = user.directories?.conversations;
     const conversations = [];
     const problems = [];
@@ -1184,6 +1186,33 @@ function runBestEffort(work, message) {
     }
 }
 
+/**
+ * Changes the avatar file name of a character in the lists of one conversation: its members or extras, and the
+ * reminders that name it. The lines of its chats are not touched here.
+ * @param {StoreUser} user
+ * @param {string} id
+ * @param {string} from
+ * @param {string} to
+ * @returns {boolean} Whether the conversation named the character.
+ */
+export function renameAvatarInConversation(user, id, from, to) {
+    const oldName = guard(() => parseCharacterAvatar(from));
+    const newName = guard(() => parseCharacterAvatar(to));
+    let changed = false;
+    mutateConversation(user, id, (current) => {
+        const swap = names => names.map(name => (name === oldName ? newName : name));
+        const next = {
+            ...current,
+            characters: swap(current.characters),
+            extras: swap(current.extras),
+            reminders: current.reminders.map(reminder => (reminder.avatar === oldName ? { ...reminder, avatar: newName } : reminder)),
+        };
+        changed = JSON.stringify(next) !== JSON.stringify(current);
+        return changed ? { ...next, updatedAt: Math.max(Date.now(), current.updatedAt) } : current;
+    });
+    return changed;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Characters
 
@@ -1229,6 +1258,32 @@ export function updateCharacterState(user, avatar, patch) {
         }
         writeJson(filePath, { version: state.version, characters });
         return next;
+    } finally {
+        release();
+    }
+}
+
+/**
+ * Moves the routine and the status override of a character to its new avatar file name. A state that the new name had
+ * already, from an earlier card of that name, is replaced: the renamed character's own state is the one that counts.
+ * @param {StoreUser} user
+ * @param {string} from
+ * @param {string} to
+ * @returns {boolean} Whether the character had a state. `characters.json` is not written when it had none.
+ */
+export function renameCharacterState(user, from, to) {
+    const oldName = guard(() => parseCharacterAvatar(from));
+    const newName = guard(() => parseCharacterAvatar(to));
+    const filePath = guard(() => getCharactersJsonPath(user.directories));
+    const release = acquireChatFileLock(filePath);
+    try {
+        const state = readCharacterFile(user);
+        if (!state.characters[oldName]) {
+            return false;
+        }
+        const { [oldName]: moved, ...rest } = state.characters;
+        writeJson(filePath, { version: state.version, characters: { ...rest, [newName]: moved } });
+        return true;
     } finally {
         release();
     }

@@ -2840,6 +2840,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-24, conversation mode rework, task 2A. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/characters.js` - conversations of a deleted or renamed card
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | `POST /api/characters/delete` and `POST /api/characters/rename`: what each does to the conversation folders of the user. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `deleteConversationsOfCharacter()` and `renameCharacterInConversations()` in `src/conversation-cleanup.js`, built on `src/conversation-store.js`. |
+| Adapter shape | One import; in `/rename`, one `await renameCharacterInConversations()` after the card is renamed and before the answer; in `/delete`, one call to `deleteConversationsOfCharacter()` after the card and its metadata are deleted, only when `delete_chats` is true. Each call answers a count and never throws, so a conversation that cannot be changed is logged and cannot fail the route or undo a rename. |
+| Protecting tests | `tests/conversation-cleanup-routes.test.js` (the real routes), `tests/conversation-cleanup.test.js`, `tests/character-route-inputs.test.js` (the routes' own guards). |
+| Validation | 2026-11-25: root and `tests/` lint; the protecting tests; the route tests fail with either call removed. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-25, conversation mode rework, task 3A. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
