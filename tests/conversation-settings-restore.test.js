@@ -24,7 +24,7 @@ global.DATA_ROOT = sandbox.dataRoot;
 const { getUserDirectories } = await import('../src/users.js');
 const { conversationIndex } = await import('../src/conversation-index.js');
 const { BACKUP_FOLDER_NAME, ensureMigrated, importLegacyThreads, runMigration } = await import('../src/conversation-migration.js');
-const { listConversations, readCharacterState, readConversation, updateCharacterState } = await import('../src/conversation-store.js');
+const { listConversations, readCharacterState, readConversation, readConversationFolders, updateCharacterState, updateConversationFolders } = await import('../src/conversation-store.js');
 
 let server;
 let baseUrl;
@@ -169,6 +169,38 @@ describe('a snapshot of settings.json from before the migration', () => {
         runMigration(user);
 
         expect(readCharacterState(user).characters['Cass.png']).toEqual({ statusOverride: 'dnd' });
+    });
+});
+
+describe('the folders of the conversations', () => {
+    const FOLDER = 'fld_1764000000000_a1b2c3d4e5f6';
+
+    test('are not in settings.json, so that a restore of an older snapshot leaves them as they are', async () => {
+        useFixtureUser();
+        const snapshot = await makeSnapshot();
+        ensureMigrated(user);
+        updateConversationFolders(user, PERSONA, [{ op: 'createFolder', id: FOLDER, name: 'Work' }, { op: 'setFavoritesExpanded', expanded: false }]);
+        const before = readConversationFolders(user);
+
+        await restoreSnapshot(snapshot);
+        ensureMigrated(user);
+        runMigration(user);
+
+        expect(readConversationFolders(user)).toEqual(before);
+        expect(JSON.stringify(readSettings())).not.toContain(FOLDER);
+    });
+
+    test('a folders.json that is alone in conversations/ does not stop the migration of the old store, and is not changed by it', () => {
+        useFixtureUser();
+        fs.mkdirSync(user.directories.conversations, { recursive: true });
+        const filePath = path.join(user.directories.conversations, 'folders.json');
+        const text = JSON.stringify({ version: 1, personas: { [PERSONA]: { folders: [{ id: FOLDER, name: 'Work', color: '', expanded: true }], members: {} } } }, null, 4);
+        fs.writeFileSync(filePath, text);
+
+        expect(ensureMigrated(user).state).toBe('migrated');
+
+        expect(conversationFolders().length).toBeGreaterThan(0);
+        expect(fs.readFileSync(filePath, 'utf8')).toBe(text);
     });
 });
 

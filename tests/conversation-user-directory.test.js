@@ -17,6 +17,8 @@ const FILES = {
     [`conversations/${CONVERSATION_ID}/conversation.json`]: '{"version":1}',
     [`conversations/${CONVERSATION_ID}/chats/main.jsonl`]: '{"chat_metadata":{}}',
     'conversations/characters.json': '{"version":1}',
+    // The folders of the persona and the conversations filed in them; they are in `conversations/`, so they travel with it.
+    'conversations/folders.json': '{"version":1,"personas":{"user-default.png":{"folders":[{"id":"fld_1764000000000_a1b2c3d4e5f6","name":"Work","color":"","expanded":true}],"members":{"conv_1700000000000_a1b2c3d4e5":"fld_1764000000000_a1b2c3d4e5f6"}}}}',
     // The marker that says the migration ran, and that the browser storage was imported. It must travel with the folders.
     'conversations/migration-done.json': '{"version":1,"migratedAt":1700000000000,"backupFile":"","localStorageImported":true}',
 };

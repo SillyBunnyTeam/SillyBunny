@@ -79,6 +79,9 @@ import {
     getPersonaFolders,
     normalizeFolderFile,
     parseFolderOps,
+    withConvertedGroup,
+    withoutConversation,
+    withoutPersona,
     withPersonaFolders,
 } from '../public/scripts/sillybunny-conversation/folder-model.js';
 import { DestructiveChatSaveError, IntegrityMismatchError, InvalidChatDataError, trySaveChat } from './endpoints/chats.js';
@@ -465,6 +468,8 @@ export function deleteConversation(user, id) {
             clearChatRecoveryStateAfterDelete(user, id, chatId);
         }
     });
+    // The folders lock is taken after the conversation's lock is released, and never the other way round.
+    runBestEffort(() => rewriteFolderFile(user, file => withoutConversation(file, id)), `Could not take the deleted conversation ${id} out of its folder.`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1082,6 +1087,8 @@ function convertGroupToDirect(user, groupId, remaining) {
             throw new ConversationStoreError('conversion_failed', CONVERSION_FAILED);
         }
         finishRetiredGroup(user, groupId, group.chats.map(entry => entry.id), groupDirectory, outcome.retiredPath);
+        // A direct conversation that the conversion made takes the group's folder, as it takes its favourite; one that existed keeps its own.
+        runBestEffort(() => rewriteFolderFile(user, file => withConvertedGroup(file, group.personaId, groupId, target ? '' : outcome.conversation.id)), `Could not move the folder of the converted group ${groupId}.`);
         return { conversation: outcome.conversation, converted: true, removedId: groupId };
     } finally {
         release();
@@ -1368,4 +1375,40 @@ export function updateConversationFolders(user, personaId, input) {
     } finally {
         release();
     }
+}
+
+/**
+ * Rewrites `folders.json` through `change`, which gets the file and returns the next one, or the same object when it
+ * changes nothing. A user with no `folders.json` has nothing to change, so no lock is taken for them.
+ * @returns {boolean} Whether the file was written.
+ */
+function rewriteFolderFile(user, change) {
+    const filePath = guard(() => getFoldersJsonPath(user.directories));
+    if (!fs.existsSync(filePath)) {
+        return false;
+    }
+    const release = acquireChatFileLock(filePath);
+    try {
+        const file = readFolderFile(user);
+        const next = change(file);
+        if (next === file) {
+            return false;
+        }
+        writeJson(filePath, next);
+        return true;
+    } finally {
+        release();
+    }
+}
+
+/**
+ * Removes the folders of a persona that was deleted, with the conversations filed in them (which are deleted with the
+ * persona by their own route of the store).
+ * @param {StoreUser} user
+ * @param {string} personaId
+ * @returns {boolean} Whether the persona had folders.
+ */
+export function forgetPersonaFolders(user, personaId) {
+    const persona = parsePersonaId(personaId);
+    return rewriteFolderFile(user, file => withoutPersona(file, persona));
 }

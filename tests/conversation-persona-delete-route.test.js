@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, tes
 
 import { header, line } from './util/conversation-store-sandbox.js';
 
-const { createConversation } = await import('../src/conversation-store.js');
+const { createConversation, readConversationFolders, updateConversationFolders } = await import('../src/conversation-store.js');
 const { conversationIndex } = await import('../src/conversation-index.js');
 
 const PERSONA = 'persona-one.png';
@@ -98,6 +98,18 @@ describe('POST /api/avatars/delete calls the conversation store', () => {
         expect(JSON.parse(answer.text)).toEqual({ result: 'ok' });
         expect(fs.existsSync(path.join(user.directories.avatars, PERSONA))).toBe(false);
         expect(folders()).toEqual(['conv_3_other']);
+    });
+
+    test('deletes the folders of the persona with its conversations, and keeps those of the other persona', async () => {
+        seed(user, 'conv_1_direct', 'direct', ['Probe.png']);
+        seed(user, 'conv_3_other', 'direct', ['Probe.png'], { personaId: PERSONA_TWO });
+        updateConversationFolders(user, PERSONA, [{ op: 'createFolder', id: 'fld_1_aaaaaaaa', name: 'Mine' }, { op: 'setMembers', ids: ['conv_1_direct'], folderId: 'fld_1_aaaaaaaa' }]);
+        updateConversationFolders(user, PERSONA_TWO, [{ op: 'createFolder', id: 'fld_1_bbbbbbbb', name: 'Theirs' }, { op: 'setMembers', ids: ['conv_3_other'], folderId: 'fld_1_bbbbbbbb' }]);
+
+        expect((await remove(PERSONA)).status).toBe(200);
+
+        expect(Object.keys(readConversationFolders(user).personas)).toEqual([PERSONA_TWO]);
+        expect(readConversationFolders(user).personas[PERSONA_TWO].members).toEqual({ conv_3_other: 'fld_1_bbbbbbbb' });
     });
 
     test('deletes nothing when the persona file does not exist', async () => {

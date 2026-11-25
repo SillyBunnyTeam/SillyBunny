@@ -12,6 +12,7 @@ import { getChatFilePath } from './conversation-paths.js';
 import {
     ConversationStoreError,
     deleteConversation,
+    forgetPersonaFolders,
     readCharacterState,
     removeMember,
     renameAvatarInConversation,
@@ -90,7 +91,7 @@ export function deleteConversationsOfCharacter(user, avatar) {
 }
 
 /**
- * A persona was deleted: every conversation it had goes, direct and group. The backups of their chats stay.
+ * A persona was deleted: every conversation it had goes, direct and group, and so do its folders. The backups of their chats stay.
  * @param {{ profile: { handle: string }, directories: Record<string, string> }} user
  * @param {string} personaId The avatar file name of the persona.
  * @returns {{ deleted: number, failed: number }}
@@ -106,6 +107,12 @@ export function deleteConversationsOfPersona(user, personaId) {
             result.deleted++;
         }
     });
+    try {
+        forgetPersonaFolders(user, personaId);
+    } catch (error) {
+        console.error('Could not forget the folders of a deleted persona.', error);
+        result.failed++;
+    }
     return result;
 }
 

@@ -15,12 +15,13 @@ import { OPEN_MEMBER, startAccountServer } from './util/user-account-harness.js'
 const harness = await startAccountServer();
 const { conversationIndex } = await import('../src/conversation-index.js');
 const { importLegacyThreads, runMigration } = await import('../src/conversation-migration.js');
-const { createConversation, listConversations, readCharacterState, readConversation, updateCharacterState } = await import('../src/conversation-store.js');
+const { createConversation, listConversations, readCharacterState, readConversation, readConversationFolders, updateCharacterState, updateConversationFolders } = await import('../src/conversation-store.js');
 
 const DEFAULT_SETTINGS_PATH = fileURLToPath(new URL('../default/content/settings.json', import.meta.url));
 const PERSONA = 'user-default.png';
 const CONVERSATION_ID = 'conv_1700000000000_abcdef0123';
 const PIN_KEY = `conversation_${CONVERSATION_ID}_main`;
+const FOLDER_ID = 'fld_1764000000000_a1b2c3d4e5f6';
 
 beforeEach(() => harness.reset());
 
@@ -54,6 +55,11 @@ function seedMigratedUser(handle) {
         }],
     });
     updateCharacterState(user, 'Nova.png', { routine: { enabled: true, text: '{"days":{}}', generatedAt: at } });
+    updateConversationFolders(user, PERSONA, [
+        { op: 'createFolder', id: FOLDER_ID, name: 'Work' },
+        { op: 'setMembers', ids: [CONVERSATION_ID], folderId: FOLDER_ID },
+        { op: 'setFavoritesExpanded', expanded: false },
+    ]);
     const settingsPath = path.join(user.directories.root, 'settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify({
         user_avatar: PERSONA,
@@ -111,6 +117,19 @@ describe('POST /api/users/reset-settings with conversations', () => {
         expect(listed.conversations[0].messageCount).toBe(1);
         expect(readCharacterState(user).characters['Nova.png'].routine.enabled).toBe(true);
         expect(runMigration(user)).toEqual({ state: 'migrated' });
+    });
+
+    test('the folders, the conversation filed in one and the closed Favorites are still there, because they are not in settings.json', async () => {
+        const client = await harness.loginAs(OPEN_MEMBER);
+        const user = seedMigratedUser(OPEN_MEMBER.handle);
+
+        await client.post('/api/users/reset-settings');
+
+        expect(readConversationFolders(user).personas[PERSONA]).toEqual({
+            favoritesExpanded: false,
+            folders: [{ id: FOLDER_ID, name: 'Work', color: '', expanded: true }],
+            members: { [CONVERSATION_ID]: FOLDER_ID },
+        });
     });
 
     test('the mode-wide settings and the pins of conversations live in settings.json, so they are reset', async () => {
