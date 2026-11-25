@@ -27,15 +27,10 @@ import { renderConversationMemoryPanel } from './settings-panel.js';
 
 export { collectGroupConversationMemorySummaries, collectSoloConversationMemorySummary };
 
-const GROUP_CONVERSATION_FORCED_SETTINGS = Object.freeze({
-    multi_char: true,
-    auto_character_chat: true,
-});
 const MAX_RELATED_MEMORY_CONVERSATIONS = 4;
 const STATUS_VALUES = Object.freeze(['online', 'idle', 'dnd', 'offline']);
-// Values that the conversation file has no key for: it exists or it does not, the status is the character's, the extras
-// are a list of their own, and the schedule is the character's routine.
-const NOT_STORED_IN_CONVERSATION = new Set(['enabled', 'availability', 'multi_char', 'multi_char_names', 'auto_chat_names', 'auto_schedule', 'schedule_generated_at']);
+// Values that the conversation file has no key for: the status is the character's, and the extras are a list of their own.
+const NOT_STORED_IN_CONVERSATION = new Set(['availability', 'multi_char_names']);
 
 /** Whether the current persona has any conversation, which decides whether the worker and the badges start. */
 export function hasAnyConversationModeUsage() {
@@ -45,7 +40,7 @@ export function hasAnyConversationModeUsage() {
 /**
  * Conversation settings are stored in separate persisted scopes. Keep this
  * precedence stable unless a migration updates existing saved data:
- * DEFAULT < the conversation's own settings < mode-wide settings < what a group forces.
+ * DEFAULT < the conversation's own settings < mode-wide settings < what is derived (status, extras).
  */
 export function mergeConversationSettingsLayers(...layers) {
     return Object.assign({}, ...layers.filter(layer => layer && typeof layer === 'object'));
@@ -69,22 +64,19 @@ export function getGlobalConversationSettings() {
     return { ...store.settings };
 }
 
-export function saveGlobalConversationSettings(settings) {
-    const store = getConversationStore();
-    store.settings = normalizeGlobalConversationSettings(settings, store.settings);
-    persistConversationStore();
-}
-
-/** What the conversation of an avatar has that is not a setting of the conversation file: the character's status and its extras. */
+/**
+ * What the conversation of an avatar has that is not a setting of the conversation file: the status that the user set
+ * for the character and its extras.
+ * `enabled` is not a setting any more (a conversation exists or it does not). The automatic-message worker still tests it
+ * and is the last reader.
+ */
 function getDerivedSettings(avatar, view) {
     const derived = {
         enabled: true,
         availability: conversationData.characterState(avatar).statusOverride ?? 'online',
     };
     if (view?.extras?.length) {
-        derived.multi_char = true;
         derived.multi_char_names = view.extras.join(',');
-        derived.auto_chat_names = derived.multi_char_names;
     }
     return derived;
 }
@@ -104,7 +96,6 @@ export function getSettings(avatar = getCurrentCharAvatar(), { groupId = getConv
         view.settings,
         globalSettings,
         getDerivedSettings(avatar, view),
-        view.kind === 'group' ? GROUP_CONVERSATION_FORCED_SETTINGS : null,
     );
     // The prompt of the conversation is stored as `system_prompt`; the rest of the mode still reads the old key.
     if (typeof view.settings?.system_prompt === 'string') {

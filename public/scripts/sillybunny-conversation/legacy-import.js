@@ -28,8 +28,8 @@ import {
 } from './context.js';
 import { conversationData, reloadPageOnce } from './conversation-data-browser.js';
 import { safeParseMessages } from './conversation-store-utils.js';
-import { getScheduleStorageKey } from './schedule.js';
 
+const getScheduleStorageKey = avatar => `${SCHEDULE_PREFIX}${avatar}`;
 const IMPORT_RELOAD_FLAG = 'sb_conversation_reloaded_after_import';
 const LEGACY_PREFIXES = Object.freeze([
     SETTINGS_KEY_PREFIX,

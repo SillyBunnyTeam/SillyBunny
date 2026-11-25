@@ -3,17 +3,13 @@ import { extension_settings } from '../extensions.js';
 import { groups, selected_group } from '../group-chats.js';
 import { user_avatar } from '../personas.js';
 import {
-    CONVERSATION_NOTIFICATION_PRIORITIES,
     CONVERSATION_STORE_KEY,
-    DEFAULT_AUTO_CHAT_COOLDOWN,
     DEFAULT_CHAT_ID,
-    DEFAULT_CONVERSATION_REPLY_MAX_TOKENS,
     DEFAULT_SETTINGS,
     UNREAD_PREFIX,
 } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';
-import { getConversationReplyMaxTokens } from './schedule.js';
 import { conversationState } from './state.js';
 
 const GROUP_FALLBACK_NAME = 'Conversation Group';
@@ -190,21 +186,6 @@ export async function makeConversationGroup(memberAvatars, { name = '', personaI
 // ---------------------------------------------------------------------------------------------------------------------
 // Settings values
 
-export function getIdleActionFromSettings(settings) {
-    const hasFollowup = Boolean(settings?.idle_followup);
-    const hasSpontaneous = Boolean(settings?.idle_spontaneous);
-    if (hasFollowup && hasSpontaneous) {
-        return 'both';
-    }
-    if (hasFollowup) {
-        return 'followup';
-    }
-    if (hasSpontaneous) {
-        return 'spontaneous';
-    }
-    return 'disabled';
-}
-
 export function normalizeConversationQuietHour(value) {
     const text = String(value || '').trim();
     const match = /^(\d{1,2}):(\d{2})$/.exec(text);
@@ -246,16 +227,9 @@ export function isConversationQuietHoursActive(settings, date = new Date()) {
     return now >= start || now < end;
 }
 
-export function shouldSurfaceConversationNotification(settings) {
-    if (settings?.notifications_muted || settings?.notification_priority === 'silent') {
-        return false;
-    }
-
-    if (settings?.notification_priority === 'priority') {
-        return true;
-    }
-
-    return !isConversationQuietHoursActive(settings);
+/** A conversation that is muted, or a time inside the quiet hours of the mode, shows no sound and no popup; the unread badges stay. */
+export function shouldSurfaceConversationNotification(settings, date = new Date()) {
+    return !settings?.notifications_muted && !isConversationQuietHoursActive(settings, date);
 }
 
 export function safeParseSettings(stored) {
@@ -265,33 +239,14 @@ export function safeParseSettings(stored) {
 
     try {
         const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
-        const parsedSettings = parsed && typeof parsed === 'object' ? parsed : {};
-        const settings = { ...DEFAULT_SETTINGS, ...parsedSettings };
-        const hasIdleFollowup = Object.prototype.hasOwnProperty.call(parsedSettings, 'idle_followup');
-        const hasIdleSpontaneous = Object.prototype.hasOwnProperty.call(parsedSettings, 'idle_spontaneous');
-        if (!hasIdleFollowup && !hasIdleSpontaneous) {
-            settings.idle_followup = settings.idle_action === 'followup' || settings.idle_action === 'both';
-            settings.idle_spontaneous = settings.idle_action === 'spontaneous' || settings.idle_action === 'both';
-        }
-        settings.idle_action = getIdleActionFromSettings(settings);
-        if (!settings.multi_char_names && settings.auto_chat_names) {
-            settings.multi_char_names = settings.auto_chat_names;
-        }
-        settings.auto_chat_names = settings.multi_char_names;
-        settings.auto_chat_cooldown = parsePositiveInt(settings.auto_chat_cooldown, DEFAULT_AUTO_CHAT_COOLDOWN, 1);
-        settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
+        const settings = { ...DEFAULT_SETTINGS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
         settings.grounded_dialogue_rules_enabled = Boolean(settings.grounded_dialogue_rules_enabled);
         settings.grounded_dialogue_rules = typeof settings.grounded_dialogue_rules === 'string'
             ? settings.grounded_dialogue_rules
             : DEFAULT_SETTINGS.grounded_dialogue_rules;
-        settings.notification_priority = CONVERSATION_NOTIFICATION_PRIORITIES.includes(settings.notification_priority)
-            ? settings.notification_priority
-            : DEFAULT_SETTINGS.notification_priority;
         settings.quiet_hours_start = normalizeConversationQuietHour(settings.quiet_hours_start);
         settings.quiet_hours_end = normalizeConversationQuietHour(settings.quiet_hours_end);
-        if (settings.reply_max_tokens === 1024) {
-            settings.reply_max_tokens = DEFAULT_CONVERSATION_REPLY_MAX_TOKENS;
-        }
+        settings.simulate_reply_delay = settings.simulate_reply_delay !== false;
         return settings;
     } catch {
         return { ...DEFAULT_SETTINGS };

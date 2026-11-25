@@ -34,7 +34,7 @@ const {
     getConversationRuntimeStatusKey,
     getCurrentActivityFromSchedule,
     getStoredSchedule,
-    saveStoredSchedule,
+    setRoutineText,
 } = await import('../public/scripts/sillybunny-conversation/schedule.js');
 
 describe('Conversation schedule', () => {
@@ -44,15 +44,18 @@ describe('Conversation schedule', () => {
         patchCharacter.mockClear();
     });
 
-    test('is the routine of the character, written as JSON text with the time it was made', () => {
-        saveStoredSchedule('char.png', { days: { 0: [] }, talkativeness: 40, generatedAt: 1234 });
+    test('is the routine of the character, written as JSON text of its days', () => {
+        characterStates.set('char.png', { routine: { enabled: true, text: '{"days":{}}', generatedAt: 1234 } });
+        const days = '{"days":{"1":[{"time":"08:00-12:00","activity":"working","status":"dnd"}]}}';
 
-        expect(patchCharacter).toHaveBeenCalledWith('char.png', { routine: { enabled: true, text: '{"days":{"0":[]},"talkativeness":40}', generatedAt: 1234 } });
-        expect(getStoredSchedule('char.png')).toEqual({ days: { 0: [] }, talkativeness: 40, generatedAt: 1234 });
+        setRoutineText('char.png', days);
+
+        expect(patchCharacter).toHaveBeenCalledWith('char.png', { routine: { text: expect.stringContaining('"days":{"0":[],"1":[{"time":"08:00-12:00","activity":"working","status":"dnd"}]') } });
+        expect(getStoredSchedule('char.png')).toMatchObject({ generatedAt: 1234, days: { 1: [{ activity: 'working' }] } });
     });
 
     test('is the same for every persona, because a character has one routine', () => {
-        saveStoredSchedule('char.png', { days: { 1: [] } });
+        characterStates.set('char.png', { routine: { enabled: true, text: '{"days":{"1":[]}}' } });
 
         expect(getStoredSchedule('char.png', { personaId: 'persona-a.png' })).toEqual(getStoredSchedule('char.png', { personaId: 'persona-b.png' }));
     });
@@ -60,20 +63,13 @@ describe('Conversation schedule', () => {
     test('is none for a routine that is off, that has no text, or whose text is not an object', () => {
         characterStates.set('off.png', { routine: { enabled: false, text: '{"days":{}}' } });
         characterStates.set('empty.png', { routine: { enabled: true } });
+        characterStates.set('unset.png', { routine: { text: '{"days":{}}' } });
         characterStates.set('broken.png', { routine: { enabled: true, text: '{nope' } });
         characterStates.set('list.png', { routine: { enabled: true, text: '[1]' } });
 
-        for (const avatar of ['off.png', 'empty.png', 'broken.png', 'list.png', 'none.png']) {
+        for (const avatar of ['off.png', 'empty.png', 'unset.png', 'broken.png', 'list.png', 'none.png']) {
             expect(getStoredSchedule(avatar)).toBeNull();
         }
-    });
-
-    test('clears the routine when it is saved as null', () => {
-        saveStoredSchedule('char.png', { days: {} });
-        saveStoredSchedule('char.png', null);
-
-        expect(patchCharacter).toHaveBeenLastCalledWith('char.png', { routine: null });
-        expect(getStoredSchedule('char.png')).toBeNull();
     });
 
     test('keeps runtime activity overrides isolated by persona', () => {

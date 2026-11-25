@@ -30,7 +30,7 @@ import {
     getUserPersonaStatus,
     getUserStatus,
 } from './personas.js';
-import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { getCharacterStatus } from './schedule.js';
 import {
     buildConversationGroupReferenceContext,
     compileGeechanPrompt,
@@ -535,9 +535,8 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         }
     }
 
-    const schedule = getStoredSchedule(avatar, { personaId });
-    if (schedule) {
-        const current = getCurrentActivityFromSchedule(schedule, avatar, now, { personaId });
+    const current = getCharacterStatus(avatar, now, { personaId });
+    if (current.source !== 'manual') {
         const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         fields.push(`Current life context: It is ${timeLabel} for ${charName}, who is currently ${current.activity} (status: ${current.status}). Let this naturally color your availability, mood, and what you mention. Stay in this moment of your day.`);
     }

@@ -11,7 +11,6 @@ import {
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
-    getIdleActionFromSettings,
     parsePositiveInt,
 } from './context.js';
 import { generateConversationRaw, normalizeConversationOutputText } from './generation.js';
@@ -27,12 +26,12 @@ import {
 import { conversationData } from './conversation-data-browser.js';
 import { getConversationRailItems } from './conversation-list.js';
 import { getAvailabilityCopy } from './personas.js';
-import { readChimingMembersFromList, readWeeklyScheduleFromEditor, updateUserFooter } from './pickers.js';
-import { clamp, getConversationReplyMaxTokens, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { readChimingMembersFromList, updateUserFooter } from './pickers.js';
+import { clamp, getCharacterStatus } from './schedule.js';
 import { getSettings, saveSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationMessages, saveConversationMessages } from './conversation-store.js';
-import { renderConversationTimeline, updateConversationNotificationSettingsVisibility } from './timeline-render.js';
+import { renderConversationTimeline, syncSettingsDrawerRows } from './timeline-render.js';
 import { getActiveTypingParticipants, getLastConversationPreview } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
@@ -60,10 +59,7 @@ function buildConversationListFingerprint(conversations) {
         const characterStore = getConversationRecord(avatar, { groupId, personaId });
         const activeChatId = characterStore?.activeChatId || DEFAULT_CHAT_ID;
         const participants = getConversationParticipants(avatar, settings, { groupId })
-            .map((participant) => {
-                const participantSettings = participant?.avatar === avatar ? settings : getSettings(participant?.avatar, { groupId });
-                return `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, participantSettings)}`;
-            })
+            .map(participant => `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar)}`)
             .join(',');
         const chats = buildChatListFingerprint(characterStore, activeChatId);
 
@@ -93,7 +89,7 @@ function buildHeaderParticipantsFingerprint(participants, { groupId = '', status
     const participantParts = (Array.isArray(participants) ? participants : []).map(participant => [
         participant?.avatar || '',
         participant?.name || '',
-        participant?.avatar ? getEffectiveConversationStatus(participant.avatar, getSettings(participant.avatar, { groupId })) : status,
+        participant?.avatar ? getEffectiveConversationStatus(participant.avatar) : status,
     ].join('\u001f'));
 
     return hashConversationRenderFingerprint([
@@ -175,7 +171,7 @@ export function renderConversationList() {
         const unreadBadge = button.querySelector('.sb-conversation-list-item-unread');
 
         renderConversationParticipantStack(avatarStack, getConversationParticipants(character.avatar, settings, { groupId }), {
-            status: getEffectiveConversationStatus(character.avatar, settings),
+            status: getEffectiveConversationStatus(character.avatar),
             max: 3,
         });
         if (name instanceof HTMLElement) {
@@ -215,8 +211,7 @@ export function updateConversationHeader(settings = getSettings()) {
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
     const participantsContainer = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-participants]`);
     const statusCopy = getAvailabilityCopy(settings.availability);
-    const schedule = avatar ? getStoredSchedule(avatar, { personaId }) : null;
-    const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar, new Date(), { personaId }) : null;
+    const current = avatar ? getCharacterStatus(avatar, new Date(), { personaId }) : null;
     const effectiveStatus = current ? current.status : settings.availability;
 
     if (!avatar || !character) {
@@ -266,7 +261,7 @@ export function updateConversationHeader(settings = getSettings()) {
             } else {
                 statusText = `${typingNames[0] || 'Character'} Is Writing…`;
             }
-        } else if (current) {
+        } else if (current && current.source !== 'manual') {
             const currentCopy = getAvailabilityCopy(current.status);
             const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
             const memberNotice = memberCount ? ` · ${memberCount} pal${memberCount === 1 ? '' : 's'} can chime in` : '';
@@ -277,7 +272,7 @@ export function updateConversationHeader(settings = getSettings()) {
             status.title = statusCopy.detail;
         }
         status.textContent = `${chatName} · ${statusText}`;
-        if (current || typingParticipants.length) {
+        if ((current && current.source !== 'manual') || typingParticipants.length) {
             status.title = statusText;
         }
     }
@@ -381,19 +376,12 @@ export function saveCurrentPanelSettings(options = {}) {
     const personaId = options?.personaId || getConversationPersonaId();
 
     // Sync dynamic editor state into hidden backing inputs before reading
-    const weeklyInput = document.getElementById('sb_conv_weekly_schedule');
-    if (weeklyInput instanceof HTMLInputElement) {
-        weeklyInput.value = readWeeklyScheduleFromEditor();
-    }
     const chimingInput = document.getElementById('sb_conv_multi_char_names');
     if (chimingInput instanceof HTMLInputElement) {
         chimingInput.value = readChimingMembersFromList();
     }
 
     const settings = readSettingsFromPanel(avatar, { groupId, personaId });
-    settings.idle_action = getIdleActionFromSettings(settings);
-    settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
-    settings.auto_chat_names = settings.multi_char_names;
     saveSettings(avatar, settings, { groupId, personaId });
     if (personaId === getConversationPersonaId()) {
         scheduleInterfaceRefresh({ syncControls: false });
@@ -415,14 +403,15 @@ export function applySettingsToPanel(settings) {
         }
     }
     updateGroupMembersVisibility();
-    updateConversationNotificationSettingsVisibility();
+    syncSettingsDrawerRows();
 }
 
+/** The list of extras is shown while the conversation has any. */
 export function updateGroupMembersVisibility() {
-    const checkbox = document.getElementById('sb_conv_multi_char');
+    const names = document.getElementById('sb_conv_multi_char_names');
     const wrapper = document.getElementById('sb_conv_group_members_wrapper');
-    if (checkbox instanceof HTMLInputElement && wrapper instanceof HTMLElement) {
-        wrapper.hidden = !checkbox.checked;
+    if (names instanceof HTMLInputElement && wrapper instanceof HTMLElement) {
+        wrapper.hidden = !names.value;
     }
 }
 

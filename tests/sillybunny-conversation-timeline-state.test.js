@@ -109,7 +109,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render
     getConversationMessageExtraFingerprint: () => '',
     hashConversationRenderFingerprint: value => value,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({ getConversationReplyMaxTokens: () => 100 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({ getSettings: () => ({}) }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-search.js', () => ({ getConversationTimelineMessages: messages => messages }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-slash-commands.js', () => ({
@@ -342,7 +341,7 @@ describe('conversation timeline operation identity', () => {
         });
         expect(buildConversationPromptMessages.mock.calls[0][3]).toEqual({ groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(buildConversationSystemPrompt.mock.calls[0][2]).toMatchObject({ personaId: 'persona-a.png', worldInfo });
-        expect(generateConversationRaw.mock.calls[0][0].responseLength).toBe(100);
+        expect(generateConversationRaw.mock.calls[0][0]).not.toHaveProperty('responseLength');
     });
 
     test('changes the rendered thread identity when only the persona changes', () => {

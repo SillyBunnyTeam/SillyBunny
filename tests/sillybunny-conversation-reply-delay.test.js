@@ -17,9 +17,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifi
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getAvailabilityCopy: () => ({ detail: 'Online.' }) }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleInterfaceRefresh: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
-    getCurrentActivityFromSchedule: jest.fn(),
-    getStoredSchedule: () => null,
+    getCharacterStatus: () => ({ status: 'online', activity: null, source: 'manual' }),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getConversationSessionMarker: () => '',

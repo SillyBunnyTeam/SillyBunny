@@ -63,13 +63,7 @@ export function getConversationMemberSettings(memberAvatar, hostSettings, { grou
     return {
         ...hostSettings,
         availability: memberSettings.availability,
-        ai_schedule: memberSettings.ai_schedule,
-        weekly_schedule: memberSettings.weekly_schedule,
-        auto_schedule: memberSettings.auto_schedule,
-        schedule_generated_at: memberSettings.schedule_generated_at,
-        talkativeness: memberSettings.talkativeness,
         inactivity_threshold: memberSettings.inactivity_threshold,
-        reply_delay_multiplier: memberSettings.reply_delay_multiplier,
         authors_note: memberSettings.authors_note,
         lorebook_override: memberSettings.lorebook_override,
         connection_profile: memberSettings.connection_profile,

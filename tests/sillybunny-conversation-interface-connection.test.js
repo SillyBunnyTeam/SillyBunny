@@ -44,7 +44,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getCurrentCharacter: () => currentAvatar ? { avatar: currentAvatar, name: 'Aster' } : null,
     getCurrentCharAvatar: () => currentAvatar,
     getCurrentCharName: () => 'Aster',
-    getIdleActionFromSettings: () => 'disabled',
     parsePositiveInt: value => Number(value) || 0,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
@@ -80,9 +79,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/picker
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
     clamp: value => value,
-    getConversationReplyMaxTokens: () => 100,
-    getCurrentActivityFromSchedule: () => null,
-    getStoredSchedule: () => null,
+    getCharacterStatus: () => ({ status: 'online', activity: null, source: 'manual' }),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getSettings: () => ({ prose_polisher: true }),
@@ -95,7 +92,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-render.js', () => ({
     renderConversationTimeline: jest.fn(),
-    updateConversationNotificationSettingsVisibility: jest.fn(),
+    syncSettingsDrawerRows: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],

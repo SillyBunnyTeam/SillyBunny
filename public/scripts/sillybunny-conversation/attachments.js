@@ -13,7 +13,6 @@ import {
     CONVERSATION_MESSAGE_SENT_EVENT,
     DEFAULT_SETTINGS,
     GROUP_MAX_CONCURRENT_SPEAKERS,
-    GROUP_SECOND_REPLY_CHANCE,
     SAFE_TOAST_OPTIONS,
     SEND_QUEUE_BATCH_MS,
     SEND_QUEUE_COALESCE_MS,
@@ -30,7 +29,7 @@ import {
 } from './context.js';
 import { generateConversationReply, postCharacterReply, postMemberConversationReply, reportConversationGenerationError } from './generation.js';
 import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar } from './media.js';
-import { getAllowedMemberCharacters, getConversationMemberSettings, isCharacterMentionedInText } from './members.js';
+import { isCharacterMentionedInText } from './members.js';
 import { getConversationPersonaName } from './personas.js';
 import { formatConversationFileSize } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
@@ -60,6 +59,8 @@ import {
 } from './conversation-store.js';
 import { createConversationReplyPlan, createReplyToken } from './reply-commit-plan.js';
 import { createRoundMarker, roundMayContinue, roundMemory } from './rounds.js';
+import { chooseGroupSpeakers } from './speaker-selection.js';
+import { getTalkativeness } from './talkativeness.js';
 import { handleConversationSlashAction } from './timeline-slash-commands.js';
 import { getConversationActivityContext, maybePostDelayedReplyNotice, splitChatroomMessages, withTypingParticipant } from './typing.js';
 import { appendConversationMessage } from './message-writer.js';
@@ -294,26 +295,6 @@ function getConversationSpeakerAvatar(message, anchorAvatar) {
         : String(anchorAvatar || '');
 }
 
-function isBroadGroupAddress(text) {
-    return /\b(everyone|everybody|anyone|someone|you\s+all|you\s+guys|y['’]?all|yall|both\s+of\s+you|all\s+of\s+you)\b/i.test(String(text || ''));
-}
-
-function getImplicitGroupReplyCandidate(conversationMessages, anchorAvatar, candidates, latestUserText) {
-    if (!String(latestUserText || '').trim() || isBroadGroupAddress(latestUserText)) {
-        return null;
-    }
-
-    for (let index = conversationMessages.length - 1; index >= 0; index--) {
-        const speakerAvatar = getConversationSpeakerAvatar(conversationMessages[index], anchorAvatar);
-        const candidate = candidates.find(item => item.character.avatar === speakerAvatar);
-        if (candidate) {
-            return candidate;
-        }
-    }
-
-    return null;
-}
-
 function getGroupReplyCandidates(anchorAvatar, groupId, personaId) {
     const group = getConversationGroupById(groupId, { personaId });
     if (!group?.members?.length) {
@@ -335,31 +316,6 @@ function getGroupReplyBusyKey(anchorAvatar, groupId, replyAvatar) {
     return ['group-reply', groupId || '', anchorAvatar || '', replyAvatar || ''].join(':');
 }
 
-function addUniqueGroupReplyCandidate(candidates, candidate) {
-    if (!candidate?.character?.avatar || candidates.some(item => item.character.avatar === candidate.character.avatar)) {
-        return;
-    }
-
-    candidates.push(candidate);
-}
-
-function pickWeightedGroupReplyCandidate(candidates) {
-    const totalWeight = candidates.reduce((sum, candidate) => sum + Math.max(0, Number(candidate.weight || 0)), 0);
-    if (totalWeight <= 0) {
-        return candidates[Math.floor(Math.random() * candidates.length)] || null;
-    }
-
-    let roll = Math.random() * totalWeight;
-    for (const candidate of candidates) {
-        roll -= Math.max(0, Number(candidate.weight || 0));
-        if (roll <= 0) {
-            return candidate;
-        }
-    }
-
-    return candidates[candidates.length - 1] || null;
-}
-
 function chooseGroupReplyCandidates(anchorAvatar, groupId, queueItem, { force = false } = {}) {
     const candidates = getGroupReplyCandidates(anchorAvatar, groupId, queueItem?.personaId);
     if (!candidates.length) {
@@ -379,55 +335,15 @@ function chooseGroupReplyCandidates(anchorAvatar, groupId, queueItem, { force = 
         personaId: queueItem?.personaId,
     });
 
-    // Build a cache of lastSpeakerIndex for all avatars in one pass
-    const lastSpeakerIndexCache = new Map();
-    for (let index = conversationMessages.length - 1; index >= 0; index--) {
-        const speakerAvatar = getConversationSpeakerAvatar(conversationMessages[index], anchorAvatar);
-        if (speakerAvatar && !lastSpeakerIndexCache.has(speakerAvatar)) {
-            lastSpeakerIndexCache.set(speakerAvatar, index);
-        }
-    }
-
-    const weightedPool = pool.map((item) => {
-        const lastSpeakerIndex = lastSpeakerIndexCache.get(item.character.avatar) ?? -1;
-        const messagesSinceSpeaking = lastSpeakerIndex < 0
-            ? conversationMessages.length + 1
-            : Math.max(1, conversationMessages.length - lastSpeakerIndex);
-        return {
-            ...item,
-            lastSpeakerIndex,
-            weight: 1 + messagesSinceSpeaking,
-        };
-    });
-    const selected = [];
-    const mentionedCandidates = weightedPool
-        .filter(({ character }) => isCharacterMentionedInText(character, latestUserText, candidateCharacters))
-        .slice(0, GROUP_MAX_CONCURRENT_SPEAKERS);
-    for (const candidate of mentionedCandidates) {
-        if (selected.length >= GROUP_MAX_CONCURRENT_SPEAKERS) {
-            break;
-        }
-        addUniqueGroupReplyCandidate(selected, candidate);
-    }
-
-    if (!selected.length) {
-        addUniqueGroupReplyCandidate(selected, getImplicitGroupReplyCandidate(conversationMessages, anchorAvatar, weightedPool, latestUserText));
-    }
-
-    const drawRandomCandidate = () => {
-        const remaining = weightedPool.filter(candidate => !selected.some(item => item.character.avatar === candidate.character.avatar));
-        addUniqueGroupReplyCandidate(selected, pickWeightedGroupReplyCandidate(remaining));
-    };
-
-    if (!selected.length) {
-        drawRandomCandidate();
-    }
-
-    if (selected.length < GROUP_MAX_CONCURRENT_SPEAKERS && Math.random() < GROUP_SECOND_REPLY_CHANCE) {
-        drawRandomCandidate();
-    }
-
-    return selected;
+    return chooseGroupSpeakers({
+        members: pool.map(({ character }) => ({
+            avatar: character.avatar,
+            talkativeness: getTalkativeness(character.avatar),
+            mentioned: isCharacterMentionedInText(character, latestUserText, candidateCharacters),
+        })),
+        speakers: conversationMessages.map(message => getConversationSpeakerAvatar(message, anchorAvatar)),
+        latestUserText,
+    }).map(speaker => pool.find(({ character }) => character.avatar === speaker.avatar));
 }
 
 async function waitForConversationSpeakerAvailability(queueItem, settings, avatar, groupId) {
@@ -720,29 +636,16 @@ export async function processQueuedConversationReply(queueItem) {
     }
 
     const conversationSettings = getSettings(avatar, { groupId, personaId });
-    if (!conversationSettings.enabled) {
-        return;
-    }
 
     const operation = beginConversationGenerationOperation();
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
-        if (replyTarget.explicit) {
+        // A reply to the message of an extra of a direct conversation is a message to the character: extras do not speak.
+        if (replyTarget.explicit && (groupId || replyTarget.speakerAvatar === avatar)) {
             const replyCandidate = groupId
                 ? getGroupReplyCandidates(avatar, groupId, personaId).find(candidate => candidate.character.avatar === replyTarget.speakerAvatar)
-                : replyTarget.speakerAvatar === avatar
-                    ? { character: getCharacterForAvatar(avatar), settings: conversationSettings }
-                    : getAllowedMemberCharacters(conversationSettings.multi_char_names, avatar, conversationSettings, {
-                        chatId,
-                        groupId,
-                        includeConversationMembers: true,
-                        personaId,
-                    }).filter(character => character.avatar === replyTarget.speakerAvatar)
-                        .map(character => ({
-                            character,
-                            settings: getConversationMemberSettings(character.avatar, conversationSettings, { groupId, personaId }),
-                        }))[0];
+                : { character: getCharacterForAvatar(avatar), settings: conversationSettings };
             if (!replyCandidate?.character?.avatar) {
                 return;
             }

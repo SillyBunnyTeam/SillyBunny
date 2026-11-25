@@ -11,7 +11,7 @@ import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
-import { AVAILABILITY_COPY, CHROME_IDS, WEEKDAY_LABELS } from './constants.js';
+import { AVAILABILITY_COPY, CHROME_IDS } from './constants.js';
 import {
     getConversationGroupById,
     getConversationGroupIdForAvatar,
@@ -28,83 +28,10 @@ import {
     getPersonaOptions,
     getUserPersonaStatus,
     getUserStatus,
-    safeParseWeeklySchedule,
 } from './personas.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
-import { escapeHtmlAttribute } from './render-utils.js';
 import { closeConversationList } from './settings-panel.js';
 import { conversationState } from './state.js';
-
-export function renderWeeklyScheduleEditor(container, scheduleJson) {
-    const entries = safeParseWeeklySchedule(scheduleJson);
-    container.innerHTML = '';
-    for (const entry of entries) {
-        container.appendChild(createWeeklyScheduleRow(entry));
-    }
-}
-
-export function createWeeklyScheduleRow(entry = {}) {
-    const row = document.createElement('div');
-    row.className = 'sb-conversation-weekly-row';
-    const dayPills = WEEKDAY_LABELS.map((label, idx) => {
-        const checked = Array.isArray(entry.days) && entry.days.includes(idx) ? ' checked' : '';
-        return `<label class="sb-conversation-day-pill"><input type="checkbox" class="sb-conv-day-check" data-day="${idx}"${checked} /><span>${label}</span></label>`;
-    }).join('');
-    row.innerHTML = `
-        <div class="sb-conversation-day-pills">${dayPills}</div>
-        <div class="sb-conversation-weekly-row-meta">
-            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule Time" />
-            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule Message" />
-            <label class="sb-conv-weekly-enabled">
-                <span>On</span>
-                <input type="checkbox" role="switch" class="sb-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
-            </label>
-            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove Slot" aria-label="Remove Slot">
-                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
-            </button>
-        </div>
-    `;
-    return row;
-}
-
-export function addWeeklyScheduleRow() {
-    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
-    if (!(editor instanceof HTMLElement)) {
-        return;
-    }
-
-    editor.appendChild(createWeeklyScheduleRow({ days: [], time: '08:00', message: '', enabled: true }));
-    saveCurrentPanelSettings();
-}
-
-export function readWeeklyScheduleFromEditor() {
-    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
-    if (!(editor instanceof HTMLElement)) {
-        return '[]';
-    }
-
-    const entries = [];
-    for (const row of editor.querySelectorAll('.sb-conversation-weekly-row')) {
-        const days = [];
-        row.querySelectorAll('.sb-conv-day-check:checked').forEach((cb) => {
-            const day = parseInt(cb.dataset.day, 10);
-            if (!Number.isNaN(day)) {
-                days.push(day);
-            }
-        });
-        const timeEl = row.querySelector('.sb-conv-weekly-time');
-        const messageEl = row.querySelector('.sb-conv-weekly-message');
-        const enabledEl = row.querySelector('.sb-conv-weekly-enabled-check');
-        entries.push({
-            days,
-            time: timeEl instanceof HTMLInputElement ? timeEl.value : '08:00',
-            message: messageEl instanceof HTMLInputElement ? messageEl.value : '',
-            enabled: enabledEl instanceof HTMLInputElement ? enabledEl.checked : true,
-        });
-    }
-
-    return JSON.stringify(entries);
-}
 
 export function readMembersFromList(listId) {
     const list = document.getElementById(listId);
@@ -508,22 +435,6 @@ export function togglePersonaPicker(anchor = getPickerAnchor('[data-sb-conversat
     const resolvedAnchor = anchor instanceof HTMLElement ? anchor : getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]');
     showConversationPicker(picker, resolvedAnchor, { preferBelow: true });
     (picker.querySelector('[aria-selected="true"]') || picker.querySelector('button'))?.focus?.({ preventScroll: true });
-}
-
-export function bindWeeklyScheduleEditor() {
-    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
-    const hiddenInput = document.getElementById('sb_conv_weekly_schedule');
-    if (!(editor instanceof HTMLElement)) {
-        return;
-    }
-
-    const scheduleJson = hiddenInput instanceof HTMLInputElement ? hiddenInput.value : '[]';
-    renderWeeklyScheduleEditor(editor, scheduleJson);
-
-    if (editor.dataset.sbConversationBound !== 'true') {
-        editor.dataset.sbConversationBound = 'true';
-        editor.addEventListener('change', saveCurrentPanelSettings);
-    }
 }
 
 export function bindMemberList(listId, searchId) {

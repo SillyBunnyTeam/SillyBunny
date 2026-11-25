@@ -24,10 +24,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     getCharacterForAvatar: avatar => knownCharacters.find(character => character.avatar === avatar) ?? null,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    getConversationReplyMaxTokens: settings => settings.reply_max_tokens || 16000,
-    getScheduleStorageKey: avatar => `schedule:${avatar}`,
-}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-panel.js', () => ({ renderConversationMemoryPanel: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
     conversationState: { conversationSelectedAvatar: null, conversationSelectedGroupId: null, conversationWorkspaceOpen: false },
@@ -40,7 +36,6 @@ const {
     getSettings,
     hasAnyConversationModeUsage,
     isConversationModeEnabled,
-    saveGlobalConversationSettings,
     saveSettings,
     setConversationSessionMarker,
     setLastUserActivity,
@@ -48,6 +43,11 @@ const {
 const { DEFAULT_SETTINGS } = await import('../public/scripts/sillybunny-conversation/constants.js');
 
 let server;
+
+/** Puts mode-wide values where the page reads them: the object of the mode in settings.json. */
+function setModeWideSettings(values) {
+    extensionSettings.sillybunny_conversation = { version: 2, localStorageMigrated: true, settings: values };
+}
 
 async function startData(descriptors) {
     seedConversations(server, descriptors);
@@ -79,7 +79,7 @@ afterEach(async () => {
 describe('getSettings', () => {
     test('is the defaults for a character that has no conversation, with the mode-wide values on top', async () => {
         await startData([]);
-        saveGlobalConversationSettings({ custom_instructions: 'be brief' });
+        setModeWideSettings({ custom_instructions: 'be brief' });
 
         const settings = getSettings('Nova.png', { groupId: '' });
 
@@ -88,25 +88,36 @@ describe('getSettings', () => {
     });
 
     test('puts the conversation over the defaults, the mode-wide values over the conversation, and the prompt under its old key', async () => {
-        await startData([{ ...DIRECT, settings: { talkativeness: 90, custom_instructions: 'conversation value', system_prompt: 'Stay in character.' } }]);
-        saveGlobalConversationSettings({ custom_instructions: 'mode-wide value' });
+        await startData([{ ...DIRECT, settings: { inactivity_threshold: 90, custom_instructions: 'conversation value', system_prompt: 'Stay in character.' } }]);
+        setModeWideSettings({ custom_instructions: 'mode-wide value' });
 
         const settings = getSettings('Nova.png', { groupId: '' });
 
-        expect(settings.talkativeness).toBe(90);
+        expect(settings.inactivity_threshold).toBe(90);
         expect(settings.custom_instructions).toBe('mode-wide value');
         expect(settings.geechan_chatroom_prompt).toBe('Stay in character.');
         expect(settings.enabled).toBe(true);
         expect(isConversationModeEnabled('Nova.png', { groupId: '' })).toBe(true);
     });
 
-    test('forces the cross-talk of a group on, over every other layer', async () => {
-        await startData([{ ...GROUP, settings: { multi_char: false, auto_character_chat: false } }]);
-        saveGlobalConversationSettings({ multi_char: false, auto_character_chat: false });
+    test('holds the mode-wide quiet hours and Simulate reply delay for every conversation', async () => {
+        await startData([DIRECT, GROUP]);
+        setModeWideSettings({ quiet_hours_start: '22:00', quiet_hours_end: '07:00', simulate_reply_delay: false });
 
-        const settings = getSettings('Orion.png', { groupId: 'conv_2_group001' });
+        for (const [avatar, groupId] of [['Nova.png', ''], ['Orion.png', 'conv_2_group001']]) {
+            expect(getSettings(avatar, { groupId })).toMatchObject({ quiet_hours_start: '22:00', quiet_hours_end: '07:00', simulate_reply_delay: false });
+        }
+    });
 
-        expect(settings).toMatchObject({ multi_char: true, auto_character_chat: true });
+    test('lists the extras of a direct conversation as a read-only value, and nothing of the removed cross-talk keys', async () => {
+        await startData([{ ...DIRECT, extras: ['Pax.png'] }, GROUP]);
+
+        expect(getSettings('Nova.png', { groupId: '' }).multi_char_names).toBe('Pax.png');
+        for (const settings of [getSettings('Nova.png', { groupId: '' }), getSettings('Orion.png', { groupId: 'conv_2_group001' })]) {
+            for (const key of ['multi_char', 'auto_character_chat', 'auto_chat_names', 'auto_chat_cooldown']) {
+                expect(Object.keys(settings)).not.toContain(key);
+            }
+        }
     });
 
     test('takes the availability of the character from its state, not from the conversation', async () => {
@@ -121,16 +132,16 @@ describe('saveSettings', () => {
     test('writes only the values that differ from the defaults, and removes a value that went back to its default', async () => {
         await startData([DIRECT]);
 
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), talkativeness: 90, geechan_chatroom_prompt: 'Be kind.' }, { groupId: '' });
+        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), inactivity_threshold: 90, geechan_chatroom_prompt: 'Be kind.' }, { groupId: '' });
         await data.flush();
 
-        expect(data.get('conv_1_direct01').settings).toMatchObject({ talkativeness: 90, system_prompt: 'Be kind.' });
+        expect(data.get('conv_1_direct01').settings).toMatchObject({ inactivity_threshold: 90, system_prompt: 'Be kind.' });
         expect(Object.keys(data.get('conv_1_direct01').settings)).not.toContain('geechan_chatroom_prompt');
 
-        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), talkativeness: DEFAULT_SETTINGS.talkativeness }, { groupId: '' });
+        saveSettings('Nova.png', { ...getSettings('Nova.png', { groupId: '' }), inactivity_threshold: DEFAULT_SETTINGS.inactivity_threshold }, { groupId: '' });
         await data.flush();
 
-        expect(Object.hasOwn(data.get('conv_1_direct01').settings, 'talkativeness')).toBe(false);
+        expect(Object.hasOwn(data.get('conv_1_direct01').settings, 'inactivity_threshold')).toBe(false);
     });
 
     test('writes a status other than online to the character, and online clears it', async () => {
@@ -163,7 +174,7 @@ describe('saveSettings', () => {
     test('does nothing for a character without a conversation except for the mode-wide values', async () => {
         await startData([]);
 
-        saveSettings('Nova.png', { ...DEFAULT_SETTINGS, talkativeness: 12 }, { groupId: '' });
+        saveSettings('Nova.png', { ...DEFAULT_SETTINGS, inactivity_threshold: 12 }, { groupId: '' });
         await settle();
 
         expect(data.list()).toHaveLength(0);

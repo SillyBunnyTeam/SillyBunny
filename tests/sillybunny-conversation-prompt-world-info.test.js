@@ -35,8 +35,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/person
     getUserStatus: () => 'online',
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    getCurrentActivityFromSchedule: () => ({ activity: 'free', status: 'online' }),
-    getStoredSchedule: () => null,
+    getCharacterStatus: () => ({ activity: null, status: 'online', source: 'manual' }),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     buildConversationGroupReferenceContext: () => '',

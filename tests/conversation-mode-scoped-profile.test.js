@@ -86,8 +86,9 @@ describe('conversation mode scoped connection profile', () => {
         expect(helperSource).not.toContain('applyConnectionProfileByName');
         // Falls back to generateRaw (the active profile) when scoped path is unavailable.
         expect(helperSource).toContain('generateRaw(options)');
-        // The scoped request keeps its own length. Only the request to the active API is limited.
-        expect(helperSource).toContain('CMRS.sendRequest(profile.id, messages, options.responseLength, {');
+        // The scoped request keeps its own length, or the length of the preset of the profile. Only the request to the active API is limited.
+        expect(helperSource).toContain('CMRS.sendRequest(profile.id, messages, profileResponseLength, {');
+        expect(helperSource).toContain('options.responseLength > 0 ? options.responseLength : await getProfileResponseLength(profile)');
         expect(helperSource.indexOf('CMRS.sendRequest')).toBeLessThan(helperSource.indexOf('getActiveApiResponseLength(options.responseLength)'));
     });
 
@@ -122,8 +123,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(sharedHelpersSource).toContain('last non-user speaker before it');
         expect(sharedHelpersSource).toContain('do not assume every you means');
         expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo })');
-        expect(attachmentsSource).toContain('getImplicitGroupReplyCandidate');
-        expect(attachmentsSource).toContain('isBroadGroupAddress');
+        expect(attachmentsSource).toContain('chooseGroupSpeakers');
+        expect(readConversationSource('speaker-selection.js')).toContain('isBroadGroupAddress');
     });
 
     test('adds device date time and timezone context to Conversation prompts', () => {
@@ -132,7 +133,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('Intl.DateTimeFormat().resolvedOptions().timeZone');
         expect(promptSource).toContain('weekday: \'long\'');
         expect(promptSource).toContain('computer/phone time');
-        expect(promptSource).toContain('getCurrentActivityFromSchedule(schedule, avatar, now, { personaId })');
+        expect(promptSource).toContain('getCharacterStatus(avatar, now, { personaId })');
     });
 
     test('adds compact editable Grounded Dialogue Rules as an optional global prompt block', () => {
@@ -154,21 +155,15 @@ describe('conversation mode scoped connection profile', () => {
 
     test('settings booleans are switch rows and picker menus pass their trigger', () => {
         const switchIds = [
-            'sb_conv_idle_followup',
-            'sb_conv_idle_spontaneous',
             'sb_conv_notifications_muted',
             'sb_conv_proactive_messaging',
             'sb_conv_selfie_command_enabled',
             'sb_conv_schedule_command_enabled',
             'sb_conv_include_related_memory',
-            'sb_conv_auto_message',
             'sb_conv_grounded_dialogue_rules_enabled',
-            'sb_conv_multi_char',
-            'sb_conv_auto_character_chat',
             'sb_conv_roleplay_reactions',
             'sb_conv_image_gen_enabled',
             'sb_conv_spontaneous_selfies',
-            'sb_conv_editable_messages',
             'sb_conv_prose_polisher',
         ];
         for (const id of switchIds) {
@@ -178,12 +173,10 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).toContain('createSwitchRow(');
         expect(timelineSource).not.toContain('sb-conversation-switch');
         expect(timelineSource).not.toContain('sb-conversation-pref-');
-        expect(timelineSource).toContain('createSettingsHiddenInput(\'sb_conv_copy_memory_to_new_branch\', \'checkbox\')');
         expect(chromeSource).toContain('toggleStartDirectConversationPicker(target)');
         expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
         expect(chromeSource).toContain('togglePersonaPicker(target)');
         expect(pickersSource).toContain('preferBelow: true');
-        expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
         // The rail keeps the order of the list that the server sends, newest message first, and does not move the open row.
         expect(conversationListSource).toContain('conversationData.list({ personaId })');
         expect(conversationListSource).not.toContain('.sort(');
@@ -212,10 +205,11 @@ describe('conversation mode scoped connection profile', () => {
         expect(initSource).toContain('event_types.PERSONA_CHANGED');
     });
 
-    test('the settings of a group are layered with what the group forces on top', () => {
+    test('the settings of a conversation are layered with what is derived on top, and nothing is forced on a group', () => {
         const layers = settingsStoreSource.slice(settingsStoreSource.indexOf('const settings = mergeConversationSettingsLayers('));
         expect(layers.indexOf('globalSettings')).toBeGreaterThanOrEqual(0);
-        expect(layers.indexOf('globalSettings')).toBeLessThan(layers.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS'));
+        expect(layers.indexOf('globalSettings')).toBeLessThan(layers.indexOf('getDerivedSettings'));
+        expect(settingsStoreSource).not.toContain('FORCED_SETTINGS');
     });
 
     test('uses reply metadata instead of copying quoted text into the composer', () => {

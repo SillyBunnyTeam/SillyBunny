@@ -22,7 +22,6 @@ import {
     CONVERSATION_ATTACHMENT_ACCEPT,
     CONVERSATION_REACTION_LABELS,
     CONVERSATION_TIMELINE_CHANNELS,
-    DEFAULT_AUTO_CHAT_COOLDOWN,
     SELFIE_COMMAND_RE,
 } from './constants.js';
 import { truncateConversationReplyPreview } from './preview-utils.js';
@@ -48,7 +47,6 @@ import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
 import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
-import { getConversationReplyMaxTokens } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import {
     beginConversationGenerationOperation,
@@ -121,10 +119,9 @@ function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings
         .join(',');
     const statusPart = Array.from(statusAvatars)
         .filter(Boolean)
-        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar, getSettings(statusAvatar, { groupId, personaId }))}`)
+        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar)}`)
         .join(',');
     const settingsPart = [
-        settings?.editable_messages ? '1' : '0',
         settings?.prose_polisher ? '1' : '0',
     ].join(':');
 
@@ -150,7 +147,7 @@ function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings
 function buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index }) {
     const speakerAvatar = message?.role === 'member' ? message.extra?.member_avatar : avatar;
     const speakerStatus = speakerAvatar && message?.role !== 'user' && message?.role !== 'system'
-        ? getEffectiveConversationStatus(speakerAvatar, getSettings(speakerAvatar, { groupId, personaId }))
+        ? getEffectiveConversationStatus(speakerAvatar)
         : '';
 
     return hashConversationRenderFingerprint([
@@ -164,7 +161,6 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, persona
         getConversationMessageExtraFingerprint(message),
         getConversationMessageReceipt(message, avatar, { groupId, personaId }),
         getConversationMessageAvatar(message, avatar),
-        settings?.editable_messages ? '1' : '0',
         settings?.prose_polisher ? '1' : '0',
         speakerStatus,
         index > 8 ? 'lazy' : 'eager',
@@ -507,7 +503,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         if (messageAvatar && message.role !== 'system') {
             const statusDot = document.createElement('span');
             statusDot.className = 'sb-conversation-status-dot';
-            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar, getSettings(messageAvatar, { groupId }));
+            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar);
             statusDot.setAttribute('aria-hidden', 'true');
             avatarWrap.appendChild(statusDot);
         }
@@ -561,7 +557,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     const actionSections = [
         [
             { action: 'reply-message', icon: 'fa-reply', label: 'Reply' },
-            settings.editable_messages && { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation Message', className: 'sb-conversation-message-edit' },
+            { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation Message', className: 'sb-conversation-message-edit' },
             settings.prose_polisher && message.role !== 'user' && { action: 'polish-character-message', icon: 'fa-wand-magic-sparkles', label: 'Polish Character Message', className: 'sb-conversation-message-polish', secondary: true },
         ],
         [
@@ -1322,7 +1318,6 @@ export async function regenerateConversationMessage(messageId) {
                     personaId: context.personaId,
                     worldInfo,
                 }),
-                responseLength: getConversationReplyMaxTokens(settings),
                 trimNames: true,
                 cacheScope: 'conversation-mode',
             }, settings),
@@ -1515,18 +1510,6 @@ export async function quickConversationReminder() {
     addConversationReminder(avatar, groupId, delay, memo, { chatId, personaId });
 }
 
-export function updateConversationNotificationSettingsVisibility() {
-    const muted = document.getElementById('sb_conv_notifications_muted');
-    const priority = document.getElementById('sb_conv_notification_priority');
-    const shouldDisablePriority = muted instanceof HTMLInputElement && muted.checked;
-    if (priority instanceof HTMLSelectElement) {
-        priority.disabled = shouldDisablePriority;
-        priority.closest('.ds-row')?.classList.toggle('is-insensitive', shouldDisablePriority);
-    }
-    // applySettingsToPanel ends here; picker rows mirror their select, which changes without an event.
-    syncSettingsDrawerRows();
-}
-
 export function normalizeConversationReactionLabel(reaction) {
     return CONVERSATION_REACTION_LABELS[reaction] || reaction;
 }
@@ -1692,22 +1675,6 @@ function createSettingsAction({ action, label, icon, danger = false }) {
     return controller;
 }
 
-function createSettingsTimeEntry({ id, label }) {
-    const input = createSettingsControl('input', id, {
-        type: 'text',
-        class: 'text_pole sb-conversation-quiet-time-input',
-        inputmode: 'numeric',
-        autocomplete: 'off',
-        maxlength: 5,
-        placeholder: 'HH:MM',
-    });
-    const controller = createRow({ label, field: settingsFieldName(id), suffix: input });
-    const caption = controller.row.querySelector('.ds-row-label');
-    caption.id = `${id}_label`;
-    input.setAttribute('aria-labelledby', caption.id);
-    return controller;
-}
-
 function createSettingsHiddenInput(id, type, value) {
     return createSettingsControl('input', id, value === undefined ? { type, hidden: true } : { type, value });
 }
@@ -1735,7 +1702,8 @@ function createSettingsDrawerHeader(drawerTitle) {
     return header;
 }
 
-function createGroupMembersWrapper(settings, { autoChatCooldown }) {
+/** The extras of a direct conversation. The user can take one away and cannot add one, and an extra no longer speaks. */
+function createExtrasWrapper(settings) {
     const search = createSettingsControl('input', 'sb_conv_multi_char_search', {
         type: 'text',
         class: 'text_pole textarea_compact sb-conversation-member-search',
@@ -1749,16 +1717,14 @@ function createGroupMembersWrapper(settings, { autoChatCooldown }) {
 
     const members = createRow({
         label: 'Group DM Members',
-        subtitle: 'Selected characters are considered part of this Conversation thread. Type @Name, such as @Kaveh, to tag them. Autonomous character-to-character chat uses this same group list.',
         field: 'group-members',
         stacked: true,
         suffix: field,
     });
-    const autoChat = createSettingsSwitch({ id: 'sb_conv_auto_character_chat', label: 'Allow Characters to Talk to Each Other', subtitle: 'Allow enabled characters to chat with each other autonomously in this thread' });
-    const cooldown = createSettingsSpin({ id: 'sb_conv_auto_chat_cooldown', label: 'Character Chat Cooldown (Mins)', subtitle: 'Minimum time between autonomous character-to-character messages in this Conversation thread', min: 1, max: 1440, step: 1, value: autoChatCooldown });
 
     const wrapper = createSettingsControl('div', 'sb_conv_group_members_wrapper', { class: 'sb-conversation-members-wrapper' });
-    wrapper.append(members.row, autoChat.row, cooldown.row);
+    wrapper.hidden = !settings.multi_char_names;
+    wrapper.append(members.row);
     return wrapper;
 }
 
@@ -1782,24 +1748,13 @@ export function buildSettingsDrawerContent() {
                 label: 'Status',
                 optionsHtml: '<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>',
             }),
-            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send Auto Follow-Up', subtitle: 'Follow-ups react to silence in the current thread', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
-            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous Ping', subtitle: 'Spontaneous Pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
-            createSettingsSpin({ id: 'sb_conv_idle_limit', label: 'Idle Minimum (Minutes)', min: 1, max: 1440, step: 1, value: 15 }),
             createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-Responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
             createSettingsSwitch({
                 id: 'sb_conv_notifications_muted',
                 label: 'Mute This DM',
                 subtitle: 'Unread badges still update while muted or inside quiet hours',
                 title: 'Keep unread badges but suppress sounds and popups for this Conversation.',
-                onChange: updateConversationNotificationSettingsVisibility,
             }),
-            createSettingsSelect({
-                id: 'sb_conv_notification_priority',
-                label: 'Priority',
-                optionsHtml: '<option value="normal">Normal</option><option value="silent">Silent</option><option value="priority">Priority</option>',
-            }),
-            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_start', label: 'Quiet Start' }),
-            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_end', label: 'Quiet End' }),
         ],
     });
 
@@ -1811,7 +1766,6 @@ export function buildSettingsDrawerContent() {
             createSettingsAction({ action: 'generate-schedule', label: 'Generate Schedule', icon: 'wand-magic-sparkles' }),
             createSettingsAction({ action: 'edit-schedule', label: 'Edit Schedule', icon: 'pencil' }),
         ],
-        hidden: [createSettingsHiddenInput('sb_conv_auto_schedule', 'hidden', settings.auto_schedule)],
     });
     const scheduleDisplay = createSettingsControl('div', 'sb_conv_schedule_display', { class: 'sb-conversation-schedule-display', 'aria-live': 'polite' });
     schedule.append(scheduleDisplay);
@@ -1826,17 +1780,6 @@ export function buildSettingsDrawerContent() {
         }),
         createSettingsSpin({ id: 'sb_conv_inactivity_threshold', label: 'Patience (Mins)', min: 15, max: 360, step: 5, value: 120 }),
         createSettingsSpin({ id: 'sb_conv_max_followups', label: 'Max Follow-Ups', min: 1, max: 3, step: 1, value: 3 }),
-        createSettingsSpin({ id: 'sb_conv_talkativeness', label: 'Talkativeness', min: 0, max: 100, step: 5, value: 50 }),
-        createSettingsSpin({ id: 'sb_conv_reply_delay_multiplier', label: 'Reply Delay', min: 0, max: 300, step: 10, value: 100 }),
-        createSettingsSpin({
-            id: 'sb_conv_reply_max_tokens',
-            label: 'Max Reply Tokens',
-            subtitle: isGroupConversation ? undefined : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.',
-            min: 64,
-            max: 64000,
-            step: 64,
-            value: 16000,
-        }),
         createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies Through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
         createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character Status Updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now', title: 'Let the character update its current availability/activity through [schedule_update]' }),
     ];
@@ -1875,26 +1818,11 @@ export function buildSettingsDrawerContent() {
                 title: 'Share saved memory summaries between this character\'s solo and group Conversation threads',
             }),
         ],
-        hidden: [createSettingsHiddenInput('sb_conv_copy_memory_to_new_branch', 'checkbox')],
     });
     const memoryNote = document.createElement('p');
     memoryNote.className = 'ds-row-subtitle sb-conversation-section-note';
     memoryNote.textContent = 'Memory is kept across new chats and deleted histories until you clear it.';
     memory.append(memoryNote);
-
-    const weeklyEditor = createSettingsControl('div', 'sb_conv_weekly_schedule_editor', { class: 'sb-conversation-weekly-schedule' });
-    const manual = createSettingsGroup({
-        title: 'Manual Scheduling',
-        subtitle: 'Use this for fixed-time check-ins. Weekly slots decide when messages can happen; cooldown prevents repeated sends too close together.',
-        field: 'manual-scheduling',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_auto_message', label: 'Enable Scheduling', subtitle: 'Enable autonomous scheduled messages' }),
-            createSettingsSpin({ id: 'sb_conv_cooldown', label: 'Cooldown (Secs)', subtitle: 'Auto-message minimum delay/cooldown in seconds', min: 10, max: 9999, step: 1, value: 60 }),
-            createRow({ label: 'Weekly Schedule', field: 'weekly-schedule', stacked: true, suffix: weeklyEditor }),
-            createSettingsAction({ action: 'weekly-add', label: 'Add Weekly Slot', icon: 'plus' }),
-        ],
-        hidden: [createSettingsHiddenInput('sb_conv_weekly_schedule', 'hidden', settings.weekly_schedule)],
-    });
 
     const prompts = createSettingsGroup({
         title: 'Prompts & Formats',
@@ -1911,8 +1839,7 @@ export function buildSettingsDrawerContent() {
                 scope: true,
             }),
             createSettingsAction({ action: 'edit-grounded-dialogue-rules', label: 'Edit Grounded Dialogue Rules', icon: 'pencil' }),
-            createSettingsSwitch({ id: 'sb_conv_multi_char', label: 'Add Additional Members in the Chat', subtitle: 'Enable additional characters in the chat to chime in' }),
-            createGroupMembersWrapper(settings, { autoChatCooldown: DEFAULT_AUTO_CHAT_COOLDOWN }),
+            createExtrasWrapper(settings),
             createSettingsSwitch({ id: 'sb_conv_roleplay_reactions', label: 'React to Current Roleplay', subtitle: 'Allow this character to privately react to the current roleplay or group chat' }),
         ],
         hidden: [
@@ -1941,7 +1868,6 @@ export function buildSettingsDrawerContent() {
             createSettingsEntry({ id: 'sb_conv_image_gen_negative', label: 'Negative Prompt', placeholder: 'blurry, distorted' }),
             createSettingsSpin({ id: 'sb_conv_image_gen_cooldown', label: 'Image Cooldown (Minutes)', min: 0, max: 1440, step: 1, value: 10 }),
             createSettingsSwitch({ id: 'sb_conv_spontaneous_selfies', label: 'Enable Spontaneous Selfies', subtitle: 'Character spontaneously generates selfies during the conversation' }),
-            createSettingsEntry({ id: 'sb_conv_selfie_prompt', label: 'Selfie Prompt Template', placeholder: 'raw photo, selfie of {{char}}' }),
         ],
     });
 
@@ -1949,14 +1875,13 @@ export function buildSettingsDrawerContent() {
         title: 'DM Tweaks',
         field: 'tweaks',
         rows: [
-            createSettingsSwitch({ id: 'sb_conv_editable_messages', label: 'Enable Quick-Edit DM Actions', subtitle: 'Add quick inline edit buttons next to messages in the Conversation thread' }),
             createSettingsSwitch({ id: 'sb_conv_prose_polisher', label: 'Character Prose Polisher', subtitle: 'Enable a magic wand icon on character replies to polish and refine their outputs' }),
         ],
     });
 
     const body = document.createElement('div');
     body.className = 'sb-conversation-settings-body';
-    body.append(presence, schedule, proactive, memory, manual, prompts, context, images, tweaks);
+    body.append(presence, schedule, proactive, memory, prompts, context, images, tweaks);
 
     const fragment = document.createDocumentFragment();
     fragment.append(createSettingsDrawerHeader(isGroupConversation ? 'Group Controls' : 'DM Controls'), body);

@@ -5,8 +5,6 @@ import { isAbortLikeError } from '../util/abort-error.js';
 import { extractProviderMessage } from '../sillybunny-provider-message.js';
 import {
     CONVERSATION_ERROR_DETAIL_MAX_LENGTH,
-    MAX_CONVERSATION_REPLY_MAX_TOKENS,
-    MIN_CONVERSATION_REPLY_MAX_TOKENS,
     SAFE_TOAST_OPTIONS,
     SCHEDULE_STATUSES,
 } from './constants.js';
@@ -26,10 +24,10 @@ import { buildReplySteps } from './reply-steps.js';
 import { confirmConversationAction } from './dialogs.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
-import { getActiveApiResponseLength } from './response-length.js';
+import { getActiveApiResponseLength, getProfileResponseLength } from './response-length.js';
 import { formatPromptText } from './shared-helpers.js';
 import { loadRelatedMemoryChats } from './settings-store.js';
-import { clamp, getConversationReplyMaxTokens, getConversationRuntimeStatusKey, parseDurationToMs } from './schedule.js';
+import { getConversationRuntimeStatusKey, parseDurationToMs } from './schedule.js';
 import { runtimeStatusOverrides } from './state.js';
 import {
     addConversationReminder,
@@ -97,10 +95,13 @@ export async function generateConversationRaw(options, settings) {
             }
 
             try {
+                // A request that names no length asks for the length of the preset of the profile, which is the length
+                // that a normal chat with that profile asks for.
+                const profileResponseLength = options.responseLength > 0 ? options.responseLength : await getProfileResponseLength(profile);
                 if (commit) {
                     registerGenerationCommitPlan(options.signal, commit.createPlan('profile'));
                 }
-                const result = await CMRS.sendRequest(profile.id, messages, options.responseLength, {
+                const result = await CMRS.sendRequest(profile.id, messages, profileResponseLength, {
                     extractData: true,
                     includePreset: true,
                     stream: false,
@@ -138,7 +139,7 @@ export async function generateConversationRaw(options, settings) {
  * answers an empty text, and the caller writes nothing. `commit` is the handle of `generateConversationRaw()`: with it
  * the server writes the reply when this page is gone, and `commit.state` tells the caller whether it did.
  */
-export async function generateConversationReply(directive, settings, { responseLength = null, speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), anchorAvatar = avatar, speakerAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId(), commit = null } = {}) {
+export async function generateConversationReply(directive, settings, { speakerName = getCurrentCharName(), trimNames = true, avatar = getCurrentCharAvatar(), anchorAvatar = avatar, speakerAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId(), commit = null } = {}) {
     // The transcript is read from the chat, and a related memory comes from the chats of other conversations.
     const address = await ensureConversationChatLoaded(anchorAvatar, { chatId, groupId, personaId });
     const tracked = generationTargets.begin(address);
@@ -147,16 +148,12 @@ export async function generateConversationReply(directive, settings, { responseL
             await loadRelatedMemoryChats(speakerAvatar, { groupId, personaId });
         }
         const messages = getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId });
-        const resolvedResponseLength = Number.isFinite(responseLength) && responseLength > 0
-            ? clamp(Math.round(responseLength), MIN_CONVERSATION_REPLY_MAX_TOKENS, MAX_CONVERSATION_REPLY_MAX_TOKENS)
-            : getConversationReplyMaxTokens(settings);
         const worldInfo = await getConversationWorldInfo(messages, settings, { avatar: speakerAvatar, personaId });
         const prompt = await buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo });
 
         const reply = await generateConversationRaw({
             prompt,
             systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, { anchorAvatar, chatId, groupId, personaId, worldInfo }),
-            responseLength: resolvedResponseLength,
             trimNames,
             cacheScope: 'conversation-mode',
             signal: tracked.signal,

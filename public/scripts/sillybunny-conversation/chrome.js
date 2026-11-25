@@ -43,7 +43,6 @@ import { getDirectConversations, getCurrentGroupConversationMembers } from './co
 import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
-    addWeeklyScheduleRow,
     hideConversationPickers,
     openAddMemberPicker,
     renderConversationPersonaPicker,
@@ -54,7 +53,7 @@ import {
     updateUserFooter,
 } from './pickers.js';
 import { afterConversationRender, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
-import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
+import { regenerateRoutine } from './schedule.js';
 import {
     clearConversationMemoryFromPanel,
     closeConversationSettings,
@@ -73,7 +72,7 @@ import {
     syncConversationPage,
     toggleConversationList,
 } from './settings-panel.js';
-import { getSettings, saveSettings } from './settings-store.js';
+import { getSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
 import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
@@ -876,9 +875,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'set-channel':
             setConversationTimelineChannel(data.channel);
             break;
-        case 'weekly-add':
-            addWeeklyScheduleRow();
-            break;
         case 'edit-schedule': {
             const avatar = getCurrentCharAvatar();
             if (avatar || getCurrentGroupConversationMembers().length) {
@@ -898,14 +894,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'edit-grounded-dialogue-rules':
             openGroundedDialogueRulesEditor();
             break;
-        case 'weekly-remove': {
-            const row = target?.closest?.('.sb-conversation-weekly-row');
-            if (row instanceof HTMLElement) {
-                row.remove();
-                saveCurrentPanelSettings();
-            }
-            break;
-        }
         case 'set-user-status': {
             const status = data.status;
             if (status) {
@@ -955,22 +943,12 @@ export async function runConversationAction(action, data = {}, target = null, ev
             toastr.info(`Generating schedule for ${character.name}…`);
             try {
                 const groupId = getConversationGroupIdForAvatar(genAvatar);
-                const schedule = await generateCharacterSchedule(character, { groupId, personaId });
-                if (schedule) {
-                    saveStoredSchedule(genAvatar, { ...schedule, generatedAt: Date.now() });
-                    const genSettings = getSettings(genAvatar, { groupId, personaId });
-                    genSettings.talkativeness = schedule.talkativeness;
-                    genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
-                    saveSettings(genAvatar, genSettings, { groupId, personaId });
-                    if (isConversationActive(genAvatar, groupId, { personaId })) {
-                        applySettingsToPanel(genSettings);
-                        renderScheduleDisplay();
-                        updateConversationChrome(genSettings);
-                    }
-                    toastr.success(`Schedule generated for ${character.name}`);
-                } else {
-                    toastr.warning('Schedule generation returned no data. Try again.');
+                await regenerateRoutine(genAvatar, { character, groupId, personaId });
+                if (isConversationActive(genAvatar, groupId, { personaId })) {
+                    renderScheduleDisplay();
+                    updateConversationChrome(getSettings(genAvatar, { groupId, personaId }));
                 }
+                toastr.success(`Schedule generated for ${character.name}`);
             } catch (err) {
                 console.error('Schedule generation error:', err);
                 toastr.error('Schedule generation failed');

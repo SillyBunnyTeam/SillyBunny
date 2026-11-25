@@ -14,7 +14,7 @@ import { parseAvatarList } from './members.js';
 import { getExtensionCapability } from './extension-capabilities.js';
 import { formatPromptText } from './shared-helpers.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
-import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { getCharacterStatus } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
 import { getConversationMessages } from './conversation-store.js';
@@ -149,13 +149,8 @@ export function getConversationParticipants(avatar = getCurrentCharAvatar(), set
     return participants;
 }
 
-export function getEffectiveConversationStatus(avatar = getCurrentCharAvatar(), settings = getSettings(avatar)) {
-    const schedule = getStoredSchedule(avatar);
-    if (schedule) {
-        return getCurrentActivityFromSchedule(schedule, avatar).status;
-    }
-
-    return settings?.availability || DEFAULT_SETTINGS.availability;
+export function getEffectiveConversationStatus(avatar = getCurrentCharAvatar()) {
+    return getCharacterStatus(avatar).status;
 }
 
 export function getParticipantNamesForDisplay(participants) {
@@ -233,7 +228,7 @@ export function renderConversationParticipantStack(container, participants, {
         const statusDot = document.createElement('span');
         statusDot.className = 'sb-conversation-status-dot';
         statusDot.dataset.status = participant.avatar
-            ? getEffectiveConversationStatus(participant.avatar, getSettings(participant.avatar, { groupId }))
+            ? getEffectiveConversationStatus(participant.avatar)
             : status;
         statusDot.setAttribute('aria-hidden', 'true');
         avatarItem.appendChild(statusDot);

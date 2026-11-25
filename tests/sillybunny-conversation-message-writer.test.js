@@ -25,10 +25,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     getCharacterForAvatar: avatar => charactersByAvatar.get(avatar) || null,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    getConversationReplyMaxTokens: () => 16000,
-    getScheduleStorageKey: avatar => `schedule:${avatar}`,
-}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
     conversationState: { conversationSelectedAvatar: null, conversationSelectedGroupId: null, conversationWorkspaceOpen: false },
 }));

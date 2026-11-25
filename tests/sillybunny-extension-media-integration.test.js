@@ -111,8 +111,7 @@ async function importConversationMedia({ characters, currentAvatar, state, rende
         scheduleTimelineRender: render,
     }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-        getCurrentActivityFromSchedule: jest.fn(() => ({ status: 'online' })),
-        getStoredSchedule: jest.fn(() => null),
+        getCharacterStatus: jest.fn(() => ({ status: 'online', activity: null, source: 'manual' })),
     }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
         getSettings: jest.fn(() => ({})),

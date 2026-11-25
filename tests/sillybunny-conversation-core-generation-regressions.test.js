@@ -15,6 +15,7 @@ const buildConversationSystemPrompt = jest.fn(() => 'system prompt');
 const worldInfo = { before: 'Lore before.', after: '', authorsNoteBefore: '', authorsNoteAfter: '', depth: [] };
 const getConversationWorldInfo = jest.fn(async () => worldInfo);
 const getActiveApiResponseLength = jest.fn(async responseLength => responseLength);
+const getProfileResponseLength = jest.fn(async () => 700);
 const getConnectionProfiles = jest.fn(() => []);
 const registerGenerationCommitPlan = jest.fn();
 const settleGenerationCommit = jest.fn(async () => null);
@@ -23,7 +24,7 @@ await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'char.png', name: 'Aster' }],
     generateRaw,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/response-length.js', () => ({ getActiveApiResponseLength }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/response-length.js', () => ({ getActiveApiResponseLength, getProfileResponseLength }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({
     extractProfileResponseText: value => String(value || ''),
 }));
@@ -61,7 +62,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
     clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
-    getConversationReplyMaxTokens: () => 100,
     getConversationRuntimeStatusKey: (avatar, personaId) => `${personaId}\u001f${avatar}`,
     parseDurationToMs: () => 60_000,
 }));
@@ -155,7 +155,8 @@ describe('Conversation core generated reply regressions', () => {
         expect(getConversationWorldInfo).toHaveBeenCalledWith(chatMessages, settings, { avatar: 'partner.png', personaId: 'persona-a.png' });
         expect(buildConversationPromptMessages).toHaveBeenCalledWith(chatMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { anchorAvatar: 'char.png', chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
-        expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 100 }));
+        expect(getActiveApiResponseLength).toHaveBeenCalledWith(undefined);
+        expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: undefined }));
     });
 
     test('loads the chat that the transcript is read from, and the chats of related memories only when the setting asks for them', async () => {
@@ -214,7 +215,7 @@ describe('Conversation core generated reply regressions', () => {
 
         await expect(generateConversationReply('Reply now.', settings, { avatar: 'char.png', groupId: '', personaId: 'persona-a.png' })).resolves.toBe('reply');
 
-        expect(getActiveApiResponseLength).toHaveBeenCalledWith(100);
+        expect(getActiveApiResponseLength).toHaveBeenCalledWith(undefined);
         expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 64 }));
     });
 
@@ -350,8 +351,18 @@ describe('Conversation core generated reply regressions', () => {
 
         beforeEach(() => {
             sendRequest.mockReset().mockResolvedValue('profile reply');
+            getProfileResponseLength.mockClear();
             getConnectionProfiles.mockReturnValue([PROFILE]);
             globalThis.window = { SillyTavern: { getContext: () => ({ ConnectionManagerRequestService: { sendRequest } }) } };
+        });
+
+        test('asks for the length of the preset of the profile when the request names none, and keeps a length that it names', async () => {
+            await generateConversationRaw({ prompt: 'p', signal: new AbortController().signal }, profileSettings);
+            await generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal }, profileSettings);
+
+            expect(getProfileResponseLength).toHaveBeenCalledTimes(1);
+            expect(getProfileResponseLength).toHaveBeenCalledWith(PROFILE);
+            expect(sendRequest.mock.calls.map(call => call[2])).toEqual([700, 50]);
         });
 
         test('registers the plan of the profile route on the signal of the caller before the request, and keeps what the claim answered', async () => {

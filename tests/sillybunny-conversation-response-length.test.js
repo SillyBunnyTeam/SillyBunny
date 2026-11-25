@@ -24,6 +24,29 @@ async function loadForApi(mainApi) {
     return getActiveApiResponseLength;
 }
 
+const presets = { openai: new Map(), textgenerationwebui: new Map() };
+const oaiSettings = { openai_max_tokens: 1200 };
+
+// The length that a scoped profile asks for is read from its preset, so the three modules that know profiles are mocked.
+async function loadProfileLength(mainApi) {
+    jest.resetModules();
+    await jest.unstable_mockModule('../public/script.js', () => ({
+        amount_gen: PRESET_RESPONSE_LENGTH,
+        main_api: mainApi,
+        max_context: PRESET_CONTEXT_LENGTH,
+    }));
+    await jest.unstable_mockModule('../public/scripts/horde.js', () => ({ MIN_LENGTH: HORDE_MIN_LENGTH, adjustHordeGenerationParams, horde_settings }));
+    await jest.unstable_mockModule('../public/scripts/slash-commands.js', () => ({
+        CONNECT_API_MAP: { openai: { selected: 'openai' }, ooba: { selected: 'textgenerationwebui' } },
+    }));
+    await jest.unstable_mockModule('../public/scripts/preset-manager.js', () => ({
+        getPresetManager: apiId => ({ getCompletionPresetByName: name => presets[apiId]?.get(name) }),
+    }));
+    await jest.unstable_mockModule('../public/scripts/openai.js', () => ({ oai_settings: oaiSettings }));
+    const { getProfileResponseLength } = await import('../public/scripts/sillybunny-conversation/response-length.js');
+    return getProfileResponseLength;
+}
+
 function useWorkerLimit(maxLength) {
     horde_settings.auto_adjust_response_length = true;
     adjustHordeGenerationParams.mockResolvedValue({ maxContextLength: PRESET_CONTEXT_LENGTH, maxLength });
@@ -85,5 +108,36 @@ describe('Conversation Mode response length for the active API', () => {
         await expect(getActiveApiResponseLength(16000)).resolves.toBe(16000);
         await expect(getActiveApiResponseLength(undefined)).resolves.toBeUndefined();
         expect(adjustHordeGenerationParams).not.toHaveBeenCalled();
+    });
+});
+
+describe('Conversation Mode response length for a scoped connection profile', () => {
+    beforeEach(() => {
+        presets.openai.clear();
+        presets.textgenerationwebui.clear();
+        oaiSettings.openai_max_tokens = 1200;
+    });
+
+    test('is the response length of the preset of a Chat Completion profile', async () => {
+        presets.openai.set('Warm', { openai_max_tokens: 700 });
+        const getProfileResponseLength = await loadProfileLength('openai');
+
+        await expect(getProfileResponseLength({ api: 'openai', preset: 'Warm' })).resolves.toBe(700);
+    });
+
+    test('is the response length of the preset of a Text Completion profile', async () => {
+        presets.textgenerationwebui.set('Short', { genamt: 350 });
+        const getProfileResponseLength = await loadProfileLength('openai');
+
+        await expect(getProfileResponseLength({ api: 'ooba', preset: 'Short' })).resolves.toBe(350);
+    });
+
+    test('is the response length of the active connection for a profile without a preset, or whose preset is gone', async () => {
+        const onChat = await loadProfileLength('openai');
+        await expect(onChat({ api: 'openai', preset: '' })).resolves.toBe(1200);
+        await expect(onChat({ api: 'openai', preset: 'Missing' })).resolves.toBe(1200);
+
+        const onText = await loadProfileLength('textgenerationwebui');
+        await expect(onText({ api: 'ooba', preset: '' })).resolves.toBe(PRESET_RESPONSE_LENGTH);
     });
 });

@@ -41,10 +41,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/consta
         settingsBackdrop: 'settings-backdrop',
         settingsDrawer: 'settings-drawer',
     },
-    DEFAULT_INACTIVITY_THRESHOLD: 120,
-    DEFAULT_TALKATIVENESS: 50,
-    MAX_INACTIVITY_THRESHOLD: 360,
-    MIN_INACTIVITY_THRESHOLD: 15,
     WEEKDAY_LABELS: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
@@ -74,12 +70,11 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render
     escapeHtmlText: value => value,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    clamp: value => value,
     getCurrentActivityFromSchedule: jest.fn(),
     getStoredSchedule: jest.fn(),
     normalizeScheduleBlock: value => value,
     parseScheduleTimeRange: () => null,
-    saveStoredSchedule: jest.fn(),
+    setRoutineText: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     clearConversationMemorySummary: jest.fn(),

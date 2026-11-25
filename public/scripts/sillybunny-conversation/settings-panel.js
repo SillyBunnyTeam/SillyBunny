@@ -1,11 +1,4 @@
-import {
-    CHROME_IDS,
-    DEFAULT_INACTIVITY_THRESHOLD,
-    DEFAULT_TALKATIVENESS,
-    MAX_INACTIVITY_THRESHOLD,
-    MIN_INACTIVITY_THRESHOLD,
-    WEEKDAY_LABELS,
-} from './constants.js';
+import { CHROME_IDS, WEEKDAY_LABELS } from './constants.js';
 import {
     getActiveConversationChat,
     getConversationGroupIdForAvatar,
@@ -20,18 +13,17 @@ import { animateIn, animateOut, MOTION_FAST, SPRING_NAVIGATION, SPRING_SHEET } f
 import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrome } from './interface.js';
 import { isConversationActive } from './notifications.js';
 import { getScheduleEditorTargets } from './conversation-list.js';
-import { bindMemberList, bindWeeklyScheduleEditor, updateUserFooter } from './pickers.js';
+import { bindMemberList, updateUserFooter } from './pickers.js';
 import { updateConversationMemorySummary } from './prompt.js';
 import { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 import {
-    clamp,
     getCurrentActivityFromSchedule,
     getStoredSchedule,
     normalizeScheduleBlock,
     parseScheduleTimeRange,
-    saveStoredSchedule,
+    setRoutineText,
 } from './schedule.js';
-import { clearConversationMemorySummary, getConversationMemorySummary, getSettings, saveConversationMemorySummary, saveSettings } from './settings-store.js';
+import { clearConversationMemorySummary, getConversationMemorySummary, getSettings, saveConversationMemorySummary } from './settings-store.js';
 import { getConversationMessages, hasConversationMessageContent } from './conversation-store.js';
 import { ensureConversationChrome, replaceSettingsDrawerContent } from './timeline-render.js';
 
@@ -84,8 +76,6 @@ export function syncConversationPage() {
     sheld.setAttribute('data-sb-conversation-page', page);
     setSettingsShade(backdrop, settingsOpen && getConversationLayout() === 'overlay');
 }
-
-export const setConversationBackdropVisible = syncConversationPage;
 
 // Settings docks as a third column only when the sidebar, a timeline the composer's tool row fits in, and the pane all fit
 // in #sheld: 280px (the widest sidebar) + 480px + 360px (--sb-conv-pane-width). Narrower, the pane overlays the timeline,
@@ -236,8 +226,6 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
     function createEditableSchedule(schedule) {
         const editable = JSON.parse(JSON.stringify(schedule || {
             days: { '0': [], '1': [], '2': [], '3': [], '4': [], '5': [], '6': [] },
-            talkativeness: DEFAULT_TALKATIVENESS,
-            inactivityThresholdMinutes: DEFAULT_INACTIVITY_THRESHOLD,
         }));
 
         if (!editable.days || typeof editable.days !== 'object') {
@@ -249,13 +237,6 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
                 editable.days[String(d)] = [];
             }
         }
-
-        editable.talkativeness = clamp(parsePositiveInt(editable.talkativeness, DEFAULT_TALKATIVENESS, 0), 0, 100);
-        editable.inactivityThresholdMinutes = clamp(
-            parsePositiveInt(editable.inactivityThresholdMinutes, DEFAULT_INACTIVITY_THRESHOLD, MIN_INACTIVITY_THRESHOLD),
-            MIN_INACTIVITY_THRESHOLD,
-            MAX_INACTIVITY_THRESHOLD,
-        );
 
         return editable;
     }
@@ -370,16 +351,6 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
                 <span>Add Time Block</span>
             </button>
         </div>
-        <div class="sb-schedule-modal-meta">
-            <label class="sb-conversation-field-stack">
-                <span>Talkativeness (0-100)</span>
-                <input type="number" class="text_pole sb-schedule-modal-talkativeness" min="0" max="100" step="5" value="${editedSchedule.talkativeness}" />
-            </label>
-            <label class="sb-conversation-field-stack">
-                <span>Inactivity Threshold (Minutes)</span>
-                <input type="number" class="text_pole sb-schedule-modal-patience" min="15" max="360" step="5" value="${editedSchedule.inactivityThresholdMinutes}" />
-            </label>
-        </div>
     `;
 
     function selectDayTab(dayIdx) {
@@ -392,18 +363,6 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         updateModalBody();
     }
 
-    function syncScheduleMetaInputs() {
-        const talkInput = modal.querySelector('.sb-schedule-modal-talkativeness');
-        if (talkInput instanceof HTMLInputElement) {
-            talkInput.value = String(editedSchedule.talkativeness ?? DEFAULT_TALKATIVENESS);
-        }
-
-        const patienceInput = modal.querySelector('.sb-schedule-modal-patience');
-        if (patienceInput instanceof HTMLInputElement) {
-            patienceInput.value = String(editedSchedule.inactivityThresholdMinutes ?? DEFAULT_INACTIVITY_THRESHOLD);
-        }
-    }
-
     function selectScheduleTarget(nextAvatar) {
         if (!nextAvatar || nextAvatar === editAvatar || !targets.some(target => target.avatar === nextAvatar)) {
             return;
@@ -411,11 +370,9 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
 
         editAvatar = nextAvatar;
         editedSchedule = getEditedSchedule(editAvatar);
-        syncScheduleMetaInputs();
         selectDayTab(currentTabDay);
     }
 
-    syncScheduleMetaInputs();
     selectDayTab(currentTabDay);
 
     const targetSelect = modal.querySelector('#sb_schedule_modal_target');
@@ -439,16 +396,6 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         updateModalBody();
     });
 
-    const talkInput = modal.querySelector('.sb-schedule-modal-talkativeness');
-    talkInput?.addEventListener('input', () => {
-        editedSchedule.talkativeness = clamp(parseInt(talkInput.value, 10) || 50, 0, 100);
-    });
-
-    const patienceInput = modal.querySelector('.sb-schedule-modal-patience');
-    patienceInput?.addEventListener('input', () => {
-        editedSchedule.inactivityThresholdMinutes = clamp(parseInt(patienceInput.value, 10) || 120, MIN_INACTIVITY_THRESHOLD, MAX_INACTIVITY_THRESHOLD);
-    });
-
     const popup = new Popup(modal, POPUP_TYPE.TEXT, null, {
         okButton: 'Save',
         cancelButton: 'Cancel',
@@ -463,12 +410,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         return;
     }
 
-    const normalized = {
-        days: {},
-        talkativeness: editedSchedule.talkativeness,
-        inactivityThresholdMinutes: editedSchedule.inactivityThresholdMinutes,
-        generatedAt: Date.now(),
-    };
+    const normalized = { days: {} };
 
     for (let d = 0; d <= 6; d++) {
         const rawBlocks = editedSchedule.days[String(d)] || [];
@@ -487,17 +429,17 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         normalized.days[String(d)] = normalizedBlocks;
     }
 
-    saveStoredSchedule(editAvatar, normalized, { personaId });
+    try {
+        setRoutineText(editAvatar, JSON.stringify(normalized));
+    } catch (error) {
+        toastr.warning(error.message);
+        return;
+    }
     const editTarget = targets.find(target => target.avatar === editAvatar);
     const editGroupId = editTarget?.groupId || '';
-    const editSettings = getSettings(editAvatar, { groupId: editGroupId, personaId });
-    editSettings.talkativeness = normalized.talkativeness;
-    editSettings.inactivity_threshold = normalized.inactivityThresholdMinutes;
-    saveSettings(editAvatar, editSettings, { groupId: editGroupId, personaId });
     if (isConversationActive(editAvatar, editGroupId, { personaId })) {
-        applySettingsToPanel(editSettings);
         renderScheduleDisplay();
-        updateConversationChrome(editSettings);
+        updateConversationChrome(getSettings(editAvatar, { groupId: editGroupId, personaId }));
     } else {
         const currentAvatar = getCurrentCharAvatar();
         const currentGroupId = getConversationGroupIdForAvatar(currentAvatar);
@@ -530,9 +472,6 @@ export function renderScheduleDisplay() {
     const current = getCurrentActivityFromSchedule(schedule, avatar, now, { personaId });
     const todayBlocks = Array.isArray(schedule.days[todayIndex]) ? schedule.days[todayIndex] : [];
 
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId, personaId });
-    const talkativeness = parsePositiveInt(settings.talkativeness, DEFAULT_TALKATIVENESS, 0);
     const generatedLabel = formatScheduleTimestamp(schedule?.generatedAt);
 
     const currentLine = `<div class="sb-conversation-schedule-now" data-status="${escapeHtmlAttribute(current.status)}">`
@@ -555,11 +494,7 @@ export function renderScheduleDisplay() {
         blocksHtml = `<p class="sb-conversation-schedule-empty">No blocks scheduled for ${escapeHtmlText(WEEKDAY_LABELS[todayIndex])}.</p>`;
     }
 
-    const metaParts = [`Talkativeness ${talkativeness}`];
-    if (generatedLabel) {
-        metaParts.push(`Updated ${generatedLabel}`);
-    }
-    const metaHtml = `<p class="sb-conversation-schedule-meta">${escapeHtmlText(metaParts.join(' \u00b7 '))}</p>`;
+    const metaHtml = generatedLabel ? `<p class="sb-conversation-schedule-meta">${escapeHtmlText(`Updated ${generatedLabel}`)}</p>` : '';
 
     display.innerHTML = currentLine + blocksHtml + metaHtml;
 }
@@ -669,7 +604,6 @@ export function openConversationSettings() {
     chrome.drawer.dataset.conversationPersonaId = personaId;
 
     applySettingsToPanel(settings);
-    bindWeeklyScheduleEditor();
     bindMemberList('sb_conv_chiming_member_list', 'sb_conv_multi_char_search');
     renderScheduleDisplay();
     renderConversationMemoryPanel();
