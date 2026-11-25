@@ -1,8 +1,6 @@
 export const conversationState = {
     initialized: false,
     autoWorkerStarted: false,
-    autoWorkerIntervalId: null,
-    autoWorkerAbortController: null,
     autoWorkerBusy: false,
     externalGenerationActive: false,
     generationActive: false,

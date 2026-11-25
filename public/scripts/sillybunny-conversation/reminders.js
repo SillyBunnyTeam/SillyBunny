@@ -8,10 +8,11 @@
  */
 
 import { hashCommitText } from '../generation-commit-plan.js';
-import { REMINDER_RETRY_DELAY_MS } from './constants.js';
 
 /** A reminder that has failed this many times is given up. */
 export const MAX_REMINDER_ATTEMPTS = 5;
+/** How long an attempt holds the reminder before another may start. */
+export const REMINDER_LEASE_MS = 60 * 1000;
 
 /**
  * @param {Record<string, any>} reminder
@@ -44,7 +45,7 @@ export function isReminderDue(reminder, now) {
  * afterwards, and the lease keeps the next page from starting a second request while the server may still write the first.
  */
 export function claimReminderAttempt(reminder, now) {
-    return { attempts: (reminder.attempts ?? 0) + 1, lastAttemptAt: now, retryAfter: now + REMINDER_RETRY_DELAY_MS };
+    return { attempts: (reminder.attempts ?? 0) + 1, lastAttemptAt: now, retryAfter: now + REMINDER_LEASE_MS };
 }
 
 /**

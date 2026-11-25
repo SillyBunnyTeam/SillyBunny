@@ -1,26 +1,18 @@
 import { chat, is_send_press } from '../../script.js';
+import { pageId } from '../resumable-generation.js';
 import { isTemporaryChat } from '../sillybunny-temporary-chat-state.js';
 import { selected_group } from '../group-chats.js';
 import {
-    DEFAULT_INACTIVITY_THRESHOLD,
-    DEFAULT_MAX_FOLLOWUPS,
-    DEFAULT_SETTINGS,
     AUTO_WORKER_INTERVAL_GLOBAL_KEY,
     AUTO_WORKER_INTERVAL_MS,
+    DEFAULT_SETTINGS,
     GROUP_ASIDE_COOLDOWN_MS,
     GROUP_ASIDE_MENTION_COOLDOWN_MS,
-    LAST_CHIME_SESSION_PREFIX,
-    LAST_IDLE_SESSION_PREFIX,
-    MAX_INACTIVITY_THRESHOLD,
-    MIN_INACTIVITY_THRESHOLD,
-    PARALLEL_CHIME_MAX_MEMBERS,
-    REMINDER_RETRY_DELAY_MS,
 } from './constants.js';
 import {
     getActiveConversationChat,
     getConversationAddress,
     getConversationGroupIdForAvatar,
-    getConversationKey,
     getConversationPersonaId,
     getConversationRecord,
     getCurrentCharAvatar,
@@ -41,58 +33,42 @@ import {
     getCurrentGroupConversationMembers,
     getGroupAsideKey,
 } from './conversation-list.js';
-import {
-    chooseConversationMember,
-    getAllowedMemberCharacters,
-    getConversationMemberSettings,
-    getLeastRecentMember,
-    getRecentlySilentMentionedMember,
-    isCharacterMentionedInText,
-} from './members.js';
-import { getConversationPersonaName, getUserStatus, safeParseWeeklySchedule } from './personas.js';
-import { clamp, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { isCharacterMentionedInText } from './members.js';
+import { getConversationPersonaName, getUserStatus } from './personas.js';
+import { claimReminderAttempt, getReminderState, getReminderToken, isReminderDue, markReminderDelivered, MAX_REMINDER_ATTEMPTS, settleFailedReminderAttempt } from './reminders.js';
+import { createAutomaticReplyPlan, createAutomaticSlotToken } from './reply-commit-plan.js';
+import { getReplyOriginFlags } from './reply-steps.js';
 import { buildConversationRoleplayContext } from './shared-helpers.js';
-import {
-    getAutoCharacterChatCooldownMs,
-    getConversationChatActivityTime,
-    getConversationSessionMarker,
-    getFollowupCount,
-    getLastAutoCharacterChatTime,
-    getLastUserActivity,
-    getSettings,
-    setConversationSessionMarker,
-    setFollowupCount,
-    setLastAutoCharacterChatTime,
-} from './settings-store.js';
+import { getFollowupCount, getLastUserActivity, getSettings, setFollowupCount } from './settings-store.js';
 import {
     conversationState,
     groupAsideBusyKeys,
     groupAsideLastSent,
-    memberReplyBusyKeys,
     sendQueue,
 } from './state.js';
 import { clearConversationTimeouts, setConversationTimeout } from './timers.js';
-import { getImageCooldownRemainingSeconds, markImageGenerated, resolveConversationReminderChatId } from './conversation-store.js';
+import {
+    ensureConversationChatLoaded,
+    getConversationMessages,
+    getImageCooldownRemainingSeconds,
+    markImageGenerated,
+    reloadConversationChat,
+    resolveConversationReminderChatId,
+} from './conversation-store.js';
 import { getConversationActivityContext, withTypingParticipant } from './typing.js';
+import { getEffectivePatienceMinutes, getTalkativeness } from './worker-talkativeness.js';
+import { createWorkerLock } from './worker-lock.js';
+import { createWorkerRunner } from './worker-runner.js';
+import { pickAutomaticSpeaker, planAutomaticMessage, readMessagingFirstSettings } from './worker-rules.js';
 
-function isAutoWorkerAborted(signal = conversationState.autoWorkerAbortController?.signal) {
+function isAutoWorkerAborted(signal) {
     return Boolean(signal?.aborted);
 }
 
 export function stopConversationAutoWorker() {
-    const existingAutoWorkerIntervalId = globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY];
-    if (existingAutoWorkerIntervalId) {
-        window.clearInterval(existingAutoWorkerIntervalId);
-    }
-
-    if (conversationState.autoWorkerIntervalId) {
-        window.clearInterval(conversationState.autoWorkerIntervalId);
-    }
-
-    conversationState.autoWorkerIntervalId = null;
+    // A copy of this module that the page loaded earlier may still run a worker of its own.
+    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY]?.stop?.();
     globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = null;
-    conversationState.autoWorkerAbortController?.abort?.();
-    conversationState.autoWorkerAbortController = null;
     conversationState.autoWorkerStarted = false;
     clearConversationTimeouts();
 }
@@ -100,17 +76,16 @@ export function stopConversationAutoWorker() {
 export function startConversationAutoWorker() {
     stopConversationAutoWorker();
 
-    const controller = new AbortController();
-    conversationState.autoWorkerAbortController = controller;
-    conversationState.autoWorkerIntervalId = window.setInterval(() => {
-        void conversationModeAutoMessageWorker({ signal: controller.signal });
-    }, AUTO_WORKER_INTERVAL_MS);
-    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = conversationState.autoWorkerIntervalId;
+    const runner = createWorkerRunner({
+        lock: createWorkerLock(),
+        tick: options => conversationModeAutoMessageWorker(options),
+        intervalMs: AUTO_WORKER_INTERVAL_MS,
+        windowTarget: window,
+        documentTarget: document,
+    });
+    runner.start();
+    globalThis[AUTO_WORKER_INTERVAL_GLOBAL_KEY] = runner;
     conversationState.autoWorkerStarted = true;
-}
-
-export function buildAutoMessageDirective(directive) {
-    return directive;
 }
 
 export async function maybeGenerateSpontaneousImage(settings, avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
@@ -121,7 +96,7 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const prompt = buildCharacterImagePrompt(
-        settings.selfie_prompt || settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
+        settings.image_gen_prompt_template || DEFAULT_SETTINGS.image_gen_prompt_template,
         'a spontaneous selfie in the current DM conversation',
         avatar,
     );
@@ -143,101 +118,6 @@ export async function maybeGenerateSpontaneousImage(settings, avatar = getCurren
     }
 }
 
-/**
- * The check that an automatic message runs before it writes: its conversation and chat still exist, and, unless the
- * user asked for the message, the chat has a message from the user. Null when that is not so now.
- * @returns {(() => boolean)|null}
- */
-function createAutomaticTargetCheck(avatar, { chatId = '', groupId = '', personaId = getConversationPersonaId() } = {}, { needsUserMessage = true } = {}) {
-    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
-    if (!address) {
-        return null;
-    }
-    const check = createTargetCheck(id => conversationData.get(id), address, { needsUserMessage });
-    return check() ? check : null;
-}
-
-/**
- * Sends one automatic message of the character. `needsUserMessage` is false for a reminder, which the user asked for;
- * every other automatic message waits for the user to have written in the chat.
- */
-export async function triggerAutoMessage(directive, settings, extra = {}, avatar = getCurrentCharAvatar(), { chatId = '', personaId = getConversationPersonaId(), needsUserMessage = true } = {}) {
-    const character = getCharacterForAvatar(avatar);
-    if (conversationState.autoWorkerBusy || conversationState.conversationReplyBusy || is_send_press || !character || !avatar) {
-        return false;
-    }
-
-    const groupId = extra.groupId ?? getConversationGroupIdForAvatar(avatar);
-    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
-    const capturedChatId = chatId || conversationRecord?.activeChatId || '';
-    if (!capturedChatId || !conversationRecord?.chats?.some(entry => entry.id === capturedChatId)) {
-        return false;
-    }
-    const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId: capturedChatId, groupId, personaId }, { needsUserMessage });
-    if (!targetIsCurrent) {
-        return false;
-    }
-    // The chat is read for the prompt and written to with the reply, so it has to be loaded.
-    try {
-        await conversationData.loadChat({ conversationId: conversationRecord.id, chatId: capturedChatId });
-    } catch {
-        return false;
-    }
-
-    conversationState.autoWorkerBusy = true;
-
-    try {
-        const quietPrompt = buildAutoMessageDirective(directive);
-        const response = await generateConversationReply(quietPrompt, settings, {
-            speakerName: character.name || 'Character',
-            avatar,
-            chatId: capturedChatId,
-            anchorAvatar: avatar,
-            groupId,
-            personaId,
-        });
-
-        if (response?.trim() && targetIsCurrent()) {
-            const postedText = await withTypingParticipant(character, () => postCharacterReply(response.trim(), settings, {
-                extra: {
-                    conversation_mode_auto: true,
-                    ...extra,
-                },
-                chatId: capturedChatId,
-                groupId,
-                personaId,
-                validateTarget: targetIsCurrent,
-            }, avatar), avatar, { chatId: capturedChatId, groupId, personaId });
-            if (!postedText) {
-                return false;
-            }
-            if (targetIsCurrent()) {
-                await maybeGenerateSpontaneousImage(settings, avatar, { chatId: capturedChatId, groupId, personaId });
-            }
-            return true;
-        }
-    } catch (error) {
-        reportConversationGenerationError('auto-message', error, { level: 'warning' });
-    } finally {
-        conversationState.autoWorkerBusy = false;
-    }
-
-    return false;
-}
-
-export function getCurrentMinuteKey(date = new Date()) {
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
-}
-
-export function getCurrentDayKey(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
 export function getLastAutoMessageTime(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     return parsePositiveInt(getActiveConversationChat(avatar, { chatId, groupId, personaId })?.lastAutoMessageAt, 0, 0);
 }
@@ -249,186 +129,139 @@ export function setLastAutoMessageTime(avatar, timestamp = Date.now(), { chatId 
     }
 }
 
-// The weekly slots that these markers belong to are not kept by the new storage; the markers last until the page closes.
-const scheduleTriggers = new Map();
-
-function getScheduleTriggerState(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const key = getConversationKey(avatar, groupId, { personaId }) + `:${chatId}`;
-    if (!scheduleTriggers.has(key)) {
-        scheduleTriggers.set(key, {});
+/**
+ * The checks that an automatic message runs before it writes, each time it is called: its conversation and chat still
+ * exist, unless the user asked for the message the chat has a message from the user, and the user is not Invisible.
+ * The conversation is read again each time, because a model can take minutes to answer and the conversation or the chat
+ * can be deleted meanwhile. Null when the message cannot be written now.
+ * @returns {{ address: { conversationId: string, chatId: string }, check: () => boolean }|null}
+ */
+function createAutomaticTargetCheck(avatar, { chatId = '', groupId = '', personaId = getConversationPersonaId() } = {}, { needsUserMessage = true } = {}) {
+    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
+    if (!address) {
+        return null;
     }
-    return scheduleTriggers.get(key);
+    const exists = createTargetCheck(id => conversationData.get(id), address, { needsUserMessage });
+    const check = () => exists() && getUserStatus() !== 'offline';
+    return check() ? { address, check } : null;
 }
 
-export function setScheduleTriggered(avatar, triggerKey, timestamp, options = {}) {
-    const state = getScheduleTriggerState(avatar, options);
-    state[triggerKey] = timestamp;
-
-    const stateEntries = Object.entries(state).sort((first, second) => first[1] - second[1]);
-    while (stateEntries.length > 100) {
-        const [oldestKey] = stateEntries.shift();
-        delete state[oldestKey];
-    }
+/** Whether the chat holds a message of this reply, written by this page, another page, or the server. */
+function hasMessageOfReply(avatar, token, { chatId, groupId, personaId }) {
+    return getConversationMessages(avatar, { chatId, create: false, groupId, personaId }).some(message => message?.extra?.reply_token === token);
 }
 
-export function hasScheduleTriggered(avatar, triggerKey, options = {}) {
-    return Object.prototype.hasOwnProperty.call(getScheduleTriggerState(avatar, options), triggerKey);
-}
-
-export async function checkScheduledAutoMessages(avatar, settings, now, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!settings.auto_message) {
-        return false;
+/**
+ * Sends one automatic message of a character: a check-in to the user, members talking to each other, or a reminder.
+ * The reply is asked for with a commit plan, so that the server writes it into the chat when this page is closed before
+ * the model has answered, and a page that opens the chat later lands it (`reply-finalizer.js`).
+ *
+ * `onStart` writes the bookkeeping that tells the next tick that this message is on its way. It runs after the
+ * checks and before the request, because a page that is closed during the request writes nothing afterwards, and a
+ * message that the server writes later would otherwise be sent again by the next page.
+ * The token names the message, so that a second attempt at it, on this page or another, is refused when the chat has it.
+ *
+ * @param {object} message
+ * @param {'auto'|'auto_chat'|'reminder'} message.origin
+ * @param {string} message.anchorAvatar The avatar that names the conversation.
+ * @param {{ avatar: string, name: string }} message.speaker
+ * @param {string} message.directive
+ * @param {string} message.token
+ * @param {boolean} [message.needsUserMessage] False for a reminder, which the user asked for; every other automatic message waits for the user to have written in the chat.
+ * @param {() => boolean} [message.isStillWanted] False when the message is no longer wanted, for instance a reminder that was cancelled.
+ * @param {() => void} [message.onStart]
+ * @param {boolean} [message.spontaneousImage] Whether a picture may follow the message, when the conversation allows them.
+ * @returns {Promise<'posted'|'committed'|'already-sent'|'failed'|'not-started'>} `not-started` leaves no trace: nothing was asked of the model.
+ */
+export async function sendAutomaticMessage({ origin, anchorAvatar, speaker, groupId = '', personaId = getConversationPersonaId(), chatId, directive, token, settings, needsUserMessage = true, isStillWanted = () => true, onStart = () => {}, spontaneousImage = false, reminderId = '', extra = {} }) {
+    const character = getCharacterForAvatar(speaker.avatar);
+    if (conversationState.autoWorkerBusy || conversationState.conversationReplyBusy || is_send_press || !character || !getCharacterForAvatar(anchorAvatar)) {
+        return 'not-started';
     }
 
-    const hasLegacy = Boolean(settings.ai_schedule);
-    const weeklyEntries = safeParseWeeklySchedule(settings.weekly_schedule);
-    if (!hasLegacy && !weeklyEntries.length) {
-        return false;
-    }
-
-    const currentDate = new Date(now);
-    const currentMinute = getCurrentMinuteKey(currentDate);
-    const currentDay = getCurrentDayKey(currentDate);
-    const currentDayOfWeek = currentDate.getDay(); // 0=Sun..6=Sat
-
-    // Weekly scheduler entries (item 3)
-    for (const entry of weeklyEntries) {
-        if (entry.enabled === false) {
-            continue;
+    // The flag is set before the first wait, so that a reply to the user does not start in between; it keeps the reply of the user behind this message.
+    conversationState.autoWorkerBusy = true;
+    try {
+        const target = createAutomaticTargetCheck(anchorAvatar, { chatId, groupId, personaId }, { needsUserMessage });
+        if (!target) {
+            return 'not-started';
         }
-        if (!Array.isArray(entry.days) || !entry.days.includes(currentDayOfWeek)) {
-            continue;
+        const scope = { chatId, groupId, personaId };
+        const validateTarget = () => target.check() && isStillWanted();
+
+        // The chat is read for the prompt and written to with the reply. It also lands a reply that the server wrote into it while no page was open.
+        try {
+            await ensureConversationChatLoaded(anchorAvatar, scope);
+        } catch {
+            return 'not-started';
         }
-        if (!entry.time || entry.time !== currentMinute) {
-            continue;
+        if (!target.check()) {
+            return 'not-started';
         }
-
-        const triggerKey = `weekly:${currentDay}:${entry.time}:${entry.message}`;
-        if (hasScheduleTriggered(avatar, triggerKey, { chatId, groupId, personaId })) {
-            continue;
+        if (hasMessageOfReply(anchorAvatar, token, scope)) {
+            return 'already-sent';
         }
-
-        const triggered = await triggerAutoMessage(
-            `[System directive: Your weekly schedule is due: "${entry.message}". Send a message with this context in mind.]`,
-            settings,
-            { schedule: `weekly:${entry.time}`, groupId },
-            avatar,
-            { chatId, personaId },
-        );
-        if (triggered) {
-            setScheduleTriggered(avatar, triggerKey, now, { chatId, groupId, personaId });
-            setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-        }
-
-        return triggered;
-    }
-
-    // Legacy HH:MM and relative-minute schedule lines
-    if (!hasLegacy) {
-        return false;
-    }
-
-    for (const line of settings.ai_schedule.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            continue;
+        if (!validateTarget()) {
+            return 'not-started';
         }
 
-        const absoluteMatch = trimmed.match(/^(\d{2}):(\d{2})\s*-\s*(.*)$/);
-        if (absoluteMatch && `${absoluteMatch[1]}:${absoluteMatch[2]}` === currentMinute) {
-            const triggerKey = `absolute:${currentDay}:${currentMinute}:${trimmed}`;
-            if (hasScheduleTriggered(avatar, triggerKey, { chatId, groupId, personaId })) {
-                continue;
-            }
+        onStart();
+        const commit = {
+            createPlan: route => createAutomaticReplyPlan({
+                address: target.address,
+                speaker: { avatar: speaker.avatar, name: speaker.name },
+                anchorAvatar,
+                origin,
+                route,
+                messages: getConversationMessages(anchorAvatar, { ...scope, create: false }),
+                token,
+                pageId,
+                now: Date.now(),
+                reminderId,
+            }),
+            state: null,
+        };
+        const response = await generateConversationReply(directive, settings, {
+            speakerName: speaker.name,
+            trimNames: speaker.avatar === anchorAvatar,
+            avatar: anchorAvatar,
+            anchorAvatar,
+            speakerAvatar: speaker.avatar,
+            ...scope,
+            commit,
+        });
 
-            const triggered = await triggerAutoMessage(`[System directive: Your schedule is due: "${absoluteMatch[3]}". Send a message with this context in mind.]`, settings, { schedule: trimmed, groupId }, avatar, { chatId, personaId });
-            if (triggered) {
-                setScheduleTriggered(avatar, triggerKey, now, { chatId, groupId, personaId });
-                setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-            }
-
-            return triggered;
+        if (commit.state === 'committed') {
+            // The server wrote the reply while this page waited. Reading the chat again lands it as bubbles, which this page must not write a second time.
+            await reloadConversationChat(anchorAvatar, scope);
+            return 'committed';
+        }
+        const text = response?.trim();
+        if (!text || !validateTarget()) {
+            return 'failed';
+        }
+        if (hasMessageOfReply(anchorAvatar, token, scope)) {
+            return 'already-sent';
         }
 
-        const relativeMatch = trimmed.match(/^(\d+)\s*-\s*(.*)$/);
-        if (relativeMatch) {
-            const delayMinutes = parsePositiveInt(relativeMatch[1], 0, 0);
-            const lastUserActivity = getLastUserActivity(avatar, now, { chatId, groupId, personaId });
-            const elapsedMinutes = (now - lastUserActivity) / (60 * 1000);
-
-            if (delayMinutes > 0 && elapsedMinutes >= delayMinutes) {
-                const triggerKey = `relative:${lastUserActivity}:${trimmed}`;
-                if (hasScheduleTriggered(avatar, triggerKey, { chatId, groupId, personaId })) {
-                    continue;
-                }
-
-                const triggered = await triggerAutoMessage(`[System directive: You are sending a check-in due to ${delayMinutes} minutes of silence: "${relativeMatch[2]}".]`, settings, { schedule: trimmed, groupId }, avatar, { chatId, personaId });
-                if (triggered) {
-                    setScheduleTriggered(avatar, triggerKey, now, { chatId, groupId, personaId });
-                    setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-                }
-
-                return triggered;
-            }
+        const bubbleExtra = { ...getReplyOriginFlags(origin, reminderId), ...extra, reply_token: token };
+        const isAnchor = speaker.avatar === anchorAvatar;
+        const posted = isAnchor
+            ? await withTypingParticipant(character, () => postCharacterReply(text, settings, { extra: bubbleExtra, ...scope, validateTarget }, anchorAvatar), anchorAvatar, scope)
+            : await postMemberConversationReply(text, character, settings, { avatar: anchorAvatar, extra: { ...bubbleExtra, member_avatar: speaker.avatar }, ...scope, validateTarget });
+        if (!posted) {
+            return 'failed';
         }
-    }
-
-    return false;
-}
-
-export async function checkIdleAutoMessage(avatar, settings, now, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const followupEnabled = Boolean(settings.idle_followup);
-    const spontaneousEnabled = Boolean(settings.idle_spontaneous);
-    if (!followupEnabled && !spontaneousEnabled) {
-        return false;
-    }
-
-    const lastUserActivity = getLastUserActivity(avatar, now, { chatId, groupId, personaId });
-    const idleMinutes = (now - lastUserActivity) / (60 * 1000);
-
-    if (idleMinutes < settings.idle_limit) {
-        return false;
-    }
-
-    const followupSessionKey = `${LAST_IDLE_SESSION_PREFIX}followup`;
-    if (followupEnabled && getConversationSessionMarker(avatar, followupSessionKey, { chatId, groupId, personaId }) !== String(lastUserActivity)) {
-        const triggered = await triggerAutoMessage(
-            '[System directive: The user has been quiet for a while. Send a casual auto follow-up checking in or asking what they are up to.]',
-            settings,
-            { idle_action: 'followup', groupId },
-            avatar,
-            { chatId, personaId },
-        );
-        if (triggered) {
-            setConversationSessionMarker(avatar, followupSessionKey, lastUserActivity, { chatId, groupId, personaId });
-            setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
+        if (spontaneousImage && isAnchor && validateTarget()) {
+            await maybeGenerateSpontaneousImage(settings, anchorAvatar, scope);
         }
-        return triggered;
+        return 'posted';
+    } catch (error) {
+        reportConversationGenerationError(origin === 'reminder' ? 'reminder' : origin === 'auto_chat' ? 'character-to-character chat' : 'auto-message', error, { level: 'warning', toast: origin !== 'auto_chat' });
+        return 'failed';
+    } finally {
+        conversationState.autoWorkerBusy = false;
     }
-
-    const spontaneousIdleLimit = followupEnabled ? settings.idle_limit * 2 : settings.idle_limit;
-    if (!spontaneousEnabled || idleMinutes < spontaneousIdleLimit) {
-        return false;
-    }
-
-    const spontaneousSessionKey = `${LAST_IDLE_SESSION_PREFIX}spontaneous`;
-    if (getConversationSessionMarker(avatar, spontaneousSessionKey, { chatId, groupId, personaId }) === String(lastUserActivity)) {
-        return false;
-    }
-
-    const triggered = await triggerAutoMessage(
-        '[System directive: Send a spontaneous ping to the user, starting a new topic or sharing a casual thought.]',
-        settings,
-        { idle_action: 'spontaneous', groupId },
-        avatar,
-        { chatId, personaId },
-    );
-    if (triggered) {
-        setConversationSessionMarker(avatar, spontaneousSessionKey, lastUserActivity, { chatId, groupId, personaId });
-        setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-    }
-
-    return triggered;
 }
 
 export function buildProactiveDirective(activity, status, now = new Date()) {
@@ -455,285 +288,106 @@ export function buildProactiveDirective(activity, status, now = new Date()) {
     return `[System directive: It is ${timeOfDay} and you are currently ${activity} (status: ${status}). ${statusNote} The user has not replied in a while. Reach out to them yourself with a short, natural direct message. Reference your current activity or the time of day if it feels right. Do not wait for them to speak first.]`;
 }
 
-export async function checkProactiveMessaging(avatar, settings, now, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), lastAutoMessageAt = null, personaId = getConversationPersonaId() } = {}) {
-    if (!settings.proactive_messaging) {
-        return false;
-    }
-
-    // The user being on Do Not Disturb fully suppresses proactive messaging.
-    if (getUserStatus() === 'dnd') {
-        return false;
-    }
-
-    const schedule = getStoredSchedule(avatar, { personaId });
-    const current = getCurrentActivityFromSchedule(schedule, avatar, new Date(now), { personaId });
-
-    // The character never initiates while offline.
-    if (current.status === 'offline') {
-        return false;
-    }
-
-    const lastMessageRole = getActiveConversationChat(avatar, { chatId, groupId, personaId })?.lastMessageRole || '';
-    const lastUserActivity = getLastUserActivity(avatar, now, { chatId, groupId, personaId });
-    const idleMinutes = (now - lastUserActivity) / (60 * 1000);
-    const maxFollowups = clamp(parsePositiveInt(settings.max_followups, DEFAULT_MAX_FOLLOWUPS, 1), 1, 3);
-    const sentCount = getFollowupCount(avatar, { chatId, groupId, personaId });
-
-    // Catch-up: the user messaged while the character was unavailable and it is
-    // now back online. Respond regardless of the inactivity threshold.
-    const isCatchUp = lastMessageRole === 'user' && sentCount === 0;
-
-    if (!isCatchUp) {
-        if (sentCount >= maxFollowups) {
-            return false;
-        }
-
-        let thresholdMinutes = clamp(
-            parsePositiveInt(settings.inactivity_threshold, DEFAULT_INACTIVITY_THRESHOLD, MIN_INACTIVITY_THRESHOLD),
-            MIN_INACTIVITY_THRESHOLD,
-            MAX_INACTIVITY_THRESHOLD,
-        );
-
-        // Busy characters wait three times as long before reaching out.
-        if (current.status === 'dnd') {
-            thresholdMinutes *= 3;
-        }
-
-        if (sentCount === 0) {
-            // First proactive message is measured from the user's last activity.
-            if (idleMinutes < thresholdMinutes) {
-                return false;
-            }
-        } else {
-            // Follow-ups use an escalating cooldown measured from the last auto message.
-            const elapsedSinceAuto = (now - (lastAutoMessageAt ?? getLastAutoMessageTime(avatar, { chatId, groupId, personaId }))) / (60 * 1000);
-            const followupThreshold = thresholdMinutes * Math.pow(2, sentCount);
-            if (elapsedSinceAuto < followupThreshold) {
-                return false;
-            }
-        }
-    }
-
-    const directive = buildProactiveDirective(current.activity, current.status, new Date(now));
-    const triggered = await triggerAutoMessage(directive, settings, {
-        proactive: true,
-        proactive_status: current.status,
-        groupId,
-    }, avatar, { chatId, personaId });
-
-    if (triggered) {
-        setFollowupCount(avatar, sentCount + 1, { chatId, groupId, personaId });
-        setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-    }
-
-    return triggered;
+function buildMemberTalkDirective(speaker, target, activity, status) {
+    return `[System directive: You are ${speaker.name}, speaking autonomously in a private group DM. Aim this message at ${target.name}, not the user, unless the user is directly relevant. You are currently ${activity} (status: ${status}). This is character-to-character ambient chat, so continue the casual conversation or start a friendly new topic with one short, natural message. Other people may reply later. Output only your message body, without a name prefix.]`;
 }
 
-export function getMemberReplyBusyKey(avatar, memberAvatar, scope) {
-    return `${avatar || 'conversation'}:${memberAvatar || 'member'}:${scope || 'reply'}`;
+/**
+ * The characters that may send an automatic message in a conversation, with what the rules need to know of each:
+ * the card's talkativeness and the status now. A direct conversation has its character only; extras do not speak.
+ */
+function getAutomaticMembers({ character, groupId, group }, view, personaId, now) {
+    const avatars = groupId
+        ? (group?.members ?? view.characters).filter(avatar => avatar && !group?.disabled_members?.includes(avatar))
+        : [character.avatar];
+    return avatars.flatMap((avatar) => {
+        const card = getCharacterForAvatar(avatar);
+        if (!card?.avatar) {
+            return [];
+        }
+        const context = getConversationActivityContext(getSettings(avatar, { groupId, personaId }), avatar, new Date(now), { personaId });
+        return [{ avatar, name: card.name || 'Character', talkativeness: getTalkativeness(avatar), status: context.status || 'online', activity: context.activity || 'free time' }];
+    });
 }
 
-export function getConversationMemberChimeCandidates(avatar, selectedAvatars, { chatId = '', max = PARALLEL_CHIME_MAX_MEMBERS, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId(), settings = getSettings(avatar, { groupId, personaId }) } = {}) {
-    const members = getAllowedMemberCharacters(selectedAvatars, avatar, settings, { chatId, groupId, includeConversationMembers: true, personaId });
-    const candidates = [];
-    const addCandidate = (memberCharacter) => {
-        if (memberCharacter?.avatar && !candidates.some(candidate => candidate.avatar === memberCharacter.avatar)) {
-            candidates.push(memberCharacter);
-        }
+/**
+ * Messaging first, the one switch of a conversation: after the patience of the speaker has passed with no word from the
+ * user, a character writes first, and in a group, once that went unanswered, the members talk to each other. With the
+ * switch off nothing here runs. At most `max_followups` messages follow the last message of the user.
+ * @returns {Promise<boolean>} Whether a message was sent.
+ */
+export async function checkMessagingFirst(item, now, { personaId = getConversationPersonaId() } = {}) {
+    const { character, settings, groupId = '' } = item;
+    const { enabled, maxFollowups } = readMessagingFirstSettings(settings);
+    if (!enabled) {
+        return false;
+    }
+
+    const anchorAvatar = character.avatar;
+    const view = getConversationRecord(anchorAvatar, { groupId, personaId });
+    const chatId = view?.activeChatId || '';
+    // A chat with no message from the user gets none, whether it is new or was emptied.
+    const target = chatId ? createAutomaticTargetCheck(anchorAvatar, { chatId, groupId, personaId }) : null;
+    if (!target) {
+        return false;
+    }
+
+    const scope = { chatId, groupId, personaId };
+    const sentCount = getFollowupCount(anchorAvatar, scope);
+    const lastUserActivity = getLastUserActivity(anchorAvatar, now, scope);
+    const lastAutoMessageAt = getLastAutoMessageTime(anchorAvatar, scope);
+    const userStatus = getUserStatus();
+    const isGroup = Boolean(groupId);
+    const state = {
+        now,
+        lastUserActivity,
+        lastAutoMessageAt,
+        sentCount,
+        maxFollowups,
+        lastMessageRole: view.chats.find(entry => entry.id === chatId)?.lastMessageRole || '',
+        userStatus,
+        isGroup,
     };
-
-    addCandidate(getRecentlySilentMentionedMember(avatar, selectedAvatars, settings, { chatId, groupId, personaId }));
-    addCandidate(getLeastRecentMember(avatar, selectedAvatars, settings, { chatId, groupId, personaId }));
-
-    const shuffled = [...members].sort(() => Math.random() - 0.5);
-    for (const memberCharacter of shuffled) {
-        if (candidates.length >= max) {
-            break;
-        }
-        addCandidate(memberCharacter);
-    }
-
-    return candidates.slice(0, max);
-}
-
-export async function triggerConversationMemberChime(memberCharacter, settings, avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!memberCharacter?.avatar || !avatar) {
+    const dueMembers = getAutomaticMembers(item, view, personaId, now)
+        .filter(member => (!isGroup || member.talkativeness > 0) && planAutomaticMessage({ ...state, patienceMinutes: getEffectivePatienceMinutes(view, member.avatar), speakerStatus: member.status }));
+    if (!dueMembers.length) {
         return false;
     }
 
-    const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId, groupId, personaId });
-    if (!targetIsCurrent) {
-        return false;
-    }
-
-    const busyKey = getMemberReplyBusyKey(avatar, memberCharacter.avatar, `chime:${groupId || 'solo'}`);
-    if (memberReplyBusyKeys.has(busyKey)) {
-        return false;
-    }
-
-    memberReplyBusyKeys.add(busyKey);
+    // Who spoke last is read from the chat.
     try {
-        const memberName = memberCharacter.name || 'A friend';
-        const memberSettings = getConversationMemberSettings(memberCharacter.avatar, settings, { groupId, personaId });
-        const memberContext = getConversationActivityContext(memberSettings, memberCharacter.avatar, new Date(), { personaId });
-        const character = getCharacterForAvatar(avatar);
-        const charName = character?.name || getCurrentCharName();
-        const userName = getConversationPersonaName(personaId, 'User');
-        const directive = `[System directive: You are ${memberName}, chiming in on a private group DM conversation between ${charName} and ${userName}. You are currently ${memberContext.activity} (status: ${memberContext.status}). If you were mentioned recently, answer naturally. Otherwise add one short message only if you have something distinct to contribute. Other people may be typing at the same time; do not wait for them. Output only your message body, without a name prefix.]`;
-        const response = await generateConversationReply(directive, memberSettings, {
-            trimNames: false,
-            speakerName: memberName,
-            avatar,
-            chatId,
-            anchorAvatar: avatar,
-            speakerAvatar: memberCharacter.avatar,
-            groupId,
-            personaId,
-        });
-
-        if (response?.trim() && targetIsCurrent()) {
-            await postMemberConversationReply(response.trim(), memberCharacter, memberSettings, {
-                avatar,
-                chatId,
-                extra: {
-                    conversation_mode_chime: true,
-                    member_avatar: memberCharacter.avatar,
-                },
-                groupId,
-                personaId,
-                validateTarget: targetIsCurrent,
-            });
-            return true;
-        }
-    } catch (error) {
-        reportConversationGenerationError('partner chime', error, { toast: false });
-    } finally {
-        memberReplyBusyKeys.delete(busyKey);
+        await ensureConversationChatLoaded(anchorAvatar, scope);
+    } catch {
+        return false;
     }
-
-    return false;
-}
-
-export async function triggerMultiCharacterChime(settings, avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const members = getConversationMemberChimeCandidates(avatar, settings.multi_char_names, { chatId, groupId, personaId, settings });
-    if (!members.length) {
+    const speaker = pickAutomaticSpeaker({ members: dueMembers, messages: getConversationMessages(anchorAvatar, { ...scope, create: false }), anchorAvatar, isGroup });
+    if (!speaker) {
         return false;
     }
 
-    const results = await Promise.allSettled(members.map(memberCharacter => triggerConversationMemberChime(memberCharacter, settings, avatar, { chatId, groupId, personaId })));
-    return results.some(result => result.status === 'fulfilled' && result.value === true);
-}
-
-export async function checkMultiCharacterChime(avatar, settings, now, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const mentionedMember = getRecentlySilentMentionedMember(avatar, settings.multi_char_names, settings, { chatId, groupId, personaId });
-    if (!settings.multi_char && !mentionedMember) {
-        return false;
-    }
-
-    const lastUserActivity = getLastUserActivity(avatar, now, { chatId, groupId, personaId });
-    const idleMinutes = (now - lastUserActivity) / (60 * 1000);
-
-    if (!mentionedMember && idleMinutes < Math.max(0.75, settings.idle_limit / 4)) {
-        return false;
-    }
-
-    const sessionKey = LAST_CHIME_SESSION_PREFIX;
-    if (getConversationSessionMarker(avatar, sessionKey, { chatId, groupId, personaId }) === String(lastUserActivity)) {
-        return false;
-    }
-
-    const triggered = !settings.multi_char && mentionedMember
-        ? await triggerConversationMemberChime(mentionedMember, settings, avatar, { chatId, groupId, personaId })
-        : await triggerMultiCharacterChime(settings, avatar, { chatId, groupId, personaId });
-    if (triggered) {
-        setConversationSessionMarker(avatar, sessionKey, lastUserActivity, { chatId, groupId, personaId });
-        setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-    }
-
-    return triggered;
-}
-
-export async function triggerAutoCharacterChat(avatar, settings, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const memberCharacter = getLeastRecentMember(avatar, settings.multi_char_names, settings, { chatId, groupId, personaId })
-        || chooseConversationMember(avatar, settings.multi_char_names, settings, { chatId, groupId, personaId });
-    if (!memberCharacter) {
-        return false;
-    }
-    const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId, groupId, personaId });
-    if (!targetIsCurrent) {
-        return false;
-    }
-
-    const busyKey = getMemberReplyBusyKey(avatar, memberCharacter.avatar, `auto-chat:${groupId || 'solo'}`);
-    if (memberReplyBusyKeys.has(busyKey)) {
-        return false;
-    }
-
-    memberReplyBusyKeys.add(busyKey);
-    try {
-        const memberName = memberCharacter.name || 'A friend';
-        const memberSettings = getConversationMemberSettings(memberCharacter.avatar, settings, { groupId, personaId });
-        const memberContext = getConversationActivityContext(memberSettings, memberCharacter.avatar, new Date(), { personaId });
-        if (memberContext.status === 'offline') {
-            return false;
-        }
-
-        const character = getCharacterForAvatar(avatar);
-        const charName = character?.name || getCurrentCharName();
-        const otherMembers = [character, ...getAllowedMemberCharacters(settings.multi_char_names, avatar, settings, { chatId, groupId, personaId })]
-            .filter(member => member?.avatar && member.avatar !== memberCharacter.avatar);
-        const target = otherMembers.length ? otherMembers[Math.floor(Math.random() * otherMembers.length)] : character;
-        const targetName = target?.name || charName;
-        const directive = `[System directive: You are ${memberName}, speaking autonomously in a private group DM. Aim this message at ${targetName}, not the user, unless the user is directly relevant. You are currently ${memberContext.activity} (status: ${memberContext.status}). This is character-to-character ambient chat, so continue the casual conversation or start a friendly new topic with one short, natural message. Other people may reply later. Output only your message body, without a name prefix.]`;
-        const response = await generateConversationReply(directive, memberSettings, {
-            trimNames: false,
-            speakerName: memberName,
-            avatar,
-            chatId,
-            anchorAvatar: avatar,
-            speakerAvatar: memberCharacter.avatar,
-            groupId,
-            personaId,
-        });
-
-        if (response?.trim() && targetIsCurrent()) {
-            await postMemberConversationReply(response.trim(), memberCharacter, memberSettings, {
-                avatar,
-                chatId,
-                extra: { conversation_mode_auto_chat: true, member_avatar: memberCharacter.avatar },
-                groupId,
-                personaId,
-                validateTarget: targetIsCurrent,
-            });
-            return true;
-        }
-    } catch (error) {
-        reportConversationGenerationError('character-to-character chat', error, { toast: false });
-    } finally {
-        memberReplyBusyKeys.delete(busyKey);
-    }
-
-    return false;
-}
-
-export async function checkAutoCharacterChat(avatar, settings, now, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!settings.auto_character_chat) {
-        return false;
-    }
-
-    const lastAutoChatAt = getLastAutoCharacterChatTime(avatar, { chatId, groupId, personaId });
-    const cooldownBaseline = lastAutoChatAt || getConversationChatActivityTime(avatar, { chatId, groupId, personaId });
-    if (now - cooldownBaseline < getAutoCharacterChatCooldownMs(settings)) {
-        return false;
-    }
-
-    const triggered = await triggerAutoCharacterChat(avatar, settings, { chatId, groupId, personaId });
-    if (triggered) {
-        setLastAutoCharacterChatTime(avatar, now, { chatId, groupId, personaId });
-        setLastAutoMessageTime(avatar, now, { chatId, groupId, personaId });
-    }
-
-    return triggered;
+    const { kind } = planAutomaticMessage({ ...state, patienceMinutes: getEffectivePatienceMinutes(view, speaker.avatar), speakerStatus: speaker.status });
+    const others = getAutomaticMembers(item, view, personaId, now).filter(member => member.avatar !== speaker.avatar);
+    const aimsAtMember = kind === 'member_talk' && others.length > 0;
+    const directive = aimsAtMember
+        ? buildMemberTalkDirective(speaker, others[Math.floor(Math.random() * others.length)], speaker.activity, speaker.status)
+        : buildProactiveDirective(speaker.activity, speaker.status, new Date(now));
+    const outcome = await sendAutomaticMessage({
+        origin: aimsAtMember ? 'auto_chat' : 'auto',
+        anchorAvatar,
+        speaker,
+        groupId,
+        personaId,
+        chatId,
+        directive,
+        settings: getSettings(speaker.avatar, { groupId, personaId }),
+        token: createAutomaticSlotToken({ conversationId: view.id, chatId, lastUserActivity, sentCount }),
+        spontaneousImage: !aimsAtMember,
+        onStart: () => {
+            setFollowupCount(anchorAvatar, sentCount + 1, scope);
+            setLastAutoMessageTime(anchorAvatar, now, scope);
+        },
+    });
+    return outcome === 'posted' || outcome === 'committed';
 }
 
 export function getRoleplaySourceMessageRevision(message) {
@@ -863,7 +517,7 @@ export async function triggerGroupAside(character, options = {}) {
     }
 
     const settings = getSettings(character.avatar, { groupId, personaId });
-    if (!settings.enabled || !settings.roleplay_reactions) {
+    if (!settings.roleplay_reactions) {
         return false;
     }
 
@@ -954,7 +608,7 @@ export async function triggerRoleplayAside(options = {}) {
 
     const settings = getSettings(avatar, { groupId: '', personaId });
     const sheld = document.getElementById('sheld');
-    if (!settings.enabled || (sheld instanceof HTMLElement && sheld.dataset.sbConversationMode === 'on')) {
+    if (sheld instanceof HTMLElement && sheld.dataset.sbConversationMode === 'on') {
         return false;
     }
 
@@ -992,75 +646,79 @@ export async function triggerRoleplayAside(options = {}) {
     return false;
 }
 
-function updateReminder(view, reminderId, change) {
-    conversationData.patchConversation(view.id, { reminders: view.reminders.map(item => (item.id === reminderId ? { ...item, ...change } : item)) });
+/** A reminder that used every attempt but was never marked, because the page closed during the last one, is given up. */
+function giveUpExhaustedReminders(now) {
+    for (const view of conversationData.list({ personaId: getConversationPersonaId() })) {
+        for (const reminder of view.reminders) {
+            if (getReminderState(reminder) === 'scheduled' && (reminder.attempts ?? 0) >= MAX_REMINDER_ATTEMPTS && now >= (reminder.retryAfter ?? 0)) {
+                conversationData.patchReminder(view.id, reminder.id, { skippedAt: now });
+            }
+        }
+    }
 }
 
-function withoutRetryAfter(reminder) {
-    const rest = { ...reminder };
-    delete rest.retryAfter;
-    return rest;
-}
-
+/**
+ * Delivers the first reminder that is due. A reminder is tried at most `MAX_REMINDER_ATTEMPTS` times; the attempt is
+ * written before its request starts, and a reminder that the server wrote while no page was open is marked delivered by
+ * the page that lands it (`reply-finalizer.js`), so that the next page does not send it again.
+ * @returns {Promise<boolean>} Whether a reminder was delivered.
+ */
 export async function checkConversationReminders(now) {
+    giveUpExhaustedReminders(now);
     const personaId = getConversationPersonaId();
-    const due = conversationData.list({ personaId }).flatMap(view => view.reminders
-        .filter((rem) => {
-            const retryAfter = parsePositiveInt(rem.retryAfter, 0, 0);
-            return now >= rem.triggerAt
-                && !rem.fired
-                && !rem.invalidAt
-                && (!retryAfter || now >= retryAfter);
-        })
-        .map(reminder => ({ view, reminder })));
+    const due = conversationData.list({ personaId })
+        .flatMap(view => view.reminders.filter(reminder => isReminderDue(reminder, now)).map(reminder => ({ view, reminder })))
+        .sort((first, second) => first.reminder.triggerAt - second.reminder.triggerAt);
     if (!due.length) {
         return false;
     }
 
     const { view, reminder } = due[0];
-    const avatar = reminder.avatar;
+    const anchorAvatar = reminder.avatar;
     const groupId = view.kind === 'group' ? view.id : '';
     const chatId = resolveConversationReminderChatId(reminder, view);
     if (!chatId) {
-        updateReminder(view, reminder.id, { invalidAt: now });
+        conversationData.patchReminder(view.id, reminder.id, { invalidAt: now });
         return false;
     }
-    const settings = getSettings(avatar, { groupId, personaId });
 
-    const deferReminderRetry = () => {
-        updateReminder(view, reminder.id, { chatId, lastAttemptAt: now, retryAfter: now + REMINDER_RETRY_DELAY_MS });
-    };
+    const stored = () => conversationData.get(view.id)?.reminders.find(item => item.id === reminder.id);
+    const outcome = await sendAutomaticMessage({
+        origin: 'reminder',
+        anchorAvatar,
+        speaker: { avatar: anchorAvatar, name: getCharacterForAvatar(anchorAvatar)?.name || 'Character' },
+        groupId,
+        personaId,
+        chatId,
+        settings: getSettings(anchorAvatar, { groupId, personaId }),
+        directive: `[System directive: This is a scheduled reminder. Send a DM to the user reminding them about: "${reminder.text}". Do not mention system/bracketed code, just say it naturally in-character as a DM ping.]`,
+        token: getReminderToken(reminder),
+        reminderId: reminder.id,
+        needsUserMessage: false,
+        extra: { reminder_text: reminder.text },
+        isStillWanted: () => Boolean(stored()) && !stored().fired,
+        onStart: () => conversationData.patchReminder(view.id, reminder.id, { chatId, ...claimReminderAttempt(reminder, now) }),
+    });
 
-    try {
-        const directive = `[System directive: This is a scheduled reminder. Send a DM to the user reminding them about: "${reminder.text}". Do not mention system/bracketed code, just say it naturally in-character as a DM ping.]`;
-
-        const triggered = await triggerAutoMessage(directive, settings, {
-            conversation_mode_reminder: true,
-            reminder_text: reminder.text,
-            reminder_id: reminder.id,
-            member_avatar: groupId ? avatar : undefined,
-            groupId,
-        }, avatar, { chatId, personaId, needsUserMessage: false });
-
-        if (triggered) {
-            const current = conversationData.get(view.id);
-            const stored = current?.reminders.find(item => item.id === reminder.id);
-            if (stored) {
-                conversationData.patchConversation(view.id, { reminders: current.reminders.map(item => (item.id === reminder.id ? { ...withoutRetryAfter(item), chatId, fired: true, firedAt: Date.now() } : item)) });
-            }
-            return true;
+    if (outcome === 'not-started') {
+        return false;
+    }
+    if (outcome === 'failed') {
+        const current = stored();
+        if (current) {
+            conversationData.patchReminder(view.id, reminder.id, settleFailedReminderAttempt(current, Date.now()));
         }
-
-        deferReminderRetry();
-        return false;
-    } catch (error) {
-        reportConversationGenerationError('reminder', error, { level: 'warning' });
-        deferReminderRetry();
         return false;
     }
+    conversationData.patchReminder(view.id, reminder.id, markReminderDelivered(Date.now()));
+    return true;
 }
 
-export async function conversationModeAutoMessageWorker({ signal = conversationState.autoWorkerAbortController?.signal } = {}) {
+/**
+ * One tick of the worker: the due reminder first, then each conversation that has messaging first on. The first message
+ * that is sent ends the tick. The runner (`worker-runner.js`) calls it in the one tab that leads and never twice at once.
+ */
+export async function conversationModeAutoMessageWorker({ signal } = {}) {
     if (isAutoWorkerAborted(signal) || getUserStatus() === 'offline') {
         return;
     }
@@ -1075,79 +733,12 @@ export async function conversationModeAutoMessageWorker({ signal = conversationS
     if (await checkConversationReminders(now)) {
         return;
     }
-    if (isAutoWorkerAborted(signal)) {
-        return;
-    }
 
-    const railItems = getConversationRailItems({ personaId });
-    const lastAutoMessageTimes = new Map();
-    const getTickLastAutoMessageTime = (avatar, groupId, chatId) => {
-        const key = `${personaId}:${groupId || ''}:${avatar || ''}:${chatId}`;
-        if (!lastAutoMessageTimes.has(key)) {
-            lastAutoMessageTimes.set(key, getLastAutoMessageTime(avatar, { chatId, groupId, personaId }));
-        }
-        return lastAutoMessageTimes.get(key);
-    };
-
-    for (const { character, settings, groupId = '' } of railItems) {
+    for (const item of getConversationRailItems({ personaId })) {
         if (isAutoWorkerAborted(signal)) {
             return;
         }
-
-        const avatar = character.avatar;
-        const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
-        if (!chatId) {
-            continue;
-        }
-        // A chat that has no message from the user gets no automatic message, whether it is new or was emptied. The
-        // check reads the conversation again at each step below, because a step can take a long time and the
-        // conversation or the chat can be deleted in the meantime.
-        const targetIsCurrent = createAutomaticTargetCheck(avatar, { chatId, groupId, personaId });
-        if (!targetIsCurrent) {
-            continue;
-        }
-        const lastAutoMessageAt = getTickLastAutoMessageTime(avatar, groupId, chatId);
-        const elapsedSeconds = (now - lastAutoMessageAt) / 1000;
-        if (elapsedSeconds < settings.cooldown) {
-            continue;
-        }
-
-        if (await checkScheduledAutoMessages(avatar, settings, now, { chatId, groupId, personaId })) {
-            return;
-        }
-        if (isAutoWorkerAborted(signal)) {
-            return;
-        }
-        if (!targetIsCurrent()) {
-            continue;
-        }
-
-        // Marinara-style proactive loop takes priority over legacy idle action.
-        if (settings.proactive_messaging) {
-            if (await checkProactiveMessaging(avatar, settings, now, { chatId, groupId, lastAutoMessageAt, personaId })) {
-                return;
-            }
-        } else if (await checkIdleAutoMessage(avatar, settings, now, { chatId, groupId, personaId })) {
-            return;
-        }
-        if (isAutoWorkerAborted(signal)) {
-            return;
-        }
-        if (!targetIsCurrent()) {
-            continue;
-        }
-
-        if (await checkMultiCharacterChime(avatar, settings, now, { chatId, groupId, personaId })) {
-            return;
-        }
-        if (isAutoWorkerAborted(signal)) {
-            return;
-        }
-        if (!targetIsCurrent()) {
-            continue;
-        }
-
-        if (await checkAutoCharacterChat(avatar, settings, now, { chatId, groupId, personaId })) {
+        if (await checkMessagingFirst(item, now, { personaId })) {
             return;
         }
     }
@@ -1158,7 +749,7 @@ export async function handleAvailabilityAutoResponder(settings = getSettings(), 
         return false;
     }
 
-    if (!settings.enabled || !['offline', 'dnd'].includes(settings.availability)) {
+    if (!['offline', 'dnd'].includes(settings.availability)) {
         return false;
     }
 

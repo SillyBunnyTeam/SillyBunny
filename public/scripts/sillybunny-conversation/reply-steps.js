@@ -87,15 +87,20 @@ export function buildReplySteps(rawText, { speaker, mode = 'character', speakers
     });
 }
 
-/** The `extra` keys that the live path gives each bubble of a message, by what asked for it. */
-function getOriginFlags(reply) {
-    switch (reply.origin) {
+/**
+ * The `extra` keys that each bubble of a message carries, by what asked for the message. The live path of the worker and
+ * the finalizer of a message that the server wrote both use this, so that the two cannot give a message different flags.
+ * @param {string} origin `reply`, `auto`, `auto_chat` or `reminder`.
+ * @param {string} [reminderId] The reminder that a message of the origin `reminder` delivers.
+ */
+export function getReplyOriginFlags(origin, reminderId = '') {
+    switch (origin) {
         case 'auto':
             return { conversation_mode_auto: true, proactive: true };
         case 'auto_chat':
             return { conversation_mode_auto_chat: true };
         case 'reminder':
-            return { conversation_mode_reminder: true, reminder_id: reply.reminder };
+            return { conversation_mode_reminder: true, reminder_id: reminderId };
         default:
             return { conversation_mode_reply: true };
     }
@@ -125,7 +130,7 @@ export function buildPendingBubbles(message, reply, groups, { anchorAvatar, refe
 
     const extraFor = (speakerAvatar) => {
         const extra = {
-            ...getOriginFlags(reply),
+            ...getReplyOriginFlags(reply.origin, reply.reminder),
             reply_token: reply.token,
         };
         if (speakerAvatar !== anchorAvatar) {

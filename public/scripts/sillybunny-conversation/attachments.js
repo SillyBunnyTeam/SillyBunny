@@ -2,7 +2,7 @@ import { is_send_press, online_status } from '../../script.js';
 import { MEDIA_DISPLAY } from '../constants.js';
 import { MAX_REPLY_TRIGGERS } from '../conversation-commit-plan.js';
 import { pageId } from '../resumable-generation.js';
-import { checkMultiCharacterChime, handleAvailabilityAutoResponder } from './auto-engine.js';
+import { handleAvailabilityAutoResponder } from './auto-engine.js';
 import {
     AUTO_WORKER_WAIT_POLL_MS,
     AUTO_WORKER_WAIT_TIMEOUT_MS,
@@ -29,7 +29,7 @@ import {
     getCurrentCharName,
 } from './context.js';
 import { generateConversationReply, postCharacterReply, postMemberConversationReply, reportConversationGenerationError } from './generation.js';
-import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar, getConversationMemberAvatars } from './media.js';
+import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAvatar } from './media.js';
 import { getAllowedMemberCharacters, getConversationMemberSettings, isCharacterMentionedInText } from './members.js';
 import { getConversationPersonaName } from './personas.js';
 import { formatConversationFileSize } from './prompt.js';
@@ -767,21 +767,12 @@ export async function processQueuedConversationReply(queueItem) {
             return;
         }
 
-        const memberChimePromise = getConversationMemberAvatars(avatar, conversationSettings, { chatId, groupId, includeConversationMembers: true, personaId }).length
-            ? checkMultiCharacterChime(avatar, conversationSettings, Date.now(), { chatId, groupId, personaId }).catch((error) => {
-                console.error('Conversation partner chime error:', error);
-                return false;
-            })
-            : Promise.resolve(false);
-
         await processConversationSpeakerReply(queueItem, {
             anchorAvatar: avatar,
             groupId,
             conversationSettings,
             skipAvailabilityWait: true,
         });
-
-        await memberChimePromise;
     } catch (error) {
         reportConversationGenerationError('reply', error);
     } finally {

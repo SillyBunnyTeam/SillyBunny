@@ -1,177 +1,48 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { resolveConversationReminderChatId } from '../public/scripts/sillybunny-conversation/conversation-store-utils.js';
+import { createWorld, installAutoEngineMocks, MINUTE, NOW, PERSONA } from './util/auto-engine-harness.js';
 
-const PERSONA = 'persona-a.png';
-const NOW = Date.UTC(2026, 5, 1, 12, 0, 0);
+const world = createWorld(jest);
+await installAutoEngineMocks(jest, world);
 
-/** The conversations that the page holds, as the data module's cache would answer them. */
-const views = new Map();
-const patchConversation = jest.fn();
-const generateConversationReply = jest.fn();
-const postCharacterReply = jest.fn();
-const postMemberConversationReply = jest.fn();
-let railItems = [];
-let member = null;
+const { checkMessagingFirst, conversationModeAutoMessageWorker, sendAutomaticMessage } = await import('../public/scripts/sillybunny-conversation/auto-engine.js');
 
-function makeView(id, { kind = 'direct', characters = ['char.png'], hasUserMessage = true, chats } = {}) {
-    const view = {
-        id,
-        kind,
-        personaId: PERSONA,
-        characters,
-        activeChatId: 'main',
-        chats: chats ?? [{ id: 'main', hasUserMessage, messageCount: hasUserMessage ? 2 : 0, lastMessageRole: hasUserMessage ? 'member' : '' }],
-        reminders: [],
-    };
-    views.set(id, view);
+const { generateConversationReply, postCharacterReply, postMemberConversationReply } = world.spies;
+const ON = { proactive_messaging: true };
+const SCOPE = { chatId: 'main', groupId: '', personaId: PERSONA };
+
+beforeEach(() => {
+    world.reset();
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+const tick = () => conversationModeAutoMessageWorker({ signal: new AbortController().signal });
+
+function direct(options = {}) {
+    const view = world.addConversation('conv_1_direct', { quietMinutes: 100_000, settings: ON, ...options });
+    world.railItems = [world.railItemFor(view)];
     return view;
 }
 
-const SETTINGS = {
-    cooldown: 0,
-    enabled: true,
-    proactive_messaging: true,
-    inactivity_threshold: 5,
-    max_followups: 3,
-    multi_char: true,
-    multi_char_names: ['member.png'],
-    auto_character_chat: true,
-};
-
-function railItemFor(view) {
-    return {
-        character: { avatar: 'char.png', name: 'Aster' },
-        settings: SETTINGS,
-        groupId: view.kind === 'group' ? view.id : '',
-    };
+function group(options = {}) {
+    const view = world.addConversation('conv_2_group001', { kind: 'group', characters: ['char.png', 'birch.png'], quietMinutes: 100_000, settings: ON, ...options });
+    world.railItems = [world.railItemFor(view)];
+    return view;
 }
 
-await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], is_send_press: false, name1: 'User' }));
-await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getActiveConversationChat: (_avatar, { groupId = '' } = {}) => {
-        const view = [...views.values()].find(item => (groupId ? item.id === groupId : item.kind === 'direct'));
-        return view ? { ...view.chats.find(entry => entry.id === view.activeChatId) } : null;
-    },
-    getConversationAddress: (_avatar, { groupId = '', chatId = '' } = {}) => {
-        const view = [...views.values()].find(item => (groupId ? item.id === groupId : item.kind === 'direct'));
-        const entry = view?.chats.find(item => item.id === (chatId || view.activeChatId));
-        return entry ? { conversationId: view.id, chatId: entry.id } : null;
-    },
-    getConversationGroupIdForAvatar: () => '',
-    getConversationKey: () => 'conv_1_direct',
-    getConversationPersonaId: value => String(typeof value === 'undefined' ? PERSONA : value || ''),
-    getConversationRecord: (_avatar, { groupId = '' } = {}) => [...views.values()].find(item => (groupId ? item.id === groupId : item.kind === 'direct')) ?? null,
-    getCurrentCharAvatar: () => 'char.png',
-    getCurrentCharName: () => 'Aster',
-    getRoleplayCurrentCharacter: () => ({ avatar: 'char.png' }),
-    getRoleplayGroupById: () => null,
-    parsePositiveInt: (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback),
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
-    conversationData: {
-        list: () => [...views.values()],
-        get: id => views.get(id) ?? null,
-        patchConversation,
-        loadChat: jest.fn(async () => ({})),
-    },
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/generation.js', () => ({
-    generateConversationReply,
-    postCharacterReply,
-    postMemberConversationReply,
-    reportConversationGenerationError: jest.fn(),
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/interface.js', () => ({ loadCurrentPanelSettings: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
-    buildCharacterImagePrompt: () => '',
-    generateConversationImage: jest.fn(),
-    getCharacterForAvatar: avatar => ({ avatar, name: avatar === 'char.png' ? 'Aster' : 'Birch' }),
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
-    buildGroupChatContext: () => '',
-    getConversationRailItems: () => railItems,
-    getCurrentGroupConversationMembers: () => [],
-    getGroupAsideKey: () => '',
-    getSelectedConversationGroup: () => null,
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
-    chooseConversationMember: () => member,
-    getAllowedMemberCharacters: () => (member ? [member] : []),
-    getConversationMemberSettings: (_avatar, settings) => settings,
-    getLeastRecentMember: () => member,
-    getRecentlySilentMentionedMember: () => null,
-    isCharacterMentionedInText: () => false,
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({
-    getConversationPersonaName: () => 'User',
-    getUserStatus: () => 'online',
-    safeParseWeeklySchedule: () => [],
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    clamp: (value, min, max) => Math.min(Math.max(value, min), max),
-    getCurrentActivityFromSchedule: () => ({ activity: 'reading', status: 'online' }),
-    getStoredSchedule: () => null,
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({ buildConversationRoleplayContext: () => '' }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
-    getAutoCharacterChatCooldownMs: () => 0,
-    getConversationChatActivityTime: () => 0,
-    getConversationSessionMarker: () => '',
-    getFollowupCount: () => 0,
-    getLastAutoCharacterChatTime: () => 0,
-    getLastUserActivity: () => 0,
-    getSettings: () => SETTINGS,
-    setConversationSessionMarker: jest.fn(),
-    setFollowupCount: jest.fn(),
-    setLastAutoCharacterChatTime: jest.fn(),
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
-    conversationState: {},
-    groupAsideBusyKeys: new Set(),
-    groupAsideLastSent: new Map(),
-    memberReplyBusyKeys: new Set(),
-    sendQueue: [],
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timers.js', () => ({
-    clearConversationTimeouts: jest.fn(),
-    setConversationTimeout: jest.fn(),
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
-    getConversationMessages: () => [],
-    getImageCooldownRemainingSeconds: () => 0,
-    markImageGenerated: jest.fn(),
-    resolveConversationReminderChatId,
-}));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
-    getConversationActivityContext: () => ({ activity: 'reading', source: 'manual', status: 'online' }),
-    withTypingParticipant: (_participant, task) => task(),
-}));
-
-const {
-    checkConversationReminders,
-    conversationModeAutoMessageWorker,
-    triggerAutoCharacterChat,
-    triggerAutoMessage,
-    triggerConversationMemberChime,
-} = await import('../public/scripts/sillybunny-conversation/auto-engine.js');
-
-const MEMBER = { avatar: 'member.png', name: 'Birch' };
-
-beforeEach(() => {
-    views.clear();
-    railItems = [];
-    member = null;
-    for (const mock of [patchConversation, generateConversationReply, postCharacterReply, postMemberConversationReply]) {
-        mock.mockReset();
-    }
-    generateConversationReply.mockResolvedValue('Hello there.');
-    postCharacterReply.mockResolvedValue('Hello there.');
-    postMemberConversationReply.mockResolvedValue(true);
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
-});
+/** What a caller of `sendAutomaticMessage` gives for a message of the character of the first conversation. */
+function message(overrides = {}) {
+    return {
+        origin: 'auto',
+        anchorAvatar: 'char.png',
+        speaker: { avatar: 'char.png', name: 'Aster' },
+        directive: '[directive]',
+        token: 'abcdef0123456789',
+        settings: {},
+        ...SCOPE,
+        ...overrides,
+    };
+}
 
 /** Deletes the chat of a conversation while a reply for it is being generated. */
 function deleteChatDuringGeneration(view) {
@@ -183,80 +54,109 @@ function deleteChatDuringGeneration(view) {
 
 describe('the worker and a chat that has no message from the user', () => {
     test('does nothing in a direct chat that has none, however long the silence', async () => {
-        const view = makeView('conv_1_direct', { hasUserMessage: false });
-        railItems = [railItemFor(view)];
+        direct({ hasUserMessage: false });
 
-        await conversationModeAutoMessageWorker({ signal: new AbortController().signal });
+        await tick();
 
         expect(generateConversationReply).not.toHaveBeenCalled();
         expect(postCharacterReply).not.toHaveBeenCalled();
-        expect(postMemberConversationReply).not.toHaveBeenCalled();
     });
 
     test('does nothing in a group that has none, whatever its members would say to each other', async () => {
-        const view = makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'], hasUserMessage: false });
-        member = MEMBER;
-        railItems = [railItemFor(view)];
+        group({ hasUserMessage: false });
 
-        await conversationModeAutoMessageWorker({ signal: new AbortController().signal });
+        await tick();
 
         expect(generateConversationReply).not.toHaveBeenCalled();
     });
 
     test('control: a chat with a message from the user is talked in, so the harness can see the difference', async () => {
-        const view = makeView('conv_1_direct', { hasUserMessage: true });
-        railItems = [railItemFor(view)];
+        direct({ hasUserMessage: true });
 
-        await conversationModeAutoMessageWorker({ signal: new AbortController().signal });
+        await tick();
 
         expect(generateConversationReply).toHaveBeenCalled();
     });
 
     test('does nothing in a chat that lost its last message from the user since the tick began to build its list', async () => {
-        const view = makeView('conv_1_direct', { hasUserMessage: true });
-        railItems = [railItemFor(view)];
+        const view = direct({ hasUserMessage: true });
         view.chats[0].hasUserMessage = false;
 
-        await conversationModeAutoMessageWorker({ signal: new AbortController().signal });
+        await tick();
 
         expect(generateConversationReply).not.toHaveBeenCalled();
     });
 
     test('a direct call for a chat that has none makes no request either', async () => {
-        makeView('conv_1_direct', { hasUserMessage: false });
+        world.addConversation('conv_1_direct', { hasUserMessage: false });
 
-        const triggered = await triggerAutoMessage('[directive]', SETTINGS, {}, 'char.png', { chatId: 'main', personaId: PERSONA });
+        const outcome = await sendAutomaticMessage(message());
 
-        expect(triggered).toBe(false);
+        expect(outcome).toBe('not-started');
         expect(generateConversationReply).not.toHaveBeenCalled();
     });
 
-    test('a reminder fires there anyway, because the user asked for it', async () => {
-        makeView('conv_1_direct', { hasUserMessage: false });
+    test('a reminder is sent there anyway, because the user asked for it', async () => {
+        world.addConversation('conv_1_direct', { hasUserMessage: false });
 
-        const triggered = await triggerAutoMessage('[directive]', SETTINGS, { conversation_mode_reminder: true }, 'char.png', { chatId: 'main', personaId: PERSONA, needsUserMessage: false });
+        const outcome = await sendAutomaticMessage(message({ origin: 'reminder', reminderId: 'rem_1_aaaaaa', needsUserMessage: false }));
 
-        expect(triggered).toBe(true);
+        expect(outcome).toBe('posted');
         expect(postCharacterReply).toHaveBeenCalled();
     });
 });
 
-describe('an automatic reply whose chat is deleted while it is generated', () => {
-    test('is not written by triggerAutoMessage', async () => {
-        const view = makeView('conv_1_direct');
-        deleteChatDuringGeneration(view);
+describe('the worker while the user is Invisible', () => {
+    test('does not tick', async () => {
+        direct();
+        world.userStatus = 'offline';
 
-        const triggered = await triggerAutoMessage('[directive]', SETTINGS, {}, 'char.png', { chatId: 'main', personaId: PERSONA });
+        await tick();
+
+        expect(generateConversationReply).not.toHaveBeenCalled();
+    });
+
+    test('drops a message whose model answered after the user went Invisible', async () => {
+        direct();
+        generateConversationReply.mockImplementation(async () => {
+            world.userStatus = 'offline';
+            return 'Hello there.';
+        });
+
+        await tick();
 
         expect(generateConversationReply).toHaveBeenCalledTimes(1);
         expect(postCharacterReply).not.toHaveBeenCalled();
-        expect(triggered).toBe(false);
+    });
+
+    test('does not write the next bubble of a message once the user went Invisible', async () => {
+        world.addConversation('conv_1_direct');
+
+        await sendAutomaticMessage(message());
+
+        const { validateTarget } = postCharacterReply.mock.calls[0][2];
+        expect(validateTarget()).toBe(true);
+        world.userStatus = 'offline';
+        expect(validateTarget()).toBe(false);
+    });
+});
+
+describe('an automatic message whose chat is deleted while it is generated', () => {
+    test('is not written', async () => {
+        const view = world.addConversation('conv_1_direct');
+        deleteChatDuringGeneration(view);
+
+        const outcome = await sendAutomaticMessage(message());
+
+        expect(generateConversationReply).toHaveBeenCalledTimes(1);
+        expect(postCharacterReply).not.toHaveBeenCalled();
+        expect(outcome).toBe('failed');
     });
 
     test('is handed a check that fails once the chat is gone, for the bubbles that follow the first', async () => {
-        const view = makeView('conv_1_direct');
+        const view = world.addConversation('conv_1_direct');
 
-        await triggerAutoMessage('[directive]', SETTINGS, {}, 'char.png', { chatId: 'main', personaId: PERSONA });
+        await sendAutomaticMessage(message());
 
         const { validateTarget } = postCharacterReply.mock.calls[0][2];
         expect(validateTarget()).toBe(true);
@@ -264,77 +164,69 @@ describe('an automatic reply whose chat is deleted while it is generated', () =>
         expect(validateTarget()).toBe(false);
     });
 
-    test('is not written by triggerConversationMemberChime', async () => {
-        const view = makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'] });
+    test('is not written by a member of a group, or for members that talk to each other', async () => {
+        const view = world.addConversation('conv_2_group001', { kind: 'group', characters: ['char.png', 'birch.png'] });
         deleteChatDuringGeneration(view);
 
-        const triggered = await triggerConversationMemberChime(MEMBER, SETTINGS, 'char.png', { chatId: 'main', groupId: view.id, personaId: PERSONA });
+        const outcome = await sendAutomaticMessage(message({ origin: 'auto_chat', groupId: view.id, speaker: { avatar: 'birch.png', name: 'birch' } }));
 
         expect(generateConversationReply).toHaveBeenCalledTimes(1);
         expect(postMemberConversationReply).not.toHaveBeenCalled();
-        expect(triggered).toBe(false);
+        expect(outcome).toBe('failed');
     });
 
-    test('is not written by triggerAutoCharacterChat', async () => {
-        const view = makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'] });
-        member = MEMBER;
-        deleteChatDuringGeneration(view);
+    test('is written when the chat is still there, and the writer gets a check for the next bubble', async () => {
+        const view = world.addConversation('conv_2_group001', { kind: 'group', characters: ['char.png', 'birch.png'] });
 
-        const triggered = await triggerAutoCharacterChat('char.png', SETTINGS, { chatId: 'main', groupId: view.id, personaId: PERSONA });
+        const outcome = await sendAutomaticMessage(message({ origin: 'auto_chat', groupId: view.id, speaker: { avatar: 'birch.png', name: 'birch' } }));
 
-        expect(generateConversationReply).toHaveBeenCalledTimes(1);
-        expect(postMemberConversationReply).not.toHaveBeenCalled();
-        expect(triggered).toBe(false);
-    });
-
-    test('is written when the chat is still there, and the writers get a check for the next bubble', async () => {
-        const view = makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'] });
-        member = MEMBER;
-
-        expect(await triggerConversationMemberChime(MEMBER, SETTINGS, 'char.png', { chatId: 'main', groupId: view.id, personaId: PERSONA })).toBe(true);
-        expect(await triggerAutoCharacterChat('char.png', SETTINGS, { chatId: 'main', groupId: view.id, personaId: PERSONA })).toBe(true);
-
-        for (const call of postMemberConversationReply.mock.calls) {
-            expect(call[3].validateTarget()).toBe(true);
-        }
-        expect(postMemberConversationReply).toHaveBeenCalledTimes(2);
+        expect(outcome).toBe('posted');
+        expect(postMemberConversationReply).toHaveBeenCalledTimes(1);
+        expect(postMemberConversationReply.mock.calls[0][3].validateTarget()).toBe(true);
     });
 
     test('is not written into a conversation of the same character that was made after the first one was deleted', async () => {
-        const view = makeView('conv_1_direct');
+        const view = world.addConversation('conv_1_direct');
         generateConversationReply.mockImplementation(async () => {
-            views.delete(view.id);
-            makeView('conv_9_direct99');
+            world.views.delete(view.id);
+            world.addConversation('conv_9_direct99');
             return 'Hello there.';
         });
 
-        const triggered = await triggerAutoMessage('[directive]', SETTINGS, {}, 'char.png', { chatId: 'main', personaId: PERSONA });
+        const outcome = await sendAutomaticMessage(message());
 
         expect(postCharacterReply).not.toHaveBeenCalled();
-        expect(triggered).toBe(false);
+        expect(outcome).toBe('failed');
     });
 
     test('is not started for a chat that does not exist', async () => {
-        makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'] });
-        member = MEMBER;
+        world.addConversation('conv_2_group001', { kind: 'group', characters: ['char.png', 'birch.png'] });
 
-        expect(await triggerConversationMemberChime(MEMBER, SETTINGS, 'char.png', { chatId: 'gone', groupId: 'conv_2_group001', personaId: PERSONA })).toBe(false);
-        expect(await triggerAutoCharacterChat('char.png', SETTINGS, { chatId: 'gone', groupId: 'conv_2_group001', personaId: PERSONA })).toBe(false);
+        const outcome = await sendAutomaticMessage(message({ origin: 'auto_chat', groupId: 'conv_2_group001', chatId: 'gone', speaker: { avatar: 'birch.png', name: 'birch' } }));
+
+        expect(outcome).toBe('not-started');
+        expect(generateConversationReply).not.toHaveBeenCalled();
+    });
+
+    test('is not started for a conversation that does not exist', async () => {
+        const outcome = await sendAutomaticMessage(message());
+
+        expect(outcome).toBe('not-started');
         expect(generateConversationReply).not.toHaveBeenCalled();
     });
 });
 
 describe('a tick', () => {
     test('does not act on a conversation that was deleted earlier in the same tick', async () => {
-        const first = makeView('conv_1_direct');
-        const second = makeView('conv_2_group001', { kind: 'group', characters: ['char.png', 'member.png'] });
-        railItems = [railItemFor(first), railItemFor(second)];
+        const first = world.addConversation('conv_1_direct', { quietMinutes: 100_000, settings: ON });
+        const second = world.addConversation('conv_2_group001', { kind: 'group', characters: ['char.png', 'birch.png'], quietMinutes: 100_000, settings: ON });
+        world.railItems = [world.railItemFor(first), world.railItemFor(second)];
         generateConversationReply.mockImplementation(async () => {
-            views.delete(second.id);
+            world.views.delete(second.id);
             return '';
         });
 
-        await conversationModeAutoMessageWorker({ signal: new AbortController().signal });
+        await tick();
 
         expect(generateConversationReply.mock.calls.length).toBeGreaterThan(0);
         for (const call of generateConversationReply.mock.calls) {
@@ -342,12 +234,65 @@ describe('a tick', () => {
         }
     });
 
-    test('does not fire a reminder into a chat that was deleted', async () => {
-        const view = makeView('conv_1_direct');
-        view.reminders = [{ id: 'rem_1_aaaaaa', avatar: 'char.png', chatId: 'gone', text: 'water the plants', triggerAt: 1, fired: false }];
+    test('does nothing while a reply to the user is being generated or queued', async () => {
+        direct();
+        world.state.conversationState.conversationReplyBusy = true;
+        await tick();
+        world.state.conversationState.conversationReplyBusy = false;
+        world.state.sendQueue.push({ id: 'queued' });
+        await tick();
 
-        await expect(checkConversationReminders(NOW)).resolves.toBe(false);
+        expect(generateConversationReply).not.toHaveBeenCalled();
+    });
 
+    test('does nothing when its signal is aborted', async () => {
+        direct();
+        const controller = new AbortController();
+        controller.abort();
+
+        await conversationModeAutoMessageWorker({ signal: controller.signal });
+
+        expect(generateConversationReply).not.toHaveBeenCalled();
+    });
+});
+
+describe('two messages at once', () => {
+    test('a message that starts while another is being generated is not started, whichever tick asked for it', async () => {
+        world.addConversation('conv_1_direct');
+        let finish;
+        generateConversationReply.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+
+        const first = sendAutomaticMessage(message());
+        await Promise.resolve();
+        const second = await sendAutomaticMessage(message({ token: '0123456789abcdef' }));
+
+        expect(second).toBe('not-started');
+        expect(generateConversationReply).toHaveBeenCalledTimes(1);
+        finish('Hello there.');
+        expect(await first).toBe('posted');
+        expect(world.state.conversationState.autoWorkerBusy).toBe(false);
+    });
+
+    test('lets the next message start once the first one failed', async () => {
+        world.addConversation('conv_1_direct');
+        generateConversationReply.mockRejectedValueOnce(new Error('the model is down'));
+
+        expect(await sendAutomaticMessage(message())).toBe('failed');
+        expect(await sendAutomaticMessage(message({ token: '0123456789abcdef' }))).toBe('posted');
+    });
+
+    test('checkMessagingFirst alone is not enough to start twice for one place in the chat: the token names it', async () => {
+        const view = direct();
+        const item = world.railItems[0];
+
+        await checkMessagingFirst(item, NOW + 100 * MINUTE, { personaId: PERSONA });
+        const token = postCharacterReply.mock.calls[0][2].extra.reply_token;
+        world.say(view, { id: 'landed', role: 'character', extra: { reply_token: token } });
+        view.chats[0].followupCount = 0;
+        view.chats[0].lastAutoMessageAt = 0;
+        generateConversationReply.mockClear();
+
+        expect(await checkMessagingFirst(item, NOW + 100 * MINUTE, { personaId: PERSONA })).toBe(false);
         expect(generateConversationReply).not.toHaveBeenCalled();
     });
 });

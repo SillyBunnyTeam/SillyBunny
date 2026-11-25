@@ -8,9 +8,9 @@ import {
     isReminderDue,
     markReminderDelivered,
     MAX_REMINDER_ATTEMPTS,
+    REMINDER_LEASE_MS,
     settleFailedReminderAttempt,
 } from '../public/scripts/sillybunny-conversation/reminders.js';
-import { REMINDER_RETRY_DELAY_MS } from '../public/scripts/sillybunny-conversation/constants.js';
 import { seedConversations, startConversationServer } from './util/conversation-data-fixture.js';
 import { addCharacters } from './util/conversation-store-sandbox.js';
 
@@ -52,9 +52,9 @@ describe('the attempts of a reminder', () => {
     test('are counted before the request starts, and the next one waits', () => {
         const claimed = applied(reminder(), claimReminderAttempt(reminder(), NOW));
 
-        expect(claimed).toMatchObject({ attempts: 1, lastAttemptAt: NOW, retryAfter: NOW + REMINDER_RETRY_DELAY_MS });
-        expect(isReminderDue(claimed, NOW + REMINDER_RETRY_DELAY_MS - 1)).toBe(false);
-        expect(isReminderDue(claimed, NOW + REMINDER_RETRY_DELAY_MS)).toBe(true);
+        expect(claimed).toMatchObject({ attempts: 1, lastAttemptAt: NOW, retryAfter: NOW + REMINDER_LEASE_MS });
+        expect(isReminderDue(claimed, NOW + REMINDER_LEASE_MS - 1)).toBe(false);
+        expect(isReminderDue(claimed, NOW + REMINDER_LEASE_MS)).toBe(true);
     });
 
     test('stop after a fixed number: the last failed one gives the reminder up', () => {
