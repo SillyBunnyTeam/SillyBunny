@@ -9,7 +9,8 @@
 import {
     ARCHIVE_MENU_BUTTON, chooseItem, closeComposerSheets, openAuditLorebook, openAuditPersona, closeAndWait, MENU_ROOT, openAgentEditor, openAgentList, openArchiveList, openArchiveSelection, openAuditCharacterEditor, openAuditChat,
     openAuditConversation, openAuditGroupEditor, openCharacterList, openChatHistory, openDataBank, openExtensionsManager, openFrom, openManagerFromList,
-    openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, settleFade, settleOverlay, showConversationPage,
+    openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, showAuditConversationFolders, settleFade, settleOverlay, showConversationPage,
+    AUDIT_FOLDERS,
 } from './menu-steps.js';
 import { FIXTURES } from './fixture-data.js';
 import { characterSearch, openSearch } from './list-steps.js';
@@ -117,6 +118,48 @@ export const surfaces = [
             await showConversationPage(page, 'list');
             await page.locator('#sb_conversation_list_items .sb-conversation-list-item').filter({ visible: true }).first().click({ button: 'right' });
             await settleOverlay(page, MENU_ROOT);
+        },
+    }),
+    menu({
+        id: 'conversation.folder',
+        title: 'Conversation folder heading menu (secondary click)',
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-folders.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-controls.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await showAuditConversationFolders(page);
+            await page.locator(`#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[0].id}"] .sb-conversation-list-heading-button`).click({ button: 'right' });
+            await settleOverlay(page, MENU_ROOT);
+        },
+    }),
+    menu({
+        id: 'conversation.move-to-folder',
+        title: 'Conversation Move to Folder menu (from the row menu)',
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-folders.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await showAuditConversationFolders(page);
+            await page.locator('#sb_conversation_list_items .sb-conversation-list-item').filter({ visible: true }).first().click({ button: 'right' });
+            await settleOverlay(page, MENU_ROOT);
+            await chooseItem(page, 'Move to Folder…');
+            await page.locator('.sb-action-menu [role="menuitemradio"]').first().waitFor({ state: 'visible' });
+        },
+    }),
+    menu({
+        id: 'conversation.new-folder',
+        title: 'Conversation New Folder popover (from the New menu)',
+        root: POPOVER_ROOT,
+        ready: POPOVER_INPUT,
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-folders.js`, `${SCRIPTS}/sillybunny-editor/folder-popovers.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await openFrom(page, '[data-sb-conversation-action="open-new-menu"]');
+            await chooseItem(page, 'New Folder…', POPOVER_ROOT);
         },
     }),
     menu({

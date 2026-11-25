@@ -201,6 +201,40 @@ export async function openAuditConversation(page) {
     await settle(page);
 }
 
+/** The folders that `showAuditConversationFolders()` shows, in the order of the list: the first is open and holds the audit conversation, the second is closed and empty. */
+export const AUDIT_FOLDERS = Object.freeze([
+    Object.freeze({ id: 'fld_1764000000000_audit00work1', name: 'Audit Work', color: 'rgb(200, 90, 40)', expanded: true }),
+    Object.freeze({ id: 'fld_1764000000001_audit00frnd2', name: 'Audit Friends', color: '', expanded: false }),
+]);
+
+/**
+ * Gives the page of the audit persona two folders and files the audit conversation in the first. The folders are the
+ * page's own: the answer of `/folders/get` is replaced for this page, so the account that every surface of a run shares
+ * keeps none, and the page reads the file again at once. Run it after `openAuditConversation()`. A surface that goes on to
+ * change a folder would send the change to the real route, which does not know these folders.
+ */
+export async function showAuditConversationFolders(page) {
+    const { personaId, conversationId } = await page.evaluate(async (avatar) => {
+        const { getRequestHeaders } = await import('/script.js');
+        const { user_avatar: personaId } = await import('/scripts/personas.js');
+        const response = await fetch('/api/sillybunny-conversation/list', { method: 'POST', headers: getRequestHeaders(), body: '{}' });
+        const { conversations } = await response.json();
+        const conversation = conversations.find(entry => entry.personaId === personaId && JSON.stringify(entry.characters) === JSON.stringify([avatar]));
+        if (!conversation) {
+            throw new Error('The audit conversation is not on the server.');
+        }
+        return { personaId, conversationId: conversation.id };
+    }, FIXTURES.character.avatar);
+    const file = { version: 1, personas: { [personaId]: { folders: AUDIT_FOLDERS, members: { [conversationId]: AUDIT_FOLDERS[0].id } } } };
+    await page.route('**/api/sillybunny-conversation/folders/get', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(file) }));
+    await page.evaluate(async () => {
+        const { conversationFolders } = await import('/scripts/sillybunny-conversation/conversation-folders-browser.js');
+        await conversationFolders.refresh();
+    });
+    await page.locator(`#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[0].id}"]`).waitFor({ state: 'attached' });
+    await settle(page);
+}
+
 /**
  * Shows one page of the Conversation workspace. A desktop window shows the rail and the chat together; the pages layout
  * of a phone shows one at a time.

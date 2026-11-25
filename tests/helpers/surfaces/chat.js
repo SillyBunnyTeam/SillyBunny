@@ -33,7 +33,7 @@ import {
     DETAILS_WINDOW, MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationDetails, conversationMessage, conversationMessageId, editConversationMessageById,
     openConversation, openConversationDetailsAt, openConversationPicker, setConversationConnection, showConversationPage,
 } from './chat-conversation-steps.js';
-import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
+import { AUDIT_FOLDERS, openLegacyToggle, PICKER_ROOT, showAuditConversationFolders } from './menu-steps.js';
 import { settle } from './steps.js';
 import { viewportById, viewportsFor } from '../surface-matrix.js';
 import { TOAST_SELECTOR } from '../toasts.js';
@@ -564,6 +564,18 @@ export const surfaces = [
                     await showConversationPage(page, 'list');
                 },
                 ready: ['#sb_conversation_list .sb-conversation-list-item', '#sb_conversation_list_search'],
+            },
+            {
+                // The headings of the folders are buttons of the list: one open with its rows, one closed (a badge shows there when its rows are unread).
+                id: 'list-with-folders',
+                async open(page) {
+                    await showConversationPage(page, 'list');
+                    await showAuditConversationFolders(page);
+                },
+                ready: [
+                    `#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[0].id}"] .sb-conversation-list-heading-button[aria-expanded="true"]`,
+                    `#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[1].id}"] .sb-conversation-list-heading-button[aria-expanded="false"]`,
+                ],
             },
             {
                 id: 'persona-picker',
