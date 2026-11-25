@@ -168,7 +168,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');
         expect(actionMenuSource).toContain('maxLeft < minLeft');
-        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261125f');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261125g');
     });
 
     // Behaviour that these three tests used to pin in the source (a group without messages, the forced group settings,
