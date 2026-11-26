@@ -241,9 +241,11 @@ thumbnails:
   # Image format of avatar thumbnails:
   # * "jpg": best compression with adjustable quality, no transparency
   # * "png": preserves transparency but increases filesize by about 100%
+  # SillyBunny: support "webp" thumbnails for smaller files with transparency.
+  # * "webp": modern compression with adjustable quality and transparency
   # Changing this only affects new thumbnails. To recreate the old ones, clear out /thumbnails folder in your user data.
   format: "png"
-  # Thumbnail quality (0-100). Applies to JPG thumbnails; PNG thumbnails are lossless.
+  # Thumbnail quality (0-100). Applies to JPG and WebP thumbnails; PNG thumbnails are lossless.
   quality: 100
   # Maximum thumbnail dimensions per type [width, height]
   dimensions:

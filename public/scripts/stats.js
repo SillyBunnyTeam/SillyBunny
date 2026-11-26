@@ -10,6 +10,154 @@ import { isTemporaryChat } from './sillybunny-temporary-chat-state.js';
 
 let charStats = {};
 
+// SillyBunny: batch and debounce per-turn stat deltas to POST /api/stats/increment instead of
+// downloading and re-uploading the full charStats JSON on every message or swipe.
+const STATS_INCREMENT_DEBOUNCE_MS = 1500;
+const DEFAULT_FIRST_CHAT_TIMESTAMP = new Date('9999-12-31T23:59:59.999Z').getTime();
+const ADDITIVE_DELTA_FIELDS = [
+    'total_gen_time',
+    'user_word_count',
+    'non_user_word_count',
+    'user_msg_count',
+    'non_user_msg_count',
+    'total_swipe_count',
+];
+/** @type {Map<string, Record<string, number>>} */
+const pendingStatIncrements = new Map();
+let pendingFlushTimer = null;
+let inFlightFlush = null;
+let unloadHookBound = false;
+
+function mergeDeltaIntoTarget(target, delta) {
+    for (const field of ADDITIVE_DELTA_FIELDS) {
+        if (delta[field]) {
+            target[field] = (Number(target[field]) || 0) + delta[field];
+        }
+    }
+    if (delta.date_last_chat) {
+        target.date_last_chat = Math.max(Number(target.date_last_chat) || 0, delta.date_last_chat);
+    }
+    if (delta.date_first_chat) {
+        const currentFirst = Number(target.date_first_chat);
+        target.date_first_chat = Math.min(
+            Number.isFinite(currentFirst) && currentFirst > 0 ? currentFirst : DEFAULT_FIRST_CHAT_TIMESTAMP,
+            delta.date_first_chat,
+        );
+    }
+}
+
+function bindUnloadFlushHook() {
+    if (unloadHookBound || typeof globalThis.addEventListener !== 'function') {
+        return;
+    }
+    unloadHookBound = true;
+    globalThis.addEventListener('pagehide', () => {
+        if (pendingStatIncrements.size > 0) {
+            void flushPendingStatIncrements({ keepalive: true });
+        }
+    });
+}
+
+function schedulePendingStatFlush() {
+    bindUnloadFlushHook();
+    if (pendingFlushTimer !== null) {
+        clearTimeout(pendingFlushTimer);
+    }
+    pendingFlushTimer = setTimeout(() => {
+        pendingFlushTimer = null;
+        void flushPendingStatIncrements();
+    }, STATS_INCREMENT_DEBOUNCE_MS);
+}
+
+/**
+ * Flushes any queued incremental stat deltas to POST /api/stats/increment.
+ * @param {{ keepalive?: boolean }} [options]
+ * @returns {Promise<void>}
+ */
+export async function flushPendingStatIncrements({ keepalive = false } = {}) {
+    if (pendingFlushTimer !== null) {
+        clearTimeout(pendingFlushTimer);
+        pendingFlushTimer = null;
+    }
+
+    if (inFlightFlush) {
+        await inFlightFlush;
+        if (pendingStatIncrements.size === 0) {
+            return;
+        }
+    }
+
+    if (pendingStatIncrements.size === 0) {
+        return;
+    }
+
+    const batch = {};
+    for (const [avatar, delta] of pendingStatIncrements.entries()) {
+        batch[avatar] = delta;
+    }
+    pendingStatIncrements.clear();
+
+    const run = (async () => {
+        try {
+            const response = await fetch('/api/stats/increment', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({ increments: batch }),
+                keepalive,
+            });
+
+            if (response.status === 404) {
+                // SillyBunny: fall back cleanly to legacy full-map update if talking to an older server.
+                await fetchStatsFromServer();
+                for (const [avatar, delta] of Object.entries(batch)) {
+                    if (!charStats[avatar]) {
+                        charStats[avatar] = {
+                            total_gen_time: 0,
+                            user_word_count: 0,
+                            non_user_word_count: 0,
+                            non_user_msg_count: 0,
+                            user_msg_count: 0,
+                            total_swipe_count: 0,
+                            date_first_chat: delta.date_first_chat || Date.now(),
+                            date_last_chat: delta.date_last_chat || Date.now(),
+                        };
+                    }
+                    mergeDeltaIntoTarget(charStats[avatar], delta);
+                }
+                await updateStats();
+                return;
+            }
+
+            if (!response.ok) {
+                console.error('Failed to increment stats', response.status);
+            }
+        } catch (error) {
+            console.error('Failed to increment stats', error);
+        }
+    })();
+
+    inFlightFlush = run;
+    try {
+        await run;
+    } finally {
+        if (inFlightFlush === run) {
+            inFlightFlush = null;
+        }
+    }
+}
+
+export function getPendingStatIncrementsCount() {
+    return pendingStatIncrements.size;
+}
+
+export function resetPendingStatIncrements() {
+    if (pendingFlushTimer !== null) {
+        clearTimeout(pendingFlushTimer);
+        pendingFlushTimer = null;
+    }
+    pendingStatIncrements.clear();
+}
+
 /**
  * Creates an HTML stat block.
  *
@@ -174,10 +322,8 @@ async function characterStatsHandler(characters, this_chid) {
     createHtml('Character', myStats);
 }
 
-/**
- * Fetches the character stats from the server.
- */
-async function getStats() {
+// SillyBunny: split raw /api/stats/get fetch so getStats() flushes queued incremental deltas first.
+async function fetchStatsFromServer() {
     const response = await fetch('/api/stats/get', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -190,6 +336,15 @@ async function getStats() {
         throw new Error('Error getting stats');
     }
     charStats = await response.json();
+}
+
+/**
+ * Fetches the character stats from the server.
+ */
+async function getStats() {
+    // SillyBunny: flush queued incremental deltas before reading full stats for modals.
+    await flushPendingStatIncrements();
+    await fetchStatsFromServer();
 }
 
 /**
@@ -278,55 +433,58 @@ async function statMesProcess(line, type, characters, this_chid, oldMessage) {
     if (isTemporaryChat()) {
         return;
     }
-    await getStats();
 
-    let stat = charStats[characters[this_chid].avatar];
-
-    if (!stat) {
-        stat = {
-            total_gen_time: 0,
-            user_word_count: 0,
-            non_user_msg_count: 0,
-            user_msg_count: 0,
-            total_swipe_count: 0,
-            date_first_chat: Date.now(),
-            date_last_chat: Date.now(),
-        };
+    // SillyBunny: queue a compact per-character delta and debounce POST /api/stats/increment
+    // instead of downloading and re-uploading the full charStats map on every turn.
+    const avatar = characters[this_chid].avatar;
+    if (!avatar) {
+        return;
     }
 
-    stat.total_gen_time += calculateGenTime(
-        line.gen_started,
-        line.gen_finished,
-    );
+    const now = Date.now();
+    const delta = {
+        total_gen_time: calculateGenTime(line.gen_started, line.gen_finished),
+        user_msg_count: 0,
+        user_word_count: 0,
+        non_user_msg_count: 0,
+        non_user_word_count: 0,
+        total_swipe_count: type === 'swipe' ? 1 : 0,
+        date_last_chat: now,
+        date_first_chat: now,
+    };
+
     if (line.is_user) {
         if (type != 'append' && type != 'continue' && type != 'appendFinal') {
-            stat.user_msg_count++;
-            stat.user_word_count += countWords(line.mes);
+            delta.user_msg_count = 1;
+            delta.user_word_count = countWords(line.mes);
         } else {
             let oldLen = oldMessage.split(' ').length;
-            stat.user_word_count += countWords(line.mes) - oldLen;
+            delta.user_word_count = countWords(line.mes) - oldLen;
         }
     } else {
         // if continue, don't add a message, get the last message and subtract it from the word count of
         // the new message
         if (type != 'append' && type != 'continue' && type != 'appendFinal') {
-            stat.non_user_msg_count++;
-            stat.non_user_word_count += countWords(line.mes);
+            delta.non_user_msg_count = 1;
+            delta.non_user_word_count = countWords(line.mes);
         } else {
             let oldLen = oldMessage.split(' ').length;
-            stat.non_user_word_count += countWords(line.mes) - oldLen;
+            delta.non_user_word_count = countWords(line.mes) - oldLen;
         }
     }
 
-    if (type === 'swipe') {
-        stat.total_swipe_count++;
+    if (charStats[avatar]) {
+        mergeDeltaIntoTarget(charStats[avatar], delta);
     }
-    stat.date_last_chat = Date.now();
-    stat.date_first_chat = Math.min(
-        stat.date_first_chat ?? new Date('9999-12-31T23:59:59.999Z').getTime(),
-        Date.now(),
-    );
-    updateStats();
+
+    const existingPending = pendingStatIncrements.get(avatar);
+    if (existingPending) {
+        mergeDeltaIntoTarget(existingPending, delta);
+    } else {
+        pendingStatIncrements.set(avatar, delta);
+    }
+
+    schedulePendingStatFlush();
 }
 
 export function initStats() {

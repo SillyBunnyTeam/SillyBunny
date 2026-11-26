@@ -3,15 +3,13 @@ import path from 'node:path';
 import url from 'node:url';
 
 import express from 'express';
-// SillyBunny: simple-git 4 has no default export.
-import { simpleGit as git, CheckRepoActions } from 'simple-git';
-import { sync as commandExistsSync } from 'command-exists';
 import { getConfig, getConfigValue, color } from './util.js';
-import {
-    SERVER_PLUGIN_BACKUP_DIRECTORY,
-    SERVER_PLUGIN_RELEASE_MARKER,
-    SERVER_PLUGIN_UPDATE_DIRECTORY,
-} from './server-plugin-manager.js';
+
+// SillyBunny: inline the three reserved directory/marker names so default installs with
+// enableServerPlugins: false skip eagerly loading simple-git, command-exists, and server-plugin-manager.
+const SERVER_PLUGIN_RELEASE_MARKER = '.sillybunny-release.json';
+const SERVER_PLUGIN_UPDATE_DIRECTORY = '.server-plugin-updates';
+const SERVER_PLUGIN_BACKUP_DIRECTORY = '.server-plugin-backups';
 
 const SERVER_PLUGINS_CONFIG_KEY = 'enableServerPlugins';
 const COMMON_SERVER_PLUGIN_CONFIG_MISTAKES = ['enableServerPlugin', 'enableserverplugin', 'enableserverplugins'];
@@ -371,6 +369,12 @@ async function updatePlugins(pluginsPath) {
     }
 
     console.log(color.blue('Auto-updating server plugins... Set'), color.yellow('enableServerPluginsAutoUpdate: false'), color.blue('in config.yaml to disable this feature.'));
+
+    // SillyBunny: lazy-load simple-git and command-exists only when plugin auto-updates actually run.
+    const [{ simpleGit: git, CheckRepoActions }, { sync: commandExistsSync }] = await Promise.all([
+        import('simple-git'),
+        import('command-exists'),
+    ]);
 
     if (!commandExistsSync('git')) {
         console.error(color.red('Git is not installed. Please install Git to enable auto-updating of server plugins.'));

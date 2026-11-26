@@ -63,31 +63,51 @@ export function safeCrop(image, options = {}) {
 /**
  * Resizes to fill the target box, then crops the overflow.
  * Mirrors Jimp's cover behavior without relying on the broken crop plugin.
+ * Clamps scale to 1 by default (withoutEnlargement) so smaller images are never upscaled.
  * @param {import('./jimp.js').Jimp} image
- * @param {{w: number, h: number, mode?: ResizeStrategy}} options
+ * @param {{w: number, h: number, mode?: ResizeStrategy, withoutEnlargement?: boolean}} options
  * @returns {import('./jimp.js').Jimp}
  */
-export function safeCover(image, { w, h, mode = ResizeStrategy.BILINEAR }) {
+export function safeCover(image, { w, h, mode = ResizeStrategy.BILINEAR, withoutEnlargement = true }) {
     assertJimpLikeImage(image);
 
     const targetWidth = Math.max(1, Math.round(Number(w) || 0));
     const targetHeight = Math.max(1, Math.round(Number(h) || 0));
     const sourceWidth = Math.max(1, image.bitmap.width);
     const sourceHeight = Math.max(1, image.bitmap.height);
-    const scale = targetWidth / targetHeight > sourceWidth / sourceHeight
+    const rawScale = targetWidth / targetHeight > sourceWidth / sourceHeight
         ? targetWidth / sourceWidth
         : targetHeight / sourceHeight;
+    // SillyBunny: clamp cover scale to <= 1 by default so smaller cards are never upscaled into bloated bitmaps.
+    const scale = withoutEnlargement ? Math.min(1, rawScale) : rawScale;
 
-    image.resize({
-        w: Math.max(targetWidth, Math.round(sourceWidth * scale)),
-        h: Math.max(targetHeight, Math.round(sourceHeight * scale)),
-        mode,
-    });
+    let cropWidth = targetWidth;
+    let cropHeight = targetHeight;
+
+    if (withoutEnlargement && rawScale > 1) {
+        const downscaleFactor = 1 / rawScale;
+        cropWidth = Math.max(1, Math.min(sourceWidth, Math.round(targetWidth * downscaleFactor)));
+        cropHeight = Math.max(1, Math.min(sourceHeight, Math.round(targetHeight * downscaleFactor)));
+    } else {
+        const resizedWidth = Math.max(targetWidth, Math.round(sourceWidth * scale));
+        const resizedHeight = Math.max(targetHeight, Math.round(sourceHeight * scale));
+        if (resizedWidth !== sourceWidth || resizedHeight !== sourceHeight) {
+            image.resize({
+                w: resizedWidth,
+                h: resizedHeight,
+                mode,
+            });
+        }
+    }
+
+    if (image.bitmap.width === cropWidth && image.bitmap.height === cropHeight) {
+        return image;
+    }
 
     return safeCrop(image, {
-        x: Math.round((image.bitmap.width - targetWidth) / 2),
-        y: Math.round((image.bitmap.height - targetHeight) / 2),
-        w: targetWidth,
-        h: targetHeight,
+        x: Math.round((image.bitmap.width - cropWidth) / 2),
+        y: Math.round((image.bitmap.height - cropHeight) / 2),
+        w: cropWidth,
+        h: cropHeight,
     });
 }

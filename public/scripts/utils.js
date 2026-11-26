@@ -1071,6 +1071,8 @@ export function sortMoments(a, b) {
     }
 }
 
+// SillyBunny: bound dateCache as a 500-entry LRU so long sessions do not retain unbounded Moment instances.
+const DATE_CACHE_MAX_ENTRIES = 500;
 const dateCache = new Map();
 
 /**
@@ -1081,12 +1083,21 @@ const dateCache = new Map();
  */
 export function timestampToMoment(timestamp) {
     if (dateCache.has(timestamp)) {
-        return dateCache.get(timestamp);
+        const cached = dateCache.get(timestamp);
+        // SillyBunny: refresh LRU position on cache hit.
+        dateCache.delete(timestamp);
+        dateCache.set(timestamp, cached);
+        return cached;
     }
 
     const iso8601 = parseTimestamp(timestamp);
     const objMoment = iso8601 ? moment(iso8601).locale(getCurrentLocale()) : moment.invalid();
 
+    // SillyBunny: evict least-recently-used entry when dateCache reaches capacity.
+    if (dateCache.size >= DATE_CACHE_MAX_ENTRIES) {
+        const oldestKey = dateCache.keys().next().value;
+        dateCache.delete(oldestKey);
+    }
     dateCache.set(timestamp, objMoment);
     return objMoment;
 }
@@ -1505,109 +1516,93 @@ export class RateLimiter {
  */
 export function extractDataFromPng(data, identifier = 'chara') {
     console.log('Attempting PNG import...');
-    let uint8 = new Uint8Array(4);
-    let uint32 = new Uint32Array(uint8.buffer);
 
-    //check if png header is valid
-    if (!data || data[0] !== 0x89 || data[1] !== 0x50 || data[2] !== 0x4E || data[3] !== 0x47 || data[4] !== 0x0D || data[5] !== 0x0A || data[6] !== 0x1A || data[7] !== 0x0A) {
+    // SillyBunny: zero-copy DataView PNG chunk scanner skips IDAT/non-tEXt payloads instead of byte-copying the image.
+    const bytes = data instanceof Uint8Array
+        ? data
+        : (ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null);
+
+    // Check if PNG header is valid
+    if (!bytes || bytes.byteLength < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47 || bytes[4] !== 0x0D || bytes[5] !== 0x0A || bytes[6] !== 0x1A || bytes[7] !== 0x0A) {
         console.log('PNG header invalid');
         return null;
     }
 
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const byteLength = bytes.byteLength;
+    const IHDR_TYPE = 0x49484452; // 'IHDR'
+    const TEXT_TYPE = 0x74455874; // 'tEXt'
+    const IEND_TYPE = 0x49454E44; // 'IEND'
+    const identifierLength = identifier.length;
+
     let ended = false;
-    let chunks = [];
+    let isFirstChunk = true;
     let idx = 8;
+    /** @type {Uint8Array | null} */
+    let matchedData = null;
 
-    while (idx < data.length) {
-        // Read the length of the current chunk,
-        // which is stored as a Uint32.
-        uint8[3] = data[idx++];
-        uint8[2] = data[idx++];
-        uint8[1] = data[idx++];
-        uint8[0] = data[idx++];
+    while (idx + 8 <= byteLength) {
+        const chunkDataLength = view.getUint32(idx, false);
+        const chunkType = view.getUint32(idx + 4, false);
+        const dataStart = idx + 8;
+        const dataEnd = dataStart + chunkDataLength;
+        const nextIdx = dataEnd + 4; // skip 4-byte CRC
 
-        // Chunk includes name/type for CRC check (see below).
-        let length = uint32[0] + 4;
-        let chunk = new Uint8Array(length);
-        chunk[0] = data[idx++];
-        chunk[1] = data[idx++];
-        chunk[2] = data[idx++];
-        chunk[3] = data[idx++];
-
-        // Get the name in ASCII for identification.
-        let name = (
-            String.fromCharCode(chunk[0]) +
-            String.fromCharCode(chunk[1]) +
-            String.fromCharCode(chunk[2]) +
-            String.fromCharCode(chunk[3])
-        );
-
-        // The IHDR header MUST come first.
-        if (!chunks.length && name !== 'IHDR') {
-            console.log('Warning: IHDR header missing');
+        if (isFirstChunk) {
+            isFirstChunk = false;
+            if (chunkType !== IHDR_TYPE) {
+                console.log('Warning: IHDR header missing');
+            }
         }
 
-        // The IEND header marks the end of the file,
-        // so on discovering it break out of the loop.
-        if (name === 'IEND') {
+        if (chunkType === IEND_TYPE) {
             ended = true;
-            chunks.push({
-                name: name,
-                data: new Uint8Array(0),
-            });
             break;
         }
 
-        // Read the contents of the chunk out of the main buffer.
-        for (let i = 4; i < length; i++) {
-            chunk[i] = data[idx++];
+        if (dataEnd > byteLength) {
+            break;
         }
 
-        // Read out the CRC value for comparison.
-        // It's stored as an Int32.
-        uint8[3] = data[idx++];
-        uint8[2] = data[idx++];
-        uint8[1] = data[idx++];
-        uint8[0] = data[idx++];
+        if (matchedData === null && chunkType === TEXT_TYPE && chunkDataLength > identifierLength && bytes[dataStart + identifierLength] === 0) {
+            let matches = true;
+            for (let i = 0; i < identifierLength; i++) {
+                if (bytes[dataStart + i] !== identifier.charCodeAt(i)) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                matchedData = bytes.subarray(dataStart, dataEnd);
+            }
+        }
 
-
-        // The chunk data is now copied to remove the 4 preceding
-        // bytes used for the chunk name/type.
-        let chunkData = new Uint8Array(chunk.buffer.slice(4));
-
-        chunks.push({
-            name: name,
-            data: chunkData,
-        });
+        if (nextIdx > byteLength) {
+            break;
+        }
+        idx = nextIdx;
     }
 
     if (!ended) {
         console.log('.png file ended prematurely: no IEND header was found');
     }
 
-    //find the chunk with the chara name, just check first and last letter
-    let found = chunks.filter(x => (
-        x.name == 'tEXt'
-        && x.data.length > identifier.length
-        && x.data.slice(0, identifier.length).every((v, i) => String.fromCharCode(v) == identifier[i])));
-
-    if (found.length == 0) {
+    if (matchedData === null) {
         console.log('PNG Image contains no data');
         return null;
-    } else {
-        try {
-            let b64buf = '';
-            let bytes = found[0].data; //skip the chara
-            for (let i = identifier.length + 1; i < bytes.length; i++) {
-                b64buf += String.fromCharCode(bytes[i]);
-            }
-            let decoded = JSON.parse(atob(b64buf));
-            console.log(decoded);
-            return decoded;
-        } catch (e) {
-            console.log('Error decoding b64 in image: ' + e);
-            return null;
-        }
+    }
+
+    try {
+        const payload = matchedData.subarray(identifierLength + 1);
+        const b64buf = typeof TextDecoder === 'function'
+            ? new TextDecoder('latin1').decode(payload)
+            : Array.from(payload, byte => String.fromCharCode(byte)).join('');
+        const decoded = JSON.parse(atob(b64buf));
+        console.log(decoded);
+        return decoded;
+    } catch (e) {
+        console.log('Error decoding b64 in image: ' + e);
+        return null;
     }
 }
 

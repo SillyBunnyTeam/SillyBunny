@@ -4,9 +4,54 @@ import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 
 const DEFAULT_ENTITY_SEARCH_LIMIT = 4000;
 const WORLD_INFO_SEARCH_TEXT_LIMIT = 64000;
+export const WORLD_INFO_SEARCH_CACHE_MAX_ENTRIES = 256;
 const WORLD_INFO_SELECT_RETRY_MS = 40;
 const WORLD_INFO_SELECT_ATTEMPTS = 50;
 const worldInfoSearchCache = new Map();
+const boundEventSources = new WeakSet();
+
+function setWorldInfoSearchCacheEntry(name, text) {
+    if (worldInfoSearchCache.has(name)) {
+        worldInfoSearchCache.delete(name);
+    } else if (worldInfoSearchCache.size >= WORLD_INFO_SEARCH_CACHE_MAX_ENTRIES) {
+        const oldestKey = worldInfoSearchCache.keys().next().value;
+        worldInfoSearchCache.delete(oldestKey);
+    }
+    worldInfoSearchCache.set(name, text);
+}
+
+function bindWorldInfoInvalidation(context) {
+    const eventSource = context?.eventSource;
+    if (!eventSource || typeof eventSource.on !== 'function' || boundEventSources.has(eventSource)) {
+        return;
+    }
+    boundEventSources.add(eventSource);
+    const updatedEvent = context?.eventTypes?.WORLDINFO_UPDATED ?? 'worldinfo_updated';
+    eventSource.on(updatedEvent, (bookName) => {
+        invalidateWorldInfoSearchCache(typeof bookName === 'string' && bookName ? bookName : undefined);
+    });
+}
+
+export function invalidateWorldInfoSearchCache(bookName) {
+    if (typeof bookName === 'string' && bookName) {
+        worldInfoSearchCache.delete(bookName);
+        return;
+    }
+    worldInfoSearchCache.clear();
+}
+
+export function pruneWorldInfoSearchCache(validNames) {
+    const allowed = validNames instanceof Set ? validNames : new Set(Array.isArray(validNames) ? validNames : []);
+    for (const key of [...worldInfoSearchCache.keys()]) {
+        if (!allowed.has(key)) {
+            worldInfoSearchCache.delete(key);
+        }
+    }
+}
+
+export function getWorldInfoSearchCacheSize() {
+    return worldInfoSearchCache.size;
+}
 
 function defaultSearchContextAccessor() {
     try {
@@ -215,7 +260,13 @@ async function openWorld(name) {
 // Only the explicit priming pass populates this metadata snapshot. Neither this lookup
 // nor collection calls loadWorldInfo(), so a cache miss never starts a network request.
 export function getWorldInfoEntrySearchText(bookName) {
-    return worldInfoSearchCache.get(bookName) ?? '';
+    if (!worldInfoSearchCache.has(bookName)) {
+        return '';
+    }
+    const cached = worldInfoSearchCache.get(bookName);
+    worldInfoSearchCache.delete(bookName);
+    worldInfoSearchCache.set(bookName, cached);
+    return cached;
 }
 
 export function collectEntitySearchEntries(normalizedQuery, { limit = DEFAULT_ENTITY_SEARCH_LIMIT, skippedWorlds = null } = {}) {
@@ -342,6 +393,7 @@ export async function primeWorldInfoSearchCache({ names = [], budgetMs = 1500, s
     const budget = Number.isFinite(budgetMs) ? Math.max(0, budgetMs) : 1500;
     if (!Array.isArray(names) || !names.length || !budget) return attempted;
     const context = getSearchContext();
+    bindWorldInfoInvalidation(context);
     let loadWorldInfo;
     try {
         loadWorldInfo = context?.loadWorldInfo;
@@ -361,7 +413,7 @@ export async function primeWorldInfoSearchCache({ names = [], budgetMs = 1500, s
             const data = await loadWorldInfoBefore(context, loadWorldInfo, name, deadline);
             if (!data) continue;
             try {
-                worldInfoSearchCache.set(name, getWorldInfoSearchText(data));
+                setWorldInfoSearchCacheEntry(name, getWorldInfoSearchText(data));
             } catch {
                 // Malformed books must not prevent the remaining books from being primed.
             }

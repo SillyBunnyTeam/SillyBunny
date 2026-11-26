@@ -11,7 +11,7 @@ await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (strings
 globalThis.toastr = { error: jest.fn() };
 globalThis.fetch = jest.fn(async url => ({ ok: true, status: 200, json: async () => (url === '/api/stats/get' ? {} : {}) }));
 
-const { statMesProcess } = await import('../public/scripts/stats.js');
+const { flushPendingStatIncrements, getPendingStatIncrementsCount, resetPendingStatIncrements, statMesProcess } = await import('../public/scripts/stats.js');
 const temporaryChat = await import('../public/scripts/sillybunny-temporary-chat-state.js');
 
 const characters = [{ name: 'Seraphina', avatar: 'Seraphina.png' }];
@@ -19,15 +19,19 @@ const userMessage = { is_user: true, mes: 'Hello there', send_date: 'now' };
 const requestedUrls = () => globalThis.fetch.mock.calls.map(([url]) => url);
 
 afterEach(() => {
+    resetPendingStatIncrements();
     temporaryChat.exitTemporaryState();
     globalThis.fetch.mockClear();
 });
 
 describe('message statistics', () => {
-    test('counts a message of a normal chat with one stats request after reading the stats', async () => {
+    test('counts a message of a normal chat with a debounced incremental stats request', async () => {
         await statMesProcess(userMessage, 'user', characters, '0', '');
+        expect(getPendingStatIncrementsCount()).toBe(1);
 
-        expect(requestedUrls()).toEqual(['/api/stats/get', '/api/stats/update']);
+        await flushPendingStatIncrements();
+
+        expect(requestedUrls()).toEqual(['/api/stats/increment']);
     });
 
     test('counts nothing for a temporary chat, because the chat is not kept', async () => {
@@ -35,7 +39,9 @@ describe('message statistics', () => {
 
         await statMesProcess(userMessage, 'user', characters, '0', '');
         await statMesProcess({ is_user: false, mes: 'Reply' }, 'swipe', characters, '0', '');
+        await flushPendingStatIncrements();
 
+        expect(getPendingStatIncrementsCount()).toBe(0);
         expect(requestedUrls()).toEqual([]);
     });
 });

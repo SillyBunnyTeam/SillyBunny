@@ -19,6 +19,47 @@ const getEntityDateAddedRoot = directories => directories.root || path.dirname(d
 const getGroupDateAddedFallback = stat => [stat.birthtimeMs, stat.ctimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 
+// SillyBunny: bounded (mtimeMs, size) LRU cache for parsed group JSON files, invalidated on create/edit/delete/migration.
+const MAX_GROUP_JSON_CACHE_ENTRIES = 512;
+const groupJsonCache = new Map();
+
+function readCachedGroupJson(filePath, fileStat) {
+    const cacheKey = path.resolve(filePath);
+    const cached = groupJsonCache.get(cacheKey);
+    if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+        groupJsonCache.delete(cacheKey);
+        groupJsonCache.set(cacheKey, cached);
+        return structuredClone(cached.data);
+    }
+
+    const fileContents = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(fileContents);
+    if (groupJsonCache.has(cacheKey)) {
+        groupJsonCache.delete(cacheKey);
+    } else if (groupJsonCache.size >= MAX_GROUP_JSON_CACHE_ENTRIES) {
+        const oldestKey = groupJsonCache.keys().next().value;
+        groupJsonCache.delete(oldestKey);
+    }
+    groupJsonCache.set(cacheKey, {
+        mtimeMs: fileStat.mtimeMs,
+        size: fileStat.size,
+        data: structuredClone(parsed),
+    });
+    return parsed;
+}
+
+function invalidateGroupJsonCache(filePath) {
+    groupJsonCache.delete(path.resolve(filePath));
+}
+
+export function clearGroupsCache() {
+    groupJsonCache.clear();
+}
+
+export function getGroupsCacheStats() {
+    return { size: groupJsonCache.size, maxEntries: MAX_GROUP_JSON_CACHE_ENTRIES };
+}
+
 /**
  * Warns if group data contains deprecated metadata keys and removes them.
  * @param {object} groupData Group data object
@@ -132,6 +173,8 @@ export async function migrateGroupChatsMetadataFormat(userDirectories) {
                     delete groupData.chat_metadata;
                     delete groupData.past_metadata;
                     await writeFileAtomic(groupFilePath, JSON.stringify(groupData, null, 4), 'utf8');
+                    // SillyBunny: invalidate cached group JSON after metadata migration writes the file.
+                    invalidateGroupJsonCache(groupFilePath);
                     console.log(`Migrated group chats metadata for group: ${groupData.id}`);
                     anyDataMigrated = true;
                 } catch (groupError) {
@@ -177,9 +220,9 @@ router.post('/all', (request, response) => {
     files.forEach(function (file) {
         try {
             const filePath = path.join(request.user.directories.groups, file);
-            const fileContents = fs.readFileSync(filePath, 'utf8');
-            const group = JSON.parse(fileContents);
             const groupStat = groupStats.get(file) ?? fs.statSync(filePath);
+            // SillyBunny: reuse cached parsed group JSON when (mtimeMs, size) is unchanged.
+            const group = readCachedGroupJson(filePath, groupStat);
             group.date_added = dateAddedByFile.get(file);
             group.create_date = new Date(groupStat.birthtimeMs).toISOString();
 
@@ -284,6 +327,8 @@ router.post('/create', (request, response) => {
             tryWriteFileSync(chatFilePath, JSON.stringify(chatHeader), 'utf8', { expectedFileAbsent: true, durable: true });
         }
         tryWriteFileSync(pathToFile, fileData);
+        // SillyBunny: invalidate cached group JSON on create.
+        invalidateGroupJsonCache(pathToFile);
     } catch (error) {
         console.error('Could not create group data.', error);
         return response.sendStatus(500);
@@ -323,8 +368,12 @@ router.post('/edit', getFileNameValidationFunction('id'), (request, response) =>
             operationTime,
         );
         tryWriteFileSync(pathToFile, fileData);
+        // SillyBunny: invalidate cached group JSON on edit.
+        invalidateGroupJsonCache(pathToFile);
     } else {
         tryWriteFileSync(pathToFile, fileData);
+        // SillyBunny: invalidate cached group JSON on edit.
+        invalidateGroupJsonCache(pathToFile);
         try {
             createEntityDateAdded(dateAddedRoot, 'groups', fileName, operationTime);
         } catch (metadataError) {
@@ -383,6 +432,8 @@ router.post('/delete', getFileNameValidationFunction('id'), async (request, resp
         if (fs.existsSync(pathToGroup)) {
             fs.unlinkSync(pathToGroup);
         }
+        // SillyBunny: invalidate cached group JSON on delete.
+        invalidateGroupJsonCache(pathToGroup);
         try {
             removeEntityDateAdded(dateAddedRoot, 'groups', groupFileName);
         } catch (metadataError) {
