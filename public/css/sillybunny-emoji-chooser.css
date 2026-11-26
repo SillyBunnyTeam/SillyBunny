@@ -259,6 +259,8 @@
     grid-template-columns: repeat(6, var(--sb-emoji-cell));
     gap: var(--sb-emoji-gap);
     padding: 6px;
+    /* The edge in forced colours, where the shadow ring is removed (focus-contrast-css.test.js lists the surfaces that have none). */
+    border: 1px solid transparent;
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-popover);
     color: var(--SmartThemeBodyColor);
@@ -283,6 +285,6 @@
     }
 
     .sb-emoji-variants {
-        border: 1px solid CanvasText;
+        border-color: CanvasText;
     }
 }
