@@ -83,15 +83,20 @@ function key(target, name) {
     return event;
 }
 
-const labels = list => [...list.querySelectorAll(OPTION)].map(option => option.querySelector('.sb-picker__label').textContent);
+/** The rows that the user can see: a paged list keeps the rows that it built and hides the ones that are not shown. */
+const isHidden = element => element.classList.contains('is-hidden');
+const shownOptions = list => [...list.querySelectorAll(OPTION)].filter(option => !isHidden(option));
+const shownMore = list => [...list.querySelectorAll(MORE)].find(more => !isHidden(more)) ?? null;
+const labels = list => shownOptions(list).map(option => option.querySelector('.sb-picker__label').textContent);
 
 describe('batches', () => {
     test('show the first 50 matches and a Show More row, whatever the size of the library', () => {
         const { list } = open({ items: makeItems(3000) });
 
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(list)).toHaveLength(50);
         expect(list.querySelectorAll('.sb-picker__option')).toHaveLength(51);
         expect(list.lastElementChild.matches(MORE)).toBe(true);
+        expect(isHidden(list.lastElementChild)).toBe(false);
         expect(list.lastElementChild.getAttribute('role')).toBe('option');
         expect(list.lastElementChild.textContent).toBe('Show More');
     });
@@ -99,19 +104,19 @@ describe('batches', () => {
     test('show no Show More row when everything fits in one batch', () => {
         const { list } = open({ items: makeItems(50) });
 
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
-        expect(list.querySelector(MORE)).toBeNull();
+        expect(shownOptions(list)).toHaveLength(50);
+        expect(shownMore(list)).toBeNull();
     });
 
     test('add 50 rows for each press of Show More, and drop the row after the last batch', () => {
         const { list } = open();
 
-        list.querySelector(MORE).click();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(100);
+        shownMore(list).click();
+        expect(shownOptions(list)).toHaveLength(100);
         expect(labels(list).slice(48, 52)).toEqual(['Name 0048', 'Name 0049', 'Name 0050', 'Name 0051']);
-        list.querySelector(MORE).click();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(120);
-        expect(list.querySelector(MORE)).toBeNull();
+        shownMore(list).click();
+        expect(shownOptions(list)).toHaveLength(120);
+        expect(shownMore(list)).toBeNull();
     });
 
     test('are each one element of the list, so that adding a batch is one insertion', () => {
@@ -119,45 +124,45 @@ describe('batches', () => {
         const observer = new MutationObserver(() => {});
         observer.observe(list, { childList: true });
 
-        list.querySelector(MORE).click();
+        shownMore(list).click();
 
         const added = observer.takeRecords().flatMap(record => [...record.addedNodes]);
         observer.disconnect();
         expect(added.filter(node => node.classList.contains('sb-picker__page'))).toHaveLength(1);
         expect(added.filter(node => node.classList.contains('sb-picker__option') && !node.classList.contains('sb-picker__more'))).toHaveLength(0);
-        expect(list.querySelectorAll(OPTION)).toHaveLength(100);
+        expect(shownOptions(list)).toHaveLength(100);
     });
 
     test('keep the rows that are shown: a batch only adds', () => {
         const { list } = open();
-        const before = [...list.querySelectorAll(OPTION)];
+        const before = shownOptions(list);
 
-        list.querySelector(MORE).click();
+        shownMore(list).click();
 
-        expect([...list.querySelectorAll(OPTION)].slice(0, 50).every((row, index) => row === before[index])).toBe(true);
+        expect(shownOptions(list).slice(0, 50).every((row, index) => row === before[index])).toBe(true);
     });
 
     test('are all one picker without a page size: every match is rendered and nothing is batched', () => {
         const { list } = open({ pageSize: undefined, items: makeItems(120) });
 
-        expect(list.querySelectorAll(OPTION)).toHaveLength(120);
-        expect(list.querySelector(MORE)).toBeNull();
+        expect(shownOptions(list)).toHaveLength(120);
+        expect(shownMore(list)).toBeNull();
     });
 
     test('show a search\'s matches in the same batches, and go back to the first 50 on a new query', () => {
         const { list, input } = open({ items: makeItems(300) });
-        list.querySelector(MORE).click();
-        list.querySelector(MORE).click();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(150);
+        shownMore(list).click();
+        shownMore(list).click();
+        expect(shownOptions(list)).toHaveLength(150);
 
         type(input, 'name 00');
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
-        expect(list.querySelector(MORE)).not.toBeNull();
-        list.querySelector(MORE).click();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(100);
+        expect(shownOptions(list)).toHaveLength(50);
+        expect(shownMore(list)).not.toBeNull();
+        shownMore(list).click();
+        expect(shownOptions(list)).toHaveLength(100);
 
         type(input, '');
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(list)).toHaveLength(50);
     });
 
     test('search the whole library, not only the rows that are shown', () => {
@@ -166,19 +171,19 @@ describe('batches', () => {
         type(input, 'name 2999');
 
         expect(labels(list)).toEqual(['Name 2999']);
-        expect(list.querySelector(MORE)).toBeNull();
+        expect(shownMore(list)).toBeNull();
     });
 
     test('are reached by the arrow keys: Show More is the last option, Enter loads the next batch and the first new row is the active one', () => {
         const { list, input } = open();
 
         key(input, 'End');
-        const more = list.querySelector(MORE);
+        const more = shownMore(list);
         expect(more.classList.contains('is-active')).toBe(true);
         expect(input.getAttribute('aria-activedescendant')).toBe(more.id);
 
         key(input, 'Enter');
-        const options = [...list.querySelectorAll(OPTION)];
+        const options = shownOptions(list);
         expect(options).toHaveLength(100);
         expect(options[50].classList.contains('is-active')).toBe(true);
         expect(input.getAttribute('aria-activedescendant')).toBe(options[50].id);
@@ -189,11 +194,11 @@ describe('batches', () => {
         const { list, input, onSelect } = open();
 
         for (let step = 0; step < 50; step++) key(input, 'ArrowDown');
-        expect(list.querySelector(MORE).classList.contains('is-active')).toBe(true);
+        expect(shownMore(list).classList.contains('is-active')).toBe(true);
         key(input, 'Enter');
 
         expect(onSelect).not.toHaveBeenCalled();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(100);
+        expect(shownOptions(list)).toHaveLength(100);
     });
 
     test('keep the input\'s focus when Show More is pressed with a pointer', () => {
@@ -201,7 +206,7 @@ describe('batches', () => {
         input.focus();
 
         const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
-        list.querySelector(MORE).dispatchEvent(down);
+        shownMore(list).dispatchEvent(down);
 
         expect(down.defaultPrevented).toBe(true);
     });
@@ -220,7 +225,7 @@ describe('search', () => {
         const { list, input } = open({ searchDelay: undefined });
 
         type(input, 'name 0007');
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(list)).toHaveLength(50);
         jest.advanceTimersByTime(300);
         expect(labels(list)).toEqual(['Name 0007']);
     });
@@ -232,7 +237,7 @@ describe('search', () => {
         type(input, 'key-only');
         expect(labels(list)).toEqual(['Seraphina']);
         type(input, 'seraphina');
-        expect(list.querySelector(OPTION)).toBeNull();
+        expect(shownOptions(list)).toHaveLength(0);
     });
 
     test('shows the empty state for a query that matches nothing, and the library again when it is cleared', () => {
@@ -241,7 +246,7 @@ describe('search', () => {
         type(input, 'zzzz');
         expect(list.querySelector('.sb-picker__empty .sb-status-page__title').textContent).toBe('No matching characters found.');
         type(input, '');
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(list)).toHaveLength(50);
     });
 
     test('does not read the surface\'s scroll position, which would force layout of every row', () => {
@@ -259,13 +264,13 @@ describe('search', () => {
 describe('rows are kept', () => {
     test('a row that goes out of a search and comes back is the same element', () => {
         const { list, input } = open();
-        const first = list.querySelector(OPTION);
+        const first = shownOptions(list)[0];
 
         type(input, 'name 0030');
-        expect(list.contains(first)).toBe(false);
+        expect(isHidden(first)).toBe(true);
         type(input, '');
 
-        expect(list.querySelector(OPTION) === first).toBe(true);
+        expect(shownOptions(list)[0] === first).toBe(true);
     });
 
     test('a render with nothing to change touches no node of the list', () => {
@@ -282,11 +287,11 @@ describe('rows are kept', () => {
     test('a refresh with a changed item rebuilds only that row', () => {
         const items = makeItems(120);
         const { picker, list } = open({ items });
-        const before = [...list.querySelectorAll(OPTION)];
+        const before = shownOptions(list);
 
         picker.refresh(items.map((item, index) => (index === 3 ? { ...item, label: 'Renamed' } : item)));
 
-        const after = [...list.querySelectorAll(OPTION)];
+        const after = shownOptions(list);
         expect(after[3]).not.toBe(before[3]);
         expect(after[3].textContent).toContain('Renamed');
         expect(after.filter((option, index) => option === before[index])).toHaveLength(49);
@@ -301,7 +306,7 @@ describe('rows are kept', () => {
         type(input, 'name 0070');
         type(input, '');
         expect(factory).toHaveBeenCalledTimes(51);
-        list.querySelector(MORE).click();
+        shownMore(list).click();
         expect(factory).toHaveBeenCalledTimes(100);
     });
 
@@ -314,6 +319,97 @@ describe('rows are kept', () => {
         const icons = [...list.querySelectorAll('.sb-picker__option > i:not(.sb-picker__check)')];
         expect(icons).toHaveLength(3);
         expect(icons.every(copy => copy !== icon && !copy.id)).toBe(true);
+    });
+});
+
+describe('rows are retained and hidden in a paged list', () => {
+    const itemOrder = list => [...list.querySelectorAll(OPTION)].map(option => option.querySelector('.sb-picker__label').textContent);
+
+    test('filtering and clearing the search change attributes and no node of the tree', () => {
+        const { list, input } = open({ items: makeItems(300) });
+        const observer = new MutationObserver(() => {});
+        observer.observe(list, { childList: true, subtree: true });
+
+        type(input, 'name 003');
+        type(input, '');
+
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
+        expect(shownOptions(list)).toHaveLength(50);
+    });
+
+    test('hides a row that the query leaves out, and the row is still in the list', () => {
+        const { list, input } = open();
+
+        type(input, 'name 0007');
+
+        const row = [...list.querySelectorAll(OPTION)][3];
+        expect(isHidden(row)).toBe(true);
+        expect(row.isConnected).toBe(true);
+    });
+
+    test('builds a row that was never shown, and puts it in item order among the rows that exist', () => {
+        const { list, input } = open({ items: makeItems(300) });
+        type(input, 'name 0280');
+        type(input, '');
+        for (let batch = 0; batch < 4; batch++) shownMore(list).click();
+
+        const order = itemOrder(list);
+        const wanted = [...makeItems(250).map(item => item.label), 'Name 0280'];
+        expect(order).toEqual(wanted);
+        expect(shownOptions(list)).toHaveLength(250);
+    });
+
+    test('puts a row between two rows of one page without moving them', () => {
+        const { list, input } = open({ items: makeItems(300) });
+        type(input, 'name 02');
+        type(input, 'name 0250|');
+        type(input, '');
+        type(input, 'name 0100');
+        type(input, 'name 0');
+        const before = [...list.querySelectorAll(OPTION)];
+        type(input, 'name 01');
+
+        const after = [...list.querySelectorAll(OPTION)];
+        const labelsInOrder = after.map(option => option.querySelector('.sb-picker__label').textContent);
+        expect(labelsInOrder).toEqual([...labelsInOrder].sort());
+        expect(before.every(row => after.includes(row))).toBe(true);
+    });
+
+    test('removes the rows that were shown longest ago when too many are hidden', () => {
+        const { list, input } = open({ items: makeItems(1200) });
+        for (let batch = 0; batch < 13; batch++) shownMore(list).click();
+        expect(shownOptions(list)).toHaveLength(700);
+
+        type(input, 'name 0001');
+
+        expect(list.querySelectorAll(OPTION).length).toBeLessThan(400);
+        expect(labels(list)).toEqual(['Name 0001']);
+        type(input, '');
+        expect(shownOptions(list)).toHaveLength(50);
+        expect(labels(list)[0]).toBe('Name 0000');
+    });
+
+    test('rebuilds the rows in the new order when a refresh reorders the items', () => {
+        const items = makeItems(60);
+        const { picker, list } = open({ items });
+
+        picker.refresh([...items].reverse());
+
+        expect(labels(list).slice(0, 3)).toEqual(['Name 0059', 'Name 0058', 'Name 0057']);
+        expect(shownMore(list)).not.toBeNull();
+        expect(shownOptions(list)).toHaveLength(50);
+        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
+    });
+
+    test('keeps the rows that are hidden out of the keyboard order and the screen reader', () => {
+        const { list, input } = open();
+
+        type(input, 'name 0007');
+        key(input, 'End');
+
+        expect(shownOptions(list)).toHaveLength(1);
+        expect(input.getAttribute('aria-activedescendant')).toBe(shownOptions(list)[0].id);
     });
 });
 
@@ -331,22 +427,22 @@ describe('a pick in a multiple picker', () => {
     test('hands the item\'s value, which is the avatar and not an index, to onSelect', () => {
         const { list, onSelect } = pickerWithSelection();
 
-        list.querySelectorAll(OPTION)[2].click();
+        shownOptions(list)[2].click();
 
         expect(onSelect).toHaveBeenCalledWith('card-2.png');
     });
 
     test('toggles one row and leaves every other row element as it was', () => {
         const { list } = pickerWithSelection();
-        const rows = [...list.querySelectorAll(OPTION)];
+        const rows = shownOptions(list);
         const observer = new MutationObserver(() => {});
         observer.observe(list, { childList: true, subtree: true, attributes: true });
 
         rows[4].click();
 
         expect(rows[4].getAttribute('aria-selected')).toBe('true');
-        expect(rows[4].querySelector('.sb-picker__check').hidden).toBe(false);
-        expect([...list.querySelectorAll(OPTION)].every((row, index) => row === rows[index])).toBe(true);
+        expect(isHidden(rows[4].querySelector('.sb-picker__check'))).toBe(false);
+        expect(shownOptions(list).every((row, index) => row === rows[index])).toBe(true);
         const touched = new Set(observer.takeRecords().map(record => record.target.closest?.(OPTION) ?? record.target));
         expect([...touched].length === 1 && [...touched][0] === rows[4]).toBe(true);
         expect(rows.filter(row => row.getAttribute('aria-selected') === 'true').map(row => row.id)).toEqual([rows[4].id]);
@@ -354,46 +450,46 @@ describe('a pick in a multiple picker', () => {
 
         rows[4].click();
         expect(rows[4].getAttribute('aria-selected')).toBe('false');
-        expect(rows[4].querySelector('.sb-picker__check').hidden).toBe(true);
+        expect(isHidden(rows[4].querySelector('.sb-picker__check'))).toBe(true);
     });
 
     test('reads the state of the rows that are on the screen, not of the whole library', () => {
         const { list, getItemState } = pickerWithSelection({ items: makeItems(3000) });
         getItemState.mockClear();
 
-        list.querySelectorAll(OPTION)[0].click();
+        shownOptions(list)[0].click();
 
         expect(getItemState.mock.calls.length).toBeLessThanOrEqual(60);
     });
 
     test('keeps the batches, the scroll and the active row', () => {
         const { list, input } = pickerWithSelection();
-        list.querySelector(MORE).click();
+        shownMore(list).click();
         list.scrollTop = 120;
         key(input, 'ArrowDown');
         key(input, 'ArrowDown');
 
         key(input, 'Enter');
 
-        expect(list.querySelectorAll(OPTION)).toHaveLength(100);
+        expect(shownOptions(list)).toHaveLength(100);
         expect(list.scrollTop).toBe(120);
         expect(list.querySelectorAll('.is-active')).toHaveLength(1);
-        expect(list.querySelectorAll(OPTION)[52].classList.contains('is-active')).toBe(true);
+        expect(shownOptions(list)[52].classList.contains('is-active')).toBe(true);
     });
 
     test('shows the state of an item that scrolled in later', () => {
         const { list, selected } = pickerWithSelection();
         selected.add('card-70.png');
 
-        list.querySelector(MORE).click();
+        shownMore(list).click();
 
-        expect(list.querySelectorAll(OPTION)[70].getAttribute('aria-selected')).toBe('true');
+        expect(shownOptions(list)[70].getAttribute('aria-selected')).toBe('true');
     });
 
     test('updates the count line and the footer\'s disabled state without a render', () => {
         const footerDisabled = jest.fn(() => false);
         const { surface, list } = pickerWithSelection({ footer: [{ label: 'Create', onSelect: () => {}, disabled: footerDisabled }] });
-        list.querySelectorAll(OPTION)[0].click();
+        shownOptions(list)[0].click();
 
         expect(surface.querySelector('.sb-picker__count').textContent).toBe('1 selected');
         expect(footerDisabled).toHaveBeenCalled();
@@ -401,11 +497,11 @@ describe('a pick in a multiple picker', () => {
 
     test('dims and disables a row by the state it has now: a disabled item that is selected can still be removed', () => {
         const { list, selected } = pickerWithSelection({ items: [{ value: 'a', label: 'Alpha', disabled: true }, { value: 'b', label: 'Beta' }] });
-        const [alpha] = list.querySelectorAll(OPTION);
+        const [alpha] = shownOptions(list);
         expect(alpha.getAttribute('aria-disabled')).toBe('true');
 
         selected.add('a');
-        list.querySelectorAll(OPTION)[1].click();
+        shownOptions(list)[1].click();
         expect(alpha.getAttribute('aria-disabled')).toBeNull();
         expect(alpha.getAttribute('aria-selected')).toBe('true');
     });
@@ -426,9 +522,9 @@ describe('the tag filter', () => {
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
         expect(toggle.getAttribute('aria-controls')).toBe(panel.id);
         expect(toggle.getAttribute('aria-label')).toBe('Tags');
-        expect(panel.hidden).toBe(true);
+        expect(isHidden(panel)).toBe(true);
         toggle.click();
-        expect(panel.hidden).toBe(false);
+        expect(isHidden(panel)).toBe(false);
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
         const chips = [...panel.querySelectorAll('.sb-picker__chip')];
         expect(chips.map(chip => [chip.textContent, chip.getAttribute('aria-pressed')])).toEqual([['Alpha tag', 'false'], ['Beta tag', 'false']]);
@@ -437,20 +533,20 @@ describe('the tag filter', () => {
 
     test('keeps a character only when it has every ticked tag, in batches, and resets to the first batch', () => {
         const { surface, list } = open({ filter, items: makeItems(300) });
-        list.querySelector(MORE).click();
+        shownMore(list).click();
         const [alpha, beta] = surface.querySelectorAll('.sb-picker__chip');
 
         alpha.click();
         expect(alpha.getAttribute('aria-pressed')).toBe('true');
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
-        expect(list.querySelector(MORE)).not.toBeNull();
+        expect(shownOptions(list)).toHaveLength(50);
+        expect(shownMore(list)).not.toBeNull();
         beta.click();
         expect(labels(list).slice(0, 3)).toEqual(['Name 0001', 'Name 0004', 'Name 0007']);
         expect(surface.querySelector('.sb-picker__filter-count').textContent).toBe('2');
         alpha.click();
         beta.click();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
-        expect(surface.querySelector('.sb-picker__filter-count').hidden).toBe(true);
+        expect(shownOptions(list)).toHaveLength(50);
+        expect(isHidden(surface.querySelector('.sb-picker__filter-count'))).toBe(true);
     });
 
     test('combines with the search', () => {
@@ -467,9 +563,9 @@ describe('the tag filter', () => {
         const [, beta] = surface.querySelectorAll('.sb-picker__chip');
 
         beta.click();
-        expect(list.querySelector('.sb-picker__empty')).not.toBeNull();
+        expect(isHidden(list.querySelector('.sb-picker__empty'))).toBe(false);
         surface.querySelector('.sb-picker__filter-clear').click();
-        expect(list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(list)).toHaveLength(50);
         expect(beta.getAttribute('aria-pressed')).toBe('false');
     });
 
@@ -495,7 +591,7 @@ describe('a picker mounted in a page', () => {
 
         expect(host.querySelector('.sb-picker__search')).toBe(mounted.input);
         expect(host.querySelector('.sb-picker__list')).toBe(mounted.list);
-        expect(mounted.list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(mounted.list)).toHaveLength(50);
         expect(isPickerOpen()).toBe(false);
         expect(document.querySelector('.sb-action-popover')).toBeNull();
     });
@@ -504,19 +600,19 @@ describe('a picker mounted in a page', () => {
         const { mounted, onSelect } = mount();
 
         type(mounted.input, 'name 0007');
-        mounted.list.querySelector(OPTION).click();
+        shownOptions(mounted.list)[0].click();
         type(mounted.input, '');
-        mounted.list.querySelector(MORE).click();
+        shownMore(mounted.list).click();
 
         expect(onSelect).toHaveBeenCalledWith('card-7.png');
-        expect(mounted.list.querySelectorAll(OPTION)).toHaveLength(100);
+        expect(shownOptions(mounted.list)).toHaveLength(100);
     });
 
     test('answers the keys of its own search field, and Escape is left to the page', () => {
         const { mounted } = mount();
 
         key(mounted.input, 'ArrowDown');
-        expect(mounted.list.querySelectorAll(OPTION)[1].classList.contains('is-active')).toBe(true);
+        expect(shownOptions(mounted.list)[1].classList.contains('is-active')).toBe(true);
         expect(key(mounted.input, 'Escape').defaultPrevented).toBe(false);
     });
 
@@ -525,7 +621,7 @@ describe('a picker mounted in a page', () => {
         const { picker } = open();
 
         expect(picker.isOpen).toBe(true);
-        expect(mounted.list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(mounted.list)).toHaveLength(50);
         type(mounted.input, 'name 0007');
         expect(picker.isOpen).toBe(true);
     });
@@ -537,7 +633,7 @@ describe('a picker mounted in a page', () => {
         type(first.mounted.input, 'name 0007');
 
         expect(labels(first.mounted.list)).toEqual(['Name 0007']);
-        expect(second.mounted.list.querySelectorAll(OPTION)).toHaveLength(50);
+        expect(shownOptions(second.mounted.list)).toHaveLength(50);
     });
 
     test('stops answering after destroy, and refresh swaps the items', () => {
@@ -547,7 +643,7 @@ describe('a picker mounted in a page', () => {
 
         mounted.destroy();
         type(mounted.input, 'x');
-        mounted.list.querySelector(OPTION)?.click();
+        shownOptions(mounted.list)[0]?.click();
 
         expect(onSelect).not.toHaveBeenCalled();
     });
@@ -561,8 +657,8 @@ describe('the other callers keep their picker', () => {
         openPicker({ trigger, title: 'Old', items: makeItems(120), onSelect: () => {} });
 
         const list = document.querySelector('.sb-picker__list');
-        expect(list.querySelectorAll(OPTION)).toHaveLength(120);
-        expect(list.querySelector(MORE)).toBeNull();
+        expect(shownOptions(list)).toHaveLength(120);
+        expect(shownMore(list)).toBeNull();
     });
 
     test('grouped items still render under their headings, with the same rows reused', () => {
@@ -571,13 +667,13 @@ describe('the other callers keep their picker', () => {
         const items = [{ value: 1, label: 'One', group: 'A' }, { value: 2, label: 'Two', group: 'B' }, { value: 3, label: 'Three', group: 'A' }];
         openPicker({ trigger, title: 'Grouped', items, onSelect: () => {}, searchDelay: 0 });
         const list = document.querySelector('.sb-picker__list');
-        const one = list.querySelector(OPTION);
+        const one = shownOptions(list)[0];
 
         const input = document.querySelector('.sb-picker__search');
         type(input, 'o');
         type(input, '');
 
         expect([...list.querySelectorAll('.sb-picker__group-heading')].map(heading => heading.textContent)).toEqual(['A', 'B']);
-        expect(list.querySelector(OPTION)).toBe(one);
+        expect(shownOptions(list)[0] === one).toBe(true);
     });
 });

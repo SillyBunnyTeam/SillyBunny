@@ -1249,7 +1249,13 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     display: contents;
 }
 
-.sb-picker__check[hidden] {
+/* A paged list keeps its rows and hides the ones that are not shown with a class: the `hidden` attribute restyles the page. */
+.sb-picker__option.is-hidden,
+.sb-picker__empty.is-hidden,
+.sb-picker__check.is-hidden,
+.sb-picker__filters.is-hidden,
+.sb-picker__filter-count.is-hidden,
+.sb-picker__filter-clear.is-hidden {
     display: none;
 }
 
@@ -1324,12 +1330,6 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     line-height: 1;
-}
-
-.sb-picker__filter-count[hidden],
-.sb-picker__filters[hidden],
-.sb-picker__filter-clear[hidden] {
-    display: none;
 }
 
 /* The tag chips flow like words in a line and the panel scrolls past about four lines of them (AdwWrapBox). */

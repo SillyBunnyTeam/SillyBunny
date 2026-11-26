@@ -15,7 +15,8 @@ import { DETAILS_HOST, openDetails, openDetailsApp, seedAndOpen, shownPage } fro
 const NEW_MENU = '[data-sb-conversation-action="open-new-menu"]';
 // The picker is a popover at 1440x900 and a bottom sheet at 390x844; its search field and rows have the same classes in both.
 const SEARCH = '.sb-picker__search';
-const OPTION = '.sb-picker__option:not(.sb-picker__more)';
+// A paged list keeps the rows that it built and hides the ones that are not shown.
+const OPTION = '.sb-picker__option:not(.sb-picker__more):not(.is-hidden)';
 const OPEN_BUDGET_MS = 1000;
 const INTERACTION_BUDGET_MS = 100;
 const THROTTLE = 4;
@@ -118,14 +119,14 @@ async function startProbe(page, untilSource, argument = null) {
     return () => page.evaluate(() => window.__probe);
 }
 
-const labelsOf = '() => [...document.querySelectorAll(\'.sb-picker__option:not(.sb-picker__more) .sb-picker__label\')].map(label => label.textContent)';
+const labelsOf = '() => [...document.querySelectorAll(\'.sb-picker__option:not(.sb-picker__more):not(.is-hidden) .sb-picker__label\')].map(label => label.textContent)';
 
 /** Opens the New menu item and times it until the search field has focus and the list has rows. */
 async function openStartPicker(page, name) {
     await page.locator(NEW_MENU).click();
     const item = page.getByRole('menuitem', { name, exact: true });
     await expect(item).toBeVisible();
-    const finish = await startProbe(page, '() => Boolean(document.querySelector(\'.sb-picker__option\')) && document.activeElement === document.querySelector(\'.sb-picker__search\')');
+    const finish = await startProbe(page, '() => Boolean(document.querySelector(\'.sb-picker__option:not(.is-hidden)\')) && document.activeElement === document.querySelector(\'.sb-picker__search\')');
     await item.click();
     const ms = await finish();
     await expect(page.locator(SEARCH)).toBeVisible();
@@ -182,7 +183,7 @@ async function measureStartPickers(browser, baseURL, { size, phone }) {
 
         if (size > 50) {
             const shown = await page.locator(OPTION).count();
-            finish = await startProbe(page, `() => document.querySelectorAll('.sb-picker__option:not(.sb-picker__more)').length === ${shown + 50}`);
+            finish = await startProbe(page, `() => document.querySelectorAll('.sb-picker__option:not(.sb-picker__more):not(.is-hidden)').length === ${shown + 50}`);
             await page.locator('.sb-picker__more').click();
             figures.more.push(await finish());
         }
@@ -222,7 +223,7 @@ async function measureAddMember(browser, baseURL, { size, phone }) {
     // The page opened when the button was pressed; the figure is the time to the first row, read from the next open.
     await shownPage(page).getByRole('button', { name: 'Cancel' }).click();
     thumbnails.count = 0;
-    const finish = await startProbe(page, `() => Boolean(document.querySelector('${DETAILS_HOST} .sb-picker__option'))`);
+    const finish = await startProbe(page, `() => Boolean(document.querySelector('${DETAILS_HOST} .sb-picker__option:not(.is-hidden)'))`);
     await shownPage(page).getByRole('button', { name: 'Add Member' }).click();
     figures.open = await finish();
     await settleThumbnails(thumbnails);
@@ -230,17 +231,17 @@ async function measureAddMember(browser, baseURL, { size, phone }) {
 
     const search = shownPage(page).getByRole('combobox', { name: /Search/ });
     const before = thumbnails.count;
-    const keyed = await startProbe(page, `() => { const labels = [...document.querySelectorAll('${DETAILS_HOST} .sb-picker__option:not(.sb-picker__more) .sb-picker__label')].map(label => label.textContent); return labels.length > 0 && labels.every(label => label.toLowerCase().includes('z')); }`);
+    const keyed = await startProbe(page, `() => { const labels = [...document.querySelectorAll('${DETAILS_HOST} .sb-picker__option:not(.sb-picker__more):not(.is-hidden) .sb-picker__label')].map(label => label.textContent); return labels.length > 0 && labels.every(label => label.toLowerCase().includes('z')); }`);
     await search.pressSequentially('z');
     figures.first = await keyed();
     await settleThumbnails(thumbnails);
     figures.keyThumbnails = thumbnails.count - before;
-    const cleared = await startProbe(page, `() => document.querySelectorAll('${DETAILS_HOST} .sb-picker__option:not(.sb-picker__more)').length === 50`);
+    const cleared = await startProbe(page, `() => document.querySelectorAll('${DETAILS_HOST} .sb-picker__option:not(.sb-picker__more):not(.is-hidden)').length === 50`);
     await search.press('Control+a');
     await search.press('Backspace');
     figures.clear = await cleared();
 
-    const row = shownPage(page).locator('.sb-picker__option:not(.sb-picker__more)').nth(4);
+    const row = shownPage(page).locator(OPTION).nth(4);
     const id = await row.getAttribute('id');
     const picked = await startProbe(page, `() => document.getElementById(${JSON.stringify(id)})?.getAttribute('aria-selected') === 'true'`);
     await row.click();

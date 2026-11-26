@@ -17,6 +17,15 @@ function createId(prefix) {
     return `${prefix}-${pickerId}`;
 }
 
+/**
+ * Hides or shows an element of a picker with a class, not with the `hidden` attribute. Changing `hidden` or an inline style
+ * makes the browser restyle most of the page (the app has a few hundred `:has()` rules), which costs more on a phone than
+ * the rest of a keystroke; a class that sets `display: none` costs nothing measurable.
+ */
+function setHidden(element, hidden) {
+    element.classList.toggle('is-hidden', hidden);
+}
+
 function createIcon(icon, fallback = 'fa-solid fa-puzzle-piece') {
     if (typeof icon === 'function') {
         const made = /** @type {Element} */ (icon());
@@ -152,15 +161,36 @@ function setItems(state, items) {
     const entryByValue = new Map();
     let grouped = false;
     for (const item of items) {
-        const entry = previous.get(item) ?? { item, key: itemHaystack(item), option: null, check: null, excluded: null, stateKey: '' };
+        const entry = previous.get(item) ?? { item, key: itemHaystack(item), index: 0, option: null, check: null, excluded: null, stateKey: '', visible: false, lastShown: 0 };
+        entry.index = entries.length;
         entries.push(entry);
         if (!entryByValue.has(item.value)) entryByValue.set(item.value, entry);
         if (item.group) grouped = true;
+    }
+    const kept = new Set(entries);
+    for (const entry of state.entries ?? []) {
+        if (!kept.has(entry) && entry.option) {
+            entry.option.remove();
+            entry.option = null;
+        }
     }
     state.items = [...items];
     state.entries = entries;
     state.entryByValue = entryByValue;
     state.grouped = grouped;
+    // Rows are retained and hidden only in a list that is not grouped and has no create item, which shows its matches in
+    // item order, so that a row never has to move.
+    state.paged = Number.isFinite(state.pageSize) && !grouped && !state.create;
+    state.built = state.paged ? state.built.filter(entry => kept.has(entry)) : [];
+    if (state.built.some((entry, position) => position > 0 && state.built[position - 1].index > entry.index)) {
+        // The items changed their order, so the rows that are in the list are not in item order any more.
+        for (const entry of state.built) {
+            entry.option?.remove();
+            entry.option = null;
+        }
+        state.built = [];
+    }
+    pruneEmptyPages(state);
 }
 
 function createOption(state, item, id, onClick) {
@@ -231,7 +261,7 @@ function syncOption(state, entry) {
     }
     if (state.paged) {
         // A pick must not insert an element: any insertion restyles the page, which costs more than the pick itself.
-        entry.check.hidden = !selected;
+        setHidden(entry.check, !selected);
     } else if (selected && !entry.check) {
         entry.check = createIcon('fa-solid fa-check');
         entry.check.classList.add('sb-picker__check');
@@ -254,40 +284,45 @@ function syncOption(state, entry) {
     }
 }
 
-/** The option that is built for the entry the first time it is shown, and kept for every later render. */
-function getEntryOption(state, entry) {
-    if (!entry.option) {
-        entry.option = createOption(state, entry.item, createId('sb-picker-option'), () => selectPickerItem(state, entry.item.value));
-        if (state.paged) {
-            entry.check = createIcon('fa-solid fa-check');
-            entry.check.classList.add('sb-picker__check');
-            entry.check.hidden = true;
-            entry.option.append(entry.check);
-        }
+/** Builds the row of an entry the first time it is shown. A row is kept for every later render. */
+function ensureOption(state, entry) {
+    if (entry.option) return entry.option;
+    entry.option = createOption(state, entry.item, createId('sb-picker-option'), () => selectPickerItem(state, entry.item.value));
+    if (state.paged) {
+        entry.check = createIcon('fa-solid fa-check');
+        entry.check.classList.add('sb-picker__check', 'is-hidden');
+        entry.option.append(entry.check);
     }
+    return entry.option;
+}
+
+function getEntryOption(state, entry) {
+    ensureOption(state, entry);
     syncOption(state, entry);
     return entry.option;
 }
 
 /**
- * One node that holds a batch of rows. A batch is added to the list as this one element, so that the observers of the
+ * A page is one element that holds rows. Rows are added to the list as one page at a time, so that the observers of the
  * app (keyboard.js and a11y.js scan every element that is added) look at one element and not at fifty rows.
  * `display: contents` keeps the rows laid out as direct children of the list.
  */
-function getPageGroup(state, index, rows) {
-    const previous = state.pageGroups[index];
-    if (previous && previous.rows.length === rows.length && previous.rows.every((row, position) => row === rows[position])) {
-        return previous.element;
-    }
+function createPage(options) {
     const element = document.createElement('li');
     element.className = 'sb-picker__page';
     element.setAttribute('role', 'presentation');
     const inner = document.createElement('ul');
     inner.setAttribute('role', 'presentation');
-    inner.append(...rows);
+    inner.append(...options);
     element.append(inner);
-    state.pageGroups[index] = { element, rows };
     return element;
+}
+
+function pruneEmptyPages(state) {
+    if (!state.list) return;
+    for (const page of [...state.list.querySelectorAll(':scope > .sb-picker__page')]) {
+        if (!page.firstElementChild.firstElementChild) page.remove();
+    }
 }
 
 function getShowMoreOption(state) {
@@ -295,8 +330,8 @@ function getShowMoreOption(state) {
         const option = document.createElement('li');
         option.id = createId('sb-picker-option');
         option.className = 'sb-picker__option sb-picker__more';
+        // No aria-selected: the row cannot be selected, and a multiple listbox would read it as "not selected".
         option.setAttribute('role', 'option');
-        option.setAttribute('aria-selected', 'false');
         option.tabIndex = -1;
         option.textContent = t`Show More`;
         // The search field keeps the focus, as it does for a multiple picker's options.
@@ -315,7 +350,7 @@ function createFilterControls(state, input) {
     const panel = document.createElement('div');
     panel.className = 'sb-picker__filters';
     panel.id = createId('sb-picker-filters');
-    panel.hidden = true;
+    panel.classList.add('is-hidden');
     panel.setAttribute('role', 'group');
     panel.setAttribute('aria-label', label);
 
@@ -328,7 +363,7 @@ function createFilterControls(state, input) {
     toggle.setAttribute('aria-controls', panel.id);
     const badge = document.createElement('span');
     badge.className = 'sb-picker__filter-count';
-    badge.hidden = true;
+    badge.classList.add('is-hidden');
     toggle.append(createIcon('fa-solid fa-tags'), badge);
     row.append(input, toggle);
 
@@ -336,7 +371,7 @@ function createFilterControls(state, input) {
     clear.type = 'button';
     clear.className = 'sb-picker__filter-clear';
     clear.textContent = t`Clear All Filters`;
-    clear.hidden = true;
+    clear.classList.add('is-hidden');
 
     const chips = new Map();
     for (const item of items) {
@@ -361,8 +396,8 @@ function createFilterControls(state, input) {
     panel.append(clear);
 
     toggle.addEventListener('click', () => {
-        panel.hidden = !panel.hidden;
-        toggle.setAttribute('aria-expanded', String(!panel.hidden));
+        setHidden(panel, !panel.classList.contains('is-hidden'));
+        toggle.setAttribute('aria-expanded', String(!panel.classList.contains('is-hidden')));
         scheduleReposition(state);
     });
     clear.addEventListener('click', () => {
@@ -378,8 +413,8 @@ function syncFilterControls(state) {
     const { badge, clear, chips } = state.filterControls;
     const count = state.filterSelected.size;
     badge.textContent = String(count);
-    badge.hidden = !count;
-    clear.hidden = !count;
+    setHidden(badge, !count);
+    setHidden(clear, !count);
     state.filterControls.toggle.classList.toggle('is-active', count > 0);
     for (const [value, chip] of chips) chip.setAttribute('aria-pressed', String(state.filterSelected.has(value)));
 }
@@ -450,10 +485,15 @@ function buildPickerContent(state, body) {
     syncSelectionCount(state);
 }
 
-/** Writes the count only when its text changes, so a live region announces a pick and not a re-render. */
+/**
+ * Writes the count only when its text changes, so a live region announces a pick and not a re-render. The text node is
+ * changed in place: `textContent` replaces it, and a replaced node restyles most of the page, which costs more than a pick.
+ */
 function syncSelectionCount(state) {
     const text = state.countElement ? String(state.selectionCount()) : '';
-    if (state.countElement && state.countElement.textContent !== text) state.countElement.textContent = text;
+    if (!state.countElement || state.countElement.textContent === text) return;
+    if (state.countElement.firstChild instanceof Text) state.countElement.firstChild.data = text;
+    else state.countElement.textContent = text;
 }
 
 /** A footer action can be unavailable while the picker's own selection says so, such as a group that is too small. */
@@ -553,9 +593,11 @@ function renderOptions(state) {
     }
 
     const matches = matchEntries(state, query);
-    const limit = state.pageSize * state.pages;
-    const shown = matches.length > limit ? matches.slice(0, limit) : matches;
-    const hasMore = shown.length < matches.length;
+    if (state.paged) {
+        renderPagedOptions(state, matches);
+        return;
+    }
+    const shown = matches;
     const buckets = state.grouped ? groupBuckets(shown) : [[null, shown]];
     // A query that names no item exactly can become one: the item leads the list, under its own words.
     const typed = state.input.value.trim();
@@ -567,7 +609,6 @@ function renderOptions(state) {
     state.filtered = [
         ...(createItem ? [createItem] : []),
         ...buckets.flatMap(([, entries]) => entries.map(entry => entry.item)),
-        ...(hasMore ? [SHOW_MORE_ITEM] : []),
     ];
     state.activeIndex = state.filtered.length ? Math.max(0, Math.min(state.activeIndex, state.filtered.length - 1)) : -1;
     syncFooter(state);
@@ -578,7 +619,6 @@ function renderOptions(state) {
         state.activeOption = null;
         state.options = [];
         state.rendered = [];
-        state.pageGroups.length = 0;
         reconcileChildren(state.list, [getEmptyState(state, state.items.length > 0)]);
         state.input.removeAttribute('aria-activedescendant');
         return;
@@ -586,7 +626,6 @@ function renderOptions(state) {
 
     const options = [];
     const nodes = [];
-    let pageCount = 0;
     state.rendered = [];
     if (createItem) {
         const option = createOption(state, createItem, createId('sb-picker-option'), () => selectPickerItem(state, CREATE_ITEM));
@@ -600,21 +639,8 @@ function renderOptions(state) {
             return getEntryOption(state, entry);
         });
         options.push(...bucketOptions);
-        if (label !== null) {
-            nodes.push(createGroup(label, bucketOptions));
-        } else if (state.paged) {
-            for (let start = 0; start < bucketOptions.length; start += state.pageSize) {
-                nodes.push(getPageGroup(state, pageCount++, bucketOptions.slice(start, start + state.pageSize)));
-            }
-        } else {
-            nodes.push(...bucketOptions);
-        }
-    }
-    state.pageGroups.length = pageCount;
-    if (hasMore) {
-        const more = getShowMoreOption(state);
-        options.push(more);
-        nodes.push(more);
+        if (label !== null) nodes.push(createGroup(label, bucketOptions));
+        else nodes.push(...bucketOptions);
     }
     const active = options[state.activeIndex];
     // Only the row that was active can still carry the class, and rewriting a class that does not change is a mutation.
@@ -628,6 +654,119 @@ function renderOptions(state) {
     if (active) {
         state.input.setAttribute('aria-activedescendant', active.id);
     }
+}
+
+/** Hidden rows that a paged list keeps before the oldest of them are removed, and how many it keeps after that. */
+const RETAINED_ROWS_LIMIT = 600;
+const RETAINED_ROWS_KEPT = 300;
+
+/**
+ * Adds the rows that were never built, each run of them as one page placed where its items belong. A row is inserted
+ * only once; every later render shows or hides it, which changes an attribute and nothing in the tree.
+ */
+function insertFreshRows(state, fresh) {
+    if (!fresh.length) return;
+    const groups = [];
+    let position = 0;
+    for (const entry of fresh) {
+        while (position < state.built.length && state.built[position].index < entry.index) position += 1;
+        const next = state.built[position] ?? null;
+        const last = groups.at(-1);
+        if (last && last.next === next) last.options.push(entry.option);
+        else groups.push({ next, options: [entry.option] });
+    }
+    for (const { next, options } of groups) {
+        if (next && next.option.previousElementSibling !== null) {
+            // The gap is inside a page, so the rows join that page, before the row that follows them.
+            next.option.before(...options);
+        } else {
+            state.list.insertBefore(createPage(options), next ? next.option.parentElement.parentElement : state.moreOption);
+        }
+    }
+    state.built = [...state.built, ...fresh].sort((a, b) => a.index - b.index);
+}
+
+/** A list that keeps many hidden rows costs memory and style work, so the rows that were shown longest ago are removed. */
+function evictRetainedRows(state) {
+    if (state.built.length <= RETAINED_ROWS_LIMIT) return;
+    const hidden = state.built.filter(entry => !entry.visible).sort((a, b) => a.lastShown - b.lastShown);
+    const evicted = new Set(hidden.slice(0, state.built.length - RETAINED_ROWS_KEPT));
+    for (const entry of evicted) {
+        entry.option.remove();
+        entry.option = null;
+        entry.check = null;
+        entry.stateKey = '';
+    }
+    state.built = state.built.filter(entry => !evicted.has(entry));
+    pruneEmptyPages(state);
+}
+
+function getPagedEmptyState(state, searched) {
+    const key = searched ? 'searched' : 'empty';
+    if (!state.emptyStates[key]) {
+        const element = document.createElement('li');
+        element.className = 'sb-picker__empty';
+        element.setAttribute('role', 'presentation');
+        element.append(createStatusPage({ state: searched ? 'no-results' : 'empty', title: state.emptyText, description: searched ? t`Try a different search` : undefined, compact: true }).element);
+        state.emptyStates[key] = element;
+        state.list.insertBefore(element, state.moreOption);
+    }
+    return state.emptyStates[key];
+}
+
+/**
+ * The render of a list that is paged: the first `pageSize` matches, and a Show More row for the next batch. A row that
+ * was built stays in the list, hidden when it is not shown, because adding or removing a node restyles the page and a
+ * change of a class does not. Filtering and clearing the search therefore touch no node of the tree except for rows that
+ * were never built.
+ */
+function renderPagedOptions(state, matches) {
+    state.renderCount += 1;
+    const limit = state.pageSize * state.pages;
+    const shown = matches.length > limit ? matches.slice(0, limit) : matches;
+    const hasMore = shown.length < matches.length;
+    state.filtered = [...shown.map(entry => entry.item), ...(hasMore ? [SHOW_MORE_ITEM] : [])];
+    state.activeIndex = state.filtered.length ? Math.max(0, Math.min(state.activeIndex, state.filtered.length - 1)) : -1;
+    syncFooter(state);
+    syncSelectionCount(state);
+
+    const more = getShowMoreOption(state);
+    if (!more.isConnected) state.list.append(more);
+    const fresh = [];
+    for (const entry of shown) {
+        entry.lastShown = state.renderCount;
+        if (entry.option) continue;
+        ensureOption(state, entry);
+        entry.visible = true;
+        fresh.push(entry);
+    }
+    insertFreshRows(state, fresh);
+    const wanted = new Set(shown);
+    for (const entry of state.built) {
+        const visible = wanted.has(entry);
+        if (visible) syncOption(state, entry);
+        if (entry.visible !== visible) {
+            entry.visible = visible;
+            setHidden(entry.option, !visible);
+        }
+    }
+    setHidden(more, !hasMore);
+    const noMatch = shown.length === 0;
+    const searched = state.items.length > 0;
+    for (const [key, element] of Object.entries(state.emptyStates)) setHidden(element, !noMatch || (key === 'searched') !== searched);
+    if (noMatch) setHidden(getPagedEmptyState(state, searched), false);
+
+    state.rendered = shown;
+    state.options = [...shown.map(entry => entry.option), ...(hasMore ? [more] : [])];
+    const active = state.options[state.activeIndex];
+    if (state.activeOption !== active) {
+        state.activeOption?.classList.remove('is-active');
+        active?.classList.add('is-active');
+        state.activeOption = active ?? null;
+    }
+    if (active) state.input.setAttribute('aria-activedescendant', active.id);
+    else state.input.removeAttribute('aria-activedescendant');
+    evictRetainedRows(state);
 }
 
 /** Makes the rows that are on the screen show the picker's selection as it is now, without building or moving any. */
@@ -756,7 +895,7 @@ function handlePickerInput(state) {
  * Reading the geometry after every render forces layout of every row that was just added.
  */
 function positionKeyOf(state) {
-    return `${state.options.length}|${state.filterControls?.panel.hidden ?? ''}`;
+    return `${state.options.length}|${state.filterControls?.panel.classList.contains('is-hidden') ?? ''}`;
 }
 
 function scheduleReposition(state) {
@@ -904,7 +1043,7 @@ function createPickerState({
         create,
         pageSize: Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Infinity,
         pages: 1,
-        paged: Number.isFinite(pageSize) && pageSize > 0,
+        paged: false,
         searchDelay: 300,
         filter: filter && Array.isArray(filter.items) && filter.items.length && typeof filter.match === 'function' ? filter : null,
         filterSelected: new Set(),
@@ -915,7 +1054,9 @@ function createPickerState({
         filtered: [],
         options: [],
         rendered: [],
-        pageGroups: [],
+        built: [],
+        renderCount: 0,
+        emptyStates: {},
         activeOption: null,
         activeIndex: 0,
         searchTimer: 0,
