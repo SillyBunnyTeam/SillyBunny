@@ -465,6 +465,8 @@ test.describe('pinning on a phone', () => {
             const box = await button.boundingBox();
             expect(box.height).toBeGreaterThanOrEqual(44);
         }
+        const buttonTops = await line.locator('button').evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top)));
+        expect(new Set(buttonTops).size, 'the two buttons are on one line').toBe(1);
         const overflow = await page.evaluate(() => {
             const row = document.querySelector('.sb-conversation-event');
             const timeline = document.getElementById('sb_conversation_timeline');
@@ -485,7 +487,9 @@ test.describe('pinning on a phone', () => {
         const line = page.locator(`${TIMELINE} ${LINE}`);
         await expect(line).toHaveCount(1);
         const tops = await line.locator('.sb-conversation-event-text, button').evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top)));
-        expect(new Set(tops).size).toBeGreaterThan(1);
+        expect(new Set(tops).size, 'the buttons wrap together, under the text').toBe(2);
+        expect(tops[1]).toBe(tops[2]);
+        expect(tops[1]).toBeGreaterThan(tops[0]);
         expect(await line.evaluate(row => row.scrollWidth - row.clientWidth)).toBe(0);
 
         await page.locator(CONVERSATION_MENU).tap();

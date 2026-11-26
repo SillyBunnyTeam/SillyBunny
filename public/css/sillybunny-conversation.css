@@ -1237,6 +1237,13 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     color: var(--sb-accent);
 }
 
+.sb-conversation-event-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
 .sb-conversation-event-action {
     min-block-size: var(--sb-density-floor, 32px);
     display: inline-flex;

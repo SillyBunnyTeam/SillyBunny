@@ -56,6 +56,15 @@ describe('the line that says a message was pinned', () => {
         expect(buttons.every(button => button.dataset.messageId === 'b')).toBe(true);
     });
 
+    test('keeps the two buttons in one group, so that on a narrow screen they wrap together under the text and one is never left alone on a line', () => {
+        const row = createPinEventRow(event('b'));
+        const group = row.querySelector('.sb-conversation-event-actions');
+
+        expect(group.parentElement).toBe(row);
+        expect([...group.children].map(button => button.textContent)).toEqual(['Show Message', 'See All Pinned']);
+        expect([...row.children].map(node => node.className)).toEqual(['sb-conversation-event-text', 'sb-conversation-event-actions']);
+    });
+
     test('is not a message: it has no message class, no author and no data that the message readers look for', () => {
         const row = createPinEventRow(event('b'));
 

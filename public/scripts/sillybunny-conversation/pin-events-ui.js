@@ -49,11 +49,14 @@ export function createPinEventRow({ messageId }) {
     text.className = 'sb-conversation-event-text';
     text.append(glyph, 'You pinned a message.');
 
-    row.append(
-        text,
+    // One group, so that a row too narrow for all three parts wraps the two buttons together under the text.
+    const actions = document.createElement('span');
+    actions.className = 'sb-conversation-event-actions';
+    actions.append(
         createEventButton('Show Message', PIN_EVENT_ACTIONS.show, messageId),
         createEventButton('See All Pinned', PIN_EVENT_ACTIONS.openPinned, messageId),
     );
+    row.append(text, actions);
     return row;
 }
 

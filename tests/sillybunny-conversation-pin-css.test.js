@@ -67,6 +67,15 @@ describe('the line that says a message was pinned', () => {
         expect(row['font-size']).toBe('var(--sb-type-meta)');
     });
 
+    test('holds its buttons in a group that wraps as one, centred, with the gap between the buttons on the scale', () => {
+        const group = declarationsOf(top, '.sb-conversation-event-actions');
+
+        expect(group.display).toBe('flex');
+        expect(group['flex-wrap']).toBe('wrap');
+        expect(group['justify-content']).toBe('center');
+        expect(group.gap).toBe('6px');
+    });
+
     test('has its text in the body colour, because secondary ink on the timeline is under the floor on some themes', () => {
         expect(declarationsOf(top, '.sb-conversation-event').color).toBe('var(--SmartThemeBodyColor)');
     });
