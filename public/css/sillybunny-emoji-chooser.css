@@ -96,7 +96,8 @@
 .sb-emoji-heading {
     margin: 0;
     padding: 9px 6px 3px;
-    color: var(--sb-input-placeholder);
+    /* Body colour, not the secondary token: a heading is text and keeps 4.5:1 on every bundled theme, which that token does not (tests/sillybunny-emoji-chooser-theme-contrast.test.js). */
+    color: var(--SmartThemeBodyColor);
     font-size: var(--sb-type-caption);
     font-weight: 700;
     line-height: 1.35;
@@ -237,7 +238,7 @@
     margin: 0;
     padding: 18px;
     box-sizing: border-box;
-    color: var(--sb-input-placeholder);
+    color: var(--SmartThemeBodyColor);
     text-align: center;
 }
 
