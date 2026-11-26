@@ -59,7 +59,6 @@ function ensureController() {
         rowLabel: getRowLabel,
         header: headerHost,
         actionBar,
-        longPressEnters: true,
         onEnter: () => {
             startedOnKey = conversationState.lastRenderedConversationKey;
         },
@@ -70,11 +69,6 @@ function ensureController() {
     });
     controller = { selection, isAttached: () => timeline.isConnected && headerHost.isConnected && actionBar.isConnected };
     return selection;
-}
-
-/** Builds the mode once the chrome exists, because a long press on a message has to find it ready before any menu entry ran. */
-export function initializeConversationSelection() {
-    ensureController();
 }
 
 /**

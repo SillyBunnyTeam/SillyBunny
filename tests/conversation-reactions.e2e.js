@@ -544,6 +544,9 @@ test.describe('by touch', () => {
         const people = page.locator('.sb-reaction-people');
         await expect(people).toBeVisible({ timeout: 3000 });
         await expect(people.getByRole('listitem')).toHaveCount(2);
+        // The press is the chip's: the long press of the message under it, which opens the message menu, never starts.
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 700)));
+        await expect(page.locator('.sb-action-menu-reaction')).toHaveCount(0);
         await chip.dispatchEvent('pointerup', finger);
         await chip.dispatchEvent('click');
         await expect(message.locator(CHIP)).toHaveAttribute('aria-pressed', 'true');

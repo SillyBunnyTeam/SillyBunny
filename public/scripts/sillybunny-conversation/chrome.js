@@ -68,7 +68,9 @@ import { getConversationMessageCount, getConversationMessages, updateLastUserAct
 import { conversationData } from './conversation-data-browser.js';
 import { setConversationMuted } from './conversation-list-actions.js';
 import { getConversationDisplayName } from './media.js';
-import { enterConversationSelection, initializeConversationSelection } from './selection.js';
+import { enterConversationSelection } from './selection.js';
+import { bindMessageLongPress } from './message-long-press.js';
+import { openConversationMessageMenuAt } from './message-menu.js';
 import {
     branchConversationFromMessage,
     clearConversationReplyTarget,
@@ -94,7 +96,7 @@ import { applyEmojiFont } from './emoji/emoji-font.js';
 import { insertEmojiAtCaret } from './emoji/emoji-insert.js';
 import { hasNativeEmojiPicker, isEmojiShortcut } from './emoji/emoji-shortcut.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261126b';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261126c';
 const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261126b';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
@@ -787,7 +789,7 @@ export function bindConversationChromeControls(sheld) {
         }
     });
     void conversationFolders.load();
-    initializeConversationSelection();
+    bindMessageLongPress({ onLongPress: openConversationMessageMenuAt });
     sheld.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
             return;

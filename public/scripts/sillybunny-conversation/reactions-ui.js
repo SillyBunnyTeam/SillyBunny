@@ -15,6 +15,7 @@ import { emojiKey } from './emoji/emoji-validate.js';
 import { getConversationMessages, updateConversationChatMessageReactions } from './conversation-store.js';
 import { getCharacterForAvatar } from './media.js';
 import { registerMessageMenuReactions } from './message-menu.js';
+import { CLICK_SWALLOW_MS, LONG_PRESS_MS, LONG_PRESS_SLOP_PX } from './message-long-press.js';
 import {
     USER_REACTOR,
     describeReactionChip,
@@ -31,9 +32,6 @@ export const MENU_QUICK_SLOTS = 6;
 const MESSAGE_SELECTOR = '.sb-conversation-message';
 const CHIP_SELECTOR = '.sb-conversation-message-reaction-chip';
 const OPEN_CLASS = 'has-open-menu';
-const LONG_PRESS_MS = 450;
-const LONG_PRESS_SLOP_PX = 10;
-const CLICK_SWALLOW_MS = 350;
 const MORE_REACTIONS_LABEL = 'More Reactions';
 const YOU_LABEL = 'You';
 const FALLBACK_CHARACTER_LABEL = 'Character';

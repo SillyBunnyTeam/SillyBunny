@@ -20,7 +20,6 @@ const DELETE_ID = 'delete';
  * @param {HTMLElement} options.header
  * @param {HTMLElement} options.actionBar
  * @param {(keys: string[]) => number} [options.countMessages] How many messages the keys stand for. Defaults to the number of keys.
- * @param {boolean} [options.longPressEnters=false] Whether a long press with a finger enters the mode.
  * @param {() => void} [options.onEnter] Runs once when the mode starts, however it was started.
  * @param {() => boolean} [options.isStale] True once the list shows other messages than the mode started on. Checked after each render of the list.
  * @param {(keys: string[]) => void|Promise<void>} options.onDelete Runs after the mode has ended, once the user confirmed.
@@ -37,14 +36,12 @@ export function createMessageSelection({
     header,
     actionBar,
     countMessages = keys => keys.length,
-    longPressEnters = false,
     onEnter = () => {},
     isStale = () => false,
     onDelete,
     onExit = () => {},
 }) {
     let armed = false;
-    let lastPointerType = 'mouse';
     let listFocus = null;
     let observer = null;
     /** Rows that got a tabindex from this mode, so that exit removes only those. */
@@ -92,14 +89,14 @@ export function createMessageSelection({
         actionBar,
         iconOnlyAtNarrow: true,
         title: () => t`${countMessages(selection.selectedKeys)} Selected`,
-        // A right-click on a row keeps its own meaning outside the mode, so only a deliberate call or a finger's long press starts it.
-        canEnter: () => armed || (longPressEnters && lastPointerType === 'touch'),
+        // A right-click and a long press on a row open its menu outside the mode, so only a deliberate call starts it.
+        canEnter: () => armed,
         actions: [
             { id: SELECT_TO_END_ID, label: t`Select to End`, icon: 'fa-solid fa-angles-down', onActivate: selectToEnd },
             { id: DELETE_ID, label: t`Delete`, icon: 'fa-solid fa-trash-can', danger: true, onActivate: keys => void confirmAndDelete(keys) },
         ],
         onChange: () => {
-            // A long press enters the mode inside createSelectionMode, so the first change is where the rest is set up.
+            // The mode starts inside createSelectionMode, so the first change is where the rest is set up.
             if (selection.isActive) {
                 setup();
                 listFocus?.sync();
@@ -118,10 +115,6 @@ export function createMessageSelection({
         }
         event.preventDefault();
         selection.exit();
-    }
-
-    function trackPointerType(event) {
-        lastPointerType = event.pointerType;
     }
 
     function setup() {
@@ -156,8 +149,6 @@ export function createMessageSelection({
         markedRows = new Set();
     }
 
-    window.addEventListener('pointerdown', trackPointerType, true);
-
     return {
         enter(initialKey = null, trigger = null) {
             if (selection.isActive) {
@@ -172,7 +163,6 @@ export function createMessageSelection({
         },
         exit: () => selection.exit(),
         destroy() {
-            window.removeEventListener('pointerdown', trackPointerType, true);
             teardown();
             selection.destroy();
         },

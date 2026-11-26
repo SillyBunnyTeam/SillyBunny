@@ -111,6 +111,19 @@ export function openConversationMessageMenu(trigger, { point = null, keyboard = 
     });
 }
 
+/**
+ * The menu of a message for a long press with a finger. A coarse pointer gets the sheet; a finger on a screen whose main
+ * pointer is fine gets the popover at the finger, as the secondary click does.
+ * @param {HTMLElement} item
+ * @param {{ x: number, y: number }} point
+ */
+export function openConversationMessageMenuAt(item, point) {
+    const trigger = getTrigger(item) ?? item.querySelector('[data-sb-conversation-menu]');
+    if (trigger instanceof HTMLElement) {
+        openConversationMessageMenu(trigger, { point: isCoarsePointer() ? null : point });
+    }
+}
+
 /** Desktop menu button tooltip: adds the Shift hint unless the Expand Message Actions setting is on. */
 function syncMenuTitle(target) {
     const trigger = asElement(target)?.closest(TRIGGER_SELECTOR);

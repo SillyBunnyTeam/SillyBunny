@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { resetConversations, seedConversation, uniquePersona } from './helpers/conversation-seed.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
@@ -78,7 +79,7 @@ async function seraphinaAvatar(page) {
 }
 
 /** Opens a direct conversation whose messages are `Message 0` to `Message 11`, alternating character and user, all read. */
-async function openConversation(page, baseURL, { count = MESSAGE_COUNT } = {}) {
+async function openConversation(page, baseURL, { count = MESSAGE_COUNT, messages } = {}) {
     await loadApp(page, baseURL);
     const avatar = await seraphinaAvatar(page);
     await resetConversations(page);
@@ -86,7 +87,7 @@ async function openConversation(page, baseURL, { count = MESSAGE_COUNT } = {}) {
         avatar,
         replace: true,
         chats: [{
-            messages: Array.from({ length: count }, (_, index) => ({
+            messages: messages ?? Array.from({ length: count }, (_, index) => ({
                 id: `sel-${index}`,
                 role: index % 2 === 0 ? 'character' : 'user',
                 name: index % 2 === 0 ? 'Seraphina' : 'Tester',
@@ -102,7 +103,7 @@ async function openConversation(page, baseURL, { count = MESSAGE_COUNT } = {}) {
         await ensureConversationChatLoaded(avatarFile);
         stopConversationAutoWorker();
     }, avatar);
-    await expect(page.locator(ROW)).toHaveCount(count);
+    await expect(page.locator(ROW)).toHaveCount(messages?.length ?? count);
     return avatar;
 }
 
@@ -308,34 +309,197 @@ test.describe('conversation timeline', () => {
 test.describe('conversation timeline on a touch screen', () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-    async function longPress(page, locator) {
-        const box = await locator.boundingBox();
-        const x = box.x + box.width / 2;
-        const y = box.y + box.height / 2;
+    const LONG_PRESS_WAIT_MS = 700;
+    // A person needs longer than the swallow of the click after a long press to reach an item of the sheet.
+    const AFTER_RELEASE_MS = 450;
+    const sheet = page => page.locator(OPEN_ACTION_SHEET);
+    const wait = (page, ms) => page.evaluate(duration => new Promise(resolve => setTimeout(resolve, duration)), ms);
+
+    /** A finger on the page over the DevTools protocol, so that the browser sends the touch events and applies its own long-press behaviour. */
+    async function startFinger(page) {
         const client = await page.context().newCDPSession(page);
-        await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
-        // The finger stays down until the press has started the mode.
-        await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
-        await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await client.detach();
+        return {
+            down: (x, y) => client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }),
+            move: (x, y) => client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] }),
+            up: () => client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }),
+            detach: () => client.detach(),
+        };
     }
 
-    test('a long press starts it, taps toggle, and Select to End takes the rest of the chat', async ({ page, baseURL, browserName }) => {
-        test.skip(browserName !== 'chromium', 'The long press is sent as a touch event over the DevTools protocol.');
-        await openConversation(page, baseURL);
-        // The list page shows first on a phone; open the thread.
-        await longPress(page, row(page, 5).locator('.sb-conversation-message-text'));
+    const centre = async (locator) => {
+        const box = await locator.boundingBox();
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    };
 
+    /** Presses a message with a finger, holds it for the long-press time and lifts the finger; the sheet may be open by then. */
+    async function pressAndHold(page, locator, holdMs = LONG_PRESS_WAIT_MS) {
+        await locator.scrollIntoViewIfNeeded();
+        const { x, y } = await centre(locator);
+        const finger = await startFinger(page);
+        await finger.down(x, y);
+        await wait(page, holdMs);
+        await finger.up();
+        await finger.detach();
+    }
+
+    async function openSheetByLongPress(page, index) {
+        await row(page, index).locator('.sb-conversation-message-text').scrollIntoViewIfNeeded();
+        const { x, y } = await centre(row(page, index).locator('.sb-conversation-message-text'));
+        const finger = await startFinger(page);
+        await finger.down(x, y);
+        // The menu opens while the finger is still down.
+        await expect(sheet(page)).toBeVisible();
+        await finger.up();
+        await finger.detach();
+        return sheet(page);
+    }
+
+    test.describe('with the touch events of the browser', () => {
+        test.beforeEach(({ browserName }) => {
+            test.skip(browserName !== 'chromium', 'The long press is sent as a touch event over the DevTools protocol.');
+        });
+
+        test('a long press on a message opens the menu as a sheet while the finger is down, with the quick row first and Delete last, and the sheet stays open', async ({ page, baseURL }) => {
+            await openConversation(page, baseURL);
+
+            const menu = await openSheetByLongPress(page, 5);
+
+            await expect(page.locator('#sheld')).not.toHaveAttribute('data-selection-mode', 'true');
+            const reactions = menu.locator('.sb-action-menu-reaction');
+            await expect(reactions).toHaveCount(7);
+            await expect(reactions.last()).toHaveAccessibleName('More Reactions');
+            const items = menu.locator('.sb-action-menu-item:not(.sb-action-menu-reaction)');
+            await expect(items.first()).toHaveAccessibleName('Reply');
+            await expect(menu.getByRole('menuitem', { name: 'Select Message' })).toBeVisible();
+            await expect(items.last()).toHaveAccessibleName('Delete Message');
+            await expect(row(page, 5)).toHaveClass(/has-open-menu/);
+
+            // The click that ends the press is swallowed: the sheet is still there, and nothing was selected or toggled.
+            await wait(page, LONG_PRESS_WAIT_MS);
+            await expect(menu).toBeVisible();
+            await expect(page.locator('#sheld')).not.toHaveAttribute('data-selection-mode', 'true');
+            expect(await selectedIds(page)).toEqual([]);
+        });
+
+        test('Select Message in that sheet starts selection with the message selected, taps toggle, and Select to End takes the rest of the chat', async ({ page, baseURL }) => {
+            await openConversation(page, baseURL);
+
+            const menu = await openSheetByLongPress(page, 5);
+            await wait(page, AFTER_RELEASE_MS);
+            await menu.getByRole('menuitem', { name: 'Select Message' }).tap();
+
+            await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
+            expect(await selectedIds(page)).toEqual(['sel-5']);
+
+            await row(page, 7).locator('.sb-conversation-message-text').tap();
+            expect(await selectedIds(page)).toEqual(['sel-5', 'sel-7']);
+
+            const toEnd = page.locator('#sb_conversation_selection_actions [data-action-id="select-to-end"]');
+            await expect(toEnd).toBeVisible();
+            await toEnd.tap();
+            expect(await selectedIds(page)).toEqual(['sel-5', 'sel-6', 'sel-7', 'sel-8', 'sel-9', 'sel-10', 'sel-11']);
+            await expect(title(page)).toHaveText('7 Selected');
+        });
+
+        test('a long press while messages are being selected opens no menu, because a tap toggles a row', async ({ page, baseURL }) => {
+            await openConversation(page, baseURL);
+            const menu = await openSheetByLongPress(page, 5);
+            await wait(page, AFTER_RELEASE_MS);
+            await menu.getByRole('menuitem', { name: 'Select Message' }).tap();
+            await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
+
+            await pressAndHold(page, row(page, 7).locator('.sb-conversation-message-text'));
+
+            await expect(sheet(page)).toHaveCount(0);
+            await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
+        });
+
+        test('a swipe over a message and a tap on it open no menu', async ({ page, baseURL }) => {
+            await openConversation(page, baseURL);
+            const text = row(page, 5).locator('.sb-conversation-message-text');
+            await text.scrollIntoViewIfNeeded();
+            const { x, y } = await centre(text);
+
+            const finger = await startFinger(page);
+            await finger.down(x, y);
+            await finger.move(x, y + 30);
+            await wait(page, LONG_PRESS_WAIT_MS);
+            await finger.up();
+            await finger.detach();
+            await expect(sheet(page)).toHaveCount(0);
+
+            await text.tap();
+            await wait(page, LONG_PRESS_WAIT_MS);
+            await expect(sheet(page)).toHaveCount(0);
+            await expect(page.locator('#sheld')).not.toHaveAttribute('data-selection-mode', 'true');
+        });
+
+        test('a long press on a link keeps the platform\'s link menu, one on an image opens the message menu, and one on a selection of the text opens nothing', async ({ page, baseURL }) => {
+            await openConversation(page, baseURL, { messages: [
+                { id: 'sel-0', role: 'character', name: 'Seraphina', mes: 'Read [the notes](https://example.test/notes) before you go.' },
+                { id: 'sel-1', role: 'user', name: 'Tester', mes: 'Here is the picture.', extra: { image_url: '/img/No-Image-Placeholder.svg', image_prompt: 'a placeholder' } },
+                { id: 'sel-2', role: 'character', name: 'Seraphina', mes: 'Some words that a person may select.' },
+            ] });
+
+            await pressAndHold(page, row(page, 0).locator('.sb-conversation-message-text a'));
+            await expect(sheet(page)).toHaveCount(0);
+
+            await pressAndHold(page, row(page, 1).locator('.sb-conversation-image-preview img'));
+            await expect(sheet(page)).toBeVisible();
+            await expect(page.locator('#sheld')).not.toHaveAttribute('data-selection-mode', 'true');
+            await page.keyboard.press('Escape');
+            await expect(sheet(page)).toHaveCount(0);
+
+            await page.evaluate(() => {
+                const text = document.querySelector('.sb-conversation-message[data-message-id="sel-2"] .sb-conversation-message-text');
+                const range = document.createRange();
+                range.selectNodeContents(text);
+                getSelection().removeAllRanges();
+                getSelection().addRange(range);
+            });
+            await pressAndHold(page, row(page, 2).locator('.sb-conversation-message-text'));
+            await expect(sheet(page)).toHaveCount(0);
+        });
+    });
+
+    test('a long press by synthetic touch pointer events opens the sheet and Select Message in it starts selection, in every engine', async ({ page, baseURL }) => {
+        await openConversation(page, baseURL);
+        const text = row(page, 5).locator('.sb-conversation-message-text');
+        await text.scrollIntoViewIfNeeded();
+        const { x, y } = await centre(text);
+        const finger = { pointerType: 'touch', pointerId: 11, isPrimary: true, clientX: x, clientY: y };
+
+        await text.dispatchEvent('pointerdown', finger);
+        await expect(sheet(page)).toBeVisible({ timeout: 3000 });
+        await text.dispatchEvent('pointerup', finger);
+        await text.dispatchEvent('click');
+        await wait(page, 150);
+        await expect(sheet(page)).toBeVisible();
+        await expect(page.locator('#sheld')).not.toHaveAttribute('data-selection-mode', 'true');
+
+        await wait(page, AFTER_RELEASE_MS);
+        await sheet(page).getByRole('menuitem', { name: 'Select Message' }).tap();
         await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
         expect(await selectedIds(page)).toEqual(['sel-5']);
+    });
 
-        await row(page, 7).locator('.sb-conversation-message-text').tap();
-        expect(await selectedIds(page)).toEqual(['sel-5', 'sel-7']);
+    test('a mouse press and hold on a message does nothing, and a short press of a finger is a tap', async ({ page, baseURL }) => {
+        await openConversation(page, baseURL);
+        const text = row(page, 5).locator('.sb-conversation-message-text');
+        await text.scrollIntoViewIfNeeded();
+        const { x, y } = await centre(text);
 
-        const toEnd = page.locator('#sb_conversation_selection_actions [data-action-id="select-to-end"]');
-        await expect(toEnd).toBeVisible();
-        await toEnd.tap();
-        expect(await selectedIds(page)).toEqual(['sel-5', 'sel-6', 'sel-7', 'sel-8', 'sel-9', 'sel-10', 'sel-11']);
-        await expect(title(page)).toHaveText('7 Selected');
+        await text.dispatchEvent('pointerdown', { pointerType: 'mouse', pointerId: 1, isPrimary: true, clientX: x, clientY: y });
+        await wait(page, LONG_PRESS_WAIT_MS);
+        await text.dispatchEvent('pointerup', { pointerType: 'mouse', pointerId: 1, isPrimary: true, clientX: x, clientY: y });
+        await expect(sheet(page)).toHaveCount(0);
+
+        const finger = { pointerType: 'touch', pointerId: 12, isPrimary: true, clientX: x, clientY: y };
+        await text.dispatchEvent('pointerdown', finger);
+        await wait(page, 120);
+        await text.dispatchEvent('pointerup', finger);
+        await wait(page, LONG_PRESS_WAIT_MS);
+        await expect(sheet(page)).toHaveCount(0);
+        await expect(page.locator('#sheld')).not.toHaveAttribute('data-selection-mode', 'true');
     });
 });

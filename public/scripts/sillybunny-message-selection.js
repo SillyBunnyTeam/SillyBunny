@@ -92,8 +92,6 @@ function ensureController() {
         countMessages: keys => getMessageIndexes(chat, keys, deleteToolCalls).length,
         header: headerHost,
         actionBar,
-        // The entry is Options > Delete messages; a long press or a right-click on a message keeps its meaning outside the mode.
-        longPressEnters: false,
         onEnter: () => {
             // The ids of the delete bar of the mode this one replaces, which other code and the surface audits address.
             const { cancelButton, selectionTitle } = selection.selection;

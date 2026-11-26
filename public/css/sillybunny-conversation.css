@@ -2388,6 +2388,28 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         inset: -7px -3px;
     }
 
+    /* A long press on a message opens its menu (message-long-press.js), so the platform's responses to the same press are off:
+       the callout of iOS and the selecting of a word. A link keeps its callout, and a field keeps its text selectable, because
+       Safari cannot type into a field inside a `user-select: none` ancestor. */
+    .sb-conversation-message {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .sb-conversation-message a[href] {
+        -webkit-touch-callout: default;
+    }
+
+    .sb-conversation-message :is(textarea, input, [contenteditable]) {
+        -webkit-user-select: text;
+        user-select: text;
+    }
+
+    .sb-conversation-message img {
+        -webkit-user-drag: none;
+    }
+
     /* A touch screen has no hover: the toolbar gives way to a trigger beside the bubble that opens the message's actions. */
     .sb-conversation-message-actions {
         display: none;
