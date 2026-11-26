@@ -87,6 +87,9 @@ async function openConversation(page, baseURL, { messages, chooser = false } = {
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page, { timeout: 60_000 });
+    // A toast of the Getting Started steps sits at the top centre of the window, over the messages of a short chat, and takes the pointer
+    // that the toolbar needs; the test that reads a toast shows them again.
+    await page.addStyleTag({ content: 'html:not([data-qa-show-toasts]) :is(#toast-container, #sb-toast-overlay) { display: none !important; }' });
     const avatar = await page.evaluate(() => {
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
         const character = window.SillyTavern.getContext().characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
