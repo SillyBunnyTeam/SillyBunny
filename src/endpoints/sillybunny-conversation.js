@@ -71,7 +71,6 @@ const CREATE_FIELDS = ['kind', 'personaId', 'characters', 'name', 'description',
 const CREATE_CHAT_FIELDS = ['id', 'chatId', 'name', 'activate', 'readThrough', 'records', 'chat_metadata'];
 const MAX_IMAGE_TEXT_LENGTH = Math.ceil(MAX_AVATAR_IMAGE_BYTES / 3) * 4;
 const IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpeg|gif|webp);base64,/i;
-const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 function invalidInput(message) {
     return new ConversationStoreError('invalid_input', message);
@@ -146,12 +145,36 @@ function onlyFields(body, allowed, route) {
     }
 }
 
+/**
+ * Whether the text is base64: letters, digits, `+` and `/`, then at most two `=`. A scan, because a regular expression
+ * over megabytes of text keeps a backtrack entry per character and ran out of stack on CI (a 500 instead of a 400).
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isBase64Text(text) {
+    let end = text.length;
+    while (end > 0 && text.length - end < 2 && text.charCodeAt(end - 1) === 0x3D) {
+        end--;
+    }
+    if (end === 0) {
+        return false;
+    }
+    for (let index = 0; index < end; index++) {
+        const code = text.charCodeAt(index);
+        const valid = (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A) || (code >= 0x30 && code <= 0x39) || code === 0x2B || code === 0x2F;
+        if (!valid) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function decodeImage(value) {
     if (typeof value !== 'string' || value.length === 0 || value.length > MAX_IMAGE_TEXT_LENGTH + 64) {
         throw invalidInput('image must be base64 text of a PNG, JPEG, GIF or WebP file of at most 5 MiB.');
     }
     const base64 = value.replace(IMAGE_DATA_URL_PREFIX, '');
-    if (!BASE64_PATTERN.test(base64)) {
+    if (!isBase64Text(base64)) {
         throw invalidInput('image must be base64 text of a PNG, JPEG, GIF or WebP file of at most 5 MiB.');
     }
     return Buffer.from(base64, 'base64');

@@ -230,6 +230,26 @@ describe('the avatar of a group', () => {
         expect(fs.readdirSync(path.join(user.directories.conversations, conversation.id)).sort()).toEqual(['chats', 'conversation.json']);
     });
 
+    test('upload checks a picture of several MiB without a regular expression over its text, which ran out of stack on CI', async () => {
+        const conversation = makeGroup();
+        const regExpTest = RegExp.prototype.test;
+        const spy = jest.spyOn(RegExp.prototype, 'test').mockImplementation(function (value) {
+            if (typeof value === 'string' && value.length > 1024 * 1024) {
+                throw new RangeError('Maximum call stack size exceeded');
+            }
+            return regExpTest.call(this, value);
+        });
+        try {
+            const large = await post('/avatar/upload', { id: conversation.id, image: Buffer.concat([IMAGES.png, Buffer.alloc(4 * 1024 * 1024)]).toString('base64') });
+            const tooLarge = await post('/avatar/upload', { id: conversation.id, image: Buffer.concat([IMAGES.png, Buffer.alloc(5 * 1024 * 1024)]).toString('base64') });
+
+            expect(large.status).toBe(200);
+            expect(tooLarge).toMatchObject({ status: 400, json: { error: 'invalid_input' } });
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
     test.each([
         ['no id', ''],
         ['an id that is a path', '?id=../../etc/passwd'],
