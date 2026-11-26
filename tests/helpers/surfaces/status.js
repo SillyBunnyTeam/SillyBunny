@@ -1386,8 +1386,9 @@ const conversationListEmpty = status({
     root: LIST_EMPTY,
     async open(page) {
         await openConversation(page);
-        if (!await page.locator(LIST_EMPTY).first().isVisible()) {
-            // A phone keeps the list on its own page.
+        // A phone keeps the list on its own page. The layout says so; the list itself may not be drawn yet, because it waits for the folders.
+        const sheld = page.locator('#sheld');
+        if (await sheld.getAttribute('data-sb-conversation-layout') === 'pages' && await sheld.getAttribute('data-sb-conversation-page') !== 'list') {
             await page.locator('[data-sb-conversation-action="toggle-list"]').first().click();
         }
         await reveal(page, LIST_EMPTY);
