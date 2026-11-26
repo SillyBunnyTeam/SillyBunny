@@ -62,6 +62,9 @@ describe('every picker and avatar helper that builds a detached image uses it', 
         'sillybunny-conversation/details/avatars.js',
         'sillybunny-conversation/details/pages/shared.js',
         'sillybunny-home/assistant-picker.js',
+        'sillybunny-folder-manager.js',
+        'sillybunny-persona-detail.js',
+        'extensions/sillybunny-chats-archive/src/ui/sidebar.js',
     ];
 
     test.each(files)('%s', file => {
@@ -70,6 +73,7 @@ describe('every picker and avatar helper that builds a detached image uses it', 
         expect(source).toContain('createLazyImage');
         expect(source).not.toContain('createElement(\'img\')');
         expect(source).not.toContain('el(\'img\')');
+        expect(source).not.toContain('element(\'img\', \'sb-persona-connection-avatar\')');
         expect(source).not.toContain('.loading = \'lazy\'');
     });
 });

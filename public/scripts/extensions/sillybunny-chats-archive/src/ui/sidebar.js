@@ -1,15 +1,10 @@
+import { createLazyImage } from '../../../../sillybunny-editor/lazy-image.js';
 import { el } from './dom.js';
 import { nextRenderId } from './render-id.js';
 
 function locationVisual(ctx, entry) {
     if (entry.avatar) {
-        const image = document.createElement('img');
-        image.className = 'sbca-location-avatar';
-        image.src = ctx.getThumbnailUrl('avatar', entry.avatar);
-        image.alt = '';
-        image.loading = 'lazy';
-        image.decoding = 'async';
-        return image;
+        return createLazyImage(ctx.getThumbnailUrl('avatar', entry.avatar), 'sbca-location-avatar');
     }
     const icon = el('i', `sbca-location-icon fa-solid ${entry.icon}`);
     icon.setAttribute('aria-hidden', 'true');

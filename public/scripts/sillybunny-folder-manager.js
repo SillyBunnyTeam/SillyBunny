@@ -5,6 +5,7 @@ import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-edit
 import { bindListFocus } from './sillybunny-editor/list-focus.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
+import { createLazyImage } from './sillybunny-editor/lazy-image.js';
 import { openDialog, createIconButton } from './sillybunny-editor/dialog.js';
 import { announceReorder, LONG_LIST, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
@@ -83,7 +84,11 @@ function countLabel(count, scope) {
     return folderCountLabel(count, scope);
 }
 
-async function loadDefaultAdapter(scope) {
+/**
+ * What the manager reads of a scope when its opener passes no adapter. A member's picture is the small thumbnail and is
+ * fetched only when the row is on the screen, because a folder can hold every character of the library.
+ */
+export async function loadDefaultAdapter(scope) {
     if (scope === 'groups') {
         const groups = await import('./group-chats.js');
         return {
@@ -103,12 +108,7 @@ async function loadDefaultAdapter(scope) {
             getItems: () => Object.keys(powerUser.power_user.personas ?? {}),
             getKey: avatarId => String(avatarId),
             getName: avatarId => String(powerUser.power_user.personas?.[avatarId] ?? avatarId),
-            getAvatar: avatarId => {
-                const image = document.createElement('img');
-                image.src = script.getThumbnailUrlForViewport?.('persona', avatarId) ?? avatarId;
-                image.alt = '';
-                return image;
-            },
+            getAvatar: avatarId => createLazyImage(script.getMobileThumbnailUrl('persona', avatarId)),
         };
     }
     const script = await import('../script.js');
@@ -116,14 +116,9 @@ async function loadDefaultAdapter(scope) {
         getItems: () => script.characters ?? [],
         getKey: character => String(character.avatar),
         getName: character => String(character.name ?? character.avatar ?? ''),
-        getAvatar: character => {
-            const image = document.createElement('img');
-            image.src = character.avatar === 'none'
-                ? script.default_avatar
-                : script.getThumbnailUrlForViewport?.('avatar', character.avatar) ?? character.avatar;
-            image.alt = '';
-            return image;
-        },
+        getAvatar: character => createLazyImage(character.avatar === 'none'
+            ? script.default_avatar
+            : script.getMobileThumbnailUrl('avatar', character.avatar)),
     };
 }
 
