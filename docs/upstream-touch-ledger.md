@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `Dockerfile` and `docker/docker-entrypoint.sh` - cached layer install, prebuilt dist assets, and direct init
+| Field | Value |
+| --- | --- |
+| File | `Dockerfile`; `docker/docker-entrypoint.sh`. |
+| Area | Docker image build caching, prebuilt vendor/frontend asset baking, and container startup initialization. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `scripts/build-prebuilt-lib.js`, `scripts/build-frontend-assets.js`, and `src/server-init.js`. |
+| Adapter shape | `Dockerfile`: copies `package.json`, `bun.lock`, and `.npmrc` before `bun install --frozen-lockfile --production`, copies app source after, and conditionally runs `node ./scripts/build-prebuilt-lib.js` (falling back to `bun ./docker/build-lib.js`) plus `node ./scripts/build-frontend-assets.js` when present with `chown -R bun:bun dist`; `docker/docker-entrypoint.sh`: invokes `bun src/server-init.js` directly in place of `bun run init`. Marked with `# SillyBunny:` comments. |
+| Protecting tests | `tests/sillybunny-launcher-smol.test.js`; `tests/perf-seed-release-assets.test.js`. |
+| Validation | 2026-11-26 (fresh install, container startup): `bash -n scripts/self-update.sh docker/docker-entrypoint.sh`, root and `tests/` ESLint, Jest unit suites (`perf-cross-platform-launchers.test.js`, `sillybunny-launcher-smol.test.js`, `perf-seed-release-assets.test.js`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR `#1041`. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

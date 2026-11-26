@@ -24,8 +24,8 @@ start_sillybunny() {
         $PREFIX cp "default/config.yaml" "config/config.yaml"
     fi
 
-    # Execute init script to auto-populate config.yaml with missing values
-    $PREFIX bun run init
+    # SillyBunny: execute init script directly to skip package-manager wrapper overhead.
+    $PREFIX bun src/server-init.js
 
     # Start the server
     if is_truthy "${SILLYBUNNY_BUN_SMOL:-}"; then

@@ -371,11 +371,87 @@ export function runSelfUpdate({
         return finishEarly(`could not fetch from '${upstreamRemote}'.`);
     }
 
+    function resolveReleaseAssetTag() {
+        const tagResult = invokeGit(['describe', '--tags', '--exact-match', 'HEAD']);
+        const exactTag = tagResult.status === 0 ? tagResult.stdout.split(/\r?\n/, 1)[0].trim() : '';
+        if (exactTag && /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(exactTag)) {
+            return exactTag;
+        }
+
+        // self-update fetches with --no-tags, so fast-forwarded `release` checkouts
+        // may not have the new tag locally; release.yml enforces tag === v<package.json.version>.
+        if (currentBranch === 'release') {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(path.join(repoDir, 'package.json'), 'utf8'));
+                const version = String(pkg?.version || '').trim();
+                if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+                    return `v${version}`;
+                }
+            } catch {
+                // Ignore missing or unreadable package.json.
+            }
+        }
+
+        return '';
+    }
+
+    function maybeSeedReleaseAssets({ force = false, headSha = '' } = {}) {
+        if (/^(?:1|true|yes|on)$/i.test(String(env.SILLYBUNNY_SKIP_RELEASE_ASSETS ?? '').trim())) {
+            return;
+        }
+
+        const seedScriptPath = path.join(repoDir, 'scripts', 'seed-release-assets.js');
+        if (!fs.existsSync(seedScriptPath)) {
+            return;
+        }
+
+        const hasLibManifest = fs.existsSync(path.join(repoDir, 'dist', 'lib', 'lib.manifest.json'));
+        const hasFrontendManifest = fs.existsSync(path.join(repoDir, 'dist', 'frontend', 'asset-manifest.json'));
+        if (!force && hasLibManifest && hasFrontendManifest) {
+            if (headSha) {
+                try {
+                    const stampedHead = fs.readFileSync(path.join(repoDir, 'dist', '.release-assets-head'), 'utf8').trim();
+                    if (stampedHead === headSha) {
+                        return;
+                    }
+                } catch {
+                    // Fall through to verify/refresh stale or unstamped dist artifacts.
+                }
+            } else {
+                return;
+            }
+        }
+
+        const releaseTag = resolveReleaseAssetTag();
+        if (!releaseTag) {
+            return;
+        }
+
+        const seedResult = spawnSync(process.execPath, [seedScriptPath, '--optional', '--repo', repoDir, '--tag', releaseTag], {
+            cwd: repoDir,
+            env,
+            encoding: 'utf8',
+            timeout: 20_000,
+            windowsHide: true,
+        });
+        for (const line of String(seedResult.stdout || '').split(/\r?\n/)) {
+            if (line.trim()) {
+                stdout(line);
+            }
+        }
+        for (const line of String(seedResult.stderr || '').split(/\r?\n/)) {
+            if (line.trim()) {
+                stderr(line);
+            }
+        }
+    }
+
     if (gitDirs) {
         const localSha = readLooseRefSha(gitDirs.commonDir, ['refs', 'heads', ...currentBranch.split('/')]);
         const remoteSha = readLooseRefSha(gitDirs.commonDir, ['refs', 'remotes', ...upstreamRef.split('/')]);
         if (localSha && localSha === remoteSha) {
             stdout('SillyBunny is already up to date.');
+            maybeSeedReleaseAssets({ headSha: localSha });
             return 0;
         }
     }
@@ -403,6 +479,7 @@ export function runSelfUpdate({
 
     if (behind === 0) {
         stdout('SillyBunny is already up to date.');
+        maybeSeedReleaseAssets();
         return 0;
     }
 
@@ -425,6 +502,7 @@ export function runSelfUpdate({
     }
 
     stdout(`Updated SillyBunny from ${beforeRev} to ${afterRev}.`);
+    maybeSeedReleaseAssets({ force: true });
     return 0;
 }
 

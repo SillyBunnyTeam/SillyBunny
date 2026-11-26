@@ -164,11 +164,61 @@ else
     fi
 fi
 
+maybe_seed_release_assets() {
+    local force_seed="${1:-}"
+    local current_head_sha="${2:-}"
+
+    case "$(printf '%s' "${SILLYBUNNY_SKIP_RELEASE_ASSETS:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) return 0 ;;
+    esac
+
+    local seed_script="$REPO_DIR/scripts/seed-release-assets.js"
+    [[ -f "$seed_script" ]] || return 0
+    if [[ "$force_seed" != "force" && -f "$REPO_DIR/dist/lib/lib.manifest.json" && -f "$REPO_DIR/dist/frontend/asset-manifest.json" ]]; then
+        if [[ -n "$current_head_sha" && -f "$REPO_DIR/dist/.release-assets-head" ]]; then
+            local stamped_head=""
+            IFS= read -r stamped_head < "$REPO_DIR/dist/.release-assets-head" || true
+            stamped_head="${stamped_head%$'\r'}"
+            if [[ "$stamped_head" == "$current_head_sha" ]]; then
+                return 0
+            fi
+        elif [[ -z "$current_head_sha" ]]; then
+            return 0
+        fi
+    fi
+
+    local runtime_bin=""
+    if command -v bun >/dev/null 2>&1; then
+        runtime_bin="bun"
+    elif command -v node >/dev/null 2>&1; then
+        runtime_bin="node"
+    else
+        return 0
+    fi
+
+    local release_tag=""
+    release_tag="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+    if [[ ! "$release_tag" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        release_tag=""
+        if [[ "$current_branch" == "release" && -f "$REPO_DIR/package.json" ]]; then
+            local pkg_version=""
+            pkg_version="$("$runtime_bin" -e 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version||"";if(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v))process.stdout.write("v"+v);}catch{}' "$REPO_DIR/package.json" 2>/dev/null || true)"
+            if [[ "$pkg_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+                release_tag="$pkg_version"
+            fi
+        fi
+    fi
+    [[ -n "$release_tag" ]] || return 0
+
+    "$runtime_bin" "$seed_script" --optional --repo "$REPO_DIR" --tag "$release_tag" || true
+}
+
 if [[ -n "$common_dir" && "$current_branch" != *..* && "$upstream_ref" != *..* ]]; then
     local_sha="$(read_loose_ref_sha "$common_dir/refs/heads/$current_branch" || true)"
     remote_sha="$(read_loose_ref_sha "$common_dir/refs/remotes/$upstream_ref" || true)"
     if [[ -n "$local_sha" && "$local_sha" == "$remote_sha" ]]; then
         echo "SillyBunny is already up to date."
+        maybe_seed_release_assets "" "$local_sha"
         exit 0
     fi
 fi
@@ -192,6 +242,7 @@ fi
 
 if (( behind == 0 )); then
     echo "SillyBunny is already up to date."
+    maybe_seed_release_assets
     exit 0
 fi
 
@@ -214,3 +265,4 @@ fi
 
 after_rev="$(git rev-parse --short HEAD)"
 echo "Updated SillyBunny from $before_rev to $after_rev."
+maybe_seed_release_assets force
