@@ -30,6 +30,8 @@ import { getConversationMessageAvatar, getConversationMessageReceipt } from './c
 import { escapeRegExp, getCharacterMentionHandles } from './members.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
 import { createReactionChips, createToolbarReactionButtons } from './reactions-ui.js';
+import { buildConversationRenderKey } from './render-key.js';
+import { getConversationRenderChatId } from './screen-target.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
 import { escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getSettings } from './settings-store.js';
@@ -63,15 +65,6 @@ export {
     parseConversationSlashCommand,
     quickConversationSummarize,
 } from './timeline-slash-commands.js';
-
-function getConversationRenderChatId(avatar, groupId, personaId) {
-    const store = getConversationRecord(avatar, { groupId, personaId });
-    return String(store?.activeChatId || getActiveConversationChat(avatar, { groupId, personaId })?.id || '');
-}
-
-function buildConversationRenderKey(avatar, groupId, chatId, personaId) {
-    return [personaId || '', avatar || '', groupId || '', chatId || ''].join('\u001f');
-}
 
 function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings, allMessages, messages }) {
     const activeTyping = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });
