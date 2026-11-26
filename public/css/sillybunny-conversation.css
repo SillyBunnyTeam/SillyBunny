@@ -1618,14 +1618,15 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     display: none;
 }
 
-/* The chip draws at 24px and its target is 32px (DESIGN.md, Touch targets) through the hit area below. An inset is measured from
-   the padding box, so the 1px border is inside it: -5px reaches 4px past the chip above and below, which fits the 4px gap to the
-   bubble and, between two rows of chips, the 8px row gap, so no two hit areas overlap, and a single row is as tall as its chips.
-   The columns are 4px apart, which the 2px at each side (-3px) use up. */
+/* The chip draws at 24px and its target is at least 32px (DESIGN.md, Touch targets) through the hit area below. An inset is
+   measured from the padding box, so the 1px border is inside it: -6px reaches 5px past the chip above and below (a 34px target),
+   which fits the 12px row gap between two rows of chips, so no two hit areas overlap, and a single row is as tall as its chips.
+   The columns are 4px apart, which the 2px at each side (-3px) use up. The values are on the spacing scale that
+   `scripts/audit-design-rules.js` counts. */
 .sb-conversation-message-reactions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 4px;
+    gap: 12px 4px;
 }
 
 .sb-conversation-selfie-actions {
@@ -1697,7 +1698,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-message-reaction-chip::after {
     content: '';
     position: absolute;
-    inset: -5px -3px;
+    inset: -6px -3px;
 }
 
 .sb-conversation-reaction-emoji {
@@ -2375,11 +2376,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-inline-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    /* A reaction chip draws at 32px and reaches the touch target of 44px with a hit area that the row gap leaves room for. */
-    .sb-conversation-message-reactions {
-        row-gap: 12px;
-    }
-
+    /* A reaction chip draws at 32px and reaches the touch target of 44px with a hit area that the 12px row gap leaves room for. */
     .sb-conversation-message-reaction-chip {
         min-block-size: 32px;
         padding-inline: 12px;

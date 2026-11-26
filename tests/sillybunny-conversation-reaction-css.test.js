@@ -56,11 +56,11 @@ describe('the reaction chips', () => {
         expect(columnGap).toBeGreaterThanOrEqual(2 * pastSide);
     });
 
-    test('grow to 32px on a coarse pointer, with a hit area past the border that brings the target to 44px, and room between rows for it', () => {
+    test('grow to 32px on a coarse pointer, with a hit area past the border that brings the target to 44px, and the row gap that leaves room for it', () => {
         const border = Number.parseFloat(declarationsOf(top(conversation), '.sb-conversation-message-reaction-chip').border);
         const area = declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip::after');
         const [past, pastSide] = area.inset.split(' ').map(value => -Number.parseFloat(value) - border);
-        const rowGap = Number.parseFloat(declarationsOf(coarse(conversation), '.sb-conversation-message-reactions')['row-gap']);
+        const [rowGap] = declarationsOf(top(conversation), '.sb-conversation-message-reactions').gap.split(' ').map(Number.parseFloat);
 
         expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip')).toMatchObject({ 'min-block-size': '32px' });
         expect(area).toMatchObject({ position: 'absolute' });
