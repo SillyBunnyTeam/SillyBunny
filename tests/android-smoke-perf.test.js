@@ -134,9 +134,15 @@ describe('Android smoke performance collector and budget evaluator', () => {
         const snapshot = await collectDevicePerfSnapshot({
             adb,
             pkg: 'io.github.sillybunnyteam.sillybunny.debug',
-            records: [{ id: 1, key: 'first-run', ms: 62_800 }],
+            records: [
+                { id: 1, key: 'first-run', durationMs: 62_800 },
+                { id: 2, key: 'legacy-ms', ms: 1_250 },
+            ],
         });
-        expect(snapshot.stepDurationsMs).toEqual({ 'step-1-first-run': 62_800 });
+        expect(snapshot.stepDurationsMs).toEqual({
+            'step-1-first-run': 62_800,
+            'step-2-legacy-ms': 1_250,
+        });
         expect(snapshot.diskMb.files).toBe(666);
         expect(snapshot.meminfo.totalPssMb).toBe(160);
         expect(snapshot.gfxinfo.jankyPct).toBe(5);

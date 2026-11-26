@@ -514,9 +514,11 @@ jobs:
           ANDROID_FILES: |
             android/*
             start.sh
+            server.js
             scripts/*
             src/middleware/launchToken.js
             src/server-main.js
+            src/server-supervisor.js
             src/android-app-gate.js
             src/endpoints/server-admin.js
             package.json

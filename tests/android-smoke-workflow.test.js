@@ -24,9 +24,11 @@ const INVALID_LOCK_ANNOTATION = '::error title=Android runtime lock is invalid::
 const ANDROID_FILES = [
     'android/*',
     'start.sh',
+    'server.js',
     'scripts/*',
     'src/middleware/launchToken.js',
     'src/server-main.js',
+    'src/server-supervisor.js',
     'src/android-app-gate.js',
     'src/endpoints/server-admin.js',
     'package.json',

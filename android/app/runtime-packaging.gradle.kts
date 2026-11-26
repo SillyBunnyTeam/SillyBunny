@@ -240,6 +240,10 @@ abstract class GenerateSillyBunnyNotices : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val npmLicenses: DirectoryProperty
 
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nodePatches: DirectoryProperty
+
     /** notices.gradle.kts's output: android-libraries.json and the license texts it names. */
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -1014,6 +1018,7 @@ fun configureRuntimePackaging(variant: Any) {
         termuxLicenses.set(File(runtimeTermuxDir, "licenses"))
         nodeTarball.set(runtimeNodeTarball)
         npmLicenses.set(rootProject.layout.projectDirectory.dir("runtime/licenses/npm"))
+        nodePatches.set(rootProject.layout.projectDirectory.dir("runtime/patches/node"))
         // notices.gradle.kts registers this task and writes this directory.
         androidLibraries.set(layout.buildDirectory.dir("generated/sillybunny/library-notices/$name"))
         dependsOn("generate${variantName}SillyBunnyLibraryNotices")

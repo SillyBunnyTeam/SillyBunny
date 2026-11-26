@@ -2,7 +2,7 @@
 import module from 'node:module';
 import process from 'node:process';
 
-// Enable Node's persistent V8 bytecode compile cache before loading the rest of the module graph.
+// SillyBunny: enable Node's persistent V8 bytecode compile cache before loading the rest of the module graph.
 if (typeof module.enableCompileCache === 'function' && !process.versions?.bun) {
     try {
         const cacheDir = process.env.NODE_COMPILE_CACHE;

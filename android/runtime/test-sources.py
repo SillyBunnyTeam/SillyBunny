@@ -2651,6 +2651,7 @@ class NoticesTests(SourceFixture):
         self.assertEqual(item['version'], '1.2.3')
         self.assertIsNone(item['spdx'])
         self.assertEqual(item['licenses'][0]['contents'], contents)
+        self.assertIn('android/runtime/patches/node/LICENSE.ST-android', [entry['path'] for entry in item['licenses']])
         self.runtime['node'] = {'version': 'v1.2.3'}
         self.lock['node'] = {'version': '1.2.3'}
         self.save_locks()

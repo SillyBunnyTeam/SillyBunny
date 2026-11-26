@@ -274,8 +274,12 @@ export async function collectDevicePerfSnapshot({ adb, pkg, records = [] }) {
         pkg,
         stepDurationsMs: Object.fromEntries(
             records
-                .filter(record => typeof record?.ms === 'number')
-                .map(record => [`step-${record.id}-${record.key}`, record.ms]),
+                .map((record) => {
+                    const duration = typeof record?.durationMs === 'number' ? record.durationMs : record?.ms;
+                    return [record, duration];
+                })
+                .filter(([, duration]) => typeof duration === 'number')
+                .map(([record, duration]) => [`step-${record.id}-${record.key}`, duration]),
         ),
         diskMb: parseDiskUsageMb(diskRaw),
         meminfo: parseMeminfoSummary(memRaw),

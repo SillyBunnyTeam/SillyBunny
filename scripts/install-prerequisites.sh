@@ -28,7 +28,7 @@ while (($#)); do
     shift
 done
 
-# APK mode bundles Git, Node.js, Bun, npm and bash; its shell lacks download tools.
+# APK mode bundles Git, Node.js, npm and bash; its shell lacks download tools.
 if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]; then
     exit 0
 fi

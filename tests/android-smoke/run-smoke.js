@@ -582,6 +582,14 @@ export function runSummary(records, detail) {
 
 async function commandRun(values) {
     const options = parseRunOptions(values);
+    let customBudgets = null;
+    if (options.perfBudget) {
+        const parsed = JSON.parse(fs.readFileSync(options.perfBudget, 'utf8'));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error(`--perf-budget must be a JSON object: ${options.perfBudget}`);
+        }
+        customBudgets = { ...DEFAULT_ANDROID_PERF_BUDGETS, ...parsed };
+    }
     const { SERVICES, startFixtures } = await import('./launcher.js');
     const { checkDataSafety, closeBrowser, closeCdp, createContext, fixtureView, newAppCrashes, smokeSteps } = await import('./smoke-steps.js');
     // Playwright's errors name the page URL; its per-install origin label stays out of the logs and summaries.
@@ -651,11 +659,7 @@ async function commandRun(values) {
         if (ctx) {
             perfSnapshot = await collectDevicePerfSnapshot({ adb, pkg: options.pkg, records }).catch(() => null);
             if (perfSnapshot) {
-                if (options.perfBudget) {
-                    const customBudgets = {
-                        ...DEFAULT_ANDROID_PERF_BUDGETS,
-                        ...JSON.parse(fs.readFileSync(options.perfBudget, 'utf8')),
-                    };
+                if (customBudgets) {
                     perfEvaluation = evaluateAndroidPerfBudgets(perfSnapshot, customBudgets);
                     if (!perfEvaluation.ok && result.ok) {
                         result.ok = false;
@@ -663,7 +667,11 @@ async function commandRun(values) {
                         result.detail = `performance budget failed: ${perfEvaluation.violations.map(v => `${v.metric}=${v.actual} > ${v.max}`).join(', ')}`;
                     }
                 }
-                fs.writeFileSync(path.join(out, 'perf-summary.json'), `${JSON.stringify({ snapshot: perfSnapshot, evaluation: perfEvaluation }, null, 4)}\n`);
+                try {
+                    fs.writeFileSync(path.join(out, 'perf-summary.json'), `${JSON.stringify({ snapshot: perfSnapshot, evaluation: perfEvaluation }, null, 4)}\n`);
+                } catch (error) {
+                    progress(`perf-summary.json write failed: ${error.message}`);
+                }
             }
         }
         if (ctx && !result.ok) {

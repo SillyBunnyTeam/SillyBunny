@@ -130,6 +130,7 @@ if (launchTokenMiddleware) {
 app.use(getResponseCompressionMiddleware());
 app.use(responseTime());
 
+// SillyBunny: flush Node's V8 compile cache on startup/trim/exit so mobile SIGKILL keeps warm bytecode.
 function flushNodeCompileCache() {
     if (isBunRuntime() || typeof module.flushCompileCache !== 'function') {
         return;
@@ -559,6 +560,7 @@ async function preSetupTasks() {
         }
         // SillyBunny: close the index database file, where upstream stopped the disk cache sync timer.
         characterIndex.close();
+        // SillyBunny: persist Node's bytecode compile cache before exit.
         flushNodeCompileCache();
         setWindowTitle(consoleTitle);
         process.exit(exitCode);
@@ -756,6 +758,7 @@ async function postSetupTasks(result) {
     setupLogLevel();
     serverEvents.emit(EVENT_NAMES.SERVER_STARTED, { url: browserLaunchUrl });
     notifyServerStartup(getLoadedServerPlugins());
+    // SillyBunny: flush Node's bytecode compile cache once startup completes.
     setImmediate(flushNodeCompileCache);
     void runDeferredStartupTasks();
 }

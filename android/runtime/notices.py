@@ -39,6 +39,8 @@ SECTIONS = ('android', 'node', 'npm', 'termux')
 NPM_LICENSES = ROOT / 'licenses' / 'npm'
 # Supplied texts are shown under their committed path, so the notices never present them as the package's own file.
 NPM_LICENSES_LABEL = 'android/runtime/licenses/npm'
+NODE_PATCHES_DIR = ROOT / 'patches' / 'node'
+NODE_PATCHES_LABEL = 'android/runtime/patches/node'
 # "substitute": not the package's own text (it has none anywhere upstream); such a text must explain itself in a note.
 SUPPLEMENT_BASES = ('repository-license-file', 'repository-readme', 'spdx-license-list', 'substitute')
 SUPPLEMENT_KEYS = {'name', 'version', 'license', 'registry', 'texts'}
@@ -354,7 +356,15 @@ def termux_components(packages, licenses_root):
     return result
 
 
-def node_component(node_source):
+def node_patch_licenses(patches_dir=NODE_PATCHES_DIR):
+    if patches_dir is None or not patches_dir.exists():
+        return []
+    _, files, _ = scan_tree(patches_dir)
+    return [license_input(path, f'{NODE_PATCHES_LABEL}/{relative}')
+            for relative, path in sorted(files.items()) if is_license_path(relative)]
+
+
+def node_component(node_source, patches_dir=NODE_PATCHES_DIR):
     _, files, _ = scan_tree(node_source)
     for required in ('LICENSE', 'src/node_version.h'):
         if required not in files:
@@ -373,9 +383,9 @@ def node_component(node_source):
         fail('node-release')
     version_string = '.'.join(str(number) for number in version)
     source_url = 'https://nodejs.org/dist/v' + version_string + '/node-v' + version_string + '.tar.xz'
-    # Node's composite LICENSE includes dependencies with licenses beyond MIT.
-    return component('node', 'node', 'node', version_string, None, source_url,
-                     [license_input(files['LICENSE'], 'LICENSE')])
+    # Node's composite LICENSE includes dependencies with licenses beyond MIT; patch notices live alongside the patches.
+    licenses = [license_input(files['LICENSE'], 'LICENSE'), *node_patch_licenses(patches_dir)]
+    return component('node', 'node', 'node', version_string, None, source_url, licenses)
 
 
 def is_license_path(relative):
