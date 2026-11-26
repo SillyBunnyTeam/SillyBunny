@@ -31,6 +31,7 @@ English | [Deutsch](readme-de_de.md) | [中文](readme-zh_cn.md) | [繁體中文
 * [Project Goals](#project-goals-aka-why-we-made-this-fork)
 * [Changes and Features](#changes-and-features)
 * [Upstream Information](#upstream-information)
+* [Credits](#credits)
 * [Contributors](#contributors)
 ***
 
@@ -267,6 +268,10 @@ SillyBunny is a fork of the SillyTavern `staging` branch. The vast majority of S
 | Upstream Subreddit | [r/SillyTavernAI](https://reddit.com/r/SillyTavernAI) |
 
 If something feels off, compare against the upstream `staging` branch first.
+
+## Credits
+
+**Emoji.** Conversation emoji are drawn with graphics from [Twemoji](https://github.com/jdecked/twemoji) (© 2014–2021 Twitter, © 2022–present Jason Sofonia and Justine De Caires), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), converted into a font. Emoji names and keywords come from the [Unicode CLDR](https://cldr.unicode.org/) through [Emojibase](https://github.com/milesj/emojibase) (MIT), under the [Unicode License V3](https://www.unicode.org/license.txt).
 
 ## Contributors
 
