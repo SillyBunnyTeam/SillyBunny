@@ -6,6 +6,7 @@
 
 import { t } from '../i18n.js';
 import { openPopover } from '../sillybunny-action-menu.js';
+import { COLOR_PICKER_CLOSED_EVENT } from '../sillybunny-color-picker.js';
 import { openAlert } from './dialog.js';
 
 export const DEFAULT_FOLDER_COLOR = 'rgba(128, 128, 128, 1)';
@@ -136,6 +137,10 @@ export function openFolderColorPopover({ trigger, bounds = null, value = '', tra
     const picker = createFolderColorPicker({ value, onChange });
     content.append(picker);
     const popup = openPopover({ trigger, content, title: t`Folder Colour`, bounds, initialFocus: () => picker, trackTrigger });
+    // The popover is only the place of the picker, so it goes when the picker's menu does (Escape, its Close button).
+    picker.addEventListener(COLOR_PICKER_CLOSED_EVENT, () => {
+        if (popup.isOpen) popup.close();
+    });
     requestAnimationFrame(() => picker.shadowRoot?.querySelector('.button')?.click());
     return popup;
 }

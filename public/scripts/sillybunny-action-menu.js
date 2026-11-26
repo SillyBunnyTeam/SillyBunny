@@ -8,7 +8,7 @@
 import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, animateIn, animateOut, stopMotion } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from './sillybunny-sheet.js';
-import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
+import { MENU_LAYER_CLOSED_EVENT, hostOverlayLayer, isChildLayerOf } from './sillybunny-editor/overlay-host.js';
 import { MENU_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
 import { bindSheetSwipeClose, createSheetHandle } from './sillybunny-editor/sheet-gestures.js';
 
@@ -530,7 +530,7 @@ function finishClose() {
     const root = state.kind === 'popover' ? state.popover : state.frame.element;
     if (root.id) {
         // A picker that was opened from inside this surface goes with it.
-        document.dispatchEvent(new CustomEvent('sb-menu-layer-closed', { detail: root.id }));
+        document.dispatchEvent(new CustomEvent(MENU_LAYER_CLOSED_EVENT, { detail: root.id }));
     }
     if (state.frame) {
         releaseSheetIds(state);
@@ -752,12 +752,7 @@ function handlePopoverKeydown(event) {
  * under it, and a press, a scroll or the focus in the layer is not one outside the surface.
  */
 function isChildLayerOfOpen(node) {
-    if (!open || !(node instanceof Element)) {
-        return false;
-    }
-    const root = open.kind === 'popover' ? open.popover : open.frame.element;
-    const layer = node.closest('[data-sb-parent-layer]');
-    return Boolean(root.id) && layer instanceof HTMLElement && layer.dataset.sbParentLayer === root.id;
+    return Boolean(open) && isChildLayerOf(open.kind === 'popover' ? open.popover : open.frame.element, node);
 }
 
 function handlePopoverFocusOut(event) {

@@ -3,7 +3,7 @@ import { positionPopover } from '../sillybunny-action-menu.js';
 import { MENU_SHEET_QUERY } from './breakpoints.js';
 import { animateIn, animateOut, stopMotion, MOTION_FAST, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from '../sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from '../sillybunny-sheet.js';
-import { hostOverlayLayer } from './overlay-host.js';
+import { hostOverlayLayer, linkChildLayer } from './overlay-host.js';
 import { createStatusPage } from './status-page.js';
 import { detailsToText, renderDetails } from './option-details.js';
 import { bindSheetSwipeClose, createSheetHandle } from './sheet-gestures.js';
@@ -1275,16 +1275,9 @@ export function openPicker({
     state.surface.id ||= createId('sb-picker-dialog');
     trigger.setAttribute('aria-controls', state.surface.id);
     if (parentLayer) {
-        parentLayer.id ||= createId('sb-menu-layer');
-        const parentId = parentLayer.id;
-        state.surface.dataset.sbParentLayer = parentId;
-        const onParentClosed = event => {
-            if (/** @type {CustomEvent} */ (event).detail === parentId && activePicker === state) {
-                closePicker({ animate: false, restoreFocus: false });
-            }
-        };
-        document.addEventListener('sb-menu-layer-closed', onParentClosed);
-        state.removeParentListener = () => document.removeEventListener('sb-menu-layer-closed', onParentClosed);
+        state.removeParentListener = linkChildLayer(state.surface, trigger, () => {
+            if (activePicker === state) closePicker({ animate: false, restoreFocus: false });
+        });
     }
     return {
         close: () => {

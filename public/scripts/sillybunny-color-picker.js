@@ -1,10 +1,12 @@
 import { animateIn, MOTION_FAST } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
 import { MENU_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
-import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
+import { hostOverlayLayer, linkChildLayer } from './sillybunny-editor/overlay-host.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 
 const PICKER_SELECTOR = 'toolcool-color-picker';
+/** Sent on the picker element when its menu has closed, whoever closed it. */
+export const COLOR_PICKER_CLOSED_EVENT = 'sb-color-picker-closed';
 const MENU_ID = 'sb-color-picker-menu';
 const MARGIN = 12;
 const GAP = 8;
@@ -142,7 +144,7 @@ function buildMenu(picker, button) {
     return {
         picker, button, menu, title, body, plane, cursor, saturation, brightness, hue, alpha,
         value, inputs, hsv: picker.color.toHsv(), writing: false, dialog: null,
-        hexPending: false, hexAlpha: picker.color.toRgb().a, finalizeHex: null,
+        hexPending: false, hexAlpha: picker.color.toRgb().a, finalizeHex: null, unlink: null,
     };
 }
 
@@ -362,8 +364,14 @@ function openColorMenu(picker, button) {
         syncPlacement();
         animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     }
-    (state.dialog?.root ?? state.menu).addEventListener('sb-overlay-host-closing', () => {
+    const surface = state.dialog?.root ?? state.menu;
+    surface.addEventListener('sb-overlay-host-closing', () => {
         if (active === state) closeColorMenu({ commitPending: false, restoreFocus: false });
+    });
+    // Opened from a popover or a sheet (the colour of a folder), the picker sits outside it in the page, and a press or a
+    // field in the picker would be a press outside the surface under it. It is a child layer of that surface, and goes with it.
+    state.unlink = linkChildLayer(surface, picker, () => {
+        if (active === state) closeColorMenu({ restoreFocus: false });
     });
     if (!state.dialog) state.inputs.hex.focus({ preventScroll: true });
 }
@@ -373,12 +381,15 @@ function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
     if (!state) return;
     if (commitPending) state.finalizeHex();
     active = null;
+    state.unlink?.();
     state.button.setAttribute('aria-expanded', 'false');
     if (state.dialog) state.dialog.close('close');
     else state.menu.remove();
     if (restoreFocus && state.button.isConnected && state.button.getClientRects().length) {
         state.button.focus({ preventScroll: true });
     }
+    // A surface that exists only to hold the picker (the popover of a folder's colour) closes with it.
+    state.picker.dispatchEvent(new CustomEvent(COLOR_PICKER_CLOSED_EVENT));
 }
 
 function enhancePicker(picker) {
