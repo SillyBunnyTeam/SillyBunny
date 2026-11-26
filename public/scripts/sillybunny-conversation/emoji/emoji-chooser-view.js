@@ -821,6 +821,11 @@ export function createChooserView({
             setActive(first);
         }
         scheduleBuild();
+
+        // The entry takes text while the table loads, and a search that had no table to run on was dropped, so the entry and the results would disagree.
+        if (searchEntry.value.trim()) {
+            runSearch(searchEntry.value);
+        }
     }
 
     function focusInitial() {

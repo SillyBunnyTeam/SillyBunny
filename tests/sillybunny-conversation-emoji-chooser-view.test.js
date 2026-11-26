@@ -399,6 +399,58 @@ describe('search', () => {
         expect(cells(root)).toHaveLength(20);
     });
 
+    describe('text typed while the table is still loading', () => {
+        /** A view that is showing its loading page, as the chooser opens before the table has arrived. */
+        function makeLoadingView() {
+            const view = createChooserView({ kind: 'insert', recents: [], columns: () => 4, schedule, requestClose() {}, recordRecent() {}, onPick() {} });
+            document.body.append(view.element);
+            view.showLoading();
+            return view;
+        }
+
+        test('is searched when the table arrives, so that the entry and the results agree', () => {
+            const view = makeLoadingView();
+            type(view.element, 'hand');
+            expect(view.element.querySelector('.sb-emoji-live').textContent).toBe('');
+
+            view.setTable(makeTable());
+            flush();
+
+            expect(view.element.dataset.state).toBe('ready');
+            expect(view.element.dataset.mode).toBe('results');
+            expect(view.element.querySelectorAll('[role="group"]')).toHaveLength(1);
+            expect([...view.element.querySelectorAll('.sb-emoji-cell')].map(cell => cell.dataset.emoji)).toEqual(['🤝', '👋', '🙏']);
+            expect(view.element.querySelector('.sb-emoji-live').textContent).toBe('3 Results');
+            expect(search(view.element).value).toBe('hand');
+        });
+
+        test('that matches nothing says so when the table arrives', () => {
+            const view = makeLoadingView();
+            type(view.element, 'zzzz');
+
+            view.setTable(makeTable());
+            flush();
+
+            expect(view.element.querySelector('.sb-emoji-live').textContent).toBe('No Results');
+        });
+
+        test('is not searched when the entry was cleared again, or holds only spaces, and the sections show', () => {
+            for (const left of ['', '   ']) {
+                const view = makeLoadingView();
+                type(view.element, 'hand');
+                type(view.element, left);
+
+                view.setTable(makeTable());
+                flush();
+
+                expect(view.element.dataset.mode).toBe('sections');
+                expect(view.element.querySelectorAll('[role="group"]')).toHaveLength(3);
+                expect(view.element.querySelector('.sb-emoji-live').textContent).toBe('');
+                document.body.replaceChildren();
+            }
+        });
+    });
+
     test('picks the first result on Enter, and moves into the results with the Down arrow', () => {
         const { root, calls } = makeView();
         flush();
