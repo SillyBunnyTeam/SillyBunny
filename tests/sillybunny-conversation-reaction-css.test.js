@@ -36,10 +36,38 @@ describe('the reaction chips', () => {
         expect(declarationsOf(top(conversation), '.sb-conversation-reaction-emoji')).toHaveProperty('font-size');
     });
 
+    test('are drawn at 24px and reach a target of 32px on a fine pointer through a hit area, with the gaps that keep the hit areas of neighbours and of two rows apart', () => {
+        const chip = declarationsOf(top(conversation), '.sb-conversation-message-reaction-chip');
+        const area = declarationsOf(top(conversation), '.sb-conversation-message-reaction-chip::after');
+        const [rowGap, columnGap] = declarationsOf(top(conversation), '.sb-conversation-message-reactions').gap.split(' ').map(Number.parseFloat);
+
+        expect(chip['min-block-size']).toBe('24px');
+        expect(chip.position).toBe('relative');
+        expect(area).toMatchObject({ position: 'absolute', content: '\'\'' });
+        // An inset is measured from the padding box, so the border of the chip is inside it.
+        const border = Number.parseFloat(chip.border);
+        const [past, pastSide] = area.inset.split(' ').map(value => -Number.parseFloat(value) - border);
+
+        expect(border).toBe(1);
+        // DESIGN.md, Touch targets: 32px on a fine pointer.
+        expect(24 + 2 * past).toBeGreaterThanOrEqual(32);
+        // The hit area of one row meets that of the next only where the row gap is used up, and a neighbour's where the column gap is.
+        expect(rowGap).toBeGreaterThanOrEqual(2 * past);
+        expect(columnGap).toBeGreaterThanOrEqual(2 * pastSide);
+    });
+
     test('grow to 32px on a coarse pointer, with a hit area past the border that brings the target to 44px, and room between rows for it', () => {
+        const border = Number.parseFloat(declarationsOf(top(conversation), '.sb-conversation-message-reaction-chip').border);
+        const area = declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip::after');
+        const [past, pastSide] = area.inset.split(' ').map(value => -Number.parseFloat(value) - border);
+        const rowGap = Number.parseFloat(declarationsOf(coarse(conversation), '.sb-conversation-message-reactions')['row-gap']);
+
         expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip')).toMatchObject({ 'min-block-size': '32px' });
-        expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip::after')).toMatchObject({ position: 'absolute', inset: '-6px -2px' });
-        expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reactions')).toHaveProperty('row-gap', '12px');
+        expect(area).toMatchObject({ position: 'absolute' });
+        // DESIGN.md, Touch targets: 44px on a coarse pointer.
+        expect(32 + 2 * past).toBeGreaterThanOrEqual(44);
+        expect(rowGap).toBeGreaterThanOrEqual(2 * past);
+        expect(Number.parseFloat(declarationsOf(top(conversation), '.sb-conversation-message-reactions').gap.split(' ')[1])).toBeGreaterThanOrEqual(2 * pastSide);
     });
 
     test('hand a long press to the list of who reacted, not to the callout and the text selection of the browser', () => {

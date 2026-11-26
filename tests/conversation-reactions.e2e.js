@@ -114,6 +114,28 @@ async function openConversation(page, baseURL, { messages, chooser = false } = {
     return { message, avatar, saves, conversationId: seeded.conversationId, chatId: seeded.chatIds[0] };
 }
 
+/**
+ * The hit area of each chip is its ::after box, which only a computed style of the pseudo-element can report. An inset is
+ * measured from the padding box, so the border of the chip is added to the offsets.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} selector
+ */
+function measureHitAreas(page, selector) {
+    return page.locator(selector).evaluateAll(chips => chips.map((chip) => {
+        const box = chip.getBoundingClientRect();
+        const style = getComputedStyle(chip);
+        const area = getComputedStyle(chip, '::after');
+        return {
+            drawn: box.height,
+            top: box.top + parseFloat(style.borderTopWidth) + parseFloat(area.top),
+            bottom: box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(area.bottom),
+            left: box.left + parseFloat(style.borderLeftWidth) + parseFloat(area.left),
+            right: box.right - parseFloat(style.borderRightWidth) - parseFloat(area.right),
+            rowTop: box.top,
+        };
+    }));
+}
+
 /** What the server holds of a message, once the page has written it. */
 async function storedReactions(page, { conversationId, chatId }) {
     await page.evaluate(async () => {
@@ -248,6 +270,43 @@ test.describe('with a pointer', () => {
 
         await message.locator(CHIP).first().click();
         await expect(message.locator(CHIP)).toHaveCount(19);
+    });
+
+    test('a chip is drawn at 24px and its hit area reaches 32px, with the hit areas of two rows and of neighbours kept apart and a single row as tall as its chips', async ({ page, baseURL }) => {
+        const emoji = ['😂', '👍', '❤️', '✨', '😮', '😢', '🎉', '🔥', '👏', '🙏', '😍', '🤔', '😎', '🥳', '🤝', '💯'];
+        const { message } = await openConversation(page, baseURL, { messages: [
+            { id: 'react-first', role: 'character', name: 'Seraphina', mes: 'Good morning.', extra: { conversation_reactions: [{ emoji: '👍', by: 'user', at: 1 }] } },
+            { id: MESSAGE_ID, role: 'user', name: 'Tester', mes: 'Look.', extra: { conversation_reactions: emoji.map((entry, index) => ({ emoji: entry, by: 'user', at: index + 1 })) } },
+        ] });
+        await expect(message.locator(CHIP)).toHaveCount(emoji.length);
+
+        const chips = await measureHitAreas(page, `.sb-conversation-message[data-message-id="${MESSAGE_ID}"] ${CHIP}`);
+        for (const chip of chips) {
+            expect(chip.drawn).toBeCloseTo(24, 0);
+            expect(chip.bottom - chip.top).toBeGreaterThanOrEqual(32);
+        }
+        const rows = [...new Set(chips.map(chip => Math.round(chip.rowTop)))];
+        expect(rows.length, 'the chips wrap onto at least two rows').toBeGreaterThanOrEqual(2);
+        const lastOfRow = chips.filter(chip => Math.round(chip.rowTop) === rows[0]).at(-1);
+        const firstOfNext = chips.find(chip => Math.round(chip.rowTop) === rows[1]);
+        expect(lastOfRow.bottom).toBeLessThanOrEqual(firstOfNext.top + 0.01);
+        const inFirstRow = chips.filter(chip => Math.round(chip.rowTop) === rows[0]);
+        inFirstRow.slice(1).forEach((chip, index) => expect(inFirstRow[index].right).toBeLessThanOrEqual(chip.left + 0.01));
+
+        // A point inside the hit area, past the chip's border, reaches the chip, and a point beyond it does not.
+        const reached = await page.evaluate(({ selector }) => {
+            const chip = document.querySelector(selector);
+            const box = chip.getBoundingClientRect();
+            const x = box.left + box.width / 2;
+            const hit = y => document.elementFromPoint(x, y)?.closest('.sb-conversation-message-reaction-chip') === chip;
+            return { above: hit(box.top - 3), below: hit(box.bottom + 3), farAbove: hit(box.top - 6), farBelow: hit(box.bottom + 6) };
+        }, { selector: `.sb-conversation-message[data-message-id="${MESSAGE_ID}"] ${CHIP}` });
+        expect(reached).toEqual({ above: true, below: true, farAbove: false, farBelow: false });
+
+        // The hit area adds nothing to the layout: the row of one chip is the chip's height.
+        const single = page.locator('.sb-conversation-message[data-message-id="react-first"] .sb-conversation-message-reactions');
+        const singleChip = page.locator('.sb-conversation-message[data-message-id="react-first"] ' + CHIP);
+        expect((await single.boundingBox()).height).toBeCloseTo((await singleChip.boundingBox()).height, 0);
     });
 
     test('shows a count from two reactions, and the list of who reacted opens from the secondary click and from the Menu key without a hover', async ({ page, baseURL }) => {
@@ -474,6 +533,10 @@ test.describe('by touch', () => {
         const chip = message.locator(CHIP);
         const box = await chip.boundingBox();
         expect(box.height).toBeGreaterThanOrEqual(32);
+        // The hit area brings the target to the 44px of DESIGN.md, Touch targets, in both directions.
+        const [area] = await measureHitAreas(page, `.sb-conversation-message[data-message-id="${MESSAGE_ID}"] ${CHIP}`);
+        expect(area.bottom - area.top).toBeGreaterThanOrEqual(44);
+        expect(area.right - area.left).toBeGreaterThanOrEqual(44);
 
         // The finger stays where it went down: a release that moved would be a swipe, which the row of a message reads for itself.
         const finger = { pointerType: 'touch', pointerId: 7, isPrimary: true, clientX: box.x + 4, clientY: box.y + 4 };
