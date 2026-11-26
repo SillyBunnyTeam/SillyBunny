@@ -133,6 +133,12 @@ test.describe('the colour picker of a folder, in the popover of the list on a de
         expect(await storedColour(page, persona)).toMatch(/^rgba\(51,\s*170,\s*85,/);
     });
 
+    test('opens on the field of the hex code with a mouse, where typing starts', async ({ page, baseURL }) => {
+        await openListAtFolderColour(page, baseURL);
+
+        await expect(page.locator(COLOUR_MENU).getByRole('textbox', { name: 'Hex', exact: true })).toBeFocused();
+    });
+
     test('goes with the popover on a press outside both, and not on a press inside the popover but outside the picker', async ({ page, baseURL }) => {
         await openListAtFolderColour(page, baseURL);
 
@@ -189,6 +195,19 @@ test.describe('the colour picker of a folder, in the popover of the list, with t
     });
 });
 
+test.describe('the colour picker of a folder, on a desktop with a touch screen, before a finger touches it', () => {
+    test.use({ hasTouch: true });
+
+    test('opens with no text field focused, as it does on a phone', async ({ page, baseURL }) => {
+        const { key } = await openFolderList(page, baseURL);
+
+        await openFolderColour(page, key);
+
+        expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+        expect(await page.evaluate(() => document.activeElement?.matches('input:not([type="range"]), textarea'))).toBe(false);
+    });
+});
+
 test.describe('the colour picker of a folder, on a desktop with a touch screen', () => {
     test.use({ hasTouch: true });
 
@@ -218,6 +237,15 @@ test.describe('the colour picker of a folder, on a desktop with a touch screen',
 
 test.describe('the colour picker of a folder, in the sheet of the list on a phone', () => {
     test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    test('opens with no text field focused, so that the keyboard of the phone does not cover the plane', async ({ page, baseURL }) => {
+        const { key } = await openFolderList(page, baseURL);
+
+        await openFolderColour(page, key);
+
+        await expect(page.locator(COLOUR_DIALOG)).toBeVisible();
+        expect(await page.evaluate(() => document.activeElement?.matches('input:not([type="range"]), textarea'))).toBe(false);
+    });
 
     test('stays open on a tap in a field, and takes what is typed in it', async ({ page, baseURL }) => {
         const { persona, key } = await openFolderList(page, baseURL);

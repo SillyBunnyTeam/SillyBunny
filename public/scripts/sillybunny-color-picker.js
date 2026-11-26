@@ -318,6 +318,11 @@ function syncPlacement() {
     revealFocusedControl(state);
 }
 
+/** What has the focus when the picker opens: the hex field, where a keyboard starts typing. With a finger the field raises the keyboard of the device over the plane that the finger came to drag, so the plane has it. */
+function firstControl(state) {
+    return window.matchMedia('(pointer: coarse)').matches ? state.saturation : state.inputs.hex;
+}
+
 function openColorMenu(picker, button) {
     if (active?.picker === picker) {
         closeColorMenu();
@@ -341,7 +346,7 @@ function openColorMenu(picker, button) {
             content: state.menu,
             className: 'sb-color-picker-dialog',
             sheetQuery: MENU_SHEET_QUERY,
-            initialFocus: () => state.inputs.hex,
+            initialFocus: () => firstControl(state),
         });
         state.title.classList.add('sb-dialog__title');
         dialog.header.querySelector('.sb-dialog__title')?.replaceWith(state.title);
@@ -373,7 +378,7 @@ function openColorMenu(picker, button) {
     state.unlink = linkChildLayer(surface, picker, () => {
         if (active === state) closeColorMenu({ restoreFocus: false });
     });
-    if (!state.dialog) state.inputs.hex.focus({ preventScroll: true });
+    if (!state.dialog) firstControl(state).focus({ preventScroll: true });
 }
 
 function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
