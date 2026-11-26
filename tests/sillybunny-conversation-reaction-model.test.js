@@ -12,6 +12,7 @@ import {
     pushReactionRecent,
     readReactionRecents,
     readReactions,
+    toLabelCase,
     toggleUserReaction,
     writeReactions,
 } from '../public/scripts/sillybunny-conversation/reaction-model.js';
@@ -210,6 +211,25 @@ describe('the chips of a message', () => {
 
     test('are none for no reactions', () => {
         expect(groupReactions([])).toEqual([]);
+    });
+});
+
+describe('the name of an emoji as a label', () => {
+    test.each([
+        ['face with tears of joy', 'Face With Tears of Joy'],
+        ['red heart', 'Red Heart'],
+        ['thumbs up', 'Thumbs Up'],
+        ['sparkles', 'Sparkles'],
+        ['face with open mouth', 'Face With Open Mouth'],
+        ['OK hand', 'OK Hand'],
+        ['man in suit levitating', 'Man in Suit Levitating'],
+        ['', ''],
+    ])('is written in header capitalisation: %s', (name, label) => {
+        expect(toLabelCase(name)).toBe(label);
+    });
+
+    test('is empty for a name that is not text', () => {
+        expect(toLabelCase(undefined)).toBe('');
     });
 });
 

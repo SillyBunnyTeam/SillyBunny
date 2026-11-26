@@ -186,6 +186,19 @@ export function groupReactions(entries) {
         .map(({ chip }) => chip);
 }
 
+// The words that the capitalisation rule of DESIGN.md leaves in lower case inside a label (`tests/helpers/capitalisation.js`).
+const LABEL_FUNCTION_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'but', 'nor', 'for', 'as', 'at', 'by', 'in', 'of', 'to', 'per', 'via', 'vs', 'if']);
+
+/**
+ * The name of an emoji as the text of a label. The names of Unicode are written in lower case, and a tooltip or an
+ * accessible name of the interface is in header capitalisation: "face with tears of joy" is "Face With Tears of Joy".
+ */
+export function toLabelCase(name) {
+    return String(name ?? '').split(' ')
+        .map((word, index) => (index > 0 && LABEL_FUNCTION_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1)))
+        .join(' ');
+}
+
 /** The accessible name of a chip. The names of the reactors are not in it: they are one command away, in a list. */
 export function describeReactionChip(chip, name) {
     return `${name || chip.emoji}, ${chip.count} ${chip.count === 1 ? 'reaction' : 'reactions'}`;

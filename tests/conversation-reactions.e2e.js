@@ -141,7 +141,7 @@ test.describe('with a pointer', () => {
         await expect(buttons).toHaveCount(3);
         await expect(buttons.nth(0)).toHaveText('❤️');
         await expect(buttons.nth(1)).toHaveText('😂');
-        await expect(buttons.nth(0)).toHaveAccessibleName('red heart');
+        await expect(buttons.nth(0)).toHaveAccessibleName('Red Heart');
         await expect(buttons.nth(2)).toHaveAccessibleName('More Reactions');
         await expect(buttons.nth(2)).toHaveAttribute('aria-haspopup', 'dialog');
         await expect(buttons.nth(0)).toHaveAttribute('aria-pressed', 'false');
@@ -182,7 +182,7 @@ test.describe('with a pointer', () => {
         const chip = page.locator(`.sb-conversation-message[data-message-id="${MESSAGE_ID}"] ${CHIP}`);
         await expect(chip).toHaveCount(1);
         await expect(chip).toHaveAttribute('aria-pressed', 'true');
-        await expect(chip).toHaveAccessibleName('red heart, 1 reaction');
+        await expect(chip).toHaveAccessibleName('Red Heart, 1 reaction');
         expect(await storedReactions(page, chat)).toEqual([{ emoji: '❤️', by: 'user', at: expect.any(Number) }]);
 
         await chip.click();
@@ -254,11 +254,11 @@ test.describe('with a pointer', () => {
         ] });
         const chip = message.locator(CHIP).first();
         await expect(chip).toHaveText('😂2');
-        await expect(chip).toHaveAccessibleName('face with tears of joy, 2 reactions');
-        await expect(message.locator(CHIP).nth(1)).toHaveAccessibleName('thumbs up, 1 reaction');
+        await expect(chip).toHaveAccessibleName('Face With Tears of Joy, 2 reactions');
+        await expect(message.locator(CHIP).nth(1)).toHaveAccessibleName('Thumbs Up, 1 reaction');
 
         await chip.click({ button: 'right' });
-        const people = page.getByRole('dialog', { name: 'face with tears of joy' });
+        const people = page.getByRole('dialog', { name: 'Face With Tears of Joy' });
         await expect(people).toBeVisible();
         await expect(people.getByRole('listitem')).toHaveText(['You', 'Seraphina']);
         await page.keyboard.press('Escape');
@@ -285,7 +285,7 @@ test.describe('with a pointer', () => {
         const emoji = menu.getByRole('menuitemcheckbox');
         await expect(emoji).toHaveCount(6);
         await expect(emoji).toHaveText(['❤️', '😂', '✨', '👍', '😮', '😢']);
-        await expect(emoji.nth(1)).toHaveAccessibleName('face with tears of joy');
+        await expect(emoji.nth(1)).toHaveAccessibleName('Face With Tears of Joy');
         await expect(menu.getByRole('menuitem', { name: 'More Reactions' })).toBeVisible();
 
         await emoji.first().focus();
@@ -296,7 +296,7 @@ test.describe('with a pointer', () => {
 
         await expect(menu).toBeHidden();
         await expect(message.locator(CHIP)).toHaveCount(1);
-        await expect(message.locator(CHIP)).toHaveAccessibleName('sparkles, 1 reaction');
+        await expect(message.locator(CHIP)).toHaveAccessibleName('Sparkles, 1 reaction');
         await expect(trigger).toBeFocused();
     });
 
@@ -312,7 +312,7 @@ test.describe('with a pointer', () => {
 
         await page.evaluate(() => window.__chooser.onPick('🎉', { name: 'party popper' }));
         await expect(message.locator(CHIP)).toHaveText('🎉');
-        await expect(message.locator(CHIP)).toHaveAccessibleName('party popper, 1 reaction');
+        await expect(message.locator(CHIP)).toHaveAccessibleName('Party Popper, 1 reaction');
         await page.evaluate(() => window.__chooser.onClose());
         await expect(message).not.toHaveClass(/has-open-menu/);
 

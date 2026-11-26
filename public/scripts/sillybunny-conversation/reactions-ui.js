@@ -20,6 +20,7 @@ import {
     pushReactionRecent,
     readReactionRecents,
     readReactions,
+    toLabelCase,
     toggleUserReaction,
 } from './reaction-model.js';
 
@@ -113,7 +114,7 @@ export function reactConversationMessage(messageId, emoji, { name = '' } = {}) {
 
 /** The reaction row shows the emoji as text, with the name as the label, and says whether the user has chosen it. */
 function paintQuickButton(button, { e, n }, pressed) {
-    const label = n || e;
+    const label = toLabelCase(n) || e;
     if (button.dataset.reaction !== e) {
         button.textContent = e;
         button.dataset.reaction = e;
@@ -189,7 +190,7 @@ export function buildMenuReactions(item, trigger) {
     const mine = getPressedKeys(item);
     const reactions = getQuickReactionRow(MENU_QUICK_SLOTS).map(({ e, n }) => ({
         text: e,
-        label: n || e,
+        label: toLabelCase(n) || e,
         pressed: mine.has(emojiKey(e)),
         onSelect: () => void reactConversationMessage(messageId, e, { name: n }),
     }));
@@ -254,7 +255,7 @@ function createChip(messageId, chip) {
     button.type = 'button';
     button.className = 'sb-conversation-message-reaction-chip';
     button.setAttribute('aria-pressed', String(chip.mine));
-    button.setAttribute('aria-label', describeReactionChip(chip, getReactionName(chip.emoji)));
+    button.setAttribute('aria-label', describeReactionChip(chip, toLabelCase(getReactionName(chip.emoji))));
     // A hint for the pointer. The list of reactors is also one command away for the keyboard and a finger (see bindReactionChips).
     button.title = sortReactors(chip.reactors).map(reactor => getReactorName(reactor.by)).join(', ');
     button.dataset.sbConversationAction = 'react-message';
@@ -327,7 +328,7 @@ export function openReactionPeople(chipButton) {
     }
     openPopover({
         trigger: chipButton,
-        title: getReactionName(chip.emoji) || chip.emoji,
+        title: toLabelCase(getReactionName(chip.emoji)) || chip.emoji,
         content: createReactorList(chip.reactors),
         bounds: document.getElementById('sb_conversation_timeline'),
     });

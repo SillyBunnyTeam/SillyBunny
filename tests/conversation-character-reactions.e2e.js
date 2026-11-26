@@ -278,7 +278,7 @@ test.describe('on the page that writes the reply', () => {
 
         await expect(userChip(page).last()).toHaveText('❤️2');
         await expect(userChip(page).last()).toHaveAttribute('title', `${characters[0].name}, ${characters[1].name}`);
-        await expect(userChip(page).last()).toHaveAccessibleName('red heart, 2 reactions');
+        await expect(userChip(page).last()).toHaveAccessibleName('Red Heart, 2 reactions');
     });
 
     test('is told to the model as a command only in a conversation that lets its characters react', async ({ page }) => {
