@@ -49,6 +49,8 @@
         }
     </script>
     <link rel="preload" as="style" href="style.css?v=20261125a">
+    <!-- SillyBunny: preload lib.js alongside script.js so the vendor bundle fetches in wave 0 instead of waiting on script.js parse. -->
+    <link rel="modulepreload" href="lib.js">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">

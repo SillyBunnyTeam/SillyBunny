@@ -1898,6 +1898,12 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/sillybunny-extension-media-integration.test.js` (configurations during an override, Image Generation with a missing or malformed state and user-file resolution, the `genNovelAI()` request, refusals and shared-file cleanup guard), `tests/novelai-image-generation.test.js` (route refusals, including data that is not a PNG, malformed base64 and a total above 25 MiB; its harness takes the server's 500 MB body limit so that such a request reaches the route), `tests/quick-image-gen-precise-reference.test.js`, `tests/data-maid-precise-reference.test.js`, `tests/novelai-precise-reference-editor.test.js` (jsdom unit suite for shared rows, focus survival, `change`-only commits, user-file upload/cleanup and dropped-image alert), `tests/novelai-precise-reference-editor.e2e.js` (both Image Generation and Quick Image Gen at 1440×900 and 390×844 coarse pointer).
 - **Fixes:** `e85b32471` (configurations during an override), `ad8702967` (malformed saved state), `14d25a68d` (editor controls during preparation), `573bd6343` (message when the editor drops prepared images).
 
+### Mobile boot splash animation and `lib.js` preload
+
+- **Breaks:** PR `#1038` added viewport/memory/network checks (`deviceMemory <= 2`, `Save-Data`, `3g`) to `shouldSkipLoop()` in `public/scripts/sillybunny-splash.js`, suppressing the animated Reisen/Tewi boot splash frames on mobile devices instead of gating strictly on `prefers-reduced-motion: reduce`. `public/index.html` also preloaded `script.js` without preloading `lib.js`, delaying the vendor bundle until `script.js` parsed.
+- **Guards:** `shouldSkipLoop()` in `public/scripts/sillybunny-splash.js` skips the animated splash loop only under `(prefers-reduced-motion: reduce)`. `public/index.html` adds `<link rel="modulepreload" href="lib.js">` right before `<link rel="modulepreload" href="script.js">`.
+- **Tests:** `tests/unit/perf-boot-waterfall-and-tokenizers.test.js`, `tests/startup-module-graph.test.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

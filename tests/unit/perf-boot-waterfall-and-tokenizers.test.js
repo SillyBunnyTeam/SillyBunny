@@ -786,11 +786,15 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
     });
 
     test('enforces DOMContentLoaded boot gate, head prefetch, corrected avatar lazy-loading, flanking wheel scope, scoped observers, and lazy bundled extensions', () => {
-        // 0. <head> boot prefetch uses no-store CSRF headers matching script.js.
+        // 0. <head> boot prefetch uses no-store CSRF headers matching script.js and preloads lib.js before script.js.
         expect(indexHtmlSource).toContain('window.__sbBootPrefetch = {');
         expect(indexHtmlSource).toContain('cache: \'no-store\'');
         expect(indexHtmlSource).toContain('\'Pragma\': \'no-cache\'');
         expect(indexHtmlSource).toContain('/api/extensions/discover?manifests=1');
+        const libPreloadIdx = indexHtmlSource.indexOf('<link rel="modulepreload" href="lib.js">');
+        const scriptPreloadIdx = indexHtmlSource.indexOf('<link rel="modulepreload" href="script.js">');
+        expect(libPreloadIdx).toBeGreaterThan(-1);
+        expect(scriptPreloadIdx).toBeGreaterThan(libPreloadIdx);
 
         // 1. Boot readiness uses DOMContentLoaded and does not await dismissPreloader fade-out before getCharacters.
         expect(scriptSource).toContain('document.addEventListener(\'DOMContentLoaded\', resolve, { once: true })');
@@ -836,7 +840,7 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(inChatAgentsSource).toContain('reconcileBundledAgentsOnce');
     });
 
-    test('skips animated splash frames only on reduced-motion, Save-Data/slow-network, or <=2 GB mobile and avoids boot settings POST for unread cleanup', () => {
+    test('skips animated splash frames only on reduced-motion (keeping mobile loops active) and avoids boot settings POST for unread cleanup', () => {
         const evaluateSplashSkip = ({
             deviceMemory,
             userAgent = 'Mozilla/5.0 Windows NT 10.0',
@@ -871,18 +875,18 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
             return sandbox.window.SillyBunnySplash.shouldSkipLoop();
         };
 
-        // Normal desktops (4 GB & 8 GB) and normal mobile/coarse viewports play the splash loop.
+        // Desktop and mobile devices (including constrained memory/network) play the splash loop unless Reduced Motion is set.
         expect(evaluateSplashSkip({ deviceMemory: 8, coarse: false })).toBe(false);
         expect(evaluateSplashSkip({ deviceMemory: 4, coarse: false })).toBe(false);
         expect(evaluateSplashSkip({ deviceMemory: 8, coarse: true })).toBe(false);
         expect(evaluateSplashSkip({ deviceMemory: 4, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)', coarse: true })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: 2, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 4a)', coarse: true })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: 2, coarse: true })).toBe(false);
         expect(evaluateSplashSkip({ deviceMemory: undefined, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', coarse: true })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: 8, saveData: true })).toBe(false);
+        expect(evaluateSplashSkip({ deviceMemory: 8, effectiveType: '3g' })).toBe(false);
 
-        // Constrained conditions skip the loop.
-        expect(evaluateSplashSkip({ deviceMemory: 2, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 4a)', coarse: true })).toBe(true);
-        expect(evaluateSplashSkip({ deviceMemory: 2, coarse: true })).toBe(true);
-        expect(evaluateSplashSkip({ deviceMemory: 8, saveData: true })).toBe(true);
-        expect(evaluateSplashSkip({ deviceMemory: 8, effectiveType: '3g' })).toBe(true);
+        // Only Reduced Motion skips the splash loop.
         expect(evaluateSplashSkip({ deviceMemory: 8, reducedMotion: true })).toBe(true);
 
         const contextSource = readFileSync(
