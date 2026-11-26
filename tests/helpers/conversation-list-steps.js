@@ -235,3 +235,8 @@ export function headingOf(page, key) {
 export function headingLabels(page) {
     return page.locator(`${LIST} .sb-conversation-list-heading-label`).allTextContents();
 }
+
+/** Waits for the labels of the headings, because the list is drawn on the frame after a change: the announcement of a new folder comes before its heading. */
+export async function expectHeadingLabels(page, labels) {
+    await expect.poll(() => headingLabels(page)).toEqual(labels);
+}

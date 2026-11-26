@@ -9,6 +9,7 @@ import {
     SECTION,
     bootConversationPage,
     centreOf,
+    expectHeadingLabels,
     expectNames,
     headingLabels,
     headingOf,
@@ -414,7 +415,7 @@ test.describe('Move to Folder in the menu of a row', () => {
         await page.keyboard.press('Enter');
 
         await expect(rowNamed(page, 'Study group').locator(ITEM)).toBeFocused();
-        expect(await headingLabels(page)).toEqual(['Favorites', 'Trips', 'Conversations']);
+        await expectHeadingLabels(page, ['Favorites', 'Trips', 'Conversations']);
         await expect(page.locator(STATUS)).toHaveText('Study group moved to Trips');
         const stored = await readStoredFolders(page, persona);
         expect(stored.folders.map(folder => folder.name)).toEqual(['Trips']);
@@ -748,7 +749,7 @@ test.describe('the menu of the heading of a folder', () => {
         await chooseMenuItem(page, 'Delete');
         await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
 
-        expect(await headingLabels(page)).toEqual(['Favorites', 'Friends', 'Conversations']);
+        await expectHeadingLabels(page, ['Favorites', 'Friends', 'Conversations']);
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect(page.locator(STATUS)).toHaveText('Work deleted');
         await expect(headingOf(page, friends)).toBeFocused();
@@ -765,7 +766,7 @@ test.describe('the menu of the heading of a folder', () => {
         await chooseMenuItem(page, 'Delete');
         await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
 
-        expect(await headingLabels(page)).toEqual(['Favorites', 'Conversations']);
+        await expectHeadingLabels(page, ['Favorites', 'Conversations']);
         await expect.poll(() => readStoredFolders(page, persona)).toBeNull();
     });
 });
@@ -789,7 +790,7 @@ test.describe('New Folder and Manage Folders', () => {
         await field.fill('Friends');
         await page.keyboard.press('Enter');
 
-        expect(await headingLabels(page)).toEqual(['Favorites', 'Work', 'Friends', 'Conversations']);
+        await expectHeadingLabels(page, ['Favorites', 'Work', 'Friends', 'Conversations']);
         await expect(page.locator(STATUS)).toHaveText('Friends created');
         await expect.poll(async () => (await readStoredFolders(page, persona)).folders.map(folder => folder.name)).toEqual(['Work', 'Friends']);
     });
