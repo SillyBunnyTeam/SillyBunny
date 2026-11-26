@@ -15,7 +15,10 @@ import {
     PREBUILT_LIB_MANIFEST_FILENAME,
     PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
     computePublicLibInputsHash,
+    isValidPrebuiltLibManifest,
+    readPrebuiltPublicLibManifest,
     sha256Hex,
+    tryReusePrebuiltPublicLib,
     trySeedPrebuiltPublicLib,
 } from '../src/prebuilt-lib.js';
 import {
@@ -392,6 +395,67 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
         expect(releaseWorkflow).toContain('npm run build:lib');
         expect(releaseWorkflow).toContain('--verify');
         expect(releaseWorkflow).toContain('sillybunny-prebuilt-lib.tar.gz');
+    });
+
+    test('readPrebuiltPublicLibManifest and tryReusePrebuiltPublicLib accept Android APK manifest schema and reject symlinked manifests', () => {
+        const prebuiltDir = makeTempDir('sb-prebuilt-android-');
+        const targetDir = makeTempDir('sb-prebuilt-android-out-');
+        const bundleBuffer = Buffer.from('export const androidOk = true;\n', 'utf8');
+        const bundleSha = sha256Hex(bundleBuffer);
+        const expectedInputsHash = sha256Hex('android-inputs-v1');
+
+        const androidManifest = {
+            schemaVersion: PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
+            cacheVersion: 'v2-android-test',
+            file: PREBUILT_LIB_FILENAME,
+            inputsHash: expectedInputsHash,
+            sha256: bundleSha,
+            bytes: bundleBuffer.byteLength,
+        };
+
+        expect(isValidPrebuiltLibManifest(androidManifest)).toBe(true);
+        expect(isValidPrebuiltLibManifest({ ...androidManifest, file: 'other.js' })).toBe(false);
+        expect(isValidPrebuiltLibManifest({ ...androidManifest, builtWithNode: false })).toBe(false);
+
+        fs.writeFileSync(path.join(prebuiltDir, PREBUILT_LIB_FILENAME), bundleBuffer);
+        const manifestPath = path.join(prebuiltDir, PREBUILT_LIB_MANIFEST_FILENAME);
+        fs.writeFileSync(manifestPath, JSON.stringify(androidManifest));
+
+        const parsed = readPrebuiltPublicLibManifest(prebuiltDir);
+        expect(parsed).not.toBeNull();
+        expect(parsed.bundleBytes).toBe(bundleBuffer.byteLength);
+        expect(parsed.sha256).toBe(bundleSha);
+
+        const reused = tryReusePrebuiltPublicLib({
+            cacheInfo: {
+                cacheVersion: 'v2-android-test',
+                outputDirectory: targetDir,
+                outputFile: PREBUILT_LIB_FILENAME,
+            },
+            prebuiltDir,
+            expectedInputsHash,
+        });
+        expect(reused).toBe(true);
+        expect(fs.readFileSync(path.join(targetDir, PREBUILT_LIB_FILENAME)).equals(bundleBuffer)).toBe(true);
+        expect(tryReusePrebuiltPublicLib({ cacheInfo: null, prebuiltDir, expectedInputsHash })).toBe(false);
+
+        // Symlinked manifest must be rejected via lstatSync even when its contents are valid.
+        const realLstat = fs.lstatSync;
+        const lstatSpy = jest.spyOn(fs, 'lstatSync').mockImplementation((targetPath, ...args) => {
+            if (path.resolve(String(targetPath)) === path.resolve(manifestPath)) {
+                return {
+                    isSymbolicLink: () => true,
+                    isFile: () => false,
+                };
+            }
+            return realLstat(targetPath, ...args);
+        });
+
+        try {
+            expect(readPrebuiltPublicLibManifest(prebuiltDir)).toBeNull();
+        } finally {
+            lstatSpy.mockRestore();
+        }
     });
 });
 

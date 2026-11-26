@@ -2945,12 +2945,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | File | `src/middleware/webpack-serve.js`. |
 | Area | Frontend vendor bundle (`lib.js`) startup caching. |
 | Divergence reason | Upstream compiles `public/lib.js` with Webpack on the first boot of every fresh install or version bump, which is slow and memory-intensive on Android/Termux and low-power machines. SillyBunny verifies a reproducible release-built `dist/lib/lib.js` against `inputsHash` and SHA-256 and seeds the existing Webpack output directory before invoking Webpack, falling back automatically to live compilation on any mismatch. |
-| Target seam | `src/prebuilt-lib.js` (`computePublicLibInputsHash()`, `trySeedPrebuiltPublicLib()`). |
+| Target seam | `src/prebuilt-lib.js` (`computePublicLibInputsHash()`, `trySeedPrebuiltPublicLib()`, `tryReusePrebuiltPublicLib()`). |
 | Adapter shape | One marked import and one marked `trySeedPrebuiltPublicLib()` call ahead of the existing `Reusing precompiled frontend libraries...` check in `compilePublicLib()`, falling back cleanly to live Webpack compilation on any missing, stale, symlinked, or corrupted artifact. |
 | Protecting tests | `tests/perf-prebuilt-lib-and-zip.test.js`. |
-| Validation | 2026-11-25: root and `tests/` lint, `npm run test:unit --prefix tests -- --maxWorkers=2 perf-prebuilt-lib-and-zip.test.js`, and Bun 1.4.4 + Node 24.22.1 seeding parity checks. |
+| Validation | 2026-11-26: root and `tests/` lint, `npm run test:unit --prefix tests -- --maxWorkers=2 perf-prebuilt-lib-and-zip.test.js`, and Bun 1.4.4 + Node 24.22.1 seeding parity checks (canonical PR 11 and PR `#918` Android manifest schemas). |
 | Rollback path | Remove the marked `trySeedPrebuiltPublicLib()` import and call from `src/middleware/webpack-serve.js`, delete `src/prebuilt-lib.js` and `scripts/build-prebuilt-lib.js`, and remove the prebuilt-lib step from `.github/workflows/release.yml`. `webpack-serve.js` resumes live Webpack compilation with no user data changes. |
-| Last reviewed | 2026-11-25, PR `#1040`. |
+| Last reviewed | 2026-11-26, PR `#1040`. |
 | Owner | Runtime and release integrator. |
 
 ### `src/users.js` - lazy streaming fflate backup ZIP with ZIP64 fallback

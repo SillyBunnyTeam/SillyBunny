@@ -75,7 +75,23 @@ export function computePublicLibInputsHash({ rootDir = serverDirectory } = {}) {
 }
 
 /**
- * Validates a parsed prebuilt lib manifest object.
+ * Resolves the positive integer byte length from either the canonical PR 11 (`bundleBytes`)
+ * or Android prebuilt (`bytes`) manifest field.
+ * @param {Record<string, unknown>} manifest
+ * @returns {number|null}
+ */
+function resolveManifestBundleBytes(manifest) {
+    if (typeof manifest.bundleBytes === 'number' && Number.isInteger(manifest.bundleBytes) && manifest.bundleBytes > 0) {
+        return manifest.bundleBytes;
+    }
+    if (typeof manifest.bytes === 'number' && Number.isInteger(manifest.bytes) && manifest.bytes > 0) {
+        return manifest.bytes;
+    }
+    return null;
+}
+
+/**
+ * Validates a parsed prebuilt lib manifest object (supporting both canonical PR 11 and PR #918 Android schemas).
  * @param {unknown} value Parsed JSON value.
  * @returns {boolean} True when the manifest conforms to schema v1.
  */
@@ -85,35 +101,58 @@ export function isValidPrebuiltLibManifest(value) {
     }
 
     const manifest = /** @type {Record<string, unknown>} */ (value);
-    return manifest.schemaVersion === PREBUILT_LIB_MANIFEST_SCHEMA_VERSION
-        && typeof manifest.cacheVersion === 'string'
-        && manifest.cacheVersion.length > 0
-        && typeof manifest.inputsHash === 'string'
-        && SHA256_HEX_RE.test(manifest.inputsHash)
-        && typeof manifest.sha256 === 'string'
-        && SHA256_HEX_RE.test(manifest.sha256)
-        && typeof manifest.webpackVersion === 'string'
-        && manifest.webpackVersion.length > 0
-        && typeof manifest.bundleBytes === 'number'
-        && Number.isInteger(manifest.bundleBytes)
-        && manifest.bundleBytes > 0
-        && manifest.builtWithNode === true;
+    const bundleBytes = resolveManifestBundleBytes(manifest);
+    if (manifest.schemaVersion !== PREBUILT_LIB_MANIFEST_SCHEMA_VERSION
+        || typeof manifest.cacheVersion !== 'string'
+        || manifest.cacheVersion.length === 0
+        || typeof manifest.inputsHash !== 'string'
+        || !SHA256_HEX_RE.test(manifest.inputsHash)
+        || typeof manifest.sha256 !== 'string'
+        || !SHA256_HEX_RE.test(manifest.sha256)
+        || bundleBytes === null) {
+        return false;
+    }
+
+    if (manifest.file !== undefined && manifest.file !== PREBUILT_LIB_FILENAME) {
+        return false;
+    }
+
+    if (manifest.bundleBytes !== undefined) {
+        return typeof manifest.webpackVersion === 'string'
+            && manifest.webpackVersion.length > 0
+            && manifest.builtWithNode === true;
+    }
+
+    // Compatibility with Android prebuilt manifests (`{ schemaVersion: 1, cacheVersion, inputsHash, file, sha256, bytes }`).
+    return manifest.builtWithNode === undefined || manifest.builtWithNode === true;
 }
 
 /**
  * Reads and validates `lib.manifest.json` from a prebuilt directory.
  * @param {string} prebuiltDir Directory containing `lib.manifest.json`.
- * @returns {Record<string, any>|null} Validated manifest object, or null if absent/invalid.
+ * @returns {Record<string, any>|null} Validated manifest object normalized with `bundleBytes`, or null if absent/invalid.
  */
 export function readPrebuiltPublicLibManifest(prebuiltDir) {
     const manifestPath = path.join(prebuiltDir, PREBUILT_LIB_MANIFEST_FILENAME);
-    if (!fs.existsSync(manifestPath)) {
+    let stat;
+    try {
+        stat = fs.lstatSync(manifestPath);
+    } catch {
+        return null;
+    }
+    if (stat.isSymbolicLink() || !stat.isFile()) {
         return null;
     }
 
     try {
         const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        return isValidPrebuiltLibManifest(parsed) ? parsed : null;
+        if (!isValidPrebuiltLibManifest(parsed)) {
+            return null;
+        }
+        return {
+            ...parsed,
+            bundleBytes: resolveManifestBundleBytes(parsed),
+        };
     } catch {
         return null;
     }
@@ -196,4 +235,26 @@ export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash 
         console.warn('Failed to seed prebuilt frontend library bundle; falling back to local Webpack build.', error);
         return false;
     }
+}
+
+/**
+ * Compatibility adapter matching the Android APK prebuilt-lib caller shape (`{ cacheInfo, prebuiltDir, expectedInputsHash }`).
+ * Delegates to `trySeedPrebuiltPublicLib()` so all runtimes share a single verified seeding implementation.
+ * @param {object} options
+ * @param {{ cacheVersion?: string, outputDirectory: string, outputFile: string }} options.cacheInfo
+ * @param {string} [options.prebuiltDir]
+ * @param {string} [options.expectedInputsHash]
+ * @returns {boolean}
+ */
+export function tryReusePrebuiltPublicLib({ cacheInfo, prebuiltDir = undefined, expectedInputsHash = undefined } = {}) {
+    if (!cacheInfo || typeof cacheInfo.outputDirectory !== 'string' || typeof cacheInfo.outputFile !== 'string') {
+        return false;
+    }
+
+    return trySeedPrebuiltPublicLib({
+        cacheVersion: cacheInfo.cacheVersion,
+        inputsHash: expectedInputsHash,
+        outputPath: path.join(cacheInfo.outputDirectory, cacheInfo.outputFile),
+        prebuiltDir,
+    });
 }
