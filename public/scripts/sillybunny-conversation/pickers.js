@@ -8,6 +8,7 @@ import { user_avatar } from '../personas.js';
 import { runConversationAction, selectConversation } from './chrome.js';
 import { MENU_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
+import { createLazyImage } from '../sillybunny-editor/lazy-image.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
@@ -32,6 +33,7 @@ import {
 } from './personas.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
 import { closeConversationList } from './conversation-pages.js';
+import { getCharacterPickerOptions } from './character-picker-options.js';
 
 // Pickers are bottom sheets under the menu condition, like every other menu (sillybunny-conversation.css repeats it).
 const PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;
@@ -370,10 +372,7 @@ function renderPersonaOptions(picker) {
         btn.setAttribute('role', 'option');
         btn.setAttribute('aria-selected', String(avatarId === user_avatar));
 
-        const img = document.createElement('img');
-        img.src = getThumbnailUrl('persona', avatarId);
-        img.alt = '';
-        img.loading = 'lazy';
+        const img = createLazyImage(getThumbnailUrl('persona', avatarId));
 
         const name = document.createElement('span');
         name.className = 'sb-conversation-persona-option-name';
@@ -474,28 +473,12 @@ function openStartPicker(key, anchor, options) {
     });
 }
 
-function getCharacterPickerItems() {
-    const items = [];
-    (Array.isArray(characters) ? characters : []).forEach((character, index) => {
-        if (!character?.avatar) {
-            return;
-        }
-
-        const avatar = document.createElement('img');
-        avatar.className = 'sb-conversation-picker-avatar';
-        avatar.src = getThumbnailUrl('avatar', character.avatar);
-        avatar.alt = '';
-        avatar.loading = 'lazy';
-        items.push({ value: index, label: character.name || 'Character', icon: avatar });
-    });
-    return items;
-}
-
 export function toggleStartDirectConversationPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
     openStartPicker('solo', anchor, {
         title: 'New Conversation',
-        items: getCharacterPickerItems(),
-        onSelect: index => void runConversationAction('start-direct-conversation', { characterIndex: String(index) }),
+        ...getCharacterPickerOptions(),
+        // The action takes the place of the card in `characters`, which is read when a card is picked, not when the list is made.
+        onSelect: avatar => void runConversationAction('start-direct-conversation', { characterIndex: String(characters.findIndex(card => card?.avatar === avatar)) }),
     });
 }
 
@@ -617,19 +600,14 @@ export async function addMembersToConversation(avatars, { sourceAvatar, sourceGr
 
 export function toggleConversationGroupPicker({ anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
     const selectedMembers = new Set();
-    const avatarOf = index => characters[index]?.avatar;
 
     openStartPicker('group', anchor, {
         title: 'New Group',
-        items: getCharacterPickerItems(),
+        ...getCharacterPickerOptions(),
         multiple: true,
-        getItemState: index => (selectedMembers.has(avatarOf(index)) ? 'selected' : null),
+        getItemState: avatar => (selectedMembers.has(avatar) ? 'selected' : null),
         selectionCount: () => `${selectedMembers.size} selected`,
-        onSelect: index => {
-            const avatar = avatarOf(index);
-            if (!avatar) {
-                return;
-            }
+        onSelect: avatar => {
             if (selectedMembers.has(avatar)) {
                 selectedMembers.delete(avatar);
             } else {

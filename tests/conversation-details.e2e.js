@@ -178,12 +178,15 @@ test.describe('Edit Details and Add Member', () => {
 
         await shownPage(page).getByRole('button', { name: 'Add Member' }).click();
         const picker = shownPage(page);
-        await expect(picker.getByRole('checkbox')).toHaveCount(avatars.length - 2);
+        // The list shows 50 characters and a Show More row; the characters that are in the group are not offered.
+        await expect(picker.getByRole('option')).toHaveCount(Math.min(50, avatars.length - 2) + (avatars.length - 2 > 50 ? 1 : 0));
+        await expect(picker.getByRole('option', { name: names[avatars[0]], exact: true })).toHaveCount(0);
         await expect(picker.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
-        await picker.getByRole('searchbox', { name: 'Search Characters' }).fill('zzz');
+        await picker.getByRole('combobox', { name: 'Search Characters' }).fill('zzz');
         await expect(picker.getByText('No Results Found')).toBeVisible();
-        await picker.getByRole('searchbox', { name: 'Search Characters' }).fill('');
-        await picker.getByRole('checkbox', { name: names[avatars[1]] }).check();
+        await picker.getByRole('combobox', { name: 'Search Characters' }).fill(names[avatars[1]]);
+        await picker.getByRole('option', { name: names[avatars[1]] }).click();
+        await expect(picker.getByRole('option', { name: names[avatars[1]] })).toHaveAttribute('aria-selected', 'true');
         await picker.getByRole('button', { name: 'Add', exact: true }).click();
         await expect.poll(async () => (await readStored(page, group.conversationId)).characters).toEqual([avatars[0], avatars[2], avatars[1]]);
         await expect(shownPage(page).getByRole('listitem')).toHaveCount(3);
@@ -192,7 +195,8 @@ test.describe('Edit Details and Add Member', () => {
         const direct = await seedAndOpen(page, { avatar: avatars[1] });
         await openDetails(page, direct.conversationId, { page: 'add-member' });
         const startPicker = shownPage(page);
-        await startPicker.getByRole('checkbox', { name: names[avatars[2]] }).check();
+        await startPicker.getByRole('combobox', { name: 'Search Characters' }).fill(names[avatars[2]]);
+        await startPicker.getByRole('option', { name: names[avatars[2]] }).click();
         await startPicker.getByRole('button', { name: 'Add', exact: true }).click();
         await expect(page.locator(DETAILS_HOST)).toHaveCount(0);
         await expect.poll(async () => (await readOpenConversation(page))?.kind).toBe('group');

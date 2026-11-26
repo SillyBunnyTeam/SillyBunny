@@ -420,7 +420,8 @@ test('Add Member keeps the group and its history instead of starting a second gr
     await page.locator(CONVERSATION_MENU).click();
     await page.getByRole('menuitem', { name: 'Add Member' }).click();
     const picker = shownPage(page);
-    await picker.getByRole('checkbox', { name: names[2] }).check();
+    await picker.getByRole('combobox', { name: 'Search Characters' }).fill(names[2]);
+    await picker.getByRole('option', { name: names[2] }).click();
     await picker.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(shownPage(page).getByRole('listitem')).toHaveCount(3);
     await page.keyboard.press('Escape');
@@ -449,7 +450,8 @@ test('Add Member on a direct conversation starts a group and leaves the direct c
     await page.locator(CONVERSATION_MENU).click();
     await page.getByRole('menuitem', { name: 'Add Member' }).click();
     const picker = shownPage(page);
-    await picker.getByRole('checkbox', { name: names[1] }).check();
+    await picker.getByRole('combobox', { name: 'Search Characters' }).fill(names[1]);
+    await picker.getByRole('option', { name: names[1] }).click();
     await picker.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.locator('dialog.sb-dialog-host[open]:has(.sb-details-window)')).toHaveCount(0);
     await advance(page, 5_000, 1_000);
