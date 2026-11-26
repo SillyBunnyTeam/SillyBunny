@@ -21,7 +21,7 @@ import { LOG_LEVELS, CHAT_COMPLETION_SOURCES, MEDIA_REQUEST_TYPE } from './const
 import { serverDirectory } from './server-directory.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { isFirefox } from './express-common.js';
-import { pollSocketConnection } from './connection-state-checker.js';
+import { pollSocketConnection, usesNetstatPolling } from './connection-state-checker.js';
 import { isRequestCancellationError, observeRequestCancellation } from './request-cancellation.js';
 import { getResumableGeneration } from './resumable-generations.js';
 import { isBunRuntime } from './runtime.js';
@@ -744,6 +744,11 @@ function getStreamingConnectionPollingInterval() {
 export function pollStreamingRequestConnection(request, response, onDisconnect) {
     // SillyBunny: a resumable generation is never aborted by a client disconnect. See resumable-generations.js.
     if (getResumableGeneration(request)) {
+        return () => undefined;
+    }
+
+    // SillyBunny: Node emits reliable native socket close events, so skip spawning netstat every 150 ms outside Bun.
+    if (!isBunRuntime() && usesNetstatPolling()) {
         return () => undefined;
     }
 

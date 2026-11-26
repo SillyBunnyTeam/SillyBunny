@@ -283,6 +283,12 @@ class WorldInfoBuffer {
      */
     #substitute;
 
+    // SillyBunny: cache compiled /regex/flags and whole-word key regexes for the lifetime of one scan.
+    /** @type {Map<string, RegExp | null>} */
+    #regexCache = new Map();
+    /** @type {Map<string, RegExp>} */
+    #wholeWordRegexCache = new Map();
+
     /**
      * Initialize the buffer with the given messages.
      * @param {string[]} messages Array of messages to add to the buffer
@@ -386,9 +392,18 @@ class WorldInfoBuffer {
      * @returns {boolean} True if the string was found in the buffer
      */
     matchKeys(haystack, needle, entry) {
-        // If the needle is a regex, we do regex pattern matching and override all the other options
-        const keyRegex = parseRegexFromString(needle);
+        // SillyBunny: reuse compiled slash-regex keys across entries and passes in this scan.
+        let keyRegex;
+        if (this.#regexCache.has(needle)) {
+            keyRegex = this.#regexCache.get(needle);
+        } else {
+            keyRegex = parseRegexFromString(needle);
+            this.#regexCache.set(needle, keyRegex);
+        }
         if (keyRegex) {
+            if (keyRegex.global || keyRegex.sticky) {
+                keyRegex.lastIndex = 0;
+            }
             return keyRegex.test(haystack);
         }
 
@@ -403,8 +418,12 @@ class WorldInfoBuffer {
             if (keyWords.length > 1) {
                 return haystack.includes(transformedString);
             } else {
-                // Use custom boundaries to include punctuation and other non-alphanumeric characters
-                const regex = new RegExp(`(?:^|\\W)(${escapeRegex(transformedString)})(?:$|\\W)`);
+                // SillyBunny: cache single-word boundary regexes per scan.
+                let regex = this.#wholeWordRegexCache.get(transformedString);
+                if (!regex) {
+                    regex = new RegExp(`(?:^|\\W)(${escapeRegex(transformedString)})(?:$|\\W)`);
+                    this.#wholeWordRegexCache.set(transformedString, regex);
+                }
                 if (regex.test(haystack)) {
                     return true;
                 }
@@ -2179,12 +2198,16 @@ export function getWorldInfoDisplayEntries(data) {
  * @param {string} name - The name of the world to load
  * @return {Promise<Object|null>} A promise that resolves to the loaded world information, or null if the request fails.
  */
-export async function loadWorldInfo(name) {
+// SillyBunny: readOnly skips editor clones and dirty snapshots during read-only scans.
+export async function loadWorldInfo(name, { readOnly = false } = {}) {
     if (!name) {
         return;
     }
 
     if (worldInfoCache.has(name)) {
+        if (readOnly) {
+            return Map.prototype.get.call(worldInfoCache, name);
+        }
         const data = getWorldInfoCachedData(name);
         if (data && typeof data === 'object') worldInfoDataSnapshots.set(data, { name, data: cloneWorldInfoData(data), committed: true });
         return data;
@@ -2201,11 +2224,14 @@ export async function loadWorldInfo(name) {
     if (response.ok) {
         let data = await response.json();
         if (worldInfoCacheVersions.get(name) !== version) {
-            return worldInfoCache.has(name) ? loadWorldInfo(name) : null;
+            return worldInfoCache.has(name) ? loadWorldInfo(name, { readOnly }) : null;
         }
         data = cloneWorldInfoData(data, worldInfoCommittedEntryInstances.get(name));
         worldInfoCommittedEntryInstances.set(name, worldInfoEntryInstances.get(data));
         worldInfoCache.set(name, data);
+        if (readOnly) {
+            return data;
+        }
         data = cloneWorldInfoData(data);
         if (data && typeof data === 'object') worldInfoDataSnapshots.set(data, { name, data: cloneWorldInfoData(data), committed: true });
         return data;
@@ -5232,7 +5258,8 @@ async function getCharacterLore(scanTarget = null) {
         return [];
     }
 
-    let entries = [];
+    // SillyBunny: load character lorebooks in parallel with read-only snapshots.
+    const eligibleWorlds = [];
     for (const worldName of worldsToSearch) {
         if (selected_world_info.includes(worldName)) {
             console.debug(`[WI] Character ${name}'s world ${worldName} is already activated in global world info! Skipping...`);
@@ -5249,9 +5276,15 @@ async function getCharacterLore(scanTarget = null) {
             continue;
         }
 
-        const data = await loadWorldInfo(worldName);
-        const newEntries = getWorldEntries(data, worldName);
-        entries = entries.concat(newEntries);
+        eligibleWorlds.push(worldName);
+    }
+
+    const loadedWorlds = await Promise.all(eligibleWorlds.map(worldName => loadWorldInfo(worldName, { readOnly: true })));
+    const entries = [];
+    for (let i = 0; i < eligibleWorlds.length; i++) {
+        const worldName = eligibleWorlds[i];
+        const newEntries = getWorldEntries(loadedWorlds[i], worldName);
+        entries.push(...newEntries);
 
         if (!newEntries.length) {
             console.debug(`[WI] Character ${name}'s world ${worldName} could not be found or is empty`);
@@ -5270,10 +5303,11 @@ function getWorldEntries(data, worldName) {
         return [];
     }
 
+    // SillyBunny: clone only active entries (skipping originalData and book metadata) so cached books stay immutable.
     return Object.entries(data.entries)
         .filter(([, entry]) => entry && typeof entry === 'object' && !Array.isArray(entry))
         .map(([key, entry]) => {
-            const { uid = Number.isNaN(Number(key)) ? key : Number(key), ...rest } = entry;
+            const { uid = Number.isNaN(Number(key)) ? key : Number(key), ...rest } = structuredClone(entry);
             return { uid, world: worldName, ...rest };
         });
 }
@@ -5283,11 +5317,12 @@ async function getGlobalLore() {
         return [];
     }
 
-    let entries = [];
-    for (const worldName of selected_world_info) {
-        const data = await loadWorldInfo(worldName);
-        const newEntries = getWorldEntries(data, worldName);
-        entries = entries.concat(newEntries);
+    // SillyBunny: load global lorebooks in parallel with read-only snapshots.
+    const loadedWorlds = await Promise.all(selected_world_info.map(worldName => loadWorldInfo(worldName, { readOnly: true })));
+    const entries = [];
+    for (let i = 0; i < selected_world_info.length; i++) {
+        const worldName = selected_world_info[i];
+        entries.push(...getWorldEntries(loadedWorlds[i], worldName));
     }
 
     console.debug(`[WI] Global world info has ${entries.length} entries`, selected_world_info);
@@ -5308,7 +5343,7 @@ async function getChatLore(scanTarget = null) {
         return [];
     }
 
-    const data = await loadWorldInfo(chatWorld);
+    const data = await loadWorldInfo(chatWorld, { readOnly: true });
     const entries = getWorldEntries(data, chatWorld);
 
     console.debug(`[WI] Chat lore has ${entries.length} entries`, [chatWorld]);
@@ -5335,7 +5370,7 @@ async function getPersonaLore(scanTarget = null) {
         return [];
     }
 
-    const data = await loadWorldInfo(personaWorld);
+    const data = await loadWorldInfo(personaWorld, { readOnly: true });
     const entries = getWorldEntries(data, personaWorld);
 
     console.debug(`[WI] Persona lore has ${entries.length} entries`, [personaWorld]);
@@ -5401,8 +5436,8 @@ export async function getSortedEntries(scanTarget = null) {
 
         console.debug(`[WI] Found ${entries.length} world lore entries. Sorted by strategy`, Object.entries(world_info_insertion_strategy).find((x) => x[1] === world_info_character_strategy));
 
-        // Need to deep clone the entries to avoid modifying the cached data
-        return structuredClone(entries);
+        // SillyBunny: getWorldEntries already cloned each entry from read-only book data, so avoid a redundant full clone.
+        return entries;
     } catch (e) {
         console.error(e);
         return [];
@@ -5781,14 +5816,45 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
         let acceptedContent = '';
         const successfulNewEntries = [];
-        const textToScanTokens = await getTokenCountAsync(allActivatedText);
 
         filterByInclusionGroups(newEntries, allActivatedEntries, buffer, scanState, timedEffects);
+
+        // SillyBunny: batch per-entry token counts via Promise.all instead of O(K^2) serial cumulative prefix counts,
+        // verifying the exact joined nextContent only when close to budget.
+        const STATEFUL_MACRO_PATTERN = /\{\{\s*(?:(?:set|add|inc|dec)(?:global)?var|roll|random|pick)\b/i;
+        const needsBudgetCheck = !token_budget_overflowed && newEntries.some(entry => !entry.ignoreBudget);
+        /** @type {Map<object, string>} */
+        const preSubstitutedContent = new Map();
+        /** @type {object[]} */
+        const entriesToPreCount = [];
+        if (needsBudgetCheck) {
+            for (const entry of newEntries) {
+                const rawContent = String(entry.content ?? '');
+                if (!STATEFUL_MACRO_PATTERN.test(rawContent)) {
+                    const substituted = substitute(rawContent);
+                    preSubstitutedContent.set(entry, substituted);
+                    entriesToPreCount.push(entry);
+                }
+            }
+        }
+
+        const [textToScanTokens, ...preCountedValues] = await Promise.all([
+            getTokenCountAsync(allActivatedText),
+            ...entriesToPreCount.map(entry => getTokenCountAsync(`${preSubstitutedContent.get(entry)}\n`)),
+        ]);
+        /** @type {Map<object, number>} */
+        const preCountedTokens = new Map();
+        for (let i = 0; i < entriesToPreCount.length; i++) {
+            preCountedTokens.set(entriesToPreCount[i], preCountedValues[i]);
+        }
 
         console.debug('[WI] --- PROBABILITY CHECKS ---');
         !newEntries.length && console.debug('[WI] No probability checks to do');
 
         let ignoresBudget = newEntries.filter(e => e.ignoreBudget).length;
+        let acceptedTokensEstimate = 0;
+        let unverifiedEntryCount = 0;
+        let hasUncountedAcceptedEntry = false;
 
         for (const entry of newEntries) {
             ignoresBudget -= (entry.ignoreBudget ? 1 : 0);
@@ -5817,21 +5883,49 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             }
 
             // Substitute macros inline, for both this checking and also future processing
-            entry.content = substitute(entry.content);
+            entry.content = preSubstitutedContent.has(entry) ? preSubstitutedContent.get(entry) : substitute(entry.content);
             const nextContent = `${acceptedContent}${entry.content}\n`;
 
-            if (!entry.ignoreBudget && (textToScanTokens + (await getTokenCountAsync(nextContent))) >= budget) {
-                if (!token_budget_overflowed) {
-                    console.debug('[WI] --- BUDGET OVERFLOW CHECK ---');
-                    if (world_info_overflow_alert) {
-                        console.warn(`[WI] budget of ${budget} reached, stopping after ${allActivatedEntries.size} entries`);
-                        toastr.warning(`World info budget reached after ${allActivatedEntries.size} entries.`, 'World Info');
+            if (!entry.ignoreBudget) {
+                const entryTokens = preCountedTokens.has(entry)
+                    ? preCountedTokens.get(entry)
+                    : await getTokenCountAsync(`${entry.content}\n`);
+                const estimatedNextTokens = acceptedTokensEstimate + entryTokens;
+                const boundaryMargin = (unverifiedEntryCount + 1) * 2;
+                let exceedsBudget = false;
+
+                if (hasUncountedAcceptedEntry || (textToScanTokens + estimatedNextTokens + boundaryMargin) >= budget) {
+                    const exactNextTokens = await getTokenCountAsync(nextContent);
+                    if ((textToScanTokens + exactNextTokens) >= budget) {
+                        exceedsBudget = true;
                     } else {
-                        console.debug(`[WI] budget of ${budget} reached, stopping after ${allActivatedEntries.size} entries`);
+                        acceptedTokensEstimate = exactNextTokens;
+                        unverifiedEntryCount = 0;
+                        hasUncountedAcceptedEntry = false;
                     }
-                    token_budget_overflowed = true;
+                } else {
+                    acceptedTokensEstimate = estimatedNextTokens;
+                    unverifiedEntryCount++;
                 }
-                continue;
+
+                if (exceedsBudget) {
+                    if (!token_budget_overflowed) {
+                        console.debug('[WI] --- BUDGET OVERFLOW CHECK ---');
+                        if (world_info_overflow_alert) {
+                            console.warn(`[WI] budget of ${budget} reached, stopping after ${allActivatedEntries.size} entries`);
+                            toastr.warning(`World info budget reached after ${allActivatedEntries.size} entries.`, 'World Info');
+                        } else {
+                            console.debug(`[WI] budget of ${budget} reached, stopping after ${allActivatedEntries.size} entries`);
+                        }
+                        token_budget_overflowed = true;
+                    }
+                    continue;
+                }
+            } else if (preCountedTokens.has(entry)) {
+                acceptedTokensEstimate += preCountedTokens.get(entry);
+                unverifiedEntryCount++;
+            } else {
+                hasUncountedAcceptedEntry = true;
             }
 
             acceptedContent = nextContent;

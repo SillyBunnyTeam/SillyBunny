@@ -19,6 +19,23 @@ import { MacroCstWalker } from '../engine/MacroCstWalker.js';
  */
 export const ELSE_MARKER = '\u0000\u001FELSE\u001F\u0000';
 
+// SillyBunny: hoist {{if}} regexes to module scope and cache top-level {{else}} splits to avoid recompiling and triple-parsing.
+const VAR_SHORTHAND_REGEX = new RegExp(`^([.$])(${MACRO_VARIABLE_SHORTHAND_PATTERN.source})$`);
+const INVERTED_CONDITION_PREFIX_RE = /^\s*!/;
+const STRIP_INVERTED_CONDITION_RE = /^\s*!\s*/;
+const HAS_ELSE_WORD_RE = /\belse\b/i;
+const ELSE_SPLIT_CACHE_MAX = 256;
+const ELSE_SPLIT_CACHE_MAX_KEY_LENGTH = 262144;
+/** @type {Map<string, { thenBranch: string, elseBranch: string | undefined }>} */
+const elseSplitCache = new Map();
+
+/**
+ * SillyBunny: clears the {{if}} top-level {{else}} split cache.
+ */
+export function clearIfElseSplitCache() {
+    elseSplitCache.clear();
+}
+
 /**
  * Registers SillyTavern's core built-in macros in the MacroRegistry.
  *
@@ -102,9 +119,23 @@ export function registerCoreMacros() {
      * @returns {{ thenBranch: string, elseBranch: string | undefined }}
      */
     function splitOnTopLevelElse(content) {
+        // SillyBunny: skip Chevrotain re-parsing when the {{if}} body contains no {{else}} candidate.
+        if (!content || !content.includes('{{') || !HAS_ELSE_WORD_RE.test(content)) {
+            return { thenBranch: content, elseBranch: undefined };
+        }
+
+        const cacheable = content.length <= ELSE_SPLIT_CACHE_MAX_KEY_LENGTH;
+        if (cacheable && elseSplitCache.has(content)) {
+            const cached = elseSplitCache.get(content);
+            elseSplitCache.delete(content);
+            elseSplitCache.set(content, cached);
+            return cached;
+        }
+
         const { cst } = MacroParser.parseDocument(content);
         const macroNodes = /** @type {import('chevrotain').CstNode[]} */ (cst?.children?.macro || []);
 
+        let splitResult = { thenBranch: content, elseBranch: undefined };
         let depth = 0;
         for (const macroNode of macroNodes) {
             const info = MacroCstWalker.extractMacroInfo(macroNode);
@@ -117,14 +148,23 @@ export function registerCoreMacros() {
             } else if (info.name === 'if' && info.isClosing) {
                 depth--;
             } else if (info.name === 'else' && depth === 0) {
-                return {
+                splitResult = {
                     thenBranch: content.slice(0, info.startOffset),
                     elseBranch: content.slice(info.endOffset + 1),
                 };
+                break;
             }
         }
 
-        return { thenBranch: content, elseBranch: undefined };
+        if (cacheable) {
+            if (elseSplitCache.size >= ELSE_SPLIT_CACHE_MAX) {
+                const oldestKey = elseSplitCache.keys().next().value;
+                elseSplitCache.delete(oldestKey);
+            }
+            elseSplitCache.set(content, splitResult);
+        }
+
+        return splitResult;
     }
 
     // {{if condition}}content{{/if}} -> conditional content
@@ -163,9 +203,9 @@ export function registerCoreMacros() {
             // Check if the condition starts with ! for inversion
             let inverted = false;
             let condition = rawCondition;
-            if (/^\s*!/.test(rawCondition)) {
+            if (INVERTED_CONDITION_PREFIX_RE.test(rawCondition)) {
                 inverted = true;
-                condition = rawCondition.replace(/^\s*!\s*/, '');
+                condition = rawCondition.replace(STRIP_INVERTED_CONDITION_RE, '');
             }
 
             // Resolve the condition (may contain nested macros like {{getvar::x}})
@@ -173,8 +213,7 @@ export function registerCoreMacros() {
 
             // Check if condition is a variable shorthand (.varname or $varname)
             // If so, resolve it using the appropriate variable macro
-            const varShorthandRegex = new RegExp(`^([.$])(${MACRO_VARIABLE_SHORTHAND_PATTERN.source})$`);
-            const varShorthandMatch = condition.match(varShorthandRegex);
+            const varShorthandMatch = condition.match(VAR_SHORTHAND_REGEX);
             if (varShorthandMatch) {
                 const [, prefix, varName] = varShorthandMatch;
                 const varMacro = prefix === '.' ? 'getvar' : 'getglobalvar';

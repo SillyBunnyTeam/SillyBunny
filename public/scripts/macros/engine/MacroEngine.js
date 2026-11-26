@@ -35,6 +35,10 @@ import { applyLegacyTrim, stripWhitespaceMarkers } from '../sillybunny-whitespac
 let instance;
 export { instance as MacroEngine };
 
+// SillyBunny: bound the CST parse LRU cache so repeated macro evaluations skip Chevrotain lexing/parsing without leaking memory.
+const MAX_CST_PARSE_CACHE_ENTRIES = 512;
+const MAX_CST_PARSE_CACHE_KEY_LENGTH = 262144;
+
 class MacroEngine {
     /** @type {MacroEngine} */ static #instance;
     /** @type {MacroEngine} */ static get instance() { return MacroEngine.#instance ?? (MacroEngine.#instance = new MacroEngine()); }
@@ -43,10 +47,55 @@ class MacroEngine {
     #preProcessors = [];
     /** @type {RegisteredProcessor[]} */
     #postProcessors = [];
+    // SillyBunny: bounded 512-entry LRU mapping preprocessed macro text to immutable Chevrotain parse results.
+    /** @type {Map<string, ReturnType<typeof MacroParser.parseDocument>>} */
+    #parseCache = new Map();
 
     constructor() {
         this.#registerCorePreProcessors();
         this.#registerCorePostProcessors();
+    }
+
+    /**
+     * SillyBunny: parses a preprocessed macro document using a bounded 512-entry LRU cache.
+     * Chevrotain CST nodes are read-only during MacroCstWalker evaluation.
+     * @param {string} text
+     * @returns {ReturnType<typeof MacroParser.parseDocument>}
+     */
+    parseDocumentCached(text) {
+        if (typeof text !== 'string' || text.length > MAX_CST_PARSE_CACHE_KEY_LENGTH) {
+            return MacroParser.parseDocument(text);
+        }
+
+        const cached = this.#parseCache.get(text);
+        if (cached !== undefined) {
+            this.#parseCache.delete(text);
+            this.#parseCache.set(text, cached);
+            return cached;
+        }
+
+        const parsed = MacroParser.parseDocument(text);
+        if (this.#parseCache.size >= MAX_CST_PARSE_CACHE_ENTRIES) {
+            const oldestKey = this.#parseCache.keys().next().value;
+            this.#parseCache.delete(oldestKey);
+        }
+        this.#parseCache.set(text, parsed);
+        return parsed;
+    }
+
+    /**
+     * SillyBunny: clears the CST parse LRU cache.
+     */
+    clearParseCache() {
+        this.#parseCache.clear();
+    }
+
+    /**
+     * SillyBunny: returns the number of cached CST parse entries.
+     * @returns {number}
+     */
+    getParseCacheSize() {
+        return this.#parseCache.size;
     }
 
     /**
@@ -126,7 +175,8 @@ class MacroEngine {
 
         const preProcessed = this.#runPreProcessors(input, safeEnv);
 
-        const { cst, lexingErrors, parserErrors } = MacroParser.parseDocument(preProcessed);
+        // SillyBunny: reuse cached CST parse results for repeated macro templates.
+        const { cst, lexingErrors, parserErrors } = this.parseDocumentCached(preProcessed);
 
         // For now, we log and still try to process what we can.
         if (lexingErrors && lexingErrors.length > 0) {

@@ -4,6 +4,7 @@ import process from 'node:process';
 import { validateHeaderValue } from 'node:http';
 import https from 'node:https';
 import { text } from 'node:stream/consumers';
+import { StringDecoder } from 'node:string_decoder'; // SillyBunny: decode streaming SSE bytes safely across split multi-byte UTF-8 chunks.
 import nodeUtil from 'node:util';
 import express from 'express';
 import fetch from 'node-fetch';
@@ -82,6 +83,7 @@ import {
     continueInteractionStream,
     getGenerateContentText,
     getVertexApiVersion,
+    isGeminiLongDecodeModel,
     mergeGenerateContentHops,
     mergeInteractionHops,
 } from '../../gemini-long-decode.js';
@@ -96,7 +98,7 @@ import {
     webTokenizers,
     getWebTokenizer,
 } from '../tokenizers.js';
-import { getVertexAIAuth, getProjectIdFromServiceAccount, getGoogleApiBaseUrl } from '../google.js';
+import { getVertexAIAuth, getProjectIdFromServiceAccount, getGoogleApiBaseUrl, invalidateVertexAIAuthCache } from '../google.js';
 import { getCookieSecret } from '../../users.js';
 import { fetchGoogleModels, GoogleModelsHttpError } from './google-models.js';
 // SillyBunny: the KoboldCpp Chat Completion request code lives in its own module to keep this file close to upstream.
@@ -581,6 +583,8 @@ async function sendMakerSuiteRequest(request, response) {
 
     let authHeader;
     let authType;
+    let cachedVertexProjectId = null;
+    let vertexServiceAccountCacheKey = null;
 
     if (useVertexAi) {
         apiUrl = new URL(request.body.reverse_proxy || API_VERTEX_AI);
@@ -589,6 +593,8 @@ async function sendMakerSuiteRequest(request, response) {
             const auth = await getVertexAIAuth(request);
             authHeader = auth.authHeader;
             authType = auth.authType;
+            cachedVertexProjectId = auth.projectId ?? null;
+            vertexServiceAccountCacheKey = auth.serviceAccountCacheKey ?? null;
             console.debug(`Using Vertex AI authentication type: ${authType}`);
         } catch (error) {
             console.warn(`${apiName} authentication failed: ${error.message}`);
@@ -826,20 +832,22 @@ async function sendMakerSuiteRequest(request, response) {
                     : `${baseUrl}/${vertexApiVersion}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
             } else if (authType === 'full') {
                 // For Full mode (service account authentication), use project-specific URL
-                // Get project ID from Service Account JSON
-                const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
-                if (!serviceAccountJson) {
-                    console.warn('Vertex AI Service Account JSON is missing.');
-                    return response.status(400).send({ error: true });
-                }
+                // SillyBunny: reuse cached projectId from getVertexAIAuth instead of reading and parsing the secret twice.
+                let projectId = cachedVertexProjectId;
+                if (!projectId) {
+                    const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
+                    if (!serviceAccountJson) {
+                        console.warn('Vertex AI Service Account JSON is missing.');
+                        return response.status(400).send({ error: true });
+                    }
 
-                let projectId;
-                try {
-                    const serviceAccount = JSON.parse(serviceAccountJson);
-                    projectId = getProjectIdFromServiceAccount(serviceAccount);
-                } catch (error) {
-                    console.error('Failed to extract project ID from Service Account JSON:', error);
-                    return response.status(400).send({ error: true });
+                    try {
+                        const serviceAccount = JSON.parse(serviceAccountJson);
+                        projectId = getProjectIdFromServiceAccount(serviceAccount);
+                    } catch (error) {
+                        console.error('Failed to extract project ID from Service Account JSON:', error);
+                        return response.status(400).send({ error: true });
+                    }
                 }
                 const region = request.body.vertexai_region || 'us-central1';
                 // Handle global region differently - no region prefix in hostname
@@ -872,6 +880,10 @@ async function sendMakerSuiteRequest(request, response) {
         // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
         const firstBody = capFirstGenerateContentBody(body, model, stream);
         const generateResponse = await sendRequest(firstBody);
+        // SillyBunny: evict cached Vertex OAuth2 token on 401 so revoked or expired tokens refresh immediately.
+        if (useVertexAi && authType === 'full' && generateResponse.status === 401 && vertexServiceAccountCacheKey) {
+            invalidateVertexAIAuthCache(vertexServiceAccountCacheKey);
+        }
         const sendHop = (continuationToken) => {
             getResumableGeneration(request)?.extendLifetime();
             return sendRequest({ ...body, continuationToken });
@@ -879,8 +891,12 @@ async function sendMakerSuiteRequest(request, response) {
 
         if (stream) {
             try {
+                // SillyBunny: fast-path non-long-decode Gemini models directly without per-chunk SSE regex/JSON parsing.
+                const streamResponse = isGeminiLongDecodeModel(model)
+                    ? continueGenerateContentStream(generateResponse, sendHop, controller.signal)
+                    : generateResponse;
                 // Pipe remote SSE stream to Express response
-                forwardFetchResponse(continueGenerateContentStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
+                forwardFetchResponse(streamResponse, response, request, () => controller.abort());
             } catch (error) {
                 console.error('Error forwarding streaming response:', error);
                 if (!response.headersSent) {
@@ -2151,19 +2167,22 @@ router.post('/status', async function (request, statusResponse) {
                 modelsUrl = new URL(`${baseUrl}/${parent}/models`);
                 vertexHeaders['x-goog-api-key'] = apiKey;
             } else if (auth.authType === 'full') {
-                const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
-                if (!serviceAccountJson) {
-                    console.warn('Vertex AI Service Account JSON is missing.');
-                    return statusResponse.status(400).send({ error: true });
-                }
+                // SillyBunny: reuse cached projectId from getVertexAIAuth instead of re-reading and parsing the secret.
+                let projectId = auth.projectId ?? null;
+                if (!projectId) {
+                    const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
+                    if (!serviceAccountJson) {
+                        console.warn('Vertex AI Service Account JSON is missing.');
+                        return statusResponse.status(400).send({ error: true });
+                    }
 
-                let projectId;
-                try {
-                    const serviceAccount = JSON.parse(serviceAccountJson);
-                    projectId = getProjectIdFromServiceAccount(serviceAccount);
-                } catch (error) {
-                    console.error('Failed to extract project ID from Service Account JSON:', error);
-                    return statusResponse.status(400).send({ error: true });
+                    try {
+                        const serviceAccount = JSON.parse(serviceAccountJson);
+                        projectId = getProjectIdFromServiceAccount(serviceAccount);
+                    } catch (error) {
+                        console.error('Failed to extract project ID from Service Account JSON:', error);
+                        return statusResponse.status(400).send({ error: true });
+                    }
                 }
 
                 const baseUrl = region === 'global'
@@ -2721,12 +2740,9 @@ function forwardResponsesApiStream(fetchResponse, expressResponse, request, onDi
         }
     }
 
-    fetchResponse.body.on('data', (chunk) => {
-        if (done) return;
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
+    // SillyBunny: decode SSE stream chunks with StringDecoder so multi-byte UTF-8 characters split across TCP chunks stay intact.
+    const utf8Decoder = new StringDecoder('utf8');
+    const processResponsesLines = (lines) => {
         for (const line of lines) {
             if (done) break;
             if (line.startsWith('data: ')) {
@@ -2757,9 +2773,24 @@ function forwardResponsesApiStream(fetchResponse, expressResponse, request, onDi
                 }
             }
         }
+    };
+
+    fetchResponse.body.on('data', (chunk) => {
+        if (done) return;
+        buffer += typeof chunk === 'string' ? chunk : utf8Decoder.write(chunk);
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        processResponsesLines(lines);
     });
 
     fetchResponse.body.on('end', () => {
+        if (!done) {
+            const trailing = buffer + utf8Decoder.end();
+            buffer = '';
+            if (trailing) {
+                processResponsesLines(trailing.split('\n'));
+            }
+        }
         finishStream();
     });
 
@@ -3263,12 +3294,9 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
         }
     }
 
-    fetchResponse.body.on('data', (chunk) => {
-        if (done) return;
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
+    // SillyBunny: decode SSE stream chunks with StringDecoder so multi-byte UTF-8 characters split across TCP chunks stay intact.
+    const utf8Decoder = new StringDecoder('utf8');
+    const processInteractionLines = (lines) => {
         for (const line of lines) {
             if (done) break;
             if (!line.startsWith('data: ')) {
@@ -3298,9 +3326,24 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
                 // Skip unparseable events
             }
         }
+    };
+
+    fetchResponse.body.on('data', (chunk) => {
+        if (done) return;
+        buffer += typeof chunk === 'string' ? chunk : utf8Decoder.write(chunk);
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        processInteractionLines(lines);
     });
 
     fetchResponse.body.on('end', () => {
+        if (!done) {
+            const trailing = buffer + utf8Decoder.end();
+            buffer = '';
+            if (trailing) {
+                processInteractionLines(trailing.split('\n'));
+            }
+        }
         finishStream();
     });
 

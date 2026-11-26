@@ -76,8 +76,72 @@ function createCompleteWavFile(pcmData, sampleRate) {
     return Buffer.concat([header, pcmData]);
 }
 
+// SillyBunny: cache Vertex AI Service Account OAuth2 access tokens and projectId by sha256(saJson)
+// with a 60-second safety margin and bounded 16-entry LRU so generations skip signing and OAuth2 round trips.
+const VERTEX_OAUTH_CACHE_MAX = 16;
+const VERTEX_OAUTH_EXPIRY_MARGIN_MS = 60 * 1000;
+const VERTEX_OAUTH_DEFAULT_EXPIRES_IN_SEC = 3600;
+/** @type {Map<string, { accessToken: string, expiresAtMs: number, projectId: string | null }>} */
+const vertexOAuthCache = new Map();
+/** @type {Map<string, Promise<{ accessToken: string, expiresAtMs: number, projectId: string | null }>>} */
+const vertexOAuthInFlight = new Map();
+
+function hashServiceAccountJson(serviceAccountJson) {
+    return crypto.createHash('sha256').update(String(serviceAccountJson)).digest('hex');
+}
+
+function getCachedVertexOAuth(cacheKey, nowMs) {
+    const entry = vertexOAuthCache.get(cacheKey);
+    if (!entry) {
+        return null;
+    }
+    if (nowMs >= entry.expiresAtMs) {
+        vertexOAuthCache.delete(cacheKey);
+        return null;
+    }
+    vertexOAuthCache.delete(cacheKey);
+    vertexOAuthCache.set(cacheKey, entry);
+    return entry;
+}
+
+function setCachedVertexOAuth(cacheKey, entry) {
+    if (vertexOAuthCache.has(cacheKey)) {
+        vertexOAuthCache.delete(cacheKey);
+    } else if (vertexOAuthCache.size >= VERTEX_OAUTH_CACHE_MAX) {
+        const oldestKey = vertexOAuthCache.keys().next().value;
+        vertexOAuthCache.delete(oldestKey);
+    }
+    vertexOAuthCache.set(cacheKey, entry);
+}
+
+/**
+ * SillyBunny: evicts a cached Vertex AI OAuth2 token entry (for example after an upstream 401/error).
+ * @param {string | null | undefined} cacheKey
+ */
+export function invalidateVertexAIAuthCache(cacheKey) {
+    if (typeof cacheKey === 'string' && cacheKey) {
+        vertexOAuthCache.delete(cacheKey);
+    }
+}
+
+/**
+ * SillyBunny: clears all cached Vertex AI OAuth2 tokens.
+ */
+export function clearVertexAIAuthCache() {
+    vertexOAuthCache.clear();
+    vertexOAuthInFlight.clear();
+}
+
+/**
+ * SillyBunny: returns the number of entries currently cached in the Vertex AI OAuth2 LRU.
+ * @returns {number}
+ */
+export function getVertexAIAuthCacheSize() {
+    return vertexOAuthCache.size;
+}
+
 // Vertex AI authentication helper functions
-export async function getVertexAIAuth(request) {
+export async function getVertexAIAuth(request, { fetchImpl = fetch, now = Date.now } = {}) {
     const authMode = request.body.vertexai_auth_mode || 'express';
 
     if (request.body.reverse_proxy) {
@@ -101,15 +165,56 @@ export async function getVertexAIAuth(request) {
         const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
 
         if (serviceAccountJson) {
-            try {
-                const serviceAccount = JSON.parse(serviceAccountJson);
-                const jwtToken = await generateJWTToken(serviceAccount);
-                const accessToken = await getAccessToken(jwtToken);
+            const cacheKey = hashServiceAccountJson(serviceAccountJson);
+            const currentTime = now();
+            const cached = getCachedVertexOAuth(cacheKey, currentTime);
+            if (cached) {
                 return {
-                    authHeader: `Bearer ${accessToken}`,
+                    authHeader: `Bearer ${cached.accessToken}`,
                     authType: 'full',
+                    projectId: cached.projectId,
+                    serviceAccountCacheKey: cacheKey,
+                };
+            }
+
+            try {
+                let pending = vertexOAuthInFlight.get(cacheKey);
+                if (!pending) {
+                    pending = (async () => {
+                        const serviceAccount = JSON.parse(serviceAccountJson);
+                        const projectId = typeof serviceAccount?.project_id === 'string' && serviceAccount.project_id
+                            ? serviceAccount.project_id
+                            : null;
+                        const jwtToken = await generateJWTToken(serviceAccount);
+                        const { accessToken, expiresInSec } = await getAccessTokenWithExpiry(jwtToken, fetchImpl);
+                        const ttlMs = Math.max(0, (expiresInSec * 1000) - VERTEX_OAUTH_EXPIRY_MARGIN_MS);
+                        const entry = {
+                            accessToken,
+                            expiresAtMs: now() + ttlMs,
+                            projectId,
+                        };
+                        if (ttlMs > 0) {
+                            setCachedVertexOAuth(cacheKey, entry);
+                        }
+                        return entry;
+                    })();
+                    vertexOAuthInFlight.set(cacheKey, pending);
+                    void pending.finally(() => {
+                        if (vertexOAuthInFlight.get(cacheKey) === pending) {
+                            vertexOAuthInFlight.delete(cacheKey);
+                        }
+                    }).catch(() => {});
+                }
+
+                const resolved = await pending;
+                return {
+                    authHeader: `Bearer ${resolved.accessToken}`,
+                    authType: 'full',
+                    projectId: resolved.projectId,
+                    serviceAccountCacheKey: cacheKey,
                 };
             } catch (error) {
+                invalidateVertexAIAuthCache(cacheKey);
                 console.error('Failed to authenticate with service account:', error);
                 throw new Error(`Service account authentication failed: ${error.message}`);
             }
@@ -154,8 +259,8 @@ export async function generateJWTToken(serviceAccount) {
     return `${signatureInput}.${signature}`;
 }
 
-export async function getAccessToken(jwtToken) {
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+async function getAccessTokenWithExpiry(jwtToken, fetchImpl = fetch) {
+    const response = await fetchImpl('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -171,7 +276,16 @@ export async function getAccessToken(jwtToken) {
 
     /** @type {any} */
     const data = await response.json();
-    return data.access_token;
+    const parsedExpiresIn = Number(data?.expires_in);
+    const expiresInSec = Number.isFinite(parsedExpiresIn) && parsedExpiresIn > 0
+        ? parsedExpiresIn
+        : VERTEX_OAUTH_DEFAULT_EXPIRES_IN_SEC;
+    return { accessToken: data.access_token, expiresInSec };
+}
+
+export async function getAccessToken(jwtToken) {
+    const { accessToken } = await getAccessTokenWithExpiry(jwtToken);
+    return accessToken;
 }
 
 /**
@@ -214,7 +328,7 @@ export async function getGoogleApiConfig(request, model, endpoint = 'generateCon
 
     if (useVertexAi) {
         // Get authentication for Vertex AI
-        const { authHeader, authType } = await getVertexAIAuth(request);
+        const { authHeader, authType, projectId: cachedProjectId } = await getVertexAIAuth(request);
 
         if (authType === 'express') {
             // Express mode: use API key parameter
@@ -229,18 +343,20 @@ export async function getGoogleApiConfig(request, model, endpoint = 'generateCon
             headers['x-goog-api-key'] = keyParam;
         } else if (authType === 'full') {
             // Full mode: use project-specific URL with Authorization header
-            // Get project ID from Service Account JSON
-            const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
-            if (!serviceAccountJson) {
-                throw new Error('Vertex AI Service Account JSON is missing.');
-            }
+            // SillyBunny: reuse cached projectId from getVertexAIAuth instead of re-reading and re-parsing the secret.
+            let projectId = cachedProjectId;
+            if (!projectId) {
+                const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
+                if (!serviceAccountJson) {
+                    throw new Error('Vertex AI Service Account JSON is missing.');
+                }
 
-            let projectId;
-            try {
-                const serviceAccount = JSON.parse(serviceAccountJson);
-                projectId = getProjectIdFromServiceAccount(serviceAccount);
-            } catch (error) {
-                throw new Error('Failed to extract project ID from Service Account JSON.');
+                try {
+                    const serviceAccount = JSON.parse(serviceAccountJson);
+                    projectId = getProjectIdFromServiceAccount(serviceAccount);
+                } catch (error) {
+                    throw new Error('Failed to extract project ID from Service Account JSON.');
+                }
             }
             // Handle global region differently - no region prefix in hostname
             baseUrl = region === 'global'

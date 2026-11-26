@@ -351,7 +351,7 @@ import { extractReasoningFromData, extractReasoningSignatureFromData, initReason
 import { accountStorage } from './scripts/util/AccountStorage.js';
 import { initWelcomeScreen, openPermanentAssistantChat, openPermanentAssistantCard, getPermanentAssistantAvatar } from './scripts/welcome-screen.js';
 import { initDataMaid } from './scripts/data-maid.js';
-import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPrompts, findItemizedPromptSet, initItemizedPrompts, itemizedParams, itemizedPrompts, loadItemizedPrompts, promptItemize, replaceItemizedPromptText, saveItemizedPrompts, swapItemizedPrompts } from './scripts/itemized-prompts.js';
+import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPrompts, findItemizedPromptSet, initItemizedPrompts, itemizedParams, itemizedPrompts, loadItemizedPrompts, markItemizedPromptsDirty, promptItemize, replaceItemizedPromptText, saveItemizedPrompts, swapItemizedPrompts } from './scripts/itemized-prompts.js';
 import { getSystemMessageByType, initSystemMessages, SAFETY_CHAT, sendSystemMessage, system_message_types, system_messages } from './scripts/system-messages.js';
 import { event_types, eventSource } from './scripts/events.js';
 import { initAccessibility } from './scripts/a11y.js';
@@ -1110,11 +1110,36 @@ $.ajaxPrefilter((options, originalOptions, xhr) => {
     xhr.setRequestHeader('X-CSRF-Token', token);
 });
 
+// SillyBunny: track recent successful server contact so pre-generation skips redundant /api/ping round trips within 5 seconds.
+const SERVER_CONTACT_FRESHNESS_MS = 5000;
+let lastSuccessfulServerContactAt = 0;
+
+/**
+ * Records the timestamp of a successful server response.
+ * @param {number} [now=Date.now()] Timestamp in milliseconds.
+ */
+export function recordSuccessfulServerContact(now = Date.now()) {
+    lastSuccessfulServerContactAt = now;
+}
+
+/**
+ * Returns the timestamp of the last recorded successful server contact.
+ * @returns {number}
+ */
+export function getLastSuccessfulServerContactAt() {
+    return lastSuccessfulServerContactAt;
+}
+
 /**
  * Pings the STserver to check if it is reachable.
+ * @param {{ allowRecentContact?: boolean, now?: number }} [options] Optional freshness bypass for pre-send checks.
  * @returns {Promise<boolean>} True if the server is reachable, false otherwise.
  */
-export async function pingServer() {
+export async function pingServer({ allowRecentContact = false, now = Date.now() } = {}) {
+    if (allowRecentContact && lastSuccessfulServerContactAt > 0 && (now - lastSuccessfulServerContactAt) < SERVER_CONTACT_FRESHNESS_MS) {
+        return true;
+    }
+
     try {
         const result = await fetch('api/ping', {
             method: 'POST',
@@ -1125,6 +1150,7 @@ export async function pingServer() {
             return false;
         }
 
+        recordSuccessfulServerContact();
         return true;
     } catch (error) {
         console.error('Error pinging server', error);
@@ -8100,7 +8126,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         if (!dryRun) {
         // Ping after rendering the local user message so slow WebKit networking cannot delay the visible send.
-            const pingResult = await pingServer();
+        // SillyBunny: skip redundant /api/ping when a server request just succeeded within 5 seconds (e.g. saveChat).
+            const pingResult = await pingServer({ allowRecentContact: true });
             if (!isCurrent()) return;
 
             if (!pingResult) {
@@ -8110,6 +8137,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
         }
 
+        // SillyBunny: resolve card fields lazily so unused firstMessage and alternate_greetings[] are not macro-substituted every turn.
         let {
             description,
             personality,
@@ -8120,7 +8148,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             jailbreak,
             charDepthPrompt,
             creatorNotes,
-        } = getCharacterCardFields();
+        } = typeof getCharacterCardFieldsLazy === 'function' ? getCharacterCardFieldsLazy() : getCharacterCardFields();
 
         // Depth prompt (character-specific A/N)
         removeDepthPrompts();
@@ -8707,7 +8735,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         // Collect enough messages to fill the context
         let arrMes = new Array(chat2.length);
-        let tokenCount = await getMessagesTokenCount();
+        // SillyBunny: OpenAI builds its own prompt in prepareOpenAIMessages, so skip shadow-prompt token counting.
+        let tokenCount = main_api === 'openai' ? 0 : await getMessagesTokenCount();
         let lastAddedIndex = 0;
 
         // Pre-allocate all injections first.
@@ -8772,7 +8801,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         // Add user alignment message if last message is not a user message
         const stoppedAtUser = userMessageIndices.includes(lastAddedIndex);
-        if (addUserAlignment && !stoppedAtUser) {
+        if (main_api !== 'openai' && addUserAlignment && !stoppedAtUser) {
             tokenCount += await getTokenCountAsync(userAlignmentMessage.replace(/\r/gm, ''));
             chatString = userAlignmentMessage + chatString;
             arrMes.push(userAlignmentMessage);
@@ -8794,21 +8823,22 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         arrMes = newArrMes;
         injectedIndices = newInjectedIndices;
 
+        let count_exm_add = 0;
         if (main_api !== 'openai') {
             setInContextMessages(arrMes.length - injectedIndices.length, type, preserveLastMessage);
-        }
 
-        // Estimate how many unpinned example messages fit in the context
-        tokenCount = await getMessagesTokenCount();
-        let count_exm_add = 0;
-        if (!power_user.pin_examples) {
-            for (let example of mesExamplesArray) {
-                tokenCount += await getTokenCountAsync(example.replace(/\r/gm, ''));
-                examplesString += example;
-                if (tokenCount < this_max_context) {
-                    count_exm_add++;
-                } else {
-                    break;
+            // SillyBunny: guard shadow dialogue-example counting behind main_api !== 'openai' so OpenAI never fires unused serial counts.
+            // Estimate how many unpinned example messages fit in the context
+            tokenCount = await getMessagesTokenCount();
+            if (!power_user.pin_examples) {
+                for (let example of mesExamplesArray) {
+                    tokenCount += await getTokenCountAsync(example.replace(/\r/gm, ''));
+                    examplesString += example;
+                    if (tokenCount < this_max_context) {
+                        count_exm_add++;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -9232,6 +9262,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             } else {
                 itemizedPrompts.push(additionalPromptStuff);
             }
+            // SillyBunny: mark itemizedPrompts dirty only when a prompt snapshot is written.
+            if (typeof markItemizedPromptsDirty === 'function') {
+                markItemizedPromptsDirty();
+            }
 
             console.debug(`pushed prompt bits to itemizedPrompts array. Length is now: ${itemizedPrompts.length}`);
 
@@ -9382,7 +9416,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             await saveChatConditional();
                             if (!isCurrent()) return;
                             playMessageSound();
-                            triggerAutoContinue(messageChunk, isImpersonate, requestControls);
+                            // SillyBunny: precompute auto-continue token count asynchronously instead of synchronous XHR getTokenCount().
+                            const bufferedAutoContinueTokens = (power_user.auto_continue.enabled && power_user.auto_continue.target_length > 0 && !requestControls?.suppressAutoContinue && chat.length && messageChunk.trim().length > 5)
+                                ? await getTokenCountAsync(chat[chat.length - 1].mes)
+                                : null;
+                            triggerAutoContinue(messageChunk, isImpersonate, requestControls, bufferedAutoContinueTokens);
                             return Object.defineProperties(new String(getMessage), {
                                 'messageChunk': { value: messageChunk },
                                 'fromStream': { value: true },
@@ -9393,7 +9431,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         await activeStreamingProcessor.onFinishStreaming(activeStreamingProcessor.messageId, getMessage);
                         if (!isCurrent()) return;
                         clearStreamingProcessorIfCurrent(activeStreamingProcessor);
-                        triggerAutoContinue(messageChunk, isImpersonate, requestControls);
+                        // SillyBunny: precompute auto-continue token count asynchronously instead of synchronous XHR getTokenCount().
+                        const streamedAutoContinueTokens = (power_user.auto_continue.enabled && power_user.auto_continue.target_length > 0 && !requestControls?.suppressAutoContinue && chat.length && messageChunk.trim().length > 5)
+                            ? await getTokenCountAsync(chat[chat.length - 1].mes)
+                            : null;
+                        triggerAutoContinue(messageChunk, isImpersonate, requestControls, streamedAutoContinueTokens);
                         return Object.defineProperties(new String(getMessage), {
                             'messageChunk': { value: messageChunk },
                             'fromStream': { value: true },
@@ -9605,7 +9647,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             streamingProcessor = null;
 
             if (type !== 'quiet') {
-                triggerAutoContinue(messageChunk, isImpersonate, requestControls);
+                // SillyBunny: precompute auto-continue token count asynchronously instead of synchronous XHR getTokenCount().
+                const nonStreamAutoContinueTokens = (power_user.auto_continue.enabled && power_user.auto_continue.target_length > 0 && !requestControls?.suppressAutoContinue && chat.length && messageChunk.trim().length > 5)
+                    ? await getTokenCountAsync(chat[chat.length - 1].mes)
+                    : null;
+                triggerAutoContinue(messageChunk, isImpersonate, requestControls, nonStreamAutoContinueTokens);
             }
 
             // Don't break the API chain that expects a single string in return
@@ -9810,7 +9856,7 @@ export function getNextMessageId(type, preserveLastMessage = false) {
  * @param {GenerateOptions} [options] Request-local auto-continue controls
  * @returns {boolean} Whether the message should be auto-continued
  */
-export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoContinue = false } = {}) {
+export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoContinue = false } = {}, precomputedTokenCount = null) {
     if (suppressAutoContinue) {
         return false;
     }
@@ -9859,7 +9905,10 @@ export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoCo
 
     if (messageChunk.trim().length > USABLE_LENGTH && chat.length) {
         const lastMessage = chat[chat.length - 1];
-        const messageLength = getTokenCount(lastMessage.mes);
+        // SillyBunny: use precomputed async token count from Generate() to avoid blocking sync XHR.
+        const messageLength = (typeof precomputedTokenCount === 'number' && Number.isFinite(precomputedTokenCount))
+            ? precomputedTokenCount
+            : getTokenCount(lastMessage.mes);
         const shouldAutoContinue = messageLength < power_user.auto_continue.target_length;
 
         if (shouldAutoContinue) {
@@ -9880,8 +9929,9 @@ export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoCo
  * @param {string} messageChunk Current message chunk
  * @param {boolean} isImpersonate Is the user impersonation
  * @param {GenerateOptions} [options] Controls forwarded to automatic continuations
+ * @param {number|null} [precomputedTokenCount] Async-counted token length of the latest message
  */
-export function triggerAutoContinue(messageChunk, isImpersonate, options = {}) {
+export function triggerAutoContinue(messageChunk, isImpersonate, options = {}, precomputedTokenCount = null) {
     if (selected_group) {
         console.debug('Auto-continue is disabled for group chat');
         return;
@@ -9893,7 +9943,7 @@ export function triggerAutoContinue(messageChunk, isImpersonate, options = {}) {
         return;
     }
 
-    if (shouldAutoContinue(messageChunk, isImpersonate, options)) {
+    if (shouldAutoContinue(messageChunk, isImpersonate, options, precomputedTokenCount)) {
         $('#option_continue').trigger('click', { generationOptions: options });
     }
 }
@@ -12067,6 +12117,8 @@ async function saveChatImmediately(...args) {
         const result = await fetch('/api/chats/save', saveChatRequest);
 
         if (result.ok) {
+            // SillyBunny: record recent server contact so the immediately following Generate() skips redundant /api/ping.
+            recordSuccessfulServerContact();
             const responseData = await result.json().catch(() => ({}));
             rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);
             if (isActiveChatSave && typeof responseData?.integrity === 'string' && responseData.integrity) {
@@ -13142,6 +13194,8 @@ async function saveSettingsInner(loopCounter = 0) {
         if (!result.ok) {
             throw new Error(`Failed to save settings: ${result.statusText}`);
         }
+        // SillyBunny: record recent server contact after a successful settings save.
+        recordSuccessfulServerContact();
 
         const saveResult = await result.json().catch(() => ({}));
         const savedSettingsVersion = normalizeSettingsVersion(saveResult?.version);
@@ -16306,6 +16360,8 @@ export async function saveChatConditional(options = {}) {
         }
 
         // Save token and prompts cache to IndexedDB storage
+        // SillyBunny: record recent server contact after solo or group chat save succeeds.
+        recordSuccessfulServerContact();
         await saveTokenCache();
         await saveItemizedPrompts(getCurrentChatId());
         return true;

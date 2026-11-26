@@ -112,8 +112,13 @@ if (!cliArgs.enableIPv6 && !cliArgs.enableIPv4) {
 }
 
 // Set keep-alive preference for all HTTP/HTTPS requests.
-http.globalAgent = new http.Agent({ keepAlive: cliArgs.enableKeepAlive });
-https.globalAgent = new https.Agent({ keepAlive: cliArgs.enableKeepAlive });
+// SillyBunny: default outbound keep-alive on under Node so sequential LLM requests reuse TLS sockets
+// while preserving PrivateRequestAgent and ProxyAgent SSRF filtering.
+const outboundKeepAlive = !isBunRuntime()
+    ? !process.argv.some(arg => /^--(?:no-enableKeepAlive|enableKeepAlive=(?:false|0))$/i.test(arg))
+    : cliArgs.enableKeepAlive;
+http.globalAgent = new http.Agent({ keepAlive: outboundKeepAlive, keepAliveMsecs: 15000, maxSockets: 64 });
+https.globalAgent = new https.Agent({ keepAlive: outboundKeepAlive, keepAliveMsecs: 15000, maxSockets: 64 });
 
 // SillyBunny: send a rejected promise from an async handler to the error handlers, because Express 4 ignores it and leaves the request unanswered.
 forwardAsyncRouteErrors();
@@ -579,7 +584,7 @@ async function preSetupTasks() {
         logBlocked: !!getConfigValue('privateAddressWhitelist.log.blockedRequests', true, 'boolean'),
         logAllowed: !!getConfigValue('privateAddressWhitelist.log.allowedRequests', false, 'boolean'),
         allowUnresolvedHosts: !!getConfigValue('privateAddressWhitelist.allowUnresolvedHosts', false, 'boolean'),
-        enableKeepAlive: cliArgs.enableKeepAlive,
+        enableKeepAlive: outboundKeepAlive,
         requestProxyEnabled: !!cliArgs.requestProxyEnabled,
     };
     initPrivateRequestFilter(requestFilterOptions);
@@ -589,7 +594,7 @@ async function preSetupTasks() {
         enabled: cliArgs.requestProxyEnabled,
         url: cliArgs.requestProxyUrl,
         bypass: cliArgs.requestProxyBypass,
-        enableKeepAlive: cliArgs.enableKeepAlive,
+        enableKeepAlive: outboundKeepAlive,
         privateRequestFilterEnabled: requestFilterOptions.enabled,
     });
 

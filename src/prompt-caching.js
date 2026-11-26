@@ -220,6 +220,11 @@ export async function isOpenRouterModelCacheable(
         });
     }
 
+    // Stale-while-revalidate: once a catalog snapshot exists, return it immediately and refresh in background so /generate never stalls.
+    if (openRouterCacheableMap) {
+        return lookupInMap(openRouterCacheableMap);
+    }
+
     const loadedMap = await openRouterCacheableInFlight;
     return lookupInMap(loadedMap ?? openRouterCacheableMap);
 }
@@ -550,32 +555,144 @@ function markOpenRouterMessageCacheControl(message, ttl) {
     return false;
 }
 
-/**
- * Marks the last cacheable block in an Anthropic system prompt array.
- * @param {any[]} systemPrompt
- * @param {string | undefined} ttl
- * @param {{ existingBreakpoints?: number, maxBreakpoints?: number }} [options]
- * @returns {boolean}
- */
-function markClaudeSystemPromptCache(systemPrompt, ttl, { existingBreakpoints = null, maxBreakpoints = MAX_ANTHROPIC_CACHE_BREAKPOINTS } = {}) {
-    if (!Array.isArray(systemPrompt) || systemPrompt.length === 0) {
-        return false;
-    }
-    if (getSystemCacheControls(systemPrompt).length > 0) {
-        return false;
-    }
-    const used = existingBreakpoints ?? countCacheControlMarkers({ systemPrompt });
-    if (used >= maxBreakpoints) {
-        return false;
-    }
+/** @type {WeakMap<object, 'static' | 'dynamic'>} */
+const blockCacheStability = new WeakMap();
 
-    for (let i = systemPrompt.length - 1; i >= 0; i--) {
-        if (isCacheableClaudeBlock(systemPrompt[i])) {
-            systemPrompt[i].cache_control = buildCacheControl(ttl);
-            return true;
+/**
+ * Records static/dynamic stability metadata for a system block or message out-of-band so it never serializes to providers.
+ * @param {object} block
+ * @param {'static' | 'dynamic'} stability
+ */
+export function setBlockCacheStability(block, stability) {
+    if (block && typeof block === 'object' && (stability === 'static' || stability === 'dynamic')) {
+        blockCacheStability.set(block, stability);
+    }
+}
+
+/**
+ * Reads and strips any inline `cache_stability` hint from a block or message.
+ * @param {any} block
+ * @returns {'static' | 'dynamic' | null}
+ */
+export function getBlockCacheStability(block) {
+    if (!block || typeof block !== 'object') {
+        return null;
+    }
+    if (block.cache_stability === 'static' || block.cache_stability === 'dynamic') {
+        const stability = block.cache_stability;
+        blockCacheStability.set(block, stability);
+        delete block.cache_stability;
+        return stability;
+    }
+    return blockCacheStability.get(block) ?? null;
+}
+
+/**
+ * Resolves the last index of the leading static system prefix ahead of the first dynamic block, or -1 if no split applies.
+ * Strips any inline `cache_stability` hints from the inspected range so they never leak to upstream APIs.
+ * @param {any[]} items
+ * @param {number} prefixEnd Inclusive end index of the leading system prefix
+ * @param {number | undefined} explicitStaticPrefixEnd Optional explicit static prefix end index
+ * @returns {number}
+ */
+function resolveStaticSystemPrefixEnd(items, prefixEnd, explicitStaticPrefixEnd = undefined) {
+    let inferredStaticEnd = -1;
+    let sawDynamic = false;
+    let sawInferredSplit = false;
+
+    for (let i = 0; i <= prefixEnd; i++) {
+        const stability = getBlockCacheStability(items[i]);
+        if (!sawDynamic) {
+            if (stability === 'dynamic') {
+                sawDynamic = true;
+                sawInferredSplit = inferredStaticEnd >= 0;
+            } else if (stability === 'static') {
+                inferredStaticEnd = i;
+            }
         }
     }
-    return false;
+
+    if (Number.isInteger(explicitStaticPrefixEnd) && explicitStaticPrefixEnd >= 0 && explicitStaticPrefixEnd < prefixEnd) {
+        return explicitStaticPrefixEnd;
+    }
+
+    return sawInferredSplit ? inferredStaticEnd : -1;
+}
+
+/**
+ * Marks cacheable block(s) in an Anthropic system prompt array.
+ * When a static-vs-dynamic boundary exists (for example static main prompt ahead of dynamic worldInfoBefore),
+ * places a breakpoint at the end of the static prefix and optionally marks the full system end if budget allows.
+ * @param {any[]} systemPrompt
+ * @param {string | undefined} ttl
+ * @param {{ existingBreakpoints?: number, maxBreakpoints?: number, staticPrefixEnd?: number, reserveRemainingSlots?: number, resolveTTL?: (hasEarlier5m: boolean) => string | undefined | null }} [options]
+ * @returns {number} Number of breakpoints added
+ */
+function markClaudeSystemPromptCache(
+    systemPrompt,
+    ttl,
+    {
+        existingBreakpoints = null,
+        maxBreakpoints = MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+        staticPrefixEnd = undefined,
+        reserveRemainingSlots = 0,
+        resolveTTL = null,
+    } = {},
+) {
+    if (!Array.isArray(systemPrompt) || systemPrompt.length === 0) {
+        return 0;
+    }
+    const prefixEnd = systemPrompt.length - 1;
+    const staticEnd = resolveStaticSystemPrefixEnd(systemPrompt, prefixEnd, staticPrefixEnd);
+
+    if (getSystemCacheControls(systemPrompt).length > 0) {
+        return 0;
+    }
+    let used = existingBreakpoints ?? countCacheControlMarkers({ systemPrompt });
+    if (used >= maxBreakpoints) {
+        return 0;
+    }
+
+    let added = 0;
+    let markedIndex = -1;
+
+    if (staticEnd >= 0 && staticEnd < prefixEnd) {
+        for (let i = staticEnd; i >= 0; i--) {
+            if (isCacheableClaudeBlock(systemPrompt[i])) {
+                systemPrompt[i].cache_control = buildCacheControl(ttl);
+                used += 1;
+                added += 1;
+                markedIndex = i;
+                break;
+            }
+        }
+
+        if (added > 0 && (used + reserveRemainingSlots) < maxBreakpoints) {
+            const nextTTL = resolveTTL ? resolveTTL(getEffectiveTTL(systemPrompt[markedIndex].cache_control) === '5m') : ttl;
+            if (nextTTL !== null) {
+                for (let i = prefixEnd; i > staticEnd; i--) {
+                    if (isCacheableClaudeBlock(systemPrompt[i])) {
+                        systemPrompt[i].cache_control = buildCacheControl(nextTTL);
+                        used += 1;
+                        added += 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (added > 0) {
+            return added;
+        }
+    }
+
+    for (let i = prefixEnd; i >= 0; i--) {
+        if (isCacheableClaudeBlock(systemPrompt[i])) {
+            systemPrompt[i].cache_control = buildCacheControl(ttl);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 /**
@@ -634,7 +751,13 @@ function findLeadingSystemPrefixEnd(messages) {
 export function applySystemPromptCacheForOpenRouter(
     messages,
     ttl = undefined,
-    { existingBreakpoints = null, maxBreakpoints = Infinity, resolveTTLForIndex = null } = {},
+    {
+        existingBreakpoints = null,
+        maxBreakpoints = Infinity,
+        resolveTTLForIndex = null,
+        staticPrefixEnd = undefined,
+        reserveRemainingSlots = null,
+    } = {},
 ) {
     if (!Array.isArray(messages) || messages.length === 0) {
         return false;
@@ -645,15 +768,47 @@ export function applySystemPromptCacheForOpenRouter(
         return false;
     }
 
+    const staticEnd = resolveStaticSystemPrefixEnd(messages, prefixEnd, staticPrefixEnd);
+
     for (let i = 0; i <= prefixEnd; i++) {
         if (hasCacheControl(messages[i])) {
             return false;
         }
     }
 
-    const used = existingBreakpoints ?? countCacheControlMarkers({ messages });
+    let used = existingBreakpoints ?? countCacheControlMarkers({ messages });
     if (used >= maxBreakpoints) {
         return false;
+    }
+
+    if (staticEnd >= 0 && staticEnd < prefixEnd) {
+        let markedStatic = false;
+        for (let i = staticEnd; i >= 0; i--) {
+            const effectiveTTL = resolveTTLForIndex ? resolveTTLForIndex(i) : ttl;
+            if (effectiveTTL === null) {
+                return false;
+            }
+            if (markOpenRouterMessageCacheControl(messages[i], effectiveTTL)) {
+                used += 1;
+                markedStatic = true;
+                break;
+            }
+        }
+
+        if (markedStatic) {
+            if (Number.isInteger(reserveRemainingSlots) && (used + reserveRemainingSlots) < maxBreakpoints) {
+                for (let i = prefixEnd; i > staticEnd; i--) {
+                    const effectiveTTL = resolveTTLForIndex ? resolveTTLForIndex(i) : ttl;
+                    if (effectiveTTL === null) {
+                        break;
+                    }
+                    if (markOpenRouterMessageCacheControl(messages[i], effectiveTTL)) {
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
     }
 
     for (let i = prefixEnd; i >= 0; i--) {
@@ -811,8 +966,17 @@ export function applyClaudeRequestCaching({
                 const systemHasEarlier5m = has5mTTL(getToolCacheControls(allTools));
                 const systemHasLater1h = messagesRangeHasMarker(messages, 0, Array.isArray(messages) ? messages.length : 0, marker => getEffectiveTTL(marker) === '1h');
                 const systemTTL = resolveAllowedAutoTTL(cacheTTL, { hasEarlier5m: systemHasEarlier5m, hasLater1h: systemHasLater1h });
-                if (systemTTL !== null && markClaudeSystemPromptCache(systemPrompt, systemTTL, { existingBreakpoints: usedBreakpoints, maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS })) {
-                    usedBreakpoints += 1;
+                if (systemTTL !== null) {
+                    usedBreakpoints += markClaudeSystemPromptCache(systemPrompt, systemTTL, {
+                        existingBreakpoints: usedBreakpoints,
+                        maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+                        staticPrefixEnd: requestBody?.static_system_prefix_end,
+                        reserveRemainingSlots: cachingAtDepth !== -1 ? 2 : 0,
+                        resolveTTL: (staticMarkerIs5m) => resolveAllowedAutoTTL(cacheTTL, {
+                            hasEarlier5m: systemHasEarlier5m || staticMarkerIs5m,
+                            hasLater1h: systemHasLater1h,
+                        }),
+                    });
                 }
             }
         }
@@ -859,7 +1023,7 @@ function resolveAffinityKey(affinityKey) {
  * @param {{ messages: any[], tools?: any[], enableSystemPromptCache: boolean, cachingAtDepth: number, cacheTTL: '1h'|'5m'|undefined }} params
  * @returns {number} Final total cache_control breakpoint count
  */
-function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL }) {
+function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL, staticPrefixEnd = undefined }) {
     let usedBreakpoints = countCacheControlMarkers({ tools, messages });
     const resolveTTLForIndex = createMessageTTLResolver(cacheTTL, { tools, messages });
 
@@ -867,8 +1031,10 @@ function applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCach
         existingBreakpoints: usedBreakpoints,
         maxBreakpoints: MAX_ANTHROPIC_CACHE_BREAKPOINTS,
         resolveTTLForIndex,
+        staticPrefixEnd,
+        reserveRemainingSlots: cachingAtDepth !== -1 ? 2 : 0,
     })) {
-        usedBreakpoints += 1;
+        usedBreakpoints = countCacheControlMarkers({ tools, messages });
     }
 
     if (cachingAtDepth !== -1) {
@@ -916,10 +1082,11 @@ export async function applyOpenRouterRequestCaching({
     }
 
     const model = requestBody?.model;
+    const staticPrefixEnd = requestBody?.static_system_prefix_end;
     const { enableSystemPromptCache, cachingAtDepth, cacheTTL } = config.claude;
 
     if (isOpenRouterClaudeModel(model)) {
-        applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL });
+        applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL, staticPrefixEnd });
         return;
     }
 
@@ -931,7 +1098,7 @@ export async function applyOpenRouterRequestCaching({
             return;
         }
 
-        applySystemPromptCacheForOpenRouter(messages);
+        applySystemPromptCacheForOpenRouter(messages, undefined, { staticPrefixEnd, maxBreakpoints: 1 });
         return;
     }
 
@@ -944,7 +1111,7 @@ export async function applyOpenRouterRequestCaching({
         return;
     }
 
-    applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL: undefined });
+    applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL: undefined, staticPrefixEnd });
 }
 
 /**
@@ -975,7 +1142,7 @@ export function applyNanoGptRequestCaching({
 
     if (cachingAtDepth !== -1) {
         const usedBreakpoints = Array.isArray(messages)
-            ? applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL })
+            ? applyOpenAiStyleClaudeCaching({ messages, tools, enableSystemPromptCache, cachingAtDepth, cacheTTL, staticPrefixEnd: requestBody?.static_system_prefix_end })
             : 0;
 
         if (usedBreakpoints > 0) {
@@ -1014,6 +1181,7 @@ export function applyElectronHubRequestCaching({
         enableSystemPromptCache,
         cachingAtDepth,
         cacheTTL,
+        staticPrefixEnd: requestBody?.static_system_prefix_end,
     });
 }
 

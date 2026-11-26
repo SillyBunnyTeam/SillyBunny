@@ -7,7 +7,9 @@ import { getConfigValue, tryParse } from './util.js';
 import {
     applyDepthCacheBreakpoints,
     applySystemPromptCacheForOpenRouter,
+    getBlockCacheStability,
     MAX_ANTHROPIC_CACHE_BREAKPOINTS,
+    setBlockCacheStability,
 } from './prompt-caching.js';
 
 const PROMPT_PLACEHOLDER = getConfigValue('promptPlaceholder', 'Let\'s get started.');
@@ -246,7 +248,13 @@ export function convertClaudeMessages(messages, prefillString, useSysPrompt, use
                     messages[i].content = `${names.charName}: ${messages[i].content}`;
                 }
             }
-            systemPrompt.push({ type: 'text', text: messages[i].content });
+            const block = { type: 'text', text: messages[i].content };
+            // SillyBunny: carry static/dynamic stability tags out-of-band onto Claude system blocks without serializing extra keys.
+            const stability = getBlockCacheStability(messages[i]);
+            if (stability) {
+                setBlockCacheStability(block, stability);
+            }
+            systemPrompt.push(block);
         }
 
         messages.splice(0, i);

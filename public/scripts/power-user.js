@@ -3272,6 +3272,49 @@ export function fuzzySearchGroups(searchValue, fuzzySearchCaches = null) {
     return performFuzzySearch(fuzzySearchCategories.groups, groups, keys, searchValue, fuzzySearchCaches);
 }
 
+// SillyBunny: cache compiled Handlebars story string templates in a bounded 64-entry LRU.
+const STORY_STRING_TEMPLATE_CACHE_MAX = 64;
+/** @type {Map<string, HandlebarsTemplateDelegate>} */
+const storyStringTemplateCache = new Map();
+
+/**
+ * SillyBunny: clears the compiled story string Handlebars template cache.
+ */
+export function clearStoryStringTemplateCache() {
+    storyStringTemplateCache.clear();
+}
+
+/**
+ * SillyBunny: returns the number of cached compiled story string templates.
+ * @returns {number}
+ */
+export function getStoryStringTemplateCacheSize() {
+    return storyStringTemplateCache.size;
+}
+
+/**
+ * SillyBunny: compiles or retrieves a cached Handlebars story string template.
+ * @param {string} storyString
+ * @returns {HandlebarsTemplateDelegate}
+ */
+export function getCompiledStoryStringTemplate(storyString) {
+    const key = String(storyString ?? '');
+    const cached = storyStringTemplateCache.get(key);
+    if (cached !== undefined) {
+        storyStringTemplateCache.delete(key);
+        storyStringTemplateCache.set(key, cached);
+        return cached;
+    }
+
+    const compiled = Handlebars.compile(key, { noEscape: true });
+    if (storyStringTemplateCache.size >= STORY_STRING_TEMPLATE_CACHE_MAX) {
+        const oldestKey = storyStringTemplateCache.keys().next().value;
+        storyStringTemplateCache.delete(oldestKey);
+    }
+    storyStringTemplateCache.set(key, compiled);
+    return compiled;
+}
+
 /**
  * Renders a story string template with the given parameters.
  * @param {object} params Template parameters.
@@ -3283,8 +3326,9 @@ export function fuzzySearchGroups(searchValue, fuzzySearchCaches = null) {
  */
 export function renderStoryString(params, { customStoryString = null, customInstructSettings = null, customContextSettings = null } = {}) {
     try {
-        const instructSettings = structuredClone(customInstructSettings ?? power_user.instruct);
-        const contextSettings = structuredClone(customContextSettings ?? power_user.context);
+        // SillyBunny: read instruct/context settings directly without cloning and reuse cached compiled Handlebars templates.
+        const instructSettings = customInstructSettings ?? power_user.instruct;
+        const contextSettings = customContextSettings ?? power_user.context;
         const storyString = customStoryString ?? contextSettings.story_string;
         const storyStringPosition = contextSettings.story_string_position ?? extension_prompt_types.IN_PROMPT;
 
@@ -3292,7 +3336,7 @@ export function renderStoryString(params, { customStoryString = null, customInst
         validateStoryString(storyString, params);
 
         // compile the story string template into a function, with no HTML escaping
-        const compiledTemplate = Handlebars.compile(storyString, { noEscape: true });
+        const compiledTemplate = getCompiledStoryStringTemplate(storyString);
 
         // render the story string template with the given params
         let output = compiledTemplate(params);
