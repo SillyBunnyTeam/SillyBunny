@@ -3,6 +3,7 @@
  * timeline. Each draws from the loaded messages of the active chat and redraws when that chat changes.
  */
 
+import { createLazyImage } from '../../../sillybunny-editor/lazy-image.js';
 import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
 import { conversationData, getCardName, requireView } from '../access.js';
 import { showMessageInTimeline } from '../actions.js';
@@ -112,12 +113,7 @@ export function buildMedia({ conversationId, nav }) {
                 cell.title = label;
                 cell.setAttribute('aria-label', label);
                 if (item.kind === 'image') {
-                    const image = el('img');
-                    image.alt = '';
-                    image.src = item.url;
-                    image.loading = 'lazy';
-                    image.decoding = 'async';
-                    cell.append(image);
+                    cell.append(createLazyImage(item.url));
                 } else {
                     cell.classList.add('sb-details-media-cell--video');
                     cell.append(icon('play'));

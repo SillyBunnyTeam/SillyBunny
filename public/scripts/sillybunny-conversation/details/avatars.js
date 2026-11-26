@@ -3,6 +3,7 @@
  * of its own. Each is one element that is sized by `--sb-details-avatar-size`.
  */
 
+import { createLazyImage } from '../../sillybunny-editor/lazy-image.js';
 import { pickTileAvatars } from './details-logic.js';
 import { getCardName, getGroupAvatarUrl, getThumbnailUrlFor } from './access.js';
 
@@ -43,12 +44,7 @@ function createFrame({ name, size, extraClass = '' }) {
 }
 
 function createPicture(src) {
-    const image = document.createElement('img');
-    image.alt = '';
-    image.src = src;
-    image.decoding = 'async';
-    image.loading = 'lazy';
-    return image;
+    return createLazyImage(src);
 }
 
 function appendInitials(frame, name) {
@@ -73,7 +69,7 @@ export function createAvatar({ name, src = '', size = 36 }) {
 
 /** The picture of a character card. A card that is gone shows its file name as initials. */
 export function createCharacterAvatar(avatar, { size = 36 } = {}) {
-    return createAvatar({ name: getCardName(avatar), src: getThumbnailUrlFor(avatar), size });
+    return createAvatar({ name: getCardName(avatar), src: getThumbnailUrlFor(avatar, size), size });
 }
 
 /**
@@ -87,7 +83,7 @@ export function createTiledAvatar({ name, avatars, size = 128 }) {
     for (const avatar of shown) {
         const tile = document.createElement('span');
         tile.className = 'sb-details-avatar__tile';
-        const src = getThumbnailUrlFor(avatar);
+        const src = getThumbnailUrlFor(avatar, size / 2);
         if (src) {
             tile.append(createPicture(src));
         } else {

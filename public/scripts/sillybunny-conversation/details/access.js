@@ -3,16 +3,20 @@
  * import nothing else from the mode's state, so that what a page needs from the mode is listed in one file.
  */
 
-import { characters, getThumbnailUrl } from '../../../script.js';
+import { getMobileThumbnailUrl, getThumbnailUrl } from '../../../script.js';
 import { AVAILABILITY_COPY, DEFAULT_SETTINGS, GEECHAN_DEFAULT_PROMPT } from '../constants.js';
 import { getConversationStore, persistConversationStore } from '../context.js';
 import { conversationData } from '../conversation-data-browser.js';
+import { getCharacterPickerOptions } from '../character-picker-options.js';
 import { getCharacterForAvatar } from '../media.js';
 import { getCharacterStatus } from '../schedule.js';
 import { getGlobalConversationSettings, mergeConversationSettingsLayers } from '../settings-store.js';
 import { describeSettingWrite } from './details-logic.js';
 
-export { conversationData, GEECHAN_DEFAULT_PROMPT };
+export { conversationData, GEECHAN_DEFAULT_PROMPT, getCharacterPickerOptions };
+
+/** A picture drawn at this many pixels or fewer is served from the small thumbnail; the desktop preset is 864 pixels wide. */
+const SMALL_THUMBNAIL_LIMIT = 64;
 
 /** The conversation as the data module holds it, or null when it is gone. Read it; change it through `conversationData`. */
 export function getView(conversationId) {
@@ -40,9 +44,14 @@ export function getCardName(avatar) {
     return getCard(avatar)?.name || String(avatar ?? '').replace(/\.[a-z0-9]+$/i, '') || 'Character';
 }
 
-/** The thumbnail of a card, or an empty text for a card that is gone. */
-export function getThumbnailUrlFor(avatar) {
-    return getCard(avatar) ? getThumbnailUrl('avatar', avatar) : '';
+/**
+ * The thumbnail of a card, or an empty text for a card that is gone.
+ * @param {string} avatar
+ * @param {number} [size] The width in pixels that it is drawn at; a small picture takes the small preset.
+ */
+export function getThumbnailUrlFor(avatar, size = Infinity) {
+    if (!getCard(avatar)) return '';
+    return size <= SMALL_THUMBNAIL_LIMIT ? getMobileThumbnailUrl('avatar', avatar) : getThumbnailUrl('avatar', avatar);
 }
 
 /** The full picture of a card, which the profile page opens as a page of the window. */
@@ -53,11 +62,6 @@ export function getFullPictureUrl(avatar) {
 /** The picture that a group uploaded. The conversation's `updatedAt` is in the address so that a new picture replaces the cached one. */
 export function getGroupAvatarUrl(view) {
     return `/api/sillybunny-conversation/avatar?id=${encodeURIComponent(view.id)}&v=${encodeURIComponent(view.updatedAt ?? 0)}`;
-}
-
-/** Every character that has a card, for the Add Member page. */
-export function listCards() {
-    return (Array.isArray(characters) ? characters : []).filter(card => card?.avatar);
 }
 
 /**
