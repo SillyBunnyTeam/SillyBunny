@@ -10,6 +10,7 @@ import { showMessageInTimeline } from '../actions.js';
 import { createCharacterAvatar, createAvatar } from '../avatars.js';
 import { collectSharedItems, formatFileSize, formatWhen, getPageTitle } from '../details-logic.js';
 import { createCollection, createCollectionRow, createMenuItem, createPage, el, icon, redrawKeepingFocus, showUndoToast } from '../page-kit.js';
+import { setMessagePin } from '../../pin-model.js';
 import { scheduleTimelineRender } from '../../render-scheduler.js';
 
 function describeSender(item) {
@@ -174,17 +175,20 @@ export function buildFiles({ conversationId, nav }) {
     });
 }
 
-/** Sets the pin of a message of the open chat. The timeline is drawn again when the conversation is open on screen. */
-function setPinned(conversationId, messageId, pinned) {
+/**
+ * Sets the pin of a message of the open chat. The timeline is drawn again when the conversation is open on screen.
+ * @param {{ at?: number }} [options] The time of the pin, which an undo gives back; not given, it is now.
+ * @returns {{ pinned: boolean, at: number }} The pin that the message had.
+ */
+function setPinned(conversationId, messageId, pinned, options = {}) {
     const view = requireView(conversationId);
     const address = { conversationId, chatId: view.activeChatId };
+    let before = { pinned: false, at: 0 };
     conversationData.commitChat(address, (chat) => {
-        const message = chat.messages.find(item => item.id === messageId);
-        if (message) {
-            message.extra = { ...message.extra, conversation_pinned: pinned };
-        }
+        before = setMessagePin(chat.messages.find(item => item.id === messageId), pinned, options);
     });
     scheduleTimelineRender();
+    return before;
 }
 
 export function buildPinned({ conversationId, nav }) {
@@ -217,8 +221,8 @@ export function buildPinned({ conversationId, nav }) {
                         sections: () => [
                             { items: [createMenuItem('Show in Chat', 'arrow-up-right-from-square', openInChat(nav, conversationId, item))] },
                             { items: [createMenuItem('Unpin', 'thumbtack-slash', () => {
-                                setPinned(conversationId, item.messageId, false);
-                                showUndoToast('Message unpinned', () => setPinned(conversationId, item.messageId, true));
+                                const before = setPinned(conversationId, item.messageId, false);
+                                showUndoToast('Message unpinned', () => setPinned(conversationId, item.messageId, true, { at: before.at }));
                             })] },
                         ],
                     },

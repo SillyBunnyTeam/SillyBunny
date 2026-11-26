@@ -1,3 +1,4 @@
+import { isPinned, readPinnedAt } from './pin-model.js';
 import { groupReactions, readReactions } from './reaction-model.js';
 
 export function hashConversationRenderFingerprint(value) {
@@ -75,7 +76,7 @@ export function getConversationMessageExtraFingerprint(message) {
         extra.media_index || '',
         compactReplyFingerprint(extra.conversation_reply_to),
         compactConversationCommandsFingerprint(extra.conversation_commands),
-        extra.conversation_pinned ? 'pin' : '',
+        isPinned(message) ? `pin:${readPinnedAt(message)}` : '',
         extra.conversation_mode_image ? 'image' : '',
         extra.conversation_mode_ooc ? 'ooc' : '',
         extra.conversation_mode_reminder ? 'reminder' : '',

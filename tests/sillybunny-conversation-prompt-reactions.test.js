@@ -175,3 +175,19 @@ describe('the reactions that the model is told about', () => {
         expect(context.content).toContain('- ghost reacted 🎉 to Moon Fan\'s message');
     });
 });
+
+describe('a pinned message', () => {
+    const PINNED_AT = 1_700_000_000_000;
+    const build = messages => buildConversationPromptMessages(messages, 'Reply.', 'Aster', { personaId: 'persona-a.png' });
+
+    test('is in the prompt as any other message, with nothing of its pin and no line that says that it was pinned', async () => {
+        const plain = [message('1', 'user', 'Moon Fan', 'hello'), message('2', 'character', 'Aster', 'hi there'), message('3', 'user', 'Moon Fan', 'see you at six')];
+        const pins = plain.map(item => ({ ...item, extra: { ...item.extra, conversation_pinned: true, conversation_pinned_at: PINNED_AT } }));
+
+        const prompt = await build(pins);
+
+        expect(prompt).toEqual(await build(plain));
+        expect(JSON.stringify(prompt)).not.toMatch(/pinned|You pinned/i);
+        expect(JSON.stringify(prompt)).not.toContain(String(PINNED_AT));
+    });
+});
