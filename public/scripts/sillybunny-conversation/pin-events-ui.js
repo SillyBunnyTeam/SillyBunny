@@ -13,8 +13,8 @@ const EVENT_CLASS = 'sb-conversation-event';
 const MESSAGE_SELECTOR = '.sb-conversation-message[data-message-id]';
 
 /**
- * A status chip (DESIGN.md Chips): the state in words. It sits under the bubble, outside the name row, so a message
- * whose header is hidden because it continues a group still shows it.
+ * The state in words, in a pill under the bubble. It is outside the name row, which a message that continues a group
+ * does not show, so a pin on such a message still shows.
  */
 export function createPinnedMark() {
     const mark = document.createElement('span');
