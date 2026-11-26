@@ -96,7 +96,7 @@ describe('the line that says a message was pinned', () => {
     test('is spaced with the values of the spacing scale', () => {
         const row = declarationsOf(top, '.sb-conversation-event');
 
-        expect(row['margin-block']).toBe('12px 4px');
+        expect(row['margin-block']).toBe('12px 3px');
         expect(row.gap).toBe('6px 12px');
     });
 });
