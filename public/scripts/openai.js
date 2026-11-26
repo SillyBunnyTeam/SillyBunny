@@ -2111,13 +2111,6 @@ export async function prepareOpenAIMessages({
     }
 
     let chat = chatCompletion.getChat();
-    // SillyBunny: record the static-vs-dynamic system prefix boundary for provider KV prompt-cache alignment.
-    const staticSystemPrefixEnd = typeof chatCompletion.getStaticSystemPrefixEnd === 'function'
-        ? chatCompletion.getStaticSystemPrefixEnd()
-        : -1;
-    if (staticSystemPrefixEnd >= 0 && typeof chatStaticSystemPrefixEndMap !== 'undefined') {
-        chatStaticSystemPrefixEndMap.set(chat, staticSystemPrefixEnd);
-    }
 
     // SillyBunny: only prompt-ready listeners that mutate the finalized chat should
     // trigger the post-mutation budget recount.
@@ -2129,9 +2122,6 @@ export async function prepareOpenAIMessages({
     }
 
     chat = eventData.chat;
-    if (eventData.chatChanged && typeof chatStaticSystemPrefixEndMap !== 'undefined') {
-        chatStaticSystemPrefixEndMap.delete(chat);
-    }
 
     if (!dryRun && shouldCheckPostInterceptChatBudget(eventData)) {
         const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countChatCompletionPayloadTokensOpenAIAsync);
@@ -5296,14 +5286,6 @@ export async function createGenerationParameters(settings, model, type, messages
         'cacheScope': cacheScope ?? (type === 'quiet' ? 'auxiliary' : 'main'),
     };
 
-    // SillyBunny: forward the static system prefix boundary so backend KV caching can place a breakpoint ahead of dynamic WI.
-    const staticSystemPrefixEnd = typeof chatStaticSystemPrefixEndMap !== 'undefined'
-        ? chatStaticSystemPrefixEndMap.get(messages)
-        : undefined;
-    if (Number.isInteger(staticSystemPrefixEnd) && staticSystemPrefixEnd >= 0) {
-        generate_data.static_system_prefix_end = staticSystemPrefixEnd;
-    }
-
     if (settings.chat_completion_source === chat_completion_sources.AZURE_OPENAI) {
         generate_data.azure_base_url = settings.azure_base_url;
         generate_data.azure_deployment_name = settings.azure_deployment_name;
@@ -6142,34 +6124,6 @@ class InvalidCharacterNameError extends Error {
     }
 }
 
-// SillyBunny: track static-vs-dynamic system prefix boundaries per prepared chat array without mutating outbound ChatML objects.
-const chatStaticSystemPrefixEndMap = new WeakMap();
-
-// SillyBunny: dynamic system prompt identifiers whose contents vary turn-to-turn and should not bust static prefix KV caches.
-const DYNAMIC_SYSTEM_PROMPT_IDENTIFIERS = new Set([
-    'worldInfoBefore',
-    'worldInfoAfter',
-    'summary',
-    'authorsNote',
-    'vectorsMemory',
-    'vectorsDataBank',
-    'smartContext',
-]);
-
-/**
- * Checks whether a system prompt identifier carries turn-varying dynamic content.
- * @param {string | undefined} identifier
- * @returns {boolean}
- */
-export function isDynamicSystemPromptIdentifier(identifier) {
-    if (!identifier) {
-        return false;
-    }
-    return DYNAMIC_SYSTEM_PROMPT_IDENTIFIERS.has(identifier)
-        || identifier.startsWith('inchat_agent_')
-        || identifier.startsWith('pathfinder_');
-}
-
 // SillyBunny: bounded 32-entry LRU cache for inlined multimodal images keyed by (url, compressMode, quality).
 const MULTIMODAL_IMAGE_CACHE_MAX = 32;
 /** @type {Map<string, { dataUrl: string, width: number, height: number, tokens: number }>} */
@@ -6823,15 +6777,14 @@ export class ChatCompletion {
         const excludeList = ['newMainChat', 'newChat', 'groupNudge'];
         this.messages.collection = this.messages.flatten();
 
-        // SillyBunny: build full consecutive system runs first, preserve the static-to-dynamic KV cache boundary,
-        // and count only merged runs once in parallel instead of O(S^2) serial prefix counts.
+        // SillyBunny: concatenate consecutive system runs first and count merged runs once in parallel
+        // instead of O(S^2) serial prefix counts, preserving upstream squashing boundaries verbatim.
         const shouldSquash = (message) => {
             return !excludeList.includes(message.identifier) && message.role === 'system' && !message.name;
         };
 
         let lastMessage = null;
         let lastParts = null;
-        let lastDynamic = false;
         const squashedMessages = [];
         const mergedRuns = [];
 
@@ -6850,8 +6803,7 @@ export class ChatCompletion {
             }
 
             if (shouldSquash(message)) {
-                const currentDynamic = isDynamicSystemPromptIdentifier(message.identifier);
-                if (lastMessage && shouldSquash(lastMessage) && lastDynamic === currentDynamic) {
+                if (lastMessage && shouldSquash(lastMessage)) {
                     if (!lastParts) {
                         lastParts = [lastMessage.content];
                     }
@@ -6860,13 +6812,11 @@ export class ChatCompletion {
                     flushRun();
                     squashedMessages.push(message);
                     lastMessage = message;
-                    lastDynamic = currentDynamic;
                 }
             } else {
                 flushRun();
                 squashedMessages.push(message);
                 lastMessage = message;
-                lastDynamic = false;
             }
         }
         flushRun();
@@ -6878,35 +6828,6 @@ export class ChatCompletion {
         }
 
         this.messages.collection = squashedMessages;
-    }
-
-    /**
-     * SillyBunny: finds the index of the last leading static system message before the first dynamic
-     * leading system block (such as worldInfoBefore), or -1 when no split boundary exists.
-     * @returns {number}
-     */
-    getStaticSystemPrefixEnd() {
-        const flattened = this.messages.flatten();
-        let emittedIndex = 0;
-        let lastStaticIndex = -1;
-        let sawDynamic = false;
-
-        for (const message of flattened) {
-            if (!(message instanceof Message) || (!message.content && !message.tool_calls)) {
-                continue;
-            }
-            if (message.role !== 'system') {
-                break;
-            }
-            if (isDynamicSystemPromptIdentifier(message.identifier)) {
-                sawDynamic = true;
-                break;
-            }
-            lastStaticIndex = emittedIndex;
-            emittedIndex++;
-        }
-
-        return sawDynamic && lastStaticIndex >= 0 ? lastStaticIndex : -1;
     }
 
     /**

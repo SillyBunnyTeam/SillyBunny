@@ -194,7 +194,7 @@ describe('Track A: World Info batched counting, parallel loads, read-only snapsh
 describe('Track A: OpenAI squashSystemMessages single-pass, Message.createAsync name, and multimodal 32-entry LRU', () => {
     function loadOpenAiHelpers() {
         const openaiSource = readRepoFile('public/scripts/openai.js');
-        const start = openaiSource.indexOf('// SillyBunny: track static-vs-dynamic system prefix boundaries');
+        const start = openaiSource.indexOf('// SillyBunny: bounded 32-entry LRU cache for inlined multimodal images');
         const end = openaiSource.indexOf('function migrateChatCompletionSettings(settings)');
         if (start === -1 || end === -1) {
             throw new Error('Could not locate Message/ChatCompletion slice in public/scripts/openai.js');
@@ -257,37 +257,36 @@ this.ChatCompletion = ChatCompletion;`;
         return { context, countAsync };
     }
 
-    test('squashSystemMessages counts each merged run once in parallel and preserves static-to-dynamic boundary', async () => {
+    test('squashSystemMessages counts each merged run once in parallel while preserving upstream squashing boundaries', async () => {
         const { context, countAsync } = loadOpenAiHelpers();
         const cc = new context.ChatCompletion();
         cc.setTokenBudget(4096, 256);
 
         const m1 = await context.Message.createAsync('system', 'Main rule one', 'main');
         const m2 = await context.Message.createAsync('system', 'Static card description', 'charDescription');
-        const m3 = await context.Message.createAsync('system', 'Static scenario text', 'scenario');
         const wi = await context.Message.createAsync('system', 'Dynamic dragon lore', 'worldInfoBefore');
-        const wi2 = await context.Message.createAsync('system', 'Dynamic castle lore', 'worldInfoAfter');
         const u1 = await context.Message.createAsync('user', 'Hello', 'chatHistory-1');
+        const s1 = await context.Message.createAsync('system', 'Post history note one', 'jailbreak');
+        const s2 = await context.Message.createAsync('system', 'Post history note two', 'authorsNote');
 
         cc.add(new context.MessageCollection('main', m1));
         cc.add(new context.MessageCollection('charDescription', m2));
-        cc.add(new context.MessageCollection('scenario', m3));
         cc.add(new context.MessageCollection('worldInfoBefore', wi));
-        cc.add(new context.MessageCollection('worldInfoAfter', wi2));
         cc.add(new context.MessageCollection('chatHistory', u1));
+        cc.add(new context.MessageCollection('jailbreak', s1));
+        cc.add(new context.MessageCollection('authorsNote', s2));
 
         countAsync.mockClear();
         await cc.squashSystemMessages();
 
-        // Only the 2 merged runs (3 static -> 1 static, 2 dynamic -> 1 dynamic) are counted once each.
+        // Only the 2 merged runs (3 leading system -> 1, 2 trailing system -> 1) are counted once each,
+        // avoiding O(S^2) intermediate prefix counts while matching upstream squashing verbatim.
         expect(countAsync).toHaveBeenCalledTimes(2);
         const flat = cc.getChat();
         expect(flat).toHaveLength(3);
-        expect(flat[0].content).toBe('Main rule one\nStatic card description\nStatic scenario text');
-        expect(flat[1].content).toBe('Dynamic dragon lore\nDynamic castle lore');
-        expect(flat[2]).toEqual({ role: 'user', content: 'Hello' });
-        // Static prefix ends at index 0 (ahead of dynamic WI at index 1).
-        expect(cc.getStaticSystemPrefixEnd()).toBe(0);
+        expect(flat[0].content).toBe('Main rule one\nStatic card description\nDynamic dragon lore');
+        expect(flat[1]).toEqual({ role: 'user', content: 'Hello' });
+        expect(flat[2].content).toBe('Post history note one\nPost history note two');
     });
 
     test('Message.createAsync accepts optional name and counts only once without discarding initial count', async () => {
@@ -1052,59 +1051,53 @@ describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache al
         promptCaching.resetOpenRouterCacheableModelsCache();
     });
 
-    test('KV prompt-cache alignment places static-prefix cache_control ahead of dynamic worldInfoBefore while enforcing 4-marker cap and TTL monotonicity', async () => {
+    test('prompt-caching breakpoint placement and openai payload remain unchanged outside OpenRouter catalog SWR', async () => {
         const promptCaching = await import('../src/prompt-caching.js');
         const promptConverters = await import('../src/prompt-converters.js');
+        const openaiSource = readRepoFile('public/scripts/openai.js');
 
-        // 1) Native Claude via convertClaudeMessages + cache_stability tags (stripped from serialized output).
-        const rawMessages = [
-            { role: 'system', content: 'Main static instructions', cache_stability: 'static' },
-            { role: 'system', content: 'Dynamic worldInfoBefore lore', cache_stability: 'dynamic' },
-            { role: 'system', content: 'Character description', cache_stability: 'static' },
+        expect(openaiSource).not.toContain('static_system_prefix_end');
+        expect(openaiSource).not.toContain('chatStaticSystemPrefixEndMap');
+        expect(openaiSource).not.toContain('DYNAMIC_SYSTEM_PROMPT_IDENTIFIERS');
+
+        // 1) Native Claude still marks the final system prompt block as upstream/staging does.
+        const converted = promptConverters.convertClaudeMessages([
+            { role: 'system', content: 'Main static instructions' },
+            { role: 'system', content: 'World info block' },
             { role: 'user', content: 'Turn 1' },
             { role: 'assistant', content: 'Reply 1' },
             { role: 'user', content: 'Turn 2' },
-        ];
-        const converted = promptConverters.convertClaudeMessages(rawMessages, '', true, false, {
+        ], '', true, false, {
             charName: 'Char',
             userName: 'User',
             startsWithGroupName: () => false,
         });
 
-        // No cache_stability key leaks into serialized blocks.
-        expect(converted.systemPrompt.every(block => !Object.hasOwn(block, 'cache_stability'))).toBe(true);
-
-        const tools = [{ name: 'lookup', description: 'Lookup', input_schema: { type: 'object' } }];
-        const betaHeaders = [];
         const total = promptCaching.applyClaudeRequestCaching({
             systemPrompt: converted.systemPrompt,
-            tools,
+            tools: [{ name: 'lookup', description: 'Lookup', input_schema: { type: 'object' } }],
             messages: converted.messages,
             useSystemPrompt: true,
-            betaHeaders,
+            betaHeaders: [],
             config: {
                 claude: { enableSystemPromptCache: true, cachingAtDepth: 0, extendedTTL: true, cacheTTL: '1h' },
                 gemini: { enableSystemPromptCache: false },
             },
         });
-
-        // 1 tool + 1 static system breakpoint (ahead of dynamic WI!) + 2 depth breakpoints = 4 max.
         expect(total).toBe(4);
-        expect(converted.systemPrompt[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-        expect(converted.systemPrompt[1].cache_control).toBeUndefined();
-        expect(converted.systemPrompt[2].cache_control).toBeUndefined();
+        expect(converted.systemPrompt[0].cache_control).toBeUndefined();
+        expect(converted.systemPrompt[1].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
 
-        // 2) OpenRouter Gemini places its single breakpoint on static prefix ahead of dynamic worldInfoBefore.
+        // 2) OpenRouter Gemini still marks the last message of the leading system run.
         const geminiMessages = [
             { role: 'system', content: 'Main static prompt' },
-            { role: 'system', content: 'Dynamic worldInfoBefore' },
+            { role: 'system', content: 'World info block' },
             { role: 'user', content: 'Hi' },
         ];
         await promptCaching.applyOpenRouterRequestCaching({
             requestBody: {
                 model: 'google/gemini-3.5-flash',
                 messages: geminiMessages,
-                static_system_prefix_end: 0,
             },
             bodyParams: {},
             isModelCacheable: async () => true,
@@ -1113,10 +1106,10 @@ describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache al
                 gemini: { enableSystemPromptCache: true },
             },
         });
-        expect(geminiMessages[0].content).toEqual([
-            { type: 'text', text: 'Main static prompt', cache_control: { type: 'ephemeral' } },
+        expect(geminiMessages[0].content).toBe('Main static prompt');
+        expect(geminiMessages[1].content).toEqual([
+            { type: 'text', text: 'World info block', cache_control: { type: 'ephemeral' } },
         ]);
-        expect(geminiMessages[1].content).toBe('Dynamic worldInfoBefore');
     });
 
     test('generation journal coalesces rapid mutations via async atomic writes without sync fsync stalls', async () => {
