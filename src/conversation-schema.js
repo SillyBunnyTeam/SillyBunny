@@ -834,7 +834,8 @@ function getLineTime(record) {
 }
 
 function toPreview(text) {
-    return String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PREVIEW_LENGTH);
+    // `[^<>]` ends a tag at the next "<": with `[^>]` every lone "<" scanned to the end of the text, so the time grew with its square.
+    return String(text ?? '').replace(/<[^<>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PREVIEW_LENGTH);
 }
 
 function getLineRole(record) {

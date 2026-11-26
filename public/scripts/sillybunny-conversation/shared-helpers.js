@@ -44,8 +44,9 @@ export function buildConversationRoleplayContext(messages, endIndex = null) {
  * Format text for use in prompts by removing HTML, normalizing whitespace, and truncating.
  */
 export function formatPromptText(value, maxLength = 1400) {
+    // `[^<>]` ends a tag at the next "<": with `[^>]` every lone "<" scanned to the end of the text, so the time grew with its square.
     return String(value || '')
-        .replace(/<[^>]*>/g, ' ')
+        .replace(/<[^<>]*>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, maxLength);
