@@ -160,7 +160,8 @@ export function createChooserView({
         section.el = el('div', 'sb-emoji-section', { role: 'presentation' });
         section.el.dataset.section = key;
         section.el.dataset.built = 'false';
-        const heading = el('h3', 'sb-emoji-heading', { role: 'presentation', id: headingId });
+        // A div, not an h3: the global h3 rule of the theme draws a boxed header, and the group is named by this element through aria-labelledby.
+        const heading = el('div', 'sb-emoji-heading', { id: headingId });
         heading.textContent = label;
         section.grid = el('div', 'sb-emoji-grid', { 'role': 'group', 'aria-labelledby': headingId });
         section.el.append(heading, section.grid);
