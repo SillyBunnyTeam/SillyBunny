@@ -437,6 +437,103 @@ describe('what the server answers', () => {
     });
 });
 
+/** The server has a request when it reaches it, and its answer waits for `release()`; the queue sends the next request after the answer. */
+function holdFolderUpdates() {
+    const gates = [];
+    const original = adapter.fetchJson;
+    adapter.fetchJson = async (path, body, options) => {
+        if (path !== '/folders/update') {
+            return original(path, body, options);
+        }
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        gates.push(release);
+        const answer = await original(path, body, options);
+        await gate;
+        return answer;
+    };
+    return {
+        release: index => gates[index](),
+        get requests() {
+            return gates.length;
+        },
+    };
+}
+
+describe('changes that are made while an earlier request is out', () => {
+    test('the answer to a request does not undo a change that was sent behind it', async () => {
+        await started([DIRECT]);
+        const held = holdFolderUpdates();
+
+        folders.createFolder(PERSONA, 'One');
+        await adapter.clock.advance(0);
+        const second = folders.createFolder(PERSONA, 'Two');
+        folders.setMembers(PERSONA, [DIRECT.id], second.id);
+        await adapter.clock.advance(0);
+        expect(held.requests).toBe(1);
+
+        held.release(0);
+        await settle(5);
+
+        // The request with the second folder is out now, and its answer has not come.
+        expect(held.requests).toBe(2);
+        expect(folders.layout(PERSONA).folders.map(folder => folder.name)).toEqual(['One', 'Two']);
+        expect(folders.folderOf(PERSONA, DIRECT.id)).toBe(second.id);
+        held.release(1);
+        await folders.flush();
+        expect(folders.folderOf(PERSONA, DIRECT.id)).toBe(second.id);
+        expect(stored().personas[PERSONA].members).toEqual({ [DIRECT.id]: second.id });
+    });
+
+    test('a conversation that goes back to the folder it was in is filed again, not taken as filed already', async () => {
+        await started([DIRECT]);
+        const { id } = folders.createFolder(PERSONA, 'One');
+        await folders.flush();
+        const held = holdFolderUpdates();
+
+        folders.setMembers(PERSONA, [DIRECT.id], id);
+        await adapter.clock.advance(0);
+        folders.setMembers(PERSONA, [DIRECT.id], null);
+        await adapter.clock.advance(0);
+        held.release(0);
+        await settle(5);
+        expect(folders.folderOf(PERSONA, DIRECT.id)).toBe('');
+
+        folders.setMembers(PERSONA, [DIRECT.id], id);
+        await adapter.clock.advance(0);
+        held.release(1);
+        await settle(5);
+        held.release(2);
+        await folders.flush();
+
+        expect(held.requests).toBe(3);
+        expect(folders.folderOf(PERSONA, DIRECT.id)).toBe(id);
+        expect(stored().personas[PERSONA].members).toEqual({ [DIRECT.id]: id });
+    });
+
+    test('the open state of a section that was sent behind an earlier request stays when its answer comes', async () => {
+        await started();
+        const { id } = folders.createFolder(PERSONA, 'One');
+        await folders.flush();
+        const held = holdFolderUpdates();
+
+        folders.updateFolder(PERSONA, id, { name: 'Renamed' });
+        await adapter.clock.advance(0);
+        folders.updateFolder(PERSONA, id, { expanded: false });
+        folders.setFavoritesExpanded(PERSONA, false);
+        await adapter.clock.advance(FOLDER_FREQUENT_DELAY_MS);
+        held.release(0);
+        await settle(5);
+
+        expect(folders.layout(PERSONA)).toMatchObject({ favoritesExpanded: false, folders: [{ name: 'Renamed', expanded: false }] });
+        held.release(1);
+        await folders.flush();
+        expect(stored().personas[PERSONA]).toMatchObject({ favoritesExpanded: false, folders: [{ name: 'Renamed', expanded: false }] });
+    });
+});
+
 describe('refresh', () => {
     test('reads the file again and keeps the changes that wait to be sent', async () => {
         await started();

@@ -105,6 +105,40 @@ export function mergePatches(older, newer) {
     return merged;
 }
 
+/**
+ * What is left of an older patch after the fields that later patches write: a field that both name keeps the later value.
+ * A field is a top-level key, a key of `settings`, or one field of one chat in `chats`, as `mergePatches()` merges them.
+ * A patch that is sent again after a failure is cut down with this, so that it cannot undo an edit that was sent after it.
+ * @param {object} patch
+ * @param {object[]} laterPatches
+ * @returns {object} A new patch, empty when nothing is left.
+ */
+export function withoutFieldsOf(patch, laterPatches) {
+    const result = {};
+    for (const [key, value] of Object.entries(patch)) {
+        if (key === 'settings' && isObject(value)) {
+            const rest = Object.fromEntries(Object.entries(value).filter(([name]) => !laterPatches.some(later => isObject(later.settings) && Object.hasOwn(later.settings, name))));
+            if (Object.keys(rest).length) {
+                result.settings = rest;
+            }
+        } else if (key === 'chats' && isObject(value)) {
+            const chats = {};
+            for (const [chatId, state] of Object.entries(value)) {
+                const rest = Object.fromEntries(Object.entries(state).filter(([field]) => !laterPatches.some(later => isObject(later.chats?.[chatId]) && Object.hasOwn(later.chats[chatId], field))));
+                if (Object.keys(rest).length) {
+                    chats[chatId] = rest;
+                }
+            }
+            if (Object.keys(chats).length) {
+                result.chats = chats;
+            }
+        } else if (!laterPatches.some(later => Object.hasOwn(later, key))) {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
 function isFrequentOnly(patch) {
     return Object.keys(patch).every(key => key === 'chats')
         && Object.values(patch.chats ?? {}).every(state => Object.keys(state).every(field => CHAT_STATE_FIELDS.includes(field)));
@@ -120,6 +154,15 @@ export function createConversationData(adapter) {
     const sessions = new Map();
     /** @type {Map<string, { patch: object, firstAt: number, timer: any }>} */
     const pendingPatches = new Map();
+    /**
+     * The patches of a conversation that left `pendingPatches` for the network, oldest first, until the server has answered
+     * each of them (`confirmed`) or the module gave it up. A server answer describes the conversation as it was after the
+     * patches up to the one it answers, so every read of the server puts these (and the pending patch) over what it read:
+     * an edit that is newer than the answer is never undone by it. An answered patch stays while an older one is still out,
+     * so that the older one is not applied over it.
+     * @type {Map<string, { patch: object, confirmed: boolean, attempt: number, timer: any }[]>}
+     */
+    const sentPatches = new Map();
     /** @type {Map<string, ReturnType<typeof createSerialQueue>>} */
     const conversationQueues = new Map();
     const characterQueue = createSerialQueue();
@@ -316,6 +359,10 @@ export function createConversationData(adapter) {
             refreshEntrySummary(view, entry);
         }
         recomputeAggregates(view);
+        // What the server has not answered yet is newer than what it sent, so it goes over it, oldest first.
+        for (const sent of sentPatches.get(view.id) ?? []) {
+            applyPatchLocal(view, sent.patch);
+        }
         const pending = pendingPatches.get(view.id);
         if (pending) {
             applyPatchLocal(view, pending.patch);
@@ -359,6 +406,10 @@ export function createConversationData(adapter) {
             adapter.clearTimer(pending.timer);
             pendingPatches.delete(id);
         }
+        for (const sent of sentPatches.get(id) ?? []) {
+            adapter.clearTimer(sent.timer);
+        }
+        sentPatches.delete(id);
         conversationQueues.delete(id);
         views.delete(id);
     }
@@ -588,22 +639,73 @@ export function createConversationData(adapter) {
         }
         adapter.clearTimer(pending.timer);
         pendingPatches.delete(id);
-        await queueOf(id).run(() => sendPatch(id, pending.patch, options));
+        const sent = { patch: pending.patch, confirmed: false, attempt: 0, timer: null };
+        let list = sentPatches.get(id);
+        if (!list) {
+            list = [];
+            sentPatches.set(id, list);
+        }
+        list.push(sent);
+        await queueOf(id).run(() => sendPatch(id, sent, options));
     }
 
-    async function sendPatch(id, patch, options, attempt = 0) {
+    /** Drops answered patches from the front of the list: they were kept only to stay over an older patch that was still out. */
+    function trimSent(id) {
+        const list = sentPatches.get(id);
+        while (list?.length && list[0].confirmed) {
+            list.shift();
+        }
+        if (list && !list.length) {
+            sentPatches.delete(id);
+        }
+    }
+
+    /** The server answered the patch: its answer already holds it. */
+    function confirmSent(id, sent) {
+        sent.confirmed = true;
+        adapter.clearTimer(sent.timer);
+        sent.timer = null;
+        trimSent(id);
+    }
+
+    /** The patch is given up (refused, or not sent after every attempt): what is read from the server no longer has it over it. */
+    function forgetSent(id, sent) {
+        adapter.clearTimer(sent.timer);
+        sent.timer = null;
+        const list = sentPatches.get(id);
+        const index = list?.indexOf(sent) ?? -1;
+        if (index >= 0) {
+            list.splice(index, 1);
+        }
+        trimSent(id);
+    }
+
+    async function sendPatch(id, sent, options) {
         const view = views.get(id);
         if (!view) {
+            forgetSent(id, sent);
             return;
         }
-        // A patch for a chat that is still being created waits for its creation, which runs in this queue before it.
+        let patch = sent.patch;
+        if (sent.attempt > 0) {
+            // The patches behind this one were sent while it waited, and they win over it: it would undo them on the server.
+            const list = sentPatches.get(id) ?? [];
+            const later = [...list.slice(list.indexOf(sent) + 1).map(item => item.patch), ...(pendingPatches.has(id) ? [pendingPatches.get(id).patch] : [])];
+            patch = withoutFieldsOf(sent.patch, later);
+            if (!Object.keys(patch).length) {
+                confirmSent(id, sent);
+                return;
+            }
+        }
         let answer;
         try {
             answer = await request('/update', { id, patch }, options);
         } catch (error) {
-            return retryPatch(id, patch, attempt, error);
+            retryPatch(id, sent, error);
+            return;
         }
         if (answer.status === 200) {
+            confirmSent(id, sent);
             const server = answer.json.conversation;
             if (views.has(id) && server) {
                 ingestConversation(server);
@@ -612,7 +714,8 @@ export function createConversationData(adapter) {
             return;
         }
         if (answer.status >= 500) {
-            return retryPatch(id, patch, attempt, failureOf(answer));
+            retryPatch(id, sent, failureOf(answer));
+            return;
         }
         if (answer.status === 404) {
             dropConversation(id);
@@ -620,21 +723,28 @@ export function createConversationData(adapter) {
             reportError('not_found', 'The conversation no longer exists.', { id });
             return;
         }
+        forgetSent(id, sent);
         reportError(answer.json?.error ?? 'update_rejected', 'A change to a conversation was refused.', { id, status: answer.status });
         await refresh();
     }
 
-    function retryPatch(id, patch, attempt, error) {
-        const delay = RETRY_DELAYS_MS[attempt];
+    /**
+     * Sends a patch again after a delay. The wait does not hold the queue, because a task of the queue that waited for its
+     * own retry would wait for itself: the patches behind it go on, and `sendPatch()` cuts out of the retry what they wrote.
+     * The patch stays applied to the cache while it waits.
+     */
+    function retryPatch(id, sent, error) {
+        const delay = RETRY_DELAYS_MS[sent.attempt];
         if (delay === undefined || !views.has(id)) {
+            forgetSent(id, sent);
             reportError(error.code ?? 'network', 'A change to a conversation could not be saved.', { id });
-            return undefined;
+            return;
         }
-        return new Promise((resolve) => {
-            adapter.setTimer(() => {
-                resolve(queueOf(id).run(() => sendPatch(id, patch, undefined, attempt + 1)));
-            }, delay);
-        });
+        sent.attempt++;
+        sent.timer = adapter.setTimer(() => {
+            sent.timer = null;
+            void queueOf(id).run(() => sendPatch(id, sent));
+        }, delay);
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -1453,6 +1563,10 @@ export function createConversationData(adapter) {
         if (pendingPatches.size || pendingCharacters.size || characterQueue.size) {
             return true;
         }
+        // A patch that waits for its next attempt is in no queue.
+        if ([...sentPatches.values()].some(list => list.some(sent => !sent.confirmed))) {
+            return true;
+        }
         for (const queue of conversationQueues.values()) {
             if (queue.size) {
                 return true;
@@ -1495,6 +1609,11 @@ export function createConversationData(adapter) {
         adapter.clearTimer(retryTimer);
         for (const pending of pendingPatches.values()) {
             adapter.clearTimer(pending.timer);
+        }
+        for (const list of sentPatches.values()) {
+            for (const sent of list) {
+                adapter.clearTimer(sent.timer);
+            }
         }
         listeners.clear();
     }

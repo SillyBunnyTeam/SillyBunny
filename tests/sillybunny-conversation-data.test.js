@@ -8,6 +8,7 @@ import {
     MAX_LOADED_CHATS,
     mergePatches,
     RETRY_DELAYS_MS,
+    withoutFieldsOf,
 } from '../public/scripts/sillybunny-conversation/conversation-data.js';
 import { header, line, PERSONA, recordCalls, scriptedAdapter, seedConversations, settle, startConversationServer } from './util/conversation-data-fixture.js';
 
@@ -635,6 +636,250 @@ describe('metadata', () => {
             { name: 'a', settings: { x: 1, y: 2 }, chats: { main: { lastActivity: 1 } }, reminders: [{ id: 'a' }] },
             { name: 'b', settings: { y: null, z: 3 }, chats: { main: { followupCount: 2 }, other: { readThrough: 'm' } }, reminders: [] },
         )).toEqual({ name: 'b', settings: { x: 1, y: null, z: 3 }, chats: { main: { lastActivity: 1, followupCount: 2 }, other: { readThrough: 'm' } }, reminders: [] });
+    });
+
+    test('withoutFieldsOf leaves out the top-level keys, the settings keys and the chat fields that a later patch writes, and nothing else', () => {
+        const older = { name: 'a', favorite: true, settings: { x: 1, y: 2 }, chats: { main: { readThrough: 'm1', lastActivity: 5 }, other: { readThrough: 'o1' } } };
+
+        expect(withoutFieldsOf(older, [{ name: 'b' }, { settings: { y: null } }, { chats: { main: { readThrough: 'm2' } } }]))
+            .toEqual({ favorite: true, settings: { x: 1 }, chats: { main: { lastActivity: 5 }, other: { readThrough: 'o1' } } });
+        expect(withoutFieldsOf(older, [])).toEqual(older);
+    });
+
+    test('withoutFieldsOf drops a settings object, a chat and a patch that nothing is left of, and does not change its arguments', () => {
+        const older = { settings: { x: 1 }, chats: { main: { readThrough: 'm1' } } };
+        const before = structuredClone(older);
+
+        expect(withoutFieldsOf(older, [{ settings: { x: 2 } }, { chats: { main: { readThrough: 'm2' } } }])).toEqual({});
+        expect(older).toEqual(before);
+    });
+});
+
+/**
+ * A request is answered later than it is made: the server has the patch when the request reaches it, and the answer of the
+ * server waits for `release()`. `beforeServer` holds the request instead, so that the server has not seen the patch when
+ * something else reads it. The queue of a conversation sends the next request only after the answer to the one before.
+ */
+function holdUpdates({ beforeServer = false } = {}) {
+    const gates = [];
+    const original = adapter.fetchJson;
+    adapter.fetchJson = async (path, body, options) => {
+        if (path !== '/update') {
+            return original(path, body, options);
+        }
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        gates.push(release);
+        if (beforeServer) {
+            await gate;
+            return original(path, body, options);
+        }
+        const answer = await original(path, body, options);
+        await gate;
+        return answer;
+    };
+    return {
+        release: index => gates[index](),
+        get requests() {
+            return gates.length;
+        },
+    };
+}
+
+/** Answers the first `times` requests to /update with a failure, and sends the rest to the server. */
+function failUpdates(times, status = 500) {
+    const original = adapter.fetchJson;
+    let left = times;
+    adapter.fetchJson = async (path, body, options) => {
+        if (path === '/update' && left > 0) {
+            left--;
+            adapter.calls.push({ path, body: structuredClone(body), options });
+            return { status, json: { error: status >= 500 ? 'internal' : 'invalid_input' } };
+        }
+        return original(path, body, options);
+    };
+}
+
+describe('metadata: edits that are made while an earlier patch is out', () => {
+    const ID = 'conv_1_direct01';
+
+    test('the answer to a patch does not undo a later edit that was sent behind it', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { name: 'First' });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { name: 'Second' });
+        await adapter.clock.advance(0);
+        expect(held.requests).toBe(1);
+
+        held.release(0);
+        await settle(5);
+
+        // The request of the second edit is out now, and its answer has not come.
+        expect(held.requests).toBe(2);
+        expect(data.get(ID).name).toBe('Second');
+        held.release(1);
+        await data.flush();
+        expect(data.get(ID).name).toBe('Second');
+        expect(readConversation(server.user, ID).name).toBe('Second');
+    });
+
+    test('an edit that goes back to the value of the first one is sent, not dropped as a change that the cache has already', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { favorite: true });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { favorite: false });
+        await adapter.clock.advance(0);
+        held.release(0);
+        await settle(5);
+        expect(data.get(ID).favorite).toBe(false);
+
+        data.patchConversation(ID, { favorite: true });
+        await adapter.clock.advance(0);
+        held.release(1);
+        await settle(5);
+        held.release(2);
+        await data.flush();
+
+        expect(held.requests).toBe(3);
+        expect(data.get(ID).favorite).toBe(true);
+        expect(readConversation(server.user, ID).favorite).toBe(true);
+    });
+
+    test('the rows of settings that later patches wrote stay when the answer to an earlier one comes', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { settings: { notifications_muted: true } });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { settings: { authors_note: 'Keep it light.' } });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { settings: { notifications_muted: null } });
+        await adapter.clock.advance(0);
+        held.release(0);
+        await settle(5);
+
+        expect(data.get(ID).settings).toEqual({ authors_note: 'Keep it light.' });
+        held.release(1);
+        await settle(5);
+        held.release(2);
+        await data.flush();
+        expect(data.get(ID).settings).toEqual({ authors_note: 'Keep it light.' });
+        expect(readConversation(server.user, ID).settings).toEqual({ authors_note: 'Keep it light.' });
+    });
+
+    test('the read marker of a later patch stays, and the unread count follows it', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { chats: { main: { readThrough: 'main-1' } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS);
+        data.patchConversation(ID, { chats: { main: { readThrough: 'main-2' } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS);
+        held.release(0);
+        await settle(5);
+
+        expect(data.get(ID).chats[0].readThrough).toBe('main-2');
+        held.release(1);
+        await data.flush();
+        expect(readConversation(server.user, ID).chats[0].readThrough).toBe('main-2');
+    });
+
+    test('a read of the list while a patch is out does not undo the patch, which the server has not seen yet', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates({ beforeServer: true });
+
+        data.patchConversation(ID, { name: 'First' });
+        await adapter.clock.advance(0);
+        await settle(3);
+        await data.refresh();
+
+        expect(data.get(ID).name).toBe('First');
+        held.release(0);
+        await data.flush();
+        expect(readConversation(server.user, ID).name).toBe('First');
+    });
+
+    test('a patch that the server refused is not applied again by what is read after it', async () => {
+        await started([DIRECT]);
+        failUpdates(1, 400);
+
+        data.patchConversation(ID, { name: 'Refused' });
+        await adapter.clock.advance(0);
+        await data.flush();
+        await settle(5);
+
+        expect(events.some(event => event.type === 'error')).toBe(true);
+        expect(data.get(ID).name).toBe(readConversation(server.user, ID).name);
+        expect(data.get(ID).name).not.toBe('Refused');
+        await data.refresh();
+        expect(data.get(ID).name).not.toBe('Refused');
+    });
+
+    test('a patch that got a 5xx is sent again after the delay, stays applied meanwhile, and the patches behind it are not held back', async () => {
+        await started([DIRECT]);
+        failUpdates(1);
+
+        data.patchConversation(ID, { name: 'First' });
+        await adapter.clock.advance(0);
+        await settle(5);
+        data.patchConversation(ID, { favorite: true });
+        await adapter.clock.advance(0);
+        await settle(5);
+
+        expect(adapter.callsTo('/update').map(call => call.body.patch)).toEqual([{ name: 'First' }, { favorite: true }]);
+        expect(data.hasPendingWrites()).toBe(true);
+        await data.refresh();
+        expect(data.get(ID)).toMatchObject({ name: 'First', favorite: true });
+
+        await adapter.clock.advance(RETRY_DELAYS_MS[0]);
+        await data.flush();
+
+        expect(adapter.callsTo('/update').map(call => call.body.patch)).toEqual([{ name: 'First' }, { favorite: true }, { name: 'First' }]);
+        expect(readConversation(server.user, ID)).toMatchObject({ name: 'First', favorite: true });
+        expect(data.hasPendingWrites()).toBe(false);
+    });
+
+    test('the retry of a patch leaves out what a later patch wrote, so that it does not undo that edit on the server', async () => {
+        await started([DIRECT]);
+        failUpdates(1);
+
+        data.patchConversation(ID, { name: 'First', favorite: true });
+        await adapter.clock.advance(0);
+        await settle(5);
+        data.patchConversation(ID, { name: 'Second' });
+        await adapter.clock.advance(0);
+        await settle(5);
+        await adapter.clock.advance(RETRY_DELAYS_MS[0]);
+        await data.flush();
+
+        expect(adapter.callsTo('/update').map(call => call.body.patch)).toEqual([{ name: 'First', favorite: true }, { name: 'Second' }, { favorite: true }]);
+        expect(data.get(ID)).toMatchObject({ name: 'Second', favorite: true });
+        expect(readConversation(server.user, ID)).toMatchObject({ name: 'Second', favorite: true });
+    });
+
+    test('a patch that every attempt fails reports it once the delays are spent, and then stays out of what is read', async () => {
+        await started([DIRECT]);
+        failUpdates(RETRY_DELAYS_MS.length + 1);
+
+        data.patchConversation(ID, { name: 'Lost' });
+        await adapter.clock.advance(0);
+        await settle(5);
+        for (const delay of RETRY_DELAYS_MS) {
+            await adapter.clock.advance(delay);
+        }
+        await settle(5);
+
+        expect(adapter.callsTo('/update')).toHaveLength(RETRY_DELAYS_MS.length + 1);
+        expect(events.filter(event => event.type === 'error')).toHaveLength(1);
+        expect(data.hasPendingWrites()).toBe(false);
+        await data.refresh();
+        expect(data.get(ID).name).toBe(readConversation(server.user, ID).name);
     });
 });
 

@@ -10,7 +10,6 @@ import {
     bootConversationPage,
     centreOf,
     expectNames,
-    flushListWrites,
     headingLabels,
     headingOf,
     newFolderId,
@@ -482,15 +481,9 @@ test.describe('Move to Folder in the menu of a row', () => {
 });
 
 test.describe('Alt with an arrow key across the sections', () => {
-    /** A key press and the write that it makes, which has landed before the next press, as it has for a person. */
-    async function press(page, combo) {
-        await page.keyboard.press(combo);
-        await flushListWrites(page);
-    }
-
     async function altKey(page, name, key) {
         await rowNamed(page, name).locator(ITEM).focus();
-        await press(page, `Alt+${key}`);
+        await page.keyboard.press(`Alt+${key}`);
     }
 
     test('walks a row down from Favorites through the folders to Conversations and back up, keeping focus and announcing each move', async ({ page, baseURL }) => {
@@ -506,24 +499,24 @@ test.describe('Alt with an arrow key across the sections', () => {
         await expect(page.locator(STATUS)).toHaveText('Seraphina moved to Work');
         expect((await readStoredConversation(page, made.seraphina.conversationId)).favorite).toBe(false);
 
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, friends, ['Seraphina']);
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect(page.locator(STATUS)).toHaveText('Seraphina moved to Conversations');
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, 'conversations', ALL_NAMES);
 
-        await press(page, 'Alt+ArrowUp');
+        await page.keyboard.press('Alt+ArrowUp');
         await expectNames(page, friends, ['Seraphina']);
-        await press(page, 'Alt+Home');
+        await page.keyboard.press('Alt+Home');
         await expectNames(page, 'favorites', ['Seraphina']);
         await expect(page.locator(STATUS)).toHaveText('Seraphina added to Favorites');
         // Moving into Favorites keeps the folder that the row was last in.
         await expect.poll(() => filedIn(page, persona, made.seraphina.conversationId)).toBe(ids[1]);
-        await press(page, 'Alt+ArrowUp');
+        await page.keyboard.press('Alt+ArrowUp');
         await expectNames(page, 'favorites', ['Seraphina']);
-        await press(page, 'Alt+End');
+        await page.keyboard.press('Alt+End');
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect.poll(() => filedIn(page, persona, made.seraphina.conversationId)).toBe('');
     });
@@ -533,9 +526,38 @@ test.describe('Alt with an arrow key across the sections', () => {
 
         await altKey(page, 'Seraphina', 'ArrowUp');
         await expectNames(page, folderKeys(ids)[1], ['Seraphina']);
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, 'conversations', ALL_NAMES);
         await expect(rowNamed(page, 'Seraphina').locator(ITEM)).toBeFocused();
+    });
+
+    test('keys pressed one after the other with no wait for the saves end where the last one put the row, and so does the server', async ({ page, baseURL }) => {
+        const { ids, made, persona } = await openFoldersList(page, baseURL, { folders: [{ name: 'Work' }, { name: 'Friends' }] });
+        const [work, friends] = folderKeys(ids);
+        await patchConversation(page, made.seraphina.conversationId, { favorite: true });
+        await expectNames(page, 'favorites', ['Seraphina']);
+        await rowNamed(page, 'Seraphina').locator(ITEM).focus();
+
+        // Favorites, Work, Friends, Work, Friends, Conversations, Friends, Work and Favorites again: the folder that the row was in stays with it.
+        for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowUp', 'ArrowUp']) {
+            await page.keyboard.press(`Alt+${key}`);
+        }
+
+        await expectNames(page, 'favorites', ['Seraphina']);
+        await expect(rowNamed(page, 'Seraphina').locator(ITEM)).toBeFocused();
+        await expect.poll(async () => (await readStoredConversation(page, made.seraphina.conversationId)).favorite).toBe(true);
+        expect(await filedIn(page, persona, made.seraphina.conversationId)).toBe(ids[0]);
+        expect(await headingLabels(page)).toEqual(['Favorites', 'Work', 'Friends', 'Conversations']);
+        await expectNames(page, work, []);
+        await expectNames(page, friends, []);
+
+        // Down again, as fast: the first folder, the second, and Conversations.
+        for (const key of ['ArrowDown', 'ArrowDown', 'ArrowDown']) {
+            await page.keyboard.press(`Alt+${key}`);
+        }
+        await expectNames(page, 'conversations', ALL_NAMES);
+        await expect.poll(async () => (await readStoredConversation(page, made.seraphina.conversationId)).favorite).toBe(false);
+        expect(await filedIn(page, persona, made.seraphina.conversationId)).toBe('');
     });
 
     test('with no folder, up and down are Favorites and Conversations as they always were', async ({ page, baseURL }) => {
@@ -543,7 +565,7 @@ test.describe('Alt with an arrow key across the sections', () => {
 
         await altKey(page, 'Seraphina', 'ArrowUp');
         await expectNames(page, 'favorites', ['Seraphina']);
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, 'favorites', []);
         await expect(rowNamed(page, 'Seraphina').locator(ITEM)).toBeFocused();
     });
@@ -555,10 +577,10 @@ test.describe('Alt with an arrow key across the sections', () => {
         // From Conversations, Up goes to the last folder and Home to Favorites.
         await altKey(page, 'Seraphina', 'Home');
         await expectNames(page, 'favorites', ['Seraphina']);
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, one, ['Seraphina']);
         await expect(headingOf(page, one)).toHaveAttribute('aria-expanded', 'true');
-        await press(page, 'Alt+ArrowDown');
+        await page.keyboard.press('Alt+ArrowDown');
         await expectNames(page, two, ['Seraphina']);
         await expect(headingOf(page, one)).toHaveAttribute('aria-expanded', 'false');
         await expect(headingOf(page, two)).toHaveAttribute('aria-expanded', 'true');

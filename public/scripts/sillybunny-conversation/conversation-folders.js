@@ -64,6 +64,13 @@ export function createConversationFolders(adapter) {
     let status = 'idle';
     /** @type {Map<string, { ops: object[], firstAt: number, timer: any, attempts: number }>} */
     const pending = new Map();
+    /**
+     * The batches of operations that left `pending` for the network and are not answered yet, per persona, oldest first.
+     * An answer holds only the batches up to the one it answers, so what is read from the server has these put over it, and
+     * then the operations that wait in `pending`: a change that is newer than an answer is never undone by it.
+     * @type {Map<string, object[][]>}
+     */
+    const inFlight = new Map();
     const queue = createSerialQueue();
     const listeners = new Set();
     const layouts = new WeakMap();
@@ -193,13 +200,14 @@ export function createConversationFolders(adapter) {
         return adapter.fetchJson(path, body, options);
     }
 
+    /** Puts the changes that the server has not answered over the record of a persona that was just read: the batches that are out, then the ones that wait. */
     function applyPending(personaId) {
-        const entry = pending.get(personaId);
-        if (!entry) {
+        const batches = [...(inFlight.get(personaId) ?? []), pending.get(personaId)?.ops ?? []];
+        if (!batches.some(batch => batch.length)) {
             return;
         }
         let record = getPersonaFolders(file, personaId);
-        for (const op of entry.ops) {
+        for (const op of batches.flat()) {
             try {
                 record = applyFolderOps(record, [op]);
             } catch {
@@ -207,6 +215,17 @@ export function createConversationFolders(adapter) {
             }
         }
         file = withPersonaFolders(file, personaId, record);
+    }
+
+    function leaveInFlight(personaId, batch) {
+        const list = inFlight.get(personaId);
+        const index = list?.indexOf(batch) ?? -1;
+        if (index >= 0) {
+            list.splice(index, 1);
+        }
+        if (list && !list.length) {
+            inFlight.delete(personaId);
+        }
     }
 
     /** Reads the file and puts it in place of the copy, keeping the operations that are not sent yet. */
@@ -221,7 +240,7 @@ export function createConversationFolders(adapter) {
             return false;
         }
         file = normalizeFolderFile(answer.json);
-        for (const personaId of pending.keys()) {
+        for (const personaId of new Set([...inFlight.keys(), ...pending.keys()])) {
             applyPending(personaId);
         }
         return true;
@@ -295,8 +314,11 @@ export function createConversationFolders(adapter) {
         try {
             answer = await request('/folders/update', { personaId, ops }, options);
         } catch {
+            leaveInFlight(personaId, ops);
             return requeue(personaId, ops, attempt, 'network');
         }
+        // The batch is answered, or it goes back to `pending`, or it is given up: it is no longer one that is out.
+        leaveInFlight(personaId, ops);
         if (answer.status === 200) {
             const entry = pending.get(personaId);
             if (entry) {
@@ -344,6 +366,7 @@ export function createConversationFolders(adapter) {
         if (entry.ops.length === 0) {
             pending.delete(personaId);
         }
+        inFlight.set(personaId, [...(inFlight.get(personaId) ?? []), batch]);
         const done = await queue.run(() => send(personaId, batch, options, attempt));
         if (done && pending.has(personaId)) {
             await flushPersona(personaId, options);

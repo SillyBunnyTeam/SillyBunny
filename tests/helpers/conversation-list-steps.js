@@ -235,17 +235,3 @@ export function headingOf(page, key) {
 export function headingLabels(page) {
     return page.locator(`${LIST} .sb-conversation-list-heading-label`).allTextContents();
 }
-
-/**
- * Waits until the page has written everything that waits to be written, the favourite flag and the folders. A write that
- * is in flight answers with the state of the server at that time, so a spec that moves a row twice in a row waits between
- * the two moves, as a person's second key press comes after the answer.
- */
-export async function flushListWrites(page) {
-    await page.evaluate(async () => {
-        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
-        await conversationData.flush();
-        const { conversationFolders } = await import('/scripts/sillybunny-conversation/conversation-folders-browser.js');
-        await conversationFolders.flush();
-    });
-}
