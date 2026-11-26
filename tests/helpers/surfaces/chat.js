@@ -689,9 +689,25 @@ export const surfaces = [
                 },
                 ready: ['#sb_conversation_reply_preview:not([hidden])', CONVERSATION_SENDABLE],
             },
+            {
+                // The chooser is a popover or a sheet outside the composer. The shortcut opens it at every width: from the Emoji button, or from the "+" button where the Emoji button is folded away.
+                id: 'emoji-chooser',
+                root: '.sb-action-popover:has(.sb-emoji-chooser), .sb-action-sheet:has(.sb-emoji-chooser)',
+                async open(page) {
+                    await page.locator('#sb_conversation_input').focus();
+                    await page.keyboard.press('Control+Period');
+                    await page.locator('.sb-emoji-chooser .sb-emoji-cell').first().waitFor({ state: 'visible' });
+                    await page.waitForFunction(() => document.fonts.check('20px "SB Emoji"', '😀'));
+                    await settle(page);
+                },
+                ready: ['.sb-emoji-chooser .sb-emoji-search-entry', '.sb-emoji-chooser .sb-emoji-categories'],
+            },
         ],
         masks: CONVERSATION_MASKS,
         needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/attachments.js`, `${CSS}/sillybunny-conversation.css`],
+        sources: [
+            `${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/attachments.js`, `${CSS}/sillybunny-conversation.css`,
+            `${SCRIPTS}/sillybunny-conversation/emoji/emoji-chooser.js`, `${SCRIPTS}/sillybunny-conversation/emoji/emoji-chooser-view.js`, `${CSS}/sillybunny-emoji-chooser.css`,
+        ],
     },
 ].map(withViewports);
