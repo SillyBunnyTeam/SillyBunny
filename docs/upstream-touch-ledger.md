@@ -3009,6 +3009,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-23, Track 1 Slice 1E performance pass. |
 | Owner | Frontend performance owner. |
 
+### `public/script.js` - direct live-object settings sync fingerprinting
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Settings boot fingerprinting and debounced settings save unchanged-skip fast path. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-settings-sync.js` (`getFingerprint()` accepting live objects directly without re-running `JSON.parse`). |
+| Adapter shape | Two marked call-site updates in `public/script.js`: `getSettings()` hashes the parsed `settings` object before UI mutations, and `saveSettingsInner()` computes `settingsSync.getFingerprint(payload)` before `JSON.stringify(payload)` so unchanged saves skip both `JSON.parse` and `JSON.stringify`. |
+| Protecting tests | `tests/sillybunny-settings-sync.test.js`, `tests/unit/sillybunny-memory-engine-hotfixes.test.js`. |
+| Validation | 2026-11-26 (settings save, boot): root and `tests/` lint, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites (`sillybunny-settings-sync.test.js`, `unit/sillybunny-memory-engine-hotfixes.test.js`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1019 live-object settings-sync follow-up. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

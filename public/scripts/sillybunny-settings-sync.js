@@ -10,9 +10,12 @@ const SHA256_K = new Uint32Array([
 ]);
 
 const textEncoder = new TextEncoder();
+const hasEncodeInto = typeof textEncoder.encodeInto === 'function';
+const SCRATCH_BUFFER_SIZE = 8192;
 
 /**
  * Synchronous streaming SHA-256 hasher so settings fingerprints retain 64 hex chars instead of megabytes of JSON.
+ * Uses a single reusable UTF-8 scratch buffer and an inline ASCII fast-path to avoid per-token TextEncoder allocations.
  */
 function createSha256Hasher() {
     let h0 = 0x6a09e667;
@@ -27,6 +30,8 @@ function createSha256Hasher() {
     const block = new Uint8Array(64);
     const blockView = new DataView(block.buffer);
     const w = new Uint32Array(64);
+    const scratch = new Uint8Array(SCRATCH_BUFFER_SIZE);
+    let scratchLen = 0;
     let blockLen = 0;
     let totalBytes = 0;
 
@@ -79,11 +84,11 @@ function createSha256Hasher() {
         h7 = (h7 + h) >>> 0;
     }
 
-    function updateBytes(bytes) {
-        totalBytes += bytes.length;
+    function updateBytes(bytes, length = bytes.length) {
+        totalBytes += length;
         let offset = 0;
         if (blockLen > 0) {
-            const take = Math.min(64 - blockLen, bytes.length);
+            const take = Math.min(64 - blockLen, length);
             block.set(bytes.subarray(0, take), blockLen);
             blockLen += take;
             offset += take;
@@ -92,23 +97,68 @@ function createSha256Hasher() {
                 blockLen = 0;
             }
         }
-        while (offset + 64 <= bytes.length) {
+        while (offset + 64 <= length) {
             block.set(bytes.subarray(offset, offset + 64), 0);
             compress();
             offset += 64;
         }
-        if (offset < bytes.length) {
-            block.set(bytes.subarray(offset), 0);
-            blockLen = bytes.length - offset;
+        if (offset < length) {
+            block.set(bytes.subarray(offset, length), 0);
+            blockLen = length - offset;
         }
+    }
+
+    function flushScratch() {
+        if (scratchLen > 0) {
+            updateBytes(scratch, scratchLen);
+            scratchLen = 0;
+        }
+    }
+
+    function updateByte(byte) {
+        if (scratchLen === SCRATCH_BUFFER_SIZE) {
+            flushScratch();
+        }
+        scratch[scratchLen++] = byte;
     }
 
     function updateString(str) {
         if (!str) return;
-        updateBytes(textEncoder.encode(str));
+        const len = str.length;
+        let i = 0;
+        while (i < len) {
+            const code = str.charCodeAt(i);
+            if (code < 0x80) {
+                if (scratchLen === SCRATCH_BUFFER_SIZE) {
+                    flushScratch();
+                }
+                scratch[scratchLen++] = code;
+                i += 1;
+                continue;
+            }
+
+            if (hasEncodeInto) {
+                if (scratchLen > SCRATCH_BUFFER_SIZE - 4) {
+                    flushScratch();
+                }
+                const remaining = i === 0 ? str : str.slice(i);
+                const result = textEncoder.encodeInto(remaining, scratch.subarray(scratchLen));
+                scratchLen += result.written;
+                if (result.read > 0) {
+                    i += result.read;
+                    continue;
+                }
+            }
+
+            flushScratch();
+            const encoded = textEncoder.encode(i === 0 ? str : str.slice(i));
+            updateBytes(encoded, encoded.length);
+            return;
+        }
     }
 
     function digestHex() {
+        flushScratch();
         const bitLength = totalBytes * 8;
         block[blockLen++] = 0x80;
         if (blockLen > 56) {
@@ -125,40 +175,51 @@ function createSha256Hasher() {
         return `v1:${totalBytes}:${words.map(word => word.toString(16).padStart(8, '0')).join('')}`;
     }
 
-    return { updateString, digestHex };
+    return { updateByte, updateString, digestHex };
 }
 
 /**
  * Streams a canonical key-sorted JSON representation directly into the hasher without cloning objects or building one giant string.
  * @param {unknown} value JSON value
- * @param {{ updateString: (str: string) => void }} hasher Target hasher
+ * @param {{ updateByte: (byte: number) => void, updateString: (str: string) => void }} hasher Target hasher
+ * @param {boolean} [skipVersionKey=false] When true, omits the root `_version` property without mutating the input object.
  */
-function hashCanonicalJson(value, hasher) {
+function hashCanonicalJson(value, hasher, skipVersionKey = false) {
+    if (value && typeof value === 'object' && typeof value.toJSON === 'function') {
+        value = value.toJSON();
+    }
     if (Array.isArray(value)) {
-        hasher.updateString('[');
+        hasher.updateByte(0x5b); // '['
         for (let i = 0; i < value.length; i++) {
-            if (i > 0) hasher.updateString(',');
+            if (i > 0) hasher.updateByte(0x2c); // ','
             const item = value[i];
-            hashCanonicalJson(item === undefined ? null : item, hasher);
+            const itemType = typeof item;
+            hashCanonicalJson(
+                item === undefined || itemType === 'function' || itemType === 'symbol' ? null : item,
+                hasher,
+                false,
+            );
         }
-        hasher.updateString(']');
+        hasher.updateByte(0x5d); // ']'
         return;
     }
     if (value && typeof value === 'object') {
-        hasher.updateString('{');
+        hasher.updateByte(0x7b); // '{'
         const keys = Object.keys(value).sort();
         let wroteAny = false;
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
+            if (skipVersionKey && key === '_version') continue;
             const entry = value[key];
-            if (entry === undefined) continue;
-            if (wroteAny) hasher.updateString(',');
+            const entryType = typeof entry;
+            if (entry === undefined || entryType === 'function' || entryType === 'symbol') continue;
+            if (wroteAny) hasher.updateByte(0x2c); // ','
             wroteAny = true;
             hasher.updateString(JSON.stringify(key));
-            hasher.updateString(':');
-            hashCanonicalJson(entry, hasher);
+            hasher.updateByte(0x3a); // ':'
+            hashCanonicalJson(entry, hasher, false);
         }
-        hasher.updateString('}');
+        hasher.updateByte(0x7d); // '}'
         return;
     }
     hasher.updateString(JSON.stringify(value));
@@ -167,22 +228,19 @@ function hashCanonicalJson(value, hasher) {
 /**
  * Remembers a compact fingerprint of the settings that the page last loaded from the server or saved to it.
  *
- * The page builds every save from objects that it keeps changing, so it hashes the canonical JSON that it loaded
- * or sent rather than retaining the objects or a multi-megabyte JSON string. A save with the remembered settings
- * would change nothing on the server, and a page whose settings are stale would only get the settings conflict
- * prompt for it.
- * @returns {{ getFingerprint: (json: string) => string, remember: (fingerprint: string) => void, isSynced: (fingerprint: string) => boolean }}
+ * The page builds every save from objects that it keeps changing, so it hashes the canonical JSON directly from
+ * either a JSON string or a live settings object rather than retaining the objects or re-parsing a multi-megabyte string.
+ * A save with the remembered settings would change nothing on the server, and a page whose settings are stale would only
+ * get the settings conflict prompt for it.
+ * @returns {{ getFingerprint: (input: string | Record<string, unknown>) => string, remember: (fingerprint: string) => void, isSynced: (fingerprint: string) => boolean }}
  */
 export function createSettingsSync() {
     let syncedFingerprint = null;
     return {
-        getFingerprint(json) {
-            const settings = JSON.parse(json);
-            if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
-                delete settings._version;
-            }
+        getFingerprint(input) {
+            const settings = typeof input === 'string' ? JSON.parse(input) : input;
             const hasher = createSha256Hasher();
-            hashCanonicalJson(settings, hasher);
+            hashCanonicalJson(settings, hasher, true);
             return hasher.digestHex();
         },
         remember(fingerprint) {
