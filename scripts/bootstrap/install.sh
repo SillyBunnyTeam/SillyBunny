@@ -410,7 +410,11 @@ clone_install() {
     mkdir -p "$(dirname "$install_dir")"
     if is_android_app; then
         # Android only runs the Node server. Exclude non-runtime folders and historical tags to save storage and download time.
-        git -c advice.detachedHead=false clone --no-single-branch --no-tags --depth 1 --filter=blob:none --no-checkout --branch "$ref" -- "$repo" "$install_dir"
+        # Git 2.54+ ignores --no-tags during initial clone when combined with --no-single-branch, so clone single-branch first
+        # and then fetch the remaining remote branch tips with --no-tags.
+        git -c advice.detachedHead=false clone --single-branch --no-tags --depth 1 --filter=blob:none --no-checkout --branch "$ref" -- "$repo" "$install_dir"
+        git -C "$install_dir" remote set-branches origin '*'
+        git -C "$install_dir" fetch --quiet --no-tags --depth 1 --filter=blob:none origin
         git -C "$install_dir" sparse-checkout init --no-cone
         git -C "$install_dir" sparse-checkout set --no-cone '/*' '!/.github/' '!/android/' '!/assets-src/' '!/docs/' '!/output/' '!/screenshots/' '!/tests/'
         git -C "$install_dir" checkout --quiet

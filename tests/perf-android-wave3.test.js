@@ -7,10 +7,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const installerSource = fs.readFileSync(path.join(repoRoot, 'scripts', 'bootstrap', 'install.sh'), 'utf8');
 
 describe('Android Wave 3: install.sh clone flags, baseline profile, and R8 rules', () => {
-    test('install.sh Android clone passes --no-tags while keeping --no-single-branch for branch switching', () => {
+    test('install.sh Android clone excludes tags across Git versions while keeping remote branches for branch switching', () => {
         expect(installerSource).toContain(
-            'git -c advice.detachedHead=false clone --no-single-branch --no-tags --depth 1 --filter=blob:none --no-checkout --branch "$ref" -- "$repo" "$install_dir"',
+            'git -c advice.detachedHead=false clone --single-branch --no-tags --depth 1 --filter=blob:none --no-checkout --branch "$ref" -- "$repo" "$install_dir"',
         );
+        expect(installerSource).toContain('git -C "$install_dir" remote set-branches origin \'*\'');
+        expect(installerSource).toContain('git -C "$install_dir" fetch --quiet --no-tags --depth 1 --filter=blob:none origin');
         // Desktop clone branch remains untouched.
         expect(installerSource).toContain(
             'git -c advice.detachedHead=false clone --filter=blob:none --branch "$ref" -- "$repo" "$install_dir"',
