@@ -62,7 +62,7 @@ OCI_DIGEST = re.compile(r'sha256:[0-9a-f]{64}\Z')
 NDK_URL = re.compile(r'https://dl\.google\.com/android/repository/android-ndk-r[0-9]+[a-z]?-linux\.zip\Z')
 NDK_REVISION = re.compile(r'[0-9]+\.[0-9]+\.[0-9]+\Z')
 PATCH_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._+-]*\.patch\Z')
-ICU_MODES = {'full-icu', 'small-icu'}
+ICU_MODES = {'full-icu'}
 # npm honours `.npmrc` min-release-age from 11.10.0 (plan §5.1).
 MIN_NPM = (11, 10, 0)
 
@@ -363,11 +363,9 @@ def build_inputs(pins, abi, cache=CACHE, offline=False, with_ndk=False):
     return '\n'.join(lines) + '\n'
 
 
-def check_config(abi, source, ndk, api, icu='full-icu'):
-    """S2.1 verify-config.py: configure targeted Android <abi> with a separate host toolset, expected ICU mode,
+def check_config(abi, source, ndk, api):
+    """S2.1 verify-config.py: configure targeted Android <abi> with a separate host toolset, full ICU,
     WebAssembly, no embedded snapshot, and the generated Makefile uses this NDK's API-level drivers."""
-    if icu not in ICU_MODES:
-        fail('node-icu', icu=icu)
     expected_abi = ABIS[abi]
     lines = (Path(source) / 'config.gypi').read_text(encoding='utf-8').splitlines()
     config = parse_json('\n'.join(line for line in lines if not line.startswith('#')).encode('utf-8'), 'config.gypi')
@@ -376,7 +374,7 @@ def check_config(abi, source, ndk, api, icu='full-icu'):
         fail('node-config', abi=abi)
     expected = {
         'OS': 'android', 'target_arch': expected_abi['cpu'], 'host_arch': expected_abi['hostArch'],
-        'want_separate_host_toolset': 1, 'icu_small': 'true' if icu == 'small-icu' else 'false', 'v8_enable_i18n_support': 1,
+        'want_separate_host_toolset': 1, 'icu_small': 'false', 'v8_enable_i18n_support': 1,
         'node_use_node_snapshot': 'false', 'node_use_node_code_cache': 'false', 'v8_enable_webassembly': 1,
         # Temporal needs Node's cargo build, which targets the build host and not Android (see build-node.sh).
         'v8_enable_temporal_support': 0,
@@ -713,7 +711,7 @@ def abi_path(value):
     return abi, Path(path)
 
 
-USAGE = 'Usage: fetch-node.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--output DIR] [--cache DIR] [--offline] [--with-ndk] [--ndk DIR] [--icu-mode MODE] [--abi ABI | --local ABI=PATH | --audit ABI=PATH | --build-inputs ABI | --check-config ABI=SOURCE]\n'
+USAGE = 'Usage: fetch-node.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--output DIR] [--cache DIR] [--offline] [--with-ndk] [--ndk DIR] [--abi ABI | --local ABI=PATH | --audit ABI=PATH | --build-inputs ABI | --check-config ABI=SOURCE]\n'
 HELP = USAGE + '''
 Stage the pinned Node runtime for the APK build: libnode.so for each ABI and node.json.
 
@@ -726,7 +724,6 @@ Options:
   --offline                  Never download; use only files already in the cache.
   --with-ndk                 With --build-inputs, also fetch and check the pinned NDK zip.
   --ndk DIR                  Unpacked NDK directory that --check-config compares the configured build with.
-  --icu-mode MODE            ICU mode (`full-icu` or `small-icu`) that --check-config expects instead of runtime.lock's pin.
   --abi ABI                  Pull this ABI from GHCR by the digest runtime.lock pins. Repeat for several; the default is every ABI runtime.lock lists.
   --local ABI=PATH           Stage a local libnode.so build for development, as ABI=PATH, instead of pulling from GHCR. Repeat for several. Release builds refuse the result.
   --audit ABI=PATH           Check one libnode.so, as ABI=PATH, against the ELF rules and print the result.
@@ -756,7 +753,6 @@ def main(arguments=None):
     parser.add_argument('--offline', action='store_true', help='Never download; use only files already in the cache.')
     parser.add_argument('--with-ndk', action='store_true', help='With --build-inputs, also fetch and check the pinned NDK zip.')
     parser.add_argument('--ndk', type=Path, help='Unpacked NDK directory that --check-config compares the configured build with.')
-    parser.add_argument('--icu-mode', choices=sorted(ICU_MODES), help='ICU mode that --check-config expects instead of runtime.lock.')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--abi', action='append', choices=sorted(ABIS), help='Pull this ABI from GHCR by the digest runtime.lock pins. Repeat for several; the default is every ABI runtime.lock lists.')
     mode.add_argument('--local', action='append', type=abi_path, help='Stage a local libnode.so build for development, as ABI=PATH, instead of pulling from GHCR. Repeat for several. Release builds refuse the result.')
@@ -772,7 +768,7 @@ def main(arguments=None):
         abi, source = args.check_config
         if abi not in pins.abis or args.ndk is None:
             parser.error('--check-config needs --ndk and an ABI that android/runtime.lock lists')
-        print(json.dumps(check_config(abi, source, args.ndk, pins.node['api'], args.icu_mode or pins.node['icu']), sort_keys=True))
+        print(json.dumps(check_config(abi, source, args.ndk, pins.node['api']), sort_keys=True))
         return
     if args.audit:
         abi, path = args.audit

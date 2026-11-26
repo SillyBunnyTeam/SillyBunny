@@ -8,8 +8,6 @@ HSPLio/github/sillybunnyteam/sillybunny/MainActivity;->onCreate(Landroid/os/Bund
 HSPLio/github/sillybunnyteam/sillybunny/MainActivity;->onStart()V
 HSPLio/github/sillybunnyteam/sillybunny/MainActivity;->onResume()V
 HSPLio/github/sillybunnyteam/sillybunny/MainActivity;->**(**)**
-Lio/github/sillybunnyteam/sillybunny/SillyBunnyApplication;
-HSPLio/github/sillybunnyteam/sillybunny/SillyBunnyApplication;->**(**)**
 Lio/github/sillybunnyteam/sillybunny/ServerService;
 HSPLio/github/sillybunnyteam/sillybunny/ServerService;-><init>()V
 HSPLio/github/sillybunnyteam/sillybunny/ServerService;->onCreate()V
@@ -73,8 +71,6 @@ Lio/github/sillybunnyteam/sillybunny/web/WebShell$Companion;
 HSPLio/github/sillybunnyteam/sillybunny/web/WebShell$Companion;->**(**)**
 Lio/github/sillybunnyteam/sillybunny/web/WebScreenKt;
 HSPLio/github/sillybunnyteam/sillybunny/web/WebScreenKt;->**(**)**
-Lio/github/sillybunnyteam/sillybunny/web/WebScreen;
-HSPLio/github/sillybunnyteam/sillybunny/web/WebScreen;->**(**)**
 Lio/github/sillybunnyteam/sillybunny/web/StaticAssetInterceptor;
 HSPLio/github/sillybunnyteam/sillybunny/web/StaticAssetInterceptor;->**(**)**
 Lio/github/sillybunnyteam/sillybunny/web/WebShellPlatformKt;
@@ -96,8 +92,12 @@ HSPLio/github/sillybunnyteam/sillybunny/update/**;->**(**)**
 # First-run setup and checkout health checks
 Lio/github/sillybunnyteam/sillybunny/firstrun/**;
 HSPLio/github/sillybunnyteam/sillybunny/firstrun/**;->**(**)**
-Lio/github/sillybunnyteam/sillybunny/repair/RepairChecks;
-HSPLio/github/sillybunnyteam/sillybunny/repair/RepairChecks;->**(**)**
+Lio/github/sillybunnyteam/sillybunny/repair/DataRoot;
+HSPLio/github/sillybunnyteam/sillybunny/repair/DataRoot;->**(**)**
+Lio/github/sillybunnyteam/sillybunny/repair/PathContainment;
+HSPLio/github/sillybunnyteam/sillybunny/repair/PathContainment;->**(**)**
+Lio/github/sillybunnyteam/sillybunny/repair/CheckoutChecks;
+HSPLio/github/sillybunnyteam/sillybunny/repair/CheckoutChecks;->**(**)**
 
 # Core Kotlin, Coroutines, AndroidX Activity/Lifecycle, WebKit, and Compose startup paths
 Lkotlin/coroutines/**;
@@ -119,8 +119,6 @@ Landroidx/lifecycle/RepeatOnLifecycleKt;
 HSPLandroidx/lifecycle/RepeatOnLifecycleKt;->**(**)**
 Landroidx/lifecycle/ViewModelProvider;
 HSPLandroidx/lifecycle/ViewModelProvider;->**(**)**
-Landroidx/webkit/WebViewAssetLoader;
-HSPLandroidx/webkit/WebViewAssetLoader;->**(**)**
 Landroidx/webkit/WebViewCompat;
 HSPLandroidx/webkit/WebViewCompat;->**(**)**
 Landroidx/compose/runtime/Recomposer;

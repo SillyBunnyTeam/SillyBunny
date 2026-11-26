@@ -1,6 +1,5 @@
 # Preserve file names and line numbers so Share Logs and crash records stay actionable.
 -keepattributes SourceFile,LineNumberTable
--renamesourcefileattribute SourceFile
 
 # Preserve any WebView @JavascriptInterface methods if added; the transfer bridge uses AndroidX
 # WebMessageListener, whose boundary interfaces are kept by androidx.webkit's consumer rules.

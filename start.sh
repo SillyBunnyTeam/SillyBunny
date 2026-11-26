@@ -464,97 +464,53 @@ prune_android_node_modules() {
     ' "$SCRIPT_DIR/node_modules" || true
 }
 
-# SillyBunny: optional manifest-verified prebuilt node_modules bundle for Android first-run installs.
-resolve_android_node_modules_bundle_dir() {
-    if [[ -n "${SILLYBUNNY_ANDROID_NODE_MODULES_BUNDLE_DIR:-}" ]]; then
-        printf '%s' "$SILLYBUNNY_ANDROID_NODE_MODULES_BUNDLE_DIR"
-        return 0
-    fi
-    if [[ -n "${OPENSSL_MODULES:-}" ]]; then
-        printf '%s/node_modules-bundle' "$(dirname "$OPENSSL_MODULES")"
-        return 0
-    fi
-    if [[ -n "${SILLYBUNNY_ANDROID_NPM_CLI:-}" ]]; then
-        local runtime_root="${SILLYBUNNY_ANDROID_NPM_CLI%/lib/node_modules/npm/bin/npm-cli.js}"
-        if [[ "$runtime_root" != "$SILLYBUNNY_ANDROID_NPM_CLI" ]]; then
-            printf '%s/node_modules-bundle' "$runtime_root"
-            return 0
-        fi
-    fi
-    return 1
-}
-
-try_install_android_node_modules_bundle() {
-    local bundle_dir
-    is_android_app || return 1
-    [[ "$runtime_kind" == node && "$dependency_profile" == node-production ]] || return 1
-    [[ -f "$SCRIPT_DIR/package-lock.json" && -f "$SCRIPT_DIR/scripts/build-android-node-modules-bundle.mjs" ]] || return 1
-    bundle_dir="$(resolve_android_node_modules_bundle_dir)" || return 1
-    [[ -d "$bundle_dir" && -f "$bundle_dir/node_modules.manifest.json" ]] || return 1
-
-    if "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/build-android-node-modules-bundle.mjs" \
-        --install \
-        --bundle-dir "$bundle_dir" \
-        --project-dir "$SCRIPT_DIR" >/dev/null 2>&1; then
-        echo "Installed prebuilt Android node_modules bundle."
-        return 0
-    fi
-
-    echo "Prebuilt Android node_modules bundle unavailable or mismatched; falling back to npm..."
-    return 1
-}
-
 if android_fast_boot_valid; then
     echo "Dependencies are up to date."
 else
     if ! "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1; then
-        if try_install_android_node_modules_bundle; then
-            "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
-        else
-            if [[ "$dependency_profile" == *development ]]; then
-                if [[ "$runtime_kind" == node ]]; then
-                    echo "Installing packages via npm including development tooling (Node.js mode)..."
-                else
-                    echo "Installing Bun packages including development tooling..."
-                fi
-            elif [[ "$runtime_kind" == node ]]; then
-                echo "Installing packages via npm (Node.js mode)..."
-            else
-                echo "Installing Bun packages..."
-            fi
-
+        if [[ "$dependency_profile" == *development ]]; then
             if [[ "$runtime_kind" == node ]]; then
-                if command -v git >/dev/null 2>&1 \
-                    && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-                    && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 \
-                    && git diff --quiet -- package-lock.json; then
-                    restore_package_lock_after_install=1
-                fi
+                echo "Installing packages via npm including development tooling (Node.js mode)..."
             else
-                if command -v git >/dev/null 2>&1 \
-                    && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-                    && git ls-files --error-unmatch bun.lock >/dev/null 2>&1 \
-                    && git diff --quiet -- bun.lock; then
-                    restore_bun_lock_after_install=1
-                fi
+                echo "Installing Bun packages including development tooling..."
             fi
-
-            run_package_install
-            cleanup_android_npm_cache
-            prune_android_node_modules
-
-            if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
-                echo "Restoring tracked package-lock.json after npm metadata rewrite..."
-                git restore -- package-lock.json
-            fi
-
-            if (( restore_bun_lock_after_install )) && ! git diff --quiet -- bun.lock; then
-                echo "Restoring tracked bun.lock after Bun lockfile refresh..."
-                git restore -- bun.lock
-            fi
-
-            "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
+        elif [[ "$runtime_kind" == node ]]; then
+            echo "Installing packages via npm (Node.js mode)..."
+        else
+            echo "Installing Bun packages..."
         fi
+
+        if [[ "$runtime_kind" == node ]]; then
+            if command -v git >/dev/null 2>&1 \
+                && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+                && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 \
+                && git diff --quiet -- package-lock.json; then
+                restore_package_lock_after_install=1
+            fi
+        else
+            if command -v git >/dev/null 2>&1 \
+                && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+                && git ls-files --error-unmatch bun.lock >/dev/null 2>&1 \
+                && git diff --quiet -- bun.lock; then
+                restore_bun_lock_after_install=1
+            fi
+        fi
+
+        run_package_install
+        cleanup_android_npm_cache
+        prune_android_node_modules
+
+        if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
+            echo "Restoring tracked package-lock.json after npm metadata rewrite..."
+            git restore -- package-lock.json
+        fi
+
+        if (( restore_bun_lock_after_install )) && ! git diff --quiet -- bun.lock; then
+            echo "Restoring tracked bun.lock after Bun lockfile refresh..."
+            git restore -- bun.lock
+        fi
+
+        "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
     else
         echo "Dependencies are up to date."
     fi

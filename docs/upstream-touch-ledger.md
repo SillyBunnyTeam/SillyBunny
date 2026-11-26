@@ -1625,28 +1625,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `start.sh` |
 | Area | Android app runtime. |
-| Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer, default to Node.js, clear the leftover npm download cache after Android installs, and skip redundant dependency/init subprocesses on unchanged warm Android boots when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools, runs on limited mobile storage, and pays high fork cost on Android. |
-| Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, `scripts/dependency-state.js`, and `scripts/build-android-node-modules-bundle.mjs` own setup, updates, dependency state, and prebuilt Android `node_modules` verification/extraction; no separate seam yet for APK runtime selection. |
-| Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, prerequisite skip, warm boot stamp (`node_modules/.sillybunny-android-boot-stamp`), optional manifest-verified prebuilt `node_modules` bundle extraction (`try_install_android_node_modules_bundle()` with automatic fallback to `npm ci` + `prune_android_node_modules()`), and post-install npm cache cleanup. Defer lockfile git-restore checks until package installation is needed. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
-| Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/perf-android-wave3.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
-| Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js perf-android-wave3.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
-| Rollback path | Remove `is_android_app()` and its guards in `start.sh`: the early return in `is_termux()`, the Node.js default in `prefer_node_runtime()`, the skip of `scripts/install-prerequisites.sh`, the warm boot stamp check, and post-install npm cache cleanup. The Android app then runs the full desktop startup path. No saved data changes. |
-| Last reviewed | 2026-11-24, PR SillyBunnyTeam/SillyBunny#918 (Android Wave 3 first-run bundle and cold-start optimization). |
+| Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer, default to Node.js, clear the leftover npm download cache after Android installs, prune dead non-runtime package files, and skip redundant dependency/init subprocesses on unchanged warm Android boots when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools, runs on limited mobile storage, and pays high fork cost on Android. |
+| Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependency state; no separate seam yet for APK runtime selection. |
+| Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, prerequisite skip, warm boot stamp (`node_modules/.sillybunny-android-boot-stamp`), `prune_android_node_modules()`, and post-install npm cache cleanup. Defer lockfile git-restore checks until package installation is needed. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
+| Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
+| Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
+| Rollback path | Remove `is_android_app()` and its guards in `start.sh`: the early return in `is_termux()`, the Node.js default in `prefer_node_runtime()`, the skip of `scripts/install-prerequisites.sh`, the warm boot stamp check, `prune_android_node_modules()`, and post-install npm cache cleanup. The Android app then runs the full desktop startup path. No saved data changes. |
+| Last reviewed | 2026-11-26, PR SillyBunnyTeam/SillyBunny#918 (Android cold-start and cache optimization). |
 | Owner | Runtime and release integrator. |
-
-### `src/middleware/webpack-serve.js` - manifest-verified prebuilt frontend library reuse
-| Field | Value |
-| --- | --- |
-| File | `src/middleware/webpack-serve.js`; `webpack.config.js` (`getPublicLibInputsSignature` exported). |
-| Area | Frontend vendor bundle (`public/lib.js`) cache initialization on first run. |
-| Divergence reason | `TODO(copy)` |
-| Target seam | `src/webpack-prebuilt-lib.js` (`tryReusePrebuiltPublicLib()`, `createPrebuiltLibManifest()`, `resolvePrebuiltLibDir()`). |
-| Adapter shape | One marked import and one marked `tryReusePrebuiltPublicLib({ cacheInfo })` check after the existing `_webpack/<cacheVersion>/output/lib.js` cache check in `compilePublicLib()`, plus `export` on `getPublicLibInputsSignature()` in `webpack.config.js`. When a staged `lib.js` and `lib.manifest.json` match `cacheVersion`, `inputsHash`, `bytes`, and `sha256`, the verified bundle is atomically placed into `_webpack/<cacheVersion>/output/lib.js`; any absence or mismatch falls through to local Webpack compilation. |
-| Protecting tests | `tests/perf-android-wave3.test.js`. |
-| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- perf-android-wave3.test.js`. |
-| Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-24, PR SillyBunnyTeam/SillyBunny#918 (Android Wave 3). |
-| Owner | `TODO(copy)` |
 
 ### Repository policy, launchers, packaging, and build infrastructure
 | Field | Value |

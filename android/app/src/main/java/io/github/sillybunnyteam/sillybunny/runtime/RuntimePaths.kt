@@ -28,7 +28,6 @@ class RuntimePaths(
     val gitTemplateDir = File(runtimeDir, "share/git-core/templates")
     val caBundle = File(runtimeDir, "etc/certs/cert.pem")
     val opensslModulesDir = File(runtimeDir, "openssl-modules")
-    val icuDir = File(runtimeDir, "icu")
     val installedRuntime = File(runtimeDir, "installed-runtime.json")
 
     /** The APK's `install.sh` for first run and Repair; read-only and not executable, because bash runs it. */

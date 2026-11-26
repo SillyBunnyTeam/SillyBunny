@@ -5,8 +5,6 @@ import getPublicLibConfig, {
     getPublicLibCacheInfo,
     prunePublicLibCache,
 } from '../../webpack.config.js';
-// SillyBunny: manifest-verified prebuilt lib.js reuse skips first-run Webpack compilation when staged (docs/upstream-touch-ledger.md).
-import { tryReusePrebuiltPublicLib } from '../webpack-prebuilt-lib.js';
 
 export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
     const resolvePublicLibConfig = ({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) =>
@@ -90,15 +88,6 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
         if (compiledOutputPath && fs.existsSync(compiledOutputPath)) {
             console.log();
             console.log('Reusing precompiled frontend libraries...');
-            activePublicLibConfig = publicLibConfig;
-            if (pruneCache) {
-                prunePublicLibCache({ forceDist: overrideForceDist, currentCacheVersion: cacheInfo.cacheVersion });
-            }
-            return Promise.resolve();
-        }
-
-        // SillyBunny: stage a manifest-verified prebuilt lib.js into _webpack/<cacheVersion>/output/ when available, falling back to local compile on mismatch.
-        if (tryReusePrebuiltPublicLib({ cacheInfo })) {
             activePublicLibConfig = publicLibConfig;
             if (pruneCache) {
                 prunePublicLibCache({ forceDist: overrideForceDist, currentCacheVersion: cacheInfo.cacheVersion });

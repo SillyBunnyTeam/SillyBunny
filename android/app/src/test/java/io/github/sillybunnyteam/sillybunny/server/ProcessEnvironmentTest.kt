@@ -7,7 +7,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
-import java.nio.file.Files
 
 class ProcessEnvironmentTest {
     private val files = "/data/user/0/io.github.sillybunnyteam.sillybunny/files"
@@ -36,7 +35,6 @@ class ProcessEnvironmentTest {
         "SILLYBUNNY_BUN_SMOL" to "1",
         "NODE_OPTIONS" to "--require /sdcard/evil.js",
         "NODE_COMPILE_CACHE" to "/sdcard/evil-v8-cache",
-        "NODE_ICU_DATA" to "/sdcard/evil-icu-data",
         "GIT_CONFIG_GLOBAL" to "/sdcard/gitconfig",
         "npm_config_prefix" to "/sdcard/npm",
         "CLASSPATH" to "/system/framework/framework.jar",
@@ -117,7 +115,7 @@ class ProcessEnvironmentTest {
         val environment = ProcessEnvironment.build(paths, frameworkRoots + hostile, 4021, autoUpdate = false, launchToken = token)
 
         for (key in ProcessEnvironment.NEVER_INHERITED) assertFalse(key, environment.containsKey(key))
-        for (key in listOf("BUN_INSTALL", "SILLYBUNNY_USE_BUN", "SILLYBUNNY_BUN_SMOL", "NODE_OPTIONS", "NODE_ICU_DATA", "GIT_CONFIG_GLOBAL")) {
+        for (key in listOf("BUN_INSTALL", "SILLYBUNNY_USE_BUN", "SILLYBUNNY_BUN_SMOL", "NODE_OPTIONS", "GIT_CONFIG_GLOBAL")) {
             assertFalse(key, environment.containsKey(key))
         }
         // Exactly the bundled bin directory and /system/bin: no inherited entry, so no bun executable.
@@ -245,85 +243,6 @@ class ProcessEnvironmentTest {
 
         assertEquals(File(paths.cacheDir, "v8"), cacheDir)
         assertFalse(cacheDir.path.startsWith(paths.checkoutDir.path))
-    }
-
-    @Test
-    fun nodeIcuDataIsInjectedOnlyWhenRuntimeIcuContainsValidDatFile() {
-        val scratch = Files.createTempDirectory("sb-process-env-icu-").toFile()
-        try {
-            val filesDir = File(scratch, "files").apply { mkdirs() }
-            val cacheDir = File(scratch, "cache").apply { mkdirs() }
-            val libDir = File(scratch, "lib").apply { mkdirs() }
-            val generationDir = File(filesDir, "runtime-generations/gen-1").apply { mkdirs() }
-            Files.createSymbolicLink(File(filesDir, "runtime").toPath(), generationDir.toPath())
-            val localPaths = RuntimePaths(filesDir, cacheDir, libDir)
-
-            // No runtime/icu directory yet (full-icu default): NODE_ICU_DATA is omitted.
-            val withoutIcu = ProcessEnvironment.build(localPaths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = token)
-            assertFalse(withoutIcu.containsKey(ProcessEnvironment.NODE_ICU_DATA))
-
-            // Empty runtime/icu or zero-byte / non-icudt files: still omitted.
-            val icuInGen = File(generationDir, "icu").apply { mkdirs() }
-            File(icuInGen, "README.txt").writeText("not icu data")
-            File(icuInGen, "icudt78l.dat").writeBytes(ByteArray(0))
-            val withEmptyDat = ProcessEnvironment.build(localPaths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = token)
-            assertFalse(withEmptyDat.containsKey(ProcessEnvironment.NODE_ICU_DATA))
-
-            // Symlinked icudt78l.dat leaf is refused.
-            File(icuInGen, "icudt78l.dat").delete()
-            val outsideDat = File(scratch, "outside.dat").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
-            Files.createSymbolicLink(File(icuInGen, "icudt78l.dat").toPath(), outsideDat.toPath())
-            val withSymlinkDat = ProcessEnvironment.build(localPaths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = token)
-            assertFalse(withSymlinkDat.containsKey(ProcessEnvironment.NODE_ICU_DATA))
-
-            // Real non-empty icudt78l.dat inside runtime/icu activates NODE_ICU_DATA for both server and setup.
-            File(icuInGen, "icudt78l.dat").delete()
-            File(icuInGen, "icudt78l.dat").writeBytes(byteArrayOf(0x69, 0x63, 0x75, 0x78))
-            val withValidDat = ProcessEnvironment.build(localPaths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = token)
-            val setupWithValidDat = ProcessEnvironment.build(localPaths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = null)
-            assertEquals(localPaths.icuDir.absolutePath, withValidDat[ProcessEnvironment.NODE_ICU_DATA])
-            assertEquals(localPaths.icuDir.absolutePath, setupWithValidDat[ProcessEnvironment.NODE_ICU_DATA])
-
-            // Symlinked runtime/icu directory itself is refused.
-            icuInGen.deleteRecursively()
-            val outsideIcuDir = File(scratch, "outside-icu").apply {
-                mkdirs()
-                File(this, "icudt78l.dat").writeBytes(byteArrayOf(1, 2, 3, 4))
-            }
-            Files.createSymbolicLink(icuInGen.toPath(), outsideIcuDir.toPath())
-            val withSymlinkDir = ProcessEnvironment.build(localPaths, frameworkRoots + hostile, 4021, autoUpdate = true, launchToken = token)
-            assertFalse(withSymlinkDir.containsKey(ProcessEnvironment.NODE_ICU_DATA))
-        } finally {
-            scratch.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun shippedPublicLocalesAndIcuFilterScriptCoverAllUiLocalesCjkAndTurkish() {
-        val repoRoot = generateSequence(File(".").canonicalFile) { it.parentFile }
-            .firstOrNull { File(it, "public/locales").isDirectory && File(it, "android/runtime").isDirectory }
-            ?: error("Could not locate SillyBunny repository root from ${File(".").canonicalPath}")
-        val localesDir = File(repoRoot, "public/locales")
-        val filterScript = File(repoRoot, "android/runtime/build-icu-filter.py")
-        assertTrue("public/locales must exist", localesDir.isDirectory)
-        assertTrue("build-icu-filter.py must exist", filterScript.isFile)
-
-        val langJsonText = File(localesDir, "lang.json").readText(Charsets.UTF_8)
-        val declaredTags = Regex("\"lang\"\\s*:\\s*\"([^\"]+)\"")
-            .findAll(langJsonText)
-            .map { it.groupValues[1].lowercase() }
-            .toSet()
-        assertTrue(declaredTags.size >= 16)
-        for (tag in listOf("ja-jp", "ko-kr", "zh-cn", "zh-tw")) {
-            assertTrue("expected CJK UI locale $tag", tag in declaredTags)
-        }
-        for (tag in declaredTags) {
-            assertTrue("missing locale file for $tag", File(localesDir, "$tag.json").isFile)
-        }
-        val scriptText = filterScript.readText(Charsets.UTF_8)
-        for (required in listOf("'root'", "'tr'", "'tr_TR'", "'ja'", "'ko'", "'zh_Hans'", "'zh_Hant'", "'brkitr_rules'", "'coll_tree'")) {
-            assertTrue("filter builder must include $required", scriptText.contains(required))
-        }
     }
 
     @Test

@@ -2,9 +2,6 @@ package io.github.sillybunnyteam.sillybunny.server
 
 import io.github.sillybunnyteam.sillybunny.runtime.RuntimePaths
 import java.io.File
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 /**
  * The complete environment for `start.sh` and the setup scripts (plan §2.5).
@@ -26,37 +23,11 @@ internal class ProcessEnvironment(
         const val LAUNCH_TOKEN = "SILLYBUNNY_LAUNCH_TOKEN"
         const val NODE_OPTIONS = "NODE_OPTIONS"
         const val NODE_COMPILE_CACHE = "NODE_COMPILE_CACHE"
-        const val NODE_ICU_DATA = "NODE_ICU_DATA"
         const val GIT_IDENTITY_NAME = "SillyBunny"
         const val GIT_IDENTITY_EMAIL = "sillybunny@localhost.invalid"
 
-        private val ICU_DAT_FILE = Regex("^icudt[0-9]+[a-z]?\\.dat$")
-
         /** V8 bytecode compile cache outside the git-tracked checkout directory. */
         fun compileCacheDir(paths: RuntimePaths): File = File(paths.cacheDir, "v8")
-
-        /** Optional external ICU data directory for `small-icu` Node builds (`<runtimeDir>/icu`). */
-        fun icuDataDir(paths: RuntimePaths): File = paths.icuDir
-
-        /**
-         * True when `<paths.runtimeDir>/icu` is a real directory (following `runtimeDir`'s generation
-         * symlink, but refusing a symlinked `icu` leaf) containing a non-empty regular `icudt*.dat` file.
-         */
-        fun hasBundledIcuData(paths: RuntimePaths): Boolean {
-            val dir = paths.icuDir.toPath()
-            if (Files.isSymbolicLink(dir) || !Files.isDirectory(dir)) return false
-            return try {
-                Files.newDirectoryStream(dir).use { entries ->
-                    entries.any { entry ->
-                        ICU_DAT_FILE.matches(entry.fileName.toString()) &&
-                            Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS) &&
-                            Files.size(entry) > 0L
-                    }
-                }
-            } catch (_: IOException) {
-                false
-            }
-        }
 
         /** Passed on from the app process when present; API 36+ also has the ART and i18n roots (S2.5). */
         val FRAMEWORK_ROOTS = listOf(
@@ -120,9 +91,6 @@ internal class ProcessEnvironment(
             environment["SILLYBUNNY_ANDROID_NPM_CLI"] = paths.npmCli.absolutePath
             environment["SILLYBUNNY_ANDROID_NPX_CLI"] = paths.npxCli.absolutePath
             environment[NODE_COMPILE_CACHE] = compileCacheDir(paths).absolutePath
-            if (hasBundledIcuData(paths)) {
-                environment[NODE_ICU_DATA] = icuDataDir(paths).absolutePath
-            }
             if (launchToken != null) {
                 require(LaunchTokens.isValid(launchToken)) { "token" }
                 environment[LAUNCH_TOKEN] = launchToken

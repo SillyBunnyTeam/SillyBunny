@@ -257,6 +257,8 @@ dependencies {
     implementation(libs.compose.ui.unit)
     implementation(libs.compose.ui.util)
     implementation(libs.androidx.webkit)
+    // Required so sideloaded GitHub Release APKs install assets/dexopt/baseline.prof on ART.
+    implementation(libs.androidx.profileinstaller)
     // Compose UI tests host composables in the library's debug-only ComponentActivity.
     debugImplementation(libs.compose.ui.test.manifest)
 
