@@ -2966,11 +2966,15 @@
                 "selfies through quick image gen",
                 "pollinations",
                 "image won't generate",
-                "image provider"
+                "image provider",
+                "precise reference",
+                "character reference",
+                "style reference",
+                "novelai reference"
             ],
             "keysecondary": [],
             "comment": "A61 Quick Image Gen",
-            "content": "Quick Image Gen is a built-in extension (\"Generate images from prompts or chat scenes, with style presets and a gallery.\"). Its drawer has Generate, \"Quick Setup\" (pick a provider, paste a key, choose a style), a gallery. Providers include Pollinations, NovelAI, GPT Image (OpenAI), Local (A1111/ComfyUI) and Custom API. Each message has a palette button to generate an image from it. Slash commands: /qig, /qig-auto, /qig-cancel. API keys are stored in the extension's own settings rather than secrets.json. Expressions auto-sprites and Conversation selfies (the composer's \"Send a Selfie\" and the \"Selfies Through [selfie]\" switch in Details ▸ Behaviour) use it; Conversation uses Image Generation instead when that is configured. Image Generation is a different built-in extension.",
+            "content": "Quick Image Gen is a built-in extension (\"Generate images from prompts or chat scenes, with style presets and a gallery.\"). Its drawer has Generate, \"Quick Setup\" (pick a provider, paste a key, choose a style), a gallery. Providers include Pollinations, NovelAI, GPT Image (OpenAI), Local (A1111/ComfyUI) and Custom API. Each message has a palette button to generate an image from it. Slash commands: /qig, /qig-auto, /qig-cancel. API keys are stored in the extension's own settings rather than secrets.json. Expressions auto-sprites and Conversation selfies (the composer's \"Send a Selfie\" and the \"Selfies Through [selfie]\" switch in Details ▸ Behaviour) use it; Conversation uses Image Generation instead when that is configured. Image Generation is a different built-in extension. Both Image Generation and Quick Image Gen include NovelAI \"Precise Reference\" for NovelAI V4.5 models (not V5): up to 16 reference images with Character, Style, or Character & Style modes and independent Strength and Fidelity controls, costing 5 additional Anlas per reference per image (blocked in Image Generation when \"Avoid spending Anlas\" is on).",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,

@@ -56,6 +56,7 @@ jobs:
                 startswith(".github/")
                 or startswith("tests/")
                 or . == "scripts/bump-version.js"
+                or . == "scripts/check-copy-placeholders.js"
                 or . == "scripts/update-changelog-merged-prs.js";
               add
               | length == $expected_count
@@ -66,7 +67,7 @@ jobs:
               exit 0
             fi
 
-            echo "actions/* branches may only change .github/, tests/, scripts/bump-version.js and scripts/update-changelog-merged-prs.js."
+            echo "actions/* branches may only change .github/, tests/, scripts/bump-version.js, scripts/check-copy-placeholders.js and scripts/update-changelog-merged-prs.js."
             exit 1
           fi
 

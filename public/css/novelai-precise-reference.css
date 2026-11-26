@@ -1,0 +1,74 @@
+.nai-precise-reference {
+    min-width: 0;
+    margin-block: 12px;
+}
+
+.nai-precise-reference .ds-row-expander__toggle {
+    align-items: center;
+    gap: 9px;
+}
+
+.nai-precise-reference__thumb {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--sb-radius-inner);
+    object-fit: cover;
+    background: var(--sb-layer-canvas);
+}
+
+/* `.ds-row` sets `display`, which would override `hidden`. */
+.nai-precise-reference__status[hidden] {
+    display: none;
+}
+
+.nai-precise-reference__preview-row {
+    justify-content: center;
+}
+
+.nai-precise-reference__preview {
+    display: block;
+    max-width: 100%;
+    max-height: 144px;
+    border-radius: var(--sb-radius-inner);
+    object-fit: contain;
+}
+
+/* A flat icon button at the end of a reference row, libadwaita's 34px flat button with the Control radius. */
+.nai-precise-reference__remove {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-width: max(34px, var(--sb-density-floor));
+    min-height: max(34px, var(--sb-density-floor));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.nai-precise-reference__remove:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.nai-precise-reference__remove:disabled {
+    cursor: not-allowed;
+    opacity: var(--sb-disabled-opacity);
+}
+
+@media (hover: hover) {
+    .nai-precise-reference__remove:not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.nai-precise-reference__remove:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}

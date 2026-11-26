@@ -8,6 +8,8 @@ import { readSecret, SECRET_KEYS } from './secrets.js';
 import { abortOnRequestClose, readAllChunks, extractFileFromZipBuffer, forwardFetchResponse } from '../util.js';
 // Share model compatibility with the browser's direct NovelAI image client.
 import { isNovelAIV5Model, normalizeNovelAIImageParameters } from '../../public/scripts/novelai-image-models.js';
+// SillyBunny: check NovelAI Precise References with the same code as the browser clients.
+import { buildNovelAIPreciseReferenceParameters } from '../../public/scripts/novelai-precise-reference.js';
 
 const API_NOVELAI = 'https://api.novelai.net';
 const TEXT_NOVELAI = 'https://text.novelai.net';
@@ -306,6 +308,16 @@ router.post('/generate-image', async (request, response) => {
         return response.status(400).json({ error: 'NovelAI V5 cannot guarantee free generations. Disable "Avoid spending Anlas" to allow spending Anlas, or choose an earlier model.' });
     }
 
+    // SillyBunny: validate before contacting the provider, because reference surcharges bypass free-generation limits.
+    let preciseReferenceParameters;
+    try {
+        preciseReferenceParameters = buildNovelAIPreciseReferenceParameters(request.body.model, request.body.precise_reference ?? [], {
+            anlasGuard: request.body.novel_anlas_guard === true,
+        });
+    } catch (error) {
+        return response.status(400).json({ error: error.message });
+    }
+
     const key = readSecret(request.user.directories, SECRET_KEYS.NOVEL);
 
     if (!key) {
@@ -314,7 +326,9 @@ router.post('/generate-image', async (request, response) => {
     }
 
     try {
-        console.debug('NAI Diffusion request:', request.body);
+        // SillyBunny: log only the number of reference images, because their data can be many megabytes.
+        const { precise_reference, ...loggedRequest } = request.body;
+        console.debug('NAI Diffusion request:', { ...loggedRequest, precise_reference_count: precise_reference?.length || 0 });
         const generateUrl = `${IMAGE_NOVELAI}/ai/generate-image`;
         const generateResult = await fetch(generateUrl, {
             method: 'POST',
@@ -362,6 +376,8 @@ router.post('/generate-image', async (request, response) => {
                     reference_image_multiple: [],
                     reference_information_extracted_multiple: [],
                     reference_strength_multiple: [],
+                    // SillyBunny: empty without Precise References, so other requests do not change.
+                    ...preciseReferenceParameters,
                     v4_negative_prompt: {
                         caption: {
                             base_caption: request.body.negative_prompt ?? '',

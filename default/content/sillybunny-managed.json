@@ -318,14 +318,10 @@
         {
             "filename": "SillyBunny Lexicon.json",
             "type": "world",
-            "version": 25,
-            "fingerprint": "f98aa6b2f51d8c006f7222c5aa795158f3b9d5f7625c3cc13c14ccdb59c91ff5",
+            "version": 21,
+            "fingerprint": "4fd5d8cc16a38125efc94b50cc6b5aff78afcbcb15974669bd955d646b2d0133",
             "previousFingerprints": [
-                "2ad8c764d6ad4cde9ff07d62770b16bf547705cadc6d5fd39b45908186005d98",
-                "f6c4c97da92d11872c3038610d12189d7d5974aad2ebdb6cc856b9233f20d21e",
-                "3eaf554372eb28a8b2d79dca004656fb5394287c9075549554bf2f7a8ed59c87",
-                "f91edc9435ce11c8178303e53d387f3dd3c0830eae635f0145a7716fa51abc81",
-                "a1e2051e57fd2ae032c4ad13a936eac225ec43c166ce288bf88eb718c9d770fc",
+                "0c4add1ed4dd0c22b99cdf26f62ee36e62f02e5c6741dc6b8e2089974911994b",
                 "7a39508b969b8bbbdb2325a37706df99dc889fcdee789e99923ec1b972ec5313",
                 "695d4509ae08c586cdeac816e3782659db0aa87df939305db24a73597d639b8a",
                 "9afa597c9cfc8e837254a05001e42da606f90f853c625deb5be60f128a869e39",
