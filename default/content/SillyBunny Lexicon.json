@@ -2047,11 +2047,13 @@
                 "lorebook in conversation",
                 "world info in conversation",
                 "use character lorebooks",
-                "lorebook override"
+                "lorebook override",
+                "insert emoji",
+                "emoji picker"
             ],
             "keysecondary": [],
             "comment": "A43 Conversation mode",
-            "content": "Conversation (\"Direct conversational AI mode\") is a messenger-style workspace that replaces the chat area. It needs a character card. The conversation list is on the left (a screen of its own on a phone) and the open conversation is beside it. A conversation is direct (one character) or a group (two or more characters). Each persona has its own list, and a direct conversation is unique per persona and character. A conversation holds one or more chats, as a Roleplay character does. Conversations are not Roleplay chat files and are not in Chat History: each one is a folder with one file per chat in the user's conversations folder, which the account's backup ZIP includes. Replies use their own prompt, in plain chat text without narration, and a character can answer in several bubbles. Reply length follows the active connection. A character answers your messages, and writes first only while the conversation's \"Messaging First\" switch is on. No swipes, Continue, Impersonate, checkpoints or Temporary Chat. Lorebooks apply: the speaking character's books, global books, the persona's book and the conversation's \"Lorebook Override\"; the \"Use Character Lorebooks\" switch, when off, means replies use no lorebooks at all, the Lorebook Override included. Example-message and outlet positions are dropped and sticky or cooldown timers do not run.",
+            "content": "Conversation (\"Direct conversational AI mode\") is a messenger-style workspace that replaces the chat area. It needs a character card. The conversation list is on the left (a screen of its own on a phone) and the open conversation is beside it. A conversation is direct (one character) or a group (two or more characters). Each persona has its own list, and a direct conversation is unique per persona and character. A conversation holds one or more chats, as a Roleplay character does. Conversations are not Roleplay chat files and are not in Chat History: each one is a folder with one file per chat in the user's conversations folder, which the account's backup ZIP includes. Replies use their own prompt, in plain chat text without narration, and a character can answer in several bubbles. Reply length follows the active connection. A character answers your messages, and writes first only while the conversation's \"Messaging First\" switch is on. No swipes, Continue, Impersonate, checkpoints or Temporary Chat. Lorebooks apply: the speaking character's books, global books, the persona's book and the conversation's \"Lorebook Override\"; the \"Use Character Lorebooks\" switch, when off, means replies use no lorebooks at all, the Lorebook Override included. Example-message and outlet positions are dropped and sticky or cooldown timers do not run. The \"Insert Emoji\" button beside the message field (Control+. in the field) opens a searchable emoji chooser; in a narrow window the button is not shown and \"Insert Emoji\" is in the \"+\" menu.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -4382,11 +4384,13 @@
                 "quiet hours",
                 "conversation connection profile",
                 "status message",
-                "set my status"
+                "set my status",
+                "use device emoji",
+                "device emoji"
             ],
             "keysecondary": [],
             "comment": "A89 Conversation Preferences",
-            "content": "Preferences apply to every conversation. They open from the conversation list's Main Menu ▸ Preferences. \"Replies\": \"Simulate Reply Delay\" (on by default: a reply waits and shows typing for a time that depends on the character's status and talkativeness; off, replies come at once), \"Connection Profile\" (the profile that Conversation replies use; \"Use current connection\" follows the active connection) and \"Use Character Lorebooks\". \"Prompts\": \"Custom Instructions\" and \"Grounded Dialogue Rules\", a switch with \"Edit Grounded Dialogue Rules\" for the text. \"Quiet Hours\": \"Quiet Hours Start\" and \"Quiet Hours End\" as times of day, such as 22:00 and 07:00; between them no conversation makes a sound or shows a popup, and the unread badges still count. \"Your Status\": \"Status\" (Online, Idle, Do Not Disturb or Invisible) and \"Status Message\", which the persona button in the conversation list also sets. Do Not Disturb and Invisible stop characters from writing first. A conversation's own settings, such as its system prompt, are in its Details.",
+            "content": "Preferences apply to every conversation. They open from the conversation list's Main Menu ▸ Preferences. \"Replies\": \"Simulate Reply Delay\" (on by default: a reply waits and shows typing for a time that depends on the character's status and talkativeness; off, replies come at once), \"Connection Profile\" (the profile that Conversation replies use; \"Use current connection\" follows the active connection) and \"Use Character Lorebooks\". \"Emoji\": \"Use Device Emoji\" (off by default: Conversation draws emoji with its own bundled font, so they look the same on every device; on, it uses the device's own emoji). \"Prompts\": \"Custom Instructions\" and \"Grounded Dialogue Rules\", a switch with \"Edit Grounded Dialogue Rules\" for the text. \"Quiet Hours\": \"Quiet Hours Start\" and \"Quiet Hours End\" as times of day, such as 22:00 and 07:00; between them no conversation makes a sound or shows a popup, and the unread badges still count. \"Your Status\": \"Status\" (Online, Idle, Do Not Disturb or Invisible) and \"Status Message\", which the persona button in the conversation list also sets. Do Not Disturb and Invisible stop characters from writing first. A conversation's own settings, such as its system prompt, are in its Details.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
