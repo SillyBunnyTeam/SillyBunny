@@ -133,6 +133,14 @@ test.describe('the colour picker of a folder, in the popover of the list on a de
         expect(await storedColour(page, persona)).toMatch(/^rgba\(51,\s*170,\s*85,/);
     });
 
+    test('is held by a popover as wide as its swatch, and not as the form that asks for a name', async ({ page, baseURL }) => {
+        await openListAtFolderColour(page, baseURL);
+
+        const width = (await page.locator(POPOVER).boundingBox()).width;
+
+        expect(width).toBeLessThan(120);
+    });
+
     test('opens on the field of the hex code with a mouse, where typing starts', async ({ page, baseURL }) => {
         await openListAtFolderColour(page, baseURL);
 
