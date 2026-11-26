@@ -30,11 +30,26 @@ internal class StaticAssetInterceptor(
     fun intercept(request: WebResourceRequest, app: AppOrigin): WebResourceResponse? {
         val url = request.url ?: return null
         if (!WebNavigationPolicy.isAppUrl(url, app)) return null
+        // Main-frame navigations always pass through Express so launch-token/SameSite=Strict enforcement runs.
+        if (request.isForMainFrame) return null
         if (!request.method.equals("GET", ignoreCase = true)) return null
-        // Let Express answer Range requests so media and font byte-range probes keep 206 Partial Content.
         val requestHeaders = request.requestHeaders
-        if (requestHeaders != null && requestHeaders.keys.any { it.equals("Range", ignoreCase = true) }) {
-            return null
+        if (requestHeaders != null) {
+            for ((headerName, headerValue) in requestHeaders) {
+                // Let Express answer Range requests so media and font byte-range probes keep 206 Partial Content.
+                if (headerName.equals("Range", ignoreCase = true)) return null
+                // Cross-origin / cross-site subresource loads must hit Express so SameSite=Strict and CORP apply.
+                if (headerName.equals("Sec-Fetch-Site", ignoreCase = true) &&
+                    !headerValue.equals("same-origin", ignoreCase = true)
+                ) {
+                    return null
+                }
+                if (headerName.equals("Origin", ignoreCase = true) &&
+                    !headerValue.equals(app.url, ignoreCase = true)
+                ) {
+                    return null
+                }
+            }
         }
 
         val rawPath = url.encodedPath ?: return null
@@ -95,8 +110,12 @@ internal class StaticAssetInterceptor(
         } catch (_: SecurityException) {
             return null
         }
-        // Symlinks inside public/ must never escape into data/, config.yaml or secrets.json.
+        // Symlinks inside public/ must never escape into data/, config.yaml, secrets.json, or excluded public paths.
         if (!realFile.startsWith(realRoot) || realFile == realRoot) return null
+        if (!fromFrontendAssets) {
+            val realPublicPath = "/" + realRoot.relativize(realFile).toString().replace('\\', '/')
+            if (isExcluded(realPublicPath)) return null
+        }
         if (!Files.isRegularFile(realFile, LinkOption.NOFOLLOW_LINKS)) return null
 
         val stream = try {
@@ -108,7 +127,8 @@ internal class StaticAssetInterceptor(
         }
 
         val cacheControl = when {
-            fromFrontendAssets && !fileName.equals(FRONTEND_MANIFEST_FILE, ignoreCase = true) -> CACHE_IMMUTABLE
+            fromFrontendAssets && HASHED_FRONTEND_ASSET.containsMatchIn(fileName) -> CACHE_IMMUTABLE
+            fromFrontendAssets -> CACHE_REVALIDATE
             assetType.revalidate -> CACHE_REVALIDATE
             else -> CACHE_STATIC_MEDIA
         }
@@ -119,6 +139,9 @@ internal class StaticAssetInterceptor(
             "OK",
             mapOf(
                 "X-Content-Type-Options" to "nosniff",
+                "Cross-Origin-Resource-Policy" to "same-origin",
+                "X-Frame-Options" to "SAMEORIGIN",
+                "Referrer-Policy" to "no-referrer",
                 "Cache-Control" to cacheControl,
             ),
             stream,
@@ -134,7 +157,7 @@ internal class StaticAssetInterceptor(
     companion object {
         private const val CHECKOUT_DIR_NAME = "SillyBunny"
         private const val FRONTEND_ASSETS_PREFIX = "/frontend-assets/"
-        private const val FRONTEND_MANIFEST_FILE = "asset-manifest.json"
+        private val HASHED_FRONTEND_ASSET = Regex("-[a-f0-9]{8,}\\.[a-z0-9]+$", RegexOption.IGNORE_CASE)
         private const val CACHE_IMMUTABLE = "public, max-age=31536000, immutable"
         private const val CACHE_STATIC_MEDIA = "public, max-age=3600"
         private const val CACHE_REVALIDATE = "no-cache"

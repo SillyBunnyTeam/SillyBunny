@@ -157,10 +157,11 @@ class AppUpdater internal constructor(
 
     private fun scheduleAutomaticCheck() {
         cancelPendingAutoCheck()
+        val scheduledGeneration = dismissalGeneration
         val task = Runnable {
             pendingAutoCheck = null
             if (!closed && enabled && !manualCheckRequested && state.lastResult == null && state.phase !in installingPhases) {
-                check(automatic = true)
+                check(automatic = true, expectedGeneration = scheduledGeneration)
             }
         }
         pendingAutoCheck = task
@@ -265,9 +266,11 @@ class AppUpdater internal constructor(
         if (state.phase != UpdatePhase.AWAITING_SOURCE_PERMISSION) return
         permissionScreenLaunched = false
         val candidate = state.candidate
-        val apk = store.downloadedApk?.let(::File)
-        if (installer.canInstall() && candidate != null && apk?.isFile == true) {
-            beginInstall(apk, candidate.manifest.versionCode)
+        val verified = store.verifiedDownload()
+        val targetVersion = candidate?.manifest?.versionCode ?: verified?.versionCode
+        val apk = (store.downloadedApk?.let(::File) ?: verified?.apk)?.takeIf(File::isFile)
+        if (installer.canInstall() && targetVersion != null && apk != null) {
+            beginInstall(apk, targetVersion)
         } else {
             enqueue { store.clearDownload() }
             state = state.copy(visible = true, phase = UpdatePhase.ERROR)
@@ -288,7 +291,7 @@ class AppUpdater internal constructor(
         enqueue { loadBlockedStatus() }
     }
 
-    private fun check(automatic: Boolean) {
+    private fun check(automatic: Boolean, expectedGeneration: Int = dismissalGeneration) {
         if (closed || state.phase in installingPhases) return
         cancelPendingAutoCheck()
         if (!automatic) {
@@ -297,7 +300,7 @@ class AppUpdater internal constructor(
         }
         if (busy) return
         busy = true
-        val startedGeneration = dismissalGeneration
+        val startedGeneration = if (automatic) expectedGeneration else dismissalGeneration
         val retainedPhase = state.phase.takeIf {
             automatic && state.visible && it in setOf(UpdatePhase.ERROR, UpdatePhase.UPDATED)
         }
@@ -311,14 +314,19 @@ class AppUpdater internal constructor(
                     candidate != null -> UpdatePhase.AVAILABLE
                     state.blocked != null -> UpdatePhase.REQUIRED
                     keepPreviousPresentation -> retainedPhase
-                    result is UpdateCheckResult.Failed -> UpdatePhase.ERROR
+                    !automatic && result is UpdateCheckResult.Failed -> UpdatePhase.ERROR
                     state.updatedVersionCode != null -> UpdatePhase.UPDATED
+                    result is UpdateCheckResult.Failed -> UpdatePhase.ERROR
                     else -> UpdatePhase.UP_TO_DATE
                 }
+                val shouldShowAutomatic = startedGeneration == dismissalGeneration && (
+                    candidate != null ||
+                        state.blocked != null ||
+                        (state.updatedVersionCode != null && result !is UpdateCheckResult.Failed) ||
+                        retainedPhase != null
+                    )
                 state = state.copy(
-                    visible = manualCheckRequested || (startedGeneration == dismissalGeneration &&
-                        (candidate != null || state.blocked != null ||
-                            state.updatedVersionCode != null || retainedPhase != null)),
+                    visible = manualCheckRequested || shouldShowAutomatic,
                     phase = phase,
                     candidate = candidate,
                     lastResult = result,
@@ -392,7 +400,7 @@ class AppUpdater internal constructor(
         val phase = when (result.outcome) {
             InstallOutcome.AWAITING_USER_ACTION, InstallOutcome.VERIFYING -> UpdatePhase.INSTALLING
             InstallOutcome.FAILED, InstallOutcome.ABORTED -> UpdatePhase.ERROR
-            InstallOutcome.SUCCESS -> UpdatePhase.UPDATED
+            InstallOutcome.SUCCESS -> if (state.blocked != null) UpdatePhase.REQUIRED else UpdatePhase.UPDATED
             InstallOutcome.IDLE -> return
         }
         state = state.copy(
@@ -426,7 +434,9 @@ class AppUpdater internal constructor(
         }
         preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         executor.shutdownNow()
-        if (store.activeSessionId == null) store.clearDownload()
+        if (!busy && state.phase !in installingPhases && store.activeSessionId == null) {
+            store.clearDownload()
+        }
     }
 
     @VisibleForTesting

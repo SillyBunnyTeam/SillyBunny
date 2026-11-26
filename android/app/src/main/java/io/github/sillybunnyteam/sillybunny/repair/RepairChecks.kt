@@ -40,8 +40,33 @@ internal object DataRoot {
         }
         // Bash drops NUL bytes from command substitutions, so the installer would read another value.
         if ('\u0000' in text) throw IOException("config.yaml holds a NUL byte")
+        if (hasAmbiguousYamlDataRoot(text)) {
+            throw IOException("config.yaml uses a YAML dataRoot form that install.sh cannot parse safely")
+        }
         return parse(text)
     }
+
+    /**
+     * Fails closed when YAML syntax differs from `install.sh`'s line-based `read_data_root` (for example a quoted
+     * `"dataRoot":` key or a `#` inside a quoted value), so Repair and leftover protection never misread live data.
+     */
+    private fun hasAmbiguousYamlDataRoot(text: String): Boolean {
+        for (raw in text.split('\n')) {
+            val line = raw.removeSuffix("\r")
+            if (QUOTED_DATA_ROOT_KEY.containsMatchIn(line)) return true
+            if (line.startsWith(PREFIX)) {
+                val value = line.substring(PREFIX.length).trimStart(::isPosixSpace)
+                val quote = value.firstOrNull()?.takeIf { it == '"' || it == '\'' }
+                if (quote != null) {
+                    val closing = value.indexOf(quote, startIndex = 1)
+                    if (closing > 1 && '#' in value.substring(1, closing)) return true
+                }
+            }
+        }
+        return false
+    }
+
+    private val QUOTED_DATA_ROOT_KEY = Regex("""^(?:"dataRoot"|'dataRoot')[ \t]*:""")
 
     /**
      * The rest of the first line that starts with `dataRoot:`, minus the whitespace after the key (the

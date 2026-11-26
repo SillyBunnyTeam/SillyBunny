@@ -55,7 +55,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
             throw failure.cause ?: failure
         } catch (failure: InterruptedException) {
             Thread.currentThread().interrupt()
-            throw FileNotFoundException("TODO(copy)")
+            throw FileNotFoundException("Document operation interrupted")
         }
     }
 
@@ -77,7 +77,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
     }
 
     fun requireAvailable() {
-        if (!isAvailable) throw FileNotFoundException("TODO(copy)")
+        if (!isAvailable) throw FileNotFoundException("Document access unavailable during maintenance")
     }
 
     fun releaseProvider() {

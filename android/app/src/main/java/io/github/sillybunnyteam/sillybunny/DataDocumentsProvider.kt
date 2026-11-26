@@ -117,11 +117,15 @@ class DataDocumentsProvider : DocumentsProvider() {
         }
     }
 
-    override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean = access {
-        val parent = ids.resolve(parentDocumentId)
-        val child = ids.resolve(documentId)
-        parent.directory && parent.file.toPath() != child.file.toPath() &&
-            child.file.toPath().startsWith(parent.file.toPath())
+    override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean = try {
+        access {
+            val parent = ids.resolve(parentDocumentId)
+            val child = ids.resolve(documentId)
+            parent.directory && parent.file.toPath() != child.file.toPath() &&
+                child.file.toPath().startsWith(parent.file.toPath())
+        }
+    } catch (_: FileNotFoundException) {
+        false
     }
 
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String = access {
@@ -243,7 +247,7 @@ class DataDocumentsProvider : DocumentsProvider() {
         } catch (failure: Throwable) {
             workspace.call { proxy.close() }
             if (failure is android.os.OperationCanceledException) throw failure
-            throw FileNotFoundException("TODO(copy)")
+            throw FileNotFoundException("Document could not be opened")
         }
     }
 
@@ -255,9 +259,9 @@ class DataDocumentsProvider : DocumentsProvider() {
             try {
                 block()
             } catch (_: ErrnoException) {
-                throw FileNotFoundException("TODO(copy)")
+                throw FileNotFoundException("Document operation failed")
             } catch (_: IOException) {
-                throw FileNotFoundException("TODO(copy)")
+                throw FileNotFoundException("Document operation failed")
             }
         }
     }

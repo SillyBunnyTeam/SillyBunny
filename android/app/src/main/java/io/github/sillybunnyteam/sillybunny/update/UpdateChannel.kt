@@ -37,6 +37,15 @@ object UpdateChannel {
         if (!validRef("refs/heads/$localBranch")) return null
         val config = parseConfig(readText(File(git, "config"), 512 * 1024) ?: return null)
             ?: return null
+        if (hasWorktreeConfigEnabled(config)) {
+            val worktreeConfigFile = File(git, "config.worktree")
+            if (Files.exists(worktreeConfigFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                val worktreeConfig = parseConfig(readText(worktreeConfigFile, 512 * 1024) ?: return null)
+                    ?: return null
+                // Sparse checkouts write only [core] sparseCheckout* keys here; fall back if branch/remote are overridden.
+                if (worktreeConfig.keys.any { it.name == "branch" || it.name == "remote" }) return null
+            }
+        }
         val branch = config[Section("branch", localBranch)] ?: return null
         val remote = branch["remote"]?.singleOrNull()?.takeIf(remotePattern::matches) ?: return null
         if (remote == "." || remote.endsWith('.') || ".." in remote) return null
@@ -93,7 +102,6 @@ object UpdateChannel {
             val match = keyPattern.matchEntire(line) ?: return null
             val key = match.groupValues[1].lowercase(Locale.ROOT)
             val value = parseValue(match.groups[2]?.value ?: "true") ?: return null
-            if (current.name == "extensions" && key == "worktreeconfig") return null
             val values = result.getValue(current).getOrPut(key) { mutableListOf() }
             if (current.name in setOf("branch", "remote") && key != "fetch" && values.isNotEmpty()) {
                 return null
@@ -101,6 +109,12 @@ object UpdateChannel {
             values.add(value)
         }
         return result
+    }
+
+    private fun hasWorktreeConfigEnabled(config: Map<Section, Map<String, List<String>>>): Boolean {
+        val values = config[Section("extensions", null)]?.get("worktreeconfig") ?: return false
+        val value = values.lastOrNull()?.lowercase(Locale.ROOT) ?: return false
+        return value in setOf("true", "yes", "on", "1")
     }
 
     private fun parseValue(raw: String): String? {

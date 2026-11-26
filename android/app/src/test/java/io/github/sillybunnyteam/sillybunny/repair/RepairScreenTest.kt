@@ -210,26 +210,32 @@ class RepairScreenTest {
         assertFalse(exists(RepairTags.REF))
         assertFalse(exists(RepairTags.DEFAULT_REF))
         assertFalse(exists(RepairTags.RETRY_DEFAULT))
+        // Retryable failure with moved-aside user data cannot be closed via Close button or system Back.
+        assertFalse(exists(RepairTags.CLOSE))
         click(RepairTags.RETRY)
         click(RepairTags.VIEW_LOGS)
         click(RepairTags.SHARE_LOGS)
-        click(RepairTags.CLOSE)
-        assertEquals(listOf("retry", "viewLogs", "shareLogs", "close"), calls)
+        back()
+        assertEquals(listOf("retry", "viewLogs", "shareLogs"), calls)
 
-        // Nothing moved: no data location, no exit code, no output.
+        // Nothing moved: no data location, no exit code, no output; Close is available.
         state = RepairState.Failed(RepairFailure.STOP_TIMEOUT, null, emptyList(), null, canRetry = true)
         assertTrue(exists(RepairTags.NOTHING_MOVED))
         assertFalse(exists(RepairTags.DATA_LOCATION))
         assertFalse(exists(RepairTags.EXIT_CODE))
         assertFalse(exists(RepairTags.LINES))
         assertTrue(exists(RepairTags.RETRY))
+        assertTrue(exists(RepairTags.CLOSE))
+        click(RepairTags.CLOSE)
+        assertEquals(listOf("retry", "viewLogs", "shareLogs", "close"), calls)
 
-        // A folder that is gone cannot be retried; logs stay available.
+        // A folder that is gone cannot be retried; logs and Close stay available.
         state = RepairState.Failed(RepairFailure.SOURCE_MISSING, source, emptyList(), null, canRetry = false)
         assertFalse(exists(RepairTags.RETRY))
         assertTrue(exists(RepairTags.VIEW_LOGS))
+        assertTrue(exists(RepairTags.CLOSE))
         back()
-        assertEquals("close", calls.last())
+        assertEquals(listOf("retry", "viewLogs", "shareLogs", "close", "close"), calls)
 
         for (reason in RepairFailure.entries) {
             state = RepairState.Failed(reason, source, emptyList(), 0, canRetry = true)

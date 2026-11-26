@@ -106,7 +106,6 @@ class UpdateChannelTest {
             config().replace("fetch = +refs/heads/*:refs/remotes/origin/*", "fetch = +refs/heads/*:refs/remotes/other/*"),
             config() + "\n[include]\npath = extra.conf\n",
             config() + "\n[includeIf \"gitdir:somewhere/\"]\npath = extra.conf\n",
-            config() + "\n[extensions]\nworktreeConfig = true\n",
             config() + "\n#" + "x".repeat(512 * 1024),
             config().replace("remote = origin", "remote = ori\\\ngin"),
         )
@@ -116,6 +115,48 @@ class UpdateChannelTest {
         }
         File(checkout, ".git/config").delete()
         assertEquals("release", UpdateChannel.trackedBranch(checkout, "release"))
+    }
+
+    @Test
+    fun supportsSparseCheckoutWorktreeConfigAndRejectsUnsafeWorktreeOverrides() {
+        val checkout = checkout(local = "staging", merge = "staging")
+        write(
+            checkout,
+            "config",
+            """
+                [core]
+                    repositoryformatversion = 1
+                    bare = false
+                [extensions]
+                    partialclone = origin
+                    worktreeConfig = true
+            """.trimIndent() + "\n" + config(local = "staging", merge = "staging"),
+        )
+        write(
+            checkout,
+            "config.worktree",
+            """
+                [core]
+                    sparseCheckout = true
+                    sparseCheckoutCone = false
+            """.trimIndent() + "\n",
+        )
+        assertEquals("staging", UpdateChannel.trackedBranch(checkout, "release"))
+
+        // If config.worktree overrides branch or remote settings, includes another file, or is malformed, fall back.
+        for (unsafeWorktree in listOf(
+            "[branch \"staging\"]\n\tmerge = refs/heads/release\n",
+            "[remote \"origin\"]\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+            "[include]\n\tpath = extra.conf\n",
+            "broken",
+        )) {
+            write(checkout, "config.worktree", unsafeWorktree)
+            assertEquals(unsafeWorktree, "release", UpdateChannel.trackedBranch(checkout, "release"))
+        }
+
+        // Absent config.worktree with extensions.worktreeConfig = true remains valid.
+        File(checkout, ".git/config.worktree").delete()
+        assertEquals("staging", UpdateChannel.trackedBranch(checkout, "release"))
     }
 
     @Test

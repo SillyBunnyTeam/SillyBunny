@@ -138,6 +138,7 @@ internal class WebShell(
     private var clearHistoryOnFirstLoad = false
 
     /** Set when the frontend started the OpenRouter sign-in in-app; cleared once the app origin loads again. */
+    @Volatile
     private var openRouterArmed = false
 
     init {
@@ -273,6 +274,10 @@ internal class WebShell(
     fun release() {
         if (isReleased) return
         isReleased = true
+        val currentApp = appOrigin
+        if (currentApp != null && LaunchCookieContainment.app == currentApp) {
+            LaunchCookieContainment.app = null
+        }
         teardownWebView()
         popups.toList().forEach(::destroyPopup)
         handler.removeCallbacksAndMessages(null)
@@ -528,6 +533,7 @@ internal class WebShell(
             val url = request.url
             val refused = WebNavigationPolicy.refusesRequest(url, app) && !WebNavigationPolicy.isSameOrigin(url, openRouter)
             if (refused) return blockedResponse()
+            if (openRouterArmed) return null
             return staticAssets?.intercept(request, app)
         }
 

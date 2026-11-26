@@ -105,14 +105,10 @@ fun SettingsLogsScreen(
     }
 }
 
-/** Lines per lazy text block so large log buffers stay cheap to measure and scroll. */
-private const val LOG_CHUNK_LINES = 10
-
 @Composable
 private fun LogText(lines: List<String>, padding: PaddingValues) {
     val listState = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
-    val chunks = remember(lines) { lines.chunked(LOG_CHUNK_LINES) { it.joinToString("\n") } }
     LaunchedEffect(listState) {
         // Only user gestures change whether the view follows: scrolling up stops it, back down resumes.
         var wasScrolling = false
@@ -122,9 +118,9 @@ private fun LogText(lines: List<String>, padding: PaddingValues) {
                 wasScrolling = scrolling
             }
     }
-    LaunchedEffect(chunks) {
-        if (follow && chunks.isNotEmpty()) {
-            listState.scrollToItem(chunks.lastIndex)
+    LaunchedEffect(lines) {
+        if (follow && lines.isNotEmpty()) {
+            listState.scrollToItem(lines.lastIndex, Int.MAX_VALUE)
         }
     }
     val direction = LocalLayoutDirection.current
@@ -134,19 +130,19 @@ private fun LogText(lines: List<String>, padding: PaddingValues) {
         end = padding.calculateEndPadding(direction) + 16.dp,
         bottom = padding.calculateBottomPadding() + 8.dp,
     )
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .belowTopBar(padding)
-            .testTag(SettingsTags.LOGS_TEXT)
-            .semantics { this[SettingsSemantics.LogLines] = lines },
-        contentPadding = contentPadding,
-    ) {
-        items(count = chunks.size, contentType = { "log_chunk" }) { index ->
-            SelectionContainer {
+    SelectionContainer {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .belowTopBar(padding)
+                .testTag(SettingsTags.LOGS_TEXT)
+                .semantics { this[SettingsSemantics.LogLines] = lines },
+            contentPadding = contentPadding,
+        ) {
+            items(count = lines.size, contentType = { "log_line" }) { index ->
                 Text(
-                    text = chunks[index],
+                    text = lines[index],
                     modifier = Modifier.fillMaxWidth(),
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,

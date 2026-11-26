@@ -86,12 +86,17 @@ class MainActivity : ComponentActivity() {
                 updates.Dialog()
             }
         }
-        // Pre-warm Chromium WebView once the main looper goes idle so it initializes in parallel with Node startup.
-        Looper.myQueue().addIdleHandler {
-            if (!isFinishing && !isDestroyed) {
-                WebShell.prewarm(MutableContextWrapper(applicationContext))
+        // Pre-warm Chromium WebView once per fresh launch when no shell is already retained across rotation.
+        if (savedInstanceState == null && WebShell.existing(this) == null) {
+            Looper.myQueue().addIdleHandler {
+                if (!isFinishing && !isDestroyed &&
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                    WebShell.existing(this) == null
+                ) {
+                    WebShell.prewarm(MutableContextWrapper(applicationContext))
+                }
+                false
             }
-            false
         }
     }
 
@@ -114,6 +119,13 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         components.onActivityStopped()
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) {
+            WebShell.discardPrewarmed()
+        }
+        super.onDestroy()
     }
 
     override fun onTrimMemory(level: Int) {

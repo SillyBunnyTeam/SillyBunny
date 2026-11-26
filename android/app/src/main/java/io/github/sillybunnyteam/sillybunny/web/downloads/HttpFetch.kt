@@ -4,7 +4,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.Proxy
 import java.net.URI
+import java.util.Locale
 
 /**
  * App-owned HTTP(S) GET for a download (plan §4.5). Redirects are followed by hand, each hop checked
@@ -18,7 +20,7 @@ internal class HttpFetch(
     private val cookies: (String) -> String?,
     private val userAgent: String?,
     private val timeoutMillis: Int = 30_000,
-    private val connect: (URI) -> HttpURLConnection = { it.toURL().openConnection() as HttpURLConnection },
+    private val connect: (URI) -> HttpURLConnection = ::defaultConnect,
 ) {
     class Response(
         val connection: HttpURLConnection,
@@ -69,6 +71,19 @@ internal class HttpFetch(
     companion object {
         private val REDIRECTS = setOf(301, 302, 303, 307, 308)
         private const val BUFFER_BYTES = 64 * 1024
+
+        // Loopback app hops carry the launch and session cookies; never route them through a system HTTP proxy.
+        internal fun defaultConnect(uri: URI): HttpURLConnection {
+            val host = uri.host?.lowercase(Locale.ROOT)
+            val isLoopback = host == "127.0.0.1" || host == "::1" || host == "[::1]" ||
+                host == "localhost" || host?.endsWith(".localhost") == true
+            val connection = if (isLoopback) {
+                uri.toURL().openConnection(Proxy.NO_PROXY)
+            } else {
+                uri.toURL().openConnection()
+            }
+            return connection as HttpURLConnection
+        }
 
         /**
          * Copies [input] to [output] while [keepGoing] holds, failing once more than [maxBytes] arrive

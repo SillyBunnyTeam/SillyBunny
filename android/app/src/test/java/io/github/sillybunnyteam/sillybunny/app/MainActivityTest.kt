@@ -347,6 +347,25 @@ class MainActivityTest {
         assertEquals(1, platform.views.size)
     }
 
+    @Test
+    fun recreatingActivityWithRetainedWebShellDoesNotPrewarmDuplicateWebViewAndFinishingDiscardsPrewarmed() {
+        showWeb()
+        WebShell.discardPrewarmed()
+        assertFalse(WebShell.hasPrewarmed())
+
+        checkNotNull(scenario).recreate()
+        shadowOf(Looper.getMainLooper()).idle()
+        compose.waitForIdle()
+        assertFalse("recreation with an active WebShell must not allocate a spare prewarmed WebView", WebShell.hasPrewarmed())
+
+        // Simulate an unclaimed prewarmed WebView present when the activity finishes.
+        WebShell.prewarm(context, platform)
+        assertTrue(WebShell.hasPrewarmed(platform))
+        checkNotNull(scenario).close()
+        scenario = null
+        assertFalse("finishing MainActivity must discard any unclaimed prewarmed WebView", WebShell.hasPrewarmed(platform))
+    }
+
     private companion object {
         const val LABEL = "sb-abcdefghijklmnopqrstuvwxyz"
     }

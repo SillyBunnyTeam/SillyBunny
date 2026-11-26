@@ -51,6 +51,12 @@ class RepairChecksTest {
         assertThrows(IOException::class.java) { DataRoot.read(checkout) }
         config.writeText("x".repeat(8 * 1024 * 1024 + 1))
         assertThrows(IOException::class.java) { DataRoot.read(checkout) }
+        config.writeText("\"dataRoot\": /quoted-key/data\n")
+        assertThrows(IOException::class.java) { DataRoot.read(checkout) }
+        config.writeText("'dataRoot': /single-quoted-key/data\n")
+        assertThrows(IOException::class.java) { DataRoot.read(checkout) }
+        config.writeText("dataRoot: \"/path/with#hash\"\n")
+        assertThrows(IOException::class.java) { DataRoot.read(checkout) }
     }
 
     @Test

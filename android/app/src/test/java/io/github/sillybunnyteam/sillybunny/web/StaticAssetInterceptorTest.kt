@@ -317,11 +317,61 @@ class StaticAssetInterceptorTest {
         assertNull(intercept("/scripts/.hidden"))
     }
 
+    @Test
+    fun rejectsMainFrameCrossSiteHeadersAndInternalSymlinksToExcludedPathsAndMatchesFrontendCacheRules() {
+        // Main-frame navigations must hit Express so SameSite=Strict launch-token auth is enforced.
+        assertNull(intercept("/lib/template.html", mainFrame = true))
+        assertNull(intercept("/scripts/main.js", mainFrame = true))
+
+        // Cross-site or cross-origin subresource headers fall through to Express.
+        assertNull(intercept("/scripts/main.js", headers = mapOf("Sec-Fetch-Site" to "cross-site")))
+        assertNull(intercept("/scripts/main.js", headers = mapOf("Sec-Fetch-Site" to "same-site")))
+        assertNull(intercept("/scripts/main.js", headers = mapOf("Sec-Fetch-Site" to "none")))
+        assertNull(intercept("/scripts/main.js", headers = mapOf("Origin" to "https://openrouter.ai")))
+
+        // Same-origin headers remain intercepted and include helmet-equivalent framing/CORP headers.
+        val sameOrigin = checkNotNull(
+            intercept(
+                "/scripts/main.js",
+                headers = mapOf("Sec-Fetch-Site" to "same-origin", "Origin" to origin),
+            ),
+        )
+        assertEquals("same-origin", sameOrigin.responseHeaders["Cross-Origin-Resource-Policy"])
+        assertEquals("SAMEORIGIN", sameOrigin.responseHeaders["X-Frame-Options"])
+        assertEquals("no-referrer", sameOrigin.responseHeaders["Referrer-Policy"])
+        sameOrigin.data.close()
+
+        // Unhashed files under /frontend-assets/ must revalidate instead of being marked immutable.
+        write(frontendDistDir.resolve("unhashed.js"), "export const plain = 1;\n")
+        assertServed(
+            path = "/frontend-assets/unhashed.js",
+            expectedMime = "text/javascript",
+            expectedEncoding = "utf-8",
+            expectedCache = "no-cache",
+            expectedText = "export const plain = 1;\n",
+        )
+
+        // Internal symlinks pointing at excluded paths inside public/ must still fall through.
+        val aliasExcluded = publicDir.resolve("scripts/alias-user.css")
+        val symlinksSupported = try {
+            Files.createSymbolicLink(aliasExcluded, publicDir.resolve("css/user.css"))
+            true
+        } catch (_: UnsupportedOperationException) {
+            false
+        } catch (_: java.nio.file.FileSystemException) {
+            false
+        }
+        if (symlinksSupported) {
+            assertNull(intercept("/scripts/alias-user.css"))
+        }
+    }
+
     private fun intercept(
         path: String,
         method: String = "GET",
         headers: Map<String, String> = emptyMap(),
-    ): WebResourceResponse? = interceptor.intercept(TestRequest("$origin$path", method, headers), app)
+        mainFrame: Boolean = false,
+    ): WebResourceResponse? = interceptor.intercept(TestRequest("$origin$path", method, headers, mainFrame), app)
 
     private fun assertServed(
         path: String,
@@ -336,6 +386,9 @@ class StaticAssetInterceptorTest {
         assertEquals(path, expectedMime, response.mimeType)
         assertEquals(path, expectedEncoding, response.encoding)
         assertEquals(path, "nosniff", response.responseHeaders["X-Content-Type-Options"])
+        assertEquals(path, "same-origin", response.responseHeaders["Cross-Origin-Resource-Policy"])
+        assertEquals(path, "SAMEORIGIN", response.responseHeaders["X-Frame-Options"])
+        assertEquals(path, "no-referrer", response.responseHeaders["Referrer-Policy"])
         assertEquals(path, expectedCache, response.responseHeaders["Cache-Control"])
         assertEquals(path, expectedText, response.data.use { it.bufferedReader().readText() })
     }
@@ -351,12 +404,13 @@ class StaticAssetInterceptorTest {
         private val rawUrl: String,
         private val method: String = "GET",
         private val headers: Map<String, String> = emptyMap(),
+        private val mainFrame: Boolean = false,
     ) : WebResourceRequest {
         private val parsed: Uri = Uri.parse(rawUrl)
 
         override fun getUrl(): Uri = parsed
 
-        override fun isForMainFrame(): Boolean = false
+        override fun isForMainFrame(): Boolean = mainFrame
 
         override fun isRedirect(): Boolean = false
 

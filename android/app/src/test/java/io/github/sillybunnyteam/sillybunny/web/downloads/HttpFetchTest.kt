@@ -7,6 +7,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
 import java.net.URI
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
@@ -205,5 +208,42 @@ class HttpFetchTest {
         assertEquals("cookies are read for the web origin", listOf("$label/a", "$label/b"), asked)
         assertEquals(listOf("http://127.0.0.1:41234/a", "http://127.0.0.1:41234/b"), script.connections.map { it.url.toString() })
         assertTrue(script.connections.all { it.sent["Cookie"] == "sillybunny_launch=t" })
+    }
+
+    @Test
+    fun loopbackAppHopsBypassSystemHttpProxy() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/secret") { exchange ->
+            val body = "ok".toByteArray()
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+            exchange.close()
+        }
+        server.start()
+        val previous = ProxySelector.getDefault()
+        val proxyQueried = CopyOnWriteArrayList<URI>()
+        ProxySelector.setDefault(
+            object : ProxySelector() {
+                override fun select(uri: URI): List<Proxy> {
+                    proxyQueried += uri
+                    return listOf(Proxy(Proxy.Type.HTTP, InetSocketAddress("192.0.2.1", 8080)))
+                }
+
+                override fun connectFailed(uri: URI, sa: SocketAddress, ioe: IOException) = Unit
+            },
+        )
+        try {
+            val port = server.address.port
+            val local = DownloadPolicy(WebOrigin("http", "127.0.0.1", port))
+            val fetch = HttpFetch(local, { "sillybunny_launch=secret" }, "UA/1")
+            val response = checkNotNull(fetch.open(checkNotNull(local.start("http://127.0.0.1:$port/secret"))))
+            val body = response.connection.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
+            response.connection.disconnect()
+            assertEquals("ok", body)
+            assertTrue("loopback hop must not consult system proxy", proxyQueried.isEmpty())
+        } finally {
+            ProxySelector.setDefault(previous)
+            server.stop(0)
+        }
     }
 }

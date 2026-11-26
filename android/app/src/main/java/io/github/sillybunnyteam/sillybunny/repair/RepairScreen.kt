@@ -102,8 +102,10 @@ fun RepairScreen(
             onRetryWithDefaultRef = { controller.retryWithDefaultRef() },
             onStartServer = { controller.startServer() },
             onClose = {
-                controller.dismiss()
-                onClose()
+                if (controller.canClose()) {
+                    controller.dismiss()
+                    onClose()
+                }
             },
             onViewLogs = onViewLogs,
             onShareLogs = onShareLogs,
@@ -129,12 +131,14 @@ fun RepairContent(
 ) {
     var confirmingCancel by rememberSaveable { mutableStateOf(false) }
     val cancellable = (state as? RepairState.Running)?.canCancel == true
+    val canClose = state !is RepairState.Running &&
+        !(state is RepairState.Failed && state.source != null && state.canRetry)
     LaunchedEffect(cancellable) {
         if (!cancellable) confirmingCancel = false
     }
-    // System back never cancels a running Repair: cancelling takes the confirmed Cancel action.
+    // Never leave Repair while running or while moved-aside user data still awaits a retry.
     BackHandler {
-        if (state !is RepairState.Running) onClose()
+        if (canClose) onClose()
     }
     Surface(modifier = modifier.fillMaxSize()) {
         Column(
@@ -292,7 +296,9 @@ private fun Failure(
         onClick = onShareLogs,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(RepairTags.SHARE_LOGS),
     ) { Text(stringResource(R.string.repair_share_logs_action)) }
-    CloseButton(R.string.repair_close_action, RepairTags.CLOSE, onClose)
+    if (state.source == null || !state.canRetry) {
+        CloseButton(R.string.repair_close_action, RepairTags.CLOSE, onClose)
+    }
 }
 
 @Composable

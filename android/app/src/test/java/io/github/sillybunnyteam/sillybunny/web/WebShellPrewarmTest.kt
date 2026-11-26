@@ -208,6 +208,10 @@ class WebShellPrewarmTest {
         val swHit = checkNotNull(swIntercept(FakeRequest("$origin/scripts/app.js", mainFrame = false)))
         assertEquals("text/javascript", swHit.mimeType)
         assertTrue(checkNotNull(platform.blockRequest)(Uri.parse("http://127.0.0.1:41234/scripts/app.js")))
+
+        // Releasing the shell clears process-wide LaunchCookieContainment for that origin.
+        shell.release()
+        assertNull(LaunchCookieContainment.app)
     }
 
     private class LifecycleRecordingWebView(

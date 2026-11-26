@@ -199,6 +199,13 @@ class RepairController internal constructor(
         }
     }
 
+    /** False while Repair is running or holding moved-aside user data awaiting a retry. */
+    fun canClose(): Boolean = when (val current = mutableState.value) {
+        is RepairState.Running -> false
+        is RepairState.Failed -> current.source == null || !current.canRetry
+        else -> true
+    }
+
     /**
      * Leaves a finished result. A failure whose data is still in a moved-aside folder is kept, so the next
      * launch offers the retry again; only a failure whose folder is gone forgets its record.
@@ -455,6 +462,7 @@ class RepairController internal constructor(
             Log.w(TAG, "Could not start the server after Repair", failure)
             false
         }
+        mutableState.value = RepairState.Succeeded(source, started, lines)
         if (!started) {
             try {
                 onServerStartDeferred()
@@ -462,7 +470,6 @@ class RepairController internal constructor(
                 Log.w(TAG, "The deferred-start callback failed", failure)
             }
         }
-        mutableState.value = RepairState.Succeeded(source, started, lines)
     }
 
     /** Step 7: keeps everything. A record whose data has moved stays, ready for a retry. */

@@ -255,12 +255,19 @@ class AppUpdaterTest {
     fun anUnmetRequirementStillShowsTheRequiredPromptAfterAnUpdate() {
         installedVersion(2)
         blockedStatus("""{"required":3,"installed":2,"reason":"newer"}""")
-        UpdateStore(context).recordReplacement(2)
+        val store = UpdateStore(context)
+        val apk = File(context.cacheDir, "updates/applied-v2.apk").apply {
+            parentFile!!.mkdirs()
+            writeText("applied fixture")
+        }
+        assertTrue(store.beginInstall(77, "applied-callback", apk, 2))
+        store.recordReplacement(2)
         updater.enabled = false
         updater.onLaunch()
         await { updater.state.initialized }
         assertEquals(3L, updater.state.blocked!!.requiredVersionCode)
         assertEquals(UpdatePhase.REQUIRED, updater.state.phase)
+        assertTrue(updater.state.visible)
     }
 
     @Test
@@ -474,6 +481,58 @@ class AppUpdaterTest {
                 shadowOf(Looper.getMainLooper()).idle()
                 assertNull(deferred.lastResult)
             }
+        }
+    }
+
+    @Test
+    fun dismissedPostUpdateOrRequiredDialogDoesNotReopenWhenDeferredAutoCheckRuns() {
+        UpdateTestServer().use { server ->
+            server.json("/latest/android-update.json", CoreTestFixtures.manifest(version = 1).toString())
+            installedVersion(2)
+            UpdateStore(context).recordReplacement(2)
+            withActivity { activity ->
+                val deferred = updaterFor(activity, repository(server))
+                deferred.enabled = true
+                deferred.onLaunch()
+                await { deferred.state.initialized && deferred.state.visible }
+                assertEquals(UpdatePhase.UPDATED, deferred.state.phase)
+
+                deferred.later()
+                assertFalse(deferred.state.visible)
+
+                // Even when the deferred automatic check later runs (or fails offline), the dismissed dialog stays closed.
+                shadowOf(Looper.getMainLooper()).idleFor(AppUpdater.AUTO_CHECK_DELAY_MILLIS, TimeUnit.MILLISECONDS)
+                await { deferred.lastResult != null }
+                assertFalse(deferred.state.visible)
+                assertEquals(UpdatePhase.UPDATED, deferred.state.phase)
+            }
+        }
+
+        // Offline failure after dismissing post-update dialog must never pop an unsolicited ERROR dialog at t=60s.
+        val offlineRepo = UpdateRepository(
+            context,
+            manifestUrl = "http://127.0.0.1:1/unreachable",
+            releasesApiUrl = "http://127.0.0.1:1/releases",
+            http = UpdateHttpClient(allowDebugLoopback = true),
+            supportedAbis = listOf(CoreTestFixtures.ABI),
+            defaultRef = "release",
+            installedVersionCode = { 2 },
+            installedSigner = { CoreTestFixtures.signer },
+            archiveVerifier = { _, _, _ -> true },
+        )
+        UpdateStore(context).recordReplacement(2)
+        withActivity { activity ->
+            val deferred = updaterFor(activity, offlineRepo)
+            deferred.enabled = true
+            deferred.onLaunch()
+            await { deferred.state.initialized && deferred.state.visible }
+            deferred.later()
+            assertFalse(deferred.state.visible)
+
+            shadowOf(Looper.getMainLooper()).idleFor(AppUpdater.AUTO_CHECK_DELAY_MILLIS, TimeUnit.MILLISECONDS)
+            await { deferred.lastResult != null }
+            assertFalse(deferred.state.visible)
+            assertEquals(UpdatePhase.UPDATED, deferred.state.phase)
         }
     }
 

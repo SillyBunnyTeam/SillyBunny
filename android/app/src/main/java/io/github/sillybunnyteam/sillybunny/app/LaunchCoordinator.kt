@@ -205,7 +205,7 @@ internal class LaunchCoordinator(
     private fun decide(server: ServerState, setup: SetupState): AppRoute = LaunchDecision.route(
         LaunchInputs(
             layout = layout,
-            repairOpen = Overlay.REPAIR in mutableOverlays.value,
+            repairOpen = Overlay.REPAIR in mutableOverlays.value || !components.repair.canClose(),
             checkout = checkout,
             server = server,
             setup = setupKind(setup),

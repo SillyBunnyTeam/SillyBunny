@@ -266,7 +266,7 @@ class DataDocumentsProviderTest {
             assertThrows(java.io.FileNotFoundException::class.java) { provider.queryDocument(id, null) }
             assertThrows(java.io.FileNotFoundException::class.java) { provider.deleteDocument(id) }
             assertThrows(java.io.FileNotFoundException::class.java) { provider.renameDocument(id, "escape") }
-            assertThrows(java.io.FileNotFoundException::class.java) { provider.isChildDocument(root, id) }
+            assertFalse(provider.isChildDocument(root, id))
         }
         assertEquals("hidden", File(outside, "secret.txt").readText())
         assertTrue(Files.isSymbolicLink(leaf.toPath()))
@@ -458,7 +458,7 @@ class DataDocumentsProviderTest {
             assertThrows(java.io.FileNotFoundException::class.java) { provider.createDocument(data, "text/plain", "blocked") }
             assertThrows(java.io.FileNotFoundException::class.java) { provider.renameDocument(file, "blocked") }
             assertThrows(java.io.FileNotFoundException::class.java) { provider.deleteDocument(file) }
-            assertThrows(java.io.FileNotFoundException::class.java) { provider.isChildDocument(root, file) }
+            assertFalse(provider.isChildDocument(root, file))
         } finally {
             DataDocumentsProvider.endMaintenance(context)
         }
@@ -506,7 +506,7 @@ class DataDocumentsProviderTest {
             assertThrows(java.io.FileNotFoundException::class.java) { provider.createDocument(id, "text/plain", "new") }
             assertThrows(java.io.FileNotFoundException::class.java) { provider.renameDocument(id, "new") }
             assertThrows(java.io.FileNotFoundException::class.java) { provider.deleteDocument(id) }
-            assertThrows(java.io.FileNotFoundException::class.java) { provider.isChildDocument(data, id) }
+            assertFalse(provider.isChildDocument(data, id))
             assertThrows(java.io.FileNotFoundException::class.java) { provider.openDocument(id, "r", null) }
         }
         assertEquals(file, childId(data, "safe.txt"))
