@@ -1667,18 +1667,19 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 /* A counted chip: the emoji and the count are separate spans, so that the count keeps the text font. The chip that the user
-   pressed has the 16% Accent tint, a 1px Accent ring and the stronger ink, so colour is never the only cue. */
+   pressed has the 16% Accent tint, an Accent ring and a heavier count, so colour is never the only cue. The ink is the body
+   colour in both states: a lighter ink on the tint is under 4.5:1 on a quarter of the bundled themes. */
 .sb-conversation-message-reaction-chip {
     position: relative;
     min-block-size: 24px;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
+    gap: 3px;
+    padding: 3px 9px;
     border: 1px solid color-mix(in srgb, var(--sb-accent) 26%, var(--sb-shell-border));
     border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--sb-accent) 8%, transparent);
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
+    color: var(--SmartThemeBodyColor);
     cursor: pointer;
     font: inherit;
     font-size: 11px;
@@ -1701,26 +1702,26 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-message-reaction-chip[aria-pressed='true'] {
     border-color: var(--sb-accent);
     background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
-    color: var(--SmartThemeBodyColor);
+    font-weight: var(--sb-weight-control);
 }
 
 /* The list of who reacted: the user first, then the characters. */
 .sb-reaction-people {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     min-inline-size: 168px;
     margin: 0;
-    padding: 2px;
+    padding: 3px;
     list-style: none;
 }
 
 .sb-reaction-person {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-block-size: var(--sb-density-floor);
-    padding-inline: 8px;
+    padding-inline: 9px;
     font-size: calc(var(--mainFontSize) * 0.95);
 }
 
@@ -2366,7 +2367,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 
     /* A reaction chip draws at the density floor and reaches the touch target with a hit area that the row gap leaves room for. */
     .sb-conversation-message-reactions {
-        gap: 12px 4px;
+        row-gap: 12px;
     }
 
     .sb-conversation-message-reaction-chip {

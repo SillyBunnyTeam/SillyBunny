@@ -19,12 +19,16 @@ const top = sheet => sheet.stylesheet.rules;
 const coarse = sheet => top(sheet).filter(rule => rule.type === 'media' && rule.media === '(pointer: coarse)').flatMap(rule => rule.rules);
 
 describe('the reaction chips', () => {
-    test('show the pressed state with a ring and a stronger ink as well as the tint, so colour is not the only cue', () => {
+    test('show the pressed state with a ring and a heavier count as well as the tint, so colour is not the only cue', () => {
         const pressed = declarationsOf(top(conversation), '.sb-conversation-message-reaction-chip[aria-pressed=\'true\']');
 
         expect(pressed['border-color']).toBe('var(--sb-accent)');
-        expect(pressed.color).toBe('var(--SmartThemeBodyColor)');
+        expect(pressed['font-weight']).toBe('var(--sb-weight-control)');
         expect(pressed.background).toContain('var(--sb-accent) 16%');
+    });
+
+    test('keep the body colour as their ink at rest and pressed, because a lighter ink on the tint fails the contrast floor on many themes', () => {
+        expect(declarationsOf(top(conversation), '.sb-conversation-message-reaction-chip').color).toBe('var(--SmartThemeBodyColor)');
     });
 
     test('keep the count in the text font by drawing it apart from the emoji', () => {
@@ -35,7 +39,7 @@ describe('the reaction chips', () => {
     test('grow to the density floor on a coarse pointer, with a hit area past the border and room between rows for it', () => {
         expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip')).toMatchObject({ 'min-block-size': 'var(--sb-density-floor)' });
         expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip::after')).toMatchObject({ position: 'absolute', inset: '-6px -2px' });
-        expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reactions')).toHaveProperty('gap', '12px 4px');
+        expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reactions')).toHaveProperty('row-gap', '12px');
     });
 
     test('hand a long press to the list of who reacted, not to the callout and the text selection of the browser', () => {

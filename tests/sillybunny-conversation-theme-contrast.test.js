@@ -14,6 +14,9 @@ const themeFiles = readdirSync(themesDirectory).filter(file => file.endsWith('.j
 const themes = themeFiles.map(file => JSON.parse(readFileSync(new URL(file, themesDirectory), 'utf8')));
 
 const TEXT_CONTRAST = 4.5;
+/** The floor of a pair that is not text: the ring of a pressed chip is a shape that WCAG 1.4.11 asks 3:1 of. */
+const NON_TEXT_CONTRAST = 3;
+const FLOOR_OF = Object.freeze({ 'pressed reaction chip ring': NON_TEXT_CONTRAST });
 
 /**
  * The pairs that fail on the theme tokens as they are. The gap is in `--sb-input-placeholder` (the body colour at 78% over
@@ -53,6 +56,14 @@ const BELOW_THE_FLOOR = {
     ],
     'list name on the selected row': [
         'Lime',
+        'Solarized Dark',
+    ],
+    // The body colour of Solarized Dark is the one that already falls short on the selected row of the list; a tint of Accent
+    // of 8% at rest and 16% pressed (DESIGN.md Chips) takes it to 4.07:1 and 3.64:1.
+    'reaction chip text': [
+        'Solarized Dark',
+    ],
+    'pressed reaction chip text': [
         'Solarized Dark',
     ],
     'header status': [
@@ -155,6 +166,7 @@ function pairsOf(theme) {
     const accent = displayed(token('--sb-accent'));
     const onAccent = token('--sb-on-solid-accent');
     const ratio = (colour, surface) => contrastRatio(paint(colour, surface), surface);
+    const chipTint = percent => paint(colourOf(`color-mix(in srgb, var(--sb-accent) ${percent}%, transparent)`, root), view);
     return [
         ['list name', ratio(ink, sidebar)],
         ['list secondary text', ratio(secondary, sidebar)],
@@ -166,10 +178,14 @@ function pairsOf(theme) {
         ['details secondary text on a row', ratio(secondary, row)],
         // The count on the chat mode button and the counts of the list are the ink of a solid Accent fill on Accent.
         ['unread count on Accent', ratio(onAccent, accent)],
+        // A reaction chip sits on the timeline: its ink is the body colour, over a tint of Accent that is 8% at rest and 16% when it is pressed.
+        ['reaction chip text', ratio(ink, chipTint(8))],
+        ['pressed reaction chip text', ratio(ink, chipTint(16))],
+        ['pressed reaction chip ring', contrastRatio(accent, view)],
     ];
 }
 
-const failingOf = theme => pairsOf(theme).filter(([, ratio]) => ratio < TEXT_CONTRAST).map(([name]) => name);
+const failingOf = theme => pairsOf(theme).filter(([name, ratio]) => ratio < (FLOOR_OF[name] ?? TEXT_CONTRAST)).map(([name]) => name);
 const knownFor = themeName => Object.entries(BELOW_THE_FLOOR).filter(([, names]) => names.includes(themeName)).map(([pair]) => pair);
 
 describe('the text of Conversation Mode on every bundled theme', () => {
