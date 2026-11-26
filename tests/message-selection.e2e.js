@@ -67,6 +67,8 @@ async function loadApp(page, baseURL) {
     await routePage(page, baseURL, uniquePersona());
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page, { timeout: 60000 });
+    // A toast of the Getting Started steps sits at the top centre of the window and takes the pointer that a row needs.
+    await page.addStyleTag({ content: 'html:not([data-qa-show-toasts]) :is(#toast-container, #sb-toast-overlay) { display: none !important; }' });
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
 }
 
