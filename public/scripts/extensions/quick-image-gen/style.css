@@ -34,7 +34,8 @@
     margin-top: 16px;
 }
 
-#qig-settings label {
+/* SillyBunny divergence: leave the shared NovelAI Precise Reference rows to the shell stylesheet. */
+#qig-settings label:not(.nai-precise-reference *) {
     display: block;
     margin: 0;
     font-size: 12px;
@@ -43,7 +44,7 @@
     color: var(--SmartThemeBodyColor);
 }
 
-#qig-settings small,
+#qig-settings small:not(.nai-precise-reference *),
 #qig-settings .form-hint,
 .qig-muted {
     display: block;
@@ -54,9 +55,9 @@
     opacity: 1;
 }
 
-#qig-settings input:not([type="checkbox"]),
-#qig-settings select,
-#qig-settings textarea {
+#qig-settings input:not([type="checkbox"]):not(.nai-precise-reference *),
+#qig-settings select:not(.nai-precise-reference *),
+#qig-settings textarea:not(.nai-precise-reference *) {
     width: 100%;
     min-height: 34px;
     margin-top: 5px;
@@ -75,9 +76,9 @@
     resize: vertical;
 }
 
-#qig-settings input:not([type="checkbox"]):focus,
-#qig-settings select:focus,
-#qig-settings textarea:focus {
+#qig-settings input:not([type="checkbox"]):not(.nai-precise-reference *):focus,
+#qig-settings select:not(.nai-precise-reference *):focus,
+#qig-settings textarea:not(.nai-precise-reference *):focus {
     outline: 2px solid transparent;
     outline-offset: 1px;
     border-color: var(--qig-accent);
@@ -1908,9 +1909,10 @@
         margin-left: 0;
     }
 
-    #qig-settings .menu_button,
-    #qig-settings input:not([type="checkbox"]),
-    #qig-settings select {
+    /* SillyBunny divergence: leave the shared NovelAI Precise Reference rows to the shell stylesheet. */
+    #qig-settings .menu_button:not(.nai-precise-reference *),
+    #qig-settings input:not([type="checkbox"]):not(.nai-precise-reference *),
+    #qig-settings select:not(.nai-precise-reference *) {
         min-height: 44px;
         font-size: 16px;
     }
@@ -2409,9 +2411,10 @@ dialog.popup.qig-native-review .popup-content {
 
 @media (max-width: 768px), (pointer: coarse) {
     /* Inline editor sizes and the search selector otherwise defeat the mobile input size. */
-    #qig-settings input:not([type="checkbox"]):not([type="radio"]),
-    #qig-settings select,
-    #qig-settings textarea,
+    /* SillyBunny divergence: leave the shared NovelAI Precise Reference rows to the shell stylesheet. */
+    #qig-settings input:not([type="checkbox"]):not([type="radio"]):not(.nai-precise-reference *),
+    #qig-settings select:not(.nai-precise-reference *),
+    #qig-settings textarea:not(.nai-precise-reference *),
     .qig-popup input:not([type="checkbox"]):not([type="radio"]),
     .qig-popup select,
     .qig-popup textarea,
@@ -2420,7 +2423,7 @@ dialog.popup.qig-native-review .popup-content {
         min-height: 44px;
     }
 
-    #qig-settings :is(button, .checkbox_label, .qig-prompt-source__option),
+    #qig-settings :is(button, .checkbox_label, .qig-prompt-source__option):not(.nai-precise-reference *),
     .qig-popup :is(button, .checkbox_label, .qig-manager-toggle),
     .qig-native-review button {
         min-height: 44px;

@@ -8,8 +8,8 @@
  * This is a deferred stylesheet: index.html preloads it and the editors, the lists
  * and the windows that use its rules load it through loadListEditorStyles() and wait
  * for it before they show. A rule that a surface outside the editors needs at first
- * paint belongs in a blocking sheet instead (.sb-editor-section and
- * .sb-draft-toast__actions are in sillybunny-tabs.css).
+ * paint belongs in a blocking sheet instead (.sb-editor-section is in
+ * sillybunny-tabs.css).
  */
 
 /* Sheet container and scroll behavior
@@ -66,19 +66,15 @@
 
 /* Same gutters as the Persona, World Info and Characters list panels. */
 #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
-    padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;
+    padding-block: var(--sb-settings-inset-top) 9px;
     overflow: hidden !important;
     scrollbar-gutter: auto;
 }
 
-@media (max-width: 1439px) {
-    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
-        padding: 14px 14px 9px !important;
-    }
-}
-
+/* The padding of these pages is the settings page's at every desktop width; only the phone layout sets its own. */
 @media (max-width: 768px) {
     #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> :is(#rm_ch_create_block, #rm_group_chats_block).sb-active-right-menu) {
+        padding: 14px 14px 9px !important;
         padding-bottom: calc(var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px))) + 9px) !important;
     }
 }

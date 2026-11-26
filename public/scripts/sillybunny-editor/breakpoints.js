@@ -15,6 +15,3 @@ export const MENU_SHEET_QUERY = `${LAYOUT_MOBILE_QUERY}, (max-height: 360px)`;
 
 /** The bottom chat bar folds into its chip row and extension tray under the shell breakpoint, and on a touch screen too short for its rows (a phone held sideways). */
 export const BOTTOM_BAR_COMPACT_QUERY = `${LAYOUT_MOBILE_QUERY}, (pointer: coarse) and (max-height: 450px)`;
-
-/** The first width of the wide layouts, where side panels gain their wider gutters. The stylesheets write the step below it as `max-width: 1279px`. */
-export const WIDE_LAYOUT_MIN_WIDTH = 1280;

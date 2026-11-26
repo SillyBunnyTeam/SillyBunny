@@ -313,6 +313,7 @@
     "public/scripts/templates/globalStylesPreference.html",
     "public/scripts/templates/help.html",
     "public/scripts/templates/hiddenBlock.html",
+    "public/scripts/templates/hotkeys.html",
     "public/scripts/templates/importCharacters.html",
     "public/scripts/templates/installExtension.html",
     "public/scripts/templates/itemizationChat.html",

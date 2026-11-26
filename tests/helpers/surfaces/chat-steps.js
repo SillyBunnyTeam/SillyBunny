@@ -14,6 +14,7 @@ import { VIEWPORT_IDS, viewportById } from '../surface-matrix.js';
 import { FIXTURES } from './fixture-data.js';
 import { closeComposerSheets, closeOverlays, dismissDialogs, openLegacyToggle } from './menu-steps.js';
 import { selectBackend, settle } from './steps.js';
+import { TOAST_SELECTOR } from '../toasts.js';
 
 /** The shell switches to its mobile layout at this width (`(max-width: 768px)`). */
 const PAGED_WIDTH = 768;
@@ -559,7 +560,7 @@ export async function startGeneration(page, mode = 'hold') {
         // Sending the first message completes a step of Getting Started, which toasts over the chat.
         await page.evaluate(() => window.toastr.clear());
     } else {
-        await page.locator('#toast-container .toast-error').first().waitFor({ state: 'visible' });
+        await page.locator(`${TOAST_SELECTOR}.toast-error`).first().waitFor({ state: 'visible' });
     }
     await settle(page);
 }

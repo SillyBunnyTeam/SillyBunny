@@ -141,7 +141,7 @@ async function expectPromptingFlow(prompting, api) {
     await expect.poll(() => groupNames(prompting.locator('.sb-prompting-group'))).toEqual([
         'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
         'System Messages', 'Reply Prefill', 'Request Options', 'Enable function calling', 'Send inline media',
-        'Request model reasoning', 'Reasoning Template',
+        'Request model reasoning', 'Prompt Caching', 'Reasoning Template',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
@@ -349,15 +349,15 @@ for (const theme of ['Libadwaita Dark', 'Libadwaita Light']) {
                     await page.keyboard.press('Escape');
                 }
                 /* eslint-enable playwright/no-conditional-in-test, playwright/no-conditional-expect */
-                // The list stands in the frame of the Characters window's list pages (World Info, Persona), not the settings page's 24px.
-                const frameTop = await editor.evaluate((panel, narrow) => {
+                // The list has the top space of every settings page and of the Characters window's list pages (World Info, Persona) above the phone layout, and 14px in it.
+                const frameTop = await editor.evaluate((panel, phone) => {
                     const probe = document.createElement('div');
-                    probe.style.paddingTop = narrow ? '14px' : 'calc(var(--sb-shell-panel-padding-block) - 4px)';
+                    probe.style.paddingTop = phone ? '14px' : 'var(--sb-settings-inset-top)';
                     panel.append(probe);
                     const top = parseFloat(getComputedStyle(probe).paddingTop);
                     probe.remove();
                     return top;
-                }, width < 1440);
+                }, width <= 768);
                 expect(await editor.evaluate(panel => panel.querySelector('.sb-prompt-editor').getBoundingClientRect().top - panel.getBoundingClientRect().top)).toBeCloseTo(frameTop, 0);
                 // The title of the list is a heading in the Title role.
                 const groupHeading = await prompting.locator('.ds-pref-group-heading').first().evaluate(heading => ({ size: getComputedStyle(heading).fontSize, weight: getComputedStyle(heading).fontWeight }));

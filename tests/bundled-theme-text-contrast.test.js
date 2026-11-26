@@ -1,6 +1,8 @@
 import { describe, expect, test } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 
+import { contrastRatio as contrast, luminance } from './helpers/css-colour.js';
+
 const themesDirectory = new URL('../default/content/themes/', import.meta.url);
 const themeFiles = readdirSync(themesDirectory).filter(file => file.endsWith('.json')).sort();
 const themes = themeFiles.map(file => JSON.parse(readFileSync(new URL(file, themesDirectory), 'utf8')));
@@ -17,15 +19,6 @@ function parseColor(value) {
     }
     return { rgb: match.slice(1, 4).map(Number), alpha: match[4] === undefined ? 1 : Number(match[4]) };
 }
-
-function luminance(channels) {
-    return channels.map(channel => {
-        const value = channel / 255;
-        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    }).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index], 0);
-}
-
-const contrast = (first, second) => (Math.max(luminance(first), luminance(second)) + 0.05) / (Math.min(luminance(first), luminance(second)) + 0.05);
 
 /** `top` painted over an opaque colour. */
 const paint = (top, under) => top.rgb.map((channel, index) => channel * top.alpha + under[index] * (1 - top.alpha));

@@ -28,10 +28,11 @@
     }
 }
 
-/* Only the way back to the chat width animates. The transition sits on the state without the attribute, so
-   entering Home, which includes every page load, changes the width at once. */
+/* Only the way back from the Home width to the chat width animates, so a window resize never does. The shell has the
+   attribute that this rule reads only for the length of that change. Entering Home, which includes every page load,
+   changes the width at once. */
 @media (min-width: 769px) and (prefers-reduced-motion: no-preference) {
-    body:not(.reduced-motion) #sheld:not([data-sb-home='on']) {
+    body:not(.reduced-motion) #sheld[data-sb-home-leaving] {
         transition: width var(--sb-transition);
     }
 }
@@ -1433,56 +1434,6 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
     .sbHomeMenuButton[aria-expanded='true'] {
         outline: 2px solid Highlight;
         outline-offset: -2px;
-    }
-}
-
-/* ── Getting Started toast ──────────────────────────────────────────────── */
-
-/* The toast hangs off body, so these rules are not under .welcomePanel. Its button is flat and keeps the ink of the
-   toast layer, because the window styles that the step rows use are not loaded until a window opens. */
-.sbHomeToast {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-}
-
-.sbHomeToastAction {
-    -webkit-appearance: none;
-    appearance: none;
-    box-sizing: border-box;
-    min-height: 32px;
-    margin: 4px 0 0;
-    margin-inline-start: -12px;
-    padding: 4px 12px;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-/* The ordinary inset ring: the toast layer sets its colour (see #toast-container in sillybunny-theme.css). */
-.sbHomeToastAction:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-@media (hover: hover) {
-    .sbHomeToastAction:hover {
-        background: color-mix(in srgb, currentColor 14%, transparent);
-    }
-}
-
-.sbHomeToastAction:active {
-    background: color-mix(in srgb, currentColor 22%, transparent);
-}
-
-@media (pointer: coarse) {
-    .sbHomeToastAction {
-        min-height: 44px;
     }
 }
 

@@ -69,6 +69,9 @@ import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 import { adoptImageGenerationSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the swap button and the style picker get rows.
 import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
+// SillyBunny: NovelAI Precise Reference shares its request checks and editor with Quick Image Gen.
+import { normalizeNovelAIPreciseReferencePath, resolveNovelAIPreciseReferences } from '../../novelai-precise-reference.js';
+import { deleteNovelAIPreciseReferenceFile, mountNovelAIPreciseReferenceEditor } from '../../novelai-precise-reference-ui.js';
 
 export { MODULE_NAME };
 
@@ -108,6 +111,8 @@ const comfyTypes = {
 };
 
 let modelLoadRequest = 0;
+// SillyBunny: the Precise Reference editor is mounted once and refreshed when the model changes.
+let novelPreciseReferenceEditor;
 
 const initiators = {
     command: 'command',
@@ -331,12 +336,14 @@ const defaultSettings = {
     novel_sm_dyn: false,
     novel_decrisper: false,
     novel_variety_boost: false,
+    // SillyBunny: NovelAI Precise Reference starts off, with no reference images.
+    novel_precise_reference: { enabled: false, references: [] },
 
     // OpenAI settings
     openai_style: 'vivid',
     openai_quality: 'standard',
     openai_quality_gpt: 'auto',
-    openai_duration: '8',
+    // SillyBunny: omit openai_duration because OpenAI retired Sora 2 and the Videos API.
 
     style: 'Default',
     styles: defaultStyles,
@@ -547,7 +554,6 @@ async function loadSettings() {
     $('#sd_openai_style').val(extension_settings.sd.openai_style);
     $('#sd_openai_quality').val(extension_settings.sd.openai_quality);
     $('#sd_openai_quality_gpt').val(extension_settings.sd.openai_quality_gpt);
-    $('#sd_openai_duration').val(extension_settings.sd.openai_duration);
     $('#sd_comfy_type').val(extension_settings.sd.comfy_type);
     $('#sd_comfy_url').val(extension_settings.sd.comfy_url);
     $('#sd_comfy_prompt').val(extension_settings.sd.comfy_prompt);
@@ -582,6 +588,25 @@ async function loadSettings() {
     $('#sd_resolution').val(resolutionId);
 
     toggleSourceControls();
+    // SillyBunny: keep reference images in provider settings, separate from reusable prompt styles.
+    if (!novelPreciseReferenceEditor) {
+        novelPreciseReferenceEditor = mountNovelAIPreciseReferenceEditor(document.querySelector('#sd_novel_precise_reference'), {
+            id: 'sd_novel_precise_reference_enabled',
+            getState: () => extension_settings.sd.novel_precise_reference,
+            onChange: state => {
+                extension_settings.sd.novel_precise_reference = state;
+                saveSettingsDebounced();
+            },
+            getModel: () => extension_settings.sd.model,
+            getRequestHeaders,
+            onRemoveFile: filePath => {
+                const refs = extension_settings.sd.novel_precise_reference?.references;
+                const stillUsed = Array.isArray(refs) && refs.some(ref => normalizeNovelAIPreciseReferencePath(ref?.path) === filePath);
+                if (!stillUsed) return deleteNovelAIPreciseReferenceFile(filePath, { getRequestHeaders });
+            },
+        });
+    }
+    novelPreciseReferenceEditor.refresh();
     addPromptTemplates();
     registerFunctionTool();
 
@@ -1178,11 +1203,6 @@ async function onOpenAiStyleSelect() {
 
 async function onOpenAiQualitySelect() {
     extension_settings.sd.openai_quality = String($('#sd_openai_quality').find(':selected').val());
-    saveSettingsDebounced();
-}
-
-async function onOpenAiDurationSelect() {
-    extension_settings.sd.openai_duration = String($('#sd_openai_duration').find(':selected').val());
     saveSettingsDebounced();
 }
 
@@ -2071,6 +2091,8 @@ async function fetchImageModels(provider, body = {}) {
  * @param {string} modelId Model ID
  */
 function switchModelSpecificControls(modelId) {
+    // SillyBunny: the Precise Reference editor shows whether the selected model accepts references.
+    novelPreciseReferenceEditor?.refresh();
     const modelControls = $('.sd_settings [data-sd-model]');
     modelControls.hide();
     const isNovel = extension_settings.sd.source === sources.novel;
@@ -4002,6 +4024,12 @@ async function generateDrawthingsImage(prompt, negativePrompt, signal) {
  * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
  */
 async function generateNovelImage(prompt, negativePrompt, signal) {
+    // SillyBunny: send the Precise References with the request, and check them first so that a set the server refuses is not uploaded.
+    const referenceState = extension_settings.sd.novel_precise_reference;
+    const preciseReference = referenceState?.enabled === true && Array.isArray(referenceState.references) ? referenceState.references : [];
+    const { references: resolvedReferences } = await resolveNovelAIPreciseReferences(extension_settings.sd.model, preciseReference, {
+        anlasGuard: extension_settings.sd.novel_anlas_guard,
+    });
     const { steps, width, height, sm, sm_dyn } = getNovelParams();
 
     const result = await fetch('/api/novelai/generate-image', {
@@ -4012,6 +4040,7 @@ async function generateNovelImage(prompt, negativePrompt, signal) {
             prompt: prompt,
             model: extension_settings.sd.model,
             novel_anlas_guard: extension_settings.sd.novel_anlas_guard,
+            precise_reference: resolvedReferences,
             sampler: extension_settings.sd.sampler,
             scheduler: extension_settings.sd.scheduler,
             steps: steps,
@@ -4122,7 +4151,6 @@ async function generateOpenAiImage(prompt, signal) {
     const isDalle2 = /dall-e-2/.test(extension_settings.sd.model);
     const isDalle3 = /dall-e-3/.test(extension_settings.sd.model);
     const isGptImg = /^(?:gpt-image-\d|chatgpt-image-latest$)/.test(extension_settings.sd.model);
-    const isSora2 = /sora-2/.test(extension_settings.sd.model);
 
     if (isDalle2 && prompt.length > dalle2PromptLimit) {
         prompt = prompt.substring(0, dalle2PromptLimit);
@@ -4161,29 +4189,7 @@ async function generateOpenAiImage(prompt, signal) {
         height = 512;
     }
 
-    if (isSora2) {
-        width = aspectRatio >= 1 ? 1280 : 720;
-        height = aspectRatio >= 1 ? 720 : 1280;
-
-        const videoResult = await fetch('/api/openai/generate-video', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            signal: signal,
-            body: JSON.stringify({
-                prompt: prompt,
-                model: extension_settings.sd.model,
-                size: `${width}x${height}`,
-                seconds: extension_settings.sd.openai_duration,
-            }),
-        });
-
-        if (!videoResult.ok) {
-            throw new Error(await videoResult.text());
-        }
-
-        const { format, data } = await videoResult.json();
-        return { format, data };
-    }
+    // SillyBunny: remove Sora 2 video generation because OpenAI retired the Videos API.
 
     const result = await fetch('/api/openai/generate-image', {
         method: 'POST',
@@ -5928,7 +5934,6 @@ export async function init() {
     $('#sd_interactive_mode').on('input', onInteractiveModeInput);
     $('#sd_openai_style').on('change', onOpenAiStyleSelect);
     $('#sd_openai_quality').on('change', onOpenAiQualitySelect);
-    $('#sd_openai_duration').on('input', onOpenAiDurationSelect);
     $('#sd_multimodal_captioning').on('input', onMultimodalCaptioningInput);
     $('#sd_snap').on('input', onSnapInput);
     $('#sd_minimal_prompt_processing').on('input', onMinimalPromptProcessing);

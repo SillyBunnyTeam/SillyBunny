@@ -30,7 +30,6 @@ function translate(_ctx, text, replacements = {}) {
     return Object.entries(replacements).reduce((result, [key, value]) => result.replaceAll(`{${key}}`, String(value)), text);
 }
 
-const openaiSource = readPublic('scripts/openai.js');
 const serverToolsSource = readPublic('scripts/sillybunny-server-tools.js');
 const tabsSource = readPublic('scripts/sillybunny-tabs.js');
 const archiveUiDirectory = 'scripts/extensions/sillybunny-chats-archive/src/ui';
@@ -43,36 +42,6 @@ const archiveSource = [
         .map(file => readPublic(`${archiveUiDirectory}/${file}`)),
 ].join('\n').replace(/^import [^;]*;$/gm, '').replace(/^export /gm, '');
 const vectorSource = readPublic('scripts/extensions/vectors/index.js');
-
-test('OpenAI server config reload awaits the destructive Alert response before loading', async () => {
-    const start = openaiSource.indexOf('document.getElementById(\'sb-chat-completion-config-reload\')');
-    const arrowStart = openaiSource.indexOf('async () => {', start);
-    const nextHandler = openaiSource.indexOf('\n    document.getElementById(\'sb-chat-completion-config-save\')', arrowStart);
-    const handlerSource = openaiSource.slice(arrowStart, nextHandler);
-    const handlerEnd = handlerSource.lastIndexOf('});');
-    const openAlert = jest.fn().mockResolvedValue('cancel');
-    const loadServerChatCompletionConfig = jest.fn();
-    const handler = runInNewContext(`(${handlerSource.slice(0, handlerEnd + 1)})`, {
-        serverChatCompletionConfigState: { loaded: true },
-        updateServerChatCompletionConfigDirtyState: jest.fn(() => true),
-        openAlert,
-        t: strings,
-        loadServerChatCompletionConfig,
-    });
-    await handler();
-    expect(loadServerChatCompletionConfig).not.toHaveBeenCalled();
-    expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
-        heading: 'Discard your unsaved server config edits and reload from config.yaml?',
-        responses: [
-            { id: 'cancel', label: 'Cancel' },
-            { id: 'discard', label: 'Discard', appearance: 'destructive' },
-        ],
-    }));
-
-    openAlert.mockResolvedValueOnce('discard');
-    await handler();
-    expect(loadServerChatCompletionConfig).toHaveBeenCalledWith({ force: true });
-});
 
 test('server admin reload and thumbnail cache actions wait for Alert responses', async () => {
     const state = { busy: false, restarting: false };

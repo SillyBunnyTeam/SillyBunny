@@ -456,15 +456,18 @@ async function expectControlAtRowEdge(panel, controlSelector, edge) {
 }
 
 async function readGeometry(page, panel) {
-    // A sheet springs in from below and passes over the composer, so only the settled position is the layout.
+    // A sheet springs in from below and passes over the composer, and the chat moves aside for a docked panel with a
+    // transition, so only the settled position is the layout.
     await expect.poll(() => panel.evaluate(element => element.getAnimations().length)).toBe(0);
+    await expect.poll(() => page.evaluate(() => document.getElementById('sheld').getAnimations().length)).toBe(0);
     return panel.evaluate(element => {
         const panelRect = element.getBoundingClientRect();
         const chatRect = document.getElementById('sheld').getBoundingClientRect();
         const chatContentRect = document.getElementById('chat').getBoundingClientRect();
         const composerRect = document.getElementById('form_sheld').getBoundingClientRect();
         const topBarRect = document.getElementById('top-bar').getBoundingClientRect();
-        const intersects = (left, right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+        // Edges that touch are not an overlap: the chat keeps its fractional Page Width beside a panel, and a browser rounds that edge by a few thousandths of a pixel.
+        const intersects = (left, right) => left.left < right.right - 0.5 && left.right > right.left + 0.5 && left.top < right.bottom - 0.5 && left.bottom > right.top + 0.5;
         return {
             mode: element.classList.contains('sb-side-panel--sheet') ? 'sheet' : 'docked',
             side: element.dataset.sbSidePanelSide,

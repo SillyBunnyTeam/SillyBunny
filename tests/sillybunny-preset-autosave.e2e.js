@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { WELCOME_SELECTOR, answerFirstRunWelcome, applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { toastWithText } from './helpers/toasts.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -252,7 +253,7 @@ test('editing a bundled preset forks it once and keeps saving the copy', async (
     await nudgeTemperature(page);
     await expectSaves(page, saves, 1);
     expect(saves[0]).toMatchObject({ apiId: 'openai', name: 'Default (copy)' });
-    await expect(page.locator('#toast-container')).toContainText('Bundled presets are read-only. Your changes were saved to "Default (copy)".');
+    await expect(toastWithText(page, 'Bundled presets are read-only. Your changes were saved to "Default (copy)".').first()).toBeAttached();
     await expect(page.locator('#settings_preset_openai option:checked')).toHaveText('Default (copy)');
     expect(await page.evaluate(async () => (await import('/scripts/openai.js')).oai_settings.preset_settings_openai)).toBe('Default (copy)');
 

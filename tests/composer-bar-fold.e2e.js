@@ -91,6 +91,59 @@ test.describe('composer row and bottom chat bar on a desktop window', () => {
         }
     });
 
+    test('keeps the Guided Generations row on one row, and the composer at one height, at every fraction of a pixel around a fold', async ({ page }) => {
+        // Twenty widths, each settled over four frames, take WebKit longer than the default timeout.
+        test.slow();
+        // The column is a fraction of the window (0.3 x 856px is 256.8px) and the browser rounds a client width, so a fold that
+        // reads the rounded width can keep a button that is a fraction of a pixel too wide, and the row wraps.
+        const read = () => page.evaluate(() => {
+            const container = document.getElementById('gg-action-button-container');
+            const shell = document.getElementById('sheld').getBoundingClientRect();
+            const leaves = [...container.querySelectorAll('.stih--button, .gg-action-button, #qr--bar .qr--button')].filter(leaf => leaf.getBoundingClientRect().width > 0);
+            return {
+                rows: new Set(leaves.map(leaf => Math.round(leaf.getBoundingClientRect().top))).size,
+                composer: document.getElementById('form_sheld').getBoundingClientRect().height,
+                chat: shell.width,
+                container: container.getBoundingClientRect().width,
+            };
+        });
+        const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))))));
+        await page.evaluate(() => document.documentElement.style.setProperty('--sheldWidth', '420px'));
+        await frames();
+        // What the row needs for n of its items (the buttons and the menu button) beside the input-history buttons, from the page's own boxes.
+        const needs = await page.evaluate(() => {
+            const container = document.getElementById('gg-action-button-container');
+            const style = getComputedStyle(container);
+            const actions = container.querySelector('.gg-regular-buttons-container');
+            const items = [...actions.querySelectorAll('.gg-action-button')];
+            const size = items.map(item => item.getBoundingClientRect().width).find(width => width > 0);
+            const history = container.querySelector(':scope > .stih--buttons');
+            const outside = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+                + history.getBoundingClientRect().width + parseFloat(style.columnGap);
+            const gap = parseFloat(getComputedStyle(actions).columnGap);
+            return Array.from({ length: items.length }, (_, index) => outside + (index + 1) * size + index * gap);
+        });
+        expect(needs.length).toBeGreaterThan(3);
+        const at420 = await read();
+        const deficit = at420.chat - at420.container;
+        const problems = [];
+        const composer = at420.composer;
+        // From two items: one item is the least that a row holds, and no fold helps below it.
+        for (const need of needs.slice(1)) {
+            for (const fraction of [0.5, 0.25, 0.1]) {
+                await page.evaluate(width => document.documentElement.style.setProperty('--sheldWidth', `${width}px`), need + deficit - fraction);
+                await frames();
+                const state = await read();
+                const failures = [
+                    [state.rows !== 1, `${state.rows} rows`],
+                    [Math.abs(state.composer - composer) > 1, `composer ${state.composer}px, not ${composer}px`],
+                ];
+                problems.push(...failures.filter(([failed]) => failed).map(([, text]) => `${need - fraction}px of room: ${text}`));
+            }
+        }
+        expect(problems).toEqual([]);
+    });
+
     test('folds Guided Generations buttons that do not fit into the menu, and keeps them all at a wide window', async ({ page }) => {
         await setViewport(page, 1440);
         const wide = await measureRow(page);
@@ -146,6 +199,33 @@ test.describe('composer row and bottom chat bar on a desktop window', () => {
         // Narrower never shows more: the folded count does not fall as the window narrows.
         const folded = states.map(state => state.foldedButtons);
         expect(folded).toEqual([...folded].sort((a, b) => b - a));
+    });
+
+    test('a resize sweep does not rebuild the chat picker, and a changed list still does', async ({ page }) => {
+        await page.route('**/api/characters/chats', route => route.fulfill({ json: [
+            { file_name: 'QA chat one', mes: 'hi', last_mes: '2026-10-01', chat_items: 2, token_estimate: 10 },
+            { file_name: 'QA chat two', mes: 'hi', last_mes: '2026-10-02', chat_items: 2, token_estimate: 20 },
+        ] }));
+        await setViewport(page, 1440);
+        const select = page.locator('#sb-bottom-chat-select');
+        // The list of the mock and the current chat, which the mock does not hold.
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(select.locator('option')).toHaveCount(3);
+        await page.evaluate(() => {
+            const records = [];
+            window.__sbPickerRecords = records;
+            new MutationObserver(batch => records.push(...batch.map(record => `${record.type} +${record.addedNodes.length} -${record.removedNodes.length}`)))
+                .observe(document.getElementById('sb-bottom-chat-select'), { childList: true, subtree: true, characterData: true, attributes: true });
+        });
+        // 769px to 1440px is one layout state of the bar: the desktop one, with the search and the buttons folding as the row narrows.
+        for (const width of [1300, 1200, 1100, 1000, 900, 800, 900, 1100, 1300, 1440]) await setViewport(page, width);
+        expect(await page.evaluate(() => window.__sbPickerRecords)).toEqual([]);
+
+        // The picker still follows its list: an entry that the list does not hold goes when the window is focused again.
+        await select.evaluate(node => node.append(new Option('stale entry', 'stale-entry')));
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(select.locator('option')).toHaveCount(3);
+        expect((await page.evaluate(() => window.__sbPickerRecords)).length).toBeGreaterThan(0);
     });
 
     test('opens a folded search in the picker\'s place and a folded button from the menu, on the same row', async ({ page }) => {

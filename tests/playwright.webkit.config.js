@@ -2,7 +2,8 @@ import { defineConfig } from '@playwright/test';
 import baseConfig from './playwright.config.js';
 
 // The dialog frame, side panels and their callers. Safari/iOS WebKit is a supported baseline, and these
-// surfaces rely on `<dialog>`, `inert`, `backdrop-filter` and touch gestures, where WebKit differs most.
+// surfaces rely on `<dialog>`, `inert`, `backdrop-filter` and touch gestures, where WebKit differs most. The last three
+// specs measure the layout that settings pages, windows and panels share: percentage padding, `vw` widths and transitions.
 export const DIALOG_SPECS = [
     'sillybunny-dialog-frame',
     'sillybunny-dialog-tiers',
@@ -30,6 +31,9 @@ export const DIALOG_SPECS = [
     'dialogs-accessibility',
     'dialog-opening-layout',
     'welcome-transitions',
+    'settings-content-clamp',
+    'side-panel-wide-step',
+    'chat-column-resize',
 ];
 
 // Opt-in: `npm run test:e2e:webkit`. The default config stays Chromium only.

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { toastWithText } from './helpers/toasts.js';
 
 const BOOK = 'sb-cross-links-in-memory-book';
 const PERSONA = 'sb-cross-links-persona.png';
@@ -129,7 +130,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         test('missing book returns false, warns, and leaves the current book selected', async ({ page }) => {
             await showToasts(page);
             expect(await page.evaluate(async () => (await import('/scripts/world-info.js')).openWorldInfoEditor('sb-cross-links-missing'))).toBe(false);
-            await expect(page.locator('#toast-container')).toContainText('-- World Info not found --');
+            await expect(toastWithText(page, '-- World Info not found --').first()).toBeAttached();
             await expect(page.locator('#WorldInfo .sb-wi-book-name')).toHaveText(BOOK);
             expect(await page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(0);
         });

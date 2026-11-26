@@ -2030,25 +2030,30 @@ for (const { name, options } of WIDE_VIEWPORTS) {
             await expect.poll(async () => Math.round((await measure(page, '#sheld')).width)).toBe(Math.round(chatWidth));
         });
 
-        test('the way back to the chat width animates unless motion is reduced', async ({ page }) => {
+        test('the way back to the chat width animates unless motion is reduced, and the column outside it never does', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'no-preference' });
-            const durationWith = async ({ bodyClass }) => page.evaluate((reducedClass) => {
+            const durationWith = async ({ bodyClass, leaving }) => page.evaluate(([reducedClass, leavingHome]) => {
                 const shell = document.getElementById('sheld');
                 shell.removeAttribute('data-sb-home');
+                shell.toggleAttribute('data-sb-home-leaving', leavingHome);
                 document.body.classList.toggle('reduced-motion', reducedClass);
                 const style = getComputedStyle(shell);
                 const result = { property: style.transitionProperty, duration: style.transitionDuration };
+                shell.removeAttribute('data-sb-home-leaving');
                 shell.setAttribute('data-sb-home', 'on');
                 return result;
-            }, bodyClass);
+            }, [bodyClass, leaving]);
 
-            const animated = await durationWith({ bodyClass: false });
-            const withBodyClass = await durationWith({ bodyClass: true });
+            const animated = await durationWith({ bodyClass: false, leaving: true });
+            const withBodyClass = await durationWith({ bodyClass: true, leaving: true });
+            // A column that is not leaving Home is a window resize away from animating.
+            const resizing = await durationWith({ bodyClass: false, leaving: false });
             await page.emulateMedia({ reducedMotion: 'reduce' });
-            const withMediaQuery = await durationWith({ bodyClass: false });
+            const withMediaQuery = await durationWith({ bodyClass: false, leaving: true });
 
             expect(animated.property).toBe('width');
             expect(animated.duration).not.toBe('0s');
+            expect(resizing.duration).toBe('0s');
             expect(withBodyClass.duration).toBe('0s');
             expect(withMediaQuery.duration).toBe('0s');
         });

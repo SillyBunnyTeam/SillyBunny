@@ -11,14 +11,15 @@ import { selectBackend, settle } from './steps.js';
 export const MOBILE_LAYOUT_VIEWPORTS = ['768x1024', '390x844', '360x640', '360x294', '320x568'];
 
 /** The viewports wider than the mobile layout, which still includes the two landscape phone sizes. */
-export const WIDE_LAYOUT_VIEWPORTS = ['1440x900', '1024x600', '900x700', '844x390', '820x360'];
+export const WIDE_LAYOUT_VIEWPORTS = ['3440x1440', '1920x1080', '1440x900', '1024x600', '900x700', '844x390', '820x360'];
 
 /**
  * The viewports where the four list-content editors have collapsed their property bar into a summary button, which opens
  * the property sheet. An editor collapses on the mobile layout or when its pane is under 720px (`isListEditorCollapsed`
- * in `list-shell.js`). Measured on each editor at all ten matrix viewports (`data-collapsed` on the editor and the display
- * of the summary button): all four collapse at exactly these eight, with panes of 276px to 716px, and none at 1024x600
- * (panes of 743px to 776px) or 1440x900 (1156px).
+ * in `list-shell.js`). Measured on each editor at the ten matrix viewports from 1440x900 down (`data-collapsed` on the editor
+ * and the display of the summary button): all four collapse at exactly these eight, with panes of 276px to 716px, and none
+ * at 1024x600 (panes of 743px to 776px) or 1440x900 (1156px). The viewports wider than 1440px have panes over 720px, so they
+ * never collapse.
  */
 export const COLLAPSED_EDITOR_VIEWPORTS = ['900x700', '844x390', '820x360', ...MOBILE_LAYOUT_VIEWPORTS];
 

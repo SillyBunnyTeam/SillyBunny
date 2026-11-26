@@ -224,6 +224,12 @@ body.sb-has-docked-panel #sheld {
     max-width: var(--sb-chat-width) !important;
     margin: 0 auto !important;
     transform: translateX(var(--sb-chat-shift, 0px)) !important;
+}
+
+/* The chat moves with a transition only while a panel docks, changes side or leaves, so a window resize never animates it.
+   The shell has the attribute only for the length of that move, and the rule does not need the dock class, which a panel
+   that leaves takes away. */
+#sheld[data-sb-dock-moving] {
     transition: transform var(--sb-transition), width var(--sb-transition);
 }
 

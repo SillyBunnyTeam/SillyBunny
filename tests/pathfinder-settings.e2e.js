@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { dismissOpenDialogIfPresent } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { NOTIFICATION_FORM_SELECTOR } from './helpers/toasts.js';
 import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -391,6 +392,12 @@ for (const width of [1440, 390]) {
             const bodyRect = node.closest('.popup-content').getBoundingClientRect();
             return node.getBoundingClientRect().bottom <= bodyRect.bottom + 1;
         })).toBe(true);
+        // An error stays until it is dismissed, and at a phone width a notification at the top covers the Window's Close
+        // button, so a user dismisses it before closing the Window.
+        for (const dismiss of await page.locator(`${NOTIFICATION_FORM_SELECTOR} > .toast-close-button`).all()) {
+            await dismiss.click();
+        }
+        await expect(page.locator(NOTIFICATION_FORM_SELECTOR)).toHaveCount(0);
         await dialog.locator('.popup-button-close').click();
         await expect(dialog).toHaveCount(0);
         expect(await page.evaluate(async () => await window.__pathfinderWindowResult)).toBe(1);

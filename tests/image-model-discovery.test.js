@@ -12,6 +12,7 @@ const fetchMock = jest.fn();
 await jest.unstable_mockModule('node-fetch', () => ({ default: fetchMock }));
 const { router: discoveryRouter } = await import('../src/endpoints/image-models.js');
 const { router: googleRouter } = await import('../src/endpoints/google.js');
+const { router: openaiRouter } = await import('../src/endpoints/openai.js');
 const { router: sdRouter } = await import('../src/endpoints/stable-diffusion.js');
 const { SecretManager, SECRET_KEYS } = await import('../src/endpoints/secrets.js');
 
@@ -46,6 +47,7 @@ describe('image provider discovery and native Gemini generation', () => {
         app.use('/api/sd', discoveryRouter);
         app.use('/api/sd', sdRouter);
         app.use('/api/google', googleRouter);
+        app.use('/api/openai', openaiRouter);
         await new Promise(resolve => { server = app.listen(0, '127.0.0.1', resolve); });
         baseUrl = `http://127.0.0.1:${server.address().port}`;
     });
@@ -225,5 +227,11 @@ describe('image provider discovery and native Gemini generation', () => {
         expect(await result.json()).toEqual({ image: 'aW1hZ2U=' });
         expect(String(fetchMock.mock.calls[0][0])).toContain(':predict');
         expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ instances: [{ prompt: 'An otter' }], parameters: { aspectRatio: '4:3' } });
+    });
+
+    test('OpenAI video generation route is removed after Sora 2 retirement', async () => {
+        const result = await post('/api/openai/generate-video', { model: 'sora-2', prompt: 'A lighthouse' });
+        expect(result.status).toBe(404);
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 });

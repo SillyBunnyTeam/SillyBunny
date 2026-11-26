@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { bootPresetLorebookDialogs, openPresetLorebookDialog, PL_VIEWPORTS } from './helpers/preset-lorebook-dialogs.js';
 import { showToasts } from './helpers/maintainer-server.js';
+import { TOAST_SELECTOR } from './helpers/toasts.js';
 
 test.setTimeout(90000);
 
@@ -254,7 +255,7 @@ for (const viewport of PL_VIEWPORTS) {
         await expect(step).toHaveValue('');
         await popup.locator('.popup-button-ok').click();
         await expect(popup).toHaveCount(0);
-        await expect(page.locator('#toast-container .toast-error').filter({ hasText: 'Invalid step value: 0' })).toHaveCount(1);
+        await expect(page.locator(`${TOAST_SELECTOR}.toast-error`).filter({ hasText: 'Invalid step value: 0' })).toHaveCount(1);
         expect(state.worlds).toHaveLength(0);
         expect(Object.values(state.books.get('Book 0').entries).map(entry => entry.order)).toEqual([100, 100, 100]);
     });

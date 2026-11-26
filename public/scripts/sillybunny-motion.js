@@ -1,17 +1,22 @@
 /*
  * Shared WAAPI motion helpers for the SillyBunny shell.
  * Durations and easing mirror --sb-transition-fast/--sb-transition/--sb-transition-slow, so JS and CSS motion stay in step.
- * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable.
+ * Every helper is a no-op when prefers-reduced-motion is set or WAAPI is unavailable. The exception is `play()` with
+ * `reducedKeyframes`, which fades.
  */
 
 export const MOTION_FAST = 200;
 export const MOTION_SLOW = 250;
 export const MOTION_SURFACE = 300;
+/** GNOME Shell's `ANIMATION_TIME`: an in-app notification enters and leaves over this. */
+export const MOTION_NOTIFICATION = 200;
 /** Popover and menu close: a short fade with no movement. */
 export const MOTION_POPOVER_CLOSE = 150;
 export const MOTION_EASE = 'cubic-bezier(0.25, 0.1, 0.25, 1)';
 export const MOTION_EASE_OUT_QUAD = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 export const MOTION_EASE_OUT_CUBIC = 'cubic-bezier(0.33, 1, 0.68, 1)';
+/** GNOME Shell's `EASE_OUT_BACK`. It overshoots, and only an in-app notification's slide uses it (DESIGN: Motion). */
+export const MOTION_EASE_OUT_BACK = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
 
 const supportsLinearEasing = typeof CSS !== 'undefined'
     && typeof CSS.supports === 'function'
@@ -39,15 +44,78 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const activeMotions = new WeakMap();
 
 export function prefersReducedMotion() {
-    return window.matchMedia(REDUCED_MOTION_QUERY).matches
+    return window.matchMedia?.(REDUCED_MOTION_QUERY).matches === true
         || document.body?.classList.contains('reduced-motion') === true;
 }
 
-function canAnimate(element) {
+const TRANSITION_END_MARGIN = 100;
+const transitionMarks = new WeakMap();
+
+function longestTime(list) {
+    return Math.max(0, ...String(list).split(',').map(value => {
+        const time = Number.parseFloat(value);
+        if (!Number.isFinite(time)) return 0;
+        return value.trim().endsWith('ms') ? time : time * 1000;
+    }));
+}
+
+/** Ends the mark that `attribute` makes on `element`, if it has one. */
+export function endTransitionMark(element, attribute) {
+    transitionMarks.get(element)?.get(attribute)?.();
+}
+
+/**
+ * Makes `change` animate, and nothing else on the element. A layout that has a transition all the time animates every window
+ * resize too, so the transition is written for `attribute`, which the element has only from here until the transition ends.
+ * The attribute is set before `change` runs, so the style that `change` makes has the transition. It ends with a
+ * `transitionend` of one of `properties` on the element, or after the duration that the style gives (a transition that
+ * has nothing to change never ends), and it is not set at all when motion is reduced or the style has no transition.
+ * @param {HTMLElement} element
+ * @param {string} attribute
+ * @param {() => void} change Writes the change that animates.
+ * @param {{ properties?: string[] | null }} [options] The properties whose `transitionend` ends the mark; any when omitted.
+ */
+export function transitionChange(element, attribute, change, { properties = null } = {}) {
+    endTransitionMark(element, attribute);
+    if (prefersReducedMotion()) {
+        change();
+        return;
+    }
+
+    element.setAttribute(attribute, '');
+    change();
+    // Reading the style makes the transition start from the style before the change.
+    const style = getComputedStyle(element);
+    const duration = longestTime(style.transitionDuration) + longestTime(style.transitionDelay);
+    if (duration <= 0) {
+        element.removeAttribute(attribute);
+        return;
+    }
+
+    let timer = 0;
+    const end = () => {
+        window.clearTimeout(timer);
+        element.removeEventListener('transitionend', onEnd);
+        element.removeAttribute(attribute);
+        transitionMarks.get(element)?.delete(attribute);
+    };
+    const onEnd = event => {
+        if (event.target === element && (!properties || properties.includes(event.propertyName))) end();
+    };
+    element.addEventListener('transitionend', onEnd);
+    timer = window.setTimeout(end, duration + TRANSITION_END_MARGIN);
+    if (!transitionMarks.has(element)) transitionMarks.set(element, new Map());
+    transitionMarks.get(element).set(attribute, end);
+}
+
+function canAnimateElement(element) {
     return element instanceof HTMLElement
         && element.isConnected
-        && typeof element.animate === 'function'
-        && !prefersReducedMotion();
+        && typeof element.animate === 'function';
+}
+
+function canAnimate(element) {
+    return canAnimateElement(element) && !prefersReducedMotion();
 }
 
 function applyInlineStyles(element, styles) {
@@ -81,11 +149,15 @@ export function stopMotion(element) {
  * Plays keyframes on the element. `styles` are applied inline (!important) for the duration,
  * `onFinish` runs only when the animation completes, `onEnd` runs on finish and on cancel. `onEnd` also
  * runs when other code cancels the animation directly, for example through `getAnimations()`.
- * Without motion, `onFinish` and `onEnd` run synchronously.
+ * Without motion, `onFinish` and `onEnd` run synchronously. `reducedKeyframes` is for a surface that DESIGN.md says
+ * fades under reduced motion: they replace `keyframes`, over at most `MOTION_FAST`, when reduced motion is on.
  */
-export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null } = {}) {
+export function play(element, keyframes, { duration = MOTION_SLOW, easing = MOTION_EASE, fill = 'none', styles = null, inert = false, onFinish = null, onEnd = null, reducedKeyframes = null } = {}) {
     stopMotion(element);
-    if (!canAnimate(element)) {
+    if (reducedKeyframes && prefersReducedMotion() && canAnimateElement(element)) {
+        keyframes = reducedKeyframes;
+        duration = Math.min(duration, MOTION_FAST);
+    } else if (!canAnimate(element)) {
         onFinish?.();
         onEnd?.();
         return null;

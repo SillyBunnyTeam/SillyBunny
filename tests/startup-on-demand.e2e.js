@@ -13,7 +13,7 @@ const readOnlyPosts = new Set([
     '/api/settings/get', '/api/presets/defaults', '/api/avatars/get',
     '/api/backgrounds/folders', '/api/image-metadata/all', '/api/tokenizers/openai/count',
     '/api/server-admin/install-type', '/api/server-admin/config/get',
-    '/api/server-admin/config/thumbnail-settings/get', '/api/server-admin/config/chat-completions/get',
+    '/api/server-admin/config/thumbnail-settings/get',
 ]);
 test.use({ serviceWorkers: 'block' });
 

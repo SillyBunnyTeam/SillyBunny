@@ -36,6 +36,7 @@ import {
 import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
 import { settle } from './steps.js';
 import { viewportById, viewportsFor } from '../surface-matrix.js';
+import { TOAST_SELECTOR } from '../toasts.js';
 
 const SCRIPTS = 'public/scripts';
 const CSS = 'public/css';
@@ -302,7 +303,7 @@ export const surfaces = [
             await resetComposer(page);
             // Sending the first message completes a step of Getting Started, whose success toast comes at a moment that differs between
             // boots, or after the capture. A mask cannot make a capture with the toast equal to one without it, so the toast is not shown.
-            await page.addStyleTag({ content: '#toast-container .toast-success { display: none !important; }' });
+            await page.addStyleTag({ content: `${TOAST_SELECTOR}.toast-success { display: none !important; }` });
             await startGeneration(page, 'hold');
         },
         states: [{
@@ -315,7 +316,7 @@ export const surfaces = [
                 await resetComposer(page);
                 await startGeneration(page, 'error');
             },
-            ready: ['#toast-container .toast-error'],
+            ready: [`${TOAST_SELECTOR}.toast-error`],
         }],
         masks: TRANSCRIPT_MASKS,
         needs: ['character', 'chat'],

@@ -4,6 +4,7 @@ import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { waitForAppReady } from './helpers/app-ready.js';
 import { showSettingsSidebar } from './helpers/settings-phone-pane.js';
+import { TOAST_MESSAGE_SELECTOR } from './helpers/toasts.js';
 
 // Customize > Appearance: Custom CSS is a row of the UI Theme group that opens a Window with the editor, and
 // "Reset Theme to Default Libadwaita Dark" asks first and then restores the shipped theme and the look settings beside it.
@@ -249,7 +250,7 @@ for (const viewport of VIEWPORTS) {
             await expect(page.locator('#customCSS')).toHaveValue(IN_SCOPE_START.custom_css);
             await expect(page.locator('#themes')).toHaveValue('Libadwaita Light');
             expect(await bodyColor(page)).toBe(IN_SCOPE_START.main_text_color);
-            await expect(page.locator('#toast-container .toast-message', { hasText: MESSAGE })).toHaveCount(0);
+            await expect(page.locator(TOAST_MESSAGE_SELECTOR, { hasText: MESSAGE })).toHaveCount(0);
             expect(saved.slice(before).filter(body => body.power_user.custom_css !== IN_SCOPE_START.custom_css)).toEqual([]);
         });
 
@@ -258,7 +259,7 @@ for (const viewport of VIEWPORTS) {
             const panel = await openAppearance(page);
             await confirmReset(page, panel, 'Reset');
 
-            await expect(page.locator('#toast-container .toast-message', { hasText: MESSAGE })).toHaveCount(1);
+            await expect(page.locator(TOAST_MESSAGE_SELECTOR, { hasText: MESSAGE })).toHaveCount(1);
             await expect(page.locator('#customCSS')).toHaveValue('');
             await expect(page.locator('#custom-style')).toHaveJSProperty('textContent', '');
             await expect(page.locator('#themes')).toHaveValue('Libadwaita Dark');

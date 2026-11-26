@@ -29,6 +29,8 @@ const size = ({ width, height }) => ({ id: `${width}x${height}`, width, height }
 
 /** @type {readonly MatrixViewport[]} */
 export const MATRIX_VIEWPORTS = Object.freeze([
+    { ...size({ width: 3440, height: 1440 }), pointer: 'fine', appliesTo: 'every', purpose: 'Ultrawide reference' },
+    { ...size({ width: 1920, height: 1080 }), pointer: 'fine', appliesTo: 'every', purpose: 'Common desktop monitor' },
     { ...size(DESKTOP), pointer: 'fine', appliesTo: 'every', purpose: 'Desktop reference' },
     { ...size({ width: 1024, height: 600 }), pointer: 'fine', appliesTo: 'every', purpose: 'The HIG\'s smallest desktop size' },
     { ...size({ width: 900, height: 700 }), pointer: 'fine', appliesTo: 'every', purpose: 'The 769 to 1000px band, where the desktop shell meets upstream\'s mobile rules' },
