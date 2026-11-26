@@ -282,8 +282,8 @@ test.describe('pickers', () => {
 
         await expect(page.locator('.sb-conversation-persona-picker')).toBeVisible();
         await expect.poll(async () => (await pickerBox(page)).width).toBeCloseTo((await pickerBox(page)).sheldWidth, 0);
-        const box = await pickerBox(page);
-        expect(box.bottom, 'docked to the bottom edge of the chat area').toBeCloseTo(box.sheldBottom, 0);
+        // The sheet slides up from below the chat area, so its edge is polled as its width is: one read can land mid-slide (798.8 against 800 in WebKit).
+        await expect.poll(async () => (await pickerBox(page)).bottom, { message: 'docked to the bottom edge of the chat area' }).toBeCloseTo((await pickerBox(page)).sheldBottom, 0);
         await expect(page.locator('.sb-conversation-picker-backdrop[data-open="true"]')).toBeVisible();
     });
 
