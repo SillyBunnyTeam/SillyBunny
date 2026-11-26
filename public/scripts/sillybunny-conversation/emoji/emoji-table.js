@@ -1,6 +1,6 @@
 /**
  * Loads the emoji table of the interface language, and the English one when a search needs it. A table is a JSON file
- * under `data/` that `scripts/emoji/build-emoji-data.mjs` writes; the chooser fetches it when it first opens and nothing
+ * under `data/` that `scripts/emoji/build-emoji-data.js` writes; the chooser fetches it when it first opens and nothing
  * fetches it at start-up. It is fetched with `fetch()` and not imported: JSON import attributes need Safari 17.2.
  *
  * @typedef {[string, string, string, number, number, string[]?]} EmojiRow Emoji, name, keywords joined with "|", group, Emoji version, skin variants.

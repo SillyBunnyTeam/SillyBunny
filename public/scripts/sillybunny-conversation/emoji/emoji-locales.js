@@ -1,6 +1,6 @@
 /**
  * Which emoji tables exist, and which one an interface language reads. The browser code and the script that writes the
- * tables (`scripts/emoji/build-emoji-data.mjs`) both import this, so the files that are written are the files that can be asked for.
+ * tables (`scripts/emoji/build-emoji-data.js`) both import this, so the files that are written are the files that can be asked for.
  */
 
 /** The emojibase locales that an interface language of `public/locales/lang.json` maps to, plus English. */
