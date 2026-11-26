@@ -110,6 +110,10 @@ async function boot(profile, server, { settingsReady = false, legacyAnswer = 'ca
     jest.unstable_mockModule('../public/scripts/user.js', () => ({
         getCurrentUserHandle: () => userHandle,
     }));
+    jest.unstable_mockModule('../public/scripts/novelai-precise-reference-ui.js', () => ({
+        deleteNovelAIPreciseReferenceFile: jest.fn(),
+        mountNovelAIPreciseReferenceEditor: jest.fn(),
+    }));
     for (const name of HOST_STUB_MODULES) {
         jest.unstable_mockModule(`../public/scripts/${name}`, () => ({}));
     }

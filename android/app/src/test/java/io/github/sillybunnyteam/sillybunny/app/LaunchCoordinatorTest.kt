@@ -226,6 +226,30 @@ class LaunchCoordinatorTest {
         assertFalse(coordinator.startRequest.value)
         assertTrue(fixture.host.events.isEmpty())
 
+        // While moved-aside user data still awaits a retry, Repair stays open instead of exposing FirstRun or ServerStopped.
+        coordinator.close(Overlay.REPAIR)
+        assertEquals(AppRoute.Repair, coordinator.route.value)
+        assertEquals(listOf(Overlay.REPAIR), coordinator.overlays.value)
+        assertFalse(coordinator.startRequest.value)
+    }
+
+    @Test
+    fun closingANonRetryableUnfinishedRepairDecidesNothingNew() {
+        fixture.writeInstalledCheckout()
+        fixture.repairStore.save(
+            RepairRecord(
+                phase = RepairPhase.FAILED,
+                startedAt = Instant.parse("2026-10-22T12:00:00Z"),
+                source = "SillyBunny.broken-20261022T120000Z",
+                ref = REF,
+                failure = RepairFailure.INSTALL_FAILED,
+            ),
+        )
+        val coordinator = launch()
+        assertEquals(AppRoute.Repair, coordinator.route.value)
+        assertEquals(listOf(Overlay.REPAIR), coordinator.overlays.value)
+        assertFalse(coordinator.startRequest.value)
+
         // Closing it decides nothing new: this launch already chose Repair over a start.
         coordinator.close(Overlay.REPAIR)
         assertEquals(AppRoute.ServerStopped(userStopped = false), coordinator.route.value)

@@ -291,7 +291,7 @@ class AppUpdater internal constructor(
         enqueue { loadBlockedStatus() }
     }
 
-    private fun check(automatic: Boolean, expectedGeneration: Int = dismissalGeneration) {
+    private fun check(automatic: Boolean, expectedGeneration: Long = dismissalGeneration) {
         if (closed || state.phase in installingPhases) return
         cancelPendingAutoCheck()
         if (!automatic) {

@@ -129,6 +129,7 @@ internal class LaunchCoordinator(
     }
 
     fun close(overlay: Overlay) {
+        if (overlay == Overlay.REPAIR && !components.repair.canClose()) return
         val current = mutableOverlays.value
         if (overlay in current) setOverlays(current - overlay)
     }
