@@ -44,7 +44,7 @@ function toast(kind, text) {
 // Recents and the quick row
 
 function readRecents() {
-    return readReactionRecents(getConversationStore().reactionRecents);
+    return readReactionRecents(getConversationStore().recentReactions);
 }
 
 /** The emoji of the quick row: the user's recent reactions, topped up from the default six. */
@@ -60,11 +60,11 @@ export function getReactionName(emoji) {
 
 function rememberReaction(emoji, name) {
     const store = getConversationStore();
-    const recents = readReactionRecents(store.reactionRecents);
+    const recents = readReactionRecents(store.recentReactions);
     if (recents[0] && emojiKey(recents[0].e) === emojiKey(emoji)) {
         return;
     }
-    store.reactionRecents = pushReactionRecent(recents, { e: emoji, n: name || getReactionName(emoji) });
+    store.recentReactions = pushReactionRecent(recents, { e: emoji, n: name || getReactionName(emoji) });
     persistConversationStore();
 }
 

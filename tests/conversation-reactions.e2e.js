@@ -320,9 +320,9 @@ test.describe('with a pointer', () => {
         await hoverBubble(page, message);
         await expect(message.locator(TOOLBAR_REACTION).first()).toHaveText('🎉');
         await expect(message.locator(TOOLBAR_REACTION).first()).toHaveAttribute('aria-pressed', 'true');
-        await expect.poll(() => saves.some(save => save.extension_settings?.sillybunny_conversation?.reactionRecents?.[0]?.e === '🎉')).toBe(true);
-        const saved = saves.findLast(save => save.extension_settings?.sillybunny_conversation?.reactionRecents);
-        expect(saved.extension_settings.sillybunny_conversation.reactionRecents).toEqual([{ e: '🎉', n: 'party popper' }]);
+        await expect.poll(() => saves.some(save => save.extension_settings?.sillybunny_conversation?.recentReactions?.[0]?.e === '🎉')).toBe(true);
+        const saved = saves.findLast(save => save.extension_settings?.sillybunny_conversation?.recentReactions);
+        expect(saved.extension_settings.sillybunny_conversation.recentReactions).toEqual([{ e: '🎉', n: 'party popper' }]);
     });
 
     test('More Reactions in the menu opens the same chooser at the trigger of the menu', async ({ page, baseURL }) => {
@@ -354,7 +354,7 @@ test.describe('with a pointer', () => {
         await pickFrom(message, 0, 20);
         await pickFrom(page.locator('.sb-conversation-message[data-message-id="react-first"]'), 20, 5);
 
-        const recentsOf = () => saves.findLast(save => save.extension_settings?.sillybunny_conversation?.reactionRecents)?.extension_settings.sillybunny_conversation.reactionRecents;
+        const recentsOf = () => saves.findLast(save => save.extension_settings?.sillybunny_conversation?.recentReactions)?.extension_settings.sillybunny_conversation.recentReactions;
         await expect.poll(() => recentsOf()?.length).toBe(24);
         expect(recentsOf()[0].e).toBe(String.fromCodePoint(0x1F600 + 24));
         expect(recentsOf().map(item => item.e)).not.toContain(String.fromCodePoint(0x1F600));

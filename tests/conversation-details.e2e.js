@@ -376,7 +376,8 @@ test.describe('Behaviour and Advanced', () => {
 
         const patience = behaviour.getByRole('spinbutton', { name: 'Patience (Mins)' });
         await expect(patience).toBeDisabled();
-        await expect(behaviour.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(1);
+        // One subtitle waits for the maintainer's words under Messaging First, and one under Characters React.
+        await expect(behaviour.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(2);
         await behaviour.getByRole('switch', { name: 'Messaging First' }).check();
         await expect(patience).toBeEnabled();
         await expectSetting(page, conversationId, 'proactive_messaging', true);
