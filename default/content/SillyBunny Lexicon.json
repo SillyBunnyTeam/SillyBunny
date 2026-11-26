@@ -2093,7 +2093,10 @@
                     "switch-chat-mode",
                     "start-a-chat",
                     "add-world-info",
-                    "start-a-conversation"
+                    "start-a-conversation",
+                    "insert-an-emoji",
+                    "react-to-a-message",
+                    "let-characters-react"
                 ]
             }
         },
@@ -4180,7 +4183,8 @@
             "extensions": {
                 "sb_topic": [
                     "manage-the-conversation-list",
-                    "start-a-conversation"
+                    "start-a-conversation",
+                    "use-conversation-folders"
                 ]
             }
         },

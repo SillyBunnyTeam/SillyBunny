@@ -46,13 +46,15 @@ const SECTION_IDS = [
     'modes', 'conversations', 'agents', 'extensions-and-themes', 'search', 'data-and-importing', 'troubleshooting',
 ];
 const CONVERSATION_TOPIC_IDS = [
-    'start-a-conversation', 'start-a-group', 'manage-the-conversation-list', 'use-conversation-details', 'open-a-character-profile',
-    'let-characters-message-first', 'get-replies-after-closing-the-page', 'select-and-delete-messages', 'delete-a-chat-or-conversation',
+    'start-a-conversation', 'start-a-group', 'manage-the-conversation-list', 'use-conversation-folders', 'use-conversation-details',
+    'open-a-character-profile', 'let-characters-message-first', 'get-replies-after-closing-the-page', 'insert-an-emoji',
+    'react-to-a-message', 'let-characters-react', 'select-and-delete-messages', 'delete-a-chat-or-conversation',
     'change-conversation-preferences',
 ];
 const CONVERSATION_TOPIC_TITLES = [
-    'Start a Conversation', 'Start a Group', 'Manage the Conversation List', 'Use the Details Window', 'Open a Character Profile',
-    'Let Characters Message First', 'Get Replies After Closing the Page', 'Select and Delete Messages', 'Delete a Chat or a Conversation',
+    'Start a Conversation', 'Start a Group', 'Manage the Conversation List', 'Use Conversation Folders', 'Use the Details Window',
+    'Open a Character Profile', 'Let Characters Message First', 'Get Replies After Closing the Page', 'Insert an Emoji',
+    'React to a Message', 'Let Characters React', 'Select and Delete Messages', 'Delete a Chat or a Conversation',
     'Change Conversation Preferences',
 ];
 const FEATURED_IDS = ['connect-to-a-model', 'choose-a-preset', 'add-a-character', 'start-a-chat'];
@@ -1026,7 +1028,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expectNoUnmarkedPlaceholder(host);
             });
 
-            test('the Conversations section lists its ten topics in reading order, each with its placeholder description', async ({ page }) => {
+            test('the Conversations section lists its fourteen topics in reading order, each with its placeholder description', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
 
                 await showSection(host, 'Conversations');

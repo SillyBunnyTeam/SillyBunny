@@ -638,7 +638,7 @@ for (const { name, options } of VIEWPORTS) {
                     }));
                 });
 
-                expect(results).toHaveLength(22);
+                expect(results).toHaveLength(26);
                 for (const { id, status, text } of results) {
                     expect(status, id).toBe(200);
                     expect(text, id).toContain(`data-sb-copy-slot="HELP-TOPIC-${id}"`);
