@@ -7,6 +7,8 @@ test.use({ serviceWorkers: 'block' });
 const ENTRY = '#sb_conversation_input';
 const EMOJI_BUTTON = '#sb_conversation_emoji';
 const SEARCH = '.sb-emoji-search-entry';
+// Not `[role="status"]`: the loading page is a status too, so while the table loads that selector names two elements and a check on it fails at once, with no retry.
+const LIVE = '.sb-emoji-live';
 const POPOVER = '.sb-action-popover:has(.sb-emoji-chooser)';
 const SHEET = '.sb-action-sheet:has(.sb-emoji-chooser)';
 const TABLE = /\/emoji-[a-z-]+\.json/;
@@ -91,7 +93,7 @@ test.describe('with a pointer at 1440x900', () => {
         await page.screenshot({ path: testInfo.outputPath('chooser-popover.png') });
 
         await popover.locator(SEARCH).fill('red heart');
-        await expect(popover.locator('[role="status"]')).toHaveText(/^\d+ Results?$/);
+        await expect(popover.locator(LIVE)).toHaveText(/^\d+ Results?$/);
         await popover.getByRole('option', { name: 'red heart', exact: true }).click();
 
         await expect(popover).toHaveCount(0);
@@ -179,6 +181,31 @@ test.describe('when the table is slow or cannot be loaded', () => {
         await expect(loading).toHaveCount(0);
     });
 
+    test('searches the text that was typed while it loaded, once it arrives', async ({ page, baseURL }) => {
+        test.setTimeout(90_000);
+        await openComposer(page, baseURL);
+        let release = () => {};
+        const held = new Promise((resolve) => {
+            release = resolve;
+        });
+        await page.route(TABLE, async (route) => {
+            await held;
+            await route.continue();
+        });
+        await page.locator(EMOJI_BUTTON).click();
+        const popover = page.locator(POPOVER);
+        await expect(popover.locator('.sb-status-page[data-state="loading"]')).toBeVisible();
+        await page.keyboard.type('waving hand');
+        await expect(popover.locator(SEARCH)).toHaveValue('waving hand');
+        await expect(popover.locator(LIVE)).toHaveText('');
+
+        release();
+
+        await expect(popover.locator(LIVE)).toHaveText(/^\d+ Results?$/);
+        await expect(popover.locator('[role="listbox"] [role="option"]').first()).toHaveAccessibleName(/waving hand/);
+        await expect(popover.locator(SEARCH)).toHaveValue('waving hand');
+    });
+
     test('says so when the table cannot be loaded, and Try Again loads it', async ({ page, baseURL }, testInfo) => {
         test.setTimeout(90_000);
         await openComposer(page, baseURL);
@@ -252,7 +279,7 @@ test.describe('with the keyboard at 1440x900', () => {
         const popover = page.locator(POPOVER);
         await expect(popover.locator(SEARCH)).toBeFocused();
         await page.keyboard.type('waving hand');
-        await expect(popover.locator('[role="status"]')).toHaveText(/Results?$/);
+        await expect(popover.locator(LIVE)).toHaveText(/Results?$/);
         await page.keyboard.press('ArrowDown');
         expect(await activeCell(page)).toMatchObject({ emoji: '👋' });
         await page.keyboard.press('Shift+F10');
@@ -357,7 +384,7 @@ test.describe('with touch at 390x844', () => {
             cell.click();
         });
         await expect(tones).toBeVisible();
-        await expect(sheet.locator('[role="status"]')).toHaveText(/Result/);
+        await expect(sheet.locator(LIVE)).toHaveText(/Result/);
         await tones.getByRole('option').nth(3).tap();
         await expect(sheet).toHaveCount(0);
         await expect(entry).toHaveValue('👋🏽');
