@@ -1243,6 +1243,16 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     min-block-size: 40px;
 }
 
+/* A batch of rows is one wrapper element in the list, and its rows lay out as the list's own children. */
+.sb-picker__page,
+.sb-picker__page > ul {
+    display: contents;
+}
+
+.sb-picker__check[hidden] {
+    display: none;
+}
+
 /* A picker that is paged by `pageSize` ends in a Show More row. It is an option, so that the arrow keys reach it. */
 .sb-picker__more {
     justify-content: center;

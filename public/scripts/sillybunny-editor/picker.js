@@ -229,7 +229,10 @@ function syncOption(state, entry) {
         // A removable item that does not apply is dimmed like a muted one, without being announced as unavailable.
         option.classList.toggle('is-muted', Boolean(item.muted) || (Boolean(item.disabled) && !disabled));
     }
-    if (selected && !entry.check) {
+    if (state.paged) {
+        // A pick must not insert an element: any insertion restyles the page, which costs more than the pick itself.
+        entry.check.hidden = !selected;
+    } else if (selected && !entry.check) {
         entry.check = createIcon('fa-solid fa-check');
         entry.check.classList.add('sb-picker__check');
         option.append(entry.check);
@@ -255,9 +258,36 @@ function syncOption(state, entry) {
 function getEntryOption(state, entry) {
     if (!entry.option) {
         entry.option = createOption(state, entry.item, createId('sb-picker-option'), () => selectPickerItem(state, entry.item.value));
+        if (state.paged) {
+            entry.check = createIcon('fa-solid fa-check');
+            entry.check.classList.add('sb-picker__check');
+            entry.check.hidden = true;
+            entry.option.append(entry.check);
+        }
     }
     syncOption(state, entry);
     return entry.option;
+}
+
+/**
+ * One node that holds a batch of rows. A batch is added to the list as this one element, so that the observers of the
+ * app (keyboard.js and a11y.js scan every element that is added) look at one element and not at fifty rows.
+ * `display: contents` keeps the rows laid out as direct children of the list.
+ */
+function getPageGroup(state, index, rows) {
+    const previous = state.pageGroups[index];
+    if (previous && previous.rows.length === rows.length && previous.rows.every((row, position) => row === rows[position])) {
+        return previous.element;
+    }
+    const element = document.createElement('li');
+    element.className = 'sb-picker__page';
+    element.setAttribute('role', 'presentation');
+    const inner = document.createElement('ul');
+    inner.setAttribute('role', 'presentation');
+    inner.append(...rows);
+    element.append(inner);
+    state.pageGroups[index] = { element, rows };
+    return element;
 }
 
 function getShowMoreOption(state) {
@@ -516,6 +546,10 @@ function renderOptions(state) {
     if (restarted) {
         state.pages = 1;
         state.activeIndex = 0;
+        // Written before the rows change, while the layout of the old rows is still clean. Written after, the write forces
+        // style and layout of every new row inside the key handler.
+        state.list.scrollTop = 0;
+        if (state.multiple && state.surface) state.surface.scrollTop = 0;
     }
 
     const matches = matchEntries(state, query);
@@ -540,16 +574,19 @@ function renderOptions(state) {
     syncSelectionCount(state);
 
     if (!state.filtered.length) {
+        state.activeOption?.classList.remove('is-active');
+        state.activeOption = null;
         state.options = [];
         state.rendered = [];
+        state.pageGroups.length = 0;
         reconcileChildren(state.list, [getEmptyState(state, state.items.length > 0)]);
         state.input.removeAttribute('aria-activedescendant');
-        if (restarted) state.list.scrollTop = 0;
         return;
     }
 
     const options = [];
     const nodes = [];
+    let pageCount = 0;
     state.rendered = [];
     if (createItem) {
         const option = createOption(state, createItem, createId('sb-picker-option'), () => selectPickerItem(state, CREATE_ITEM));
@@ -563,24 +600,33 @@ function renderOptions(state) {
             return getEntryOption(state, entry);
         });
         options.push(...bucketOptions);
-        if (label === null) nodes.push(...bucketOptions);
-        else nodes.push(createGroup(label, bucketOptions));
+        if (label !== null) {
+            nodes.push(createGroup(label, bucketOptions));
+        } else if (state.paged) {
+            for (let start = 0; start < bucketOptions.length; start += state.pageSize) {
+                nodes.push(getPageGroup(state, pageCount++, bucketOptions.slice(start, start + state.pageSize)));
+            }
+        } else {
+            nodes.push(...bucketOptions);
+        }
     }
+    state.pageGroups.length = pageCount;
     if (hasMore) {
         const more = getShowMoreOption(state);
         options.push(more);
         nodes.push(more);
     }
-    state.options = options;
-    options.forEach((option, index) => option.classList.toggle('is-active', index === state.activeIndex));
-    reconcileChildren(state.list, nodes);
     const active = options[state.activeIndex];
+    // Only the row that was active can still carry the class, and rewriting a class that does not change is a mutation.
+    if (state.activeOption !== active) {
+        state.activeOption?.classList.remove('is-active');
+        active?.classList.add('is-active');
+        state.activeOption = active ?? null;
+    }
+    state.options = options;
+    reconcileChildren(state.list, nodes);
     if (active) {
         state.input.setAttribute('aria-activedescendant', active.id);
-    }
-    if (restarted) {
-        state.list.scrollTop = 0;
-        if (state.multiple && state.surface) state.surface.scrollTop = 0;
     }
 }
 
@@ -639,10 +685,10 @@ function updateActiveOption(state, nextIndex) {
     if (!state.filtered.length) {
         return;
     }
-    const previous = state.options[state.activeIndex];
     state.activeIndex = Math.max(0, Math.min(nextIndex, state.filtered.length - 1));
     const active = state.options[state.activeIndex];
-    if (previous && previous !== active) previous.classList.remove('is-active');
+    if (state.activeOption && state.activeOption !== active) state.activeOption.classList.remove('is-active');
+    state.activeOption = active ?? null;
     if (!active) {
         state.input.removeAttribute('aria-activedescendant');
         return;
@@ -858,6 +904,7 @@ function createPickerState({
         create,
         pageSize: Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : Infinity,
         pages: 1,
+        paged: Number.isFinite(pageSize) && pageSize > 0,
         searchDelay: 300,
         filter: filter && Array.isArray(filter.items) && filter.items.length && typeof filter.match === 'function' ? filter : null,
         filterSelected: new Set(),
@@ -868,6 +915,8 @@ function createPickerState({
         filtered: [],
         options: [],
         rendered: [],
+        pageGroups: [],
+        activeOption: null,
         activeIndex: 0,
         searchTimer: 0,
         signature: undefined,

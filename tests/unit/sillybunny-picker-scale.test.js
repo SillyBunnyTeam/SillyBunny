@@ -90,7 +90,7 @@ describe('batches', () => {
         const { list } = open({ items: makeItems(3000) });
 
         expect(list.querySelectorAll(OPTION)).toHaveLength(50);
-        expect(list.children).toHaveLength(51);
+        expect(list.querySelectorAll('.sb-picker__option')).toHaveLength(51);
         expect(list.lastElementChild.matches(MORE)).toBe(true);
         expect(list.lastElementChild.getAttribute('role')).toBe('option');
         expect(list.lastElementChild.textContent).toBe('Show More');
@@ -114,13 +114,27 @@ describe('batches', () => {
         expect(list.querySelector(MORE)).toBeNull();
     });
 
+    test('are each one element of the list, so that adding a batch is one insertion', () => {
+        const { list } = open({ items: makeItems(120) });
+        const observer = new MutationObserver(() => {});
+        observer.observe(list, { childList: true });
+
+        list.querySelector(MORE).click();
+
+        const added = observer.takeRecords().flatMap(record => [...record.addedNodes]);
+        observer.disconnect();
+        expect(added.filter(node => node.classList.contains('sb-picker__page'))).toHaveLength(1);
+        expect(added.filter(node => node.classList.contains('sb-picker__option') && !node.classList.contains('sb-picker__more'))).toHaveLength(0);
+        expect(list.querySelectorAll(OPTION)).toHaveLength(100);
+    });
+
     test('keep the rows that are shown: a batch only adds', () => {
         const { list } = open();
         const before = [...list.querySelectorAll(OPTION)];
 
         list.querySelector(MORE).click();
 
-        expect([...list.querySelectorAll(OPTION)].slice(0, 50)).toEqual(before);
+        expect([...list.querySelectorAll(OPTION)].slice(0, 50).every((row, index) => row === before[index])).toBe(true);
     });
 
     test('are all one picker without a page size: every match is rendered and nothing is batched', () => {
@@ -251,7 +265,7 @@ describe('rows are kept', () => {
         expect(list.contains(first)).toBe(false);
         type(input, '');
 
-        expect(list.querySelector(OPTION)).toBe(first);
+        expect(list.querySelector(OPTION) === first).toBe(true);
     });
 
     test('a render with nothing to change touches no node of the list', () => {
@@ -261,7 +275,7 @@ describe('rows are kept', () => {
 
         picker.refresh();
 
-        expect(observer.takeRecords()).toEqual([]);
+        expect(observer.takeRecords()).toHaveLength(0);
         observer.disconnect();
     });
 
@@ -297,7 +311,7 @@ describe('rows are kept', () => {
         icon.id = 'original';
         const { list } = open({ items: makeItems(3).map(item => ({ ...item, icon })) });
 
-        const icons = [...list.querySelectorAll('.sb-picker__option > i')];
+        const icons = [...list.querySelectorAll('.sb-picker__option > i:not(.sb-picker__check)')];
         expect(icons).toHaveLength(3);
         expect(icons.every(copy => copy !== icon && !copy.id)).toBe(true);
     });
@@ -331,16 +345,16 @@ describe('a pick in a multiple picker', () => {
         rows[4].click();
 
         expect(rows[4].getAttribute('aria-selected')).toBe('true');
-        expect(rows[4].querySelector('.sb-picker__check')).not.toBeNull();
-        expect([...list.querySelectorAll(OPTION)]).toEqual(rows);
+        expect(rows[4].querySelector('.sb-picker__check').hidden).toBe(false);
+        expect([...list.querySelectorAll(OPTION)].every((row, index) => row === rows[index])).toBe(true);
         const touched = new Set(observer.takeRecords().map(record => record.target.closest?.(OPTION) ?? record.target));
-        expect([...touched]).toEqual([rows[4]]);
-        expect(rows.filter(row => row.getAttribute('aria-selected') === 'true')).toEqual([rows[4]]);
+        expect([...touched].length === 1 && [...touched][0] === rows[4]).toBe(true);
+        expect(rows.filter(row => row.getAttribute('aria-selected') === 'true').map(row => row.id)).toEqual([rows[4].id]);
         observer.disconnect();
 
         rows[4].click();
         expect(rows[4].getAttribute('aria-selected')).toBe('false');
-        expect(rows[4].querySelector('.sb-picker__check')).toBeNull();
+        expect(rows[4].querySelector('.sb-picker__check').hidden).toBe(true);
     });
 
     test('reads the state of the rows that are on the screen, not of the whole library', () => {
