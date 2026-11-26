@@ -1,9 +1,34 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import express from 'express';
 import { color, getConfigValue, uuidv4, tryWriteFileSync } from '../util.js';
 import { encrypt, decrypt, isEncrypted, getEncryptionPassphrase } from '../encryption.js';
+
+// SillyBunny: cache parsed/decrypted secrets.json per filePath keyed by (mtimeMs, size, passphraseDigest)
+// so hot LLM generation calls skip repeated disk reads and 40+ ms scryptSync key derivations.
+const MAX_SECRETS_CACHE_ENTRIES = 64;
+/** @type {Map<string, { mtimeMs: number, size: number, passphraseDigest: string, needsEncryptionMigration: boolean, secrets: SecretKeys }>} */
+const secretsFileCache = new Map();
+
+/**
+ * @param {string | null} passphrase
+ * @returns {string}
+ */
+function getPassphraseDigest(passphrase) {
+    if (!passphrase) {
+        return '';
+    }
+    return crypto.createHash('sha256').update(passphrase).digest('hex');
+}
+
+/**
+ * Clears the in-memory secrets.json cache.
+ */
+export function clearSecretsCache() {
+    secretsFileCache.clear();
+}
 
 export const SECRETS_FILE = 'secrets.json';
 export const SECRET_KEYS = {
@@ -138,8 +163,27 @@ export class SecretManager {
      */
     _readSecretsFile() {
         this._ensureSecretsFile();
-        const rawBuffer = fs.readFileSync(this.filePath);
         const passphrase = getEncryptionPassphrase(this.directories.root);
+        const passphraseDigest = getPassphraseDigest(passphrase);
+
+        // SillyBunny: reuse cached parsed/decrypted secrets when file metadata and passphrase match.
+        let fileStat = null;
+        try {
+            fileStat = fs.statSync(this.filePath);
+            const cached = secretsFileCache.get(this.filePath);
+            if (cached
+                && cached.mtimeMs === fileStat.mtimeMs
+                && cached.size === fileStat.size
+                && cached.passphraseDigest === passphraseDigest) {
+                this._needsEncryptionMigration = cached.needsEncryptionMigration;
+                return structuredClone(cached.secrets);
+            }
+        } catch {
+            secretsFileCache.delete(this.filePath);
+        }
+
+        const rawBuffer = fs.readFileSync(this.filePath);
+        let needsEncryptionMigration = false;
 
         let fileContents;
         if (isEncrypted(rawBuffer)) {
@@ -151,11 +195,29 @@ export class SecretManager {
             fileContents = rawBuffer.toString('utf-8');
             // Auto-migrate: if encryption is enabled but file is plaintext, mark for re-encryption on next write
             if (passphrase) {
+                needsEncryptionMigration = true;
                 this._needsEncryptionMigration = true;
             }
         }
 
-        return /** @type {SecretKeys} */ (JSON.parse(fileContents));
+        const parsed = /** @type {SecretKeys} */ (JSON.parse(fileContents));
+        if (fileStat) {
+            if (secretsFileCache.size >= MAX_SECRETS_CACHE_ENTRIES && !secretsFileCache.has(this.filePath)) {
+                const oldestKey = secretsFileCache.keys().next().value;
+                if (oldestKey !== undefined) {
+                    secretsFileCache.delete(oldestKey);
+                }
+            }
+            secretsFileCache.set(this.filePath, {
+                mtimeMs: fileStat.mtimeMs,
+                size: fileStat.size,
+                passphraseDigest,
+                needsEncryptionMigration,
+                secrets: structuredClone(parsed),
+            });
+        }
+
+        return parsed;
     }
 
     /**
@@ -164,6 +226,7 @@ export class SecretManager {
      * @param {SecretKeys} secrets
      */
     _writeSecretsFile(secrets) {
+        secretsFileCache.delete(this.filePath);
         const jsonString = JSON.stringify(secrets, null, 4);
         const passphrase = getEncryptionPassphrase(this.directories.root);
 
@@ -177,6 +240,7 @@ export class SecretManager {
         } else {
             tryWriteFileSync(this.filePath, jsonString);
         }
+        secretsFileCache.delete(this.filePath);
     }
 
     /**

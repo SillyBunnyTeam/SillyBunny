@@ -1898,6 +1898,16 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/sillybunny-extension-media-integration.test.js` (configurations during an override, Image Generation with a missing or malformed state and user-file resolution, the `genNovelAI()` request, refusals and shared-file cleanup guard), `tests/novelai-image-generation.test.js` (route refusals, including data that is not a PNG, malformed base64 and a total above 25 MiB; its harness takes the server's 500 MB body limit so that such a request reaches the route), `tests/quick-image-gen-precise-reference.test.js`, `tests/data-maid-precise-reference.test.js`, `tests/novelai-precise-reference-editor.test.js` (jsdom unit suite for shared rows, focus survival, `change`-only commits, user-file upload/cleanup and dropped-image alert), `tests/novelai-precise-reference-editor.e2e.js` (both Image Generation and Quick Image Gen at 1440×900 and 390×844 coarse pointer).
 - **Fixes:** `e85b32471` (configurations during an override), `ad8702967` (malformed saved state), `14d25a68d` (editor controls during preparation), `573bd6343` (message when the editor drops prepared images).
 
+### Encryption `scrypt` maxmem, secrets read cache, and Data Maid scanning
+
+- **Breaks:**
+  - `SCRYPT_OPTIONS` in `src/encryption.js` used `{ N: 32768, r: 8, p: 1 }` without `maxmem`, which exceeds OpenSSL/BoringSSL's 32 MiB default (`128 * N * r = 33,554,432` bytes + overhead) and throws `ERR_CRYPTO_INVALID_SCRYPT_PARAMS` on Node 24 and Bun 1.4.4. Every `readSecret()` call in `src/endpoints/secrets.js` also re-read and re-decrypted `secrets.json` synchronously on every request.
+  - `src/endpoints/data-maid.js` parsed every `.jsonl` chat four times per report, missed `thumbnailsAvatarMobile` / `thumbnailsPersonaMobile`, and did not scan `extension_settings.sillybunny_conversation` media/files/attachments or group avatars, flagging live Conversation Mode assets as loose orphans.
+- **Guards:**
+  - `src/encryption.js` sets `maxmem: 64 * 1024 * 1024`; `src/endpoints/secrets.js` caches decrypted secrets per file by `(mtimeMs, size, passphraseDigest)` (bounded to 64 files, returning `structuredClone`) and invalidates on write.
+  - `src/endpoints/data-maid.js` streams `.jsonl` chats once via `node:readline`, protects Conversation Mode message media/files/attachments and group avatars via `collectConversationModeReferences()`, and includes mobile avatar/persona thumbnail directories.
+- **Tests:** `tests/perf-secrets-encryption-datamaid.test.js`, `tests/perf-hot-apis-and-lazy-routers.test.js`, `tests/data-maid-precise-reference.test.js`, `tests/secrets.test.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

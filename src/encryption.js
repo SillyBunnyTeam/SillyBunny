@@ -9,7 +9,8 @@ const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 const SALT_LENGTH = 32;
-const SCRYPT_OPTIONS = { N: 32768, r: 8, p: 1 };
+// SillyBunny: OpenSSL's default 32 MiB scrypt memory cap rejects N=32768, r=8, p=1 on Node 24+ and Bun 1.4+ without an explicit maxmem.
+const SCRYPT_OPTIONS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const MAGIC_HEADER = Buffer.from('STENC01');
 const SECRET_KEY_FILE = '.secret_key';
 

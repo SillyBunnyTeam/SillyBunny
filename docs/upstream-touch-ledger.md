@@ -2953,6 +2953,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-26, PR #1032 (Performance Optimization Series: PR 4). |
 | Owner | Server runtime integrator. |
 
+### `src/encryption.js` and `src/endpoints/secrets.js` - scrypt `maxmem` parity and bounded secrets file cache
+| Field | Value |
+| --- | --- |
+| File | `src/encryption.js`; `src/endpoints/secrets.js`. |
+| Area | Secrets-at-rest `scryptSync` key derivation and hot-path `secrets.json` read caching. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `SCRYPT_OPTIONS` in `src/encryption.js` and bounded `secretsFileCache` / `clearSecretsCache()` in `src/endpoints/secrets.js`. |
+| Adapter shape | `src/encryption.js`: sets `maxmem: 64 * 1024 * 1024` on `SCRYPT_OPTIONS` so `N = 32768, r = 8` succeeds under Node 24 and Bun 1.4.4 default 32 MiB OpenSSL/BoringSSL limits. `src/endpoints/secrets.js`: caches parsed/decrypted `secrets.json` entries (bounded to 64 files) by `(mtimeMs, size, passphraseDigest)`, returns `structuredClone` copies, and invalidates on write. Marked with `// SillyBunny:` comments. |
+| Protecting tests | `tests/perf-secrets-encryption-datamaid.test.js`; `tests/secrets.test.js`. |
+| Validation | 2026-11-26 (fresh install, restart, settings save): root and `tests/` lint, focused Jest unit tests, and Node 24 + Bun 1.4.4 encryption roundtrip checks. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1032 Wave-1 follow-up. |
+| Owner | `TODO(copy)` |
+
+### `src/endpoints/data-maid.js` - single-pass streaming scan, Conversation Mode media protection, and mobile thumbnails
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/data-maid.js`. |
+| Area | Data Maid loose-asset scanning, orphan safety, and mobile thumbnail cleanup. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `collectConversationModeReferences()` and `#collectChatAndGroupReferences()` inside `src/endpoints/data-maid.js`. |
+| Adapter shape | Marked `SillyBunny:` additions: streams `.jsonl` chat files once via `node:readline` instead of reading/parsing all chats four times, caches `settings.json` per report pass, records `extension_settings.sillybunny_conversation` message media/files/attachments and group avatars as known references, and scans `thumbnailsAvatarMobile` and `thumbnailsPersonaMobile` alongside desktop thumbnail directories. |
+| Protecting tests | `tests/perf-secrets-encryption-datamaid.test.js`; `tests/data-maid-precise-reference.test.js`; `tests/data-maid-external-media.test.js`; `tests/data-maid-fonts.test.js`. |
+| Validation | 2026-11-26 (long chat, Data Maid scan): root and `tests/` lint and focused Data Maid Jest suites. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, PR #1032 Wave-1 follow-up. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
