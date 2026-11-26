@@ -36,8 +36,8 @@ describe('the reaction chips', () => {
         expect(declarationsOf(top(conversation), '.sb-conversation-reaction-emoji')).toHaveProperty('font-size');
     });
 
-    test('grow to the density floor on a coarse pointer, with a hit area past the border and room between rows for it', () => {
-        expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip')).toMatchObject({ 'min-block-size': 'var(--sb-density-floor)' });
+    test('grow to 32px on a coarse pointer, with a hit area past the border that brings the target to 44px, and room between rows for it', () => {
+        expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip')).toMatchObject({ 'min-block-size': '32px' });
         expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reaction-chip::after')).toMatchObject({ position: 'absolute', inset: '-6px -2px' });
         expect(declarationsOf(coarse(conversation), '.sb-conversation-message-reactions')).toHaveProperty('row-gap', '12px');
     });

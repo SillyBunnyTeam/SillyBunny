@@ -2365,13 +2365,13 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-inline-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    /* A reaction chip draws at the density floor and reaches the touch target with a hit area that the row gap leaves room for. */
+    /* A reaction chip draws at 32px and reaches the touch target of 44px with a hit area that the row gap leaves room for. */
     .sb-conversation-message-reactions {
         row-gap: 12px;
     }
 
     .sb-conversation-message-reaction-chip {
-        min-block-size: var(--sb-density-floor);
+        min-block-size: 32px;
         padding-inline: 12px;
     }
 
