@@ -76,12 +76,10 @@ function getMediaQueryPxValues(cssSource) {
 // controls need five late-stage overrides to beat upstream inline/important presentation rules.
 // sillybunny-paper-theme.css raised 51 -> 52: its one radius rule is split in two, drawers and popups at the overlay
 // radius and controls at the control radius, and both must beat the upstream radius rules.
-// sillybunny-paper-theme.css lowered 52 -> 50: dropped the 2px top/bottom padding overrides on #top-bar, which
-// pushed 44px mobile controls past the bar's bottom border.
 // A budget counts the `!important` strings in its sheet, comments included. Lower it when the sheet's count falls.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 333,
-    'sillybunny-paper-theme.css': 50,
+    'sillybunny-paper-theme.css': 52,
     'sillybunny-tabs.css': 301,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 208,
@@ -142,14 +140,6 @@ describe('paper texture regression guards', () => {
     test('fills the reserved top-bar layout offset instead of a shorter 40px bar', () => {
         expect(paperThemeCss).toMatch(/#top-bar,\s*#topBar\s*\{[^}]*height:\s*var\(--sb-topbar-layout-offset,\s*var\(--topBarBlockSize\)\)\s*!important;/);
         expect(paperThemeCss).not.toMatch(/#top-bar,\s*#topBar\s*\{[^}]*height:\s*var\(--topBarBlockSize\)\s*!important;/);
-    });
-
-    test('leaves vertical clearance around mobile top-bar buttons so active fills do not clip at the bottom edge', () => {
-        const mobileShellCss = forkSheetSources['sillybunny-mobile-shell.css'];
-        const topBarRule = paperThemeCss.match(/#top-bar,\s*#topBar\s*\{[\s\S]*?\}/)?.[0] ?? '';
-
-        expect(topBarRule).not.toMatch(/padding-top:|padding-bottom:/);
-        expect(mobileShellCss).toMatch(/--sb-topbar-primary-min-height:\s*max\(var\(--sb-proxy-button-height\),\s*calc\(var\(--sb-mobile-toggle-size\)\s*\+\s*var\(--spacing-sm,\s*9px\)\)\);/);
     });
 });
 

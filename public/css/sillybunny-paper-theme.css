@@ -36,6 +36,8 @@ body::after {
     min-height: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
     height: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
     max-height: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
     align-items: center !important;
 }
 

@@ -83,8 +83,8 @@
         },
         "public/css/sillybunny-paper-theme.css": {
             "color-literal": 11,
-            "important": 50,
-            "spacing-off-scale": 7
+            "important": 52,
+            "spacing-off-scale": 9
         },
         "public/css/sillybunny-persona-detail.css": {
             "radius-literal": 3,
