@@ -294,6 +294,12 @@ describe('the SillyBunny Lexicon under the shipped World Info settings', () => {
         ['How do I delete a group conversation?', 'A50'],
         ['How do I stop my characters from messaging me first?', 'A87'],
         ['How do I move a conversation to my favorites?', 'A84'],
+        ['How do I put a conversation in a folder?', 'A92'],
+        ['Why does the New Group list only show 50 characters?', 'A54'],
+        ['How do I insert an emoji in Conversation mode?', 'A90'],
+        ['How can I see who reacted to my message?', 'A91'],
+        ['Can I stop characters reacting to my messages?', 'A91'],
+        ['Can I use my phone\'s own emoji instead of the ones Conversation draws?', 'A89'],
     ];
 
     /** Roleplay scans the greeting that the card opens the chat with, so a scan of a new chat includes it. */

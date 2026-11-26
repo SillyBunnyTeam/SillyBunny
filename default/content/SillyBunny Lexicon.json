@@ -2047,20 +2047,11 @@
                 "lorebook in conversation",
                 "world info in conversation",
                 "use character lorebooks",
-                "lorebook override",
-                "insert emoji",
-                "emoji picker",
-                "react to a message",
-                "message reactions",
-                "emoji reaction",
-                "emoji reactions",
-                "more reactions",
-                "who reacted",
-                "characters react"
+                "lorebook override"
             ],
             "keysecondary": [],
             "comment": "A43 Conversation mode",
-            "content": "Conversation (\"Direct conversational AI mode\") is a messenger-style workspace that replaces the chat area. It needs a character card. The conversation list is on the left (a screen of its own on a phone) and the open conversation is beside it. A conversation is direct (one character) or a group (two or more characters). Each persona has its own list, and a direct conversation is unique per persona and character. A conversation holds one or more chats, as a Roleplay character does. Conversations are not Roleplay chat files and are not in Chat History: each one is a folder with one file per chat in the user's conversations folder, which the account's backup ZIP includes. Replies use their own prompt, in plain chat text without narration, and a character can answer in several bubbles. Reply length follows the active connection. A character answers your messages, and writes first only while the conversation's \"Messaging First\" switch is on. No swipes, Continue, Impersonate, checkpoints or Temporary Chat. Lorebooks apply: the speaking character's books, global books, the persona's book and the conversation's \"Lorebook Override\"; the \"Use Character Lorebooks\" switch, when off, means replies use no lorebooks at all, the Lorebook Override included. Example-message and outlet positions are dropped and sticky or cooldown timers do not run. The \"Insert Emoji\" button beside the message field (Control+. in the field) opens a searchable emoji chooser; in a narrow window the button is not shown and \"Insert Emoji\" is in the \"+\" menu. Reactions: hover a message and press one of the two emoji in its toolbar, or More Reactions to open the emoji chooser; Message Actions (the three dots, or the trigger beside the message on a touch screen) holds six emoji and More Reactions. Press an emoji again to take it back. A message holds up to 20 different emoji, and you may add several. A chip under the message shows each emoji, with a count from two reactions, and your own are outlined; a right-click, the Menu key or Shift+F10 on a chip, or a long press on a touch screen, lists who reacted. The quick emoji are the ones that you used last. Characters can react as well: \"Characters React\" (Details ▸ Behaviour ▸ Auto-Responder and Commands) lets the characters of a conversation put one emoji on your latest message when they reply, and they see the recent reactions of the chat. It is on for a conversation that you start and off for a conversation that was there before.",
+            "content": "Conversation (\"Direct conversational AI mode\") is a messenger-style workspace that replaces the chat area. It needs a character card. The conversation list is on the left (a screen of its own on a phone) and the open conversation is beside it. A conversation is direct (one character) or a group (two or more characters). Each persona has its own list, and a direct conversation is unique per persona and character. A conversation holds one or more chats, as a Roleplay character does. Conversations are not Roleplay chat files and are not in Chat History: each one is a folder with one file per chat in the user's conversations folder, which the account's backup ZIP includes. Replies use their own prompt, in plain chat text without narration, and a character can answer in several bubbles. Reply length follows the active connection. A character answers your messages, and writes first only while the conversation's \"Messaging First\" switch is on. No swipes, Continue, Impersonate, checkpoints or Temporary Chat. Lorebooks apply: the speaking character's books, global books, the persona's book and the conversation's \"Lorebook Override\"; the \"Use Character Lorebooks\" switch, when off, means replies use no lorebooks at all, the Lorebook Override included. Example-message and outlet positions are dropped and sticky or cooldown timers do not run. Messages take emoji reactions, an \"Insert Emoji\" button beside the message field opens an emoji chooser, and characters can react to your messages.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -2093,10 +2084,7 @@
                     "switch-chat-mode",
                     "start-a-chat",
                     "add-world-info",
-                    "start-a-conversation",
-                    "insert-an-emoji",
-                    "react-to-a-message",
-                    "let-characters-react"
+                    "start-a-conversation"
                 ]
             }
         },
@@ -2625,7 +2613,7 @@
             ],
             "keysecondary": [],
             "comment": "A54 Group chats",
-            "content": "Roleplay and Conversation have separate group systems. Roleplay groups: Characters ▸ Groups tab (\"Open and Manage Group Conversations\"); the editor has Essentials, Members, Add Members, Chat Settings and Chat Overrides. \"Group reply strategy\": Manual, Natural order, List order, Pooled order. Generation handling: \"Swap character cards\" or \"Join character cards\" (exclude or include muted). Options ▸ \"Convert to group\" turns a solo chat into a group and cannot be reverted. Conversation groups: the conversation list's New (+) menu has \"New Group\"; pick at least two characters and press \"Create Group\". The group is named after its members until it is renamed. Details ▸ General ▸ \"Edit Details\" sets its name, description and picture; the description appears under the title and is given to the members as context, and a group without a picture shows up to four member pictures. \"Add Member\" (header menu, or Details) adds a character, who reads the existing history; on a direct conversation it starts a new group with that character and the chosen ones. A member row's Remove button removes the member and offers Undo; removing the second-to-last member asks first and turns the group into a direct conversation with the remaining character, whose chats are added to that conversation, named after the group. Members answer one after another, each seeing the reply before it, and at most two answer one message. \"@Name\" mentions answer first. A character's talkativeness sets how often it joins in; 0 means only when named. Members talk to each other only while the group's \"Messaging First\" switch is on. Lorebooks are scanned per speaker. In a Roleplay group chat a speaker bar above the message box shows each enabled member as an avatar button. Pressing one selects who answers next and pressing it again clears the choice; Shift+click makes that member answer at once. Speak Now makes the selected member answer, with the notice \"Pick a group member first\" when none is selected, and Add New Greeting adds a greeting from the selected member. Hide Bar hides the bar, and \"Show Group Bar\" in the wand menu brings it back. The bar appears only while the open group has an enabled member, and it shows who is typing. The group editor's member menu also has Speak Now.",
+            "content": "Roleplay and Conversation have separate group systems. Roleplay groups: Characters ▸ Groups tab (\"Open and Manage Group Conversations\"); the editor has Essentials, Members, Add Members, Chat Settings and Chat Overrides. \"Group reply strategy\": Manual, Natural order, List order, Pooled order. Generation handling: \"Swap character cards\" or \"Join character cards\" (exclude or include muted). Options ▸ \"Convert to group\" turns a solo chat into a group and cannot be reverted. Conversation groups: the conversation list's New (+) menu has \"New Group\", which opens the list of characters (favourites first, then by name, 50 at a time with a \"Show More\" row, with a search field and a \"Tags\" button that keeps the characters carrying every tag chosen); pick at least two, and the list counts \"N selected\", then press \"Create Group\". The group is named after its members until it is renamed. Details ▸ General ▸ \"Edit Details\" sets its name, description and picture; the description appears under the title and is given to the members as context, and a group without a picture shows up to four member pictures. \"Add Member\" (header menu, or Details) opens a page with the same list for the characters that are not in the conversation, where several can be chosen, and an \"Add\" button; the characters added read the existing history, and on a direct conversation they start a new group made of its character and the chosen ones. A member row's Remove button removes the member and offers Undo; removing the second-to-last member asks first and turns the group into a direct conversation with the remaining character, whose chats are added to that conversation, named after the group. Members answer one after another, each seeing the reply before it, and at most two answer one message. \"@Name\" mentions answer first. A character's talkativeness sets how often it joins in; 0 means only when named. Members talk to each other only while the group's \"Messaging First\" switch is on. Lorebooks are scanned per speaker. In a Roleplay group chat a speaker bar above the message box shows each enabled member as an avatar button. Pressing one selects who answers next and pressing it again clears the choice; Shift+click makes that member answer at once. Speak Now makes the selected member answer, with the notice \"Pick a group member first\" when none is selected, and Add New Greeting adds a greeting from the selected member. Hide Bar hides the bar, and \"Show Group Bar\" in the wand menu brings it back. The bar appears only while the open group has an enabled member, and it shows who is typing. The group editor's member menu also has Speak Now.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -3991,7 +3979,7 @@
             ],
             "keysecondary": [],
             "comment": "A81 Selection mode, Sort and Show More",
-            "content": "The messages of a chat have a selection mode of their own, with Delete as its only action (see Deleting messages). Several lists share three features. Selection mode acts on many rows at once. It starts from the Select item in the list's menu, by a right-click on a row, or by a long press on a touch screen (a press of half a second). The header then reads \"N selected\" and has Select All, and an action bar offers the list's actions. Ctrl/Cmd+A selects every row, Escape leaves, and in the Characters, Groups, Persona, Backgrounds, Tag Manager and Folders lists Shift+click or Shift+Space or Enter extends a range. The lists and their actions: Characters (More… ▸ Select): Favorite, Tag, Move to Folder, Duplicate, Convert to Persona and Delete; Groups: Tag, Move to Folder and Delete. Personas (Persona Management ▸ Select): Move to Folder, Duplicate and Delete. World Info entries (the book menu ▸ Select): Enable, Disable, Move/Copy and Delete. Agents (Agents Menu ▸ Select): Turn On, Turn Off, Edit Properties… and Delete…. Prompts (Prompt List Actions ▸ Select): Turn On, Turn Off, Remove From List and Delete. Backgrounds (Background ▸ ⋮ ▸ Select, Global tab only; on a touch screen a long press opens the thumbnail's menu instead): Move to Folder and Delete. Tag Manager and Folders window: Delete only. Deleting asks first and states the count. The Sort button sits at the end of a list's search bar and shows as pressed while the list is not in its default order: Characters and Groups (a sort, plus List or Grid), Personas (A-Z, Z-A), the Tag Manager, the Chat Completion prompt list and the Backgrounds gallery each offer their own options. Show More is a button at the end of the Characters, Groups, Persona and Tag Manager lists that loads the next rows. From the keyboard, Down from the last row reaches Show More, and Enter on it loads the next rows and moves focus to the first new row; the arrow keys, Home, End, Page Up and Page Down move between the rows (see Keyboard Shortcuts, List Navigation).",
+            "content": "The messages of a chat have a selection mode of their own, with Delete as its only action (see Deleting messages). Several lists share three features. Selection mode acts on many rows at once. It starts from the Select item in the list's menu, by a right-click on a row, or by a long press on a touch screen (a press of half a second). The header then reads \"N selected\" and has Select All, and an action bar offers the list's actions. Ctrl/Cmd+A selects every row, Escape leaves, and in the Characters, Groups, Persona, Backgrounds, Tag Manager and Folders lists Shift+click or Shift+Space or Enter extends a range. The lists and their actions: Characters (More… ▸ Select): Favorite, Tag, Move to Folder, Duplicate, Convert to Persona and Delete; Groups: Tag, Move to Folder and Delete. Personas (Persona Management ▸ Select): Move to Folder, Duplicate and Delete. World Info entries (the book menu ▸ Select): Enable, Disable, Move/Copy and Delete. Agents (Agents Menu ▸ Select): Turn On, Turn Off, Edit Properties… and Delete…. Prompts (Prompt List Actions ▸ Select): Turn On, Turn Off, Remove From List and Delete. Backgrounds (Background ▸ ⋮ ▸ Select, Global tab only; on a touch screen a long press opens the thumbnail's menu instead): Move to Folder and Delete. Tag Manager and Folders window: Delete only. Deleting asks first and states the count. The Sort button sits at the end of a list's search bar and shows as pressed while the list is not in its default order: Characters and Groups (a sort, plus List or Grid), Personas (A-Z, Z-A), the Tag Manager, the Chat Completion prompt list and the Backgrounds gallery each offer their own options. Show More is a button at the end of the Characters, Groups, Persona and Tag Manager lists, and a row at the end of the character lists of Conversation mode (New Conversation, New Group and Add Member), that loads the next rows. From the keyboard, Down from the last row reaches Show More, and Enter on it loads the next rows and moves focus to the first new row; the arrow keys, Home, End, Page Up and Page Down move between the rows (see Keyboard Shortcuts, List Navigation).",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -4043,7 +4031,7 @@
             ],
             "keysecondary": [],
             "comment": "A82 The Tag Manager and the Folders window",
-            "content": "Tag Manager (window \"Tag Management\"): Characters ▸ More… ▸ Manage Tags. The search bar has a Sort button with the radio items Manual (Drag & Drop), Alphabetical (A-Z) and Most Used (By Count). The header's ⋮ menu holds Select, Backup, Restore and Prune. A tag shows how many entries use it (\"1 entry\" for one). It lists 50 tags at a time, and Show More loads the next 50; a new search starts again at the first 50. Selection mode offers Delete only, after \"Delete N tags? This cannot be undone.\" With no tags the page says \"Create a New Tag\" with a New button, and a search with no match says \"No Results\". Folders window (title \"Folders\"): one window for the scope of the list it was opened from: Characters or Groups (Characters ▸ More… ▸ Manage Folders), Personas (Persona Management ▸ Manage Folders) or Backgrounds (Background ▸ ⋮ ▸ Manage Folders). The header has Search, a ⋮ menu with Select and New Folder (+). Each folder row has a name that can be edited, a member count and a Manage Folder menu with Rename, Colour, Expanded by Default, the move items and Delete; opening a row shows its members, with an Add button that opens \"Add to Folder\". Deleting a folder asks \"Delete Folder?\" and keeps its members. Selection mode offers Delete only. With no folders the page says \"No Folders\" with a New Folder button, and a folder with no members says \"No Members\".",
+            "content": "Tag Manager (window \"Tag Management\"): Characters ▸ More… ▸ Manage Tags. The search bar has a Sort button with the radio items Manual (Drag & Drop), Alphabetical (A-Z) and Most Used (By Count). The header's ⋮ menu holds Select, Backup, Restore and Prune. A tag shows how many entries use it (\"1 entry\" for one). It lists 50 tags at a time, and Show More loads the next 50; a new search starts again at the first 50. Selection mode offers Delete only, after \"Delete N tags? This cannot be undone.\" With no tags the page says \"Create a New Tag\" with a New button, and a search with no match says \"No Results\". Folders window (title \"Folders\"): one window for the scope of the list it was opened from: Characters or Groups (Characters ▸ More… ▸ Manage Folders), Personas (Persona Management ▸ Manage Folders), Backgrounds (Background ▸ ⋮ ▸ Manage Folders) or Conversations (the conversation list's Main Menu ▸ Manage Folders, for the folders of the current persona). The header has Search, a ⋮ menu with Select and New Folder (+). Each folder row has a name that can be edited, a member count and a Manage Folder menu with Rename, Colour, Expanded by Default, the move items and Delete; opening a row shows its members, with an Add button that opens \"Add to Folder\". Deleting a folder asks \"Delete Folder?\" and keeps its members. Selection mode offers Delete only. With no folders the page says \"No Folders\" with a New Folder button, and a folder with no members says \"No Members\".",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -4143,16 +4131,11 @@
                 "mark as unread",
                 "unread badge",
                 "mute a conversation",
-                "conversation row menu",
-                "conversation folder",
-                "conversation folders",
-                "folder a conversation",
-                "move a conversation to a folder",
-                "new conversation folder"
+                "conversation row menu"
             ],
             "keysecondary": [],
             "comment": "A84 The conversation list",
-            "content": "The conversation list is the first column of Conversation mode, and a screen of its own on a phone. Its header has the persona button (tooltip \"Your Status and Persona\"), whose menu sets your status (Online, Idle, Do Not Disturb or Invisible) and has \"Set Status Message…\" and \"Switch Persona…\"; the New (+) button, with \"New Conversation\", \"New Group\" and \"New Folder…\"; and the Main Menu, with \"Mark All as Read\", \"Manage Folders\", \"Preferences\" and \"Help\". A search field below filters the list by name, and shows the matches under their sections. Rows are in sections, each with the newest first: \"Favorites\", which shows only while it holds a conversation, then the folders that you made, in their order, then \"Conversations\". Favorites and every folder open and close from their heading, and each remembers whether it is open; the heading of a closed folder shows the unread count of its conversations. A row shows the avatar, or a stack of member avatars for a group, the name, a preview of the last message and a badge with the unread count. \"New Conversation\" asks for one character and opens its direct conversation, creating it when it does not exist yet. A row's menu opens with a right-click, with a long press on a touch screen, or with Shift+F10 or the Menu key, and has \"Mark as Read\" or \"Mark as Unread\", \"Add to Favorites\" or \"Remove From Favorites\", \"Move to Folder…\", \"Mute\" or \"Unmute\", \"Details\" and \"Delete\", which deletes the conversation after a confirmation. A muted conversation makes no sound and shows no popup, and keeps its unread badge. Folders: each persona has its own folders, and a conversation is in one folder at most. \"New Folder…\" in the New (+) menu asks for a name. \"Move to Folder…\" opens a choice of \"No Folder\" and your folders, with \"New Folder…\" to make a folder and put the conversation in it. A folder's heading has its own menu, opened like a row's, with \"Rename\", \"Colour\" and \"Delete\", which asks first and leaves the folder's conversations in Conversations. \"Manage Folders\" in the Main Menu opens the Folder Manager, where folders are ordered and conversations are added to a folder or taken out of it. A conversation that is a favourite shows only in Favorites and keeps its folder, and goes back to that folder when you choose \"Remove From Favorites\"; \"Move to Folder…\" on a favourite changes its folder only, and the row stays in Favorites. Folders are kept with your conversations, so resetting the settings does not remove them. To move a conversation to a section, drag the whole row onto it (a long press lifts it on a touch screen); the section shows a ring, a closed folder opens when the row is dropped on it, and Escape cancels the drag. From the keyboard, Alt+Up and Alt+Down move the focused row to the section above or below, Alt+Home and Alt+End to the first or the last, and the row menu does the same moves by name. A row cannot be dragged or moved with the Alt keys while a search filters the list. The list is one Tab stop, and the arrow keys move between rows.",
+            "content": "The conversation list is the first column of Conversation mode, and a screen of its own on a phone. Its header has the persona button (tooltip \"Your Status and Persona\"), whose menu sets your status (Online, Idle, Do Not Disturb or Invisible) and has \"Set Status Message…\" and \"Switch Persona…\"; the New (+) button, with \"New Conversation\", \"New Group\" and \"New Folder…\"; and the Main Menu, with \"Mark All as Read\", \"Manage Folders\", \"Preferences\" and \"Help\". A search field below filters the list by name, and shows the matches under their sections. Rows are in sections, each with the newest first: \"Favorites\", which shows only while it holds a conversation, then the folders that you made, in their order, then \"Conversations\" (see Conversation folders). Favorites and every folder open and close from their heading, and each remembers whether it is open; the heading of a closed section shows the unread count of its conversations, not counting muted ones. A row shows the avatar, or a stack of member avatars for a group, the name, a preview of the last message and a badge with the unread count. \"New Conversation\" opens a list of characters; pick one and its direct conversation opens, created when it does not exist yet. The list shows the characters that you marked as favourites first and the rest by name, 50 at a time with a \"Show More\" row at the end; the search field filters by name, and a \"Tags\" button beside it keeps the characters that carry every tag chosen. A row's menu opens with a right-click, with a long press on a touch screen, or with Shift+F10 or the Menu key, and has \"Mark as Read\" or \"Mark as Unread\", \"Add to Favorites\" or \"Remove From Favorites\", \"Move to Folder…\", \"Mute\" or \"Unmute\", \"Details\" and \"Delete\", which deletes the conversation after a confirmation. A muted conversation makes no sound and shows no popup, and keeps its unread badge. To move a conversation to another section, drag the whole row onto it (a long press lifts it on a touch screen); the section shows a ring, and Escape cancels the drag. From the keyboard, Alt+Up and Alt+Down move the focused row to the section above or below, and Alt+Home and Alt+End to the first or the last, by the same rules as a drop. While a search filters the list a row cannot be dragged or moved with the Alt keys, and the menu items still work. The list is one Tab stop, and the arrow keys move between rows.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -4183,8 +4166,7 @@
             "extensions": {
                 "sb_topic": [
                     "manage-the-conversation-list",
-                    "start-a-conversation",
-                    "use-conversation-folders"
+                    "start-a-conversation"
                 ]
             }
         },
@@ -4207,7 +4189,7 @@
             ],
             "keysecondary": [],
             "comment": "A85 The conversation details window",
-            "content": "Details is the window of one conversation. It opens from the header title, from \"Details\" in the header menu, or from \"Details\" in a row's menu in the conversation list. It is a window on a desktop and a bottom sheet on a phone, with pages that open one over another: Back or Escape goes up one page, and Escape on the first page closes it. Every setting saves as it changes. General: the picture, the name, the description or status, \"Edit Details\" (groups only), the members of a group of up to four with \"Add Member\", links to the other pages and \"Notifications\" (All or Muted). Members: the list for a bigger group, and for a direct conversation that still has extra members from an older version, which can only be removed; pressing a member opens its profile and its Remove button removes it. Chats: \"New Chat\" and, for each chat, Open, \"Rename…\", \"Export\" and \"Delete…\". Media, Files and Pinned: the pictures and videos, the files and audio, and the pinned messages of the open chat; Pinned has \"Show in Chat\" and \"Unpin\". Behaviour: \"Messaging First\" with \"Patience (Mins)\" and \"Max Unanswered\"; the \"Offline and Busy Auto-Responder\" message; \"Selfies Through [selfie]\" and \"Status Updates Through [schedule_update]\"; \"Generate Images\" with its prompt template, negative prompt, cooldown and \"Spontaneous Selfies\"; and the reminders, which can be cancelled. Advanced: \"System Prompt\", \"Author's Note\", \"Lorebook Override\", \"Remember Groups Here\" (in a group, \"Remember Direct Conversations Here\"), \"React to Current Roleplay\", \"Prose Polisher\", and the memory summary of the open chat with \"Create Memory\", \"Refresh Memory\" and \"Clear Memory\".",
+            "content": "Details is the window of one conversation. It opens from the header title, from \"Details\" in the header menu, or from \"Details\" in a row's menu in the conversation list. It is a window on a desktop and a bottom sheet on a phone, with pages that open one over another: Back or Escape goes up one page, and Escape on the first page closes it. Every setting saves as it changes. General: the picture, the name, the description or status, \"Edit Details\" (groups only), the members of a group of up to four with \"Add Member\" (a page with the character list of New Group, favourites first and 50 at a time, without the characters already in the conversation, and an \"Add\" button), links to the other pages and \"Notifications\" (All or Muted). Members: the list for a bigger group, and for a direct conversation that still has extra members from an older version, which can only be removed; pressing a member opens its profile and its Remove button removes it. Chats: \"New Chat\" and, for each chat, Open, \"Rename…\", \"Export\" and \"Delete…\". Media, Files and Pinned: the pictures and videos, the files and audio, and the pinned messages of the open chat; Pinned has \"Show in Chat\" and \"Unpin\". Behaviour: \"Messaging First\" with \"Patience (Mins)\" and \"Max Unanswered\"; the \"Offline and Busy Auto-Responder\" message; \"Selfies Through [selfie]\" and \"Status Updates Through [schedule_update]\"; \"Characters React\"; \"Generate Images\" with its prompt template, negative prompt, cooldown and \"Spontaneous Selfies\"; and the reminders, which can be cancelled. Advanced: \"System Prompt\", \"Author's Note\", \"Lorebook Override\", \"Remember Groups Here\" (in a group, \"Remember Direct Conversations Here\"), \"React to Current Roleplay\", \"Prose Polisher\", and the memory summary of the open chat with \"Create Memory\", \"Refresh Memory\" and \"Clear Memory\".",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -4402,11 +4384,15 @@
                 "status message",
                 "set my status",
                 "use device emoji",
-                "device emoji"
+                "device emoji",
+                "emoji font",
+                "system emoji",
+                "native emoji",
+                "own emoji"
             ],
             "keysecondary": [],
             "comment": "A89 Conversation Preferences",
-            "content": "Preferences apply to every conversation. They open from the conversation list's Main Menu ▸ Preferences. \"Replies\": \"Simulate Reply Delay\" (on by default: a reply waits and shows typing for a time that depends on the character's status and talkativeness; off, replies come at once), \"Connection Profile\" (the profile that Conversation replies use; \"Use current connection\" follows the active connection) and \"Use Character Lorebooks\". \"Emoji\": \"Use Device Emoji\" (off by default: Conversation draws emoji with its own bundled font, so they look the same on every device; on, it uses the device's own emoji). \"Prompts\": \"Custom Instructions\" and \"Grounded Dialogue Rules\", a switch with \"Edit Grounded Dialogue Rules\" for the text. \"Quiet Hours\": \"Quiet Hours Start\" and \"Quiet Hours End\" as times of day, such as 22:00 and 07:00; between them no conversation makes a sound or shows a popup, and the unread badges still count. \"Your Status\": \"Status\" (Online, Idle, Do Not Disturb or Invisible) and \"Status Message\", which the persona button in the conversation list also sets. Do Not Disturb and Invisible stop characters from writing first. A conversation's own settings, such as its system prompt, are in its Details.",
+            "content": "Preferences apply to every conversation. They open from the conversation list's Main Menu ▸ Preferences. \"Replies\": \"Simulate Reply Delay\" (on by default: a reply waits and shows typing for a time that depends on the character's status and talkativeness; off, replies come at once), \"Connection Profile\" (the profile that Conversation replies use; \"Use current connection\" follows the active connection) and \"Use Character Lorebooks\". \"Prompts\": \"Custom Instructions\" and \"Grounded Dialogue Rules\", a switch with \"Edit Grounded Dialogue Rules\" for the text. \"Emoji\": \"Use Device Emoji\" (off by default). Conversation draws emoji in its messages, conversation list, reactions, details window and emoji chooser with a bundled emoji font, so they look the same on every device; with the switch on it uses the device's own emoji. It also uses the device's emoji where the browser cannot draw the bundled font (Safari 17.0 and 17.1). \"Quiet Hours\": \"Quiet Hours Start\" and \"Quiet Hours End\" as times of day, such as 22:00 and 07:00; between them no conversation makes a sound or shows a popup, and the unread badges still count. \"Your Status\": \"Status\" (Online, Idle, Do Not Disturb or Invisible) and \"Status Message\", which the persona button in the conversation list also sets. Do Not Disturb and Invisible stop characters from writing first. A conversation's own settings, such as its system prompt, are in its Details.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,
@@ -4437,6 +4423,147 @@
             "extensions": {
                 "sb_topic": [
                     "change-conversation-preferences"
+                ]
+            }
+        },
+        "90": {
+            "uid": 90,
+            "key": [
+                "insert emoji",
+                "insert an emoji",
+                "emoji chooser",
+                "emoji picker"
+            ],
+            "keysecondary": [],
+            "comment": "A90 Emoji chooser",
+            "content": "Inserting an emoji in Conversation mode: the \"Insert Emoji\" button beside the message field, or Control+. in the field, opens the emoji chooser, and the emoji that you pick goes into the message at the caret. In a composer narrower than about 360 pixels the button is not shown and \"Insert Emoji\" is the first item of the \"+\" menu; the key still works. In Firefox 150 and later on Linux the key opens the browser's own emoji picker instead. The chooser is a popover on a desktop and a bottom sheet on a phone, with a search field, a \"Recent\" section and a button for each category. The search reads the emoji names in the language of the interface, and in English when nothing matches there; Arabic and Icelandic have no names of their own and use English. The arrow keys, Home, End, Page Up and Page Down move between emoji, Enter in the search field takes the first result, and Shift with a click or Enter keeps the chooser open to pick more. An emoji that comes in skin tones opens them on a long press, a right-click, the Menu key or Shift+F10. Conversation draws emoji with a bundled emoji font; \"Use Device Emoji\" in Preferences uses the device's own emoji instead.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 878,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 90,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": [
+                    "insert-an-emoji"
+                ]
+            }
+        },
+        "91": {
+            "uid": 91,
+            "key": [
+                "react to a message",
+                "message reactions",
+                "emoji reaction",
+                "emoji reactions",
+                "more reactions",
+                "who reacted",
+                "quick reactions",
+                "characters react",
+                "characters reacting"
+            ],
+            "keysecondary": [],
+            "comment": "A91 Reactions",
+            "content": "Reactions in Conversation mode: hover a message and press one of the two emoji in its toolbar, or More Reactions to choose any emoji in the emoji chooser. In a timeline narrower than 340 pixels the toolbar has no reaction buttons. Message Actions (the three dots, or the trigger beside the message on a touch screen) has six emoji and More Reactions. The quick emoji are the ones that you reacted with last, filled up with ❤️ 😂 ✨ 👍 😮 😢, and they are kept with your settings, so they follow you between devices. Pressing an emoji that you already put on a message takes it back. A message holds up to 20 different emoji, and you may add several. A chip under the message shows each emoji, with the number of reactions from two on; your own chips are outlined and tinted in the accent colour, and pressing a chip adds or takes back your own reaction. A right-click, the Menu key or Shift+F10 on a chip, or a long press on a touch screen, lists who reacted, and the tooltip of the chip names them too. \"Characters React\" (Details ▸ Behaviour ▸ Auto-Responder and Commands) is a switch for each conversation. While it is on, a character that replies may put one emoji on the message of yours that it answers: the emoji is cut out of the reply text and shows as a chip, and a character reacts once to a message. A reply that answers no message of yours, such as one that \"Messaging First\" starts, reacts to nothing, and a group member that does not reply does not react. The switch is on in a conversation that you start and off in a conversation that was there before. Whatever the switch says, the characters are told about the reactions on the last few messages, yours and the other characters', so they can refer to them.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 877,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 91,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": [
+                    "react-to-a-message",
+                    "let-characters-react"
+                ]
+            }
+        },
+        "92": {
+            "uid": 92,
+            "key": [
+                "conversation folder",
+                "conversation folders",
+                "folder a conversation",
+                "move a conversation to a folder",
+                "new conversation folder",
+                "conversation in a folder",
+                "conversations in folders"
+            ],
+            "keysecondary": [],
+            "comment": "A92 Conversation folders",
+            "content": "Conversation folders sort the conversation list into sections. Each persona has its own folders, up to 50, and a conversation is in one folder at most. The folders follow \"Favorites\" in the list, in their stored order, and a folder shows even when it is empty; its heading shows its colour, its name and the number of its conversations. \"New Folder…\" in the New (+) menu asks for a name. \"Move to Folder…\" in a row's menu opens a choice of \"No Folder\" and your folders, with \"New Folder…\" to make a folder and put the conversation in it; a folder that is closed opens, so the row stays in sight. A folder's heading has its own menu, opened like a row's (right-click, long press, Shift+F10 or the Menu key), with \"Rename\", \"Colour\" and \"Delete\", which asks first and leaves the folder's conversations in Conversations. \"Manage Folders\" in the conversation list's Main Menu opens the Folders window for the conversations of the current persona, the window that Characters, Personas and Backgrounds use too: folders are made, renamed, coloured, ordered and deleted there, and a folder opened there has an Add button that files conversations in it. Dragging a row (a long press lifts it on a touch screen) or pressing Alt+Up, Alt+Down, Alt+Home or Alt+End moves it between sections: onto a folder files it there, and a favourite leaves Favorites; onto Favorites makes it a favourite and keeps its folder; onto \"Conversations\" takes it out of its folder and out of Favorites. A closed folder opens while a dragged row rests on it and stays open once the row is dropped there. A conversation that is a favourite shows only in Favorites and keeps its folder, and goes back to that folder when you choose \"Remove From Favorites\"; \"Move to Folder…\" on a favourite changes its folder only, and the row stays in Favorites. A search shows its matches under their folders and hides the folders that have none. Folders are kept with your conversations, so resetting the settings does not remove them.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 885,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 92,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": [
+                    "use-conversation-folders"
                 ]
             }
         }
