@@ -118,7 +118,7 @@ describe('the emoji chooser on every bundled theme', () => {
 
     test('is a measure of the colours that the stylesheet gives each part', () => {
         expect(colourOfRule('.sb-emoji-heading')).toBe('var(--SmartThemeBodyColor)');
-        expect(colourOfRule('.sb-emoji-message,\n.sb-emoji-empty') ?? colourOfRule('.sb-emoji-message')).toBe('var(--SmartThemeBodyColor)');
+        expect(colourOfRule('.sb-emoji-empty')).toBe('var(--SmartThemeBodyColor)');
         expect(colourOfRule('.sb-emoji-search-entry')).toBe('var(--SmartThemeBodyColor)');
         expect(colourOfRule('.sb-emoji-category')).toBe('var(--sb-input-placeholder)');
         expect(colourOfRule('.sb-emoji-category[aria-current=\'true\']')).toBe('var(--SmartThemeBodyColor)');

@@ -163,7 +163,7 @@ describe('openEmojiChooser', () => {
         await settle();
         const { content } = surfaces[0].options;
         expect(content.dataset.state).toBe('error');
-        content.querySelector('.sb-emoji-message-retry').click();
+        content.querySelector('.sb-status-page__action').click();
         await settle();
         expect(content.dataset.state).toBe('ready');
         expect(load).toHaveBeenCalledTimes(2);

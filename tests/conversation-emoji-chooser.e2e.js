@@ -154,6 +154,48 @@ test.describe('with a pointer at 1440x900', () => {
     });
 });
 
+test.describe('when the table is slow or cannot be loaded', () => {
+    test('shows the shared status page while it loads, and the grid once it arrives', async ({ page, baseURL }, testInfo) => {
+        test.setTimeout(90_000);
+        await openComposer(page, baseURL);
+        let release = () => {};
+        const held = new Promise((resolve) => {
+            release = resolve;
+        });
+        await page.route(TABLE, async (route) => {
+            await held;
+            await route.continue();
+        });
+        await page.locator(EMOJI_BUTTON).click();
+        const popover = page.locator(POPOVER);
+        const loading = popover.locator('.sb-status-page[data-state="loading"]');
+        // The status page waits a moment before it shows, so a quick load shows nothing.
+        await expect(loading).toBeVisible();
+        await expect(loading).toContainText('Loading Emoji');
+        await expect(popover.locator('[role="listbox"]')).toHaveCount(0);
+        await page.screenshot({ path: testInfo.outputPath('chooser-loading.png') });
+        release();
+        await expect(popover.locator('[role="listbox"] [role="option"]').first()).toBeVisible();
+        await expect(loading).toHaveCount(0);
+    });
+
+    test('says so when the table cannot be loaded, and Try Again loads it', async ({ page, baseURL }, testInfo) => {
+        test.setTimeout(90_000);
+        await openComposer(page, baseURL);
+        await page.route(TABLE, route => route.abort());
+        await page.locator(EMOJI_BUTTON).click();
+        const popover = page.locator(POPOVER);
+        const failed = popover.locator('.sb-status-page[data-state="error"]');
+        await expect(failed).toBeVisible();
+        await expect(failed).toContainText('Emoji Unavailable');
+        await page.screenshot({ path: testInfo.outputPath('chooser-error.png') });
+        await page.unroute(TABLE);
+        await failed.getByRole('button', { name: 'Try Again' }).click();
+        await expect(popover.locator('[role="listbox"] [role="option"]').first()).toBeVisible();
+        await expect(failed).toHaveCount(0);
+    });
+});
+
 test.describe('with the keyboard at 1440x900', () => {
     test('Control+Period opens the chooser from the entry; the arrows, the sections and Enter work; Escape returns to the entry', async ({ page, baseURL }) => {
         test.setTimeout(90_000);

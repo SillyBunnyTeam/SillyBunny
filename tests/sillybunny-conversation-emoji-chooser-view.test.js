@@ -135,6 +135,36 @@ describe('what the chooser is made of', () => {
         expect(root.querySelectorAll('.sb-emoji-categories [tabindex="0"]')).toHaveLength(1);
     });
 
+    test('shows the shared status page, outside any listbox, while there is no table, and the listbox when the table arrives', () => {
+        const view = createChooserView({ kind: 'insert', recents: [], columns: () => 4, schedule, requestClose() {}, recordRecent() {}, onPick() {} });
+        document.body.append(view.element);
+        view.showLoading();
+        const page = view.element.querySelector('.sb-status-page');
+        expect(page.dataset.state).toBe('loading');
+        expect(page.querySelector('.sb-status-page__title').textContent).toBe('Loading Emoji');
+        expect(view.element.querySelector('[role="listbox"]')).toBeNull();
+        expect(view.element.querySelector('.sb-emoji-scroller').hasAttribute('aria-label')).toBe(false);
+        view.setTable(makeTable());
+        expect(view.element.querySelector('.sb-status-page')).toBeNull();
+        expect(view.element.querySelector('[role="listbox"]').getAttribute('aria-label')).toBe('Emoji');
+    });
+
+    test('shows a failed load as the status page with a way to try again, and a description that is a placeholder', () => {
+        const view = createChooserView({ kind: 'insert', recents: [], columns: () => 4, schedule, requestClose() {}, recordRecent() {}, onPick() {} });
+        document.body.append(view.element);
+        const retry = jest.fn();
+        view.showError(retry);
+        const page = view.element.querySelector('.sb-status-page');
+        expect(view.element.dataset.state).toBe('error');
+        expect(page.dataset.state).toBe('error');
+        expect(page.querySelector('.sb-status-page__title').textContent).toBe('Emoji Unavailable');
+        const description = page.querySelector('.sb-status-page__description');
+        expect([description.textContent, description.dataset.sbCopyPlaceholder]).toEqual(['TODO(copy)', 'true']);
+        page.querySelector('.sb-status-page__action').click();
+        expect(retry).toHaveBeenCalledTimes(1);
+        expect(view.element.querySelector('[role="listbox"]')).toBeNull();
+    });
+
     test('shows a message instead of the grid while there is no table', () => {
         const view = createChooserView({ kind: 'insert', recents: [], columns: () => 4, schedule, requestClose() {}, recordRecent() {}, onPick() {} });
         document.body.append(view.element);
@@ -363,7 +393,7 @@ describe('search', () => {
         const results = root.querySelectorAll('[role="group"]');
         expect(results).toHaveLength(1);
         expect([...results[0].querySelectorAll('.sb-emoji-cell')].map(cell => cell.dataset.emoji)).toEqual(['🤝', '👋', '🙏']);
-        expect(root.querySelector('[role="status"]').textContent).toBe('3 Results');
+        expect(root.querySelector('.sb-emoji-live').textContent).toBe('3 Results');
         type(root, '');
         expect(root.querySelectorAll('[role="group"]')).toHaveLength(3);
         expect(cells(root)).toHaveLength(20);
@@ -384,8 +414,12 @@ describe('search', () => {
         const { root, calls } = makeView();
         flush();
         type(root, 'zzzz');
-        expect(root.querySelector('[role="status"]').textContent).toBe('No Results');
+        expect(root.querySelector('.sb-emoji-live').textContent).toBe('No Results');
         expect(root.querySelector('.sb-emoji-empty')).not.toBeNull();
+        expect(root.querySelector('[role="listbox"]')).toBeNull();
+        type(root, '');
+        expect(root.querySelector('[role="listbox"]')).not.toBeNull();
+        type(root, 'zzzz');
         key(search(root), 'Enter');
         expect(calls.picked).toEqual([]);
     });
@@ -400,7 +434,7 @@ describe('search', () => {
         await flushPromises();
         expect(loadEnglish).toHaveBeenCalledTimes(1);
         expect([...root.querySelectorAll('.sb-emoji-cell')].map(cell => cell.dataset.emoji)).toEqual(['🧪']);
-        expect(root.querySelector('[role="status"]').textContent).toBe('1 Result');
+        expect(root.querySelector('.sb-emoji-live').textContent).toBe('1 Result');
     });
 
     test('does not ask for English when the interface is English, or when its own table has a match', async () => {

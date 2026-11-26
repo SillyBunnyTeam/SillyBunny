@@ -12,6 +12,7 @@
  *   The cell that has skin tones carries `data-variants`; a long press, a secondary click, Shift+F10 and the Menu key open them.
  */
 
+import { createStatusPage } from '../../sillybunny-editor/status-page.js';
 import { createGridModel, moveInGrid } from './emoji-grid-nav.js';
 import { searchRows } from './emoji-search.js';
 
@@ -420,6 +421,7 @@ export function createChooserView({
         root.dataset.mode = 'results';
         categories.hidden = true;
         state.results = makeSection('results', 'Search Results', items, `${prefix}-heading-results`);
+        setListbox(items.length > 0);
         scroller.replaceChildren(items.length ? state.results.el : el('p', 'sb-emoji-empty'));
         if (!items.length) {
             scroller.firstChild.textContent = 'No Results';
@@ -443,6 +445,7 @@ export function createChooserView({
         root.dataset.mode = 'sections';
         state.results = null;
         categories.hidden = false;
+        setListbox(true);
         scroller.replaceChildren(...state.sections.map(section => section.el));
         state.sections.forEach(reserveHeight);
         state.active = null;
@@ -744,30 +747,39 @@ export function createChooserView({
     // ---------------------------------------------------------------------------------------------------------------
     // States
 
+    /** The scroller is a listbox only while it holds options; a status page or an empty message inside one is invalid ARIA. */
+    function setListbox(on) {
+        if (on) {
+            scroller.setAttribute('role', 'listbox');
+            scroller.setAttribute('aria-label', 'Emoji');
+        } else {
+            scroller.removeAttribute('role');
+            scroller.removeAttribute('aria-label');
+        }
+    }
+
     function showMessage(stateName, content) {
         root.dataset.state = stateName;
         categories.replaceChildren();
+        setListbox(false);
         scroller.replaceChildren(content);
     }
 
     function showLoading() {
-        showMessage('loading', el('p', 'sb-emoji-message'));
-        scroller.firstChild.textContent = 'Loading…';
+        showMessage('loading', createStatusPage({ state: 'loading', title: 'Loading Emoji', compact: true, busy: scroller }).element);
     }
 
     /** @param {() => void} retry */
     function showError(retry) {
-        const message = el('div', 'sb-emoji-message');
-        const title = el('p', 'sb-emoji-message-title');
-        title.textContent = 'Emoji Unavailable';
-        const description = el('p', 'sb-emoji-message-description');
-        description.textContent = 'TODO(copy)';
-        description.dataset.sbCopyPlaceholder = 'true';
-        const again = el('button', 'menu_button sb-emoji-message-retry', { type: 'button' });
-        again.textContent = 'Try Again';
-        again.addEventListener('click', retry);
-        message.append(title, description, again);
-        showMessage('error', message);
+        const page = createStatusPage({
+            state: 'error',
+            title: 'Emoji Unavailable',
+            description: 'TODO(copy)',
+            compact: true,
+            actions: [{ label: 'Try Again', onActivate: retry }],
+        });
+        page.element.querySelector('.sb-status-page__description').dataset.sbCopyPlaceholder = 'true';
+        showMessage('error', page.element);
     }
 
     function setTable(table) {
@@ -795,6 +807,7 @@ export function createChooserView({
         state.mode = 'sections';
         root.dataset.mode = 'sections';
         root.dataset.state = 'ready';
+        setListbox(true);
         scroller.replaceChildren(...state.sections.map(section => section.el));
 
         const sync = state.sections.filter(section => section.key === 'recent');
