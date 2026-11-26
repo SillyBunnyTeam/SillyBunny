@@ -26,7 +26,7 @@ const MESSAGES = Object.freeze([
     { role: 'user', at: 4, text: 'I would like to draw it.' },
     { role: 'character', at: 26, tag: 'reacted', text: `A quiet room with a lamp, a desk and a window. ${sentences(2, 3)}`, extra: { conversation_reactions: { heart: 1 } } },
     { role: 'user', at: 28, tag: 'own-long', text: `That is lovely. ${sentences(3, 6)}` },
-    { role: 'character', at: 24 * 60 + 5, text: 'Good morning again. A new day in the forest.', extra: { conversation_pinned: true } },
+    { role: 'character', at: 24 * 60 + 5, text: 'Good morning again. A new day in the forest.', extra: { conversation_pinned: true, conversation_pinned_at: START + (24 * 60 + 5.5) * MINUTE } },
     { role: 'character', at: 24 * 60 + 6, text: 'This is the view from the window.', extra: { image_url: AVATAR_IMAGE_URL, image_prompt: 'The view from a window' } },
     { role: 'user', at: 24 * 60 + 9, text: 'Thank you. I will be back this evening.' },
 ]);
