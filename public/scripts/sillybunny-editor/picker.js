@@ -605,7 +605,7 @@ function renderOptions(state) {
         ? { value: CREATE_ITEM, label: typed, icon: 'fa-solid fa-plus', ariaLabel: state.create.label?.(typed) }
         : null;
 
-    // Keyboard order follows the visual order: the create item, the grouped or plain matches, then Show More.
+    // Keyboard order follows the visual order: the create item, then the grouped or plain matches.
     state.filtered = [
         ...(createItem ? [createItem] : []),
         ...buckets.flatMap(([, entries]) => entries.map(entry => entry.item)),
@@ -1133,7 +1133,8 @@ export function mountPicker(host, options) {
  * @param {(() => string)|null} [options.selectionCount=null] A `multiple` picker shows this text under the list, read again after
  *     every selection change and announced politely.
  * @param {number} [options.pageSize=Infinity] Shows this many matches, then a Show More row that adds as many. A new query or
- *     filter starts again at the first batch.
+ *     filter starts again at the first batch. A list with groups or a `create` item shows every match and ignores it. Rows that
+ *     were built stay in the list and are hidden with a class, so a test of the rows that are shown reads `.is-hidden`.
  * @param {number} [options.searchDelay=300] Milliseconds after the last key before the list filters. 0 filters on every key,
  *     which a list that is paged by `pageSize` can afford.
  * @param {{ label: string, items: { value: string, label: string, color?: string }[], match: (item: object, selected: ReadonlySet<string>) => boolean }|null} [options.filter=null]
