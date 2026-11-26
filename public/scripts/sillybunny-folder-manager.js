@@ -15,7 +15,7 @@ import * as settingsFolderStore from './sillybunny-folders.js';
 import { DEFAULT_FOLDER_COLOR, confirmFolderDelete, createFolderColorPicker, openFolderNamePopover, parseFolderName } from './sillybunny-editor/folder-popovers.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261125a', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-folder-manager.css?v=20261117h', id: 'deferred-folder-manager-css' },
 ];

@@ -7,7 +7,7 @@ import { deleteItemizedPromptForMessage } from './itemized-prompts.js';
 import { createMessageSelection } from './sillybunny-editor/message-selection.js';
 import { getMessageIndexes, getOwnerIndex, getTailStart } from './sillybunny-message-selection-utils.js';
 
-const EDITOR_SHELL_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261125a', id: 'deferred-editor-shell-css' };
+const EDITOR_SHELL_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' };
 const HEADER_HOST_ID = 'sb_message_selection_header';
 const MESSAGE_ROW = '#chat > .mes[mesid]';
 

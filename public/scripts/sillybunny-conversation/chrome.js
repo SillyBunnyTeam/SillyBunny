@@ -93,7 +93,7 @@ import { insertEmojiAtCaret } from './emoji/emoji-insert.js';
 import { hasNativeEmojiPicker, isEmojiShortcut } from './emoji/emoji-shortcut.js';
 
 const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261126a';
-const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261125a';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261126b';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**

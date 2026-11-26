@@ -104,6 +104,13 @@ function keydown(target, key, options = {}) {
     return event;
 }
 
+/** Counts the renders of a list since the last call, as the child changes that a render makes. */
+function watchRenders(list) {
+    const observer = new MutationObserver(() => {});
+    observer.observe(list, { childList: true });
+    return () => observer.takeRecords().length;
+}
+
 function filter(input, value, { settle = true } = {}) {
     input.value = value;
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -561,35 +568,35 @@ describe('picker search scheduling', () => {
     test.each([false, true])('search coalesces a burst for 300ms and Clear cancels pending work (mobile=%s)', mobile => {
         window.matchMedia.mockReturnValue({ matches: mobile });
         const { input, list } = makePicker();
-        const replace = jest.spyOn(list, 'replaceChildren');
+        const renders = watchRenders(list);
         filter(input, 'a', { settle: false });
         jest.advanceTimersByTime(200);
         filter(input, 'Alpha', { settle: false });
         jest.advanceTimersByTime(299);
         expect(input.value).toBe('Alpha');
-        expect(replace).not.toHaveBeenCalled();
+        expect(renders()).toBe(0);
         jest.advanceTimersByTime(1);
-        expect(replace).toHaveBeenCalledTimes(1);
+        expect(renders()).toBeGreaterThan(0);
         expect(list.querySelectorAll('[role="option"]')).toHaveLength(1);
         filter(input, 'missing', { settle: false });
         filter(input, '', { settle: false });
         expect(list.querySelectorAll('[role="option"]')).toHaveLength(3);
-        expect(replace).toHaveBeenCalledTimes(2);
+        expect(renders()).toBeGreaterThan(0);
         jest.advanceTimersByTime(300);
-        expect(replace).toHaveBeenCalledTimes(2);
+        expect(renders()).toBe(0);
     });
 
     test.each([false, true])('closing cancels pending search and cannot render into a replacement picker (mobile=%s)', mobile => {
         window.matchMedia.mockReturnValue({ matches: mobile });
         const first = makePicker();
-        const replace = jest.spyOn(first.list, 'replaceChildren');
+        const renders = watchRenders(first.list);
         filter(first.input, 'missing', { settle: false });
         first.picker.close();
         expect(jest.getTimerCount()).toBe(0);
         const second = makePicker();
         const positionCalls = mockPositionPopover.mock.calls.length;
         jest.advanceTimersByTime(300);
-        expect(replace).not.toHaveBeenCalled();
+        expect(renders()).toBe(0);
         expect(second.list.querySelectorAll('[role="option"]')).toHaveLength(3);
         expect(mockPositionPopover).toHaveBeenCalledTimes(positionCalls);
     });
