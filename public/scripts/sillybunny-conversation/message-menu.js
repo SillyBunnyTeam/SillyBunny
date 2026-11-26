@@ -6,7 +6,6 @@
 
 import { translate } from '../i18n.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
-import { bindReactionChips, buildMenuReactions, syncToolbarReactions } from './reactions-ui.js';
 
 /** Which control opens a message's actions follows the pointer, never the width (DESIGN.md, Layout and Chat Transcript). */
 const COARSE_POINTER_QUERY = '(pointer: coarse)';
@@ -18,6 +17,18 @@ const META_CLEARANCE = 6;
 
 let initialized = false;
 let coarseQuery = null;
+/**
+ * The reactions of the workspace. This module starts with the page (`sillybunny-message-actions.js` imports it), so it
+ * imports nothing of the mode's runtime: `reactions-ui.js` registers itself when the workspace loads, and a menu opens
+ * only in the workspace.
+ * @type {{ buildMenuReactions: (item: HTMLElement, trigger: HTMLElement) => import('../sillybunny-action-menu.js').ActionMenuReaction[], syncToolbarReactions: (item: HTMLElement) => void, bindReactionChips: () => void }|null}
+ */
+let reactions = null;
+
+export function registerMessageMenuReactions(provider) {
+    reactions = provider;
+    provider.bindReactionChips();
+}
 
 function isCoarsePointer() {
     return coarseQuery?.matches === true;
@@ -52,7 +63,7 @@ function forward(item, button) {
 
 function buildSections(item, actionBar, trigger) {
     // The reaction row comes from the quick row, not from the toolbar's buttons: the toolbar has room for two emoji only.
-    const sections = [{ reactions: buildMenuReactions(item, trigger) }];
+    const sections = [{ reactions: reactions?.buildMenuReactions(item, trigger) ?? [] }];
     for (const button of actionBar.querySelectorAll(':scope > .sb-conversation-message-action[data-sb-conversation-action]')) {
         const index = Number(button.getAttribute('data-sb-section'));
         const section = (sections[index + 1] ??= { items: [] });
@@ -123,7 +134,7 @@ function syncMenuTitle(target) {
 function syncToolbarQuickRow(target) {
     const item = asElement(target)?.closest(MESSAGE_SELECTOR);
     if (item instanceof HTMLElement) {
-        syncToolbarReactions(item);
+        reactions?.syncToolbarReactions(item);
     }
 }
 
@@ -214,7 +225,6 @@ export function initializeConversationMessageMenu() {
     window.addEventListener('click', handleClickCapture, true);
     window.addEventListener('keydown', handleMenuKey, true);
     document.addEventListener('contextmenu', handleContextMenu);
-    bindReactionChips();
     document.addEventListener('pointerover', (event) => {
         syncMenuTitle(event.target);
         syncToolbarQuickRow(event.target);

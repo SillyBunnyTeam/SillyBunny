@@ -10,6 +10,7 @@ import { getConversationStore, getCurrentCharAvatar, persistConversationStore } 
 import { emojiKey } from './emoji/emoji-validate.js';
 import { getConversationMessages, updateConversationChatMessageReactions } from './conversation-store.js';
 import { getCharacterForAvatar } from './media.js';
+import { registerMessageMenuReactions } from './message-menu.js';
 import {
     DEFAULT_QUICK_REACTIONS,
     USER_REACTOR,
@@ -420,3 +421,5 @@ export function bindReactionChips() {
         }
     }, true);
 }
+
+registerMessageMenuReactions({ buildMenuReactions, syncToolbarReactions, bindReactionChips });

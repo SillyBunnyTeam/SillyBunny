@@ -50,10 +50,10 @@ function resolveRelative(from, specifier) {
     return specifier.startsWith('.') ? path.resolve(path.dirname(from), specifier) : null;
 }
 
-/** The modules of the mode that the entry imports with `import`, each with the module that pulled it in. */
-function findStaticClosure() {
-    const importedBy = new Map([[entry, null]]);
-    const queue = [entry];
+/** The modules of the mode that a start file imports with `import`, each with the module that pulled it in. */
+function findStaticClosure(start = entry) {
+    const importedBy = new Map([[start, null]]);
+    const queue = [start];
     while (queue.length) {
         const file = queue.shift();
         for (const [, specifier] of readCode(file).matchAll(STATIC_IMPORT)) {
@@ -85,6 +85,15 @@ describe('the modules that the startup of Conversation Mode imports', () => {
 
         expect(unexpected).toEqual([]);
         expect(startup.map(file => path.relative(conversationDirectory, file)).sort()).toEqual(STARTUP_MODULES);
+    });
+
+    test('are the only ones of the mode that the module for the messages of the page imports, which is `message-menu.js`, with nothing of the runtime', () => {
+        // `sillybunny-message-actions.js` is loaded with the page, outside the entry of the mode, and imports the menu of a message.
+        const startup = [...findStaticClosure(path.join(publicScripts, 'sillybunny-message-actions.js')).keys()]
+            .filter(file => file.startsWith(conversationDirectory))
+            .map(file => path.relative(conversationDirectory, file));
+
+        expect(startup).toEqual(['message-menu.js']);
     });
 
     test('reach the workspace and the runtime only through dynamic imports in lazy-parts.js', () => {

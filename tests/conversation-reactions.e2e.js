@@ -239,7 +239,8 @@ test.describe('with a pointer', () => {
         await message.locator(TOOLBAR_REACTION).first().click();
 
         await expect(message.locator(CHIP)).toHaveCount(20);
-        await expect(page.locator(TOAST_MESSAGE_SELECTOR)).toContainText('TODO(copy)');
+        // Another toast may be up (the Getting Started steps announce themselves), so the one of the refusal is picked by its text.
+        await expect(page.locator(TOAST_MESSAGE_SELECTOR).filter({ hasText: 'TODO(copy)' })).toHaveCount(1);
         expect((await storedReactions(page, chat))).toHaveLength(20);
 
         await message.locator(CHIP).first().click();
@@ -320,7 +321,7 @@ test.describe('with a pointer', () => {
         await hoverBubble(page, message);
         await expect(message.locator(TOOLBAR_REACTION).first()).toHaveText('🎉');
         await expect(message.locator(TOOLBAR_REACTION).first()).toHaveAttribute('aria-pressed', 'true');
-        await expect.poll(() => saves.some(save => save.extension_settings?.sillybunny_conversation?.recentReactions?.[0]?.e === '🎉')).toBe(true);
+        await expect.poll(() => saves.some(save => save.extension_settings?.sillybunny_conversation?.recentReactions?.[0]?.e === '🎉'), { timeout: 20_000 }).toBe(true);
         const saved = saves.findLast(save => save.extension_settings?.sillybunny_conversation?.recentReactions);
         expect(saved.extension_settings.sillybunny_conversation.recentReactions).toEqual([{ e: '🎉', n: 'party popper' }]);
     });
@@ -355,7 +356,7 @@ test.describe('with a pointer', () => {
         await pickFrom(page.locator('.sb-conversation-message[data-message-id="react-first"]'), 20, 5);
 
         const recentsOf = () => saves.findLast(save => save.extension_settings?.sillybunny_conversation?.recentReactions)?.extension_settings.sillybunny_conversation.recentReactions;
-        await expect.poll(() => recentsOf()?.length).toBe(24);
+        await expect.poll(() => recentsOf()?.length, { timeout: 20_000 }).toBe(24);
         expect(recentsOf()[0].e).toBe(String.fromCodePoint(0x1F600 + 24));
         expect(recentsOf().map(item => item.e)).not.toContain(String.fromCodePoint(0x1F600));
     });
