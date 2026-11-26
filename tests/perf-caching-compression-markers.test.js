@@ -38,7 +38,9 @@ import {
     fingerprintCard,
     reconcileManagedContentWithStatus,
 } from '../src/sillybunny-managed-content.js';
+import { applyFrontendAssetHeaders } from '../src/frontend-assets.js';
 import { setPublicAssetHeaders } from '../src/middleware/frontend-assets.js';
+import getWebpackServeMiddleware from '../src/middleware/webpack-serve.js';
 import { setConfigFilePath } from '../src/util.js';
 import { createCard, createCardFile, createSpriteFile, createWorldFile } from './fixtures/managed-content/fixture-builder.js';
 
@@ -648,6 +650,97 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
         } finally {
             await new Promise(resolve => server.close(resolve));
         }
+    });
+
+    test('serves hashed /frontend-assets/ through compressed static LRU (br/gzip, immutable, ETag, 304) for proxied clients and bypasses direct loopback', async () => {
+        const distDir = makeTempDir('sb-dist-frontend-');
+        const hashedFile = 'style-0123456789ab.css';
+        const cssBody = 'body { background: #111; color: #eee; }\n'.repeat(120);
+        const hashedPath = path.join(distDir, hashedFile);
+        fs.writeFileSync(hashedPath, cssBody, 'utf8');
+
+        const assetCache = createStaticCompressionCache({ maxBytes: 1024 * 1024 });
+
+        const app = express();
+        app.use('/frontend-assets', createCompressedStaticMiddleware(distDir, {
+            cache: assetCache,
+            setHeaders: applyFrontendAssetHeaders,
+            loopbackBypass: 'auto',
+            preferGzip: false,
+        }), express.static(distDir, { setHeaders: applyFrontendAssetHeaders }));
+
+        const server = await new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
+
+        try {
+            const url = `http://127.0.0.1:${server.address().port}/frontend-assets/${hashedFile}`;
+
+            // First proxied request warms the LRU asynchronously while serving 200.
+            const firstProxied = await getRawHttp(url, {
+                'Accept-Encoding': 'br, gzip',
+                'X-Forwarded-For': '203.0.113.42',
+            });
+            expect(firstProxied.statusCode).toBe(200);
+            expect(firstProxied.headers.vary).toMatch(/Accept-Encoding/i);
+
+            // Warm both br and gzip encodings explicitly for deterministic assertions.
+            const stat = fs.statSync(hashedPath);
+            await assetCache.warm(hashedPath, stat, 'br');
+            await assetCache.warm(hashedPath, stat, 'gzip');
+
+            const brRes = await getRawHttp(url, {
+                'Accept-Encoding': 'br, gzip',
+                'X-Forwarded-For': '203.0.113.42',
+            });
+            expect(brRes.statusCode).toBe(200);
+            expect(brRes.headers['content-encoding']).toBe('br');
+            expect(brRes.headers['cache-control']).toContain('immutable');
+            expect(brRes.headers.etag).toBeTruthy();
+            expect(brotliDecompressSync(brRes.body).toString('utf8')).toBe(cssBody);
+
+            const gzipRes = await getRawHttp(url, {
+                'Accept-Encoding': 'gzip',
+                'X-Forwarded-For': '203.0.113.42',
+            });
+            expect(gzipRes.statusCode).toBe(200);
+            expect(gzipRes.headers['content-encoding']).toBe('gzip');
+            expect(gzipRes.headers['cache-control']).toContain('immutable');
+            expect(gzipRes.headers.etag).toBeTruthy();
+            expect(gunzipSync(gzipRes.body).toString('utf8')).toBe(cssBody);
+
+            const conditional = await getRawHttp(url, {
+                'Accept-Encoding': 'br, gzip',
+                'X-Forwarded-For': '203.0.113.42',
+                'If-None-Match': brRes.headers.etag,
+            });
+            expect(conditional.statusCode).toBe(304);
+
+            const loopback = await getRawHttp(url, {
+                'Accept-Encoding': 'br, gzip',
+            });
+            expect(loopback.statusCode).toBe(200);
+            expect(loopback.headers['content-encoding']).toBeUndefined();
+            expect(loopback.body.toString('utf8')).toBe(cssBody);
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+
+    test('wires compressed static LRU ahead of /frontend-assets/, dist/frontend/ fallbacks, and /lib.js', () => {
+        const serverMainSource = fs.readFileSync(path.join(repoRoot, 'src', 'server-main.js'), 'utf8');
+        expect(serverMainSource).toContain('FRONTEND_DIST_ROOT');
+        expect(serverMainSource).toContain('applyFrontendAssetHeaders');
+        expect(serverMainSource).toContain('createCompressedStaticMiddleware(FRONTEND_DIST_ROOT');
+        expect(serverMainSource).toContain('app.use(FRONTEND_ASSET_PREFIX, compressedFrontendImmutableMiddleware, frontendAssetMiddleware.immutableAssets);');
+        expect(serverMainSource).toContain('compressedFrontendPublicMiddleware(request, response');
+
+        const webpackServeSource = fs.readFileSync(path.join(repoRoot, 'src', 'middleware', 'webpack-serve.js'), 'utf8');
+        expect(webpackServeSource).toContain('createCompressedStaticMiddleware');
+        expect(webpackServeSource).toContain('getCompressedLibHandler(outputPath)');
+        expect(webpackServeSource).toContain('response.setHeader(\'Cache-Control\', \'no-cache\')');
+        expect(webpackServeSource).toContain('error.code !== \'ENOENT\'');
+        expect(typeof getWebpackServeMiddleware).toBe('function');
     });
 });
 

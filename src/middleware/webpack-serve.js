@@ -5,6 +5,8 @@ import getPublicLibConfig, {
     getPublicLibCacheInfo,
     prunePublicLibCache,
 } from '../../webpack.config.js';
+// SillyBunny: serve /lib.js from the bounded compressed static LRU for remote/proxied clients.
+import { createCompressedStaticMiddleware } from './response-compression.js';
 
 export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
     const resolvePublicLibConfig = ({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) =>
@@ -13,6 +15,22 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
     let activePublicLibConfig = null;
     /** @type {Promise<void> | null} */
     let compilePromise = null;
+    /** @type {string | null} */
+    let cachedCompressedRoot = null;
+    /** @type {import('express').RequestHandler | null} */
+    let cachedCompressedHandler = null;
+
+    function getCompressedLibHandler(outputPath) {
+        if (cachedCompressedRoot !== outputPath || !cachedCompressedHandler) {
+            cachedCompressedRoot = outputPath;
+            cachedCompressedHandler = createCompressedStaticMiddleware(outputPath, {
+                setHeaders: (response) => {
+                    response.setHeader('Cache-Control', 'no-cache');
+                },
+            });
+        }
+        return cachedCompressedHandler;
+    }
 
     function getCompiledOutputPath(publicLibConfig) {
         const outputPath = publicLibConfig.output?.path;
@@ -31,27 +49,40 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
         }
     }
 
-    function sendPublicLib(publicLibConfig, res, next, { recoverMissing = true } = {}) {
+    function sendPublicLib(publicLibConfig, req, res, next, { recoverMissing = true } = {}) {
         const outputPath = publicLibConfig.output?.path;
         const outputFile = publicLibConfig.output?.filename;
 
-        res.setHeader('Cache-Control', 'no-cache');
-        return res.sendFile(outputFile, { root: outputPath }, (error) => {
-            if (!error) {
-                return;
-            }
+        const sendFallback = () => {
+            res.setHeader('Cache-Control', 'no-cache');
+            return res.sendFile(outputFile, { root: outputPath }, (error) => {
+                if (!error) {
+                    return;
+                }
 
-            if (error.code !== 'ENOENT' || !recoverMissing || res.headersSent) {
-                return next(error);
-            }
+                if (error.code !== 'ENOENT' || !recoverMissing || res.headersSent) {
+                    return next(error);
+                }
 
-            console.warn(`Frontend library bundle was missing at ${path.join(outputPath, outputFile)}. Rebuilding...`);
-            runWebpackCompiler({ forceDist, pruneCache: true })
-                .then(() => {
-                    sendPublicLib(activePublicLibConfig ?? resolvePublicLibConfig(), res, next, { recoverMissing: false });
-                })
-                .catch(next);
-        });
+                console.warn(`Frontend library bundle was missing at ${path.join(outputPath, outputFile)}. Rebuilding...`);
+                runWebpackCompiler({ forceDist, pruneCache: true })
+                    .then(() => {
+                        sendPublicLib(activePublicLibConfig ?? resolvePublicLibConfig(), req, res, next, { recoverMissing: false });
+                    })
+                    .catch(next);
+            });
+        };
+
+        if (typeof outputPath === 'string' && outputPath) {
+            return getCompressedLibHandler(outputPath)(req, res, (err) => {
+                if (err) {
+                    return next(err);
+                }
+                return sendFallback();
+            });
+        }
+
+        return sendFallback();
     }
 
     /**
@@ -67,7 +98,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
         const parsedPath = path.parse(req.path);
 
         if (req.method === 'GET' && parsedPath.dir === '/' && parsedPath.base === outputFile) {
-            return sendPublicLib(publicLibConfig, res, next);
+            return sendPublicLib(publicLibConfig, req, res, next);
         }
 
         next();
