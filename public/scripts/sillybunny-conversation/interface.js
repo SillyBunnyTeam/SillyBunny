@@ -1,5 +1,6 @@
 import { online_status } from '../../script.js';
 import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
+import { swapComposerDraft } from './composer-draft.js';
 import { CHROME_IDS } from './constants.js';
 import {
     getActiveConversationChat,
@@ -28,6 +29,7 @@ import { getAvailabilityCopy } from './personas.js';
 import { updateUserFooter } from './pickers.js';
 import { getCharacterStatus } from './schedule.js';
 import { getSettings } from './settings-store.js';
+import { isConversationSwitching } from './screen-target.js';
 import { conversationState } from './state.js';
 import { getConversationMessages, saveConversationMessages } from './conversation-store.js';
 import { renderConversationTimeline } from './timeline-render.js';
@@ -251,7 +253,9 @@ export function refreshConversationInterface() {
                 void clearUnreadCount(avatar, { chatId, groupId, personaId });
             }
         }
+        const drawnBefore = conversationState.lastRenderedConversationKey;
         renderConversationTimeline();
+        swapComposerDraft(drawnBefore, conversationState.lastRenderedConversationKey);
         updateConversationChrome(settings);
         updateUserFooter();
 
@@ -263,8 +267,10 @@ export function refreshConversationInterface() {
         const isConnected = online_status !== 'no_connection';
         const openChat = avatar ? getActiveConversationChat(avatar, { groupId, personaId }) : null;
         const chatLoading = Boolean(openChat) && !openChat.loaded;
+        // From the start of a switch until the new conversation is drawn, the composer on screen belongs to the old one.
+        const held = !avatar || chatLoading || isConversationSwitching();
         if (input instanceof HTMLTextAreaElement) {
-            input.disabled = !avatar || chatLoading;
+            input.disabled = held;
             input.placeholder = !isConnected
                 ? 'Not connected to API!'
                 : avatar
@@ -274,11 +280,11 @@ export function refreshConversationInterface() {
                         : 'Pick or start a conversation from the list…';
         }
         if (send instanceof HTMLButtonElement) {
-            send.disabled = !avatar || chatLoading || !isConnected || conversationState.conversationUploadActive;
+            send.disabled = held || !isConnected || conversationState.conversationUploadActive;
         }
         document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-tool`).forEach((button) => {
             if (button instanceof HTMLButtonElement) {
-                button.disabled = !avatar;
+                button.disabled = !avatar || isConversationSwitching();
             }
         });
     }

@@ -6,6 +6,7 @@
 import { selectCharacterById } from '../../../script.js';
 import { flashHighlight } from '../../utils.js';
 import { selectConversation } from '../chrome.js';
+import { withConversationSwitch } from '../screen-target.js';
 import { getConversationGroupAnchor, ensureDirectConversation, getConversationPersonaId, setActiveConversationChat } from '../context.js';
 import { getCharacterIndexForAvatar } from '../media.js';
 import { addMembersToConversation } from '../pickers.js';
@@ -40,8 +41,8 @@ export async function openConversation(view, { chatId = '' } = {}) {
 
 /** The direct conversation with a character, made when there is none yet. */
 export async function openDirectConversationWith(avatar, { personaId = getConversationPersonaId() } = {}) {
-    const view = await ensureDirectConversation(avatar, { personaId });
-    return openConversation(view);
+    // The open conversation stays on screen while the server makes this one, so its composer is held until this one opens.
+    return withConversationSwitch(async () => openConversation(await ensureDirectConversation(avatar, { personaId })));
 }
 
 async function openCharacterTab(avatar) {

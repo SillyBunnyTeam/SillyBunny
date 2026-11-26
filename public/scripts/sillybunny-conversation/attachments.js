@@ -21,6 +21,7 @@ import { formatConversationFileSize } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
 import { scheduleInterfaceRefresh } from './render-scheduler.js';
 import { escapeHtmlText } from './render-utils.js';
+import { isComposerHeld } from './screen-target.js';
 import { getSettings } from './settings-store.js';
 import { conversationState, sendQueue } from './state.js';
 import { consumeConversationReplyTarget } from './timeline-render.js';
@@ -243,6 +244,11 @@ export async function submitConversationInput() {
         return;
     }
     if (is_send_press || conversationState.conversationUploadActive) {
+        return;
+    }
+    // The draft stays in the box. It is not sent to the conversation that is about to be drawn, nor to the one that is going away.
+    if (isComposerHeld()) {
+        scheduleInterfaceRefresh();
         return;
     }
 

@@ -4,8 +4,13 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 let onlineStatus = 'no_connection';
 let currentAvatar = 'char.png';
 let openChat = null;
+let switching = false;
+let toolButtons = [];
+const renderConversationTimeline = jest.fn();
+const swapComposerDraft = jest.fn();
 const elements = new Map();
 const conversationState = {
+    lastRenderedConversationKey: '',
     conversationUnavailableGroupId: null,
     conversationUploadActive: false,
     conversationWorkspaceOpen: true,
@@ -19,7 +24,7 @@ const send = new HTMLButtonElement();
 globalThis.document = {
     getElementById: id => elements.get(id) || null,
     querySelector: () => null,
-    querySelectorAll: () => [],
+    querySelectorAll: selector => String(selector).includes('sb-conversation-composer-tool') ? toolButtons : [],
 };
 
 await jest.unstable_mockModule('../public/script.js', () => ({
@@ -91,8 +96,14 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
     saveConversationMessages: jest.fn(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-render.js', () => ({
-    renderConversationTimeline: jest.fn(),
+    renderConversationTimeline,
     syncSettingsDrawerRows: jest.fn(),
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/screen-target.js', () => ({
+    isConversationSwitching: () => switching,
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/composer-draft.js', () => ({
+    swapComposerDraft,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],
@@ -118,6 +129,11 @@ describe('Conversation composer connection state', () => {
         onlineStatus = 'no_connection';
         currentAvatar = 'char.png';
         openChat = null;
+        switching = false;
+        toolButtons = [];
+        renderConversationTimeline.mockReset();
+        swapComposerDraft.mockReset();
+        conversationState.lastRenderedConversationKey = '';
         conversationState.conversationUnavailableGroupId = null;
         conversationState.conversationUploadActive = false;
         conversationState.conversationWorkspaceOpen = true;
@@ -185,5 +201,46 @@ describe('Conversation composer connection state', () => {
         expect(input.disabled).toBe(false);
         expect(input.placeholder).toBe('Type your message…');
         expect(send.disabled).toBe(true);
+    });
+
+    test('keeps the composer off from the start of a switch to another conversation until it ends, so that nothing is sent to the new one from the old one', async () => {
+        onlineStatus = 'Connected';
+        const tool = new HTMLButtonElement();
+        toolButtons = [tool];
+        const { refreshConversationInterface } = await import('../public/scripts/sillybunny-conversation/interface.js');
+        switching = true;
+        refreshConversationInterface();
+
+        expect(input.disabled).toBe(true);
+        expect(send.disabled).toBe(true);
+        expect(tool.disabled).toBe(true);
+
+        switching = false;
+        refreshConversationInterface();
+
+        expect(input.disabled).toBe(false);
+        expect(send.disabled).toBe(false);
+        expect(tool.disabled).toBe(false);
+    });
+
+    test('moves the draft out of the composer, and the draft of the conversation that is drawn into it, when the timeline draws another conversation', async () => {
+        onlineStatus = 'Connected';
+        conversationState.lastRenderedConversationKey = 'drawn-before';
+        renderConversationTimeline.mockImplementation(() => {
+            conversationState.lastRenderedConversationKey = 'drawn-now';
+        });
+        const { refreshConversationInterface } = await import('../public/scripts/sillybunny-conversation/interface.js');
+        refreshConversationInterface();
+
+        expect(swapComposerDraft).toHaveBeenCalledTimes(1);
+        expect(swapComposerDraft).toHaveBeenCalledWith('drawn-before', 'drawn-now');
+    });
+
+    test('moves no draft while the workspace is closed, since nothing is drawn', async () => {
+        conversationState.conversationWorkspaceOpen = false;
+        const { refreshConversationInterface } = await import('../public/scripts/sillybunny-conversation/interface.js');
+        refreshConversationInterface();
+
+        expect(swapComposerDraft).not.toHaveBeenCalled();
     });
 });

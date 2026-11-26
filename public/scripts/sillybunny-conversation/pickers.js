@@ -6,6 +6,7 @@ import {
 } from '../../script.js';
 import { user_avatar } from '../personas.js';
 import { runConversationAction, selectConversation } from './chrome.js';
+import { withConversationSwitch } from './screen-target.js';
 import { MENU_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
 import { createLazyImage } from '../sillybunny-editor/lazy-image.js';
@@ -564,7 +565,8 @@ async function openNewConversationGroup(group, preferredAvatar = '') {
 }
 
 export async function createAndOpenConversationGroup(memberAvatars) {
-    return openNewConversationGroup(await createConversationGroup(memberAvatars));
+    // The open conversation stays on screen while the server makes the group, so its composer is held until the group opens.
+    return withConversationSwitch(async () => openNewConversationGroup(await createConversationGroup(memberAvatars)));
 }
 
 /**
@@ -573,7 +575,12 @@ export async function createAndOpenConversationGroup(memberAvatars) {
  * @param {string[]} avatars The characters to add, without the ones that are in the conversation already.
  * @returns {Promise<boolean>}
  */
-export async function addMembersToConversation(avatars, { sourceAvatar, sourceGroupId = '' }) {
+export async function addMembersToConversation(avatars, source) {
+    // A group takes the members in place. A direct conversation stays on screen while the server starts the new group that opens, so its composer is held.
+    return source.sourceGroupId ? addMembers(avatars, source) : withConversationSwitch(() => addMembers(avatars, source));
+}
+
+async function addMembers(avatars, { sourceAvatar, sourceGroupId = '' }) {
     const view = getConversationRecord(sourceAvatar, { groupId: sourceGroupId });
     if (!view || !avatars.length) {
         return false;

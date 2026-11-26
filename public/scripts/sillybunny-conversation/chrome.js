@@ -5,6 +5,7 @@ import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
 import { debounce } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
+import { stashComposerDraft } from './composer-draft.js';
 import { CHROME_IDS, CONVERSATION_OPENED_EVENT } from './constants.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
@@ -59,6 +60,7 @@ import {
     toggleConversationList,
 } from './conversation-pages.js';
 import { getGlobalConversationSettings, getSettings } from './settings-store.js';
+import { isComposerHeld, withConversationSwitch } from './screen-target.js';
 import { conversationState, sendQueue } from './state.js';
 import { processSendQueue } from './send-queue.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
@@ -257,20 +259,23 @@ export async function openConversationPreferences() {
     return open();
 }
 
+/** Every list row, notification, details window and group picker opens a conversation here. The composer is held from the call, before the persona switch waits for the server. */
 export async function selectConversation(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
     if (!avatar) {
         return false;
     }
 
-    if (personaId && !await switchConversationPersona(personaId)) {
-        return false;
-    }
+    return withConversationSwitch(async () => {
+        if (personaId && !await switchConversationPersona(personaId)) {
+            return false;
+        }
 
-    const normalizedGroupId = groupId ? String(groupId) : '';
-    return openConversationWorkspaceForAvatar(avatar, {
-        chatId,
-        groupId: normalizedGroupId || null,
-        showToast,
+        const normalizedGroupId = groupId ? String(groupId) : '';
+        return openConversationWorkspaceForAvatar(avatar, {
+            chatId,
+            groupId: normalizedGroupId || null,
+            showToast,
+        });
     });
 }
 
@@ -454,7 +459,14 @@ function openConversationMainMenu(trigger) {
  * @param {HTMLElement|null} [target]
  * @param {Event|null} [event]
  */
+/** The actions that write to, or start work in, the conversation that the state selects, which is not the one on screen while the composer is held. */
+const ACTIONS_ON_THE_CONVERSATION_ON_SCREEN = new Set(['new-chat', 'quick-selfie', 'quick-remind', 'quick-summarize', 'force-response']);
+
 export async function runConversationAction(action, data = {}, target = null, event = null) {
+    if (ACTIONS_ON_THE_CONVERSATION_ON_SCREEN.has(action) && isComposerHeld()) {
+        scheduleInterfaceRefresh();
+        return;
+    }
     switch (action) {
         case 'zoom-avatar':
             event?.preventDefault?.();
@@ -546,12 +558,15 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         focusConversationInput();
                     }
 
-                    await ensureDirectConversation(char.avatar);
-                    hideConversationPickers();
-                    closeConversationList();
-                    await selectConversation(char.avatar, {
-                        groupId: null,
-                        showToast: false,
+                    // The selection changes only after the server has made the conversation, and the open conversation stays on screen until then.
+                    await withConversationSwitch(async () => {
+                        await ensureDirectConversation(char.avatar);
+                        hideConversationPickers();
+                        closeConversationList();
+                        await selectConversation(char.avatar, {
+                            groupId: null,
+                            showToast: false,
+                        });
                     });
                     scheduleConversationListRender();
                 }
@@ -1047,8 +1062,7 @@ export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupI
         return true;
     };
     if (enable && !targetGroupId && !wasEnabled) {
-        scheduleInterfaceRefresh();
-        return ensureDirectConversation(targetAvatar).then(finish, (error) => {
+        return withConversationSwitch(() => ensureDirectConversation(targetAvatar)).then(finish, (error) => {
             console.error('Conversation Mode: the conversation could not be made', error);
             return false;
         });
@@ -1103,6 +1117,8 @@ export function setConversationInterfaceActive(active) {
         }
         const timeline = document.getElementById(CHROME_IDS.timeline);
         if (timeline instanceof HTMLElement) {
+            // The composer stays in the page while the workspace is closed, and the conversation that opens next must not find this draft in it.
+            stashComposerDraft(conversationState.lastRenderedConversationKey);
             // Mobile Safari keeps hidden DOM expensive; rebuild the timeline lazily on next open.
             timeline.replaceChildren();
             timeline.removeAttribute('data-sb-conversation-fingerprint');

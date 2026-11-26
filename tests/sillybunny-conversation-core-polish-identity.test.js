@@ -84,6 +84,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeli
     renderConversationTimeline: jest.fn(),
     syncSettingsDrawerRows: jest.fn(),
 }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/screen-target.js', () => ({ isConversationSwitching: () => false }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/composer-draft.js', () => ({ swapComposerDraft: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
     getActiveTypingParticipants: () => [],
     getLastConversationPreview: () => '',
