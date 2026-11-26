@@ -479,6 +479,35 @@ test.describe('pinning on a phone', () => {
         await expect(shownPage(page).getByText('The plan is the old oak at noon.')).toBeVisible();
     });
 
+    test('a long press on a message opens its sheet, and Pin Message there draws the mark and the line as the trigger of the message does', async ({ page, browserName }) => {
+        // eslint-disable-next-line playwright/no-skipped-test -- Only Chromium offers the DevTools protocol that sends the touch events.
+        test.skip(browserName !== 'chromium', 'The long press is sent as a touch event over the DevTools protocol.');
+        const characters = await openApp(page);
+        const target = await seed(page, characters, CHAT);
+        await openConversation(page, target);
+
+        const text = messageOf(page, 'm2').locator('.sb-conversation-message-text');
+        await text.scrollIntoViewIfNeeded();
+        const box = await text.boundingBox();
+        const client = await page.context().newCDPSession(page);
+        await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] });
+        await expect(page.locator(OPEN_ACTION_SHEET)).toBeVisible();
+        await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await client.detach();
+        // A person needs longer than the swallow of the click after a long press to reach an item of the sheet.
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 450)));
+        await page.locator(OPEN_ACTION_SHEET).getByRole('menuitem', { name: 'Pin Message' }).tap();
+
+        await expect(messageOf(page, 'm2').locator(MARK)).toHaveText('Pinned');
+        await expect(page.locator(`${TIMELINE} ${LINE}`)).toHaveCount(1);
+        expect(await order(page)).toEqual(['m1', 'm2', 'm3', 'event:m2']);
+        await settleWrites(page);
+        expect((await serverMessages(page, target))[1].extra.conversation_pinned_at).toEqual(expect.any(Number));
+
+        await messageOf(page, 'm2').locator('.sb-conversation-mobile-menu-trigger').tap();
+        await expect(page.locator(OPEN_ACTION_SHEET).getByRole('menuitem', { name: 'Unpin Message' })).toBeVisible();
+    });
+
     test('the header menu offers Pinned Messages after a pin, and the line wraps its buttons under its text on a screen of 320px', async ({ page }) => {
         const characters = await openApp(page);
         const target = await seed(page, characters, [{ ...CHAT[0], extra: { conversation_pinned: true, conversation_pinned_at: Date.now() - 6 * 60 * MINUTE + 0.5 * MINUTE } }, CHAT[1], CHAT[2]]);
