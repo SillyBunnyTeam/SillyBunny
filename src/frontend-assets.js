@@ -8,6 +8,7 @@ import { getConfigValue } from './util.js';
 
 export const FRONTEND_DIST_ROOT = path.join(serverDirectory, 'dist', 'frontend');
 export const FRONTEND_MANIFEST_FILE = 'asset-manifest.json';
+export const FRONTEND_INPUTS_STAMP_FILE = '.inputs-stamp.json';
 export const FRONTEND_MANIFEST_VERSION = 2;
 export const FRONTEND_ASSET_PREFIX = '/frontend-assets/';
 export const HASHED_FRONTEND_ASSET_RE = /-[a-f0-9]{8,}\.[a-z0-9]+$/i;
@@ -33,8 +34,20 @@ const EXCLUDED_PUBLIC_FILES = new Set([
     'settings.json',
 ]);
 
+// Git-tracked extensions bundled under public/scripts/extensions/third-party/ belong in dist/frontend and the importmap,
+// while user-installed third-party extensions remain unbundled and served directly from public/.
+const BUNDLED_THIRD_PARTY_EXTENSIONS = new Set([
+    'BunnyPresetTools',
+    'ChatCompletionTabs',
+]);
+
+const ROOT_BUILD_INPUT_FILES = Object.freeze([
+    'webpack.config.js',
+    'package.json',
+    'scripts/build-frontend-assets.js',
+]);
+
 const EXCLUDED_PUBLIC_DIRECTORIES = Object.freeze([
-    'scripts/extensions/third-party',
     'chats',
     'characters',
     'User Avatars',
@@ -106,6 +119,7 @@ const REWRITABLE_LINK_EXTENSIONS = new Set([
 
 let manifestCache = MANIFEST_UNSET;
 let inputsHashCache = null;
+let inputsStatStampCache = null;
 let warnedMismatchHash = null;
 
 /** @type {Map<string, string>} */
@@ -148,6 +162,19 @@ export function isExcludedFrontendPublicPath(relativePath) {
     }
 
     if (EXCLUDED_PUBLIC_FILES.has(normalized)) {
+        return true;
+    }
+
+    if (normalized === 'scripts/extensions/third-party') {
+        // Allow directory walkers to descend so bundled third-party extensions are discovered while non-bundled entries are pruned below.
+        return false;
+    }
+
+    if (normalized.startsWith('scripts/extensions/third-party/')) {
+        const extensionFolder = segments[3];
+        if (extensionFolder && BUNDLED_THIRD_PARTY_EXTENSIONS.has(extensionFolder)) {
+            return false;
+        }
         return true;
     }
 
@@ -215,12 +242,7 @@ export function computeFrontendInputsHash({
     const hasher = crypto.createHash('sha256');
     hasher.update(`frontend-inputs-v${FRONTEND_MANIFEST_VERSION}\0`);
 
-    const rootBuildInputs = [
-        'webpack.config.js',
-        'package.json',
-        'scripts/build-frontend-assets.js',
-    ];
-    for (const relPosix of rootBuildInputs) {
+    for (const relPosix of ROOT_BUILD_INPUT_FILES) {
         const fullPath = path.join(repoRoot, ...relPosix.split('/'));
         if (fs.existsSync(fullPath)) {
             hasher.update(`${relPosix}\0`);
@@ -242,6 +264,110 @@ export function computeFrontendInputsHash({
     return hasher.digest('hex');
 }
 
+/**
+ * Computes a lightweight stat-only fingerprint (`relPosix`, `size`, `mtimeMs`) over all frontend build inputs.
+ * Avoids reading ~1,000+ files synchronously on startup while detecting local edits, additions, and deletions.
+ * @param {object} [options]
+ * @param {string} [options.repoRoot=serverDirectory]
+ * @param {string} [options.publicRoot]
+ * @returns {string}
+ */
+export function computeFrontendStatStamp({
+    repoRoot = serverDirectory,
+    publicRoot = path.join(repoRoot, 'public'),
+} = {}) {
+    const hasher = crypto.createHash('sha256');
+    hasher.update(`frontend-stat-v${FRONTEND_MANIFEST_VERSION}\0`);
+
+    for (const relPosix of ROOT_BUILD_INPUT_FILES) {
+        const fullPath = path.join(repoRoot, ...relPosix.split('/'));
+        try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isFile()) {
+                hasher.update(`${relPosix}\0${stat.size}\0${Math.trunc(stat.mtimeMs)}\0`);
+            }
+        } catch {
+            // Missing build input is reflected by its absence.
+        }
+    }
+
+    const files = walkPublicInputsSync(publicRoot, publicRoot);
+    files.sort((a, b) => compareLex(a.relPosix, b.relPosix));
+
+    for (const file of files) {
+        try {
+            const stat = fs.statSync(file.fullPath);
+            hasher.update(`${file.relPosix}\0${stat.size}\0${Math.trunc(stat.mtimeMs)}\0`);
+        } catch {
+            // File vanished mid-walk; next check will re-validate.
+        }
+    }
+
+    return hasher.digest('hex');
+}
+
+export function getFrontendInputsStampPath(distRoot = FRONTEND_DIST_ROOT) {
+    return path.join(distRoot, FRONTEND_INPUTS_STAMP_FILE);
+}
+
+/**
+ * Persists a machine-local stat stamp linking a verified `inputsHash` to the current checkout's `(size, mtimeMs)` tree.
+ * Excluded from deterministic release tarballs; safe to fail silently on read-only containers.
+ * @param {string} manifestInputsHash Verified content SHA-256 inputsHash
+ * @param {object} [options]
+ * @param {string} [options.distRoot=FRONTEND_DIST_ROOT]
+ * @param {string} [options.repoRoot=serverDirectory]
+ * @param {string} [options.publicRoot]
+ * @param {string} [options.statStamp]
+ * @returns {boolean}
+ */
+export function writeFrontendInputsStamp(manifestInputsHash, {
+    distRoot = FRONTEND_DIST_ROOT,
+    repoRoot = serverDirectory,
+    publicRoot = path.join(repoRoot, 'public'),
+    statStamp = undefined,
+} = {}) {
+    if (typeof manifestInputsHash !== 'string' || !manifestInputsHash) {
+        return false;
+    }
+
+    const resolvedStatStamp = typeof statStamp === 'string' && statStamp
+        ? statStamp
+        : computeFrontendStatStamp({ repoRoot, publicRoot });
+    const stampPath = getFrontendInputsStampPath(distRoot);
+
+    try {
+        fs.mkdirSync(distRoot, { recursive: true });
+        fs.writeFileSync(stampPath, `${JSON.stringify({
+            version: FRONTEND_MANIFEST_VERSION,
+            inputsHash: manifestInputsHash,
+            statStamp: resolvedStatStamp,
+        })}\n`, 'utf8');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function readFrontendInputsStamp(distRoot = FRONTEND_DIST_ROOT) {
+    const stampPath = getFrontendInputsStampPath(distRoot);
+    try {
+        const parsed = JSON.parse(fs.readFileSync(stampPath, 'utf8'));
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        if (Number(parsed.version) !== FRONTEND_MANIFEST_VERSION) {
+            return null;
+        }
+        if (typeof parsed.inputsHash !== 'string' || typeof parsed.statStamp !== 'string') {
+            return null;
+        }
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
 function getCachedFrontendInputsHash() {
     if (inputsHashCache === null) {
         inputsHashCache = computeFrontendInputsHash();
@@ -249,16 +375,33 @@ function getCachedFrontendInputsHash() {
     return inputsHashCache;
 }
 
+function getCachedFrontendStatStamp() {
+    if (inputsStatStampCache === null) {
+        inputsStatStampCache = computeFrontendStatStamp();
+    }
+    return inputsStatStampCache;
+}
+
 export function getFrontendManifestPath() {
     return path.join(FRONTEND_DIST_ROOT, FRONTEND_MANIFEST_FILE);
 }
 
-export function getFrontendAssetsEnabled() {
-    if (isFrontendDevMode()) {
+export function getFrontendAssetsEnabled({ env = process.env, enabled = undefined } = {}) {
+    if (isFrontendDevMode(env)) {
         return false;
     }
 
-    return getConfigValue('performance.frontendBuild.enabled', false, 'boolean');
+    const raw = enabled !== undefined ? enabled : getConfigValue('performance.frontendBuild.enabled', 'auto');
+    if (typeof raw === 'boolean') {
+        return raw;
+    }
+
+    const normalized = String(raw ?? 'auto').trim().toLowerCase();
+    if (normalized === 'false' || normalized === '0' || normalized === 'off' || normalized === 'no') {
+        return false;
+    }
+
+    return normalized === 'auto' || normalized === 'true' || normalized === '1' || normalized === 'on' || normalized === 'yes';
 }
 
 export function getFrontendImmutableMaxAge() {
@@ -269,6 +412,7 @@ export function getFrontendImmutableMaxAge() {
 export function clearFrontendManifestCache() {
     manifestCache = MANIFEST_UNSET;
     inputsHashCache = null;
+    inputsStatStampCache = null;
     warnedMismatchHash = null;
     rewrittenHtmlCache.clear();
     fileHtmlCache.clear();
@@ -285,7 +429,11 @@ export function getFrontendHtmlCacheStats() {
     };
 }
 
-function isManifestFresh(manifest) {
+export function isManifestFresh(manifest, {
+    distRoot = FRONTEND_DIST_ROOT,
+    repoRoot = serverDirectory,
+    publicRoot = path.join(repoRoot, 'public'),
+} = {}) {
     if (!manifest || typeof manifest !== 'object') {
         return false;
     }
@@ -298,7 +446,22 @@ function isManifestFresh(manifest) {
     }
 
     if (hasInputsHash) {
-        const expectedHash = getCachedFrontendInputsHash();
+        const defaultPublicRoot = path.join(serverDirectory, 'public');
+        const usesDefaultPaths = distRoot === FRONTEND_DIST_ROOT
+            && repoRoot === serverDirectory
+            && publicRoot === defaultPublicRoot;
+
+        const currentStatStamp = usesDefaultPaths
+            ? getCachedFrontendStatStamp()
+            : computeFrontendStatStamp({ repoRoot, publicRoot });
+        const storedStamp = readFrontendInputsStamp(distRoot);
+        if (storedStamp && storedStamp.inputsHash === manifest.inputsHash && storedStamp.statStamp === currentStatStamp) {
+            return true;
+        }
+
+        const expectedHash = usesDefaultPaths
+            ? getCachedFrontendInputsHash()
+            : computeFrontendInputsHash({ repoRoot, publicRoot });
         if (manifest.inputsHash !== expectedHash) {
             const mismatchKey = `${manifest.inputsHash}:${expectedHash}`;
             if (warnedMismatchHash !== mismatchKey) {
@@ -307,6 +470,14 @@ function isManifestFresh(manifest) {
             }
             return false;
         }
+
+        // Persist the stat stamp after a verified content check so subsequent boots skip reading all public/ bytes.
+        writeFrontendInputsStamp(manifest.inputsHash, {
+            distRoot,
+            repoRoot,
+            publicRoot,
+            statStamp: currentStatStamp,
+        });
     }
 
     return true;

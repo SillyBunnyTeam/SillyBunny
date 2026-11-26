@@ -16,14 +16,20 @@ import {
 } from '../scripts/build-frontend-assets.js';
 import {
     FRONTEND_ASSET_PREFIX,
+    FRONTEND_INPUTS_STAMP_FILE,
     FRONTEND_MANIFEST_VERSION,
     clearFrontendManifestCache,
     computeFrontendInputsHash,
+    computeFrontendStatStamp,
+    getFrontendAssetsEnabled,
     getFrontendHtmlCacheStats,
+    getFrontendInputsStampPath,
     getFrontendManifestPath,
     isExcludedFrontendPublicPath,
+    isManifestFresh,
     loadFrontendManifest,
     rewriteFrontendHtml,
+    writeFrontendInputsStamp,
 } from '../src/frontend-assets.js';
 import { shouldServeFrontendAssets } from '../src/middleware/frontend-assets.js';
 import { setConfigFilePath } from '../src/util.js';
@@ -173,9 +179,11 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
     let manifest;
 
     const manifestPath = getFrontendManifestPath();
+    const stampPath = getFrontendInputsStampPath();
     const manifestDir = path.dirname(manifestPath);
     const distParentDir = path.dirname(manifestDir);
     let previousManifestContent = null;
+    let previousStampContent = null;
     let hadManifestDirBeforeTest = false;
     let hadDistParentBeforeTest = false;
     let previousSbDev;
@@ -212,6 +220,14 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         }
         previousSbDev = undefined;
 
+        if (previousStampContent === null) {
+            fs.rmSync(stampPath, { force: true });
+        } else {
+            fs.mkdirSync(manifestDir, { recursive: true });
+            fs.writeFileSync(stampPath, previousStampContent, 'utf8');
+        }
+        previousStampContent = null;
+
         if (previousManifestContent === null) {
             fs.rmSync(manifestPath, { force: true });
             if (!hadManifestDirBeforeTest && fs.existsSync(manifestDir) && fs.readdirSync(manifestDir).length === 0) {
@@ -236,8 +252,10 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         hadDistParentBeforeTest = fs.existsSync(distParentDir);
         hadManifestDirBeforeTest = fs.existsSync(manifestDir);
         previousManifestContent = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : null;
+        previousStampContent = fs.existsSync(stampPath) ? fs.readFileSync(stampPath, 'utf8') : null;
         fs.mkdirSync(manifestDir, { recursive: true });
         fs.writeFileSync(manifestPath, JSON.stringify(customManifest), 'utf8');
+        fs.rmSync(stampPath, { force: true });
         clearFrontendManifestCache();
     }
 
@@ -798,11 +816,64 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         const names = new Set(entries.map(entry => entry.name));
 
         expect(names.has('dist/frontend/asset-manifest.json')).toBe(true);
+        expect(names.has(`dist/frontend/${FRONTEND_INPUTS_STAMP_FILE}`)).toBe(false);
         expect(names.has(`dist/frontend/${manifest.assets['lib.js'].output}`)).toBe(true);
         expect(names.has(`dist/frontend/${manifest.assets['script.js'].output}`)).toBe(true);
         expect(names.has(`dist/frontend/${manifest.assets['style.css'].output}`)).toBe(true);
+        expect(fs.existsSync(path.join(tmpDistDir, FRONTEND_INPUTS_STAMP_FILE))).toBe(true);
 
         const releaseYml = fs.readFileSync(releaseWorkflowPath, 'utf8');
         expect(releaseYml).toContain('SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" npm run build:frontend -- --tarball "$out/sillybunny-frontend-assets.tar.gz"');
+    });
+
+    test('(h) defaults performance.frontendBuild.enabled to auto, gates SB_DEV=1, uses stat-stamp fast-path, and bundles core 3P extensions only', () => {
+        const defaultConfig = fs.readFileSync(path.join(repoRoot, 'default', 'config.yaml'), 'utf8');
+        expect(defaultConfig).toMatch(/frontendBuild:[\s\S]*?enabled:\s*auto/);
+
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: 'auto' })).toBe(true);
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: true })).toBe(true);
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: false })).toBe(false);
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: 'false' })).toBe(false);
+        expect(getFrontendAssetsEnabled({ env: { SB_DEV: '1' }, enabled: 'auto' })).toBe(false);
+        expect(getFrontendAssetsEnabled({ env: { SB_DEV: '1' }, enabled: true })).toBe(false);
+
+        // Bundled git-tracked 3rd-party extensions are included while .gitkeep and user-installed 3P extensions remain excluded.
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party')).toBe(false);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/.gitkeep')).toBe(true);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/BunnyPresetTools/content.js')).toBe(false);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/ChatCompletionTabs/index.js')).toBe(false);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/user-custom-ext/index.js')).toBe(true);
+
+        const bundledImports = manifest.importMap?.imports ?? {};
+        expect(Object.keys(bundledImports).some(key => key.startsWith('/scripts/extensions/third-party/BunnyPresetTools/'))).toBe(true);
+        expect(Object.keys(bundledImports).some(key => key.startsWith('/scripts/extensions/third-party/ChatCompletionTabs/'))).toBe(true);
+
+        // Stat-stamp fast-path validates unchanged trees and invalidates immediately when an input file changes.
+        const stampFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-stamp-fixture-'));
+        try {
+            const fixturePublic = path.join(stampFixtureRoot, 'public');
+            const fixtureDist = path.join(stampFixtureRoot, 'dist', 'frontend');
+            fs.mkdirSync(path.join(fixturePublic, 'scripts'), { recursive: true });
+            fs.mkdirSync(fixtureDist, { recursive: true });
+            fs.writeFileSync(path.join(fixturePublic, 'index.html'), '<!doctype html><html><body>hi</body></html>\n');
+            fs.writeFileSync(path.join(fixturePublic, 'scripts', 'app.js'), 'export const a = 1;\n');
+
+            const inputsHash = computeFrontendInputsHash({ repoRoot: stampFixtureRoot, publicRoot: fixturePublic });
+            const fixtureManifest = { version: FRONTEND_MANIFEST_VERSION, inputsHash, assets: {}, importMap: { imports: {} } };
+            expect(writeFrontendInputsStamp(inputsHash, { distRoot: fixtureDist, repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).toBe(true);
+            expect(fs.existsSync(path.join(fixtureDist, FRONTEND_INPUTS_STAMP_FILE))).toBe(true);
+
+            const initialStamp = computeFrontendStatStamp({ repoRoot: stampFixtureRoot, publicRoot: fixturePublic });
+            expect(initialStamp).toMatch(/^[0-9a-f]{64}$/);
+            expect(isManifestFresh(fixtureManifest, { distRoot: fixtureDist, repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).toBe(true);
+
+            // Mutating a tracked public file invalidates both stat stamp and manifest freshness immediately.
+            fs.writeFileSync(path.join(fixturePublic, 'scripts', 'app.js'), 'export const a = 2222;\n');
+            clearFrontendManifestCache();
+            expect(computeFrontendStatStamp({ repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).not.toBe(initialStamp);
+            expect(isManifestFresh(fixtureManifest, { distRoot: fixtureDist, repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).toBe(false);
+        } finally {
+            fs.rmSync(stampFixtureRoot, { recursive: true, force: true });
+        }
     });
 });

@@ -1898,6 +1898,20 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/sillybunny-extension-media-integration.test.js` (configurations during an override, Image Generation with a missing or malformed state and user-file resolution, the `genNovelAI()` request, refusals and shared-file cleanup guard), `tests/novelai-image-generation.test.js` (route refusals, including data that is not a PNG, malformed base64 and a total above 25 MiB; its harness takes the server's 500 MB body limit so that such a request reaches the route), `tests/quick-image-gen-precise-reference.test.js`, `tests/data-maid-precise-reference.test.js`, `tests/novelai-precise-reference-editor.test.js` (jsdom unit suite for shared rows, focus survival, `change`-only commits, user-file upload/cleanup and dropped-image alert), `tests/novelai-precise-reference-editor.e2e.js` (both Image Generation and Quick Image Gen at 1440×900 and 390×844 coarse pointer).
 - **Fixes:** `e85b32471` (configurations during an override), `ad8702967` (malformed saved state), `14d25a68d` (editor controls during preparation), `573bd6343` (message when the editor drops prepared images).
 
+### Frontend production build activation, stat-stamp freshness, and bundled 3rd-party extensions
+
+- **Breaks:**
+  - `default/config.yaml` left `performance.frontendBuild.enabled: false`, so prebuilt `dist/frontend/` assets stayed inert unless users manually toggled config.
+  - `isManifestFresh()` in `src/frontend-assets.js` synchronously read and SHA-256-hashed every file in `public/` on the first request to validate `inputsHash`.
+  - `EXCLUDED_PUBLIC_DIRECTORIES` excluded all of `scripts/extensions/third-party`, leaving git-tracked bundled extensions (`BunnyPresetTools`, `ChatCompletionTabs`) outside `dist/frontend/` and the importmap.
+  - `scripts/build-frontend-assets.js` statically imported `terser` (a devDependency), breaking production-only Docker builds (`bun install --frozen-lockfile --production`).
+- **Guards:**
+  - `default/config.yaml` defaults `performance.frontendBuild.enabled: auto` and `getFrontendAssetsEnabled()` accepts `auto`/boolean values while keeping `SB_DEV=1` as an immediate raw-`public/` override.
+  - `src/frontend-assets.js` persists and checks a machine-local `.inputs-stamp.json` `(size, mtimeMs)` stat stamp (`computeFrontendStatStamp()`, `writeFrontendInputsStamp()`, `isManifestFresh()`) with automatic full-content hash fallback; `scripts/build-frontend-assets.js` excludes `.inputs-stamp.json` from `walkDirectoryFiles()` so deterministic tarballs stay identical across machines and writes the stamp after tarball creation.
+  - `isExcludedFrontendPublicPath()` allows traversal into `scripts/extensions/third-party` for `BUNDLED_THIRD_PARTY_EXTENSIONS` (`BunnyPresetTools`, `ChatCompletionTabs`) while keeping `.gitkeep` and all user-installed `third-party/*` directories excluded.
+  - `scripts/build-frontend-assets.js` loads `terser` lazily via `loadTerserMinify()` and degrades cleanly when `terser` is not installed.
+- **Tests:** `tests/perf-esm-importmap-and-slim-lib.test.js`, `tests/frontend-assets.test.js`, `tests/frontend-asset-middleware.test.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

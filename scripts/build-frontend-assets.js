@@ -7,17 +7,32 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
-import { minify } from 'terser';
 import webpack from 'webpack';
 
 import {
     FRONTEND_ASSET_PREFIX,
+    FRONTEND_INPUTS_STAMP_FILE,
     FRONTEND_MANIFEST_FILE,
     FRONTEND_MANIFEST_VERSION,
     computeFrontendInputsHash,
     isExcludedFrontendPublicPath,
+    writeFrontendInputsStamp,
 } from '../src/frontend-assets.js';
 import getPublicLibConfig from '../webpack.config.js';
+
+let cachedTerserMinify = undefined;
+async function loadTerserMinify() {
+    if (cachedTerserMinify !== undefined) {
+        return cachedTerserMinify;
+    }
+    try {
+        const mod = await import('terser');
+        cachedTerserMinify = typeof mod.minify === 'function' ? mod.minify : null;
+    } catch {
+        cachedTerserMinify = null;
+    }
+    return cachedTerserMinify;
+}
 
 const defaultRepoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -610,6 +625,9 @@ function appendTarEntry(chunks, archivePath, dataBuffer) {
 async function walkDirectoryFiles(directory, baseDir, out = []) {
     const entries = await fs.readdir(directory, { withFileTypes: true });
     for (const entry of entries) {
+        if (entry.name === FRONTEND_INPUTS_STAMP_FILE) {
+            continue;
+        }
         const fullPath = path.join(directory, entry.name);
         if (entry.isDirectory()) {
             await walkDirectoryFiles(fullPath, baseDir, out);
@@ -718,9 +736,15 @@ async function optimizeJsAsset(inputPath, sourcePosix, ext, warnings, sourceBuff
         return buffer;
     }
 
+    const terserMinify = await loadTerserMinify();
+    if (!terserMinify) {
+        warnings.push(`Skipped JS minification for ${sourcePosix}: terser is not installed.`);
+        return buffer;
+    }
+
     const source = buffer.toString('utf8');
     try {
-        const result = await minify(source, {
+        const result = await terserMinify(source, {
             module: ext === '.mjs' || !isClassicScript(sourcePosix),
             compress: {
                 passes: 1,
@@ -926,6 +950,9 @@ export async function buildFrontendAssets({
         const resolvedTarballPath = path.resolve(repoRoot, tarballPath);
         tarballInfo = await createDeterministicTarGz(distRoot, resolvedTarballPath);
     }
+
+    // Write machine-local stat stamp after tarball creation (and excluded from walkDirectoryFiles) so first boot validates in ~12-20ms.
+    writeFrontendInputsStamp(inputsHash, { distRoot, repoRoot, publicRoot });
 
     const hashedCount = Object.values(sortedAssets).filter(asset => asset.hash).length;
     console.log(
