@@ -429,12 +429,21 @@ test.describe('the header', () => {
     });
 });
 
+// The Emoji button is not drawn in a composer narrower than a 360px page gives it, and "Insert Emoji" is the first item of the "+"
+// menu then (the container query of `.sb-conversation-composer-emoji` in sillybunny-conversation.css). The projects are 1440, 768,
+// 390 and 320px wide, so the narrow one folds it and the others do not.
+const EMOJI_FOLDS_BELOW_WIDTH = 360;
+const QUICK_ACTIONS = ['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply'];
+
 test.describe('the composer', () => {
-    test('is Attach, the "+" menu, the entry and Send, with none of the four quick buttons', async ({ page }) => {
+    test('is Attach, the "+" menu, the entry, Insert Emoji and Send, with none of the four quick buttons', async ({ page }) => {
         await seedConversation(page);
 
         const composer = page.locator('#sb_conversation_form');
-        await expect(composer.locator('.sb-conversation-composer-row > button, .sb-conversation-composer-row > textarea')).toHaveCount(4);
+        const controls = composer.locator('.sb-conversation-composer-row > button, .sb-conversation-composer-row > textarea');
+        await expect(controls).toHaveCount(5);
+        expect(await controls.evaluateAll(nodes => nodes.map(node => node.dataset.sbConversationAction || node.id)))
+            .toEqual(['attach-file', 'open-composer-menu', 'sb_conversation_input', 'open-emoji-chooser', 'sb_conversation_send']);
         await expect(composer.locator('[data-sb-conversation-action="attach-file"]')).toBeVisible();
         await expect(composer.locator('[data-sb-conversation-action="open-composer-menu"]')).toBeVisible();
         await expect(composer.locator('#sb_conversation_input')).toBeVisible();
@@ -444,11 +453,22 @@ test.describe('the composer', () => {
         }
     });
 
-    test('the "+" menu holds Selfie, Remind, Summarize and Force Reply', async ({ page }) => {
+    test('draws the Emoji button unless the composer is narrower than a 360px page', async ({ page }) => {
         await seedConversation(page);
 
+        const folded = page.viewportSize().width < EMOJI_FOLDS_BELOW_WIDTH;
+        const emoji = page.locator('#sb_conversation_form [data-sb-conversation-action="open-emoji-chooser"]');
+        await expect(emoji).toBeVisible({ visible: !folded });
+        // A button that is not drawn has no accessible name, so the label is read from its attribute.
+        await expect(emoji).toHaveAttribute('aria-label', 'Insert Emoji');
+    });
+
+    test('the "+" menu holds Selfie, Remind, Summarize and Force Reply, and Insert Emoji first where the button is folded', async ({ page }) => {
+        await seedConversation(page);
+
+        const folded = page.viewportSize().width < EMOJI_FOLDS_BELOW_WIDTH;
         await page.locator('#sb_conversation_form [data-sb-conversation-action="open-composer-menu"]').click();
-        await expect(page.getByRole('menuitem')).toHaveText(['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']);
+        await expect(page.getByRole('menuitem')).toHaveText(folded ? ['Insert Emoji', ...QUICK_ACTIONS] : QUICK_ACTIONS);
     });
 });
 
