@@ -68,7 +68,8 @@ const elementAutoCompleteMap = new WeakMap();
  * @param {MACRO_AUTOCOMPLETE_MODE} [options.autocompleteMode=MACRO_AUTOCOMPLETE_MODE.DEFAULT] - The autocomplete mode.
  * @returns {boolean}
  */
-function shouldActivateMacroAutocomplete(text, cursorPos, { isForced = false, autocompleteMode = MACRO_AUTOCOMPLETE_MODE.DEFAULT } = {}) {
+// SillyBunny: export activation predicate and add an O(1) gate before synchronous MacroParser document parses.
+export function shouldActivateMacroAutocomplete(text, cursorPos, { isForced = false, autocompleteMode = MACRO_AUTOCOMPLETE_MODE.DEFAULT } = {}) {
     // If mode is 'hide', never show autocomplete
     if (autocompleteMode === MACRO_AUTOCOMPLETE_MODE.HIDE) {
         return false;
@@ -84,26 +85,30 @@ function shouldActivateMacroAutocomplete(text, cursorPos, { isForced = false, au
     const alwaysShow = autocompleteMode === MACRO_AUTOCOMPLETE_MODE.ALWAYS;
     const shouldShowNormally = isForced || alwaysShow || power_user.stscript.autocomplete.showInAllMacroFields;
 
+    // SillyBunny: skip MacroParser.parseDocument() completely when autocomplete cannot show or text has no '{{'.
+    if (!shouldShowNormally || typeof text !== 'string' || !text.includes('{{')) {
+        return false;
+    }
+
     // Whether setting says autocomplete should only activate after typing {{ and two characters after that
     // Ctrl+Space (isForced) overrides this restriction
     const onlyAfter2 = !isForced && power_user.stscript.autocomplete.state === AUTOCOMPLETE_STATE.MIN_LENGTH;
 
     // Check if we're right after {{ (just typed the second brace)
     if (cursorPos >= 2 && text.slice(cursorPos - 2, cursorPos) === '{{') {
-        return shouldShowNormally && !onlyAfter2;
+        return !onlyAfter2;
     }
 
     // Check if we're inside a macro
     const macro = findMacroAtCursor(text, cursorPos);
     if (macro !== null) {
-        if (!shouldShowNormally) return false;
         return !onlyAfter2 || (macro.content.trim()).length >= 2;
     }
 
     // Check if we're in scoped content of an unclosed scoped macro
     const textUpToCursor = text.slice(0, cursorPos);
     const unclosedScopes = findUnclosedScopes(textUpToCursor);
-    return shouldShowNormally && unclosedScopes.length > 0;
+    return unclosedScopes.length > 0;
 }
 
 /**
@@ -203,13 +208,36 @@ function hasMacroAttribute(element) {
     return value === null || value === '' || value === 'true';
 }
 
+// SillyBunny: firewall streaming chat prose mutations inside #chat .mes_text / .mes_reasoning from body MutationObserver scans.
+const IGNORED_CHAT_PROSE_SELECTOR = '#chat .mes_text, #chat .mes_reasoning';
+
+/**
+ * SillyBunny: check whether a mutation target/node sits inside #chat prose containers that never host data-macros inputs.
+ * @param {Node|null|undefined} node
+ * @returns {boolean}
+ */
+export function isIgnoredMacroMutationNode(node) {
+    if (!node) {
+        return false;
+    }
+    const element = node.nodeType === 1 ? node : node.parentElement;
+    if (!element || typeof element.closest !== 'function') {
+        return false;
+    }
+    return Boolean(element.closest(IGNORED_CHAT_PROSE_SELECTOR));
+}
+
 /**
  * Handles node changes from MutationObserver - checks for macro autocomplete attribute.
  *
  * @param {Node} node - The node to check.
  */
 function handleNodeChange(node) {
-    if (node.nodeType !== Node.ELEMENT_NODE || !(node instanceof Element)) {
+    // SillyBunny: fast-skip non-elements and #chat prose nodes before touching DOM queries.
+    if (!node || node.nodeType !== 1 || (typeof Element === 'function' && !(node instanceof Element))) {
+        return;
+    }
+    if (isIgnoredMacroMutationNode(node)) {
         return;
     }
 
@@ -218,6 +246,11 @@ function handleNodeChange(node) {
         if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
             initializeElement(node);
         }
+    }
+
+    // SillyBunny: leaf elements have no child elements to query.
+    if (!node.firstElementChild || typeof node.querySelectorAll !== 'function') {
+        return;
     }
 
     // Check child elements - select all elements with the attribute (any value or no value)
@@ -230,11 +263,14 @@ function handleNodeChange(node) {
 }
 
 /**
- * MutationObserver to watch for dynamically added elements with macro autocomplete attribute.
- * @type {MutationObserver}
+ * SillyBunny: process MutationObserver records while firewalling #chat prose churn.
+ * @param {MutationRecord[]} mutations
  */
-const observer = new MutationObserver(mutations => {
+export function processMacroAutoCompleteMutations(mutations) {
     for (const mutation of mutations) {
+        if (isIgnoredMacroMutationNode(mutation.target)) {
+            continue;
+        }
         if (mutation.type === 'childList') {
             for (const node of mutation.addedNodes) {
                 handleNodeChange(node);
@@ -245,12 +281,21 @@ const observer = new MutationObserver(mutations => {
             const isRelevantAttr = mutation.attributeName === MACRO_AUTOCOMPLETE_ATTRIBUTE ||
                                    mutation.attributeName === MACRO_AUTOCOMPLETE_MODE_ATTRIBUTE ||
                                    mutation.attributeName === MACRO_AUTOCOMPLETE_STYLE_ATTRIBUTE;
-            if (isRelevantAttr && target instanceof Element) {
+            if (isRelevantAttr && (typeof Element !== 'function' || target instanceof Element)) {
                 handleNodeChange(target);
             }
         }
     }
-});
+}
+
+/**
+ * MutationObserver to watch for dynamically added elements with macro autocomplete attribute.
+ * @type {MutationObserver|null}
+ */
+// SillyBunny: guard MutationObserver construction for non-DOM test environments and route through chat-prose firewall.
+const observer = typeof MutationObserver === 'function'
+    ? new MutationObserver(processMacroAutoCompleteMutations)
+    : null;
 
 /**
  * Initializes macro autocomplete for all elements with the `data-macros` attribute.
@@ -275,7 +320,7 @@ export function initMacroAutoComplete() {
     }
 
     // Start observing for dynamically added elements
-    observer.observe(document.body, {
+    observer?.observe(document.body, {
         childList: true,
         subtree: true,
         attributes: true,

@@ -23,7 +23,28 @@ import { ContextMenu } from './ui/ctx/ContextMenu.js';
 import { adaptQuickReplyEditor } from './sillybunny-editor.js';
 import { adoptQuickReplyRow } from '../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the settings row of a quick reply is a shared entity row.
 
+// SillyBunny: cache qrEditor.html once per session instead of refetching with cache: 'no-store' on every open.
+let cachedQrEditorTemplateHtml = null;
+
+async function loadQrEditorTemplateHtml() {
+    if (typeof cachedQrEditorTemplateHtml === 'string') {
+        return cachedQrEditorTemplateHtml;
+    }
+    const response = await fetch('/scripts/extensions/quick-reply/html/qrEditor.html');
+    if (!response.ok) {
+        return null;
+    }
+    cachedQrEditorTemplateHtml = await response.text();
+    return cachedQrEditorTemplateHtml;
+}
+
 export class QuickReply {
+    /**
+     * SillyBunny: clear cached modal editor template HTML (used by tests).
+     */
+    static clearEditorTemplateCache() {
+        cachedQrEditorTemplateHtml = null;
+    }
     /**
      * @param {{ id?: number; contextList?: any; }} props
      */
@@ -390,10 +411,32 @@ export class QuickReply {
         this.settingsDom?.remove();
     }
 
+    /**
+     * SillyBunny: return the host popup element for state-class toggling (replaces CSS :has(#qr--modalEditor) selectors).
+     * @returns {HTMLElement|null}
+     */
+    getEditorPopupElement() {
+        return this.editorPopup?.dlg ?? this.editorPopup?.dom ?? null;
+    }
+
+    /**
+     * SillyBunny: keep popup classes synchronized with modal editor execution/minimized state.
+     */
+    syncEditorPopupStateClasses() {
+        const popupEl = this.getEditorPopupElement();
+        if (!popupEl) {
+            return;
+        }
+        popupEl.classList.add('sb-qr-modal-editor-popup');
+        popupEl.classList.toggle('sb-qr-modal-editor-executing', Boolean(this.isExecuting));
+        popupEl.classList.toggle('sb-qr-modal-editor-minimized', Boolean(this.editorDom?.classList.contains('qr--minimized')));
+    }
+
     async showEditor() {
-        const response = await fetch('/scripts/extensions/quick-reply/html/qrEditor.html', { cache: 'no-store' });
-        if (response.ok) {
-            this.template = document.createRange().createContextualFragment(await response.text()).querySelector('#qr--modalEditor');
+        // SillyBunny: reuse cached qrEditor.html text instead of refetching on every modal open.
+        const templateHtml = await loadQrEditorTemplateHtml();
+        if (templateHtml !== null) {
+            this.template = document.createRange().createContextualFragment(templateHtml).querySelector('#qr--modalEditor');
             /**@type {HTMLElement} */
             // @ts-ignore
             const dom = this.template.cloneNode(true);
@@ -402,6 +445,8 @@ export class QuickReply {
             const editor = adaptQuickReplyEditor(dom);
             this.editorPopup = new Popup(dom, POPUP_TYPE.TEXT, undefined, { okButton: 'OK', wide: true, large: true, rows: 1, ...editor.options });
             const popupResult = this.editorPopup.show();
+            // SillyBunny: apply class marker on popup host so style.css avoids :has(#qr--modalEditor) rescans.
+            this.syncEditorPopupStateClasses();
 
             // basics
             /**@type {HTMLElement}*/
@@ -623,6 +668,8 @@ export class QuickReply {
             syntax.addEventListener('click', () => {
                 accountStorage.setItem('qr--syntax', JSON.stringify(syntax.checked));
                 updateSyntaxEnabled();
+                // SillyBunny: refresh syntax highlighting on toggle without a continuous rAF loop.
+                scheduleSyntaxUpdate();
             });
             // @ts-ignore
             if (navigator.keyboard) {
@@ -640,6 +687,11 @@ export class QuickReply {
             message.addEventListener('input', () => {
                 updateMessageDebounced(message.value);
                 updateScrollDebounced();
+                // SillyBunny: coalesce syntax re-highlight onto input events instead of a 60 Hz rAF loop.
+                scheduleSyntaxUpdate();
+            }, { passive: true });
+            message.addEventListener('change', () => {
+                scheduleSyntaxUpdate();
             }, { passive: true });
             const getLineStart = () => {
                 const start = message.selectionStart;
@@ -924,32 +976,28 @@ export class QuickReply {
                     updateScrollDebounced();
                 }
             };
-            let lastSyntaxUpdate = 0;
-            const fpsTime = 1000 / 30;
+            // SillyBunny: replace permanent 60 Hz rAF polling loop with event-driven coalesced syntax highlighting.
+            let syntaxFrameId = 0;
             let lastMessageValue = null;
             let wasSyntax = null;
-            const updateSyntaxLoop = () => {
-                const now = Date.now();
-                // fps limit
-                if (now - lastSyntaxUpdate < fpsTime) return requestAnimationFrame(updateSyntaxLoop);
-                // elements don't exist (yet?)
-                if (!messageSyntaxInner || !message)  return requestAnimationFrame(updateSyntaxLoop);
-                // elements no longer part of the document
-                if (!messageSyntaxInner.closest('body')) return;
-                // debugger is running
+            const runSyntaxUpdate = () => {
+                syntaxFrameId = 0;
+                if (!messageSyntaxInner || !message || !messageSyntaxInner.isConnected) return;
                 if (this.isExecuting) {
                     lastMessageValue = null;
-                    return requestAnimationFrame(updateSyntaxLoop);
+                    return;
                 }
-                // value hasn't changed
-                if (wasSyntax == syntax.checked && lastMessageValue == message.value) return requestAnimationFrame(updateSyntaxLoop);
+                if (wasSyntax == syntax.checked && lastMessageValue == message.value) return;
                 wasSyntax = syntax.checked;
-                lastSyntaxUpdate = now;
                 lastMessageValue = message.value;
                 updateSyntax();
-                requestAnimationFrame(updateSyntaxLoop);
             };
-            requestAnimationFrame(() => updateSyntaxLoop());
+            const scheduleSyntaxUpdate = () => {
+                if (syntaxFrameId) return;
+                syntaxFrameId = requestAnimationFrame(runSyntaxUpdate);
+            };
+            this._scheduleEditorSyntaxUpdate = scheduleSyntaxUpdate;
+            scheduleSyntaxUpdate();
             message.style.setProperty('text-shadow', 'none', 'important');
             updateWrap();
             updateTabSize();
@@ -1140,6 +1188,8 @@ export class QuickReply {
             const inputOgMo = new MutationObserver(muts => {
                 if (muts.find(it => [...it.removedNodes].includes(inputMirror) || [...it.removedNodes].find(n => n.contains(inputMirror)))) {
                     inputOg.removeEventListener('input', inputOgListener);
+                    // SillyBunny: disconnect body MutationObserver once the modal input mirror is detached.
+                    inputOgMo.disconnect();
                 }
             });
             inputOgMo.observe(document.body, { childList: true });
@@ -1177,10 +1227,14 @@ export class QuickReply {
             const minimizeBtn = dom.querySelector('#qr--modal-minimize');
             minimizeBtn.addEventListener('click', () => {
                 this.editorDom.classList.add('qr--minimized');
+                // SillyBunny: mirror minimized state onto the popup host class.
+                this.syncEditorPopupStateClasses();
             });
             const maximizeBtn = dom.querySelector('#qr--modal-maximize');
             maximizeBtn.addEventListener('click', () => {
                 this.editorDom.classList.remove('qr--minimized');
+                // SillyBunny: mirror minimized state onto the popup host class.
+                this.syncEditorPopupStateClasses();
             });
             /**@type {boolean}*/
             let isResizing = false;
@@ -1209,9 +1263,32 @@ export class QuickReply {
                 window.addEventListener('pointermove', dragListener);
             });
 
-            await popupResult;
-
-            window.removeEventListener('resize', resizeListener);
+            // SillyBunny: always tear down observers, rAF callbacks, listeners, and popup state classes on modal close.
+            try {
+                await popupResult;
+            } finally {
+                if (syntaxFrameId) {
+                    cancelAnimationFrame(syntaxFrameId);
+                    syntaxFrameId = 0;
+                }
+                inputOgMo.disconnect();
+                inputOg?.removeEventListener('input', inputOgListener);
+                this.cloneObserver?.disconnect();
+                this.cloneObserver = null;
+                this.clone?.remove();
+                this.clone = null;
+                window.removeEventListener('resize', resizeListener);
+                this.getEditorPopupElement()?.classList.remove(
+                    'sb-qr-modal-editor-popup',
+                    'sb-qr-modal-editor-executing',
+                    'sb-qr-modal-editor-minimized',
+                );
+                this._scheduleEditorSyntaxUpdate = null;
+                this.editorDom = null;
+                this.editorMessage = null;
+                this.editorSyntax = null;
+                this.editorPopup = null;
+            }
         } else {
             warn('failed to fetch qrEditor template');
         }
@@ -1227,12 +1304,19 @@ export class QuickReply {
             }
             this.clone.style.position = 'fixed';
             this.clone.style.visibility = 'hidden';
+            // SillyBunny: store and disconnect the clone cleanup MutationObserver so it cannot leak on document.body.
             const mo = new MutationObserver(muts => {
                 if (muts.find(it => [...it.removedNodes].includes(this.editorMessage) || [...it.removedNodes].find(n => n.contains(this.editorMessage)))) {
                     this.clone?.remove();
                     this.clone = null;
+                    mo.disconnect();
+                    if (this.cloneObserver === mo) {
+                        this.cloneObserver = null;
+                    }
                 }
             });
+            this.cloneObserver?.disconnect();
+            this.cloneObserver = mo;
             mo.observe(document.body, { childList: true });
         }
         document.body.append(this.clone);
@@ -1269,6 +1353,8 @@ export class QuickReply {
         const oText = this.message;
         this.isExecuting = true;
         this.editorDom.classList.add('qr--isExecuting');
+        // SillyBunny: mirror executing state onto the popup host class.
+        this.syncEditorPopupStateClasses();
         const noSyntax = this.editorDom.querySelector('#qr--modal-messageHolder').classList.contains('qr--noSyntax');
         if (noSyntax) {
             this.editorDom.querySelector('#qr--modal-messageHolder').classList.remove('qr--noSyntax');
@@ -1767,6 +1853,9 @@ export class QuickReply {
         this.editorExecuteBtn.classList.remove('qr--busy');
         this.editorDom.classList.remove('qr--isExecuting');
         this.isExecuting = false;
+        // SillyBunny: clear executing class on popup host and refresh event-driven syntax highlight.
+        this.syncEditorPopupStateClasses();
+        this._scheduleEditorSyntaxUpdate?.();
         this.editorPopup.onClosing = null;
     }
 

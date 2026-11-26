@@ -498,21 +498,56 @@ function applyBundledOptInDefaults({ migrateLegacy = false, initializeProcessedI
     return changed;
 }
 
+// SillyBunny: observe #extensionsMenu mutations instead of running a permanent 1s setInterval poller when empty.
+let extensionsMenuObserver = null;
+
 function showHideExtensionsMenu() {
     // Get the number of menu items that are not hidden
     const hasMenuItems = $('#extensionsMenu').children().filter((_, child) => $(child).css('display') !== 'none').length > 0;
 
     // We have menu items, so we can stop checking
     if (hasMenuItems) {
-        clearInterval(menuInterval);
+        extensionsMenuObserver?.disconnect();
+        extensionsMenuObserver = null;
     }
 
     // Show or hide the menu button
     $('#extensionsMenuButton').toggle(hasMenuItems);
+    return hasMenuItems;
 }
 
-// Periodically check for new extensions
-const menuInterval = setInterval(showHideExtensionsMenu, 1000);
+// SillyBunny: attach a scoped MutationObserver on #extensionsMenu until at least one visible menu item appears.
+function watchExtensionsMenu() {
+    if (typeof document === 'undefined' || typeof $ !== 'function') {
+        return;
+    }
+    if (showHideExtensionsMenu()) {
+        return;
+    }
+    const menu = document.getElementById('extensionsMenu');
+    if (!menu || typeof MutationObserver !== 'function') {
+        return;
+    }
+    extensionsMenuObserver?.disconnect();
+    extensionsMenuObserver = new MutationObserver(() => {
+        showHideExtensionsMenu();
+    });
+    extensionsMenuObserver.observe(menu, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class', 'hidden'],
+    });
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', watchExtensionsMenu, { once: true });
+    } else {
+        queueMicrotask(watchExtensionsMenu);
+    }
+}
+eventSource.on(event_types.APP_READY, watchExtensionsMenu);
 
 function getExtensionHomePage(manifest) {
     const candidate = manifest?.homepage || manifest?.homePage;

@@ -34,6 +34,41 @@ export const PARSER_FLAG = {
 };
 
 let macroAutoCompleteHelpersPromise = null;
+// SillyBunny: precompiled sticky regexes avoid per-token slice and RegExp allocations.
+const TRAILING_WHITESPACE_RE = /\s\s+$/y;
+const NAMED_ARG_RE = /\w+=/y;
+const WHITESPACE_CHAR_RE = /\s/;
+
+// SillyBunny: propagate per-execution abortController onto cached closure copies and nested closures.
+function assignAbortControllerRecursive(closure, abortController, visited = new Set()) {
+    if (!(closure instanceof SlashCommandClosure) || visited.has(closure)) {
+        return;
+    }
+    visited.add(closure);
+    closure.abortController = abortController;
+    for (const arg of closure.argumentList ?? []) {
+        if (arg?.value instanceof SlashCommandClosure) {
+            assignAbortControllerRecursive(arg.value, abortController, visited);
+        }
+    }
+    for (const executor of closure.executorList ?? []) {
+        for (const arg of executor?.namedArgumentList ?? []) {
+            if (arg?.value instanceof SlashCommandClosure) {
+                assignAbortControllerRecursive(arg.value, abortController, visited);
+            }
+        }
+        for (const arg of executor?.unnamedArgumentList ?? []) {
+            if (arg?.value instanceof SlashCommandClosure) {
+                assignAbortControllerRecursive(arg.value, abortController, visited);
+            }
+        }
+    }
+}
+
+// SillyBunny: serialize effective parser flags + macro-engine mode for cached closure validation.
+function getParserFlagsCacheKey(flags, experimentalMacroEngine) {
+    return `${experimentalMacroEngine ? '1' : '0'}:${flags[PARSER_FLAG.STRICT_ESCAPING] ? '1' : '0'}:${flags[PARSER_FLAG.REPLACE_GETVAR] ? '1' : '0'}`;
+}
 
 function getBooleanEnumList(mode = 'trueFalse') {
     switch (mode) {
@@ -103,6 +138,60 @@ async function getMacroAutoCompleteHelpers() {
 
 export class SlashCommandParser {
     /** @type {Object.<string, SlashCommand>} */ static commands = {};
+    // SillyBunny: track command registry changes, cached sticky regexes, language registration, and primed closures.
+    static commandRegistryVersion = 0;
+    static #languageRegistered = false;
+    static #stickyRegexCache = new Map();
+    static #primedClosure = null;
+
+    /**
+     * SillyBunny: prime a one-shot pre-parsed closure copy for the next matching parse() call.
+     * @param {string} text
+     * @param {SlashCommandClosure} closure
+     * @param {string} [flagsKey='']
+     * @param {number} [registryVersion=SlashCommandParser.commandRegistryVersion]
+     */
+    static primeCachedClosure(text, closure, flagsKey = '', registryVersion = SlashCommandParser.commandRegistryVersion) {
+        this.#primedClosure = { text, closure, flagsKey, registryVersion };
+    }
+
+    /**
+     * SillyBunny: clear any unconsumed primed closure handoff.
+     */
+    static clearPrimedClosure() {
+        this.#primedClosure = null;
+    }
+
+    /**
+     * SillyBunny: compile and cache a sticky (y) RegExp for zero-slice symbol matching.
+     * @param {RegExp} sequence
+     * @returns {RegExp}
+     */
+    static #getStickyRegex(sequence) {
+        const key = `${sequence.source}\u0000${sequence.flags}`;
+        let sticky = this.#stickyRegexCache.get(key);
+        if (!sticky) {
+            const flags = `${sequence.flags.replace(/[gy]/g, '')}y`;
+            sticky = new RegExp(sequence.source, flags);
+            this.#stickyRegexCache.set(key, sticky);
+        }
+        return sticky;
+    }
+
+    /**
+     * SillyBunny: build the effective parser flags key for cache lookups.
+     * @param {Object.<PARSER_FLAG, boolean>|null} [flags=null]
+     * @returns {string}
+     */
+    static getEffectiveFlagsCacheKey(flags = null) {
+        const parserSettings = getParserSettings();
+        const configuredFlags = parserSettings.flags ?? {};
+        const resolvedFlags = {};
+        for (const key of Object.keys(PARSER_FLAG)) {
+            resolvedFlags[PARSER_FLAG[key]] = flags?.[PARSER_FLAG[key]] ?? configuredFlags[PARSER_FLAG[key]] ?? false;
+        }
+        return getParserFlagsCacheKey(resolvedFlags, Boolean(parserSettings.experimentalMacroEngine));
+    }
 
     /**
      * @deprecated Use SlashCommandParser.addCommandObject() instead.
@@ -141,17 +230,57 @@ export class SlashCommandParser {
             console.trace('WARN: Duplicate slash command registered!', [command.name, ...command.aliases]);
         }
 
-        const stack = new Error().stack.split('\n').map(it => it.trim());
-        command.isExtension = stack.find(it => it.includes('/scripts/extensions/')) != null;
-        command.isThirdParty = stack.find(it => it.includes('/scripts/extensions/third-party/')) != null;
-        if (command.isThirdParty) {
-            command.source = stack.find(it => it.includes('/scripts/extensions/third-party/')).replace(/^.*?\/scripts\/extensions\/third-party\/([^/]+)\/.*$/, '$1');
-        } else if (command.isExtension) {
-            command.source = stack.find(it => it.includes('/scripts/extensions/')).replace(/^.*?\/scripts\/extensions\/([^/]+)\/.*$/, '$1');
-        } else {
-            const idx = stack.findLastIndex(it => it.includes('at SlashCommandParser.')) + 1;
-            command.source = stack[idx].replace(/^.*?\/((?:scripts\/)?(?:[^/]+)\.js).*$/, '$1');
-        }
+        // SillyBunny: defer Error.stack string formatting and regex parsing until help metadata is read.
+        const stackHolder = new Error();
+        let resolvedSourceMeta = null;
+        const resolveSourceMeta = () => {
+            if (resolvedSourceMeta) {
+                return resolvedSourceMeta;
+            }
+            const stack = (stackHolder.stack ?? '').split('\n').map(it => it.trim());
+            const thirdPartyLine = stack.find(it => it.includes('/scripts/extensions/third-party/'));
+            const extensionLine = thirdPartyLine ?? stack.find(it => it.includes('/scripts/extensions/'));
+            const isExtension = extensionLine != null;
+            const isThirdParty = thirdPartyLine != null;
+            let source;
+            if (isThirdParty) {
+                source = thirdPartyLine.replace(/^.*?\/scripts\/extensions\/third-party\/([^/]+)\/.*$/, '$1');
+            } else if (isExtension) {
+                source = extensionLine.replace(/^.*?\/scripts\/extensions\/([^/]+)\/.*$/, '$1');
+            } else {
+                const idx = stack.findLastIndex(it => it.includes('at SlashCommandParser.')) + 1;
+                source = stack[idx]?.replace(/^.*?\/((?:scripts\/)?(?:[^/]+)\.js).*$/, '$1') ?? '';
+            }
+            resolvedSourceMeta = { isExtension, isThirdParty, source };
+            return resolvedSourceMeta;
+        };
+        const defineLazySourceProp = (prop) => {
+            Object.defineProperty(command, prop, {
+                configurable: true,
+                enumerable: true,
+                get() {
+                    const meta = resolveSourceMeta();
+                    Object.defineProperty(this, prop, {
+                        configurable: true,
+                        enumerable: true,
+                        writable: true,
+                        value: meta[prop],
+                    });
+                    return meta[prop];
+                },
+                set(value) {
+                    Object.defineProperty(this, prop, {
+                        configurable: true,
+                        enumerable: true,
+                        writable: true,
+                        value,
+                    });
+                },
+            });
+        };
+        defineLazySourceProp('isExtension');
+        defineLazySourceProp('isThirdParty');
+        defineLazySourceProp('source');
 
         this.commands[command.name] = command;
 
@@ -160,6 +289,8 @@ export class SlashCommandParser {
                 this.commands[alias] = command;
             });
         }
+        // SillyBunny: bump registry version so cached closures invalidate when commands change.
+        this.commandRegistryVersion++;
     }
 
 
@@ -178,6 +309,9 @@ export class SlashCommandParser {
     /** @type {Object.<PARSER_FLAG,boolean>} */ flags = {};
 
     /** @type {boolean} */ jumpedEscapeSequence = false;
+    // SillyBunny: incremental macro brace depth avoids O(pipes * N) behind-string rescans.
+    /** @type {number} */ macroBraceDepth = 0;
+    /** @type {number} */ macroBraceScannedIndex = 0;
 
     /** @type {{start:number, end:number}[]} */ closureIndex;
     /** @type {{start:number, end:number, name:string}[]} */ macroIndex;
@@ -198,7 +332,10 @@ export class SlashCommandParser {
         return this.text[this.index];
     }
     get endOfText() {
-        return this.index >= this.text.length || (/\s/.test(this.char) && /^\s+$/.test(this.ahead));
+        // SillyBunny: test trailing whitespace with a sticky regex instead of slicing this.ahead.
+        if (this.index >= this.text.length) return true;
+        TRAILING_WHITESPACE_RE.lastIndex = this.index;
+        return TRAILING_WHITESPACE_RE.test(this.text);
     }
 
 
@@ -255,8 +392,11 @@ export class SlashCommandParser {
             }));
         }
 
-        //TODO should not be re-registered from every instance
-        this.registerLanguage();
+        // SillyBunny: register the highlight.js stscript grammar once instead of on every parser instance.
+        if (!SlashCommandParser.#languageRegistered) {
+            this.registerLanguage();
+            SlashCommandParser.#languageRegistered = true;
+        }
     }
     registerLanguage() {
         // NUMBER mode is copied from highlightjs's own implementation for JavaScript
@@ -639,6 +779,21 @@ export class SlashCommandParser {
         }
     }
     /**
+     * SillyBunny: test a string or RegExp directly at a character offset without slicing this.text.
+     * @param {string|RegExp} sequence
+     * @param {number} pos
+     * @returns {boolean}
+     */
+    #matchAt(sequence, pos) {
+        if (sequence instanceof RegExp) {
+            const sticky = SlashCommandParser.#getStickyRegex(sequence);
+            sticky.lastIndex = pos;
+            return sticky.test(this.text);
+        }
+        return this.text.startsWith(sequence, pos);
+    }
+
+    /**
      * Tests if the next characters match a symbol.
      * Moves the index forward if the next characters are backslashes directly followed by the symbol.
      * Expects that the current char is taken after testing.
@@ -665,12 +820,15 @@ export class SlashCommandParser {
         // -> TOAST: *:}* {:
         // -> TOAST: *{:* :}
         const escapeOffset = this.jumpedEscapeSequence ? -1 : 0;
-        const escapes = this.text.slice(this.index + offset + escapeOffset).replace(/^(\\*).*$/s, '$1').length;
-        const test = (sequence instanceof RegExp) ?
-            (text) => new RegExp(`^${sequence.source}`).test(text) :
-            (text) => text.startsWith(sequence)
-        ;
-        if (test(this.text.slice(this.index + offset + escapeOffset + escapes))) {
+        // SillyBunny: count leading backslashes and match symbols in-place without slicing or compiling RegExps.
+        const start = this.index + offset + escapeOffset;
+        let escapes = 0;
+        const text = this.text;
+        const len = text.length;
+        while (start + escapes < len && text.charCodeAt(start + escapes) === 92) {
+            escapes++;
+        }
+        if (this.#matchAt(sequence, start + escapes)) {
             // no backslashes before sequence
             //   -> sequence found
             if (escapes == 0) return true;
@@ -691,12 +849,10 @@ export class SlashCommandParser {
 
     testSymbolLooseyGoosey(sequence, offset = 0) {
         const escapeOffset = this.jumpedEscapeSequence ? -1 : 0;
-        const escapes = this.text[this.index + offset + escapeOffset] == '\\' ? 1 : 0;
-        const test = (sequence instanceof RegExp) ?
-            (text) => new RegExp(`^${sequence.source}`).test(text) :
-            (text) => text.startsWith(sequence)
-        ;
-        if (test(this.text.slice(this.index + offset + escapeOffset + escapes))) {
+        // SillyBunny: test backslash and symbol directly at index without slicing or compiling RegExps.
+        const start = this.index + offset + escapeOffset;
+        const escapes = this.text.charCodeAt(start) === 92 ? 1 : 0;
+        if (this.#matchAt(sequence, start + escapes)) {
             // no backslashes before sequence
             //   -> sequence found
             if (escapes == 0) return true;
@@ -787,7 +943,30 @@ export class SlashCommandParser {
         this.commandIndex = [];
         this.scopeIndex = [];
         this.macroIndex = [];
+        // SillyBunny: reset incremental macro brace tracking on every parse.
+        this.macroBraceDepth = 0;
+        this.macroBraceScannedIndex = 0;
         this.parserContext = uuidv4();
+        // SillyBunny: reuse a primed cached closure copy (e.g. from QuickReplySet) when text/flags/registry match.
+        const primed = SlashCommandParser.#primedClosure;
+        if (primed) {
+            SlashCommandParser.#primedClosure = null;
+            const flagsKey = getParserFlagsCacheKey(this.flags, Boolean(parserSettings.experimentalMacroEngine));
+            if (
+                verifyCommandNames
+                && !debugController
+                && primed.text === text
+                && (!primed.flagsKey || primed.flagsKey === flagsKey)
+                && primed.registryVersion === SlashCommandParser.commandRegistryVersion
+            ) {
+                const closure = primed.closure.getCopy();
+                closure.providedArgumentList = [...closure.providedArgumentList];
+                closure.parserContext = this.parserContext;
+                closure.debugController = null;
+                assignAbortControllerRecursive(closure, abortController);
+                return closure;
+            }
+        }
         const closure = this.parseClosure(true);
         return closure;
     }
@@ -804,7 +983,8 @@ export class SlashCommandParser {
         if (!this.verifyCommandNames) {
             if (this.index >= this.text.length) return true;
         } else {
-            if (this.ahead.length < 1) throw new SlashCommandParserError(`Unclosed closure at position ${this.userIndex}`, this.text, this.index);
+            // SillyBunny: avoid allocating this.ahead slice just to check remaining length.
+            if (this.index + 1 >= this.text.length) throw new SlashCommandParserError(`Unclosed closure at position ${this.userIndex}`, this.text, this.index);
         }
         return this.testSymbol(':}');
     }
@@ -921,7 +1101,8 @@ export class SlashCommandParser {
         if (!this.verifyCommandNames) {
             if (this.index >= this.text.length) return true;
         } else {
-            if (this.ahead.length < 1) throw new SlashCommandParserError(`Unclosed block comment at position ${this.userIndex}`, this.text, this.index);
+            // SillyBunny: avoid allocating this.ahead slice just to check remaining length.
+            if (this.index + 1 >= this.text.length) throw new SlashCommandParserError(`Unclosed block comment at position ${this.userIndex}`, this.text, this.index);
         }
         return this.testSymbol('*|');
     }
@@ -1051,20 +1232,42 @@ export class SlashCommandParser {
      * @returns {boolean} True if inside unclosed macro braces.
      */
     isInsideMacroBraces() {
-        const textBehind = this.behind;
-        let depth = 0;
-
-        // Scan through the text to track macro brace depth
-        for (let i = 0; i < textBehind.length; i++) {
-            if (textBehind[i] === '{' && textBehind[i + 1] === '{') {
-                depth++;
-                i++; // Skip the second {
-            } else if (textBehind[i] === '}' && textBehind[i + 1] === '}') {
-                depth = Math.max(0, depth - 1);
-                i++; // Skip the second }
-            }
+        // SillyBunny: advance macro brace depth incrementally in O(N) total instead of rescanning text.slice(0, index) on every pipe.
+        const text = this.text;
+        const limit = Math.min(this.index, text.length);
+        if (limit < this.macroBraceScannedIndex) {
+            this.macroBraceDepth = 0;
+            this.macroBraceScannedIndex = 0;
         }
 
+        let depth = this.macroBraceDepth;
+        let i = this.macroBraceScannedIndex;
+        while (i < limit) {
+            const ch = text[i];
+            if (ch === '{') {
+                if (i + 1 >= limit) {
+                    break;
+                }
+                if (text[i + 1] === '{') {
+                    depth++;
+                    i += 2;
+                    continue;
+                }
+            } else if (ch === '}') {
+                if (i + 1 >= limit) {
+                    break;
+                }
+                if (text[i + 1] === '}') {
+                    depth = Math.max(0, depth - 1);
+                    i += 2;
+                    continue;
+                }
+            }
+            i++;
+        }
+
+        this.macroBraceDepth = depth;
+        this.macroBraceScannedIndex = i;
         return depth > 0;
     }
     parseCommand() {
@@ -1088,7 +1291,12 @@ export class SlashCommandParser {
             this.discardWhitespace();
         }
         this.discardWhitespace();
-        cmd.startUnnamedArgs = this.index - (/\s(\s*)$/s.exec(this.behind)?.[1]?.length ?? 0);
+        // SillyBunny: scan trailing whitespace behind index directly without slicing this.behind.
+        let trailingWs = 0;
+        while (this.index - 1 - trailingWs >= 0 && WHITESPACE_CHAR_RE.test(this.text[this.index - 1 - trailingWs])) {
+            trailingWs++;
+        }
+        cmd.startUnnamedArgs = this.index - (trailingWs > 1 ? trailingWs - 1 : 0);
         cmd.endUnnamedArgs = this.index;
         if (this.testUnnamedArgument()) {
             const rawQuotesArg = cmd?.namedArgumentList?.find(a => a.name === 'raw');
@@ -1126,7 +1334,10 @@ export class SlashCommandParser {
     }
 
     testNamedArgument() {
-        return /^(\w+)=/.test(`${this.char}${this.ahead}`);
+        // SillyBunny: test named argument prefix with a sticky regex instead of slicing this.ahead.
+        if (this.index >= this.text.length) return false;
+        NAMED_ARG_RE.lastIndex = this.index;
+        return NAMED_ARG_RE.test(this.text);
     }
     parseNamedArgument() {
         let assignment = new SlashCommandNamedArgumentAssignment();

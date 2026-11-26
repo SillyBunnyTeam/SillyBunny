@@ -427,16 +427,25 @@ export function createFolderManager(scope, adapter) {
 
     function renderMemberList(folder) {
         const itemMap = new Map(currentItems().map(item => [String(adapter.getKey(item)), item]));
-        const rows = store.getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean).map(itemRow);
-        if (!rows.length) rows.push(markCopyPlaceholder(createStatusPage({
-            state: 'empty',
-            icon: 'users',
-            title: t`No Members`,
-            description: scopeCopy(scope).noMembers,
-            compact: true,
-            actions: [{ label: t`Add`, primary: true, onActivate: () => addMember(folder) }],
-        }).element));
-        members.list.replaceChildren(...rows);
+        const fragment = document.createDocumentFragment();
+        let rowCount = 0;
+        for (const key of store.getFolderMembers(scope, folder.id)) {
+            const item = itemMap.get(key);
+            if (!item) continue;
+            fragment.append(itemRow(item));
+            rowCount += 1;
+        }
+        if (!rowCount) {
+            fragment.append(markCopyPlaceholder(createStatusPage({
+                state: 'empty',
+                icon: 'users',
+                title: t`No Members`,
+                description: scopeCopy(scope).noMembers,
+                compact: true,
+                actions: [{ label: t`Add`, primary: true, onActivate: () => addMember(folder) }],
+            }).element));
+        }
+        members.list.replaceChildren(fragment);
     }
 
     /** The members view is a page in the frame, so its header returns to the folder list. */
@@ -451,11 +460,14 @@ export function createFolderManager(scope, adapter) {
         pageContent.append(memberList);
         const page = frame.push({ title: folder.name, content: pageContent, initialFocus: () => add });
         page.header.querySelector('.sb-dialog__header-end').append(add);
-        members = { folderId: folder.id, page, add, list: memberList };
-        bindListFocus(memberList, { rowSelector: '.sb-folder-manager__member-row' });
+        const focusHandle = bindListFocus(memberList, { rowSelector: '.sb-folder-manager__member-row' });
+        members = { folderId: folder.id, page, add, list: memberList, focusHandle };
         renderMemberList(folder);
         page.closed.then(() => {
-            members = null;
+            focusHandle.destroy();
+            if (members?.focusHandle === focusHandle) {
+                members = null;
+            }
             refresh();
         });
     }
@@ -520,6 +532,8 @@ export function createFolderManager(scope, adapter) {
     function dispose() {
         if (disposed) return;
         disposed = true;
+        members?.focusHandle?.destroy();
+        members = null;
         selection?.destroy();
         sortable?.destroy();
         unbindKeyboard?.();

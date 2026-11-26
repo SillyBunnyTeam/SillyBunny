@@ -368,12 +368,49 @@ body.documentstyle #chat .mes_block .ch_name {
 
 /*FastUI blur removal*/
 
-body.no-blur *,
-body.no-blur::before,
-body.no-blur::after,
-body.no-blur *::before,
-body.no-blur *::after,
-body.no-blur *::backdrop {
+/* SillyBunny: scope no-blur to actual blurred surfaces instead of universal * / *::before / *::after / *::backdrop rules. */
+body.no-blur {
+    --SmartThemeBackdropFilter: none;
+    --SmartThemeBackdropFilter2x: none;
+    --sheldBlurStrength: 0;
+    --mobileSheldBlurStrength: 0;
+}
+
+body.no-blur #sheld::before,
+body.no-blur #chat,
+body.no-blur #top-bar,
+body.no-blur #send_form,
+body.no-blur #options,
+body.no-blur #extensionsMenu,
+body.no-blur #bulk_tag_popup,
+body.no-blur #dialogue_popup,
+body.no-blur #shadow_popup,
+body.no-blur #shadow_select_chat_popup,
+body.no-blur #completion_prompt_manager_popup,
+body.no-blur #world_popup,
+body.no-blur #left-nav-panel,
+body.no-blur #right-nav-panel,
+body.no-blur #floatingPrompt,
+body.no-blur #cfgConfig,
+body.no-blur #logprobsViewer,
+body.no-blur #movingDivs > div,
+body.no-blur .drawer-content,
+body.no-blur .popup,
+body.no-blur .popup::backdrop,
+body.no-blur .popup .popper-modal,
+body.no-blur .autoComplete,
+body.no-blur .autoComplete-details,
+body.no-blur .ui-widget-content:not(.ui-autocomplete),
+body.no-blur .list-group,
+body.no-blur .info-block,
+body.no-blur .streaming-display,
+body.no-blur .select2-dropdown,
+body.no-blur .ctx-blocker,
+body.no-blur .bg_example .jg-menu,
+body.no-blur .bg_example .mobile-only-menu-toggle,
+body.no-blur .sb-bg-cell-menu,
+body.no-blur .qig-action-bar::before,
+body.no-blur .qig-palette-preset-menu {
     -webkit-backdrop-filter: unset !important;
     backdrop-filter: unset !important;
 }

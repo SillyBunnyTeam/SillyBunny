@@ -2939,6 +2939,48 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/slash-commands/SlashCommandParser.js`, `public/scripts/extensions/quick-reply/src/QuickReplySet.js` and `public/scripts/autocomplete/MacroAutoComplete.js` - O(N) STScript parsing, closure LRU cache and MacroAutoComplete firewall
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/slash-commands/SlashCommandParser.js`; `public/scripts/extensions/quick-reply/src/QuickReplySet.js`; `public/scripts/autocomplete/MacroAutoComplete.js`. |
+| Area | STScript parser performance, Quick Reply closure reuse, and free-text macro autocomplete gating/observer scoping. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | none yet; incremental brace tracking, sticky regex cache, lazy `Error.stack` getters, and one-shot `primeCachedClosure` handoff live directly in `SlashCommandParser.js`, bounded LRU (`CLOSURE_CACHE_MAX_SIZE = 128`) in `QuickReplySet.js`, and `#chat` prose firewall + `{{` gate in `MacroAutoComplete.js`. |
+| Adapter shape | Marked `SillyBunny:` blocks in all three files: incremental `macroBraceDepth`/`macroBraceScannedIndex`, cached sticky (`y`) regexes, lazy `isExtension`/`isThirdParty`/`source` getters, one-time `hljs.registerLanguage` guard, `commandRegistryVersion` + `primeCachedClosure`/`clearPrimedClosure` in `SlashCommandParser.js`; bounded LRU `getCachedClosure` + primed handoff in `QuickReplySet.js`; `shouldShowNormally && text.includes('{{')` short-circuit and `#chat .mes_text, #chat .mes_reasoning` MutationObserver firewall in `MacroAutoComplete.js`. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js` (2,000-command STScript parse `<50 ms`, split-brace & strict-escape edge cases, lazy `Error.stack`, closure LRU + registry invalidation, `MacroAutoComplete` gate & chat-prose firewall); `tests/macro-comment-pipes.test.js`. |
+| Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites (`tests/perf-ui-smoothness-cold-load.test.js` 23/23, 2,000-command parse in ~25 ms). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/extensions/quick-reply/src/QuickReply.js` and `public/scripts/extensions/quick-reply/style.css` - modal editor observer teardown, event-driven syntax highlighting, template cache and popup class toggles
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/quick-reply/src/QuickReply.js`; `public/scripts/extensions/quick-reply/style.css`. |
+| Area | Quick Reply modal editor lifecycle, syntax highlight loop, template fetch caching, and modal popup CSS selector scoping. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | none yet; popup state class sync (`sb-qr-modal-editor-popup`, `sb-qr-modal-editor-executing`, `sb-qr-modal-editor-minimized`), session-cached `qrEditor.html`, event-driven `scheduleSyntaxUpdate()`, and `try/finally` observer/listener teardown live in `QuickReply.js` paired with class selectors in `quick-reply/style.css`. |
+| Adapter shape | Marked `SillyBunny:` blocks in `QuickReply.js` and `quick-reply/style.css` replacing all 237 `:has(#qr--modalEditor...)` selector prefixes with `.sb-qr-modal-editor-popup` / `-executing` / `-minimized` while preserving `-webkit-backdrop-filter` companions and exact specificity ordering. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js`; `tests/css-has-scope.test.js`; `tests/webkit-prefix-companions.test.js`; `npm run check:design-rules`. |
+| Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:design-rules`, `tests/css-has-scope.test.js`, `tests/webkit-prefix-companions.test.js`, and `tests/perf-ui-smoothness-cold-load.test.js`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
+| Owner | `TODO(copy)` |
+
+### `public/css/brands.min.css`, `public/css/toggle-dependent.css`, `public/scripts/extensions.js` and `public/scripts/i18n.js` - cold-load font swap, scoped no-blur, wand-menu observer and cooperative i18n chunking
+| Field | Value |
+| --- | --- |
+| File | `public/css/brands.min.css`; `public/css/toggle-dependent.css`; `public/scripts/extensions.js`; `public/scripts/i18n.js`. |
+| Area | Cold-load font rendering (`font-display`), FastUI no-blur selector scoping, extensions wand-menu visibility watcher, and cold-load locale application INP chunking. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | none yet; direct marked edits in each upstream-origin file. |
+| Adapter shape | Marked `SillyBunny:` blocks: `font-display:swap` in `public/css/brands.min.css`; custom-property blur resets on `body.no-blur` plus concrete blurred-surface selector list (keeping both `-webkit-backdrop-filter` and `backdrop-filter`) replacing `body.no-blur *` in `public/css/toggle-dependent.css`; `#extensionsMenu` `MutationObserver` + `APP_READY` check replacing `setInterval(showHideExtensionsMenu, 1000)` in `public/scripts/extensions.js`; cooperative `applyLocaleChunked()` using `scheduler?.yield?.()` (keeping `var` TDZ guards and synchronous `applyLocale()` intact) in `public/scripts/i18n.js`. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js`; `tests/css-has-scope.test.js`; `tests/webkit-prefix-companions.test.js`; `tests/audit-design-rules.test.js`; `tests/startup-module-graph.test.js`. |
+| Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

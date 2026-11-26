@@ -89,7 +89,14 @@ import {
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
-import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation, setAnimatedBackgroundPresenter } from './sillybunny-settings-presentation.js';
+import {
+    disconnectExtensionSettingsObservers,
+    normalizeBackendSettingsRows,
+    normalizeSettingsDetail,
+    normalizeSettingsPresentation,
+    reconnectExtensionSettingsObservers,
+    setAnimatedBackgroundPresenter,
+} from './sillybunny-settings-presentation.js';
 import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { buildExtensionsLead, SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { watchStrayExtensionDrawers } from './sillybunny-settings-stray-drawers.js';
@@ -110,6 +117,7 @@ import { BOTTOM_BAR_COMPACT_QUERY, LAYOUT_MOBILE_QUERY } from './sillybunny-edit
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
+const sbNormalizedSettingsPanels = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
 const loadDataSecurityModule = createDeferredModule(new URL('./sillybunny-data-security.js', import.meta.url));
 const loadAppearanceModule = createDeferredModule(new URL('./sillybunny-appearance.js', import.meta.url));
@@ -557,6 +565,7 @@ function flattenRightShellSettingsDrawers() {
             flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
             applySettingsSectionOrder(tabState.panel, tabId);
             normalizeSettingsPresentation(tabState.panel, { name: tabId });
+            sbNormalizedSettingsPanels.set(tabState.panel, { tabId, childCount: tabState.panel.childElementCount });
         }
     }
 }
@@ -660,9 +669,14 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
         return;
     }
     if (panel instanceof HTMLElement) {
+        const previous = sbNormalizedSettingsPanels.get(panel);
+        if (previous && previous.tabId === tabId && previous.childCount === panel.childElementCount && !panel.querySelector('.inline-drawer')) {
+            return;
+        }
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         applySettingsSectionOrder(panel, tabId);
         normalizeSettingsPresentation(panel, { name: tabId });
+        sbNormalizedSettingsPanels.set(panel, { tabId, childCount: panel.childElementCount });
     }
 }
 
@@ -11870,6 +11884,7 @@ function reflattenRuntimeDrawers() {
         }
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         normalizeSettingsPresentation(panel, { name: tabId });
+        sbNormalizedSettingsPanels.set(panel, { tabId, childCount: panel.childElementCount });
     }
 }
 
@@ -13435,6 +13450,7 @@ function openSettingsPage(shellKey, tabId = null) {
     sbSettingsState.open = true;
     sbSettingsState.activeShell = shellKey;
     sbSettingsState.closeGen++;
+    reconnectExtensionSettingsObservers();
     clearSettingsAnimationState();
     if (!wasOpen) page.classList.add('sb-settings-page--opening');
 
@@ -13508,6 +13524,7 @@ function closeSettingsPage() {
     const closeGen = ++sbSettingsState.closeGen;
     clearSettingsAnimationState();
     deactivateSettingsPageRoot(closingShell);
+    disconnectExtensionSettingsObservers();
 
     const finishClose = () => {
         if (sbSettingsState.closeGen !== closeGen) {

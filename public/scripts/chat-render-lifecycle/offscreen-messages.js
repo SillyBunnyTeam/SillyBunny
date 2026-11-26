@@ -47,6 +47,7 @@ export function createOffscreenMessageTracker({
     widthSettleMs = OFFSCREEN_MESSAGE_WIDTH_SETTLE_MS,
     setTimeoutRef = globalThis.setTimeout,
     clearTimeoutRef = globalThis.clearTimeout,
+    transitionHost = typeof container?.closest === 'function' ? container.closest('#sheld') : null,
 } = {}) {
     assertOffscreenMessageTrackerOptions({
         container,
@@ -57,7 +58,12 @@ export function createOffscreenMessageTracker({
 
     let containerWidth = null;
     let settleTimer = null;
+    let transitionFallbackTimer = null;
+    let pendingTransitionWidth = null;
+    let transitionEndBound = false;
     let isDisposed = false;
+
+    const isDockTransitioning = () => Boolean(transitionHost?.hasAttribute?.('data-sb-dock-moving'));
 
     const messageObserver = new ResizeObserverImpl(entries => {
         // Marks wait for the width to settle; rearm() observes the messages again afterwards.
@@ -110,11 +116,96 @@ export function createOffscreenMessageTracker({
         settleTimer = setTimeoutRef(rearm, widthSettleMs);
     };
 
+    const detachDockTransitionListeners = () => {
+        if (transitionFallbackTimer !== null) {
+            clearTimeoutRef(transitionFallbackTimer);
+            transitionFallbackTimer = null;
+        }
+
+        if (transitionEndBound && transitionHost?.removeEventListener) {
+            transitionHost.removeEventListener('transitionend', onDockTransitionEnd);
+            transitionEndBound = false;
+        }
+    };
+
+    const flushDockTransition = (overrideWidth = null) => {
+        detachDockTransitionListeners();
+
+        if (isDisposed) {
+            pendingTransitionWidth = null;
+            return;
+        }
+
+        const measuredWidth = Number(overrideWidth ?? pendingTransitionWidth);
+        pendingTransitionWidth = null;
+
+        if (!(measuredWidth > 0)) {
+            return;
+        }
+
+        if (containerWidth !== null && Math.abs(measuredWidth - containerWidth) >= 1) {
+            clearMarksUntilWidthSettles();
+        }
+
+        containerWidth = measuredWidth;
+    };
+
+    function onDockTransitionEnd(event) {
+        if (event?.target && transitionHost && event.target !== transitionHost) {
+            return;
+        }
+        if (event?.propertyName && event.propertyName !== 'width' && event.propertyName !== 'transform') {
+            return;
+        }
+        const rectWidth = Number(container.getBoundingClientRect?.().width);
+        flushDockTransition(rectWidth > 0 ? rectWidth : pendingTransitionWidth);
+    }
+
+    const pauseUntilDockTransitionEnds = (width) => {
+        pendingTransitionWidth = width;
+
+        if (!transitionEndBound && transitionHost?.addEventListener) {
+            transitionHost.addEventListener('transitionend', onDockTransitionEnd);
+            transitionEndBound = true;
+        }
+
+        if (transitionFallbackTimer !== null) {
+            clearTimeoutRef(transitionFallbackTimer);
+        }
+
+        // Guard against interrupted or cancelled transitions that never emit transitionend.
+        transitionFallbackTimer = setTimeoutRef(() => {
+            transitionFallbackTimer = null;
+            if (!isDockTransitioning()) {
+                const rectWidth = Number(container.getBoundingClientRect?.().width);
+                flushDockTransition(rectWidth > 0 ? rectWidth : pendingTransitionWidth);
+            } else {
+                flushDockTransition(pendingTransitionWidth);
+            }
+        }, Math.max(widthSettleMs, 350));
+    };
+
     const containerObserver = new ResizeObserverImpl(entries => {
         const width = Number(entries.at(-1)?.contentRect?.width);
 
         // A hidden chat keeps its marks: remembered heights still fit if it shows again at the same width.
         if (isDisposed || !(width > 0)) {
+            return;
+        }
+
+        // During a side-panel dock transition, preserve content-visibility marks across intermediate animation frames
+        // and invalidate once at transitionend so the full chat history does not reflow every frame.
+        if (isDockTransitioning()) {
+            if (containerWidth === null) {
+                containerWidth = width;
+            } else {
+                pauseUntilDockTransitionEnds(width);
+            }
+            return;
+        }
+
+        if (pendingTransitionWidth !== null || transitionEndBound) {
+            flushDockTransition(width);
             return;
         }
 
@@ -144,6 +235,8 @@ export function createOffscreenMessageTracker({
 
     const dispose = () => {
         isDisposed = true;
+        pendingTransitionWidth = null;
+        detachDockTransitionListeners();
 
         if (settleTimer !== null) {
             clearTimeoutRef(settleTimer);

@@ -298,16 +298,23 @@ export function animateHeightFrom(element, fromHeight, { duration = MOTION_SLOW,
  */
 export function captureListChange(container, { key = (element) => element.dataset.avatar ?? element.dataset.id, items = ':scope > *' } = {}) {
     if (!(container instanceof HTMLElement) || prefersReducedMotion()) return null;
+    // Pass 1 (writes): cancel any running animations before measuring layout boxes.
     stopMotion(container);
-    const keyedItems = new Map();
-    for (const element of container.querySelectorAll(items)) {
+    const elements = [...container.querySelectorAll(items)];
+    for (const element of elements) {
         stopMotion(element);
+    }
+
+    // Pass 2 (reads): measure container and all items in one layout pass.
+    const height = container.getBoundingClientRect().height;
+    const keyedItems = new Map();
+    for (const element of elements) {
         const itemKey = key(element) ?? element;
         keyedItems.set(itemKey, element.getBoundingClientRect());
     }
     return {
         container,
-        height: container.getBoundingClientRect().height,
+        height,
         items: keyedItems,
         key,
         itemsSelector: items,
@@ -329,16 +336,26 @@ export function applyListChange(snapshot, { duration = MOTION_SLOW, enterDuratio
     if (!snapshot || !snapshot.container.isConnected || prefersReducedMotion()) return;
 
     const { container, items: previousItems, key, itemsSelector } = snapshot;
-    animateHeightFrom(container, snapshot.height, { duration });
-    const nextItems = container.querySelectorAll(itemsSelector);
+    const nextItems = [...container.querySelectorAll(itemsSelector)];
+
+    // Pass 1 (cancel writes): cancel active animations before reading settled geometry.
+    const animateContainer = canAnimate(container);
+    if (animateContainer) {
+        stopMotion(container);
+    }
+    for (const element of nextItems) {
+        stopMotion(element);
+    }
+
+    // Pass 2 (reads): measure settled container height and every item's destination rect.
+    const toHeight = animateContainer ? container.getBoundingClientRect().height : NaN;
+    const enters = [];
+    const moves = [];
     for (const element of nextItems) {
         const itemKey = key(element) ?? element;
         const previousRect = previousItems.get(itemKey);
         if (!previousRect) {
-            play(element, [{ opacity: 0 }, { opacity: 1 }], {
-                duration: enterDuration,
-                easing: MOTION_EASE,
-            });
+            enters.push(element);
             continue;
         }
 
@@ -346,6 +363,26 @@ export function applyListChange(snapshot, { duration = MOTION_SLOW, enterDuratio
         const deltaX = previousRect.left - nextRect.left;
         const deltaY = previousRect.top - nextRect.top;
         if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) continue;
+        moves.push({ element, deltaX, deltaY });
+    }
+
+    // Pass 3 (writes): start all animations after all layout measurements have completed.
+    if (animateContainer && Number.isFinite(snapshot.height) && Number.isFinite(toHeight) && Math.abs(toHeight - snapshot.height) >= 1) {
+        play(container, [
+            { height: `${snapshot.height}px` },
+            { height: `${toHeight}px` },
+        ], {
+            duration,
+            styles: { 'box-sizing': 'border-box', overflow: 'hidden', 'align-content': 'start' },
+        });
+    }
+    for (const element of enters) {
+        play(element, [{ opacity: 0 }, { opacity: 1 }], {
+            duration: enterDuration,
+            easing: MOTION_EASE,
+        });
+    }
+    for (const { element, deltaX, deltaY } of moves) {
         play(element, [
             { transform: `translate(${deltaX}px, ${deltaY}px)` },
             { transform: 'none' },

@@ -84,9 +84,10 @@ export function addLocaleData(localeId, data) {
 
 /**
  * An observer that will check if any new i18n elements are added to the document
- * @type {MutationObserver}
+ * @type {MutationObserver|null}
  */
-const observer = new MutationObserver(mutations => {
+// SillyBunny: guard MutationObserver construction for non-DOM test environments.
+const observer = typeof MutationObserver === 'function' ? new MutationObserver(mutations => {
     mutations.forEach(mutation => {
         mutation.addedNodes.forEach(node => {
             if (node.nodeType === Node.ELEMENT_NODE && node instanceof Element) {
@@ -102,7 +103,7 @@ const observer = new MutationObserver(mutations => {
             translateElement(mutation.target);
         }
     });
-});
+}) : null;
 
 /**
  * Translates a template string with named arguments
@@ -346,16 +347,89 @@ export function addLanguagesToDropdown(root = document) {
     }
 }
 
+/**
+ * SillyBunny: cooperatively yield to the browser main thread using scheduler.yield() with setTimeout fallback.
+ * @returns {Promise<void>}
+ */
+function yieldToMainThread() {
+    if (typeof globalThis.scheduler?.yield === 'function') {
+        return globalThis.scheduler.yield();
+    }
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+/**
+ * SillyBunny: identify elements inside hidden settings panels/drawers so visible chrome translates first.
+ * @param {Element} element
+ * @returns {boolean}
+ */
+function isHiddenTranslationElement(element) {
+    if (!element || typeof element !== 'object') {
+        return false;
+    }
+    if (typeof element.closest === 'function' && element.closest('[hidden], .hidden, .displayNone, [aria-hidden="true"]')) {
+        return true;
+    }
+    return element.style?.display === 'none';
+}
+
+/**
+ * SillyBunny: asynchronously applies localization by translating visible elements immediately
+ * and yielding via scheduler.yield() between chunks of hidden-DOM elements to protect cold-load INP.
+ * @param {Document|Element} [root=document]
+ * @param {{ chunkSize?: number, yieldToMain?: () => Promise<void> }} [options]
+ * @returns {Promise<{ visibleCount: number, hiddenCount: number, yields: number }>}
+ */
+export async function applyLocaleChunked(root = document, { chunkSize = 100, yieldToMain = yieldToMainThread } = {}) {
+    if (!localeData || Object.keys(localeData).length === 0) {
+        return { visibleCount: 0, hiddenCount: 0, yields: 0 };
+    }
+    if (!root || typeof root.querySelectorAll !== 'function') {
+        return { visibleCount: 0, hiddenCount: 0, yields: 0 };
+    }
+
+    const elements = Array.from(root.querySelectorAll('[data-i18n]'));
+    const visible = [];
+    const hidden = [];
+    for (const element of elements) {
+        if (isHiddenTranslationElement(element)) {
+            hidden.push(element);
+        } else {
+            visible.push(element);
+        }
+    }
+
+    for (const element of visible) {
+        translateElement(element);
+    }
+
+    const batchSize = Math.max(1, Number(chunkSize) || 100);
+    let yields = 0;
+    for (let index = 0; index < hidden.length; index += batchSize) {
+        if (index > 0 || (visible.length > 0 && hidden.length > batchSize)) {
+            await yieldToMain();
+            yields++;
+        }
+        const end = Math.min(hidden.length, index + batchSize);
+        for (let i = index; i < end; i++) {
+            translateElement(hidden[i]);
+        }
+    }
+
+    return { visibleCount: visible.length, hiddenCount: hidden.length, yields };
+}
+
 export async function initLocales() {
     langs = await fetch('/locales/lang.json').then(response => response.json());
     localeData = await getLocaleData(localeFile);
     document.documentElement.lang = localeFile;
-    applyLocale();
+    // SillyBunny: chunk hidden-DOM translations with scheduler.yield() during startup to avoid blocking INP.
+    await applyLocaleChunked(document);
     // SillyBunny: the language change handler is bound inside addLanguagesToDropdown, per select.
     addLanguagesToDropdown();
     updateSecretDisplay();
 
-    observer.observe(document, {
+    observer?.observe(document, {
         childList: true,
         subtree: true,
         attributes: true,

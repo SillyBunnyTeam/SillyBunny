@@ -49,6 +49,9 @@ let legacySettingsMigrationChecked = false;
 let activeSectionDrag = null;
 let sectionDropIndicator = null;
 let suppressSectionToggleUntil = 0;
+// SillyBunny: one-shot cold-load mount observer replaces the permanent 1s setInterval(bootstrap) poller.
+let bootstrapMountObserver = null;
+let bootstrapScheduled = false;
 
 function migrateLegacySettings() {
     if (legacySettingsMigrationChecked) {
@@ -1766,6 +1769,70 @@ function syncSettingsPanel() {
     setSettingsPanelExpanded(settings.settingsPanelExpanded);
 }
 
-bootstrap();
-setInterval(bootstrap, 1000);
+// SillyBunny: event-driven bootstrap + one-shot mount observer instead of permanent 1s setInterval polling.
+function hasAllBootstrapTargets() {
+    return Boolean(
+        document.getElementById('extensions_settings')
+        && document.querySelector('#completion_prompt_manager_list')
+        && document.getElementById('bg1')
+        && document.getElementById('Backgrounds'),
+    );
+}
+
+function stopBootstrapMountObserver() {
+    if (!bootstrapMountObserver) {
+        return;
+    }
+    bootstrapMountObserver.disconnect();
+    bootstrapMountObserver = null;
+}
+
+function runBootstrap() {
+    bootstrap();
+    if (hasAllBootstrapTargets()) {
+        stopBootstrapMountObserver();
+    }
+}
+
+function scheduleBootstrap() {
+    if (bootstrapScheduled) {
+        return;
+    }
+    bootstrapScheduled = true;
+    queueMicrotask(() => {
+        bootstrapScheduled = false;
+        runBootstrap();
+    });
+}
+
+function watchBootstrapTargetsOnce() {
+    if (hasAllBootstrapTargets() || bootstrapMountObserver || typeof MutationObserver !== 'function') {
+        return;
+    }
+    const root = document.body || document.documentElement;
+    if (!root) {
+        return;
+    }
+    bootstrapMountObserver = new MutationObserver(() => {
+        scheduleBootstrap();
+    });
+    bootstrapMountObserver.observe(root, { childList: true, subtree: true });
+}
+
+runBootstrap();
+watchBootstrapTargetsOnce();
+if (typeof document !== 'undefined' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        runBootstrap();
+        watchBootstrapTargetsOnce();
+    }, { once: true });
+}
+for (const eventName of [
+    event_types?.APP_READY,
+    event_types?.SETTINGS_LOADED_AFTER,
+    event_types?.OAI_PRESET_CHANGED_AFTER,
+    event_types?.CHAT_CHANGED,
+].filter(Boolean)) {
+    eventSource.on(eventName, scheduleBootstrap);
+}
 eventSource.on(event_types.CHAT_CHANGED, scheduleBackgroundSync);

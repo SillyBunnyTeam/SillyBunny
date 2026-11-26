@@ -20,6 +20,194 @@ const PANEL_FOCUSABLE_SELECTOR = 'button:not(:disabled), input:not(:disabled):no
 const ROOT_LAYOUT_PROPERTIES = ['--sb-dock-start', '--sb-dock-end', '--sb-chat-offset', '--sb-chat-shift', '--sb-chat-width', '--sb-side-panel-width', '--sb-side-panel-chat-height'];
 const sidePanels = new Map();
 
+let cachedRootMetrics = null;
+
+function invalidateRootMetricsCache() {
+    cachedRootMetrics = null;
+}
+
+function splitTopLevelCssArgs(input) {
+    const args = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === '(') depth++;
+        else if (ch === ')') depth = Math.max(0, depth - 1);
+        else if (ch === ',' && depth === 0) {
+            args.push(input.slice(start, i).trim());
+            start = i + 1;
+        }
+    }
+    args.push(input.slice(start).trim());
+    return args;
+}
+
+function evaluateCssMath(expr, resolveToken) {
+    let pos = 0;
+    const len = expr.length;
+    const skipWs = () => {
+        while (pos < len && /\s/.test(expr[pos])) pos++;
+    };
+    const parseAdditive = () => {
+        let left = parseMultiplicative();
+        if (!Number.isFinite(left)) return NaN;
+        while (true) {
+            skipWs();
+            const op = expr[pos];
+            if (op !== '+' && op !== '-') break;
+            pos++;
+            const right = parseMultiplicative();
+            if (!Number.isFinite(right)) return NaN;
+            left = op === '+' ? left + right : left - right;
+        }
+        return left;
+    };
+    const parseMultiplicative = () => {
+        let left = parsePrimary();
+        if (!Number.isFinite(left)) return NaN;
+        while (true) {
+            skipWs();
+            const op = expr[pos];
+            if (op !== '*' && op !== '/') break;
+            pos++;
+            const right = parsePrimary();
+            if (!Number.isFinite(right)) return NaN;
+            if (op === '/') {
+                if (right === 0) return NaN;
+                left /= right;
+            } else {
+                left *= right;
+            }
+        }
+        return left;
+    };
+    const parsePrimary = () => {
+        skipWs();
+        if (pos >= len) return NaN;
+        if (expr[pos] === '+' || expr[pos] === '-') {
+            const sign = expr[pos] === '-' ? -1 : 1;
+            pos++;
+            const value = parsePrimary();
+            return Number.isFinite(value) ? sign * value : NaN;
+        }
+        if (expr[pos] === '(') {
+            pos++;
+            const value = parseAdditive();
+            skipWs();
+            if (expr[pos] !== ')') return NaN;
+            pos++;
+            return value;
+        }
+        const start = pos;
+        let depth = 0;
+        while (pos < len) {
+            const ch = expr[pos];
+            if (ch === '(') {
+                depth++;
+                pos++;
+            } else if (ch === ')') {
+                if (depth === 0) break;
+                depth--;
+                pos++;
+            } else if (depth === 0 && (/\s/.test(ch) || ch === '+' || ch === '-' || ch === '*' || ch === '/')) {
+                break;
+            } else {
+                pos++;
+            }
+        }
+        const token = expr.slice(start, pos).trim();
+        return token ? resolveToken(token) : NaN;
+    };
+
+    const result = parseAdditive();
+    skipWs();
+    return pos === len ? result : NaN;
+}
+
+/**
+ * Resolves a CSS length or math expression (`px`, `vw`, `dvw`, `vh`, `dvh`, `%`, `rem`, `em`, `var()`, `calc()`, `min()`, `max()`, `clamp()`)
+ * into pixels without appending temporary probe nodes to the DOM.
+ */
+export function resolveCssLengthPx(rawValue, {
+    viewportWidth = 0,
+    viewportHeight = 0,
+    rootFontSize = 16,
+    readVar = null,
+    depth = 0,
+} = {}) {
+    if (typeof rawValue !== 'string' || depth > 10) return NaN;
+    const value = rawValue.trim();
+    if (!value) return NaN;
+
+    const unitMatch = /^([+-]?(?:\d+\.?\d*|\.\d+))(px|vw|dvw|svw|lvw|vh|dvh|svh|lvh|%|rem|em)?$/i.exec(value);
+    if (unitMatch) {
+        const amount = Number.parseFloat(unitMatch[1]);
+        const unit = (unitMatch[2] || '').toLowerCase();
+        if (!Number.isFinite(amount)) return NaN;
+        switch (unit) {
+            case '':
+            case 'px':
+                return amount;
+            case 'vw':
+            case 'dvw':
+            case 'svw':
+            case 'lvw':
+            case '%':
+                return (amount / 100) * viewportWidth;
+            case 'vh':
+            case 'dvh':
+            case 'svh':
+            case 'lvh':
+                return (amount / 100) * viewportHeight;
+            case 'rem':
+            case 'em':
+                return amount * rootFontSize;
+            default:
+                return NaN;
+        }
+    }
+
+    const fnMatch = /^([a-z-]+)\((.*)\)$/is.exec(value);
+    if (fnMatch) {
+        const fn = fnMatch[1].toLowerCase();
+        const inner = fnMatch[2].trim();
+        const nextOptions = { viewportWidth, viewportHeight, rootFontSize, readVar, depth: depth + 1 };
+        if (fn === 'var') {
+            const parts = splitTopLevelCssArgs(inner);
+            const varName = parts[0];
+            const fallback = parts.slice(1).join(', ').trim();
+            const resolved = typeof readVar === 'function' ? String(readVar(varName) ?? '').trim() : '';
+            if (resolved) {
+                const parsed = resolveCssLengthPx(resolved, nextOptions);
+                if (Number.isFinite(parsed)) return parsed;
+            }
+            return fallback ? resolveCssLengthPx(fallback, nextOptions) : NaN;
+        }
+        if (fn === 'calc') {
+            return evaluateCssMath(inner, token => resolveCssLengthPx(token, nextOptions));
+        }
+        if (fn === 'min' || fn === 'max') {
+            const values = splitTopLevelCssArgs(inner).map(arg => resolveCssLengthPx(arg, nextOptions));
+            if (values.length === 0 || values.some(v => !Number.isFinite(v))) return NaN;
+            return fn === 'min' ? Math.min(...values) : Math.max(...values);
+        }
+        if (fn === 'clamp') {
+            const values = splitTopLevelCssArgs(inner).map(arg => resolveCssLengthPx(arg, nextOptions));
+            if (values.length !== 3 || values.some(v => !Number.isFinite(v))) return NaN;
+            return clamp(values[1], values[0], values[2]);
+        }
+    }
+
+    return evaluateCssMath(value, token => (token === value ? NaN : resolveCssLengthPx(token, {
+        viewportWidth,
+        viewportHeight,
+        rootFontSize,
+        readVar,
+        depth: depth + 1,
+    })));
+}
+
 let nextPanelTitleId = 0;
 let nextOpenOrder = 0;
 let layoutObserver = null;
@@ -301,7 +489,38 @@ function isPhoneLayout() {
     return Boolean(window.matchMedia?.(LAYOUT_MOBILE_QUERY).matches);
 }
 
-function resolveChatWidth(viewportWidth) {
+function getCachedRootMetrics(viewportWidth, viewportHeight) {
+    const root = document.documentElement;
+    const inlineSheldWidth = root.style.getPropertyValue('--sheldWidth').trim();
+    if (
+        cachedRootMetrics
+        && cachedRootMetrics.viewportWidth === viewportWidth
+        && cachedRootMetrics.viewportHeight === viewportHeight
+        && cachedRootMetrics.inlineSheldWidth === inlineSheldWidth
+    ) {
+        return cachedRootMetrics;
+    }
+
+    const rootStyle = getComputedStyle(root);
+    const rootFontSize = Number.parseFloat(rootStyle.fontSize) || 16;
+    const readVar = name => rootStyle.getPropertyValue(name).trim();
+    const resolveOptions = { viewportWidth, viewportHeight, rootFontSize, readVar };
+    const sheldWidth = resolveCssLengthPx(readVar('--sheldWidth'), resolveOptions);
+    const homeWidth = resolveCssLengthPx(readVar('--sb-home-width'), resolveOptions);
+    const topBarOffset = resolveCssLengthPx(readVar('--sb-topbar-layout-offset'), resolveOptions);
+
+    cachedRootMetrics = {
+        viewportWidth,
+        viewportHeight,
+        inlineSheldWidth,
+        sheldWidth: Number.isFinite(sheldWidth) && sheldWidth > 0 ? sheldWidth : 0,
+        homeWidth: Number.isFinite(homeWidth) && homeWidth > 0 ? homeWidth : 0,
+        topBarOffset: Number.isFinite(topBarOffset) && topBarOffset > 0 ? topBarOffset : 0,
+    };
+    return cachedRootMetrics;
+}
+
+function resolveChatWidth(viewportWidth, viewportHeight = window.innerHeight, chatShellRect = null) {
     const chatShell = document.getElementById('sheld');
     if (!chatShell) return viewportWidth;
 
@@ -310,35 +529,26 @@ function resolveChatWidth(viewportWidth) {
     // panel becomes a sheet when the chat would be under the minimum.
     if (isPhoneLayout()) return viewportWidth;
 
-    const root = document.documentElement;
-    const probe = document.createElement('div');
-    probe.style.position = 'absolute';
-    probe.style.visibility = 'hidden';
-    probe.style.pointerEvents = 'none';
     // Home widens the shell past the user's chat width, and the panels dock against the shell that is shown.
-    const shellIsWiderForHome = getComputedStyle(chatShell).getPropertyValue('--sb-home-widened').trim() === '1';
-    probe.style.width = shellIsWiderForHome ? 'var(--sb-home-width)' : 'var(--sheldWidth)';
-    root.append(probe);
-    const configuredWidth = probe.getBoundingClientRect().width;
-    probe.remove();
+    const shellIsWiderForHome = chatShell.dataset.sbHome === 'on'
+        && getComputedStyle(chatShell).getPropertyValue('--sb-home-widened').trim() === '1';
+    const metrics = getCachedRootMetrics(viewportWidth, viewportHeight);
+    const configuredWidth = shellIsWiderForHome ? metrics.homeWidth : metrics.sheldWidth;
 
-    return configuredWidth || chatShell.getBoundingClientRect().width || viewportWidth;
+    return configuredWidth || chatShellRect?.width || chatShell.getBoundingClientRect().width || viewportWidth;
 }
 
 function readLayoutInputs(openPanels) {
     const viewport = { width: window.innerWidth, height: window.innerHeight };
-    const chat = { width: resolveChatWidth(viewport.width) };
     const chatShell = document.getElementById('sheld');
-    const configuredOffset = getComputedStyle(document.documentElement).getPropertyValue('--sb-topbar-layout-offset').trim();
-    const offsetProbe = document.createElement('div');
-    offsetProbe.style.position = 'absolute';
-    offsetProbe.style.visibility = 'hidden';
-    offsetProbe.style.height = 'var(--sb-topbar-layout-offset)';
-    document.documentElement.append(offsetProbe);
-    const resolvedOffset = offsetProbe.getBoundingClientRect().height;
-    offsetProbe.remove();
-    const topBarHeight = chatShell?.getBoundingClientRect().top || resolvedOffset || Number.parseFloat(configuredOffset) || 0;
-    return { viewport, chat, topBarHeight, panels: openPanels, collapsed: isPhoneLayout() };
+    const chatShellRect = chatShell?.getBoundingClientRect() ?? null;
+    const chat = { width: resolveChatWidth(viewport.width, viewport.height, chatShellRect) };
+    let topBarHeight = chatShellRect?.top || 0;
+    if (!(topBarHeight > 0)) {
+        const topBarRect = document.getElementById('top-bar')?.getBoundingClientRect();
+        topBarHeight = topBarRect?.height || getCachedRootMetrics(viewport.width, viewport.height).topBarOffset || 0;
+    }
+    return { viewport, chat, topBarHeight, panels: openPanels, collapsed: isPhoneLayout(), chatShellRect };
 }
 
 function openEntries() {
@@ -510,20 +720,23 @@ function updateLayout() {
         rootStyleObserver?.disconnect();
         rootStyleObserver = null;
         if (windowEventsBound) {
-            window.removeEventListener('resize', scheduleLayout);
-            window.removeEventListener('orientationchange', scheduleLayout);
-            document.removeEventListener(HOME_STATE_CHANGED_EVENT, scheduleLayout);
+            window.removeEventListener('resize', handleExternalLayoutInvalidation);
+            window.removeEventListener('orientationchange', handleExternalLayoutInvalidation);
+            document.removeEventListener(HOME_STATE_CHANGED_EVENT, handleExternalLayoutInvalidation);
             windowEventsBound = false;
         }
+        invalidateRootMetricsCache();
         notifySidePanelLayoutChanged();
         return;
     }
 
-    let layout = computeSidePanelLayout(readLayoutInputs(open.map(entry => ({ id: entry.id, side: entry.side }))));
+    let layoutInputs = readLayoutInputs(open.map(entry => ({ id: entry.id, side: entry.side })));
+    let layout = computeSidePanelLayout(layoutInputs);
     if (layout.mode === 'sheet' && open.length > 1) {
         const visibleEntry = open.at(-1);
         open.slice(0, -1).forEach(entry => closeEntry(entry, { notify: true }));
-        layout = computeSidePanelLayout(readLayoutInputs([{ id: visibleEntry.id, side: visibleEntry.side }]));
+        layoutInputs = readLayoutInputs([{ id: visibleEntry.id, side: visibleEntry.side }]);
+        layout = computeSidePanelLayout(layoutInputs);
     }
 
     if (layout.mode === 'sheet') {
@@ -552,7 +765,7 @@ function updateLayout() {
     const chatShell = document.getElementById('sheld');
     // A panel appears after the chat has made room for it. A resize moves the chat and the panels together.
     if (chatShell && panelsChanged) deferPanelRevealUntilChatSettles(open, chatShell, layout.chatRect);
-    const chatShellRect = chatShell?.getBoundingClientRect();
+    const chatShellRect = layoutInputs.chatShellRect ?? chatShell?.getBoundingClientRect();
     if (chatShellRect && Number.isFinite(chatShellRect.top) && Number.isFinite(chatShellRect.bottom)) {
         for (const side of ['left', 'right']) {
             const sidePanels = open.filter(entry => entry.side === side);
@@ -613,19 +826,51 @@ function scheduleLayout() {
     });
 }
 
+function handleExternalLayoutInvalidation() {
+    invalidateRootMetricsCache();
+    scheduleLayout();
+}
+
+export function shouldIgnoreLayoutResizeEntries(entries, {
+    chatShell = typeof document !== 'undefined' ? document.getElementById('sheld') : null,
+    body = typeof document !== 'undefined' ? document.body : null,
+} = {}) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+        return false;
+    }
+
+    // While #sheld is transitioning its dock move, intermediate #sheld width ticks are animation frames toward
+    // the layout that writeDock() already committed, so re-running updateLayout() on every frame is redundant.
+    if (chatShell?.hasAttribute?.('data-sb-dock-moving') && entries.every(entry => entry.target === chatShell)) {
+        return true;
+    }
+
+    // In docked mode, composer (#form_sheld) height growth does not change docked panel geometry.
+    if (body?.classList?.contains('sb-has-docked-panel') && !body.classList.contains('sb-has-side-panel-sheet')) {
+        if (entries.every(entry => entry.target?.id === 'form_sheld')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function observeLayoutChanges() {
     if (!layoutObserver && typeof ResizeObserver !== 'undefined') {
-        layoutObserver = new ResizeObserver(scheduleLayout);
+        layoutObserver = new ResizeObserver(entries => {
+            if (shouldIgnoreLayoutResizeEntries(entries)) return;
+            scheduleLayout();
+        });
         for (const id of ['sheld', 'top-bar', 'form_sheld']) {
             const element = document.getElementById(id);
             if (element) layoutObserver.observe(element);
         }
     }
     if (!windowEventsBound) {
-        window.addEventListener('resize', scheduleLayout, { passive: true });
-        window.addEventListener('orientationchange', scheduleLayout, { passive: true });
+        window.addEventListener('resize', handleExternalLayoutInvalidation, { passive: true });
+        window.addEventListener('orientationchange', handleExternalLayoutInvalidation, { passive: true });
         // A docked shell has a fixed width, so the shell resize that the observer watches does not happen when Home starts or ends.
-        document.addEventListener(HOME_STATE_CHANGED_EVENT, scheduleLayout);
+        document.addEventListener(HOME_STATE_CHANGED_EVENT, handleExternalLayoutInvalidation);
         windowEventsBound = true;
     }
 
@@ -635,7 +880,7 @@ function observeLayoutChanges() {
             const configuredChatWidth = document.documentElement.style.getPropertyValue('--sheldWidth');
             if (configuredChatWidth === lastConfiguredChatWidth) return;
             lastConfiguredChatWidth = configuredChatWidth;
-            scheduleLayout();
+            handleExternalLayoutInvalidation();
         });
         rootStyleObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     }
@@ -907,6 +1152,7 @@ export function isSidePanelElement(element) {
 }
 
 export function refreshSidePanelLayout() {
+    invalidateRootMetricsCache();
     updateLayout();
 }
 
