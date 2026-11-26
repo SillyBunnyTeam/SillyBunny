@@ -218,6 +218,7 @@ describe('the Main Menu', () => {
 
 const makeHeaderActions = () => ({
     openDetails: jest.fn(),
+    openPinned: jest.fn(),
     newChat: jest.fn(),
     addMember: jest.fn(),
     setMuted: jest.fn(),
@@ -236,6 +237,25 @@ describe('the menu of the conversation header', () => {
             ['Mute', 'Select Messages'],
             ['Delete Chat', 'Delete Conversation'],
         ]);
+    });
+
+    test('offers Pinned Messages after Details when the open chat has a pinned message, and leaves it out when it has none', () => {
+        const withPin = buildHeaderMenuSections(headerState({ hasPinned: true }), makeHeaderActions());
+
+        expect(labels(withPin)[0]).toEqual(['Details', 'Pinned Messages', 'New Chat', 'Add Member']);
+        expect(labels(buildHeaderMenuSections(headerState({ hasPinned: false }), makeHeaderActions()))[0]).toEqual(['Details', 'New Chat', 'Add Member']);
+        expect(labels(buildHeaderMenuSections(headerState(), makeHeaderActions()))[0]).toEqual(['Details', 'New Chat', 'Add Member']);
+    });
+
+    test('runs openPinned from Pinned Messages, with an icon, and does not disable it', () => {
+        const actions = makeHeaderActions();
+        const item = buildHeaderMenuSections(headerState({ hasPinned: true }), actions).flatMap(section => section.items).find(entry => entry.label === 'Pinned Messages');
+
+        item.onSelect();
+
+        expect(actions.openPinned).toHaveBeenCalledTimes(1);
+        expect(item.icon).toMatch(/^fa-solid fa-thumbtack/);
+        expect(item.disabled).toBeFalsy();
     });
 
     test('says Unmute for a muted conversation', () => {

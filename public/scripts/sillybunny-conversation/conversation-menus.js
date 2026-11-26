@@ -111,10 +111,10 @@ export function buildMainMenuSections({ markAllRead, manageFolders, openPreferen
 /**
  * The menu of the conversation header (HIG Menus, a secondary menu for the item that the view shows). An item that does
  * not apply is left out, and the deletes sit last in a section of their own.
- * @param {{ muted: boolean, hasMessages: boolean, hasChat: boolean }} state
+ * @param {{ muted: boolean, hasMessages: boolean, hasChat: boolean, hasPinned?: boolean }} state `hasPinned`: the open chat has a pinned message, which is what Pinned Messages lists.
  * @param {object} actions `setMuted` is called with the state that the item sets; the others with no argument.
  */
-export function buildHeaderMenuSections({ muted, hasMessages, hasChat }, actions) {
+export function buildHeaderMenuSections({ muted, hasMessages, hasChat, hasPinned = false }, actions) {
     const toggles = [
         muted
             ? { label: 'Unmute', icon: 'fa-solid fa-bell', onSelect: () => actions.setMuted(false) }
@@ -125,6 +125,7 @@ export function buildHeaderMenuSections({ muted, hasMessages, hasChat }, actions
         {
             items: [
                 { label: 'Details', icon: 'fa-solid fa-circle-info', onSelect: actions.openDetails },
+                ...(hasPinned ? [{ label: 'Pinned Messages', icon: 'fa-solid fa-thumbtack', onSelect: actions.openPinned }] : []),
                 { label: 'New Chat', icon: 'fa-solid fa-message', onSelect: actions.newChat },
                 { label: 'Add Member', icon: 'fa-solid fa-user-plus', onSelect: actions.addMember },
             ],

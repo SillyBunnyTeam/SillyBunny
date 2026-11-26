@@ -428,6 +428,20 @@ describe('conversation timeline grouping', () => {
         ]);
     });
 
+    test('splits a group where a line of the timeline falls between two of its messages, so that the message after the line shows its header again', () => {
+        const messages = [
+            { id: 'a', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 10, 0) },
+            { id: 'b', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 10, 2) },
+            { id: 'c', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 10, 4) },
+        ];
+        const summary = meta => meta.map(item => `${item.position}:${item.showHeader}`);
+
+        expect(summary(getConversationTimelineGroupMeta(messages))).toEqual(['start:true', 'middle:false', 'end:false']);
+        expect(summary(getConversationTimelineGroupMeta(messages, { breaksAfter: new Set(['a']) }))).toEqual(['single:true', 'start:true', 'end:false']);
+        expect(summary(getConversationTimelineGroupMeta(messages, { breaksAfter: new Set(['b']) }))).toEqual(['start:true', 'end:false', 'single:true']);
+        expect(summary(getConversationTimelineGroupMeta(messages, { breaksAfter: new Set(['c', 'unknown']) }))).toEqual(['start:true', 'middle:false', 'end:false']);
+    });
+
     test('splits groups on a calendar-day change even when the gap is under 20 minutes', () => {
         const messages = [
             { id: 'late', role: 'character', name: 'Aster', created_at: localStamp(2026, 9, 3, 23, 55) },

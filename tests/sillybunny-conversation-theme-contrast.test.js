@@ -182,6 +182,8 @@ function pairsOf(theme) {
         ['reaction chip text', ratio(ink, chipTint(8))],
         ['pressed reaction chip text', ratio(ink, chipTint(16))],
         ['pressed reaction chip ring', contrastRatio(accent, view)],
+        // The Pinned mark is outlined, and the line that says a message was pinned and its two flat buttons are transparent at rest, so their text is the body colour on the timeline (sillybunny-conversation-pin-css.test.js holds the stylesheet to that).
+        ['pinned mark and pin line text', ratio(ink, view)],
     ];
 }
 

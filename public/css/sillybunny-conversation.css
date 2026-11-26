@@ -1210,6 +1210,63 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
 }
 
+/* The line for a pin sits between the messages like a day divider, in the column of the timeline. Its text is the body
+   colour: the secondary ink of a divider is under 4.5:1 on some themes, and this line is the notice of an action. */
+.sb-conversation-event {
+    align-self: center;
+    inline-size: min(100%, var(--sb-conv-column-width));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 12px;
+    margin-block: 12px 4px;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-meta);
+    line-height: var(--sb-line-compact);
+    text-align: center;
+}
+
+.sb-conversation-event-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sb-conversation-event-text > i {
+    color: var(--sb-accent);
+}
+
+.sb-conversation-event-action {
+    min-block-size: var(--sb-density-floor, 32px);
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+    font: inherit;
+    font-weight: var(--sb-weight-control);
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sb-conversation-event-action:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-conversation-event-action:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sb-conversation-event-action:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 .sb-conversation-message {
     position: relative;
     align-self: start;
@@ -1387,9 +1444,18 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
 }
 
-.sb-conversation-message-pin {
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
-    font-size: 0.82em;
+/* The state in words, under the bubble and not in the name row: a message that continues a group has no name row, and a pin
+   on it must still show. It is outlined and not tinted: the body colour on the timeline is 4.58:1 on Solarized Dark, so any
+   tint under it falls below 4.5:1 there. */
+.sb-conversation-message-pinned {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 26%, transparent);
+    border-radius: var(--sb-radius-pill);
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-meta);
+    line-height: var(--sb-line-compact);
 }
 
 .sb-conversation-message-receipt {

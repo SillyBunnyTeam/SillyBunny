@@ -29,6 +29,8 @@ import { getCharacterForAvatar, getConversationParticipants, getEffectiveConvers
 import { getConversationMessageAvatar, getConversationMessageReceipt } from './conversation-list.js';
 import { escapeRegExp, getCharacterMentionHandles } from './members.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
+import { getPinEvents, isPinned, setMessagePin } from './pin-model.js';
+import { createPinnedMark, detachPinEventRows, placePinEventRows } from './pin-events-ui.js';
 import { createReactionChips, createToolbarReactionButtons } from './reactions-ui.js';
 import { buildConversationRenderKey } from './render-key.js';
 import { getConversationRenderChatId } from './screen-target.js';
@@ -404,10 +406,14 @@ function getConversationGroupPosition(continuesPrevious, continuesNext) {
     return 'single';
 }
 
-export function getConversationTimelineGroupMeta(messages) {
+/**
+ * @param {object[]} messages
+ * @param {{ breaksAfter?: Set<string> }} [options] The ids of messages that a line of the timeline follows. A line ends a group, as a day divider does, so the message after it shows its header again.
+ */
+export function getConversationTimelineGroupMeta(messages, { breaksAfter = new Set() } = {}) {
     return (Array.isArray(messages) ? messages : []).map((message, index, list) => {
-        const continuesPrevious = messagesShareConversationGroup(message, list[index - 1]);
-        const continuesNext = messagesShareConversationGroup(list[index + 1], message);
+        const continuesPrevious = !breaksAfter.has(list[index - 1]?.id) && messagesShareConversationGroup(message, list[index - 1]);
+        const continuesNext = !breaksAfter.has(message?.id) && messagesShareConversationGroup(list[index + 1], message);
         return {
             position: getConversationGroupPosition(continuesPrevious, continuesNext),
             showHeader: !continuesPrevious,
@@ -452,7 +458,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     item.className = 'sb-conversation-message';
     item.dataset.role = message.role || 'character';
     item.dataset.messageId = message.id;
-    item.dataset.pinned = String(Boolean(message.extra?.conversation_pinned));
+    item.dataset.pinned = String(isPinned(message));
     item.dataset.sbConversationMessageFingerprint = fingerprint;
 
     const avatarWrap = document.createElement('div');
@@ -504,13 +510,6 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         time.title = formattedTime.title;
     }
     meta.append(name, time);
-    if (message.extra?.conversation_pinned) {
-        const pin = document.createElement('i');
-        pin.className = 'fa-solid fa-thumbtack sb-conversation-message-pin';
-        pin.title = 'Pinned';
-        pin.setAttribute('aria-label', 'Pinned');
-        meta.append(pin);
-    }
 
     // SillyBunny message actions: reactions | Reply, Edit, Copy, menu
     // at rest; data-sb-secondary items join in section order when the pill is expanded.
@@ -528,7 +527,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         [
             { action: 'copy-message', icon: 'fa-copy', label: 'Copy Message' },
             { action: 'select-message', icon: 'fa-square-check', label: 'Select Message', secondary: true, menuOnly: true },
-            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin Message' : 'Pin Message', secondary: true },
+            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: isPinned(message) ? 'Unpin Message' : 'Pin Message', secondary: true },
             { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch From Here', secondary: true },
         ],
         isCharacterMessage ? [
@@ -648,6 +647,9 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     const body = document.createElement('div');
     body.className = 'sb-conversation-message-body';
     body.append(meta, content);
+    if (isPinned(message)) {
+        body.append(createPinnedMark());
+    }
     if (reactions) {
         body.append(reactions);
     }
@@ -734,7 +736,7 @@ function anchorConversationTimelineToBottom(timeline, renderConversationKey) {
     setTimeout(applyScroll, 250);
 }
 
-function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings }) {
+function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter }) {
     const existingNodes = new Map();
     timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
         if (node instanceof HTMLElement && !node.classList.contains('sb-conversation-typing-indicator') && !node.classList.contains('sb-conversation-image-pending')) {
@@ -742,7 +744,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
         }
     });
 
-    const grouping = getConversationTimelineGroupMeta(messages);
+    const grouping = getConversationTimelineGroupMeta(messages, { breaksAfter });
     messages.forEach((message, index) => {
         const messageId = String(message?.id || '');
         const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index });
@@ -862,11 +864,13 @@ export function renderConversationTimeline() {
 
     conversationState.lastTimelineFingerprint = fingerprint;
     timeline.dataset.sbConversationFingerprint = fingerprint;
+    let detachedPinRows = { rows: new Map(), focused: null };
     if (contextChanged) {
         timeline.textContent = '';
     } else {
         stripConversationDayDividers(timeline);
         removeTimelineTransientNodes(timeline);
+        detachedPinRows = detachPinEventRows(timeline);
     }
 
     if (!allMessages.length) {
@@ -902,8 +906,12 @@ export function renderConversationTimeline() {
         return;
     }
 
-    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings });
+    // A search shows the messages that match and not the course of the chat, so it shows no line between them.
+    const pinEvents = conversationState.conversationTimelineSearchQuery ? [] : getPinEvents(messages, getConversationMessageTimestampMs);
+    const breaksAfter = new Set(pinEvents.map(event => event.afterMessageId));
+    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter });
     insertConversationDayDividers(timeline, messages);
+    placePinEventRows(timeline, pinEvents, detachedPinRows);
 
     const typingParticipants = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });
     if (typingParticipants.length > 2) {
@@ -1097,7 +1105,7 @@ export function toggleConversationMessagePin(messageId) {
         return;
     }
 
-    context.message.extra = { ...context.message.extra, conversation_pinned: !context.message.extra?.conversation_pinned };
+    setMessagePin(context.message, !isPinned(context.message));
     saveConversationContextMessages(context);
 }
 

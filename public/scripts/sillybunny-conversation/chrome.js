@@ -3,7 +3,7 @@ import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
 import { shouldSendOnEnter } from '../RossAscends-mods.js';
-import { debounce } from '../utils.js';
+import { debounce, flashHighlight } from '../utils.js';
 import { addConversationFilesToInput, clearConversationAttachmentInput, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
 import { stashComposerDraft } from './composer-draft.js';
 import { CHROME_IDS, CONVERSATION_OPENED_EVENT } from './constants.js';
@@ -65,6 +65,8 @@ import { conversationState, sendQueue } from './state.js';
 import { processSendQueue } from './send-queue.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
 import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
+import { PIN_EVENT_ACTIONS, findMessageNode } from './pin-events-ui.js';
+import { hasPinnedMessage } from './pin-model.js';
 import { conversationData } from './conversation-data-browser.js';
 import { setConversationMuted } from './conversation-list-actions.js';
 import { getConversationDisplayName } from './media.js';
@@ -313,6 +315,17 @@ function getOpenConversationId() {
     return avatar ? getConversationRecord(avatar, { create: false, groupId })?.id ?? '' : '';
 }
 
+/** Brings a message of the open chat to the middle of the timeline and flashes it, as Show in Chat does from Details. */
+function showMessageInOpenTimeline(messageId) {
+    const timeline = document.getElementById(CHROME_IDS.timeline);
+    const node = timeline ? findMessageNode(timeline, messageId) : null;
+    if (!node) {
+        return;
+    }
+    node.scrollIntoView({ block: 'center' });
+    flashHighlight($(node), 1000);
+}
+
 function openConversationOverflowMenu(trigger) {
     const { avatar, groupId } = getActiveConversationIdentity();
     const conversationId = getOpenConversationId();
@@ -329,8 +342,10 @@ function openConversationOverflowMenu(trigger) {
             muted: Boolean(settings.notifications_muted),
             hasMessages: getConversationMessageCount(avatar, { groupId }) > 0,
             hasChat: Boolean(activeChatId),
+            hasPinned: hasPinnedMessage(getConversationMessages(avatar, { groupId })),
         }, {
             openDetails: () => void openConversationDetails(conversationId),
+            openPinned: () => void openConversationDetails(conversationId, { page: 'pinned' }),
             newChat: runFromMenu('new-chat'),
             addMember: () => void openConversationDetails(conversationId, { page: 'add-member' }),
             setMuted: (muted) => {
@@ -686,6 +701,12 @@ export async function runConversationAction(action, data = {}, target = null, ev
             break;
         case 'toggle-message-pin':
             toggleConversationMessagePin(data.messageId);
+            break;
+        case PIN_EVENT_ACTIONS.show:
+            showMessageInOpenTimeline(data.messageId);
+            break;
+        case PIN_EVENT_ACTIONS.openPinned:
+            await openConversationDetails(getOpenConversationId(), { page: 'pinned' });
             break;
         case 'react-message':
             reactConversationMessage(data.messageId, data.reaction);
