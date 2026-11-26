@@ -7,6 +7,7 @@
 
 import { getConversationPendingFiles, setConversationPendingFiles } from './attachments.js';
 import { CHROME_IDS } from './constants.js';
+import { conversationData } from './conversation-data-browser.js';
 import { getRenderKeyConversation } from './render-key.js';
 
 /**
@@ -103,12 +104,9 @@ export function stashComposerDraft(drawn) {
     }
 }
 
-/**
- * Drops the drafts that were kept for a conversation that is deleted. The removal of one chat drops nothing, because a
- * draft is kept per conversation and the conversation stays.
- * @param {{ conversationId: string, chatId?: string }} removed
- */
-export function forgetComposerDraftsOf(removed) {
+// Registered when the module loads, like the renderers of the workspace: drafts exist only once the workspace has.
+// The removal of one chat drops nothing, because a draft is kept per conversation and the conversation stays.
+conversationData.onRemoval((removed) => {
     if (removed.chatId) {
         return;
     }
@@ -117,4 +115,4 @@ export function forgetComposerDraftsOf(removed) {
             drafts.delete(conversation);
         }
     }
-}
+});

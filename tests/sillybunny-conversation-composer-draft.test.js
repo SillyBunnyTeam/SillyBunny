@@ -8,6 +8,16 @@ const setConversationPendingFiles = jest.fn((files) => {
     pendingFiles = [...files];
 });
 
+/** What the module registers on the data module, which is how a deletion reaches it. */
+let announceRemoval;
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+    conversationData: {
+        onRemoval: (listener) => {
+            announceRemoval = listener;
+            return () => {};
+        },
+    },
+}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/attachments.js', () => ({
     getConversationPendingFiles: () => [...pendingFiles],
     setConversationPendingFiles,
@@ -22,7 +32,6 @@ const B = key('b.png');
 
 let swapComposerDraft;
 let stashComposerDraft;
-let forgetComposerDraftsOf;
 let input;
 let inputEvents;
 
@@ -31,7 +40,7 @@ const file = name => ({ name });
 beforeEach(async () => {
     // The drafts live in the module, so each test starts with a fresh one.
     jest.resetModules();
-    ({ forgetComposerDraftsOf, stashComposerDraft, swapComposerDraft } = await import('../public/scripts/sillybunny-conversation/composer-draft.js'));
+    ({ stashComposerDraft, swapComposerDraft } = await import('../public/scripts/sillybunny-conversation/composer-draft.js'));
     document.body.innerHTML = `<textarea id="${CHROME_IDS.input}"></textarea>`;
     input = document.getElementById(CHROME_IDS.input);
     inputEvents = 0;
@@ -249,12 +258,12 @@ describe('the draft of a conversation that was deleted', () => {
         swapComposerDraft(B, A, 'conv-1');
         swapComposerDraft(A, B, 'conv-b');
 
-        forgetComposerDraftsOf({ conversationId: 'conv-1', chatId: 'main' });
+        announceRemoval({ conversationId: 'conv-1', chatId: 'main' });
         swapComposerDraft(B, A, 'conv-1');
         expect(input.value).toBe('for a');
 
         swapComposerDraft(A, B, 'conv-b');
-        forgetComposerDraftsOf({ conversationId: 'conv-1' });
+        announceRemoval({ conversationId: 'conv-1' });
         swapComposerDraft(B, A, 'conv-1');
         expect(input.value).toBe('');
     });
@@ -264,7 +273,7 @@ describe('the draft of a conversation that was deleted', () => {
         input.value = 'for a';
         swapComposerDraft(A, B, 'conv-b');
 
-        forgetComposerDraftsOf({ conversationId: 'conv-b' });
+        announceRemoval({ conversationId: 'conv-b' });
         swapComposerDraft(B, A, 'conv-1');
 
         expect(input.value).toBe('for a');
@@ -275,7 +284,7 @@ describe('the draft of a conversation that was deleted', () => {
         pendingFiles = [file('cat.png')];
         swapComposerDraft(A, B, 'conv-b');
 
-        forgetComposerDraftsOf({ conversationId: 'conv-1' });
+        announceRemoval({ conversationId: 'conv-1' });
         swapComposerDraft(B, A, 'conv-1');
 
         expect(pendingFiles).toEqual([]);

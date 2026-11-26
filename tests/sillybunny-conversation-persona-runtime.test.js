@@ -54,7 +54,6 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conver
     conversationData: { onRemoval: jest.fn(), subscribe: jest.fn(), whenReady: () => Promise.resolve() },
     installConversationDataHooks: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/composer-draft.js', () => ({ forgetComposerDraftsOf: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/legacy-import.js', () => ({ importLegacyLocalStorage: jest.fn(async () => 'none') }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({ installReplyFinalizer: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/round-resume-browser.js', () => ({ installRoundResume: jest.fn() }));
