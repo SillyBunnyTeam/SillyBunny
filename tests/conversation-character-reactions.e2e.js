@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
 import { openDetails, openDetailsApp, readStored, seedAndOpen, shownPage } from './helpers/conversation-details.js';
 import { seedConversation } from './helpers/conversation-seed.js';
-import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 // A character reacts when it replies: the reply carries [react: <emoji>], which is taken out of the text and shown as a
 // reaction under the message of the user that the reply answers. The tests answer from a fake model, on the path where
@@ -94,7 +94,6 @@ async function openApp(page) {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('preloader') === null, null, { timeout: 60_000 });
     await waitForAppReady(page);
-    await showToasts(page);
     const characters = await page.evaluate(async (base) => {
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
         const script = await import('/script.js');

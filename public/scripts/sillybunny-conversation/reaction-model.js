@@ -9,28 +9,17 @@
  *
  * @typedef {{ emoji: string, by: string, at: number }} ReactionEntry
  * @typedef {{ key: string, emoji: string, count: number, mine: boolean, reactors: { by: string, at: number }[], at: number }} ReactionChip
- * @typedef {{ e: string, n: string }} RecentReaction The emoji, and the name that it had when it was chosen.
+ * @typedef {{ e: string, n?: string }} QuickReaction An emoji of the quick row, and the name that it had when it was chosen, which the default ones do not carry.
  */
 
+import { DEFAULT_QUICK_REACTIONS } from './emoji/emoji-defaults.js';
 import { emojiKey, isSingleEmoji, qualifyEmoji } from './emoji/emoji-validate.js';
 
 export const USER_REACTOR = 'user';
 export const MAX_DISTINCT_REACTIONS = 20;
-export const REACTION_RECENTS_CAP = 24;
 const MAX_READ_ENTRIES = 64;
 const MAX_REACTOR_LENGTH = 256;
-const MAX_NAME_LENGTH = 80;
 export const QUICK_ROW_SIZE = 6;
-
-/** The quick row of a user who has chosen nothing. The first three are the reactions that the mode started with. */
-export const DEFAULT_QUICK_REACTIONS = Object.freeze([
-    Object.freeze({ e: '❤️', n: 'red heart' }),
-    Object.freeze({ e: '😂', n: 'face with tears of joy' }),
-    Object.freeze({ e: '✨', n: 'sparkles' }),
-    Object.freeze({ e: '👍', n: 'thumbs up' }),
-    Object.freeze({ e: '😮', n: 'face with open mouth' }),
-    Object.freeze({ e: '😢', n: 'crying face' }),
-]);
 
 /** The three reactions that the first version of the mode stored by name, in an object that counted them. */
 const LEGACY_REACTION_EMOJI = Object.freeze({
@@ -204,62 +193,20 @@ export function describeReactionChip(chip, name) {
     return `${name || chip.emoji}, ${chip.count} ${chip.count === 1 ? 'reaction' : 'reactions'}`;
 }
 
-function readRecent(item) {
-    if (!item || typeof item !== 'object' || !isSingleEmoji(item.e)) {
-        return null;
-    }
-    return { e: qualifyEmoji(item.e), n: typeof item.n === 'string' ? item.n.slice(0, MAX_NAME_LENGTH) : '' };
-}
-
-/** The recent reactions that the mode's settings hold. Anything that is not an entry is dropped. */
-export function readReactionRecents(stored) {
-    if (!Array.isArray(stored)) {
-        return [];
-    }
-    const recents = [];
-    const seen = new Set();
-    for (const item of stored) {
-        const recent = readRecent(item);
-        if (recent && !seen.has(emojiKey(recent.e))) {
-            seen.add(emojiKey(recent.e));
-            recents.push(recent);
-        }
-        if (recents.length >= REACTION_RECENTS_CAP) {
-            break;
-        }
-    }
-    return recents;
-}
-
 /**
- * Puts a reaction first among the recents.
- * @param {RecentReaction[]} recents
- * @param {RecentReaction} pick
- * @returns {RecentReaction[]} The argument itself when the pick is not one emoji.
- */
-export function pushReactionRecent(recents, pick) {
-    const recent = readRecent(pick);
-    if (!recent) {
-        return recents;
-    }
-    const earlier = recents.find(item => emojiKey(item.e) === emojiKey(recent.e));
-    const next = { e: recent.e, n: recent.n || earlier?.n || '' };
-    return [next, ...recents.filter(item => emojiKey(item.e) !== emojiKey(recent.e))].slice(0, REACTION_RECENTS_CAP);
-}
-
-/**
- * The emoji of a quick row: the recent reactions, topped up from the default six.
- * @param {RecentReaction[]} recents
+ * The emoji of a quick row: the recent reactions, topped up from the default six. The recents are those that the store
+ * of the chooser keeps (`readRecentReactions()` in `emoji/emoji-store.js`), already valid and newest first.
+ * @param {QuickReaction[]} recents
  * @param {number} [size]
- * @returns {RecentReaction[]}
+ * @returns {QuickReaction[]}
  */
 export function getQuickReactions(recents, size = QUICK_ROW_SIZE) {
     const row = [];
     const seen = new Set();
-    for (const item of [...readReactionRecents(recents), ...DEFAULT_QUICK_REACTIONS]) {
+    for (const item of [...recents, ...DEFAULT_QUICK_REACTIONS.map(e => ({ e }))]) {
         if (!seen.has(emojiKey(item.e))) {
             seen.add(emojiKey(item.e));
-            row.push({ e: item.e, n: item.n });
+            row.push(item);
         }
     }
     return row.slice(0, size);

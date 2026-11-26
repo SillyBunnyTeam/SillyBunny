@@ -6,19 +6,20 @@
 
 import { getThumbnailUrl } from '../../script.js';
 import { openPopover } from '../sillybunny-action-menu.js';
-import { getConversationStore, getCurrentCharAvatar, persistConversationStore } from './context.js';
+import { getCurrentCharAvatar } from './context.js';
+import { DEFAULT_REACTION_NAMES } from './emoji/data/default-names.js';
+import { DEFAULT_QUICK_REACTIONS } from './emoji/emoji-defaults.js';
+import { pickEmojiLocale } from './emoji/emoji-locales.js';
+import { pushRecentReaction, readRecentReactions } from './emoji/emoji-store.js';
 import { emojiKey } from './emoji/emoji-validate.js';
 import { getConversationMessages, updateConversationChatMessageReactions } from './conversation-store.js';
 import { getCharacterForAvatar } from './media.js';
 import { registerMessageMenuReactions } from './message-menu.js';
 import {
-    DEFAULT_QUICK_REACTIONS,
     USER_REACTOR,
     describeReactionChip,
     getQuickReactions,
     groupReactions,
-    pushReactionRecent,
-    readReactionRecents,
     readReactions,
     toLabelCase,
     toggleUserReaction,
@@ -33,7 +34,6 @@ const OPEN_CLASS = 'has-open-menu';
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_SLOP_PX = 10;
 const CLICK_SWALLOW_MS = 350;
-const CHOOSER_MODULE = './emoji/emoji-chooser.js';
 const MORE_REACTIONS_LABEL = 'More Reactions';
 const YOU_LABEL = 'You';
 const FALLBACK_CHARACTER_LABEL = 'Character';
@@ -45,29 +45,34 @@ function toast(kind, text) {
 // ---------------------------------------------------------------------------------------------------------------------
 // Recents and the quick row
 
-function readRecents() {
-    return readReactionRecents(getConversationStore().recentReactions);
+function getInterfaceLocale() {
+    return globalThis.document?.documentElement?.lang || globalThis.navigator?.language || 'en';
 }
 
-/** The emoji of the quick row: the user's recent reactions, topped up from the default six. */
-export function getQuickReactionRow(size) {
-    return getQuickReactions(readRecents(), size);
-}
-
-/** The name of an emoji for a label, when the settings or the default six know it. An empty text otherwise: the emoji itself is then the label. */
+/** The name of an emoji for a label: what the recents kept at the pick, or the name of a default emoji in the language of the interface. An empty text for any other, which the emoji itself then labels. */
 export function getReactionName(emoji) {
     const key = emojiKey(emoji);
-    return [...readRecents(), ...DEFAULT_QUICK_REACTIONS].find(item => emojiKey(item.e) === key)?.n ?? '';
+    const recent = readRecentReactions().find(item => emojiKey(item.e) === key);
+    if (recent?.n) {
+        return recent.n;
+    }
+    const preset = DEFAULT_QUICK_REACTIONS.find(item => emojiKey(item) === key);
+    if (!preset) {
+        return '';
+    }
+    return (DEFAULT_REACTION_NAMES[pickEmojiLocale(getInterfaceLocale())] ?? DEFAULT_REACTION_NAMES.en)[preset] ?? DEFAULT_REACTION_NAMES.en[preset] ?? '';
+}
+
+/** The emoji of the quick row, each with its name: the user's recent reactions, topped up from the default six. */
+export function getQuickReactionRow(size) {
+    return getQuickReactions(readRecentReactions(), size).map(item => ({ e: item.e, n: item.n || getReactionName(item.e) }));
 }
 
 function rememberReaction(emoji, name) {
-    const store = getConversationStore();
-    const recents = readReactionRecents(store.recentReactions);
-    if (recents[0] && emojiKey(recents[0].e) === emojiKey(emoji)) {
+    if (readRecentReactions()[0]?.e && emojiKey(readRecentReactions()[0].e) === emojiKey(emoji)) {
         return;
     }
-    store.recentReactions = pushReactionRecent(recents, { e: emoji, n: name || getReactionName(emoji) });
-    persistConversationStore();
+    pushRecentReaction({ e: emoji, n: name || getReactionName(emoji) });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -212,13 +217,11 @@ export function buildMenuReactions(item, trigger) {
  * @param {HTMLElement} trigger The control that the chooser opens at, and returns the focus to.
  */
 export async function openReactionChooser(messageId, trigger) {
-    let chooser = null;
+    let chooser;
     try {
-        chooser = await import(CHOOSER_MODULE);
+        chooser = await import('./emoji/emoji-chooser.js');
     } catch (error) {
         console.warn('Conversation Mode: the emoji chooser could not be loaded', error);
-    }
-    if (typeof chooser?.openEmojiChooser !== 'function') {
         toast('warning', 'TODO(copy)');
         return;
     }

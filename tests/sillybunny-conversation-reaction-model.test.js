@@ -1,16 +1,12 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
-    DEFAULT_QUICK_REACTIONS,
     MAX_DISTINCT_REACTIONS,
-    REACTION_RECENTS_CAP,
     USER_REACTOR,
     addCharacterReaction,
     describeReactionChip,
     getQuickReactions,
     groupReactions,
-    pushReactionRecent,
-    readReactionRecents,
     readReactions,
     toLabelCase,
     toggleUserReaction,
@@ -246,63 +242,31 @@ describe('the accessible name of a chip', () => {
     });
 });
 
-describe('the quick row and its recents', () => {
-    test('is the default six for a user with no recents, the old three first', () => {
-        const row = getQuickReactions([]);
+describe('the quick row', () => {
+    const emojiOf = row => row.map(item => item.e);
 
-        expect(row.map(item => item.e)).toEqual(['❤️', '😂', '✨', '👍', '😮', '😢']);
-        expect(DEFAULT_QUICK_REACTIONS).toHaveLength(6);
+    test('is the default six for a user with no recents, the old three first', () => {
+        expect(emojiOf(getQuickReactions([]))).toEqual(['❤️', '😂', '✨', '👍', '😮', '😢']);
     });
 
-    test('puts the recents first and tops up from the defaults without a repeat', () => {
-        const row = getQuickReactions([{ e: '🎉', n: 'party popper' }, { e: '😂', n: 'face with tears of joy' }]);
+    test('puts the recents first, with their names, and tops up from the defaults without a repeat', () => {
+        const row = getQuickReactions([{ e: '🎉', n: 'party popper' }, { e: '😂' }]);
 
-        expect(row.map(item => item.e)).toEqual(['🎉', '😂', '❤️', '✨', '👍', '😮']);
+        expect(emojiOf(row)).toEqual(['🎉', '😂', '❤️', '✨', '👍', '😮']);
+        expect(row[0]).toEqual({ e: '🎉', n: 'party popper' });
     });
 
     test('holds the newest six of seven recents', () => {
-        const recents = ['🔥', '🙏', '🥳', '😎', '🤔', '🤯', '👀'].map(e => ({ e, n: e }));
+        const recents = ['🔥', '🙏', '🥳', '😎', '🤔', '🤯', '👀'].map(e => ({ e }));
 
-        expect(getQuickReactions(recents).map(item => item.e)).toEqual(['🔥', '🙏', '🥳', '😎', '🤔', '🤯']);
+        expect(emojiOf(getQuickReactions(recents))).toEqual(['🔥', '🙏', '🥳', '😎', '🤔', '🤯']);
     });
 
     test('takes the number of emoji that the surface can hold', () => {
-        expect(getQuickReactions([], 2).map(item => item.e)).toEqual(['❤️', '😂']);
+        expect(emojiOf(getQuickReactions([], 2))).toEqual(['❤️', '😂']);
     });
 
-    test('puts a reaction first, drops its earlier place and keeps its name', () => {
-        const list = pushReactionRecent([{ e: '😂', n: 'laughing' }, { e: '🎉', n: 'party popper' }], { e: '🎉', n: 'party popper' });
-
-        expect(list).toEqual([{ e: '🎉', n: 'party popper' }, { e: '😂', n: 'laughing' }]);
-    });
-
-    test('counts a bare and a qualified heart as the same recent', () => {
-        const list = pushReactionRecent([{ e: '❤️', n: 'red heart' }], { e: '❤', n: 'heart' });
-
-        expect(list).toHaveLength(1);
-        expect(list[0].e).toBe('❤️');
-    });
-
-    test('keeps at most 24', () => {
-        let list = [];
-        for (let index = 0; index < 40; index++) {
-            list = pushReactionRecent(list, { e: String.fromCodePoint(0x1F600 + index), n: `face ${index}` });
-        }
-
-        expect(list).toHaveLength(REACTION_RECENTS_CAP);
-        expect(list[0].n).toBe('face 39');
-    });
-
-    test('ignores an entry that is not one emoji', () => {
-        const list = [{ e: '😂', n: 'laughing' }];
-
-        expect(pushReactionRecent(list, { e: 'x', n: 'x' })).toBe(list);
-    });
-
-    test('reads the recents that the settings hold, and drops what is not an entry', () => {
-        const raw = [{ e: '😂', n: 'laughing' }, { e: 'x', n: 'x' }, null, 'y', { e: '👍' }];
-
-        expect(readReactionRecents(raw)).toEqual([{ e: '😂', n: 'laughing' }, { e: '👍', n: '' }]);
-        expect(readReactionRecents(undefined)).toEqual([]);
+    test('counts a bare and a qualified heart as the same emoji', () => {
+        expect(emojiOf(getQuickReactions([{ e: '❤' }], 3))).toEqual(['❤', '😂', '✨']);
     });
 });

@@ -326,6 +326,28 @@ test.describe('with a pointer', () => {
         expect(saved.extension_settings.sillybunny_conversation.recentReactions).toEqual([{ e: '🎉', n: 'party popper' }]);
     });
 
+    test('More Reactions opens the emoji chooser itself: a search and Enter react with the first result, and the chooser shows that emoji as chosen the next time', async ({ page, baseURL }) => {
+        const { message, saves } = await openConversation(page, baseURL);
+        const popover = page.locator('.sb-action-popover:has(.sb-emoji-chooser)');
+
+        await hoverBubble(page, message);
+        await message.locator(TOOLBAR_REACTION).nth(2).click();
+        await expect(popover).toBeVisible();
+        await popover.locator('.sb-emoji-search-entry').fill('party popper');
+        await page.keyboard.press('Enter');
+
+        await expect(popover).toBeHidden();
+        await expect(message.locator(CHIP)).toHaveText('🎉');
+        await expect(message.locator(CHIP)).toHaveAccessibleName('Party Popper, 1 reaction');
+        await expect.poll(() => saves.findLast(save => save.extension_settings?.sillybunny_conversation?.recentReactions)?.extension_settings.sillybunny_conversation.recentReactions, { timeout: 20_000 }).toEqual([{ e: '🎉', n: 'party popper' }]);
+
+        await page.mouse.move(2, 2);
+        await hoverBubble(page, message);
+        await message.locator(TOOLBAR_REACTION).nth(2).click();
+        await expect(popover).toBeVisible();
+        await expect(popover.getByRole('option', { name: 'party popper', exact: true })).toHaveAttribute('aria-selected', 'true');
+    });
+
     test('More Reactions in the menu opens the same chooser at the trigger of the menu', async ({ page, baseURL }) => {
         const { message } = await openConversation(page, baseURL, { chooser: true });
         const trigger = message.locator('.sb-conversation-message-menu');
