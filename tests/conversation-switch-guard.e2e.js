@@ -12,6 +12,7 @@ const HEADER_NAME = '#sb_conversation_header [data-sb-conversation-name]';
 const FILE_INPUT = '#sb_conversation_file_input';
 const ATTACHMENT_PREVIEW = '#sb_conversation_attachment_preview';
 const PICKER = '.sb-picker';
+const CONVERSATION_MENU = '#sb_conversation_header [data-sb-conversation-action="open-conversation-menu"]';
 const DRAFT = 'typed in the conversation that was open';
 
 /** A route that waits for `open()`, so that a request of the switch takes as long as a test needs. */
@@ -251,5 +252,23 @@ test.describe('a switch to another conversation', () => {
         await selectCharacter(page, 'Seraphina');
         await expectDrawn(page, 'Seraphina');
         await expect(page.locator(COMPOSER)).toHaveValue(DRAFT);
+    });
+
+    test('a draft of a conversation that was deleted does not come back in a new conversation with the same character', async ({ page, baseURL }) => {
+        const { seraphina } = await bootWith(page, baseURL, ['seraphina']);
+        await openConnected(page, seraphina);
+        await typeIntoComposer(page, DRAFT);
+
+        await page.locator(CONVERSATION_MENU).click();
+        await page.getByRole('menuitem', { name: /Delete Conversation/ }).click();
+        await page.locator('dialog.sb-conversation-dialog[open]').getByRole('button', { name: 'Delete', exact: true }).click();
+        await expect(page.locator('.sb-conversation-list-item')).toHaveCount(0);
+
+        await page.locator(NEW_MENU).click();
+        await page.getByRole('menuitem', { name: 'New Conversation', exact: true }).click();
+        await page.locator(`${PICKER} .sb-picker__option`).filter({ hasText: 'Seraphina' }).click();
+
+        await expectDrawn(page, 'Seraphina');
+        await expect(page.locator(COMPOSER)).toHaveValue('');
     });
 });

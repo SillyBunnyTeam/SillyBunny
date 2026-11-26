@@ -22,6 +22,7 @@ const B = key('b.png');
 
 let swapComposerDraft;
 let stashComposerDraft;
+let forgetComposerDraftsOf;
 let input;
 let inputEvents;
 
@@ -30,7 +31,7 @@ const file = name => ({ name });
 beforeEach(async () => {
     // The drafts live in the module, so each test starts with a fresh one.
     jest.resetModules();
-    ({ stashComposerDraft, swapComposerDraft } = await import('../public/scripts/sillybunny-conversation/composer-draft.js'));
+    ({ forgetComposerDraftsOf, stashComposerDraft, swapComposerDraft } = await import('../public/scripts/sillybunny-conversation/composer-draft.js'));
     document.body.innerHTML = `<textarea id="${CHROME_IDS.input}"></textarea>`;
     input = document.getElementById(CHROME_IDS.input);
     inputEvents = 0;
@@ -195,5 +196,111 @@ describe('the first draw and the empty state', () => {
         stashComposerDraft('');
 
         expect(input.value).toBe('kept');
+    });
+});
+
+describe('the draft of a conversation that was deleted', () => {
+    test('does not come back in a conversation that was made after it, though both have the same persona, character and group', () => {
+        swapComposerDraft('', A, 'conv-1');
+        input.value = 'for the first a';
+        swapComposerDraft(A, B, 'conv-b');
+
+        swapComposerDraft(B, A, 'conv-2');
+
+        expect(input.value).toBe('');
+    });
+
+    test('comes back in its own conversation, which keeps its id', () => {
+        swapComposerDraft('', A, 'conv-1');
+        input.value = 'for a';
+        swapComposerDraft(A, B, 'conv-b');
+
+        swapComposerDraft(B, A, 'conv-1');
+
+        expect(input.value).toBe('for a');
+    });
+
+    test('does not come back when it was on screen as the conversation went: the screen shows a conversation that has no record, and then nothing', () => {
+        swapComposerDraft('', key('a.png', 'main'), 'conv-1');
+        input.value = 'for the first a';
+
+        swapComposerDraft(key('a.png', 'main'), key('a.png', ''), '');
+        swapComposerDraft(key('a.png', ''), '', '');
+        swapComposerDraft('', key('a.png', 'fresh'), 'conv-2');
+
+        expect(input.value).toBe('');
+    });
+
+    test('does not come back in a conversation that has no record, which is what the character has after a delete', () => {
+        swapComposerDraft('', A, 'conv-1');
+        input.value = 'for the first a';
+        swapComposerDraft(A, B, 'conv-b');
+
+        swapComposerDraft(B, key('a.png', ''), '');
+
+        expect(input.value).toBe('');
+    });
+
+    test('is dropped by the removal of its conversation, and a removal of one chat of it drops nothing, because a draft is kept per conversation', () => {
+        swapComposerDraft('', A, 'conv-1');
+        input.value = 'for a';
+        swapComposerDraft(A, B, 'conv-b');
+        input.value = 'for b';
+        swapComposerDraft(B, A, 'conv-1');
+        swapComposerDraft(A, B, 'conv-b');
+
+        forgetComposerDraftsOf({ conversationId: 'conv-1', chatId: 'main' });
+        swapComposerDraft(B, A, 'conv-1');
+        expect(input.value).toBe('for a');
+
+        swapComposerDraft(A, B, 'conv-b');
+        forgetComposerDraftsOf({ conversationId: 'conv-1' });
+        swapComposerDraft(B, A, 'conv-1');
+        expect(input.value).toBe('');
+    });
+
+    test('a removal leaves the drafts of other conversations alone', () => {
+        swapComposerDraft('', A, 'conv-1');
+        input.value = 'for a';
+        swapComposerDraft(A, B, 'conv-b');
+
+        forgetComposerDraftsOf({ conversationId: 'conv-b' });
+        swapComposerDraft(B, A, 'conv-1');
+
+        expect(input.value).toBe('for a');
+    });
+
+    test('is dropped with its attachments', () => {
+        swapComposerDraft('', A, 'conv-1');
+        pendingFiles = [file('cat.png')];
+        swapComposerDraft(A, B, 'conv-b');
+
+        forgetComposerDraftsOf({ conversationId: 'conv-1' });
+        swapComposerDraft(B, A, 'conv-1');
+
+        expect(pendingFiles).toEqual([]);
+    });
+});
+
+describe('the draft of a conversation that had no record yet', () => {
+    test('comes back once the conversation has one, since it is the same character, persona and group', () => {
+        swapComposerDraft('', key('a.png', ''), '');
+        input.value = 'typed before the first message';
+        swapComposerDraft(key('a.png', ''), B, 'conv-b');
+
+        swapComposerDraft(B, key('a.png', 'main'), 'conv-1');
+
+        expect(input.value).toBe('typed before the first message');
+    });
+
+    test('takes the id that the conversation gets while it is on screen, so the draft is tied to it from then on', () => {
+        swapComposerDraft('', key('a.png', ''), '');
+        input.value = 'the first message';
+        swapComposerDraft(key('a.png', ''), key('a.png', 'main'), 'conv-1');
+
+        swapComposerDraft(key('a.png', 'main'), B, 'conv-b');
+        swapComposerDraft(B, key('a.png', 'main'), 'conv-2');
+
+        expect(input.value).toBe('');
     });
 });

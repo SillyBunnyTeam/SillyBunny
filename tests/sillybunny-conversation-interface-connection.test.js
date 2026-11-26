@@ -5,6 +5,7 @@ let onlineStatus = 'no_connection';
 let currentAvatar = 'char.png';
 let openChat = null;
 let switching = false;
+let conversationRecord = null;
 let toolButtons = [];
 const renderConversationTimeline = jest.fn();
 const swapComposerDraft = jest.fn();
@@ -45,7 +46,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/contex
     getConversationGroupById: id => id ? { name: 'Group DM' } : null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: () => 'persona.png',
-    getConversationRecord: () => null,
+    getConversationRecord: () => conversationRecord,
     getCurrentCharacter: () => currentAvatar ? { avatar: currentAvatar, name: 'Aster' } : null,
     getCurrentCharAvatar: () => currentAvatar,
     getCurrentCharName: () => 'Aster',
@@ -130,6 +131,7 @@ describe('Conversation composer connection state', () => {
         currentAvatar = 'char.png';
         openChat = null;
         switching = false;
+        conversationRecord = null;
         toolButtons = [];
         renderConversationTimeline.mockReset();
         swapComposerDraft.mockReset();
@@ -233,7 +235,19 @@ describe('Conversation composer connection state', () => {
         refreshConversationInterface();
 
         expect(swapComposerDraft).toHaveBeenCalledTimes(1);
-        expect(swapComposerDraft).toHaveBeenCalledWith('drawn-before', 'drawn-now');
+        expect(swapComposerDraft).toHaveBeenCalledWith('drawn-before', 'drawn-now', '');
+    });
+
+    test('tells the draft store which conversation is drawn by its id, so that a conversation made after another one was deleted is not given that one\'s draft', async () => {
+        onlineStatus = 'Connected';
+        conversationRecord = { id: 'conv_2', activeChatId: 'main' };
+        renderConversationTimeline.mockImplementation(() => {
+            conversationState.lastRenderedConversationKey = 'drawn-now';
+        });
+        const { refreshConversationInterface } = await import('../public/scripts/sillybunny-conversation/interface.js');
+        refreshConversationInterface();
+
+        expect(swapComposerDraft).toHaveBeenCalledWith('', 'drawn-now', 'conv_2');
     });
 
     test('moves no draft while the workspace is closed, since nothing is drawn', async () => {

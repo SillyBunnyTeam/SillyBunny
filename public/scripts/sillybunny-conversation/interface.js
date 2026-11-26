@@ -242,8 +242,8 @@ export function refreshConversationInterface() {
     setConversationInterfaceActive(active);
 
     if (active) {
+        const record = avatar ? getConversationRecord(avatar, { groupId, personaId }) : null;
         if (avatar) {
-            const record = getConversationRecord(avatar, { groupId, personaId });
             const chatId = record?.activeChatId || '';
             const address = record && chatId ? { conversationId: record.id, chatId } : null;
             conversationData.setOpen(address);
@@ -255,7 +255,7 @@ export function refreshConversationInterface() {
         }
         const drawnBefore = conversationState.lastRenderedConversationKey;
         renderConversationTimeline();
-        swapComposerDraft(drawnBefore, conversationState.lastRenderedConversationKey);
+        swapComposerDraft(drawnBefore, conversationState.lastRenderedConversationKey, record?.id ?? '');
         updateConversationChrome(settings);
         updateUserFooter();
 

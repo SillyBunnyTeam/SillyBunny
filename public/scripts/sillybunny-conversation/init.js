@@ -1,5 +1,6 @@
 import { event_types, eventSource } from '../events.js';
 import { extension_settings } from '../extensions.js';
+import { forgetComposerDraftsOf } from './composer-draft.js';
 import { CONVERSATION_DETAILS_CLOSE_EVENT, CONVERSATION_STORE_KEY } from './constants.js';
 import { getConversationGroupById } from './context.js';
 import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
@@ -47,6 +48,7 @@ export function init() {
 
     conversationState.initialized = true;
     installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
+    conversationData.onRemoval(forgetComposerDraftsOf);
     installPageLeaveEffects({ target: window, targets: generationTargets });
     conversationData.subscribe((event) => {
         if (event.type === 'list' || event.type === 'status') {
