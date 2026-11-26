@@ -144,6 +144,28 @@ export function clearConversationAttachmentInput() {
     updateConversationAttachmentPreview();
 }
 
+/** Replaces the files that the composer holds with these. */
+export function setConversationPendingFiles(files) {
+    const fileInput = document.getElementById(CHROME_IDS.fileInput);
+    if (!(fileInput instanceof HTMLInputElement)) {
+        return;
+    }
+    if (!files.length) {
+        clearConversationAttachmentInput();
+        return;
+    }
+
+    const transfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
+    if (!transfer) {
+        return;
+    }
+    for (const file of files) {
+        transfer.items.add(file);
+    }
+    fileInput.files = transfer.files;
+    updateConversationAttachmentPreview();
+}
+
 export function addConversationFilesToInput(files) {
     const fileInput = document.getElementById(CHROME_IDS.fileInput);
     if (!(fileInput instanceof HTMLInputElement) || !files?.length) {
