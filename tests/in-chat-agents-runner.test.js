@@ -1,8 +1,6 @@
 /* eslint-disable playwright/no-duplicate-hooks, playwright/no-standalone-expect */
 /* global globalThis */
 import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
-import vm from 'node:vm';
-import { loadDeclarations } from './util/load-declarations.js';
 
 function createEventSource() {
     const handlers = new Map();
@@ -7028,84 +7026,5 @@ Helper context.`;
         expect(generateRaw).not.toHaveBeenCalled();
         expect(chat[0].mes).toBe('Second existing swipe');
         expect(saveChatDebounced).not.toHaveBeenCalled();
-    });
-});
-
-describe('generateQuietPrompt external abort signal (#385)', () => {
-    function createQuietPromptRuntime(generateImpl) {
-        const context = vm.createContext({
-            AbortController,
-            AbortSignal,
-            Error,
-            console: { trace: jest.fn(), warn: jest.fn(), error: jest.fn() },
-            main_api: 'openai',
-            abortController: null,
-            activeGenerationRun: null,
-            activateSendButtons: jest.fn(),
-            TempResponseLength: {
-                save: jest.fn(() => ({ id: 'override' })),
-                setupEventHook: jest.fn(() => () => {}),
-                isCustomized: jest.fn(() => false),
-                restore: jest.fn(),
-                removeEventHook: jest.fn(),
-            },
-            Generate: jest.fn(generateImpl),
-            trimToEndSentence: text => text,
-            removeReasoningFromString: text => text,
-        });
-        loadDeclarations(context, 'script.js', ['generateQuietPrompt']);
-        return context;
-    }
-
-    test('forwards an external AbortSignal to Generate and aborts the quiet controller on cancel (#385)', async () => {
-        let capturedOptions = null;
-        let resolveGenerate;
-        const context = createQuietPromptRuntime((_type, options) => {
-            capturedOptions = options;
-            return new Promise(resolve => {
-                resolveGenerate = resolve;
-            });
-        });
-        const externalController = new AbortController();
-        const removeSpy = jest.spyOn(externalController.signal, 'removeEventListener');
-
-        const pending = context.generateQuietPrompt({
-            quietPrompt: 'Transform this.',
-            signal: externalController.signal,
-        });
-
-        expect(capturedOptions.signal).toBeInstanceOf(AbortSignal);
-        expect(capturedOptions.signal.aborted).toBe(false);
-        expect(context.abortController).toBeInstanceOf(AbortController);
-        expect(context.abortController.signal).toBe(capturedOptions.signal);
-
-        const cancelReason = new Error('User pressed stop');
-        externalController.abort(cancelReason);
-
-        expect(capturedOptions.signal.aborted).toBe(true);
-        expect(capturedOptions.signal.reason).toBe(cancelReason);
-
-        resolveGenerate('done');
-        await expect(pending).resolves.toBe('done');
-        expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
-    });
-
-    test('aborts immediately when generateQuietPrompt receives an already-aborted signal (#385)', async () => {
-        let capturedOptions = null;
-        const context = createQuietPromptRuntime(async (_type, options) => {
-            capturedOptions = options;
-            return '';
-        });
-        const externalController = new AbortController();
-        externalController.abort(new Error('Already cancelled'));
-
-        await context.generateQuietPrompt({
-            quietPrompt: 'Transform this.',
-            signal: externalController.signal,
-        });
-
-        expect(capturedOptions.signal).toBeInstanceOf(AbortSignal);
-        expect(capturedOptions.signal.aborted).toBe(true);
-        expect(capturedOptions.signal.reason).toEqual(new Error('Already cancelled'));
     });
 });

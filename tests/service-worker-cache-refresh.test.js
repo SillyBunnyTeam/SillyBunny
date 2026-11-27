@@ -1,13 +1,37 @@
-import { describe, expect, jest, test } from '@jest/globals';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-import { loadDeclarations } from './util/load-declarations.js';
+import { importScriptModule } from './util/script-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const swPath = path.join(repoRoot, 'public', 'sw.js');
+
+let loaded = null;
+const restoreFns = [];
+
+afterEach(() => {
+    loaded?.cleanup();
+    loaded = null;
+    while (restoreFns.length) restoreFns.pop()();
+    jest.restoreAllMocks();
+});
+
+function defineRestorable(target, key, value) {
+    const hadOwn = Object.prototype.hasOwnProperty.call(target, key);
+    const prevDesc = Object.getOwnPropertyDescriptor(target, key);
+    Object.defineProperty(target, key, { configurable: true, writable: true, value });
+    restoreFns.push(() => {
+        if (hadOwn && prevDesc) {
+            Object.defineProperty(target, key, prevDesc);
+        } else {
+            delete target[key];
+        }
+    });
+}
 
 function createFakeResponse(body, { ok = true, status = 200, type = 'basic' } = {}) {
     return {
@@ -196,7 +220,7 @@ describe('service worker cache refresh and iOS clear flow (#380)', () => {
         expect((await offlineResponse).body).toBe('fresh-script');
     });
 
-    test('registerSillyBunnyServiceWorker registers the matching sw.js version with updateViaCache none and triggers update()', async () => {
+    test('script.js startup registers the matching sw.js version with updateViaCache none and triggers update()', async () => {
         const swSource = readFileSync(swPath, 'utf8');
         const versionMatch = swSource.match(/const\s+SB_SW_CACHE_VERSION\s*=\s*'sillybunny-cache-v([^']+)'/);
         expect(versionMatch).not.toBeNull();
@@ -205,21 +229,13 @@ describe('service worker cache refresh and iOS clear flow (#380)', () => {
         const update = jest.fn(async () => {});
         const register = jest.fn(async () => ({ update }));
 
-        const context = vm.createContext({
-            navigator: { serviceWorker: { register } },
-            window: {
-                isSecureContext: true,
-                setTimeout: fn => fn(),
-                addEventListener: jest.fn(),
-            },
-            document: { readyState: 'complete' },
-            console: { warn: jest.fn() },
-        });
+        defineRestorable(window, 'isSecureContext', true);
+        defineRestorable(navigator, 'serviceWorker', { register });
+        defineRestorable(document, 'readyState', 'complete');
 
-        loadDeclarations(context, 'script.js', ['registerSillyBunnyServiceWorker']);
-        context.registerSillyBunnyServiceWorker();
-        await Promise.resolve();
-        await Promise.resolve();
+        loaded = await importScriptModule();
+        await loaded.runReady();
+        await new Promise(resolve => setTimeout(resolve, 25));
 
         expect(register).toHaveBeenCalledWith(
             `/sw.js?v=${expectedSwVersion}`,
@@ -261,46 +277,37 @@ describe('service worker cache refresh and iOS clear flow (#380)', () => {
         }
 
         const droppedStores = [];
-        const sessionStorageClear = jest.fn();
         const confirmSpy = jest.fn(async () => 1);
+        const sessionStorageClear = jest.spyOn(Storage.prototype, 'clear');
 
-        const globalObj = {
-            caches: cacheStorage.api,
-            navigator: {
-                serviceWorker: {
-                    controller,
-                    getRegistrations,
-                },
-            },
-            setTimeout,
-            clearTimeout,
-        };
+        defineRestorable(window, 'caches', cacheStorage.api);
+        defineRestorable(navigator, 'serviceWorker', { controller, getRegistrations });
+        defineRestorable(window, 'MessageChannel', FakeMessageChannel);
 
-        const context = vm.createContext({
-            globalThis: globalObj,
-            caches: cacheStorage.api,
-            navigator: globalObj.navigator,
-            MessageChannel: FakeMessageChannel,
-            Promise,
-            Popup: { show: { confirm: confirmSpy } },
-            POPUP_RESULT: { AFFIRMATIVE: 1 },
-            t: (strings, ...values) => strings.reduce((acc, part, idx) => acc + part + (values[idx] ?? ''), ''),
-            FRONTEND_CACHE_INSTANCE_NAMES: ['SillyTavern_Cache'],
-            localforage: {
-                dropInstance: jest.fn(async ({ name }) => {
-                    droppedStores.push(name);
+        loaded = await importScriptModule({
+            mocks: {
+                'lib.js': base => ({
+                    ...base,
+                    localforage: {
+                        ...base.localforage,
+                        dropInstance: jest.fn(async ({ name }) => {
+                            droppedStores.push(name);
+                        }),
+                    },
+                }),
+                'scripts/popup.js': base => ({
+                    ...base,
+                    Popup: Object.assign(base.Popup, {
+                        show: {
+                            ...base.Popup.show,
+                            confirm: confirmSpy,
+                        },
+                    }),
                 }),
             },
-            sessionStorage: { clear: sessionStorageClear },
-            toastr: { error: jest.fn(), success: jest.fn() },
-            console: { warn: jest.fn(), error: jest.fn(), log: jest.fn() },
-            flushPendingChatSaves: jest.fn(async () => true),
-            saveSettings: jest.fn(async () => {}),
-            confirmCacheClearAfterChatSaveFailure: jest.fn(async () => true),
         });
 
-        loadDeclarations(context, 'script.js', ['clearFrontendCache']);
-        const cleared = await context.clearFrontendCache({ skipConfirmation: false, saveBeforeClear: false });
+        const cleared = await loaded.script.clearFrontendCache({ skipConfirmation: false, saveBeforeClear: false });
 
         expect(cleared).toBe(true);
         expect(cacheStorage.stores.size).toBe(0);
@@ -313,7 +320,12 @@ describe('service worker cache refresh and iOS clear flow (#380)', () => {
             expect.stringMatching(/service worker/i),
             expect.any(Object),
         );
-        expect(droppedStores).toEqual(['SillyTavern_Cache']);
+        expect(droppedStores).toEqual([
+            'SillyTavern_ChatCompletions',
+            'SillyTavern_Prompts',
+            'SillyTavern_Thumbnails',
+            'SillyTavern_TextCompletions',
+        ]);
         expect(sessionStorageClear).toHaveBeenCalledTimes(1);
     });
 });

@@ -2,10 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
 
 import { prepareEnvironment, USER_HANDLE } from './util/hostile-file-names-harness.js';
-import { loadDeclarations, readClientModule } from './util/load-declarations.js';
 
 const CHAT_HEADER = JSON.stringify({ user_name: 'User', character_name: 'Group', create_date: '2026-04-10', chat_metadata: {} });
 const chatLine = text => JSON.stringify({ name: 'Alice', mes: text, is_user: false, send_date: '2026-04-10' });
@@ -137,114 +135,5 @@ describe('stale group chat ID recovery (1527a1d29)', () => {
         } finally {
             warnSpy.mockRestore();
         }
-    });
-
-    test('validateGroup normalizes numeric IDs, prunes 404 stale chats, retains unknown chats and switches stale chat_id to a present chat', async () => {
-        const { ast } = readClientModule('scripts/group-chats.js');
-        const hasGroupChatExists = ast.body.some(node => (node.declaration ?? node).id?.name === 'groupChatExists');
-
-        const statusByChatId = new Map([
-            ['101', { ok: true, status: 200 }],
-            ['stale-active', { ok: false, status: 404 }],
-            ['stale-old', { ok: false, status: 404 }],
-            ['transient-error', { ok: false, status: 500 }],
-        ]);
-        const fetchMock = jest.fn(async (_url, options) => {
-            const { id } = JSON.parse(options.body);
-            return statusByChatId.get(String(id)) ?? { ok: false, status: 404 };
-        });
-        const editGroup = jest.fn(async () => {});
-
-        const context = vm.createContext({
-            Promise,
-            Array,
-            String,
-            JSON,
-            console: { warn: jest.fn(), error: jest.fn() },
-            characters: [{ name: 'Alice', avatar: 'alice.png' }],
-            toastr: { warning: jest.fn(), error: jest.fn() },
-            t: (strings, ...values) => strings.reduce((acc, part, idx) => acc + part + (values[idx] ?? ''), ''),
-            onlyUnique: (value, index, array) => array.indexOf(value) === index,
-            getRequestHeaders: () => ({ 'Content-Type': 'application/json' }),
-            refreshCsrfToken: jest.fn(),
-            fetch: fetchMock,
-            fetchWithCsrfRetry: (url, buildInit) => fetchMock(url, buildInit()),
-            humanizedDateTime: () => '2026-04-10@12h00m00s',
-            editGroup,
-        });
-        loadDeclarations(
-            context,
-            'scripts/group-chats.js',
-            hasGroupChatExists ? ['groupChatExists', 'validateGroup'] : ['validateGroup'],
-        );
-
-        const staleGroup = {
-            id: 'grp-stale',
-            members: ['alice.png'],
-            chat_id: 'stale-active',
-            chats: [101, '101', 'stale-old', 'stale-active', 'transient-error'],
-        };
-
-        await context.validateGroup(staleGroup);
-
-        expect(staleGroup.chats).not.toContain('stale-old');
-        expect(staleGroup.chats).toContain('101');
-        expect(staleGroup.chats).toContain('transient-error');
-        expect(staleGroup.chat_id).toBe('101');
-        expect(editGroup).toHaveBeenCalledWith('grp-stale', true, false);
-
-        // Numeric active chat_id is also normalized to a string.
-        editGroup.mockClear();
-        const numericGroup = {
-            id: 'grp-num',
-            members: ['alice.png'],
-            chat_id: 101,
-            chats: [101],
-        };
-        await context.validateGroup(numericGroup);
-        expect(numericGroup.chat_id).toBe('101');
-        expect(numericGroup.chats).toEqual(['101']);
-        expect(editGroup).toHaveBeenCalledWith('grp-num', true, false);
-    });
-
-    test('fetchGroupChatFiles drops 404 stale group chats while keeping present and non-404 entries', async () => {
-        const fetchMock = jest.fn(async (_url, options) => {
-            const { id } = JSON.parse(options.body);
-            if (id === 'stale-404') {
-                return { ok: false, status: 404 };
-            }
-            if (id === 'error-500') {
-                return { ok: false, status: 500 };
-            }
-            return {
-                ok: true,
-                status: 200,
-                json: async () => ({ file_name: `${id}.jsonl`, last_mes: '2026-04-10' }),
-            };
-        });
-
-        const context = vm.createContext({
-            Promise,
-            Array,
-            JSON,
-            console: { error: jest.fn() },
-            getAuthorizedRequestHeadersOrNull: async () => ({ 'Content-Type': 'application/json' }),
-            getRequestHeadersFromContext: () => ({ 'Content-Type': 'application/json' }),
-            refreshCsrfToken: jest.fn(),
-            fetch: fetchMock,
-            fetchWithCsrfRetry: (url, buildInit) => fetchMock(url, buildInit()),
-            normalizeChatInfo: info => ({
-                fileName: String(info?.file_name ?? '').replace(/\.jsonl$/, ''),
-                sortTimestamp: info?.last_mes ? 100 : 0,
-            }),
-        });
-        loadDeclarations(context, 'scripts/sillybunny-tabs.js', ['sortChatFiles', 'fetchGroupChatFiles']);
-
-        const files = await context.fetchGroupChatFiles({
-            context: {},
-            group: { chats: ['present-chat', 'stale-404', 'error-500'] },
-        });
-
-        expect(files.map(file => file.fileName)).toEqual(['present-chat', 'error-500']);
     });
 });

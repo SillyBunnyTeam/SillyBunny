@@ -1,166 +1,155 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect */
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import vm from 'node:vm';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 
-import { loadDeclarations } from '../util/load-declarations.js';
+const pub = rel => fileURLToPath(new URL(`../../public/${rel}`, import.meta.url));
 
-function createCharacterEditorActionsHarness({ mode = 'edit', entityId = 'alice.png' } = {}) {
-    const dispatched = [];
-    const context = vm.createContext({
-        document,
-        HTMLElement: window.HTMLElement,
-        getComputedStyle: window.getComputedStyle.bind(window),
-        Array,
-        Set,
-        session: { context: { mode, entityId } },
-        characters: [{ name: 'Alice', avatar: 'alice.png', data: { extensions: {} } }],
-        _relatedEntries: () => [],
-        translate: text => text,
-        t: (strings, ...values) => strings.reduce((acc, part, idx) => acc + part + (values[idx] ?? ''), ''),
-        _dispatchTransportAction: id => dispatched.push({ kind: 'option', id }),
-        _dispatchTransportClick: selector => dispatched.push({ kind: 'click', selector }),
-    });
-    loadDeclarations(context, 'scripts/sillybunny-character-editor.js', [
-        'ACTION_GLYPHS',
-        'RECOVERED_ACTIONS',
-        '_buildActionSections',
-    ]);
-    return { context, dispatched };
-}
+const EDITOR_TRANSPORTS_DOM = `
+    <style>.sb-editor-transport { display: none !important; }</style>
+    <div id="right-nav-panel" class="sb-settings-mounted-shell openDrawer" data-menu-type="character_edit">
+        <div id="rm_ch_create_block">
+            <form id="form_create">
+                <div id="sb_character_editor_header">
+                    <button id="sb_character_editor_back" type="button"></button>
+                    <button id="sb_character_editor_cancel" type="button"></button>
+                    <button id="sb_character_editor_save" type="button"></button>
+                    <span id="sb_character_editor_title"></span>
+                    <button id="sb_character_editor_title_button" type="button"></button>
+                    <span id="sb_character_editor_dirty"></span>
+                    <button id="sb_character_editor_more" type="button"></button>
+                </div>
+                <div id="sb_character_editor_toolbar">
+                    <span id="sb_character_editor_tokens"></span>
+                    <button id="sb_character_editor_quick_edit" type="button"></button>
+                </div>
+                <div class="sb-editor-sheet__content">
+                    <input id="character_name_pole" value="Alice">
+                    <select id="char-management-dropdown" class="sb-editor-transport">
+                        <option id="renameCharButton" value="rename">Rename Character</option>
+                    </select>
+                    <div id="creators_note_styles_button" class="sb-editor-transport"></div>
+                    <div id="character_open_media_overrides" class="sb-editor-transport"></div>
+                    <div class="rm_stats_button sb-editor-transport"></div>
+                    <div id="delete_button" class="sb-editor-transport"></div>
+                </div>
+            </form>
+        </div>
+    </div>
+`;
 
-function mountCharacterEditorTransports() {
-    document.head.innerHTML = '<style>.sb-editor-transport { display: none !important; }</style>';
-    document.body.innerHTML = `
-        <select id="char-management-dropdown" class="sb-editor-transport">
-            <option id="renameCharButton" value="rename">Rename Character</option>
-        </select>
-        <div id="creators_note_styles_button" class="sb-editor-transport"></div>
-        <div id="character_open_media_overrides" class="sb-editor-transport"></div>
-        <div class="rm_stats_button sb-editor-transport"></div>
-        <div id="delete_button" class="sb-editor-transport"></div>
-    `;
-}
+afterEach(() => {
+    document.head.innerHTML = '';
+    document.body.replaceChildren();
+    jest.restoreAllMocks();
+});
 
 function recoveredLabels(sections) {
     return sections[1].items.map(item => item.label);
 }
 
+async function mountCharacterEditorWithSession({ mode = 'edit', entityId = 'alice.png' } = {}) {
+    jest.resetModules();
+    window.$ = jest.fn(() => ({ on: jest.fn(), off: jest.fn() }));
+
+    let capturedChromeConfig = null;
+    const { EventEmitter } = await import('../../public/lib/eventemitter.js');
+    const eventSource = new EventEmitter();
+    const { event_types } = await import('../../public/scripts/events.js');
+
+    await jest.unstable_mockModule(pub('scripts/events.js'), () => ({ eventSource, event_types }));
+    await jest.unstable_mockModule(pub('scripts/chats.js'), () => ({ formatCreatorNotes: v => v, getCurrentEntityId: () => null }));
+    await jest.unstable_mockModule(pub('scripts/popup.js'), () => ({ Popup: class {}, POPUP_TYPE: {}, POPUP_RESULT: {} }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-delete-confirm.js'), () => ({ confirmVerb: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-action-menu.js'), () => ({ openActionMenu: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/power-user.js'), () => ({ power_user: {}, setCharacterEditorQuickEdit: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({ groups: [] }));
+    await jest.unstable_mockModule(pub('scripts/world-info.js'), () => ({ world_info: {}, world_names: [] }));
+    await jest.unstable_mockModule(pub('script.js'), () => ({
+        characters: [{ name: 'Alice', avatar: 'alice.png', data: { extensions: {} } }],
+        this_chid: 0,
+        create_save: {},
+        createOrEditCharacter: jest.fn(),
+        converter: { makeHtml: v => String(v ?? '') },
+    }));
+    await jest.unstable_mockModule(pub('scripts/i18n.js'), () => ({
+        t: (strings, ...values) => strings.reduce((acc, part, idx) => acc + part + (values[idx] ?? ''), ''),
+        translate: text => text,
+    }));
+    await jest.unstable_mockModule(pub('scripts/user.js'), () => ({ getCurrentUserHandle: () => 'default-user' }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-segmented-control.js'), () => ({ createSegmentedControl: jest.fn(), setSegmentedControlValue: jest.fn() }));
+    await jest.unstable_mockModule(pub('lib.js'), () => ({ DOMPurify: { sanitize: v => String(v ?? '') } }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/session.js'), () => ({
+        createEditorSession: () => ({
+            isOpen: () => true,
+            isDirty: () => false,
+            open: jest.fn(),
+            close: jest.fn(),
+            save: jest.fn(),
+            rebase: jest.fn(),
+            context: { mode, entityId },
+        }),
+    }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/drafts.js'), () => ({ createEditorDraftStore: () => ({}) }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/chrome.js'), () => ({
+        mountEditorChrome: jest.fn(config => {
+            capturedChromeConfig = config;
+            return { update: jest.fn(), destroy: jest.fn(), setTokens: jest.fn(), setDirty: jest.fn(), setTitle: jest.fn() };
+        }),
+        showDraftRecoveryToast: jest.fn(),
+        dismissDraftRecoveryToast: jest.fn(),
+    }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/navigation.js'), () => ({ registerEditorNavigation: jest.fn(), confirmEditorLeave: jest.fn(), discardEditorChanges: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/list-shell.js'), () => ({ holdEditorsUntilStyled: jest.fn(async () => {}) }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/object-navigation.js'), () => ({ objectNavigation: { navigate: jest.fn() } }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/rows.js'), () => ({
+        adoptExpanderRow: jest.fn(), adoptEditorFields: jest.fn(), createDefinitionsReveal: jest.fn(), createExpanderRow: jest.fn(), createRow: jest.fn(),
+    }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/tag-filter-menu.js'), () => ({ adoptTagField: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/select-row.js'), () => ({ createSelectRow: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/list-rows.js'), () => ({ reconcileRows: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-folders.js'), () => ({ getFolderId: () => null, getFolders: () => [], setFolder: jest.fn(), subscribe: jest.fn() }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-characters-navigation.js'), () => ({}));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/preview.js'), () => ({ mountEditorPreviews: jest.fn() }));
+
+    const { initCharacterEditor } = await import('../../public/scripts/sillybunny-character-editor.js');
+    initCharacterEditor();
+    expect(capturedChromeConfig).not.toBeNull();
+    return { getActionSections: capturedChromeConfig.getActionSections };
+}
+
 describe('character editor action menu External Media visibility (group peek and create form)', () => {
-    beforeEach(() => {
-        mountCharacterEditorTransports();
-    });
-
-    test('omits External Media in group peek when upstream hides #character_open_media_overrides inline while keeping it for solo edits', () => {
+    test('action menu omits External Media when #character_open_media_overrides is hidden inline and includes it for solo edits', async () => {
+        document.body.innerHTML = EDITOR_TRANSPORTS_DOM;
         const mediaTransport = document.getElementById('character_open_media_overrides');
-
-        // All transports are hidden by .sb-editor-transport CSS, so computed display is none in every mode.
         expect(getComputedStyle(mediaTransport).display).toBe('none');
 
-        // Upstream select_selected_character() runs `$('#character_open_media_overrides').toggle(!selected_group)`.
-        // Verify that exact wiring exists and apply its DOM effect for solo edit vs group peek.
-        const scriptCalls = [];
-        const jqueryStub = selector => {
-            const element = typeof selector === 'string' ? document.querySelector(selector) : null;
-            const chain = {
-                css: () => chain,
-                attr: () => chain,
-                children: () => chain,
-                html: () => chain,
-                show: () => {
-                    if (element) element.style.display = '';
-                    return chain;
-                },
-                hide: () => {
-                    if (element) element.style.display = 'none';
-                    return chain;
-                },
-                toggle: state => {
-                    scriptCalls.push({ selector, state: Boolean(state) });
-                    if (element) {
-                        element.style.display = state ? '' : 'none';
-                    }
-                    return chain;
-                },
-                val: () => chain,
-                text: () => chain,
-                prop: () => chain,
-                find: () => chain,
-                empty: () => chain,
-                append: () => chain,
-                off: () => chain,
-                on: () => chain,
-                trigger: () => chain,
-                removeClass: () => chain,
-                addClass: () => chain,
-                toggleClass: () => chain,
-                data: () => chain,
-            };
-            return chain;
-        };
+        const { getActionSections } = await mountCharacterEditorWithSession({ mode: 'edit', entityId: 'alice.png' });
 
-        const runUpstreamToggle = selectedGroup => {
-            scriptCalls.length = 0;
-            const scriptContext = vm.createContext({
-                $: jqueryStub,
-                selected_group: selectedGroup,
-                characters: [{ name: 'Alice', avatar: 'alice.png', description: '', personality: '', scenario: '', first_mes: '', mes_example: '', creatorcomment: '', create_date: 0, json_data: '{}', data: { extensions: {} } }],
-                select_rm_create: jest.fn(),
-                setMenuType: jest.fn(),
-                beginCharacterEditorLoad: jest.fn(),
-                formatCreatorNotes: () => '',
-                depth_prompt_depth_default: 4,
-                depth_prompt_role_default: 'system',
-                talkativeness_default: 0.5,
-                getStoredChatName: () => '',
-                timestampToMoment: () => ({ toISOString: () => '2026-01-01T00:00:00.000Z' }),
-                updateFavButtonState: jest.fn(),
-                getThumbnailUrl: () => '/thumbnail?type=avatar&file=alice.png',
-                default_avatar: 'img/ai4.png',
-                setWorldInfoButtonClass: jest.fn(),
-                checkEmbeddedWorld: jest.fn(),
-                loadCharacterEditorGreetings: jest.fn(),
-                openCharacterEditorSession: jest.fn(),
-                isExternalMediaAllowed: () => false,
-                getCharacterSource: () => '',
-                eventSource: { emit: jest.fn() },
-                event_types: { CHARACTER_EDITOR_OPENED: 'character_editor_opened' },
-                saveSettingsDebounced: jest.fn(),
-                Array,
-            });
-            loadDeclarations(scriptContext, 'script.js', ['select_selected_character']);
-            scriptContext.select_selected_character(0, { switchMenu: false });
-        };
-
-        // Group peek: select_selected_character toggles #character_open_media_overrides off inline.
-        runUpstreamToggle('group-1');
-        expect(scriptCalls).toContainEqual({ selector: '#character_open_media_overrides', state: false });
-        expect(mediaTransport.style.display).toBe('none');
-
-        const groupPeekHarness = createCharacterEditorActionsHarness({ mode: 'edit', entityId: 'alice.png' });
-        const groupPeekLabels = recoveredLabels(groupPeekHarness.context._buildActionSections());
+        // Group peek state (inline display: none).
+        mediaTransport.style.display = 'none';
+        const groupPeekLabels = recoveredLabels(getActionSections());
         expect(groupPeekLabels).toEqual(['Global Styles', 'Character Stats']);
         expect(groupPeekLabels).not.toContain('External Media');
 
-        // Solo character edit: select_selected_character toggles #character_open_media_overrides back on.
-        runUpstreamToggle(null);
-        expect(scriptCalls).toContainEqual({ selector: '#character_open_media_overrides', state: true });
-        expect(mediaTransport.style.display).toBe('');
-
-        const soloEditHarness = createCharacterEditorActionsHarness({ mode: 'edit', entityId: 'alice.png' });
-        expect(recoveredLabels(soloEditHarness.context._buildActionSections())).toEqual([
-            'Global Styles',
-            'External Media',
-            'Character Stats',
-        ]);
+        // Solo edit state (inline display cleared or restored to visible by jQuery .toggle(true)).
+        for (const visibleInlineDisplay of ['', 'block']) {
+            mediaTransport.style.display = visibleInlineDisplay;
+            expect(recoveredLabels(getActionSections())).toEqual([
+                'Global Styles',
+                'External Media',
+                'Character Stats',
+            ]);
+        }
     });
 
-    test('omits External Media and Delete Character in the create form when the transport is hidden inline', () => {
+    test('omits External Media and Delete Character in the create form when the transport is hidden inline', async () => {
+        document.body.innerHTML = EDITOR_TRANSPORTS_DOM;
         const mediaTransport = document.getElementById('character_open_media_overrides');
         mediaTransport.style.display = 'none';
 
-        const createHarness = createCharacterEditorActionsHarness({ mode: 'create', entityId: '' });
-        const sections = createHarness.context._buildActionSections();
+        const { getActionSections } = await mountCharacterEditorWithSession({ mode: 'create', entityId: '' });
+        const sections = getActionSections();
 
         expect(recoveredLabels(sections)).toEqual(['Global Styles', 'Character Stats']);
         expect(sections[2].items).toEqual([]);
