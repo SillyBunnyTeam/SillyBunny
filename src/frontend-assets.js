@@ -40,9 +40,13 @@ const BUNDLED_THIRD_PARTY_EXTENSIONS = new Set([
     'ChatCompletionTabs',
 ]);
 
+// The built frontend contains lib-<hash>.js, a Webpack bundle of the installed packages, so a changed lockfile
+// can change dist/frontend without any other input changing.
 const ROOT_BUILD_INPUT_FILES = Object.freeze([
     'webpack.config.js',
     'package.json',
+    'package-lock.json',
+    'bun.lock',
     'scripts/build-frontend-assets.js',
 ]);
 
@@ -75,6 +79,7 @@ const TEXT_HASH_EXTENSIONS = new Set([
     '.json',
     '.less',
     '.license',
+    '.lock',
     '.map',
     '.md',
     '.mjs',
@@ -230,7 +235,7 @@ function readNormalizedBytesForHash(filePath) {
 
 /**
  * Computes a fast deterministic SHA-256 fingerprint over all buildable public/ inputs (plus webpack.config.js,
- * package.json, and scripts/build-frontend-assets.js).
+ * package.json, package-lock.json, bun.lock, and scripts/build-frontend-assets.js).
  * Normalizes line endings on text files so CI Linux builds match Windows/macOS checkouts identically.
  * @param {object} [options]
  * @param {string} [options.repoRoot=serverDirectory]

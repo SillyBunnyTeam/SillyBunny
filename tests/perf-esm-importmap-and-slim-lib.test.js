@@ -888,6 +888,39 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(readRewrittenFrontendHtml(presentPath, { enabled: false })).toContain('href="css/solid.min.css"');
     });
 
+    test('(l) a lockfile change makes the built frontend stale, because lib.js bundles the installed packages', () => {
+        const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-lock-fixture-'));
+        try {
+            const fixturePublic = path.join(fixtureRoot, 'public');
+            fs.mkdirSync(fixturePublic, { recursive: true });
+            fs.writeFileSync(path.join(fixturePublic, 'index.html'), '<!doctype html>\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'package.json'), '{"version":"1.0.0"}\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"node_modules/moment":{"version":"2.30.1"}}}\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'bun.lock'), '{\n  "packages": {\n    "moment": ["moment@2.30.1"]\n  }\n}\n', 'utf8');
+            const roots = { repoRoot: fixtureRoot, publicRoot: fixturePublic };
+
+            const baselineHash = computeFrontendInputsHash(roots);
+            const baselineStamp = computeFrontendStatStamp(roots);
+
+            // The stat stamp sees size and modification time, so the new content differs in length.
+            fs.writeFileSync(path.join(fixtureRoot, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"node_modules/moment":{"version":"2.31.0-beta.1"}}}\n', 'utf8');
+            const afterNpmLock = computeFrontendInputsHash(roots);
+            expect(afterNpmLock).not.toBe(baselineHash);
+            expect(computeFrontendStatStamp(roots)).not.toBe(baselineStamp);
+
+            fs.writeFileSync(path.join(fixtureRoot, 'bun.lock'), '{\n  "packages": {\n    "moment": ["moment@2.30.2"]\n  }\n}\n', 'utf8');
+            const afterBunLock = computeFrontendInputsHash(roots);
+            expect(afterBunLock).not.toBe(afterNpmLock);
+
+            // A Windows checkout with CRLF line endings must still match a build made from LF files.
+            fs.writeFileSync(path.join(fixtureRoot, 'bun.lock'), '{\r\n  "packages": {\r\n    "moment": ["moment@2.30.2"]\r\n  }\r\n}\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"node_modules/moment":{"version":"2.31.0-beta.1"}}}\r\n', 'utf8');
+            expect(computeFrontendInputsHash(roots)).toBe(afterBunLock);
+        } finally {
+            fs.rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+    });
+
     test('(i) no case reads or writes the repository\'s own dist/frontend', () => {
         expect(snapshotRepositoryDist()).toBe(repositoryDistBefore);
     });
