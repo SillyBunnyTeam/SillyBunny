@@ -1,14 +1,16 @@
-import { describe, expect, test } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
     collectFrontendAssetSnapshot,
     countForkCssHazards,
     evaluateFrontendBudgets,
     FRONTEND_BUDGETS,
+    isDirectRun,
     stripCssComments,
 } from '../scripts/check-frontend-budgets.js';
 
@@ -80,5 +82,139 @@ describe('frontend static asset and CSS hazard budgets', () => {
         expect(snapshot.importedStylesheets.length).toBeLessThanOrEqual(FRONTEND_BUDGETS.importedStylesheetCount);
         expect(snapshot.forkCssHazards.willChange).toBeLessThanOrEqual(FRONTEND_BUDGETS.forkWillChangeCount);
         expect(snapshot.forkCssHazards.backdropFilter).toBeLessThanOrEqual(FRONTEND_BUDGETS.forkBackdropFilterCount);
+    });
+});
+
+function canCreateSymlinks() {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-symlink-probe-'));
+    try {
+        fs.writeFileSync(path.join(directory, 'target'), '');
+        fs.symlinkSync(path.join(directory, 'target'), path.join(directory, 'link'));
+        return true;
+    } catch {
+        return false;
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+}
+
+const describeWithSymlinks = canCreateSymlinks() ? describe : describe.skip;
+
+describe('running the check script directly', () => {
+    const scriptSource = path.join(repoRoot, 'scripts', 'check-frontend-budgets.js');
+    let tempDir;
+    let checkout;
+
+    beforeAll(() => {
+        // A copy of the script in a small checkout: the script reads the checkout it sits in, so every start below
+        // checks a tree whose result does not depend on the repository.
+        tempDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sb-budget-run-')));
+        checkout = path.join(tempDir, 'checkout');
+        fs.mkdirSync(path.join(checkout, 'scripts'), { recursive: true });
+        fs.mkdirSync(path.join(checkout, 'public', 'scripts', 'extensions', 'tts', 'lib'), { recursive: true });
+        fs.mkdirSync(path.join(checkout, 'public', 'scripts', 'extensions', 'gallery'), { recursive: true });
+        fs.mkdirSync(path.join(checkout, 'public', 'scripts', 'extensions', 'sillybunny-debugger', 'lib'), { recursive: true });
+        fs.copyFileSync(scriptSource, path.join(checkout, 'scripts', 'check-frontend-budgets.js'));
+        fs.writeFileSync(path.join(checkout, 'public', 'index.html'), '<link rel="stylesheet" href="style.css">\n');
+        fs.writeFileSync(path.join(checkout, 'public', 'style.css'), 'a { color: red; }\n');
+        for (const asset of ['tts/lib/kokoro.web.js', 'gallery/jquery.nanogallery2.min.js', 'sillybunny-debugger/lib/eruda.js']) {
+            fs.writeFileSync(path.join(checkout, 'public', 'scripts', 'extensions', asset), '');
+        }
+    });
+
+    afterAll(() => {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    function start(args, cwd = tempDir) {
+        return spawnSync(process.execPath, args, { cwd, encoding: 'utf8' });
+    }
+
+    function summarize(result) {
+        return {
+            status: result.status,
+            stderr: result.stderr,
+            printsBlockingLine: result.stdout.includes('Blocking stylesheets: 1, 0.0 KiB'),
+            printsHazardLine: result.stdout.includes('Fork CSS hazards: will-change=0, backdrop-filter=0'),
+        };
+    }
+
+    const BUDGET_LINES_PRINTED = { status: 0, stderr: '', printsBlockingLine: true, printsHazardLine: true };
+
+    test('prints the budget lines when started by its real path', () => {
+        expect(summarize(start([path.join(checkout, 'scripts', 'check-frontend-budgets.js')]))).toEqual(BUDGET_LINES_PRINTED);
+    });
+
+    test('prints the budget lines when started by a relative path', () => {
+        expect(summarize(start([path.join('.', 'scripts', 'check-frontend-budgets.js')], checkout))).toEqual(BUDGET_LINES_PRINTED);
+    });
+
+    test('prints the budget lines when started without the file extension', () => {
+        expect(summarize(start([path.join('scripts', 'check-frontend-budgets')], checkout))).toEqual(BUDGET_LINES_PRINTED);
+    });
+
+    describeWithSymlinks('through a symlink', () => {
+        beforeAll(() => {
+            fs.symlinkSync(path.join(checkout, 'scripts', 'check-frontend-budgets.js'), path.join(tempDir, 'linked-script.js'));
+            fs.symlinkSync(checkout, path.join(tempDir, 'linked-checkout'));
+        });
+
+        test('prints the budget lines when the symlink points to the file', () => {
+            expect(summarize(start(['linked-script.js']))).toEqual(BUDGET_LINES_PRINTED);
+        });
+
+        test('prints the budget lines when the symlink points to the checkout', () => {
+            expect(summarize(start([path.join('linked-checkout', 'scripts', 'check-frontend-budgets.js')]))).toEqual(BUDGET_LINES_PRINTED);
+        });
+    });
+
+    test('does not run the check when another module imports it', () => {
+        const result = start([
+            '--input-type=module',
+            '-e',
+            'await import(process.argv[1])',
+            pathToFileURL(path.join(checkout, 'scripts', 'check-frontend-budgets.js')).href,
+        ]);
+
+        expect(result.stderr).toBe('');
+        expect(result.stdout).toBe('');
+        expect(result.status).toBe(0);
+    });
+});
+
+describe('isDirectRun', () => {
+    const modulePath = '/repo/scripts/check-frontend-budgets.js';
+    const identity = filePath => filePath;
+
+    test('is false without an entry path', () => {
+        expect(isDirectRun(undefined, modulePath, { realpath: identity })).toBe(false);
+        expect(isDirectRun('', modulePath, { realpath: identity })).toBe(false);
+    });
+
+    test('compares the real paths of the entry and the module', () => {
+        const realpath = filePath => (filePath === '/link/check.js' ? modulePath : filePath);
+
+        expect(isDirectRun('/link/check.js', modulePath, { platform: 'linux', realpath })).toBe(true);
+        expect(isDirectRun('/other/script.js', modulePath, { platform: 'linux', realpath })).toBe(false);
+    });
+
+    test('tries the entry path with a .js extension, and treats a path that does not exist as another script', () => {
+        const realpath = (filePath) => {
+            if (filePath === '/repo/scripts/check-frontend-budgets') {
+                throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
+            }
+            return filePath;
+        };
+
+        expect(isDirectRun('/repo/scripts/check-frontend-budgets', modulePath, { platform: 'linux', realpath })).toBe(true);
+        expect(isDirectRun('/repo/scripts/missing', modulePath, { platform: 'linux', realpath })).toBe(false);
+    });
+
+    test('ignores letter case on Windows only', () => {
+        const entry = 'C:\\Repo\\Scripts\\Check-Frontend-Budgets.js';
+        const moduleOnDisk = 'c:\\repo\\scripts\\check-frontend-budgets.js';
+
+        expect(isDirectRun(entry, moduleOnDisk, { platform: 'win32', realpath: identity })).toBe(true);
+        expect(isDirectRun(entry, moduleOnDisk, { platform: 'linux', realpath: identity })).toBe(false);
     });
 });

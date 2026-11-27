@@ -2,7 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(__dirname, '..');
@@ -257,8 +257,40 @@ export function run(repoRoot = defaultRepoRoot, budgets = FRONTEND_BUDGETS) {
     return { snapshot, failures };
 }
 
-function isDirectRun() {
-    return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+/**
+ * True when this module is the script that the process was started with. The check compares real paths: `import.meta.url`
+ * is always the real path of the file, while `process.argv[1]` keeps a symlink in the path it was given. A guard that
+ * answers false for a direct start makes the check print nothing and exit 0, which reads as a pass.
+ * @param {string | undefined} entryPath The path the process was started with
+ * @param {string} modulePath The real path of this file
+ * @param {{ platform?: string, realpath?: (filePath: string) => string }} [options]
+ */
+export function isDirectRun(entryPath = process.argv[1], modulePath = fileURLToPath(import.meta.url), {
+    platform = process.platform,
+    realpath = fs.realpathSync,
+} = {}) {
+    if (!entryPath) {
+        return false;
+    }
+
+    // Windows file systems ignore case, and the path of a start can differ from the real one in case alone.
+    const canonical = filePath => {
+        const real = realpath(filePath);
+        return platform === 'win32' ? real.toLowerCase() : real;
+    };
+
+    // `node scripts/check-frontend-budgets` leaves the file extension off `process.argv[1]`.
+    for (const candidate of [entryPath, `${entryPath}.js`]) {
+        try {
+            if (canonical(candidate) === canonical(modulePath)) {
+                return true;
+            }
+        } catch {
+            // A candidate that does not exist cannot be this module.
+        }
+    }
+
+    return false;
 }
 
 if (isDirectRun()) {
