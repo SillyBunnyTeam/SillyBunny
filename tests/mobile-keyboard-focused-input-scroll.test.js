@@ -1,132 +1,199 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { importTabsModule } from './util/tabs-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const loginHtml = readFileSync(path.join(repoRoot, 'public', 'login.html'), 'utf8');
+const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
+
+let loaded = null;
+
+afterEach(() => {
+    jest.useRealTimers();
+    loaded?.cleanup();
+    loaded = null;
+    jest.restoreAllMocks();
+});
 
 describe('mobile keyboard focused-input scroll wiring', () => {
-    test('keeps virtual keyboards from resizing the layout viewport', () => {
+    test('keeps virtual keyboards from resizing the layout viewport and applies iOS inset CSS', () => {
         for (const html of [indexHtml, loginHtml]) {
             expect(html).toContain('interactive-widget=resizes-visual');
             expect(html).not.toContain('interactive-widget=resizes-content');
             expect(html).not.toContain('interactive-widget=overlays-content');
         }
-    });
-
-    test('adds iOS keyboard bottom inset without locking document scroll', () => {
-        expect(tabsSource).toContain('function syncIOSKeyboardBottomInset(');
-        expect(tabsSource).toContain('if (isIOSWebKitPlatform()) {');
-        expect(tabsSource).not.toContain('if (isMobileViewport() && isIOSWebKitPlatform()) {');
-        expect(tabsSource).toContain('--sb-ios-keyboard-bottom-inset');
-        expect(tabsSource).toMatch(/layoutViewport\.height - visualViewportSize\.top - visualViewportSize\.height/);
-        expect(tabsSource).toContain('root.classList.toggle(\'sb-ios-keyboard-inset-active\', bottomInset > 0);');
-        expect(tabsSource).not.toContain('sb-ios-keyboard-locked');
-        expect(tabsSource).not.toContain('window.scrollTo(0, 0)');
-        expect(tabsSource).not.toMatch(/window\.addEventListener\('scroll', syncIOSKeyboardBottomInset/);
-    });
-
-    test('applies the iOS keyboard inset to mobile drawer scroller padding', () => {
-        const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
-
         expect(mobileShellCss).toContain('var(--sb-ios-keyboard-bottom-inset, 0px)');
         expect(mobileShellCss).toContain('html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner,');
         expect(mobileShellCss).toContain('html.sb-ios-keyboard-inset-active .sb-shell-root.openDrawer .sb-shell-panel-scroller,');
         expect(mobileShellCss).not.toContain('body.sb-ios-keyboard-locked');
     });
 
-    test('defines the focused-input scroller and sync helpers', () => {
-        expect(tabsSource).toContain('function getMobileFocusedInputScroller(');
-        expect(tabsSource).toContain('function syncMobileFocusedInputScroll(');
-        expect(tabsSource).toContain('function scheduleMobileFocusedInputScroll(');
+    test('adds iOS keyboard bottom inset on iPad/legacy iOS without locking document scroll', async () => {
+        const scrollToSpy = jest.fn();
+        window.scrollTo = scrollToSpy;
+
+        // Wide iOS WebKit viewport (iPadOS desktop-mode Safari): inset still activates even though not mobile width.
+        loaded = await importTabsModule({
+            width: 1024,
+            height: 768,
+            mocks: {
+                'scripts/mobile-send-button.js': {
+                    isIOSWebKitPlatform: () => true,
+                    isLegacyIOSWebKitPlatform: () => false,
+                },
+            },
+        });
+
+        const input = document.createElement('input');
+        document.body.append(input);
+        input.focus();
+        loaded.setViewport({ width: 1024, height: 768, vvHeight: 420, vvTop: 28 });
+        input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+
+        expect(document.documentElement.style.getPropertyValue('--sb-ios-keyboard-bottom-inset')).toBe('320px');
+        expect(document.documentElement.classList.contains('sb-ios-keyboard-inset-active')).toBe(true);
+        expect(document.body.classList.contains('sb-ios-keyboard-locked')).toBe(false);
+        expect(scrollToSpy).not.toHaveBeenCalled();
+
+        // Closing the keyboard clears the inset and class.
+        loaded.setViewport({ width: 1024, height: 768, vvHeight: 768, vvTop: 0 });
+        input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        expect(document.documentElement.style.getPropertyValue('--sb-ios-keyboard-bottom-inset')).toBe('0px');
+        expect(document.documentElement.classList.contains('sb-ios-keyboard-inset-active')).toBe(false);
     });
 
-    test('only runs inside the mobile viewport', () => {
-        expect(tabsSource).toMatch(/function syncMobileFocusedInputScroll\([\s\S]*?if \(!isMobileViewport\(\)\)/);
+    test('scrolls the shell panel scroller ahead of compatibility wrappers on mobile so a focused input clears the keyboard', async () => {
+        jest.useFakeTimers();
+        loaded = await importTabsModule({ mobile: true, width: 390, height: 844 });
+
+        const shellScroller = document.createElement('div');
+        shellScroller.className = 'sb-shell-panel-scroller';
+        const innerScroller = document.createElement('div');
+        innerScroller.className = 'scrollableInner';
+        const input = document.createElement('input');
+        input.type = 'text';
+        innerScroller.append(input);
+        shellScroller.append(innerScroller);
+        document.body.append(shellScroller);
+
+        let rectBottom = 600;
+        input.getBoundingClientRect = () => ({ top: rectBottom - 40, bottom: rectBottom, left: 0, right: 200, width: 200, height: 40 });
+
+        // Open keyboard: visible bottom = 20 + 460 = 480; overflow = 600 - 480 + 16 = 136.
+        loaded.setViewport({ width: 390, height: 844, vvHeight: 460, vvTop: 20 });
+        input.focus();
+
+        expect(shellScroller.scrollTop).toBe(136);
+        expect(innerScroller.scrollTop).toBe(0);
+
+        // Safari shrinks the visual viewport further after initial focus; resync runs on visualViewport resize + 360ms timer.
+        rectBottom = 520;
+        loaded.setViewport({ width: 390, height: 844, vvHeight: 420, vvTop: 20 });
+        loaded.visualViewport.dispatchEvent(new Event('resize'));
+        expect(shellScroller.scrollTop).toBe(136 + (520 - 440 + 16));
+
+        // Simulate late animation settling: 360ms timer re-checks.
+        rectBottom = 460;
+        jest.advanceTimersByTime(360);
+        expect(shellScroller.scrollTop).toBe(136 + 96 + (460 - 440 + 16));
     });
 
-    test('prefers the shell panel scroller over compatibility wrappers', () => {
-        const helperSource = tabsSource.slice(
-            tabsSource.indexOf('function getMobileFocusedInputScroller('),
-            tabsSource.indexOf('function syncMobileFocusedInputScroll('),
-        );
+    test('does not scroll focused inputs when on a desktop viewport or when no keyboard is open', async () => {
+        loaded = await importTabsModule({ mobile: false, width: 1440, height: 900 });
 
-        expect(helperSource).toContain('target.closest(\'.sb-shell-panel-scroller\')');
-        expect(helperSource).toContain('target.closest(\'.scrollableInner, .scrollableInnerFull\')');
-    });
+        const scroller = document.createElement('div');
+        scroller.className = 'scrollableInner';
+        const input = document.createElement('input');
+        scroller.append(input);
+        document.body.append(scroller);
+        input.getBoundingClientRect = () => ({ top: 700, bottom: 740, left: 0, right: 200, width: 200, height: 40 });
 
-    test('scrolls against the visual-viewport bottom so the input clears the keyboard', () => {
-        // The visible area ends at (visualViewport.offsetTop + height); the helper
-        // must push the scroller so the focused input's rect.bottom clears it.
-        expect(tabsSource).toContain('function getVisualViewportSize(');
-        expect(tabsSource).toContain('function isVisualViewportKeyboardOpen(');
-        expect(tabsSource).toMatch(/const viewportSize = getVisualViewportSize\(layoutViewport\);/);
-        expect(tabsSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
-        expect(tabsSource).toMatch(/viewportSize\.top \+ viewportSize\.height/);
-        expect(tabsSource).toMatch(/scroller\.scrollTop \+= overflow/);
-    });
+        loaded.setViewport({ width: 1440, height: 900, vvHeight: 500, vvTop: 0 });
+        input.focus();
+        input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        expect(scroller.scrollTop).toBe(0);
 
-    test('resyncs the focused input after Safari changes the visual viewport', () => {
-        expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobileFocusedInputScroll)');
-        expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobileFocusedInputScroll)');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobileFocusedInputScroll, { passive: true })');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', scheduleMobileFocusedInputScroll, { passive: true })');
-        expect(tabsSource).toContain('sbMobileFocusedInputScrollTimer = window.setTimeout(() => {');
-        expect(tabsSource).toContain('syncMobileFocusedInputScroll(target);');
-        expect(tabsSource).toContain('}, 360);');
+        // Mobile viewport without a keyboard open does not scroll either.
+        loaded.setViewport({ width: 390, height: 844, vvHeight: 844, vvTop: 0 });
+        input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        expect(scroller.scrollTop).toBe(0);
     });
 });
 
 describe('mobile popup keyboard shift wiring', () => {
-    test('defines the popup keyboard shift helper', () => {
-        expect(tabsSource).toContain('function syncMobilePopupKeyboardShift(');
-        expect(tabsSource).toContain('function scheduleMobilePopupKeyboardSync(');
-    });
+    test('anchors open legacy popup dialogs to the visual viewport safe area and restores styles on blur/close', async () => {
+        jest.useFakeTimers();
+        loaded = await importTabsModule({ mobile: true, width: 390, height: 844 });
 
-    test('only targets editable focus inside open popup dialogs on mobile', () => {
-        expect(tabsSource).toContain('function getMobilePopupDialogForKeyboard(');
-        // Framed popups (.sb-dialog) handle the keyboard in sillybunny-editor/dialog.js (bindKeyboardInset).
-        expect(tabsSource).toMatch(/\.closest\('dialog\.popup:not\(\.sb-dialog\)'\)/);
-        expect(tabsSource).toMatch(/isMobileViewport\(\) && isEditableElement\(activeElement\)/);
-        expect(tabsSource).toMatch(/dialog instanceof HTMLElement && dialog\.open/);
-    });
+        const dialog = document.createElement('dialog');
+        dialog.className = 'popup';
+        dialog.open = true;
+        dialog.style.opacity = '0.95';
+        const body = document.createElement('div');
+        body.className = 'popup-body';
+        const input = document.createElement('input');
+        input.type = 'text';
+        body.append(input);
+        dialog.append(body);
+        document.body.append(dialog);
 
-    test('caps and anchors to the visual viewport safe area so the input clears the keyboard', () => {
-        const helperSource = tabsSource.slice(
-            tabsSource.indexOf('function syncMobilePopupKeyboardShift('),
-            tabsSource.indexOf('function scheduleMobilePopupKeyboardSync('),
+        input.getBoundingClientRect = () => ({ top: 520, bottom: 560, left: 10, right: 200, width: 190, height: 40 });
+        const setPropertySpy = jest.spyOn(dialog.style, 'setProperty');
+        const removeBodyPropSpy = jest.spyOn(body.style, 'removeProperty');
+
+        // Open keyboard: vvHeight = 450, vvTop = 10 -> viewportBottom = 460.
+        loaded.setViewport({ width: 390, height: 844, vvHeight: 450, vvTop: 10 });
+        input.focus();
+
+        expect(dialog.dataset.sbKeyboardAdjusted).toBe('true');
+        expect(setPropertySpy).toHaveBeenCalledWith('min-height', '0', 'important');
+        expect(setPropertySpy).toHaveBeenCalledWith('bottom', 'auto', 'important');
+        expect(setPropertySpy).toHaveBeenCalledWith('top', 'calc(10px + max(16px, env(safe-area-inset-top, 0px)))', 'important');
+        expect(setPropertySpy).toHaveBeenCalledWith(
+            'max-height',
+            'calc(450px - max(16px, env(safe-area-inset-top, 0px)) - max(16px, env(safe-area-inset-bottom, 0px)))',
+            'important',
         );
+        // overflow = 560 + 16 - 460 = 116
+        expect(body.scrollTop).toBe(116);
 
-        expect(helperSource).toContain('const viewportBottom = viewportSize.top + viewportSize.height;');
-        expect(helperSource).toContain('env(safe-area-inset-top, 0px)');
-        expect(helperSource).toContain('env(safe-area-inset-bottom, 0px)');
-        expect(helperSource).toMatch(/if \(!isVisualViewportKeyboardOpen\(layoutViewport, viewportSize\)\) \{/);
-        expect(helperSource).toContain('dialog.style.setProperty(\'min-height\', \'0\', \'important\');');
-        expect(helperSource).toContain('dialog.style.setProperty(\'max-height\', availableHeight, \'important\');');
-        expect(helperSource).toContain('dialog.style.setProperty(\'top\', `calc(${viewportSize.top}px + ${topClearance})`, \'important\');');
-        expect(helperSource).toContain('dialog.style.setProperty(\'bottom\', \'auto\', \'important\');');
-        expect(helperSource).not.toContain('dialog.getBoundingClientRect()');
-        expect(helperSource).toContain('activeElement.closest(\'.popup-body, .popup-content\')');
-        expect(helperSource).toContain('scroller.style.maxHeight = availableHeight;');
-        expect(helperSource).toContain('scroller.scrollTop += scrollOverflow;');
+        // When keyboard closes and visualViewport resizes back, styles and dataset restore cleanly.
+        loaded.setViewport({ width: 390, height: 844, vvHeight: 844, vvTop: 0 });
+        loaded.visualViewport.dispatchEvent(new Event('resize'));
+        expect(dialog.dataset.sbKeyboardAdjusted).toBeUndefined();
+        expect(dialog.dataset.sbKeyboardStyle).toBeUndefined();
+        expect(dialog.style.opacity).toBe('0.95');
+        expect(removeBodyPropSpy).toHaveBeenCalledWith('max-height');
     });
 
-    test('clears the shift when focus leaves or the keyboard closes', () => {
-        expect(tabsSource).toContain('function clearMobilePopupKeyboardShift(');
-        expect(tabsSource).toContain('function clearAllMobilePopupKeyboardShifts(');
-        expect(tabsSource).toContain('dialog.dataset.sbKeyboardStyle = dialog.style.cssText;');
-        expect(tabsSource).toContain('dialog.style.cssText = dialog.dataset.sbKeyboardStyle;');
-        expect(tabsSource).toContain('scroller.style.removeProperty(\'max-height\');');
-        expect(tabsSource).toContain('delete dialog.dataset.sbKeyboardStyle;');
-    });
+    test('ignores framed .sb-dialog popups and closed dialogs', async () => {
+        loaded = await importTabsModule({ mobile: true, width: 390, height: 844 });
 
-    test('wires the sync on focus changes and visualViewport changes inside initAll', () => {
-        expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobilePopupKeyboardSync)');
-        expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobilePopupKeyboardSync)');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobilePopupKeyboardSync, { passive: true })');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', scheduleMobilePopupKeyboardSync, { passive: true })');
+        const framed = document.createElement('dialog');
+        framed.className = 'popup sb-dialog';
+        framed.open = true;
+        const framedInput = document.createElement('input');
+        framed.append(framedInput);
+
+        const closed = document.createElement('dialog');
+        closed.className = 'popup';
+        closed.open = false;
+        const closedInput = document.createElement('input');
+        closed.append(closedInput);
+
+        document.body.append(framed, closed);
+        loaded.setViewport({ width: 390, height: 844, vvHeight: 450, vvTop: 0 });
+
+        framedInput.focus();
+        framedInput.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        expect(framed.dataset.sbKeyboardAdjusted).toBeUndefined();
+
+        closedInput.focus();
+        closedInput.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+        expect(closed.dataset.sbKeyboardAdjusted).toBeUndefined();
     });
 });

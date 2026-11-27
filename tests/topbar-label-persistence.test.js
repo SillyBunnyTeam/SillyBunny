@@ -1,96 +1,90 @@
-import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { importTabsModule } from './util/tabs-harness.js';
 
-const source = readFileSync(new URL('../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+let loaded = null;
 
-function createStorage(entries = []) {
-    const values = new Map(entries);
-    return {
-        getItem: key => values.get(key) ?? null,
-        setItem: jest.fn((key, value) => values.set(key, String(value))),
-        removeItem: key => values.delete(key),
-    };
+afterEach(() => {
+    loaded?.cleanup();
+    loaded = null;
+    jest.restoreAllMocks();
+});
+
+async function openLabelControls({ storage = {}, mobile = false } = {}) {
+    loaded?.cleanup();
+    loaded = await importTabsModule({ storage, mobile });
+    loaded.shell.openTab('right', 'appearance');
+    await loaded.flush();
+    loaded.shell.openTab('right', 'interface');
+    await loaded.flush();
+    return loaded;
 }
 
-function openShell(storage) {
-    let phone = false;
-    const timers = new Map();
-    const events = new Map();
-    let nextTimer = 0;
-    const context = vm.createContext({
-        localStorage: storage,
-        window: {
-            setTimeout: callback => { timers.set(++nextTimer, callback); return nextTimer; },
-            clearTimeout: id => timers.delete(id),
-            addEventListener: (name, listener) => events.set(name, listener),
-        },
-        document: { addEventListener: (name, listener) => events.set(name, listener) },
-        normalizeText: value => String(value ?? '').trim(),
-        isMobileViewport: () => phone,
-        updateThemePickerUi: jest.fn(),
-        updateTopBarBrand: jest.fn(),
-        scheduleTopbarContextRefresh: jest.fn(),
-    });
-    const functions = [
-        'isSillyBunnyStorageKey', 'scheduleSbStorageFlush', 'flushSbStorageWrites', 'bindSbStorageFlushEvents',
-        'safeGetItem', 'safeSetItem',
-        'normalizeTopbarLabelPart', 'normalizeTopbarLabelParts', 'normalizeTopbarCustomText',
-        'readTopbarLabelParts', 'seedTopbarLabelParts', 'getConfiguredTopbarLabelParts', 'setTopbarLabelPart', 'setTopbarCustomText',
-    ].map(name => source.match(new RegExp(`^function ${name}\\([\\s\\S]*?^}`, 'm'))[0]);
-    vm.runInContext([
-        source.match(/const SB_STORAGE_KEYS = Object.freeze\(\{[\s\S]*?\n\}\);/)[0],
-        source.match(/const SB_TOPBAR_LABEL_PARTS = Object.freeze\(\[[\s\S]*?\n\]\);/)[0],
-        ...['SB_TOPBAR_LABEL_PART_ORDER', 'SB_TOPBAR_LABEL_PART_IDS', 'SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH', 'SB_STORAGE_PREFIX', 'SB_STORAGE_WRITE_DEBOUNCE_MS']
-            .map(name => source.match(new RegExp(`^const ${name} = .+;`, 'm'))[0]),
-        'let sbStorageFlushTimer = 0;',
-        'let sbStorageFlushEventsBound = false;',
-        'const sbStorageCache = new Map();',
-        'const sbStoragePendingWrites = new Map();',
-        ...functions,
-        `const sbState = { topbarLabel: ${source.match(/ {4}topbarLabel: (\{[\s\S]*?\n {4}\}),/)[1]} };`,
-        'bindSbStorageFlushEvents();',
-    ].join('\n'), context);
-    return {
-        label() { return JSON.parse(vm.runInContext('JSON.stringify(sbState.topbarLabel)', context)); },
-        hide() { events.get('pagehide')(); },
-        setCustomText(value) { vm.runInContext(`setTopbarCustomText(${JSON.stringify(value)})`, context); },
-        setLabelPart(value, enabled) { vm.runInContext(`setTopbarLabelPart(${JSON.stringify(value)}, ${Boolean(enabled)})`, context); },
-        configured(isPhone) {
-            phone = isPhone;
-            return JSON.parse(vm.runInContext('JSON.stringify(getConfiguredTopbarLabelParts())', context));
-        },
-        seed() { vm.runInContext('seedTopbarLabelParts()', context); },
-    };
+function readCheckedParts() {
+    return [...document.querySelectorAll('[data-sb-topbar-label-part]')]
+        .filter(el => el instanceof HTMLInputElement && el.checked)
+        .map(el => el.getAttribute('data-sb-topbar-label-part'));
+}
+
+function toggleLabelPart(partId, checked) {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById(`sb-topbar-label-desktop-${partId}`));
+    expect(input).toBeInstanceOf(HTMLInputElement);
+    input.checked = checked;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function setCustomTextInput(value) {
+    const input = /** @type {HTMLInputElement} */ (document.getElementById('sb-topbar-custom-text-input'));
+    expect(input).toBeInstanceOf(HTMLInputElement);
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 describe('top bar label preference persistence', () => {
-    test('retains the label parts and the custom text across reloads', () => {
-        const storage = createStorage();
-        const shell = openShell(storage);
-        shell.setLabelPart('ctx', true);
-        shell.setLabelPart('custom', true);
-        shell.setCustomText('My label');
-        expect(openShell(storage).label()).toMatchObject({
-            desktopParts: ['ctx', 'char', 'custom'],
-            customText: 'My label',
-        });
+    test('retains the label parts and the custom text across reloads', async () => {
+        await openLabelControls({ storage: {} });
+        toggleLabelPart('ctx', true);
+        toggleLabelPart('custom', true);
+        setCustomTextInput('My label');
+
+        // Re-open the shell keeping the same localStorage.
+        loaded.cleanup();
+        loaded = await importTabsModule({ storage: null });
+        loaded.shell.openTab('right', 'appearance');
+        await loaded.flush();
+        loaded.shell.openTab('right', 'interface');
+        await loaded.flush();
+
+        expect(readCheckedParts()).toEqual(['ctx', 'char', 'custom']);
+        expect(/** @type {HTMLInputElement} */ (document.getElementById('sb-topbar-custom-text-input')).value).toBe('My label');
     });
 
-    test('reads the one stored list at every width, with ["char"] as the default', () => {
-        expect(openShell(createStorage()).label().desktopParts).toEqual(['char']);
-        const storage = createStorage([['sb-topbar-label-desktop-parts', '["ctx","custom"]']]);
-        expect(openShell(storage).label().desktopParts).toEqual(['ctx', 'custom']);
+    test('reads the one stored list at every width, with ["char"] as the default', async () => {
+        await openLabelControls({ storage: {} });
+        expect(readCheckedParts()).toEqual(['char']);
+
+        await openLabelControls({ storage: { 'sb-topbar-label-desktop-parts': '["ctx","custom"]' } });
+        expect(readCheckedParts()).toEqual(['ctx', 'custom']);
     });
 
-    test('shows the same list in the bar at 390 and at 1440', () => {
-        const storage = createStorage([['sb-topbar-label-desktop-parts', '["char","custom"]'], ['sb-topbar-label-mobile-part', 'ctx']]);
-        const shell = openShell(storage);
-        expect(shell.configured(true)).toEqual(['char', 'custom']);
-        expect(shell.configured(false)).toEqual(['char', 'custom']);
-        shell.setLabelPart('ctx', true);
-        expect(shell.configured(true)).toEqual(['ctx', 'char', 'custom']);
-        expect(shell.configured(false)).toEqual(['ctx', 'char', 'custom']);
+    test('shows the same list in the bar at 390 and at 1440', async () => {
+        const storage = {
+            'sb-topbar-label-desktop-parts': '["char","custom"]',
+            'sb-topbar-label-mobile-part': 'ctx',
+            'sb-topbar-label-custom-text': 'Pinned',
+        };
+        await openLabelControls({ storage, mobile: false });
+        expect(readCheckedParts()).toEqual(['char', 'custom']);
+        const desktopTitle = document.getElementById('sb-brand-title')?.textContent;
+
+        await openLabelControls({ storage, mobile: true });
+        expect(readCheckedParts()).toEqual(['char', 'custom']);
+        expect(document.getElementById('sb-brand-title')?.textContent).toBe(desktopTitle);
+
+        toggleLabelPart('ctx', true);
+        expect(readCheckedParts()).toEqual(['ctx', 'char', 'custom']);
+        loaded.setViewport({ width: 1440, height: 900 });
+        expect(readCheckedParts()).toEqual(['ctx', 'char', 'custom']);
     });
 
     describe('migration from the phone value', () => {
@@ -98,76 +92,123 @@ describe('top bar label preference persistence', () => {
             ['a part', 'ctx', ['ctx']],
             ['an empty value', '', []],
             ['an unknown value', 'nonsense', []],
-        ])('seeds the list from %s when only the phone key exists', (_name, phone, expected) => {
-            const storage = createStorage([['sb-topbar-label-mobile-part', phone]]);
-            const shell = openShell(storage);
-            expect(shell.label().desktopParts).toEqual(expected);
-            shell.seed();
-            expect(storage.getItem('sb-topbar-label-desktop-parts')).toBe(JSON.stringify(expected));
-            shell.hide();
-            expect(storage.getItem('sb-topbar-label-mobile-part')).toBe(phone);
+        ])('seeds the list from %s when only the phone key exists', async (_name, phone, expected) => {
+            await openLabelControls({ storage: { 'sb-topbar-label-mobile-part': phone } });
+
+            expect(readCheckedParts()).toEqual(expected);
+            expect(window.localStorage.getItem('sb-topbar-label-desktop-parts')).toBe(JSON.stringify(expected));
+
+            window.dispatchEvent(new Event('pagehide'));
+            expect(window.localStorage.getItem('sb-topbar-label-mobile-part')).toBe(phone);
         });
 
-        test('keeps the list when both keys exist, and does not touch the phone key', () => {
-            const storage = createStorage([
-                ['sb-topbar-label-desktop-parts', '["char","ctx"]'],
-                ['sb-topbar-label-mobile-part', 'custom'],
-            ]);
-            const shell = openShell(storage);
-            shell.seed();
-            expect(shell.label().desktopParts).toEqual(['ctx', 'char']);
-            expect(storage.getItem('sb-topbar-label-desktop-parts')).toBe('["char","ctx"]');
-            expect(storage.getItem('sb-topbar-label-mobile-part')).toBe('custom');
+        test('keeps the list when both keys exist, and does not touch the phone key', async () => {
+            await openLabelControls({
+                storage: {
+                    'sb-topbar-label-desktop-parts': '["char","ctx"]',
+                    'sb-topbar-label-mobile-part': 'custom',
+                },
+            });
+
+            expect(readCheckedParts()).toEqual(['ctx', 'char']);
+            expect(window.localStorage.getItem('sb-topbar-label-desktop-parts')).toBe('["char","ctx"]');
+            expect(window.localStorage.getItem('sb-topbar-label-mobile-part')).toBe('custom');
         });
 
-        test('writes nothing when neither key exists', () => {
-            const storage = createStorage();
-            const shell = openShell(storage);
-            shell.seed();
-            expect(storage.setItem).not.toHaveBeenCalled();
-            expect(shell.label().desktopParts).toEqual(['char']);
+        test('writes nothing for label keys when neither key exists', async () => {
+            window.localStorage.clear();
+            const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+            loaded = await importTabsModule({ storage: null });
+            loaded.shell.openTab('right', 'appearance');
+            await loaded.flush();
+            loaded.shell.openTab('right', 'interface');
+            await loaded.flush();
+
+            const labelWrites = setItemSpy.mock.calls.filter(([key]) => String(key).startsWith('sb-topbar-label-'));
+            expect(labelWrites).toEqual([]);
+            expect(readCheckedParts()).toEqual(['char']);
         });
 
-        test('never writes the phone key, and a later change to the list wins over the phone value', () => {
-            const storage = createStorage([['sb-topbar-label-mobile-part', 'ctx']]);
-            const shell = openShell(storage);
-            shell.seed();
-            shell.setLabelPart('char', true);
-            expect(storage.setItem.mock.calls.map(([key]) => key)).not.toContain('sb-topbar-label-mobile-part');
-            expect(openShell(storage).label().desktopParts).toEqual(['ctx', 'char']);
+        test('never writes the phone key, and a later change to the list wins over the phone value', async () => {
+            window.localStorage.clear();
+            window.localStorage.setItem('sb-topbar-label-mobile-part', 'ctx');
+            const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+
+            loaded = await importTabsModule({ storage: null });
+            loaded.shell.openTab('right', 'appearance');
+            await loaded.flush();
+            loaded.shell.openTab('right', 'interface');
+            await loaded.flush();
+
+            toggleLabelPart('char', true);
+            expect(setItemSpy.mock.calls.map(([key]) => key)).not.toContain('sb-topbar-label-mobile-part');
+
+            loaded.cleanup();
+            loaded = await importTabsModule({ storage: null });
+            loaded.shell.openTab('right', 'appearance');
+            await loaded.flush();
+            loaded.shell.openTab('right', 'interface');
+            await loaded.flush();
+            expect(readCheckedParts()).toEqual(['ctx', 'char']);
         });
     });
 
-    test('retries an unsaved choice after a transient browser storage failure instead of resetting on reload', () => {
-        const storage = createStorage();
-        storage.setItem.mockImplementationOnce(() => { throw new Error('Storage unavailable'); });
-        const shell = openShell(storage);
-        shell.setCustomText('My label');
-        expect(storage.getItem('sb-topbar-label-custom-text')).toBeNull();
-        expect(shell.label().customText).toBe('My label');
-        shell.hide();
-        expect(openShell(storage).label().customText).toBe('My label');
+    test('retries an unsaved choice after a transient browser storage failure instead of resetting on reload', async () => {
+        await openLabelControls({ storage: {} });
+        const origSetItem = Storage.prototype.setItem;
+        let failOnce = true;
+        jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+            if (failOnce && key === 'sb-topbar-label-custom-text') {
+                failOnce = false;
+                throw new Error('Storage unavailable');
+            }
+            return origSetItem.call(this, key, value);
+        });
+
+        setCustomTextInput('My label');
+        expect(window.localStorage.getItem('sb-topbar-label-custom-text')).toBeNull();
+
+        window.dispatchEvent(new Event('pagehide'));
+        expect(window.localStorage.getItem('sb-topbar-label-custom-text')).toBe('My label');
+
+        loaded.cleanup();
+        loaded = await importTabsModule({ storage: null });
+        loaded.shell.openTab('right', 'appearance');
+        await loaded.flush();
+        loaded.shell.openTab('right', 'interface');
+        await loaded.flush();
+        expect(/** @type {HTMLInputElement} */ (document.getElementById('sb-topbar-custom-text-input')).value).toBe('My label');
     });
 
-    test('retries failed settings without dropping other writes or reverting a newer choice', () => {
-        const storage = createStorage();
-        const setItem = storage.setItem.getMockImplementation();
+    test('retries failed settings without dropping other writes or reverting a newer choice', async () => {
+        await openLabelControls({ storage: {} });
+        const origSetItem = Storage.prototype.setItem;
         let writable = false;
-        storage.setItem.mockImplementation((key, value) => {
+        jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
             if (!writable && key === 'sb-topbar-label-custom-text') {
                 throw new Error('Storage unavailable');
             }
-            return setItem(key, value);
+            return origSetItem.call(this, key, value);
         });
-        const shell = openShell(storage);
-        shell.setCustomText('First label');
-        shell.setLabelPart('ctx', true);
-        shell.setCustomText('Second label');
-        expect(storage.getItem('sb-topbar-label-desktop-parts')).toBe('["ctx","char"]');
-        expect(storage.getItem('sb-topbar-label-custom-text')).toBeNull();
+
+        setCustomTextInput('First label');
+        toggleLabelPart('ctx', true);
+        setCustomTextInput('Second label');
+
+        expect(window.localStorage.getItem('sb-topbar-label-desktop-parts')).toBe('["ctx","char"]');
+        expect(window.localStorage.getItem('sb-topbar-label-custom-text')).toBeNull();
+
         writable = true;
-        shell.hide();
-        expect(storage.getItem('sb-topbar-label-custom-text')).toBe('Second label');
-        expect(openShell(storage).label().customText).toBe('Second label');
+        window.dispatchEvent(new Event('pagehide'));
+
+        expect(window.localStorage.getItem('sb-topbar-label-custom-text')).toBe('Second label');
+
+        loaded.cleanup();
+        loaded = await importTabsModule({ storage: null });
+        loaded.shell.openTab('right', 'appearance');
+        await loaded.flush();
+        loaded.shell.openTab('right', 'interface');
+        await loaded.flush();
+        expect(/** @type {HTMLInputElement} */ (document.getElementById('sb-topbar-custom-text-input')).value).toBe('Second label');
     });
 });

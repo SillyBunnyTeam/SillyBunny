@@ -1,11 +1,12 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { importTabsModule } from './util/tabs-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
-const tabsJs = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8').replace(/\r\n/g, '\n');
 const personaDrawer = indexHtml.split('<div id="persona-management-button"')[1].split('<div id="rightNavHolder"')[0];
 
 // Upstream c0a417b24's complete drawer ID set, retained as hidden transports.
@@ -22,26 +23,23 @@ const upstreamDrawerIds = [
     'persona_connections_list', 'persona_show_notifications', 'persona_allow_multi_connections', 'persona_auto_lock',
 ];
 
-describe('legacy persona layout retirement', () => {
-    test('removes the SillyBunny layout stylesheet and registration', () => {
-        expect(existsSync(path.join(repoRoot, 'public', 'css', 'personas.css'))).toBe(false);
-        expect(tabsJs).not.toContain('css/personas.css');
-        expect(tabsJs).not.toContain('deferred-personas-css');
-    });
+let loaded = null;
 
-    test('keeps the shared entity-row stylesheet deferred and includes it in the Persona preload gate', () => {
-        const personaStyles = tabsJs.split('\'characters:persona\': [')[1].split('],')[0];
-        expect(personaStyles).toContain('{ href: \'css/sillybunny-entity-list.css?v=20261118zza\', id: \'deferred-entity-list-css\' }');
+afterEach(() => {
+    jest.useRealTimers();
+    loaded?.cleanup();
+    loaded = null;
+    jest.restoreAllMocks();
+});
+
+describe('legacy persona layout retirement', () => {
+    test('removes the SillyBunny layout stylesheet, keeps the entity-row preload, and retains upstream drawer IDs in HTML', () => {
+        expect(existsSync(path.join(repoRoot, 'public', 'css', 'personas.css'))).toBe(false);
         expect(indexHtml).toMatch(/<link rel="preload" as="style" href="css\/sillybunny-entity-list\.css\?v=20261118zza" data-sb-deferred-style/);
         expect(indexHtml).not.toMatch(/<link rel="stylesheet"[^>]*href="css\/sillybunny-entity-list\.css/);
-    });
-
-    test('removes SillyBunny-only legacy layout IDs and quick actions', () => {
         expect(indexHtml).not.toMatch(/id="persona_(?:workspace_|editor_(?:tab|panel)_|selected_|appendi(?:x|ces)_|effective_description_preview|to_character_button|management_list_scroller)/);
         expect(indexHtml).not.toMatch(/persona_quick_(?:rename|delete)/);
-    });
 
-    test('retains the upstream drawer ID set and every external transport', () => {
         const drawerIds = [...personaDrawer.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
         expect(drawerIds.sort()).toEqual([...upstreamDrawerIds].sort());
         expect(indexHtml).toContain('id="persona-management-button"');
@@ -51,22 +49,110 @@ describe('legacy persona layout retirement', () => {
         expect(personaDrawer).toMatch(/id="persona_description"[^>]*\bdata-macros\b/);
     });
 
-    test('indexes personas from data rather than hidden transports or transient editor DOM', () => {
-        expect(tabsJs).toContain('if (tabState.id === \'persona\') return [];');
-        expect(tabsJs).toContain('? getPersonaSearchEntries(tabState)');
-        expect(tabsJs).toContain('getPersonaSearchEntries(getCharacterPanelTabConfig(\'persona\'))');
-        expect(tabsJs).not.toContain('getPersonaSearchAvatarId');
-        expect(tabsJs).not.toContain('.persona_management_global_settings');
+    test('opening the Persona tab loads the shared entity-list sheet and never requests retired personas.css', async () => {
+        const loadPersonaEditorStyles = jest.fn(async () => {});
+        const mountPersonaEditor = jest.fn(() => ({ ready: Promise.resolve(), onReveal: jest.fn() }));
+        loaded = await importTabsModule({
+            mocks: {
+                'scripts/sillybunny-persona-editor.js': {
+                    loadPersonaEditorStyles,
+                    mountPersonaEditor,
+                    openPersonaEditor: jest.fn(async () => {}),
+                },
+            },
+        });
+
+        await loaded.shell.openTab('characters', 'persona');
+        await loaded.flush();
+
+        expect(loadPersonaEditorStyles).toHaveBeenCalled();
+        const passedSheets = loadPersonaEditorStyles.mock.calls.flatMap(([sheets]) => sheets ?? []);
+        expect(passedSheets).toContainEqual({
+            href: 'css/sillybunny-entity-list.css?v=20261118zza',
+            id: 'deferred-entity-list-css',
+        });
+        expect(passedSheets.some(s => String(s.href).includes('css/personas.css') || s.id === 'deferred-personas-css')).toBe(false);
     });
 
-    test('switches picker fallbacks through the persona API, not legacy cards', () => {
-        expect(tabsJs).toContain('const { usePersona } = await import(\'./personas.js\');');
-        expect(tabsJs).toContain('await usePersona(avatarId);');
-        expect(tabsJs).not.toContain('#user_avatar_block .avatar-container.selected');
-        expect(tabsJs).not.toContain('.avatar-container[title=');
+    test('indexes personas from powerUserSettings data in global search rather than hidden transport DOM', async () => {
+        loaded = await importTabsModule({
+            power_user: {
+                personas: { 'hero.png': 'Captain Starlight' },
+                persona_descriptions: { 'hero.png': { title: 'Starship Captain' } },
+                default_persona: 'hero.png',
+            },
+            extraDom: '<div id="hidden_dom_trap"><span class="persona_management_global_settings">Phantom Transport Persona</span></div>',
+        });
+
+        loaded.shell.openGlobalSearch({ focusInput: true });
+        await loaded.flush();
+
+        const input = /** @type {HTMLInputElement} */ (document.activeElement);
+        expect(input).toBeInstanceOf(HTMLInputElement);
+        input.value = 'Starlight';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 250));
+
+        const resultsText = document.querySelector('.sb-search-results')?.textContent ?? '';
+        expect(resultsText).toContain('Captain Starlight');
+
+        input.value = 'Phantom Transport';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 250));
+        expect(document.querySelector('.sb-search-results')?.textContent ?? '').not.toContain('Phantom Transport Persona');
     });
 
-    test('the Scenario Notes shortcut opens the persona editor at the notes section', () => {
-        expect(tabsJs).toContain('await openPersonaEditor({ avatarId: currentAvatarId, section: \'notes\' });');
+    test('switches personas via usePersona fallback and opens Scenario Notes via openPersonaEditor', async () => {
+        const usePersona = jest.fn(async () => {});
+        const openPersonaEditor = jest.fn(async () => {});
+        loaded = await importTabsModule({
+            power_user: {
+                personas: {
+                    'alice.png': 'Alice',
+                    'bob.png': 'Bob',
+                },
+                persona_descriptions: {
+                    'alice.png': { title: 'Default Hero' },
+                    'bob.png': { title: 'Alternate Hero' },
+                },
+                default_persona: 'alice.png',
+            },
+            context: {
+                userAvatar: 'alice.png',
+            },
+            mocks: {
+                'scripts/personas.js': { usePersona },
+                'scripts/sillybunny-persona-editor.js': {
+                    mountPersonaEditor: jest.fn(() => ({ ready: Promise.resolve() })),
+                    openPersonaEditor,
+                },
+            },
+        });
+
+        const bubble = document.getElementById('sb-persona-bubble');
+        expect(bubble).not.toBeNull();
+        bubble.click();
+        await loaded.flush();
+
+        const picker = document.getElementById('sb-persona-picker');
+        expect(picker).not.toBeNull();
+
+        // Scenario Notes "Manage" shortcut opens the persona editor at the notes section.
+        const manageBtn = picker.querySelector('.sb-persona-picker-manage');
+        expect(manageBtn).not.toBeNull();
+        manageBtn.click();
+        await loaded.flush();
+        expect(openPersonaEditor).toHaveBeenCalledWith({ avatarId: 'alice.png', section: 'notes' });
+
+        // Re-open the picker and click Bob to verify the usePersona API fallback (no executeSlashCommandsWithOptions on context).
+        bubble.click();
+        await loaded.flush();
+        const bobOption = [...document.querySelectorAll('#sb-persona-picker .sb-persona-option')]
+            .find(opt => opt.textContent.includes('Bob'));
+        expect(bobOption).not.toBeNull();
+        bobOption.click();
+        await loaded.flush();
+
+        expect(usePersona).toHaveBeenCalledWith('bob.png');
     });
 });

@@ -1,74 +1,55 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { importTabsModule } from './util/tabs-harness.js';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8').replace(/\r\n/g, '\n');
+let loaded = null;
 
-function getFunctionSource(name) {
-    const match = tabsSource.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`));
-    expect(match).not.toBeNull();
-    return match[0];
-}
-
-function createHarness(stored) {
-    const reads = [];
-    const writes = [];
-    const rootStyle = [];
-    const sbState = { topbarLabel: {}, chatbar: {}, bottomChatBar: {}, topbarIconsOnly: {} };
-    const body = [
-        'const SB_TOPBAR_SCALE = { min: 70, max: 150, step: 5, defaultValue: 100 };',
-        tabsSource.match(/const SB_STORAGE_KEYS = Object\.freeze\(\{[\s\S]*?\n\}\);/)[0],
-        getFunctionSource('normalizeTopbarScale'),
-        getFunctionSource('seedTopbarScaleDefaults'),
-        getFunctionSource('restorePersistedTopbarState'),
-        'return { seedTopbarScaleDefaults, restorePersistedTopbarState };',
-    ].join('\n');
-    const factory = new Function(
-        'safeGetItem', 'safeSetItem', 'sbState', 'readTopbarLabelParts', 'normalizeTopbarCustomText',
-        'normalizeStoredBoolean', 'normalizeTopbarOffset', body,
-    );
-    const api = factory(
-        (key) => {
-            reads.push(key);
-            return Object.hasOwn(stored, key) ? stored[key] : null;
-        },
-        (key, value) => writes.push([key, value]),
-        sbState,
-        () => [],
-        () => '',
-        (value, fallback) => fallback,
-        () => ({ x: 0, y: 0 }),
-    );
-    return { api, reads, writes, rootStyle, sbState };
-}
+afterEach(() => {
+    loaded?.cleanup();
+    loaded = null;
+    jest.restoreAllMocks();
+});
 
 describe('retired top bar scale keys', () => {
-    const stored = { 'sb-topbar-scale-desktop': '130', 'sb-topbar-scale-mobile': '80' };
+    test('booting the shell neither reads nor writes retired scale keys and leaves no scale CSS properties', async () => {
+        window.localStorage.clear();
+        window.localStorage.setItem('sb-topbar-scale-desktop', '130');
+        window.localStorage.setItem('sb-topbar-scale-mobile', '80');
 
-    test('restoring and seeding neither read nor write the stored values', () => {
-        const { api, reads, writes, sbState } = createHarness(stored);
-        api.restorePersistedTopbarState();
-        api.seedTopbarScaleDefaults();
-        expect([...reads, ...writes.map(([key]) => key)].filter(key => key.startsWith('sb-topbar-scale-'))).toEqual([]);
-        expect(sbState.topbarScale).toBeUndefined();
+        const getItemSpy = jest.spyOn(Storage.prototype, 'getItem');
+        const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+
+        loaded = await importTabsModule({ storage: null });
+
+        const touchedScaleKeys = [
+            ...getItemSpy.mock.calls.map(([key]) => key),
+            ...setItemSpy.mock.calls.map(([key]) => key),
+        ].filter(key => String(key).startsWith('sb-topbar-scale-'));
+
+        expect(touchedScaleKeys).toEqual([]);
+        expect(document.documentElement.style.getPropertyValue('--sb-topbar-scale-desktop')).toBe('');
+        expect(document.documentElement.style.getPropertyValue('--sb-topbar-scale-mobile')).toBe('');
+        expect(window.localStorage.getItem('sb-topbar-scale-desktop')).toBe('130');
+        expect(window.localStorage.getItem('sb-topbar-scale-mobile')).toBe('80');
     });
 
-    test('no script sets the top bar scale custom properties', () => {
-        expect(tabsSource).not.toContain('--sb-topbar-scale-');
-        expect(tabsSource).not.toContain('function setTopbarScale');
-        expect(tabsSource).toContain('setTopbarScale() {},');
-        expect(tabsSource).not.toContain('topbarScaleDesktop');
-        expect(tabsSource).not.toContain('topbarScaleMobile');
-    });
+    test('getTopbarScale always returns 100 and setTopbarScale is a safe no-op regardless of stored keys', async () => {
+        loaded = await importTabsModule({
+            storage: {
+                'sb-topbar-scale-desktop': '130',
+                'sb-topbar-scale-mobile': '80',
+            },
+        });
 
-    test('getTopbarScale returns the default for both modes whatever is stored', () => {
-        const method = tabsSource.match(/\n {8}getTopbarScale\([^)]*\) \{[\s\S]*?\n {8}\},/)[0];
-        const getTopbarScale = new Function('SB_TOPBAR_SCALE', 'sbState', `return {${method}}.getTopbarScale;`)(
-            { defaultValue: 100 }, { topbarScale: { desktop: 130, mobile: 80 } },
-        );
-        expect(getTopbarScale('desktop')).toBe(100);
-        expect(getTopbarScale('mobile')).toBe(100);
+        expect(loaded.shell.getTopbarScale('desktop')).toBe(100);
+        expect(loaded.shell.getTopbarScale('mobile')).toBe(100);
+
+        loaded.shell.setTopbarScale('desktop', 135);
+        loaded.shell.setTopbarScale('mobile', 80);
+
+        expect(loaded.shell.getTopbarScale('desktop')).toBe(100);
+        expect(loaded.shell.getTopbarScale('mobile')).toBe(100);
+        expect(document.documentElement.style.getPropertyValue('--sb-topbar-scale-desktop')).toBe('');
+        expect(document.documentElement.style.getPropertyValue('--sb-topbar-scale-mobile')).toBe('');
     });
 });
