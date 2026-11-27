@@ -21,16 +21,32 @@ describe('pull request checks workflow', () => {
         expect(step.env.BASE_REPOSITORY).toBe('${{ github.repository }}');
     });
 
-    test('boots the server under Node.js and keeps the Bun check name', () => {
-        expect(workflow.jobs['run-bun-checks'].name).toBe('✅ Check Bun Runtime');
-        const job = workflow.jobs['run-node-checks'];
-        expect(job.name).toBe('✅ Check Node Runtime');
-        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+    test('runs the full runtime parity suite under both Bun and Node.js and keeps required check names', () => {
+        const bunJob = workflow.jobs['run-bun-checks'];
+        expect(bunJob.name).toBe('✅ Check Bun Runtime');
+        expect(bunJob['timeout-minutes']).toBe(10);
+        expect(bunJob.steps.find(step => step.uses?.startsWith('oven-sh/setup-bun@')).with['bun-version']).toBe('1.4.4');
 
-        const bootStep = job.steps.find(step => step.name === 'Node boot smoke');
-        expect(bootStep.run).toContain('node server.js --browserLaunchEnabled=false');
-        expect(bootStep.run).toContain('curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/"');
-        expect(bootStep.env).toEqual({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' });
+        const bunParityStep = bunJob.steps.find(step => step.name === 'Run Bun runtime parity checks');
+        expect(bunParityStep.run).toBe('bun tests/runtime-parity.js --runtime bun --log-file "$RUNNER_TEMP/bun-parity-server.log"');
+
+        const bunUploadStep = bunJob.steps.find(step => step.name === 'Upload Bun server log on failure');
+        expect(bunUploadStep.if).toBe('failure() || cancelled()');
+        expect(bunUploadStep.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+        expect(bunUploadStep.with.path).toBe('${{ runner.temp }}/bun-parity-server.log');
+
+        const nodeJob = workflow.jobs['run-node-checks'];
+        expect(nodeJob.name).toBe('✅ Check Node Runtime');
+        expect(nodeJob['timeout-minutes']).toBe(10);
+        expect(nodeJob.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+
+        const nodeParityStep = nodeJob.steps.find(step => step.name === 'Run Node runtime parity checks');
+        expect(nodeParityStep.run).toBe('node tests/runtime-parity.js --runtime node --log-file "$RUNNER_TEMP/node-parity-server.log"');
+
+        const nodeUploadStep = nodeJob.steps.find(step => step.name === 'Upload Node server log on failure');
+        expect(nodeUploadStep.if).toBe('failure() || cancelled()');
+        expect(nodeUploadStep.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+        expect(nodeUploadStep.with.path).toBe('${{ runner.temp }}/node-parity-server.log');
     });
 
     test('runs the character index tests under Bun after the Bun install', () => {
