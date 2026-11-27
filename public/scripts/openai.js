@@ -2087,8 +2087,9 @@ export async function prepareOpenAIMessages({
             chatCompletion.log('----------------------------------------------------');
         }
     } finally {
-        // SillyBunny: skip counting detached In-Chat Agent inspection records on live sends while the Prompt Manager panel/inspector is closed.
-        const shouldCountRuntimeAgents = Boolean(
+        // SillyBunny: the detached In-Chat Agent records are collected on every send, so the Agents row has its data
+        // when the Prompt Manager opens later. Their tokens are counted off the send path unless the panel is showing them.
+        const isRuntimeAgentPanelShown = Boolean(
             dryRun
             || promptManager?.activePopupArea === 'inspect'
             || (typeof document?.getElementById === 'function' && (
@@ -2096,8 +2097,9 @@ export async function prepareOpenAIMessages({
                 || document.getElementById(`${promptManager?.configuration?.prefix ?? ''}prompt_manager_list`)?.offsetParent !== null
             )),
         );
-        if (shouldCountRuntimeAgents) {
-            await chatCompletion.buildRuntimeAgentMessages();
+        const runtimeAgentCounts = Promise.resolve(chatCompletion.buildRuntimeAgentMessages());
+        if (isRuntimeAgentPanelShown) {
+            await runtimeAgentCounts;
         }
         // Pass chat completion to prompt manager for inspection
         promptManager.setChatCompletion(chatCompletion);
@@ -2108,6 +2110,16 @@ export async function prepareOpenAIMessages({
 
         // All information is up-to-date, render.
         if (false === dryRun) promptManager.render(false);
+
+        if (!isRuntimeAgentPanelShown) {
+            void runtimeAgentCounts.then(runtimeMessages => {
+                // A newer prompt may have replaced this one while the counts ran.
+                if (runtimeMessages?.getCollection().length && promptManager.runtimeAgentMessages === runtimeMessages) {
+                    promptManager.setChatCompletion(chatCompletion);
+                    promptManager.render(false);
+                }
+            });
+        }
     }
 
     let chat = chatCompletion.getChat();
@@ -6855,26 +6867,34 @@ export class ChatCompletion {
         return this.runtimeAgentMessages;
     }
 
+    /**
+     * Collects the detached In-Chat Agent inspection records into `runtimeAgentMessages`, which is set before the first
+     * await, so a caller that does not wait for the returned promise still has the records. The promise settles when
+     * every record has its token count.
+     * @returns {Promise<MessageCollection|null>} The collection, or null when the records could not be collected.
+     */
     async buildRuntimeAgentMessages() {
         this.runtimeAgentMessages = null;
         const runtimeMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
 
         try {
             // SillyBunny: count detached In-Chat Agent inspection records concurrently in one batch.
-            const records = collectInChatAgentInspectionRecords(this.messages.flatten());
-            const builtMessages = await Promise.all(records.map(async (record) => {
-                const message = await Message.createAsync(record.role, record.content, record.identifier);
+            const builtMessages = collectInChatAgentInspectionRecords(this.messages.flatten()).map((record) => {
+                const message = new Message(record.role, record.content, record.identifier);
                 message.displayName = record.name;
                 message.kind = record.kind;
-                return message;
-            }));
-            for (const message of builtMessages) {
                 runtimeMessages.add(message);
-            }
+                return message;
+            });
             this.runtimeAgentMessages = runtimeMessages;
+            await Promise.all(builtMessages.map(async (message) => {
+                message.tokens = await tokenHandler.countAsync({ role: message.role, content: message.content });
+            }));
         } catch (error) {
             console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:', error);
         }
+
+        return this.runtimeAgentMessages;
     }
 
     /**
