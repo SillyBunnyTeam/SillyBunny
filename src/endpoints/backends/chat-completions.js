@@ -83,7 +83,6 @@ import {
     continueInteractionStream,
     getGenerateContentText,
     getVertexApiVersion,
-    isGeminiLongDecodeModel,
     mergeGenerateContentHops,
     mergeInteractionHops,
 } from '../../gemini-long-decode.js';
@@ -891,10 +890,8 @@ async function sendMakerSuiteRequest(request, response) {
 
         if (stream) {
             try {
-                // SillyBunny: fast-path non-long-decode Gemini models directly without per-chunk SSE regex/JSON parsing.
-                const streamResponse = isGeminiLongDecodeModel(model)
-                    ? continueGenerateContentStream(generateResponse, sendHop, controller.signal)
-                    : generateResponse;
+                // SillyBunny: every Gemini model goes through the stitcher, because a stream that drops ends with the cut-off event that the page reads as a cut-off reply.
+                const streamResponse = continueGenerateContentStream(generateResponse, sendHop, controller.signal);
                 // Pipe remote SSE stream to Express response
                 forwardFetchResponse(streamResponse, response, request, () => controller.abort());
             } catch (error) {

@@ -1184,12 +1184,8 @@ describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache al
         expect(execFileMock).not.toHaveBeenCalled();
     });
 
-    test('gemini-long-decode fast-paths ordinary chunks without JSON.parse and detects long-decode models', async () => {
-        const { continueGenerateContentStream, isGeminiLongDecodeModel } = await import('../src/gemini-long-decode.js');
-
-        expect(isGeminiLongDecodeModel('gemini-4-argon')).toBe(true);
-        expect(isGeminiLongDecodeModel('gemini-2.5-flash')).toBe(false);
-        expect(isGeminiLongDecodeModel('gemini-3.5-flash')).toBe(false);
+    test('gemini-long-decode fast-paths ordinary chunks without JSON.parse', async () => {
+        const { continueGenerateContentStream } = await import('../src/gemini-long-decode.js');
 
         const parseSpy = jest.spyOn(JSON, 'parse');
         const plain1 = `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hello ' }] } }] })}\r\n\r\n`;

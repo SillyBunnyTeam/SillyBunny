@@ -18,16 +18,6 @@ const INTERACTION_CUT_OFF = `data: ${JSON.stringify({ event_type: 'interaction.c
 
 const exceedsRequestCap = (model, maxOutputTokens) => /^gemini-4/.test(model) && maxOutputTokens > NON_STREAMING_OUTPUT_CAP;
 
-/**
- * Checks whether a Gemini model supports long-decode continuation tokens.
- * Non-long-decode models can fast-path directly through forwardFetchResponse without SSE re-parsing.
- * @param {unknown} model Model name
- * @returns {boolean}
- */
-export function isGeminiLongDecodeModel(model) {
-    return /^gemini-4/i.test(String(model ?? ''));
-}
-
 // Fetch errors can quote the request URL, and AI Studio URLs hold the API key.
 const describeError = error => error?.code ?? error?.name ?? 'unknown error';
 
