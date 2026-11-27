@@ -326,6 +326,64 @@ describe('1. Content-fingerprint restartCacheClear & boot ID', () => {
         expect(afterUserExtInstall).not.toBe(afterUserExtEdit);
     });
 
+    test('sees a change to any file of an extension, global or per-user, and follows symlinked extension folders', () => {
+        const root = makeTempDir('sb-boot-fp-ext-');
+        const dataRoot = path.join(root, 'data');
+        const outside = path.join(root, 'outside');
+        fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '2.0.0' }));
+        const thirdParty = path.join(root, 'public', 'scripts', 'extensions', 'third-party');
+        const userExtensions = path.join(dataRoot, 'alice', 'extensions');
+        const earlier = new Date('2026-01-01T00:00:00Z');
+        let editCount = 0;
+        const writeFile = (filePath, content) => {
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            fs.writeFileSync(filePath, content);
+            editCount += 1;
+            const stamp = new Date(earlier.getTime() + editCount * 60_000);
+            fs.utimesSync(filePath, stamp, stamp);
+        };
+
+        for (const base of [path.join(thirdParty, 'global-ext'), path.join(userExtensions, 'user-ext'), path.join(outside, 'linked-source')]) {
+            writeFile(path.join(base, 'manifest.json'), '{"js":"main.js","css":"style.css"}');
+            writeFile(path.join(base, 'main.js'), 'export const main = 1;\n');
+            writeFile(path.join(base, 'style.css'), 'body { color: red; }\n');
+            writeFile(path.join(base, 'lib', 'nested', 'helper.js'), 'export const helper = 1;\n');
+        }
+        fs.symlinkSync(path.join(outside, 'linked-source'), path.join(thirdParty, 'linked-global'), 'dir');
+        fs.symlinkSync(path.join(outside, 'linked-source'), path.join(userExtensions, 'linked-user'), 'dir');
+        // A link back to its own folder must end the walk, not loop it.
+        fs.symlinkSync(path.join(thirdParty, 'global-ext'), path.join(thirdParty, 'global-ext', 'loop'), 'dir');
+
+        const idOf = () => computeContentBootId({ rootDir: root, dataRoot });
+        const baseline = idOf();
+        expect(idOf()).toBe(baseline);
+
+        const editedFiles = [
+            path.join(thirdParty, 'global-ext', 'main.js'),
+            path.join(thirdParty, 'global-ext', 'style.css'),
+            path.join(thirdParty, 'global-ext', 'lib', 'nested', 'helper.js'),
+            path.join(userExtensions, 'user-ext', 'main.js'),
+            path.join(userExtensions, 'user-ext', 'style.css'),
+            path.join(userExtensions, 'user-ext', 'lib', 'nested', 'helper.js'),
+            // Reached through a symlinked extension folder (the same files serve both links).
+            path.join(outside, 'linked-source', 'style.css'),
+            path.join(outside, 'linked-source', 'lib', 'nested', 'helper.js'),
+        ];
+        let previous = baseline;
+        for (const filePath of editedFiles) {
+            writeFile(filePath, `/* edited ${editCount} */ ${'x'.repeat(editCount)}\n`);
+            const current = idOf();
+            expect({ filePath, changed: current !== previous }).toEqual({ filePath, changed: true });
+            previous = current;
+        }
+
+        writeFile(path.join(thirdParty, 'global-ext', 'lib', 'added.js'), 'export {};\n');
+        const afterAdd = idOf();
+        expect(afterAdd).not.toBe(previous);
+        fs.rmSync(path.join(thirdParty, 'global-ext', 'lib', 'added.js'));
+        expect(idOf()).not.toBe(afterAdd);
+    });
+
     test('detects public/ subdirectory edits even without .git (Docker layout) and wires bumpRestartCacheGeneration in extension routes', () => {
         const dockerRoot = makeTempDir('sb-docker-fp-');
         fs.writeFileSync(path.join(dockerRoot, 'package.json'), JSON.stringify({ version: '2.0.0-dev' }));

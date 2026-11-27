@@ -133,19 +133,86 @@ function updatePublicSubdirsHash(hash, rootDir) {
     }
 }
 
+/**
+ * Hashes every file of one extension folder by path, size and mtime. An extension may name any
+ * script or stylesheet in its manifest, so no single file stands in for the folder. `.git` is
+ * left out because `readGitHeadSignature` covers it. A symlink is followed with `statSync`,
+ * as the server does when it lists and serves the extension, and a directory that a link
+ * already led to is walked once so a link back to an ancestor cannot loop.
+ * @param {string} extensionPath Extension folder
+ * @returns {string}
+ */
+function readExtensionTreeSignature(extensionPath) {
+    const followedDirectories = new Set();
+    try {
+        followedDirectories.add(fs.realpathSync(extensionPath));
+    } catch {
+        return 'absent';
+    }
+
+    const parts = [];
+    const walk = (directory, relativePrefix) => {
+        let entries;
+        try {
+            entries = fs.readdirSync(directory, { withFileTypes: true });
+        } catch {
+            parts.push(`${relativePrefix}=unreadable`);
+            return;
+        }
+
+        entries.sort((left, right) => compareAscii(left.name, right.name));
+        for (const entry of entries) {
+            if (entry.name === '.git') {
+                continue;
+            }
+            const entryPath = `${directory}${path.sep}${entry.name}`;
+            const relativePath = `${relativePrefix}/${entry.name}`;
+            if (entry.isDirectory()) {
+                walk(entryPath, relativePath);
+                continue;
+            }
+
+            const stats = fs.statSync(entryPath, { throwIfNoEntry: false });
+            if (!stats) {
+                parts.push(`${relativePath}=absent`);
+                continue;
+            }
+            if (stats.isDirectory()) {
+                let realPath;
+                try {
+                    realPath = fs.realpathSync(entryPath);
+                } catch {
+                    parts.push(`${relativePath}=absent`);
+                    continue;
+                }
+                if (!followedDirectories.has(realPath)) {
+                    followedDirectories.add(realPath);
+                    walk(entryPath, relativePath);
+                }
+                continue;
+            }
+            if (stats.isFile()) {
+                parts.push(`${relativePath}=${stats.size}:${Math.trunc(stats.mtimeMs)}`);
+            }
+        }
+    };
+
+    walk(extensionPath, '');
+    return createHash('sha256').update(parts.join(';')).digest('hex').slice(0, 24);
+}
+
 function readExtensionsDirectorySignature(extensionsDir) {
     try {
         const entries = fs.readdirSync(extensionsDir, { withFileTypes: true })
-            .filter(entry => entry.isDirectory() || entry.isFile())
+            .filter(entry => entry.isDirectory() || entry.isFile() || entry.isSymbolicLink())
             .map(entry => entry.name)
             .sort(compareAscii);
         return entries.map((name) => {
             const extPath = path.join(extensionsDir, name);
             const statSig = readStatTuple(extPath);
-            const manifestSig = readStatTuple(path.join(extPath, 'manifest.json'));
-            const entryScriptSig = readStatTuple(path.join(extPath, 'index.js'));
+            const treeSig = statSig.startsWith('d:') ? readExtensionTreeSignature(extPath) : '';
             const gitSig = readGitHeadSignature(extPath);
-            return `${name}=${statSig},${manifestSig},${entryScriptSig},${gitSig}`;
+            return `${name}=${statSig},${treeSig},${gitSig}`;
         }).join(';');
     } catch {
         return 'absent';
