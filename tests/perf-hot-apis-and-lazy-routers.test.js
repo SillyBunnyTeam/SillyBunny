@@ -13,6 +13,7 @@ import extractChunksReference from 'png-chunks-extract';
 import PNGtext from 'png-chunk-text';
 
 import '../src/fetch-patch.js';
+import { RACY_WINDOW_MS } from '../src/file-stamp.js';
 import { setConfigFilePath } from '../src/util.js';
 import {
     createCardPng,
@@ -40,6 +41,9 @@ Object.assign(process.env, environment);
 process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 globalThis.DATA_ROOT = defaultDataRoot;
+
+// A cache re-reads a file until it is older than the window in which its timestamps cannot tell writes apart.
+const letFilesSettle = () => new Promise(resolve => setTimeout(resolve, RACY_WINDOW_MS + 20));
 
 const mockGit = {
     checkIsRepo: jest.fn(async () => true),
@@ -977,8 +981,9 @@ describe('PR 6 hot APIs: settings cache, ETag, and backup comparison', () => {
         };
     }
 
-    test('caches preset and parsed directory files by (mtimeMs, size) and emits a stable ETag', async () => {
+    test('caches preset and parsed directory files by file stamp and emits a stable ETag', async () => {
         jest.spyOn(console, 'warn').mockImplementation(() => {});
+        await letFilesSettle();
 
         const first = await fetchSettings();
         expect(first.status).toBe(200);
@@ -1077,11 +1082,12 @@ describe('PR 6 hot APIs: settings cache, ETag, and backup comparison', () => {
         expect(areFilesEqual(fileA, path.join(tempRoot, 'missing.bin'))).toBe(false);
     });
 
-    test('readAndParseFromDirectory isolates cache entries by file extension in the same directory', () => {
+    test('readAndParseFromDirectory isolates cache entries by file extension in the same directory', async () => {
         const multiDir = path.join(tempRoot, 'multi-ext');
         fs.mkdirSync(multiDir, { recursive: true });
         fs.writeFileSync(path.join(multiDir, 'note.txt'), 'hello txt');
         fs.writeFileSync(path.join(multiDir, 'doc.md'), 'hello md');
+        await letFilesSettle();
 
         expect(readAndParseFromDirectory(multiDir, '.txt')).toEqual(['hello txt']);
         expect(readAndParseFromDirectory(multiDir, '.md')).toEqual(['hello md']);
@@ -1669,9 +1675,10 @@ describe('PR6 hot APIs media & extension optimizations', () => {
     });
 
     describe('image-metadata.js and backgrounds.js', () => {
-        test('caches image-metadata.json by (mtimeMs, size) and invalidates on write or disk edit', async () => {
+        test('caches image-metadata.json by file stamp and invalidates on write or disk edit', async () => {
             const initial = { version: 1, images: { 'backgrounds/a.png': { isAnimated: false, folderIds: [] } }, folders: [] };
             await writeMetadataIndex(tempRoot, initial);
+            await letFilesSettle();
 
             const parseSpy = jest.spyOn(JSON, 'parse');
 
@@ -1749,11 +1756,12 @@ describe('PR6 hot APIs media & extension optimizations', () => {
     });
 
     describe('worldinfo.js', () => {
-        test('POST /list caches headers by (mtimeMs, size) and invalidates only modified or deleted files', async () => {
+        test('POST /list caches headers by file stamp and invalidates only modified or deleted files', async () => {
             const bookA = path.join(directories.worlds, 'Alpha.json');
             const bookB = path.join(directories.worlds, 'Beta.json');
             fs.writeFileSync(bookA, JSON.stringify({ name: 'Alpha Book', extensions: { tag: 1 }, entries: {} }));
             fs.writeFileSync(bookB, JSON.stringify({ name: 'Beta Book', extensions: { tag: 2 }, entries: {} }));
+            await letFilesSettle();
 
             const readSpy = jest.spyOn(fs.promises, 'readFile');
 
@@ -1786,6 +1794,11 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             expect(readSpy).toHaveBeenCalledTimes(1);
             expect(readSpy).toHaveBeenCalledWith(bookA, 'utf8');
 
+            // The entry for Alpha was stored right after the write, so it was not settled. The next listing reads it again
+            // and keeps a settled entry.
+            await letFilesSettle();
+            await fetch(`${baseUrl}/api/worldinfo/list`, { method: 'POST' });
+
             // Deleting Beta drops it cleanly.
             fs.unlinkSync(bookB);
             readSpy.mockClear();
@@ -1801,6 +1814,7 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             const bookPath = path.join(directories.worlds, 'RawBook.json');
             const rawJson = '{\n    "name": "Raw Book",\n    "entries": {\n        "0": { "uid": 0, "content": "hello" }\n    }\n}';
             fs.writeFileSync(bookPath, rawJson);
+            await letFilesSettle();
 
             const parseSpy = jest.spyOn(JSON, 'parse');
 

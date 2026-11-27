@@ -9,6 +9,7 @@ import bytes from 'bytes';
 import { SETTINGS_FILE } from '../constants.js';
 import { ensureMigrated } from '../conversation-migration.js'; // SillyBunny: conversation storage
 import { getSettingsVersion, isUnchangedSettingsSave, prepareSettingsSave } from '../settings-version.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js'; // SillyBunny: file caches validate against a stamp, not (mtime, size)
 import {
     getConfigValue,
     generateTimestamp,
@@ -81,7 +82,7 @@ export function triggerAutoSave(handle) {
 
 // SillyBunny: /api/settings/get used to read and parse every preset, theme and template file on each page
 // load. Directory listings are checked on each call so added and deleted files show up immediately, while
-// each file's contents are reused as long as its (mtimeMs, size) is unchanged.
+// each file's contents are reused as long as its stamp (inode, size, mtime, ctime) is unchanged and settled.
 
 const SETTINGS_RESPONSE_CACHE_MAX = 16;
 const DIRECTORY_CACHE_MAX = 512;
@@ -104,8 +105,7 @@ const STATIC_SETTINGS_SIGNATURE = JSON.stringify([
 
 /**
  * @typedef {object} CachedFile
- * @property {number} mtimeMs mtime when the file was read
- * @property {number} size Size when the file was read
+ * @property {import('../file-stamp.js').FileStamp} stamp Stamp of the file taken before it was read
  * @property {boolean} valid False when the contents failed to parse
  * @property {any} value Raw text or parsed JSON
  * @property {number} generation Changes whenever the cached contents change
@@ -165,18 +165,19 @@ function matchesIfNoneMatch(headerValue, etag) {
 }
 
 /**
- * Returns the cached contents of a file, reading it only when its (mtimeMs, size) changed.
+ * Returns the cached contents of a file, reading it only when its stamp changed or cannot prove that it did not.
  * @param {Map<string, CachedFile>} cache Cache holding the entry
  * @param {string} key Cache key
  * @param {string} filePath Path to the file
- * @param {fs.Stats} stat File stat
+ * @param {fs.BigIntStats} stat File stat, taken with `{ bigint: true }` before the file is read
  * @param {FileReadMode} mode How to keep the contents
  * @param {number} [maxCacheSize] Optional cache capacity bound
  * @returns {CachedFile|null} Entry, or null when the file could not be read
  */
 function getCachedFile(cache, key, filePath, stat, mode, maxCacheSize = 0) {
+    const stamp = createFileStamp(stat);
     const cached = cache.get(key);
-    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    if (cached && isFileStampCurrent(cached.stamp, stamp)) {
         return cached;
     }
 
@@ -190,8 +191,7 @@ function getCachedFile(cache, key, filePath, stat, mode, maxCacheSize = 0) {
 
     /** @type {CachedFile} */
     const entry = {
-        mtimeMs: stat.mtimeMs,
-        size: stat.size,
+        stamp,
         valid: true,
         value: raw,
         generation: ++fileCacheGeneration,
@@ -236,7 +236,7 @@ function getSettingsFileStamp(filePath) {
 }
 
 /**
- * Reads a user's settings.json using the (mtimeMs, size) cache.
+ * Reads a user's settings.json through the stamp-validated file cache.
  * @param {string} filePath Path to settings.json
  * @param {string[]} signature Receives a generation part for ETag computation
  * @returns {string} Raw settings.json text
@@ -244,7 +244,7 @@ function getSettingsFileStamp(filePath) {
 function readSettingsFile(filePath, signature) {
     let stat;
     try {
-        stat = fs.statSync(filePath);
+        stat = fs.statSync(filePath, { bigint: true });
     } catch (error) {
         singleFileCache.delete(filePath);
         throw error;
@@ -301,7 +301,7 @@ function readCachedDirectory(directoryPath, fileExtension, mode) {
         const filePath = path.join(directoryPath, name);
         let stat;
         try {
-            stat = fs.statSync(filePath);
+            stat = fs.statSync(filePath, { bigint: true });
         } catch {
             continue;
         }

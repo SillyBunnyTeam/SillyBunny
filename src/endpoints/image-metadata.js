@@ -10,6 +10,7 @@ import { imageSize } from 'image-size';
 import writeFileAtomic from 'write-file-atomic';
 import express from 'express';
 import { getConfigValue, isPathUnderParent, uuidv4 } from '../util.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js';
 
 export const METADATA_FILE = 'image-metadata.json';
 
@@ -277,9 +278,9 @@ export async function generateImageMetadata(filePath, type) {
     };
 }
 
-// SillyBunny: the parsed index is kept per file and reused while its (mtime, size) is unchanged,
+// SillyBunny: the parsed index is kept per file and reused while its stamp is unchanged and settled,
 // so read-only routes skip the disk read and JSON parse. Writers still get their own copy.
-/** @type {Map<string, {mtimeMs: number, size: number, index: MetadataIndex}>} */
+/** @type {Map<string, {stamp: import('../file-stamp.js').FileStamp, index: MetadataIndex}>} */
 const metadataIndexCache = new Map();
 
 function createEmptyMetadataIndex() {
@@ -293,23 +294,23 @@ function createEmptyMetadataIndex() {
  */
 export async function readMetadataIndexCached(userDataRoot) {
     const indexPath = path.join(userDataRoot, METADATA_FILE);
-    let stats;
+    let stamp;
     try {
-        stats = await fs.stat(indexPath);
+        stamp = createFileStamp(await fs.stat(indexPath, { bigint: true }));
     } catch {
         metadataIndexCache.delete(indexPath);
         return createEmptyMetadataIndex();
     }
 
     const cached = metadataIndexCache.get(indexPath);
-    if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+    if (cached && isFileStampCurrent(cached.stamp, stamp)) {
         return cached.index;
     }
 
     try {
         const rawData = await fs.readFile(indexPath, 'utf8');
         const index = JSON.parse(rawData);
-        metadataIndexCache.set(indexPath, { mtimeMs: stats.mtimeMs, size: stats.size, index });
+        metadataIndexCache.set(indexPath, { stamp, index });
         return index;
     } catch {
         metadataIndexCache.delete(indexPath);

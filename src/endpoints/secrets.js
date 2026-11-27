@@ -5,11 +5,12 @@ import path from 'node:path';
 import express from 'express';
 import { color, getConfigValue, uuidv4, tryWriteFileSync } from '../util.js';
 import { encrypt, decrypt, isEncrypted, getEncryptionPassphrase } from '../encryption.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js';
 
-// SillyBunny: cache parsed/decrypted secrets.json per filePath keyed by (mtimeMs, size, passphraseDigest)
+// SillyBunny: cache parsed/decrypted secrets.json per filePath keyed by (file stamp, passphraseDigest)
 // so hot LLM generation calls skip repeated disk reads and 40+ ms scryptSync key derivations.
 const MAX_SECRETS_CACHE_ENTRIES = 64;
-/** @type {Map<string, { mtimeMs: number, size: number, passphraseDigest: string, needsEncryptionMigration: boolean, secrets: SecretKeys }>} */
+/** @type {Map<string, { stamp: import('../file-stamp.js').FileStamp, passphraseDigest: string, needsEncryptionMigration: boolean, secrets: SecretKeys }>} */
 const secretsFileCache = new Map();
 
 /**
@@ -167,13 +168,12 @@ export class SecretManager {
         const passphraseDigest = getPassphraseDigest(passphrase);
 
         // SillyBunny: reuse cached parsed/decrypted secrets when file metadata and passphrase match.
-        let fileStat = null;
+        let stamp = null;
         try {
-            fileStat = fs.statSync(this.filePath);
+            stamp = createFileStamp(fs.statSync(this.filePath, { bigint: true }));
             const cached = secretsFileCache.get(this.filePath);
             if (cached
-                && cached.mtimeMs === fileStat.mtimeMs
-                && cached.size === fileStat.size
+                && isFileStampCurrent(cached.stamp, stamp)
                 && cached.passphraseDigest === passphraseDigest) {
                 this._needsEncryptionMigration = cached.needsEncryptionMigration;
                 return structuredClone(cached.secrets);
@@ -201,7 +201,7 @@ export class SecretManager {
         }
 
         const parsed = /** @type {SecretKeys} */ (JSON.parse(fileContents));
-        if (fileStat) {
+        if (stamp) {
             if (secretsFileCache.size >= MAX_SECRETS_CACHE_ENTRIES && !secretsFileCache.has(this.filePath)) {
                 const oldestKey = secretsFileCache.keys().next().value;
                 if (oldestKey !== undefined) {
@@ -209,8 +209,7 @@ export class SecretManager {
                 }
             }
             secretsFileCache.set(this.filePath, {
-                mtimeMs: fileStat.mtimeMs,
-                size: fileStat.size,
+                stamp,
                 passphraseDigest,
                 needsEncryptionMigration,
                 secrets: structuredClone(parsed),

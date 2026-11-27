@@ -7,6 +7,7 @@ import _ from 'lodash';
 import { tryParse, tryWriteFileSync } from '../util.js';
 import { localizeWorldInfoExternalMedia } from '../external-media-import.js';
 import { restoreExternalMediaUrls } from '../external-media-manifest.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js'; // SillyBunny: caches validate against a stamp, not (mtime, size)
 
 const WORLD_INFO_EXTENSION = '.json';
 // SillyBunny divergence: canonical World Info filenames are UTF-8 bounded and written through the fork's safe persistence path.
@@ -151,13 +152,13 @@ export function readWorldInfoFile(directories, worldInfoName, allowDummy) {
 export const router = express.Router();
 
 // SillyBunny: the list only needs each book's name and extensions, so those are kept per file and
-// reused while (mtimeMs, size) is unchanged. Each listing rebuilds the folder's map, dropping deleted files.
-/** @type {Map<string, Map<string, {mtimeMs: number, size: number, name: unknown, extensions: object}>>} */
+// reused while the file's stamp is unchanged and settled. Each listing rebuilds the folder's map, dropping deleted files.
+/** @type {Map<string, Map<string, {stamp: import('../file-stamp.js').FileStamp, name: unknown, extensions: object}>>} */
 const worldInfoListCache = new Map();
 const WORLD_INFO_LIST_CONCURRENCY = 16;
 
-// SillyBunny: a file's JSON is validated once per (mtimeMs, size); unchanged files are sent as stored.
-/** @type {Map<string, {mtimeMs: number, size: number}>} */
+// SillyBunny: a file's JSON is validated once per stamp; unchanged files are sent as stored.
+/** @type {Map<string, {stamp: import('../file-stamp.js').FileStamp}>} */
 const validatedWorldInfoFiles = new Map();
 const VALIDATED_WORLD_INFO_LIMIT = 256;
 
@@ -174,14 +175,14 @@ function invalidateWorldInfoFileCaches(filePath) {
 /**
  * Reads the list entry for one World Info file, from cache when the file is unchanged.
  * @param {string} filePath Full path to the file
- * @param {Map<string, {mtimeMs: number, size: number, name: unknown, extensions: object}>} previous Entries from the last listing
- * @param {Map<string, {mtimeMs: number, size: number, name: unknown, extensions: object}>} next Entries for this listing
+ * @param {Map<string, {stamp: import('../file-stamp.js').FileStamp, name: unknown, extensions: object}>} previous Entries from the last listing
+ * @param {Map<string, {stamp: import('../file-stamp.js').FileStamp, name: unknown, extensions: object}>} next Entries for this listing
  * @returns {Promise<{name: unknown, extensions: object}>} Header fields for the list
  */
 async function readWorldInfoListHeader(filePath, previous, next) {
-    const stats = await fs.promises.stat(filePath);
+    const stamp = createFileStamp(await fs.promises.stat(filePath, { bigint: true }));
     const cached = previous.get(filePath);
-    if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+    if (cached && isFileStampCurrent(cached.stamp, stamp)) {
         next.set(filePath, cached);
         return cached;
     }
@@ -190,8 +191,7 @@ async function readWorldInfoListHeader(filePath, previous, next) {
     const fileContentsParsed = tryParse(fileContents) || {};
     const fileExtensions = fileContentsParsed?.extensions || {};
     const header = {
-        mtimeMs: stats.mtimeMs,
-        size: stats.size,
+        stamp,
         name: fileContentsParsed?.name,
         extensions: _.isObjectLike(fileExtensions) ? fileExtensions : {},
     };
@@ -257,17 +257,17 @@ router.post('/get', async (request, response) => {
         // decodes to the same value; only insignificant whitespace differs.
         const pathToWorldInfo = path.join(request.user.directories.worlds, filename);
         const fileHandle = await fs.promises.open(pathToWorldInfo, 'r');
-        let stats;
+        let stamp;
         let worldInfoText;
         try {
-            stats = await fileHandle.stat();
+            stamp = createFileStamp(await fileHandle.stat({ bigint: true }));
             worldInfoText = await fileHandle.readFile('utf8');
         } finally {
             await fileHandle.close();
         }
 
         const validated = validatedWorldInfoFiles.get(pathToWorldInfo);
-        if (validated && validated.mtimeMs === stats.mtimeMs && validated.size === stats.size) {
+        if (validated && isFileStampCurrent(validated.stamp, stamp)) {
             validatedWorldInfoFiles.delete(pathToWorldInfo);
         } else {
             const parsed = JSON.parse(worldInfoText);
@@ -276,7 +276,7 @@ router.post('/get', async (request, response) => {
                 return response.sendStatus(404);
             }
         }
-        validatedWorldInfoFiles.set(pathToWorldInfo, { mtimeMs: stats.mtimeMs, size: stats.size });
+        validatedWorldInfoFiles.set(pathToWorldInfo, { stamp });
         if (validatedWorldInfoFiles.size > VALIDATED_WORLD_INFO_LIMIT) {
             validatedWorldInfoFiles.delete(validatedWorldInfoFiles.keys().next().value);
         }

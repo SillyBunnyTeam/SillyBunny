@@ -12,6 +12,7 @@ import { CheckRepoActions, simpleGit } from 'simple-git';
 import { PUBLIC_DIRECTORIES } from '../constants.js';
 import { color, getConfigValue, isValidUrl } from '../util.js';
 import { createGitClient } from '../git/client.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js'; // SillyBunny: the manifest cache validates against a stamp, not (mtime, size)
 
 const gitBackend = getConfigValue('git.backend', 'auto');
 const execFileAsync = promisify(execFile);
@@ -773,8 +774,8 @@ router.post('/delete', async (request, response) => {
     }
 });
 
-// SillyBunny: cache parsed manifests by (mtimeMs, size) so repeated discover?manifests=1 calls skip JSON.parse.
-/** @type {Map<string, {mtimeMs: number, size: number, manifest: Record<string, unknown>}>} */
+// SillyBunny: cache parsed manifests by file stamp so repeated discover?manifests=1 calls skip JSON.parse.
+/** @type {Map<string, {stamp: import('../file-stamp.js').FileStamp, manifest: Record<string, unknown>}>} */
 const extensionManifestCache = new Map();
 const EXTENSION_MANIFEST_CACHE_LIMIT = 512;
 
@@ -801,7 +802,7 @@ function readCachedManifestSync(parentDirectory, folder) {
     const manifestPath = path.join(parentDirectory, folder, 'manifest.json');
     let stats;
     try {
-        stats = fs.statSync(manifestPath);
+        stats = fs.statSync(manifestPath, { bigint: true });
     } catch {
         extensionManifestCache.delete(manifestPath);
         console.warn(color.yellow(`Extension folder "${path.join(parentDirectory, folder)}" has no manifest.json and was skipped. Remove the folder to get rid of this warning.`));
@@ -814,8 +815,9 @@ function readCachedManifestSync(parentDirectory, folder) {
         return null;
     }
 
+    const stamp = createFileStamp(stats);
     const cached = extensionManifestCache.get(manifestPath);
-    if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+    if (cached && isFileStampCurrent(cached.stamp, stamp)) {
         return cached.manifest;
     }
 
@@ -827,7 +829,7 @@ function readCachedManifestSync(parentDirectory, folder) {
             return null;
         }
         extensionManifestCache.delete(manifestPath);
-        extensionManifestCache.set(manifestPath, { mtimeMs: stats.mtimeMs, size: stats.size, manifest });
+        extensionManifestCache.set(manifestPath, { stamp, manifest });
         if (extensionManifestCache.size > EXTENSION_MANIFEST_CACHE_LIMIT) {
             extensionManifestCache.delete(extensionManifestCache.keys().next().value);
         }

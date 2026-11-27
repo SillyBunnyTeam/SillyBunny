@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../src/constants.js';
 import { decrypt, encrypt } from '../src/encryption.js';
+import { RACY_WINDOW_MS } from '../src/file-stamp.js';
 import { setConfigFilePath } from '../src/util.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,6 +44,8 @@ describe('encryption scrypt maxmem parity and bounded secrets cache', () => {
         const directories = { root: userDir };
 
         writeSecret(directories, 'api_key_openai', 'sk-cached-first', 'primary');
+        // A file that is newer than the racy window is read again on every call, so let it age first.
+        await new Promise(resolve => setTimeout(resolve, RACY_WINDOW_MS + 20));
         const readSpy = jest.spyOn(fs, 'readFileSync');
 
         try {

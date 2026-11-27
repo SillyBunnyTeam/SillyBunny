@@ -1911,6 +1911,13 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/perf-secrets-encryption-datamaid.test.js` ("Data Maid reference scan fails closed").
 - **Tests:** `tests/perf-secrets-encryption-datamaid.test.js`, `tests/perf-hot-apis-and-lazy-routers.test.js`, `tests/data-maid-precise-reference.test.js`, `tests/secrets.test.js`.
 
+### Stat-validated file caches
+
+- **Breaks:** a cache that validated a file with `(mtimeMs, size)` served the old contents of a file that was rewritten with the same length inside one file system clock tick, because both writes got the same timestamp. In one run on a ZFS host, 198 of 200 back-to-back same-size writes had the same `mtimeMs`. It reached a server write that skipped the cache's own invalidation, an edit outside the server, and a restore that keeps mtimes.
+- **Guards:** `src/file-stamp.js` makes the stamp that these caches keep: inode, size, `mtimeNs` and `ctimeNs` from `{ bigint: true }` stats (a millisecond float loses the nanoseconds), plus `settled`, which is false when the newer of mtime and ctime was within `RACY_WINDOW_MS` of the moment of the stamp. `isFileStampCurrent()` is false for an unsettled stored stamp, so such a file is read again until a read happens after the window and stores a settled stamp. Take the stamp before the read. The caches are the settings file and directory cache (`settings.js`), the World Info list and `/get` validation caches (`worldinfo.js`), the image metadata index (`image-metadata.js`), the extension manifests (`extensions.js`) and the secrets file (`secrets.js`).
+- **Limit:** a file written less than `RACY_WINDOW_MS` before a request is read again by that request and by the next one that follows, which is the cost of not trusting a stamp that a second write can reproduce. A test that expects a cache hit right after it writes its fixture waits for the window first. `chatSizeCache` and the thumbnail content-type cache keep their own keys: the first stores only values that are a function of `(size, mtimeMs)`, so a stale hit cannot differ, and the second stores a type that only a changed format of the same length could make wrong. The character index stores `(size, mtime)` in its database, so a stronger stamp there needs a schema change.
+- **Tests:** `tests/file-stamp-caches.test.js`, `tests/secrets-cache.test.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
