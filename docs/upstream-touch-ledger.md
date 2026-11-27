@@ -2958,14 +2958,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/middleware/webpack-serve.js`. |
 | Area | Vendor bundle (`/lib.js`) HTTP delivery and response compression caching. |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Upstream serves `/lib.js` directly via `res.sendFile()`, bypassing the bounded static compression LRU and forcing dynamic recompression of the ~1–2 MB vendor bundle on every remote or proxied page load. Mounting `createCompressedStaticMiddleware` ahead of `res.sendFile()` serves pre-compressed responses from RAM for proxied/remote clients while keeping loopback bypass and `ENOENT` rebuild recovery intact. |
 | Target seam | `src/middleware/response-compression.js` (`createCompressedStaticMiddleware`). |
 | Adapter shape | Marked `SillyBunny:` import and `getCompressedLibHandler()` wrapper inside `sendPublicLib()` serving `/lib.js` from the bounded compressed static LRU ahead of `res.sendFile`, preserving `Cache-Control: no-cache`, loopback bypass, and `ENOENT` auto-rebuild recovery. |
 | Protecting tests | `tests/perf-caching-compression-markers.test.js`; `tests/response-compression.test.js`. |
 | Validation | 2026-11-26 (restart after update, stale assets, fresh install): root and `tests/` ESLint (0 errors) and focused Jest suites (`perf-caching-compression-markers.test.js`, `response-compression.test.js`). |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Remove the marked `createCompressedStaticMiddleware` import and `getCompressedLibHandler()` call in `src/middleware/webpack-serve.js` so `sendPublicLib()` falls straight through to `res.sendFile()`. Cache is in-memory only and no user data changes. |
 | Last reviewed | 2026-11-26, PR #1037 Wave-1 follow-up. |
-| Owner | `TODO(copy)` |
+| Owner | Server runtime integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
