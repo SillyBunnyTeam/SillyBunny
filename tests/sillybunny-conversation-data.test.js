@@ -1,0 +1,1552 @@
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+
+import {
+    ChatNotLoadedError,
+    createConversationData,
+    FREQUENT_DELAY_MS,
+    FREQUENT_MAX_WAIT_MS,
+    MAX_LOADED_CHATS,
+    mergePatches,
+    RETRY_DELAYS_MS,
+    withoutFieldsOf,
+} from '../public/scripts/sillybunny-conversation/conversation-data.js';
+import { header, line, PERSONA, recordCalls, scriptedAdapter, seedConversations, settle, startConversationServer } from './util/conversation-data-fixture.js';
+
+const { loadChat: loadStoredChat, readConversation, saveChat: saveStoredChat, readCharacterState } = await import('../src/conversation-store.js');
+
+let server;
+let adapter;
+let data;
+let events;
+
+beforeEach(async () => {
+    server = await startConversationServer();
+    events = [];
+});
+
+afterEach(async () => {
+    data?.destroy();
+    await server.stop();
+    jest.restoreAllMocks();
+});
+
+async function started(descriptors = [], overrides = {}) {
+    seedConversations(server, descriptors);
+    adapter = recordCalls(server.adapter(overrides));
+    data = createConversationData(adapter);
+    data.subscribe(event => events.push(event));
+    await data.start();
+    await data.whenReady();
+    return data;
+}
+
+const DIRECT = { id: 'conv_1_direct01', characters: ['Nova.png'], chats: [{ id: 'main', name: 'Main', messages: ['hello', 'hi there', 'how are you'], readThrough: 'main-0' }] };
+const GROUP = { id: 'conv_2_group001', characters: ['Nova.png', 'Orion.png'], name: 'Trip', chats: [{ id: 'main', messages: ['one'] }] };
+const ADDRESS = { conversationId: 'conv_1_direct01', chatId: 'main' };
+
+const message = (id, mes, extra = {}) => ({ ...line(id, mes, { minute: Number(id.replace(/\D/g, '')) || 0 }), ...extra });
+
+describe('start', () => {
+    test('reads the list and the state of the characters in one go, and is ready', async () => {
+        await started([DIRECT, GROUP]);
+
+        expect(adapter.paths().sort()).toEqual(['/characters/get', '/list']);
+        expect(data.status().state).toBe('ready');
+        expect(data.list().map(view => view.id)).toEqual(['conv_1_direct01', 'conv_2_group001']);
+        expect(data.get('conv_1_direct01')).toMatchObject({ kind: 'direct', messageCount: 3, unread: 1, preview: 'how are you', lastMessageRole: 'character', hasUserMessage: true });
+        expect(data.get('conv_1_direct01').chats[0]).toMatchObject({ id: 'main', name: 'Main', unread: 1 });
+    });
+
+    test('lists the conversations of one persona, newest message first', async () => {
+        await started([DIRECT, { ...GROUP, personaId: 'other.png' }]);
+
+        expect(data.list({ personaId: PERSONA }).map(view => view.id)).toEqual(['conv_1_direct01']);
+        expect(data.list({ personaId: 'other.png' }).map(view => view.id)).toEqual(['conv_2_group001']);
+    });
+
+    test('is idempotent and starts the requests once', async () => {
+        await started([DIRECT]);
+        await data.start();
+
+        expect(adapter.callsTo('/list')).toHaveLength(1);
+    });
+
+    test('answers whenReady to a caller that asks before start', async () => {
+        seedConversations(server, [DIRECT]);
+        data = createConversationData(server.adapter());
+        let ready = false;
+        const waiting = data.whenReady().then(() => {
+            ready = true;
+        });
+        await settle(2);
+        expect(ready).toBe(false);
+
+        await data.start();
+        await waiting;
+
+        expect(ready).toBe(true);
+    });
+
+    test('says failed with the time of the next try while the migration waits, and tries again then', async () => {
+        const answers = [
+            { status: 503, json: { error: 'migration_failed' } },
+            { status: 503, json: { error: 'migration_failed' } },
+            { status: 200, json: { conversations: [], problems: [] } },
+        ];
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/migration/status') {
+                return { status: 200, json: { state: 'failed', error: { code: 'write_failed', message: 'Disk full' }, retryAfterMs: 60_000 } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            return answers.shift() ?? { status: 200, json: { conversations: [], problems: [] } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+
+        await data.start();
+
+        expect(data.status()).toMatchObject({ state: 'failed', code: 'write_failed', retryAt: scripted.now() + 60_000 });
+        await scripted.clock.advance(60_000);
+        await settle();
+        expect(data.status()).toMatchObject({ state: 'failed' });
+        answers.length = 0;
+        await scripted.clock.advance(60_000);
+        await settle();
+        expect(data.status().state).toBe('ready');
+    });
+
+    test('reloads the page once when the migration ran after the settings were read and the settings are old', async () => {
+        const reloadPage = jest.fn();
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/migration/status') {
+                return { status: 200, json: { state: 'migrated', report: {} } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            return { status: 503, json: { error: 'migration_failed' } };
+        }, { isSettingsStale: () => true, reloadPage });
+        data = createConversationData(scripted);
+
+        await data.start();
+
+        expect(reloadPage).toHaveBeenCalledTimes(1);
+        expect(data.status().state).not.toBe('ready');
+    });
+
+    test('says failed and tries again after a network failure', async () => {
+        let up = false;
+        const scripted = scriptedAdapter(async (path) => {
+            if (!up) {
+                throw new Error('offline');
+            }
+            return path === '/list' ? { status: 200, json: { conversations: [], problems: [] } } : { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+
+        await data.start();
+        expect(data.status()).toMatchObject({ state: 'failed', code: 'network' });
+
+        up = true;
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(data.status().state).toBe('ready');
+    });
+
+    test('enters failed state with retry when /migration/status fails instead of stalling in loading', async () => {
+        let statusFails = true;
+        let listFails = true;
+        const scripted = scriptedAdapter(async (path) => {
+            if (path === '/migration/status') {
+                if (statusFails) {
+                    throw new Error('status unreachable');
+                }
+                return { status: 200, json: { state: 'migrated' } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            return listFails ? { status: 503, json: { error: 'migration_failed' } } : { status: 200, json: { conversations: [], problems: [] } };
+        });
+        data = createConversationData(scripted);
+
+        await data.start();
+        expect(data.status()).toMatchObject({ state: 'failed', code: 'network' });
+
+        statusFails = false;
+        listFails = false;
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(data.status().state).toBe('ready');
+    });
+
+    test('enters failed state with retry when the retry load after waitForMigration fails', async () => {
+        let listAttempts = 0;
+        const scripted = scriptedAdapter(async (path) => {
+            if (path === '/migration/status') {
+                return { status: 200, json: { state: 'migrated' } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            listAttempts++;
+            if (listAttempts === 1) {
+                return { status: 503, json: { error: 'migration_failed' } };
+            }
+            if (listAttempts === 2) {
+                return { status: 500, json: { error: 'internal' } };
+            }
+            return { status: 200, json: { conversations: [], problems: [] } };
+        });
+        data = createConversationData(scripted);
+
+        await data.start();
+        expect(data.status()).toMatchObject({ state: 'failed', code: 'internal' });
+
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(data.status().state).toBe('ready');
+    });
+
+    test('proceeds to retry load instead of stalling when reloadPage returns false', async () => {
+        let listAttempts = 0;
+        const reloadPage = jest.fn(() => false);
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/migration/status') {
+                return { status: 200, json: { state: 'migrated' } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            listAttempts++;
+            return listAttempts === 1
+                ? { status: 503, json: { error: 'migration_failed' } }
+                : { status: 200, json: { conversations: [], problems: [] } };
+        }, { isSettingsStale: () => true, reloadPage });
+        data = createConversationData(scripted);
+
+        await data.start();
+
+        expect(reloadPage).toHaveBeenCalledTimes(1);
+        expect(data.status().state).toBe('ready');
+    });
+});
+
+describe('resolve and find', () => {
+    beforeEach(async () => {
+        await started([DIRECT, { ...GROUP, chats: [{ id: 'main', messages: ['one'] }, { id: 'later', messages: ['two'] }], activeChatId: 'later' }]);
+    });
+
+    test('a direct conversation is found by persona and avatar, and a group by its id', () => {
+        expect(data.resolve({ avatar: 'Nova.png', personaId: PERSONA })).toEqual(ADDRESS);
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001', personaId: PERSONA })).toEqual({ conversationId: 'conv_2_group001', chatId: 'later' });
+        expect(data.findDirect(PERSONA, 'Nova.png').id).toBe('conv_1_direct01');
+    });
+
+    test('takes the chat that is named when the conversation has it, and the active chat otherwise', () => {
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001', personaId: PERSONA, chatId: 'main' }).chatId).toBe('main');
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001', personaId: PERSONA, chatId: 'ghost' }).chatId).toBe('later');
+    });
+
+    test('is null for a conversation that does not exist, another persona, or a direct id used as a group', () => {
+        expect(data.resolve({ avatar: 'Ghost.png', personaId: PERSONA })).toBeNull();
+        expect(data.resolve({ avatar: 'Nova.png', personaId: 'other.png' })).toBeNull();
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001', personaId: 'other.png' })).toBeNull();
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001' })).toEqual({ conversationId: 'conv_2_group001', chatId: 'later' });
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_1_direct01', personaId: PERSONA })).toBeNull();
+        expect(data.get('nope')).toBeNull();
+    });
+
+    test('adds up the unread counts of a persona over the conversations that the caller accepts', () => {
+        expect(data.totalUnread(PERSONA)).toBe(data.get('conv_1_direct01').unread + data.get('conv_2_group001').unread);
+        expect(data.totalUnread(PERSONA, view => view.kind === 'group')).toBe(data.get('conv_2_group001').unread);
+        expect(data.totalUnread('other.png')).toBe(0);
+    });
+});
+
+describe('loadChat', () => {
+    test('loads a chat once, however many callers ask at the same time', async () => {
+        await started([DIRECT]);
+
+        const [first, second] = await Promise.all([data.loadChat(ADDRESS), data.loadChat(ADDRESS)]);
+        await data.loadChat(ADDRESS);
+
+        expect(first).toBe(second);
+        expect(adapter.callsTo('/chat/get')).toHaveLength(1);
+        expect(first.messages.map(item => item.id)).toEqual(['main-0', 'main-1', 'main-2']);
+        expect(data.chat(ADDRESS)).toBe(first);
+    });
+
+    test('answers null for a chat that is not loaded, and throws for a write to it', async () => {
+        await started([DIRECT]);
+
+        expect(data.chat(ADDRESS)).toBeNull();
+        expect(() => data.commitChat(ADDRESS, () => {})).toThrow(ChatNotLoadedError);
+    });
+
+    test('rejects with the code of the route for a chat that does not exist', async () => {
+        await started([DIRECT]);
+
+        await expect(data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'ghost' })).rejects.toMatchObject({ code: 'not_found', status: 404 });
+        expect(data.chat({ conversationId: 'conv_1_direct01', chatId: 'ghost' })).toBeNull();
+    });
+
+    test('works out the summary of a loaded chat from its messages, as the server does', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+
+        const fromServer = (await adapter.fetchJson('/list', {})).json.conversations[0];
+        expect(data.get('conv_1_direct01')).toMatchObject({ messageCount: fromServer.messageCount, unread: fromServer.unread, preview: fromServer.preview, lastMessageAt: fromServer.lastMessageAt });
+    });
+
+    test(`keeps at most ${MAX_LOADED_CHATS} chats that nothing needs, and never the open, dirty or saving ones`, async () => {
+        const chats = Array.from({ length: MAX_LOADED_CHATS + 4 }, (_, index) => ({ id: `c${index}`, messages: ['x'] }));
+        await started([{ id: 'conv_3_manychat', characters: ['Nova.png'], chats }]);
+        const address = index => ({ conversationId: 'conv_3_manychat', chatId: `c${index}` });
+        // The server refuses saves, so that the chat that was changed stays dirty.
+        const original = adapter.fetchJson;
+        adapter.fetchJson = async (path, body, options) => (path === '/chat/save' ? { status: 400, json: { error: 'invalid_input' } } : original(path, body, options));
+        await data.loadChat(address(0));
+        data.setOpen(address(0));
+        await data.loadChat(address(1));
+        data.commitChat(address(1), (draft) => {
+            draft.messages.push(message('z9', 'unsaved'));
+        });
+
+        for (let index = 2; index < chats.length; index++) {
+            await data.loadChat(address(index));
+        }
+
+        expect(data.chat(address(0))).not.toBeNull();
+        expect(data.chat(address(1))).not.toBeNull();
+        const loaded = chats.filter((_, index) => data.chat(address(index)));
+        // The open chat and the unsaved one are kept on top of the ones that fit.
+        expect(loaded).toHaveLength(MAX_LOADED_CHATS + 2);
+        expect(data.chat(address(2))).toBeNull();
+    });
+});
+
+describe('saving messages', () => {
+    test('an append is saved at once as the whole chat with the slug of the load, and the new slug is kept', async () => {
+        await started([DIRECT]);
+        const loaded = await data.loadChat(ADDRESS);
+        const firstSlug = loaded.header.chat_metadata.integrity;
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-3', 'fine, thanks'));
+        });
+        await data.flush();
+
+        const saves = adapter.callsTo('/chat/save');
+        expect(saves).toHaveLength(1);
+        expect(saves[0].body).toMatchObject({ id: 'conv_1_direct01', chatId: 'main' });
+        expect(saves[0].body.chat).toHaveLength(5);
+        expect(saves[0].body.allowShrink).toBeUndefined();
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main').at(-1).mes).toBe('fine, thanks');
+        expect(loaded.header.chat_metadata.integrity).toBeTruthy();
+        expect(loaded.header.chat_metadata.integrity).not.toBe(firstSlug);
+        const slugAfterFirstSave = loaded.header.chat_metadata.integrity;
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-4', 'bye'));
+        });
+        await data.flush();
+        expect(adapter.callsTo('/chat/save')[1].body.chat[0].chat_metadata.integrity).toBe(slugAfterFirstSave);
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main')).toHaveLength(6);
+    });
+
+    test('changes made in one tick are one request', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+
+        for (const id of ['a1', 'a2', 'a3']) {
+            data.commitChat(ADDRESS, (draft) => {
+                draft.messages.push(message(id, id));
+            });
+        }
+        await data.flush();
+
+        expect(adapter.callsTo('/chat/save')).toHaveLength(1);
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main')).toHaveLength(7);
+    });
+
+    test('a change made while a save is in flight waits, and is sent once, with the latest state', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        const original = adapter.fetchJson;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/chat/save' && adapter.callsTo('/chat/save').length === 0) {
+                adapter.calls.push({ path, body: structuredClone(body), options });
+                await gate;
+                return server.adapter().fetchJson(path, body, options);
+            }
+            return original(path, body, options);
+        };
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('b1', 'one'));
+        });
+        await settle(3);
+        for (const id of ['b2', 'b3', 'b4']) {
+            data.commitChat(ADDRESS, (draft) => {
+                draft.messages.push(message(id, id));
+            });
+        }
+        await settle(3);
+        expect(adapter.callsTo('/chat/save')).toHaveLength(1);
+        release();
+        await data.flush();
+
+        expect(adapter.callsTo('/chat/save')).toHaveLength(2);
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main').map(item => item.id).slice(-4)).toEqual(['b1', 'b2', 'b3', 'b4']);
+    });
+
+    test('edits and deletes are saved too, and a declared shrink is sent as allowShrink', async () => {
+        const messages = Array.from({ length: 12 }, (_, index) => `message ${index}`);
+        await started([{ id: 'conv_4_longchat1', characters: ['Nova.png'], chats: [{ id: 'main', messages }] }]);
+        const address = { conversationId: 'conv_4_longchat1', chatId: 'main' };
+        await data.loadChat(address);
+
+        data.commitChat(address, (draft) => {
+            draft.messages[0].mes = 'edited';
+        });
+        await data.flush();
+        data.commitChat(address, (draft) => {
+            draft.messages.splice(3);
+        }, { shrink: true });
+        await data.flush();
+
+        const saves = adapter.callsTo('/chat/save');
+        expect(saves.map(call => call.body.allowShrink)).toEqual([undefined, true]);
+        expect(loadStoredChat(server.user, 'conv_4_longchat1', 'main')).toHaveLength(4);
+        expect(loadStoredChat(server.user, 'conv_4_longchat1', 'main')[1].mes).toBe('edited');
+    });
+
+    test('a shrink that the caller did not declare is refused by the server, the file stays, and the chat is read again', async () => {
+        const messages = Array.from({ length: 12 }, (_, index) => `message ${index}`);
+        await started([{ id: 'conv_4_longchat1', characters: ['Nova.png'], chats: [{ id: 'main', messages }] }]);
+        const address = { conversationId: 'conv_4_longchat1', chatId: 'main' };
+        const loaded = await data.loadChat(address);
+
+        data.commitChat(address, (draft) => {
+            draft.messages.splice(2);
+        });
+        await data.flush();
+
+        expect(loadStoredChat(server.user, 'conv_4_longchat1', 'main')).toHaveLength(13);
+        expect(loaded.messages).toHaveLength(12);
+        expect(events.some(event => event.type === 'error' && event.code === 'destructive')).toBe(true);
+    });
+
+    test('a save that is refused as stale merges what only this page wrote into the server copy and saves again', async () => {
+        await started([DIRECT]);
+        const loaded = await data.loadChat(ADDRESS);
+        // Another tab saves a reply, so that the slug of this page is stale.
+        const stored = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        await saveStoredChat(server.user, 'conv_1_direct01', 'main', [...stored, message('main-9', 'from another tab')]);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-3', 'written here'));
+        });
+        await data.flush();
+
+        const onDisk = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        expect(onDisk.slice(1).map(item => item.id)).toEqual(['main-0', 'main-1', 'main-2', 'main-3', 'main-9'].sort((a, b) => (a === 'main-9' ? 1 : a.localeCompare(b))).slice(0, 5));
+        expect(onDisk.some(item => item.mes === 'written here')).toBe(true);
+        expect(onDisk.some(item => item.mes === 'from another tab')).toBe(true);
+        expect(loaded.messages.map(item => item.id)).toEqual(onDisk.slice(1).map(item => item.id));
+        expect(events.find(event => event.type === 'conflict')).toMatchObject({ appended: 1, lostEdits: 0, lostDeletes: 0 });
+    });
+
+    test('says how many local edits a rebase lost', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        const stored = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        stored[1] = { ...stored[1], mes: 'edited in the other tab' };
+        await saveStoredChat(server.user, 'conv_1_direct01', 'main', stored);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages[0].mes = 'edited here';
+        });
+        await data.flush();
+
+        expect(events.find(event => event.type === 'conflict')).toMatchObject({ appended: 0, lostEdits: 1 });
+        expect(data.chat(ADDRESS).messages[0].mes).toBe('edited in the other tab');
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main')[1].mes).toBe('edited in the other tab');
+    });
+
+    test('drops the conversation from the cache and says so when the server no longer has it', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        await adapter.fetchJson('/delete', { id: 'conv_1_direct01' });
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-3', 'late'));
+        });
+        await data.flush();
+        await settle();
+
+        expect(events.some(event => event.type === 'error' && event.code === 'not_found')).toBe(true);
+        expect(data.get('conv_1_direct01')).toBeNull();
+        expect(data.chat(ADDRESS)).toBeNull();
+    });
+
+    test('keeps the chat and tries again after 2, 5 and 15 seconds when the server fails', async () => {
+        let failures = 3;
+        const scripted = scriptedAdapter((path, body) => {
+            switch (path) {
+                case '/list': return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], name: '', description: '', avatar: '', favorite: false, settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '', followupCount: 0, lastAutoMessageAt: 0, lastActivity: 0, sessionMarkers: {}, messageCount: 0, lastMessageAt: 0, preview: '', unread: 0, lastMessageRole: '', hasUserMessage: false }], reminders: [], createdAt: 1, updatedAt: 1, legacyKey: '' }], problems: [] } };
+                case '/characters/get': return { status: 200, json: { version: 1, characters: {} } };
+                case '/chat/get': return { status: 200, json: { chat: [header({ integrity: 's0' })] } };
+                case '/chat/save':
+                    if (failures-- > 0) {
+                        return { status: 500, json: { error: 'internal' } };
+                    }
+                    return { status: 200, json: { ok: true, integrity: `slug${body.chat.length}` } };
+                default: return { status: 200, json: {} };
+            }
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('x1', 'hello'));
+        });
+        await settle();
+        expect(scripted.callsTo('/chat/save')).toHaveLength(1);
+        await scripted.clock.advance(RETRY_DELAYS_MS[0] - 1);
+        expect(scripted.callsTo('/chat/save')).toHaveLength(1);
+        await scripted.clock.advance(1);
+        expect(scripted.callsTo('/chat/save')).toHaveLength(2);
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        expect(scripted.callsTo('/chat/save')).toHaveLength(3);
+        await scripted.clock.advance(RETRY_DELAYS_MS[2]);
+        expect(scripted.callsTo('/chat/save')).toHaveLength(4);
+        expect(data.hasPendingWrites()).toBe(false);
+        expect(events.some(event => event.type === 'error')).toBe(false);
+    });
+
+    test('reports an error after the last try and keeps the chat dirty until the next change', async () => {
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header()] } };
+            }
+            if (path === '/chat/save') {
+                return { status: 502, json: null };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('x1', 'hello'));
+        });
+        for (const delay of RETRY_DELAYS_MS) {
+            await settle();
+            await scripted.clock.advance(delay);
+        }
+        await settle();
+
+        expect(scripted.callsTo('/chat/save')).toHaveLength(RETRY_DELAYS_MS.length + 1);
+        expect(events.filter(event => event.type === 'error')).toHaveLength(1);
+        expect(data.hasPendingWrites()).toBe(true);
+    });
+
+    test('resets the rebase counter after a successful save so later conflicts still rebase', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+
+        for (let round = 1; round <= 3; round++) {
+            const stored = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+            await saveStoredChat(server.user, 'conv_1_direct01', 'main', [...stored, message(`remote-${round}`, `remote ${round}`)]);
+            data.commitChat(ADDRESS, (draft) => {
+                draft.messages.push(message(`local-${round}`, `local ${round}`));
+            });
+            await data.flush();
+        }
+
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main').map(item => item.id)).toEqual(
+            expect.arrayContaining(['local-1', 'local-2', 'local-3', 'remote-1', 'remote-2', 'remote-3']),
+        );
+    });
+
+    test('keeps the session dirty and preserves allowShrink when rebases exceed two or reload returns 4xx', async () => {
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header({ integrity: 'server-slug' }), message('m1', 'one')] } };
+            }
+            if (path === '/chat/save') {
+                return { status: 409, json: { error: 'integrity' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m2', 'two'));
+        }, { shrink: true });
+        await data.flush();
+
+        expect(events.some(event => event.type === 'error' && event.code === 'integrity')).toBe(true);
+        expect(data.hasPendingWrites()).toBe(true);
+
+        // A 4xx response from /chat/get during rebase also keeps the session dirty.
+        let getCalls = 0;
+        const scripted4xx = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                getCalls++;
+                return getCalls === 1
+                    ? { status: 200, json: { chat: [header({ integrity: 's0' }), message('m1', 'one')] } }
+                    : { status: 400, json: { error: 'bad_chat' } };
+            }
+            if (path === '/chat/save') {
+                return { status: 409, json: { error: 'integrity' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        const secondData = createConversationData(scripted4xx);
+        const secondEvents = [];
+        secondData.subscribe(event => secondEvents.push(event));
+        await secondData.start();
+        await secondData.loadChat(ADDRESS);
+
+        secondData.commitChat(ADDRESS, (draft) => {
+            draft.messages.splice(0, 1);
+        }, { shrink: true });
+        await secondData.flush();
+
+        expect(secondEvents.some(event => event.type === 'error' && event.code === 'bad_chat')).toBe(true);
+        expect(secondData.hasPendingWrites()).toBe(true);
+        secondData.destroy();
+    });
+
+    test('retries via scheduleRetry when /chat/get returns 5xx during a rebase', async () => {
+        let getCalls = 0;
+        let saveCalls = 0;
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                getCalls++;
+                if (getCalls === 2) {
+                    return { status: 503, json: { error: 'busy' } };
+                }
+                return { status: 200, json: { chat: [header({ integrity: `s${getCalls}` }), message('m1', 'one')] } };
+            }
+            if (path === '/chat/save') {
+                saveCalls++;
+                return saveCalls <= 2
+                    ? { status: 409, json: { error: 'integrity' } }
+                    : { status: 200, json: { ok: true, integrity: 'final' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m2', 'two'));
+        });
+        await settle();
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+        expect(data.hasPendingWrites()).toBe(true);
+
+        await scripted.clock.advance(RETRY_DELAYS_MS[0]);
+        await settle();
+        expect(data.hasPendingWrites()).toBe(false);
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+    });
+
+    test('persists a preserved local memory summary after a conflict even when no new messages were appended', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        const stored = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        await saveStoredChat(server.user, 'conv_1_direct01', 'main', [...stored, message('main-9', 'from another tab')]);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.header.chat_metadata.sb_conversation = { memory_summary: 'Fresh local summary', memory_message_count: 3, memory_updated_at: 999 };
+        });
+        await data.flush();
+
+        const onDisk = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        expect(onDisk[0].chat_metadata.sb_conversation).toMatchObject({ memory_summary: 'Fresh local summary', memory_updated_at: 999 });
+        expect(onDisk.some(item => item.id === 'main-9')).toBe(true);
+    });
+
+    test('snapshots synced messages before awaiting /chat/save so in-flight mutations remain detectable', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        let releaseSave;
+        const saveGate = new Promise((resolve) => {
+            releaseSave = resolve;
+        });
+        const original = adapter.fetchJson;
+        let saveCount = 0;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/chat/save') {
+                saveCount++;
+                if (saveCount === 1) {
+                    const snapshot = structuredClone(body);
+                    const answer = await original(path, snapshot, options);
+                    await saveGate;
+                    return answer;
+                }
+            }
+            return original(path, body, options);
+        };
+
+        // First save appends a message; while the response waits, mutate it in place without calling commitChat yet.
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m-edit', 'v1'));
+        });
+        await settle(3);
+        const loaded = data.chat(ADDRESS);
+        loaded.messages.find(item => item.id === 'm-edit').mes = 'v2-in-flight';
+        releaseSave();
+        await settle(5);
+
+        // Another tab edits the same message on disk so a subsequent save hits a conflict.
+        const onDisk = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        onDisk.find(item => item.id === 'm-edit').mes = 'v3-server';
+        await saveStoredChat(server.user, 'conv_1_direct01', 'main', onDisk);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m-trigger', 'trigger conflict'));
+        });
+        await data.flush();
+
+        expect(events.find(event => event.type === 'conflict')).toMatchObject({ lostEdits: 1 });
+    });
+
+    test('markDirty clears a pending retry timer and resets retries for the new edit', async () => {
+        let saveCalls = 0;
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header()] } };
+            }
+            if (path === '/chat/save') {
+                saveCalls++;
+                return saveCalls <= 4 ? { status: 500, json: { error: 'internal' } } : { status: 200, json: { ok: true, integrity: 'ok' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m1', 'first'));
+        });
+        await settle();
+        expect(saveCalls).toBe(1);
+        await scripted.clock.advance(RETRY_DELAYS_MS[0]);
+        await settle();
+        expect(saveCalls).toBe(2);
+
+        // A new edit cancels the scheduled 5s retry timer and resets retries to 0, so the next failure schedules 2s again.
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m2', 'second'));
+        });
+        await settle();
+        expect(saveCalls).toBe(3);
+        await scripted.clock.advance(RETRY_DELAYS_MS[0]);
+        await settle();
+        expect(saveCalls).toBe(4);
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(saveCalls).toBe(5);
+        expect(data.hasPendingWrites()).toBe(false);
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+    });
+
+    test('loadChat returns null when the conversation is dropped while /chat/get is in flight, and destroy clears retry timers', async () => {
+        await started([DIRECT]);
+        let releaseGet;
+        const getGate = new Promise((resolve) => {
+            releaseGet = resolve;
+        });
+        const original = adapter.fetchJson;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/chat/get') {
+                const answer = await original(path, body, options);
+                await getGate;
+                return answer;
+            }
+            return original(path, body, options);
+        };
+
+        const loading = data.loadChat(ADDRESS);
+        await settle(2);
+        await data.deleteConversation(DIRECT.id);
+        releaseGet();
+
+        await expect(loading).resolves.toBeNull();
+        expect(data.chat(ADDRESS)).toBeNull();
+
+        // Destroy cancels pending chat retry timers and character flush timers.
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header()] } };
+            }
+            if (path === '/chat/save') {
+                return { status: 500, json: { error: 'internal' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        const managed = createConversationData(scripted);
+        await managed.start();
+        await managed.loadChat(ADDRESS);
+        managed.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m1', 'retry me'));
+        });
+        await settle();
+        managed.patchCharacter('Nova.png', { statusOverride: 'dnd' });
+        const savesBeforeDestroy = scripted.callsTo('/chat/save').length;
+        managed.destroy();
+        await scripted.clock.advance(60_000);
+        await settle();
+
+        expect(scripted.callsTo('/chat/save')).toHaveLength(savesBeforeDestroy);
+        expect(scripted.callsTo('/characters/update')).toHaveLength(0);
+    });
+});
+
+describe('metadata', () => {
+    test('a patch is applied to the cache at once and sent in one request at the end of the tick', async () => {
+        await started([DIRECT]);
+
+        data.patchConversation('conv_1_direct01', { name: 'Nova', favorite: true });
+        data.patchConversation('conv_1_direct01', { settings: { notifications_muted: true } });
+
+        expect(data.get('conv_1_direct01')).toMatchObject({ name: 'Nova', favorite: true, settings: { notifications_muted: true } });
+        expect(adapter.callsTo('/update')).toHaveLength(0);
+        await adapter.clock.advance(0);
+        await data.flush();
+
+        expect(adapter.callsTo('/update')).toHaveLength(1);
+        expect(adapter.callsTo('/update')[0].body).toEqual({ id: 'conv_1_direct01', patch: { name: 'Nova', favorite: true, settings: { notifications_muted: true } } });
+        expect(readConversation(server.user, 'conv_1_direct01')).toMatchObject({ name: 'Nova', favorite: true });
+    });
+
+    test(`state that changes often waits ${FREQUENT_DELAY_MS} ms after the last change and is merged into one request`, async () => {
+        await started([DIRECT]);
+
+        data.patchConversation('conv_1_direct01', { chats: { main: { lastActivity: 1000 } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS - 1);
+        data.patchConversation('conv_1_direct01', { chats: { main: { followupCount: 2, sessionMarkers: { seen_at: '5' } } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS - 1);
+        expect(adapter.callsTo('/update')).toHaveLength(0);
+        await adapter.clock.advance(1);
+        await data.flush();
+
+        expect(adapter.callsTo('/update')).toHaveLength(1);
+        expect(adapter.callsTo('/update')[0].body.patch).toEqual({ chats: { main: { lastActivity: 1000, followupCount: 2, sessionMarkers: { seen_at: '5' } } } });
+    });
+
+    test(`state that changes often is sent after ${FREQUENT_MAX_WAIT_MS} ms at most, however often it changes`, async () => {
+        await started([DIRECT]);
+
+        for (let step = 1; step <= 10; step++) {
+            data.patchConversation('conv_1_direct01', { chats: { main: { lastActivity: 1000 + step } } });
+            await adapter.clock.advance(FREQUENT_DELAY_MS - 50);
+        }
+        await data.flush();
+
+        expect(adapter.callsTo('/update').length).toBeGreaterThanOrEqual(1);
+        // The timer fires at 3000 ms, between the ninth change (at 2800 ms) and the tenth (at 3150 ms).
+        expect(adapter.callsTo('/update')[0].body.patch.chats.main.lastActivity).toBe(1009);
+    });
+
+    test('a change of the other kind sends what is waiting along with it, without the delay', async () => {
+        await started([DIRECT]);
+        data.patchConversation('conv_1_direct01', { chats: { main: { lastActivity: 1000 } } });
+
+        data.patchConversation('conv_1_direct01', { name: 'Renamed' });
+        await adapter.clock.advance(0);
+        await data.flush();
+
+        expect(adapter.callsTo('/update')).toHaveLength(1);
+        expect(adapter.callsTo('/update')[0].body.patch).toEqual({ chats: { main: { lastActivity: 1000 } }, name: 'Renamed' });
+    });
+
+    test('a patch that changes nothing sends nothing', async () => {
+        await started([{ ...DIRECT, settings: { notifications_muted: true } }]);
+
+        data.patchConversation('conv_1_direct01', { favorite: false, settings: { notifications_muted: true }, chats: { main: { followupCount: 0 } } });
+        await adapter.clock.advance(5000);
+        await data.flush();
+
+        expect(adapter.callsTo('/update')).toHaveLength(0);
+    });
+
+    test('a null setting removes the key', async () => {
+        await started([{ ...DIRECT, settings: { notifications_muted: true, authors_note: 'x' } }]);
+
+        data.patchConversation('conv_1_direct01', { settings: { authors_note: null } });
+        await data.flush();
+
+        expect(data.get('conv_1_direct01').settings).toEqual({ notifications_muted: true });
+        expect(readConversation(server.user, 'conv_1_direct01').settings).toEqual({ notifications_muted: true });
+    });
+
+    test('the answer of the server does not undo a change that was made while the request was out', async () => {
+        await started([DIRECT]);
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        const original = adapter.fetchJson;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/update' && adapter.callsTo('/update').length === 0) {
+                adapter.calls.push({ path, body: structuredClone(body), options });
+                await gate;
+                return server.adapter().fetchJson(path, body, options);
+            }
+            return original(path, body, options);
+        };
+        data.patchConversation('conv_1_direct01', { name: 'First' });
+        await adapter.clock.advance(0);
+        await settle(3);
+
+        data.patchConversation('conv_1_direct01', { name: 'Second' });
+        release();
+        await adapter.clock.advance(0);
+        await data.flush();
+
+        expect(data.get('conv_1_direct01').name).toBe('Second');
+        expect(readConversation(server.user, 'conv_1_direct01').name).toBe('Second');
+    });
+
+    test('keeps the summary of its chats when the answer of the server has none', async () => {
+        await started([DIRECT]);
+
+        data.patchConversation('conv_1_direct01', { name: 'Nova' });
+        await data.flush();
+
+        expect(data.get('conv_1_direct01')).toMatchObject({ messageCount: 3, unread: 1, preview: 'how are you' });
+        expect(data.get('conv_1_direct01').chats[0]).toMatchObject({ messageCount: 3, unread: 1 });
+    });
+
+    test('a patch that the server refuses is reported, and the cache is read again', async () => {
+        await started([DIRECT]);
+
+        data.patchConversation('conv_1_direct01', { reminders: [{ id: 'r1', groupId: 'not allowed' }] });
+        await data.flush();
+        await settle();
+
+        expect(events.some(event => event.type === 'error')).toBe(true);
+        expect(data.get('conv_1_direct01').reminders).toEqual([]);
+    });
+
+    test('one user message costs one save of the chat and one update', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        adapter.calls.length = 0;
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-3', 'a new message from the user'));
+        });
+        data.patchConversation('conv_1_direct01', { chats: { main: { lastActivity: 5000, followupCount: 0 } } });
+        data.patchConversation('conv_1_direct01', { chats: { main: { sessionMarkers: { seen_at: '5000' } } } });
+        data.patchConversation('conv_1_direct01', { chats: { main: { readThrough: 'main-3' } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS);
+        await data.flush();
+
+        expect(adapter.paths().sort()).toEqual(['/chat/save', '/update']);
+    });
+
+    test('mergePatches merges settings and chat states field by field and replaces the rest', () => {
+        expect(mergePatches(
+            { name: 'a', settings: { x: 1, y: 2 }, chats: { main: { lastActivity: 1 } }, reminders: [{ id: 'a' }] },
+            { name: 'b', settings: { y: null, z: 3 }, chats: { main: { followupCount: 2 }, other: { readThrough: 'm' } }, reminders: [] },
+        )).toEqual({ name: 'b', settings: { x: 1, y: null, z: 3 }, chats: { main: { lastActivity: 1, followupCount: 2 }, other: { readThrough: 'm' } }, reminders: [] });
+    });
+
+    test('withoutFieldsOf leaves out the top-level keys, the settings keys and the chat fields that a later patch writes, and nothing else', () => {
+        const older = { name: 'a', favorite: true, settings: { x: 1, y: 2 }, chats: { main: { readThrough: 'm1', lastActivity: 5 }, other: { readThrough: 'o1' } } };
+
+        expect(withoutFieldsOf(older, [{ name: 'b' }, { settings: { y: null } }, { chats: { main: { readThrough: 'm2' } } }]))
+            .toEqual({ favorite: true, settings: { x: 1 }, chats: { main: { lastActivity: 5 }, other: { readThrough: 'o1' } } });
+        expect(withoutFieldsOf(older, [])).toEqual(older);
+    });
+
+    test('withoutFieldsOf drops a settings object, a chat and a patch that nothing is left of, and does not change its arguments', () => {
+        const older = { settings: { x: 1 }, chats: { main: { readThrough: 'm1' } } };
+        const before = structuredClone(older);
+
+        expect(withoutFieldsOf(older, [{ settings: { x: 2 } }, { chats: { main: { readThrough: 'm2' } } }])).toEqual({});
+        expect(older).toEqual(before);
+    });
+});
+
+/**
+ * A request is answered later than it is made: the server has the patch when the request reaches it, and the answer of the
+ * server waits for `release()`. `beforeServer` holds the request instead, so that the server has not seen the patch when
+ * something else reads it. The queue of a conversation sends the next request only after the answer to the one before.
+ */
+function holdUpdates({ beforeServer = false } = {}) {
+    const gates = [];
+    const original = adapter.fetchJson;
+    adapter.fetchJson = async (path, body, options) => {
+        if (path !== '/update') {
+            return original(path, body, options);
+        }
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        gates.push(release);
+        if (beforeServer) {
+            await gate;
+            return original(path, body, options);
+        }
+        const answer = await original(path, body, options);
+        await gate;
+        return answer;
+    };
+    return {
+        release: index => gates[index](),
+        get requests() {
+            return gates.length;
+        },
+    };
+}
+
+/** Answers the first `times` requests to /update with a failure, and sends the rest to the server. */
+function failUpdates(times, status = 500) {
+    const original = adapter.fetchJson;
+    let left = times;
+    adapter.fetchJson = async (path, body, options) => {
+        if (path === '/update' && left > 0) {
+            left--;
+            adapter.calls.push({ path, body: structuredClone(body), options });
+            return { status, json: { error: status >= 500 ? 'internal' : 'invalid_input' } };
+        }
+        return original(path, body, options);
+    };
+}
+
+describe('metadata: edits that are made while an earlier patch is out', () => {
+    const ID = 'conv_1_direct01';
+
+    test('the answer to a patch does not undo a later edit that was sent behind it', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { name: 'First' });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { name: 'Second' });
+        await adapter.clock.advance(0);
+        expect(held.requests).toBe(1);
+
+        held.release(0);
+        await settle(5);
+
+        // The request of the second edit is out now, and its answer has not come.
+        expect(held.requests).toBe(2);
+        expect(data.get(ID).name).toBe('Second');
+        held.release(1);
+        await data.flush();
+        expect(data.get(ID).name).toBe('Second');
+        expect(readConversation(server.user, ID).name).toBe('Second');
+    });
+
+    test('an edit that goes back to the value of the first one is sent, not dropped as a change that the cache has already', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { favorite: true });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { favorite: false });
+        await adapter.clock.advance(0);
+        held.release(0);
+        await settle(5);
+        expect(data.get(ID).favorite).toBe(false);
+
+        data.patchConversation(ID, { favorite: true });
+        await adapter.clock.advance(0);
+        held.release(1);
+        await settle(5);
+        held.release(2);
+        await data.flush();
+
+        expect(held.requests).toBe(3);
+        expect(data.get(ID).favorite).toBe(true);
+        expect(readConversation(server.user, ID).favorite).toBe(true);
+    });
+
+    test('the rows of settings that later patches wrote stay when the answer to an earlier one comes', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { settings: { notifications_muted: true } });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { settings: { authors_note: 'Keep it light.' } });
+        await adapter.clock.advance(0);
+        data.patchConversation(ID, { settings: { notifications_muted: null } });
+        await adapter.clock.advance(0);
+        held.release(0);
+        await settle(5);
+
+        expect(data.get(ID).settings).toEqual({ authors_note: 'Keep it light.' });
+        held.release(1);
+        await settle(5);
+        held.release(2);
+        await data.flush();
+        expect(data.get(ID).settings).toEqual({ authors_note: 'Keep it light.' });
+        expect(readConversation(server.user, ID).settings).toEqual({ authors_note: 'Keep it light.' });
+    });
+
+    test('the read marker of a later patch stays, and the unread count follows it', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates();
+
+        data.patchConversation(ID, { chats: { main: { readThrough: 'main-1' } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS);
+        data.patchConversation(ID, { chats: { main: { readThrough: 'main-2' } } });
+        await adapter.clock.advance(FREQUENT_DELAY_MS);
+        held.release(0);
+        await settle(5);
+
+        expect(data.get(ID).chats[0].readThrough).toBe('main-2');
+        held.release(1);
+        await data.flush();
+        expect(readConversation(server.user, ID).chats[0].readThrough).toBe('main-2');
+    });
+
+    test('a read of the list while a patch is out does not undo the patch, which the server has not seen yet', async () => {
+        await started([DIRECT]);
+        const held = holdUpdates({ beforeServer: true });
+
+        data.patchConversation(ID, { name: 'First' });
+        await adapter.clock.advance(0);
+        await settle(3);
+        await data.refresh();
+
+        expect(data.get(ID).name).toBe('First');
+        held.release(0);
+        await data.flush();
+        expect(readConversation(server.user, ID).name).toBe('First');
+    });
+
+    test('a patch that the server refused is not applied again by what is read after it', async () => {
+        await started([DIRECT]);
+        failUpdates(1, 400);
+
+        data.patchConversation(ID, { name: 'Refused' });
+        await adapter.clock.advance(0);
+        await data.flush();
+        await settle(5);
+
+        expect(events.some(event => event.type === 'error')).toBe(true);
+        expect(data.get(ID).name).toBe(readConversation(server.user, ID).name);
+        expect(data.get(ID).name).not.toBe('Refused');
+        await data.refresh();
+        expect(data.get(ID).name).not.toBe('Refused');
+    });
+
+    test('a patch that got a 5xx is sent again after the delay, stays applied meanwhile, and the patches behind it are not held back', async () => {
+        await started([DIRECT]);
+        failUpdates(1);
+
+        data.patchConversation(ID, { name: 'First' });
+        await adapter.clock.advance(0);
+        await settle(5);
+        data.patchConversation(ID, { favorite: true });
+        await adapter.clock.advance(0);
+        await settle(5);
+
+        expect(adapter.callsTo('/update').map(call => call.body.patch)).toEqual([{ name: 'First' }, { favorite: true }]);
+        expect(data.hasPendingWrites()).toBe(true);
+        await data.refresh();
+        expect(data.get(ID)).toMatchObject({ name: 'First', favorite: true });
+
+        await adapter.clock.advance(RETRY_DELAYS_MS[0]);
+        await data.flush();
+
+        expect(adapter.callsTo('/update').map(call => call.body.patch)).toEqual([{ name: 'First' }, { favorite: true }, { name: 'First' }]);
+        expect(readConversation(server.user, ID)).toMatchObject({ name: 'First', favorite: true });
+        expect(data.hasPendingWrites()).toBe(false);
+    });
+
+    test('the retry of a patch leaves out what a later patch wrote, so that it does not undo that edit on the server', async () => {
+        await started([DIRECT]);
+        failUpdates(1);
+
+        data.patchConversation(ID, { name: 'First', favorite: true });
+        await adapter.clock.advance(0);
+        await settle(5);
+        data.patchConversation(ID, { name: 'Second' });
+        await adapter.clock.advance(0);
+        await settle(5);
+        await adapter.clock.advance(RETRY_DELAYS_MS[0]);
+        await data.flush();
+
+        expect(adapter.callsTo('/update').map(call => call.body.patch)).toEqual([{ name: 'First', favorite: true }, { name: 'Second' }, { favorite: true }]);
+        expect(data.get(ID)).toMatchObject({ name: 'Second', favorite: true });
+        expect(readConversation(server.user, ID)).toMatchObject({ name: 'Second', favorite: true });
+    });
+
+    test('a patch that every attempt fails reports it once the delays are spent, and then stays out of what is read', async () => {
+        await started([DIRECT]);
+        failUpdates(RETRY_DELAYS_MS.length + 1);
+
+        data.patchConversation(ID, { name: 'Lost' });
+        await adapter.clock.advance(0);
+        await settle(5);
+        for (const delay of RETRY_DELAYS_MS) {
+            await adapter.clock.advance(delay);
+        }
+        await settle(5);
+
+        expect(adapter.callsTo('/update')).toHaveLength(RETRY_DELAYS_MS.length + 1);
+        expect(events.filter(event => event.type === 'error')).toHaveLength(1);
+        expect(data.hasPendingWrites()).toBe(false);
+        await data.refresh();
+        expect(data.get(ID).name).toBe(readConversation(server.user, ID).name);
+    });
+});
+
+describe('read markers and unread counts', () => {
+    test('markRead sets the read marker to the last message and clears the badge at once', async () => {
+        await started([DIRECT]);
+
+        await data.markRead(ADDRESS);
+
+        expect(data.get('conv_1_direct01').unread).toBe(0);
+        expect(data.get('conv_1_direct01').chats[0].readThrough).toBe('main-2');
+        await adapter.clock.advance(FREQUENT_DELAY_MS);
+        await data.flush();
+        expect(readConversation(server.user, 'conv_1_direct01').chats[0].readThrough).toBe('main-2');
+    });
+
+    test('a message from the character raises the unread count and one from the user does not', async () => {
+        await started([{ ...DIRECT, chats: [{ id: 'main', messages: ['a', 'b'], readThrough: 'main-1' }] }]);
+        await data.loadChat(ADDRESS);
+        expect(data.get('conv_1_direct01').unread).toBe(0);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-2', 'reply'));
+        });
+        expect(data.get('conv_1_direct01').unread).toBe(1);
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push({ ...message('main-3', 'mine'), is_user: true, role: 'user' });
+        });
+        expect(data.get('conv_1_direct01')).toMatchObject({ unread: 1, lastMessageRole: 'user', hasUserMessage: true, preview: 'mine' });
+        await data.flush();
+    });
+});
+
+describe('chats and conversations', () => {
+    test('createChat lists and loads the chat at once, and the server makes it before it takes the first save', async () => {
+        await started([DIRECT]);
+
+        const created = data.createChat('conv_1_direct01', { name: 'Trip', activate: true });
+
+        expect(created.address.chatId).toBe(`chat_${adapter.now()}_abc123`);
+        expect(data.get('conv_1_direct01').activeChatId).toBe(created.address.chatId);
+        expect(data.get('conv_1_direct01').chats.map(entry => entry.name)).toEqual(['Main', 'Trip']);
+        expect(data.chat(created.address).messages).toEqual([]);
+        data.commitChat(created.address, (draft) => {
+            draft.messages.push(message('t1', 'first message of the trip'));
+        });
+        await data.flush();
+
+        expect(adapter.paths().filter(path => path === '/chat/create' || path === '/chat/save')).toEqual(['/chat/create', '/chat/save']);
+        expect(adapter.callsTo('/chat/create')[0].body).toEqual({ id: 'conv_1_direct01', chatId: created.address.chatId, name: 'Trip', activate: true });
+        expect(loadStoredChat(server.user, 'conv_1_direct01', created.address.chatId).at(-1).mes).toBe('first message of the trip');
+        expect(readConversation(server.user, 'conv_1_direct01').activeChatId).toBe(created.address.chatId);
+    });
+
+    test('a patch that names a new chat waits for the chat to be made', async () => {
+        await started([DIRECT]);
+        const created = data.createChat('conv_1_direct01', { name: 'Trip' });
+
+        data.patchConversation('conv_1_direct01', { activeChatId: created.address.chatId });
+        await adapter.clock.advance(0);
+        await data.flush();
+
+        expect(adapter.paths().filter(path => path === '/chat/create' || path === '/update')).toEqual(['/chat/create', '/update']);
+        expect(readConversation(server.user, 'conv_1_direct01').activeChatId).toBe(created.address.chatId);
+    });
+
+    test('takes the chat back out of the list, and says so, when the server refuses to make it', async () => {
+        await started([DIRECT]);
+        const stray = `${server.root}/conversations/conv_1_direct01/chats/chat_${adapter.now()}_abc123.jsonl`;
+        (await import('node:fs')).writeFileSync(stray, JSON.stringify(header()));
+
+        const created = data.createChat('conv_1_direct01', { name: 'Trip', activate: true });
+        await data.flush();
+        await settle();
+
+        expect(events.some(event => event.type === 'error' && event.code === 'exists')).toBe(true);
+        expect(data.get('conv_1_direct01').chats.map(entry => entry.id)).toEqual(['main']);
+        expect(data.get('conv_1_direct01').activeChatId).toBe('main');
+        expect(data.chat(created.address)).toBeNull();
+    });
+
+    test('createConversation puts the new conversation in the cache and returns the existing one for a direct conversation that exists', async () => {
+        await started([DIRECT]);
+
+        const made = await data.createConversation({ kind: 'group', personaId: PERSONA, characters: ['Nova.png', 'Orion.png'], name: 'Crew' });
+        const again = await data.createConversation({ kind: 'direct', personaId: PERSONA, characters: ['Nova.png'] });
+
+        expect(made).toMatchObject({ created: true, conversation: { kind: 'group', name: 'Crew', messageCount: 0, unread: 0 } });
+        expect(data.get(made.conversation.id)).toBe(made.conversation);
+        expect(again).toMatchObject({ created: false });
+        expect(again.conversation).toBe(data.get('conv_1_direct01'));
+    });
+
+    test('createConversation rejects with the code of the route', async () => {
+        await started([]);
+
+        await expect(data.createConversation({ kind: 'direct', personaId: PERSONA, characters: [] })).rejects.toMatchObject({ code: 'invalid_input', status: 400 });
+    });
+
+    test('deleteConversation removes it from the cache and the disk, and drops its loaded chats', async () => {
+        await started([DIRECT, GROUP]);
+        await data.loadChat(ADDRESS);
+
+        await data.deleteConversation('conv_1_direct01');
+
+        expect(data.get('conv_1_direct01')).toBeNull();
+        expect(data.chat(ADDRESS)).toBeNull();
+        expect(data.list().map(view => view.id)).toEqual(['conv_2_group001']);
+        expect(() => readConversation(server.user, 'conv_1_direct01')).toThrow();
+    });
+
+    test('deleteChat takes the answer of the server, including the chat that it adds when the last one goes', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+
+        const view = await data.deleteChat(ADDRESS);
+
+        expect(view.chats).toHaveLength(1);
+        expect(view.chats[0].id).not.toBe('main');
+        expect(view.activeChatId).toBe(view.chats[0].id);
+        expect(view.chats[0]).toMatchObject({ messageCount: 0, unread: 0 });
+        expect(data.chat(ADDRESS)).toBeNull();
+    });
+});
+
+describe('characters', () => {
+    test('a routine and a status override are applied at once and saved', async () => {
+        await started([]);
+
+        data.patchCharacter('Nova.png', { routine: { enabled: true, text: '{"days":{}}', generatedAt: 5 } });
+        data.patchCharacter('Nova.png', { statusOverride: 'dnd' });
+        expect(data.characterState('Nova.png')).toEqual({ routine: { enabled: true, text: '{"days":{}}', generatedAt: 5 }, statusOverride: 'dnd' });
+        await adapter.clock.advance(0);
+        await data.flush();
+
+        expect(adapter.callsTo('/characters/update')).toHaveLength(1);
+        expect(readCharacterState(server.user).characters['Nova.png']).toEqual({ routine: { enabled: true, text: '{"days":{}}', generatedAt: 5 }, statusOverride: 'dnd' });
+    });
+
+    test('a null clears, and a routine merges into the one that exists', async () => {
+        await started([]);
+        data.patchCharacter('Nova.png', { routine: { enabled: true, text: 'a' }, statusOverride: 'idle' });
+        await adapter.clock.advance(0);
+        await data.flush();
+
+        data.patchCharacter('Nova.png', { routine: { enabled: false }, statusOverride: null });
+
+        expect(data.characterState('Nova.png')).toEqual({ routine: { enabled: false, text: 'a' } });
+        await adapter.clock.advance(0);
+        await data.flush();
+        expect(readCharacterState(server.user).characters['Nova.png']).toEqual({ routine: { enabled: false, text: 'a' } });
+        expect(data.characterState('Ghost.png')).toEqual({});
+    });
+
+    test('refresh preserves queued and in-flight character patches over the server response and drops refused patches', async () => {
+        await started([]);
+        let releaseUpdate;
+        const gate = new Promise((resolve) => {
+            releaseUpdate = resolve;
+        });
+        const original = adapter.fetchJson;
+        let holdNext = true;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/characters/update' && holdNext) {
+                holdNext = false;
+                await gate;
+            }
+            return original(path, body, options);
+        };
+
+        data.patchCharacter('Nova.png', { statusOverride: 'dnd' });
+        // Queued before timer fires: refresh keeps it.
+        await data.refresh();
+        expect(data.characterState('Nova.png')).toEqual({ statusOverride: 'dnd' });
+
+        // Move to in-flight and also queue another character patch.
+        await adapter.clock.advance(0);
+        await settle(2);
+        data.patchCharacter('Orion.png', { statusOverride: 'idle' });
+        await data.refresh();
+        expect(data.characterState('Nova.png')).toEqual({ statusOverride: 'dnd' });
+        expect(data.characterState('Orion.png')).toEqual({ statusOverride: 'idle' });
+
+        releaseUpdate();
+        await adapter.clock.advance(0);
+        await data.flush();
+        expect(readCharacterState(server.user).characters['Nova.png']).toEqual({ statusOverride: 'dnd' });
+        expect(readCharacterState(server.user).characters['Orion.png']).toEqual({ statusOverride: 'idle' });
+
+        // A refused character patch is forgotten before refresh restores server state.
+        data.patchCharacter('Nova.png', { statusOverride: 'invalid_status' });
+        await adapter.clock.advance(0);
+        await data.flush();
+        await settle();
+        expect(data.characterState('Nova.png')).toEqual({ statusOverride: 'dnd' });
+    });
+});
+
+describe('flush and unload', () => {
+    test('flush sends what waits without waiting for a timer, and passes keepalive on', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('main-3', 'last words'));
+        });
+        data.patchConversation('conv_1_direct01', { chats: { main: { lastActivity: 77 } } });
+        data.patchCharacter('Nova.png', { statusOverride: 'idle' });
+
+        await data.flush({ keepalive: true });
+
+        expect(data.hasPendingWrites()).toBe(false);
+        expect(adapter.calls.filter(call => ['/chat/save', '/update', '/characters/update'].includes(call.path)).every(call => call.options?.keepalive === true)).toBe(true);
+        expect(readConversation(server.user, 'conv_1_direct01').chats[0].lastActivity).toBe(77);
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main').at(-1).mes).toBe('last words');
+        expect(readCharacterState(server.user).characters['Nova.png'].statusOverride).toBe('idle');
+    });
+
+    test('hasPendingWrites is true from the change until the server has answered', async () => {
+        await started([DIRECT]);
+        expect(data.hasPendingWrites()).toBe(false);
+
+        data.patchConversation('conv_1_direct01', { name: 'x' });
+        expect(data.hasPendingWrites()).toBe(true);
+        await data.flush();
+        expect(data.hasPendingWrites()).toBe(false);
+    });
+});
+
+describe('legacy import and refresh', () => {
+    const thread = { settings: {}, activeBranchId: 'main', branches: { main: { id: 'main', name: 'Main', messages: [], unread: 0, createdAt: 5, updatedAt: 5 } } };
+
+    function importAdapter(state) {
+        return scriptedAdapter((path) => {
+            if (path === '/import-legacy') {
+                return { status: 200, json: state === 'imported' ? { state, conversations: 1, chats: 1, messages: 0 } : { state } };
+            }
+            return path === '/list' ? { status: 200, json: { conversations: [], problems: [] } } : { status: 200, json: { version: 1, characters: {} } };
+        });
+    }
+
+    test('importLegacy posts the threads as they are, reads the list again after an import, and answers what the server said', async () => {
+        const scripted = importAdapter('imported');
+        data = createConversationData(scripted);
+        await data.start();
+
+        const answer = await data.importLegacy({ personaId: PERSONA, characters: { 'Nova.png': thread } });
+
+        expect(scripted.callsTo('/import-legacy')[0].body).toEqual({ personaId: PERSONA, characters: { 'Nova.png': thread } });
+        expect(answer).toMatchObject({ state: 'imported', conversations: 1 });
+        expect(scripted.callsTo('/list')).toHaveLength(2);
+    });
+
+    test('importLegacy reads nothing again when it was imported before', async () => {
+        const scripted = importAdapter('already_imported');
+        data = createConversationData(scripted);
+        await data.start();
+
+        expect(await data.importLegacy({ personaId: PERSONA, characters: {} })).toEqual({ state: 'already_imported' });
+        expect(scripted.callsTo('/list')).toHaveLength(1);
+    });
+
+    test('refresh reads the list again, keeps loaded chats and unsent patches, and drops conversations that are gone', async () => {
+        await started([DIRECT, GROUP]);
+        await data.loadChat(ADDRESS);
+        data.patchConversation('conv_1_direct01', { name: 'Pending name' });
+        await adapter.fetchJson('/delete', { id: 'conv_2_group001' });
+        seedConversations(server, [{ id: 'conv_5_newcomer1', characters: ['Orion.png'], chats: [{ id: 'main', messages: ['hey'] }] }]);
+
+        await data.refresh();
+
+        expect(data.list().map(view => view.id).sort()).toEqual(['conv_1_direct01', 'conv_5_newcomer1']);
+        expect(data.chat(ADDRESS)).not.toBeNull();
+        expect(data.get('conv_1_direct01').name).toBe('Pending name');
+        await data.flush();
+    });
+});
+
+describe('events', () => {
+    test('are batched once per tick and carry the address of the chat', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        events.length = 0;
+
+        for (const id of ['e1', 'e2']) {
+            data.commitChat(ADDRESS, (draft) => {
+                draft.messages.push(message(id, id));
+            });
+        }
+        await settle(1);
+
+        expect(events.filter(event => event.type === 'chat')).toEqual([{ type: 'chat', address: ADDRESS, local: true }]);
+        expect(events.filter(event => event.type === 'list')).toHaveLength(1);
+        await data.flush();
+    });
+
+    test('a listener that throws does not stop the others', async () => {
+        await started([DIRECT]);
+        const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const seen = [];
+        data.subscribe(() => {
+            throw new Error('broken listener');
+        });
+        data.subscribe(event => seen.push(event.type));
+
+        data.patchConversation('conv_1_direct01', { name: 'x' });
+        await settle(1);
+
+        expect(seen).toContain('list');
+        expect(error).toHaveBeenCalled();
+        await data.flush();
+    });
+});

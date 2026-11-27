@@ -1,39 +1,32 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
-const threadStore = {
-    activeBranchId: 'main',
-    branches: {
-        main: { unread: 1 },
-        side: { unread: 3 },
-    },
+const conversationRecord = {
+    activeChatId: 'main',
+    unread: 4,
+    chats: [
+        { id: 'main', unread: 1 },
+        { id: 'side', unread: 3 },
+    ],
 };
 
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ playMessageSound: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ selectConversationThread: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/lazy-parts.js', () => ({ selectConversation: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
-    CHROME_IDS: { palsToggle: 'pals-toggle' },
+    CHROME_IDS: { listToggle: 'list-toggle' },
+    CONVERSATION_UNREAD_CHANGED_EVENT: 'sb:conversation-unread-changed',
+    CONVERSATION_UNREAD_DATASET: { text: 'sbConversationUnread', name: 'sbConversationUnreadName' },
     SAFE_TOAST_OPTIONS: {},
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    getCharacterForAvatar: () => ({ avatar: 'char.png' }),
     clearLegacyConversationUnreadStorage: () => 0,
-    getActiveConversationBranch: (_avatar, options = {}) => threadStore.branches[options.branchId || threadStore.activeBranchId],
-    getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-a.png' : value || ''),
-    getConversationStore: () => ({ characters: {} }),
-    getConversationThreadKey: () => 'persona:persona-a.png:char.png',
-    getConversationThreadStore: () => threadStore,
+    getConversationKey: () => 'conv_1_direct',
+    getConversationRecord: () => conversationRecord,
     getCurrentCharAvatar: () => 'char.png',
-    isConversationThreadKeyForPersona: () => true,
-    parseConversationThreadKey: () => ({ avatar: 'char.png', groupId: '', personaId: 'persona-a.png' }),
-    parsePositiveInt: (value, fallback, min = 1) => {
-        const parsed = Number.parseInt(String(value), 10);
-        return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
-    },
-    persistConversationStore: jest.fn(),
     shouldSurfaceConversationNotification: () => false,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: () => ({ avatar: 'char.png' }) }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getSettings: () => ({}),
     isConversationModeEnabled: () => true,
@@ -46,13 +39,13 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
         originalFaviconHref: '',
     },
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/preview-utils.js', () => ({ stripPreviewText: value => String(value || '') }));
 
 const { getUnreadCount } = await import('../public/scripts/sillybunny-conversation/notifications.js');
 
 describe('Conversation unread aggregation', () => {
-    test('aggregates inactive branches for a DM row while exposing individual branch counts', () => {
+    test('adds up the unread counts of the chats of a conversation while exposing the count of each chat', () => {
         expect(getUnreadCount('char.png', { groupId: '', personaId: 'persona-a.png' })).toBe(4);
-        expect(getUnreadCount('char.png', { branchId: 'side', groupId: '', personaId: 'persona-a.png' })).toBe(3);
+        expect(getUnreadCount('char.png', { chatId: 'side', groupId: '', personaId: 'persona-a.png' })).toBe(3);
     });
 });

@@ -8,6 +8,7 @@
  * opened again, so `openConversation()` puts the workspace back to its resting page whatever the last state opened.
  */
 
+import { seedConversation } from '../conversation-seed.js';
 import { FIXTURES } from './fixture-data.js';
 import { AVATAR_IMAGE_URL, sentences } from './need-kit.js';
 import { closeOverlays, dismissDialogs } from './menu-steps.js';
@@ -18,14 +19,14 @@ const START = Date.UTC(2026, 0, 1, 12, 0, 0);
 const MINUTE = 60_000;
 
 /** The shapes of the thread, in order; `at` is the minute after `START`, and `tag` names a message that a surface works on. */
-const THREAD = Object.freeze([
+const MESSAGES = Object.freeze([
     { role: 'character', at: 0, text: 'Good morning. The lamp is lit.' },
     { role: 'character', at: 1, text: 'Did you sleep well?' },
     { role: 'user', at: 3, text: 'Yes, thank you. Could you describe the room?' },
     { role: 'user', at: 4, text: 'I would like to draw it.' },
     { role: 'character', at: 26, tag: 'reacted', text: `A quiet room with a lamp, a desk and a window. ${sentences(2, 3)}`, extra: { conversation_reactions: { heart: 1 } } },
     { role: 'user', at: 28, tag: 'own-long', text: `That is lovely. ${sentences(3, 6)}` },
-    { role: 'character', at: 24 * 60 + 5, text: 'Good morning again. A new day in the forest.', extra: { conversation_pinned: true } },
+    { role: 'character', at: 24 * 60 + 5, text: 'Good morning again. A new day in the forest.', extra: { conversation_pinned: true, conversation_pinned_at: START + (24 * 60 + 5.5) * MINUTE } },
     { role: 'character', at: 24 * 60 + 6, text: 'This is the view from the window.', extra: { image_url: AVATAR_IMAGE_URL, image_prompt: 'The view from a window' } },
     { role: 'user', at: 24 * 60 + 9, text: 'Thank you. I will be back this evening.' },
 ]);
@@ -40,35 +41,35 @@ export const conversationMessage = number => `#sb_conversation_timeline .sb-conv
  * The positions in the thread that the surfaces work on: `reacted` is a character message with a reaction, `ownLong` a long
  * message of the user, `last` the message that the timeline rests on.
  */
-export const THREAD_INDEX = Object.freeze({
-    reacted: THREAD.findIndex(entry => entry.tag === 'reacted'),
-    ownLong: THREAD.findIndex(entry => entry.tag === 'own-long'),
-    last: THREAD.length - 1,
+export const MESSAGE_INDEX = Object.freeze({
+    reacted: MESSAGES.findIndex(entry => entry.tag === 'reacted'),
+    ownLong: MESSAGES.findIndex(entry => entry.tag === 'own-long'),
+    last: MESSAGES.length - 1,
 });
 
-const BRANCH_NAMES = Object.freeze(['Rainy evening', 'Another ending']);
+const CHAT_NAMES = Object.freeze(['Rainy evening', 'Another ending']);
 
-/** The id of the Nth message of a branch that `addConversationBranches` makes, counting the branches and the messages from 0. */
-export const branchMessageId = (branch, number) => `branch-${branch}-${number}`;
+/** The id of the Nth message of a chat that `addConversationChats` makes, counting the chats and the messages from 0. */
+export const chatMessageId = (chat, number) => `chat-${chat}-${number}`;
 
-/** The message of a branch, in the timeline. */
-export const branchMessage = (branch, number) => `#sb_conversation_timeline .sb-conversation-message[data-message-id="${branchMessageId(branch, number)}"]`;
+/** The message of a chat, in the timeline. */
+export const chatMessage = (chat, number) => `#sb_conversation_timeline .sb-conversation-message[data-message-id="${chatMessageId(chat, number)}"]`;
 
 /**
  * Shows one page of the Conversation workspace. A desktop window shows the rail and the chat together; the pages layout
  * (`(max-width: 768px)`) shows one at a time. Going back to the chat picks the conversation of the audit character by its avatar.
  * @param {import('@playwright/test').Page} page
- * @param {'chat' | 'pals'} wanted `pals` is the rail of conversations, with the status and new-conversation buttons.
+ * @param {'chat' | 'list'} wanted `list` is the rail of conversations, with the status and new-conversation buttons.
  */
 export async function showConversationPage(page, wanted) {
     const sheld = page.locator('#sheld');
     if (await sheld.getAttribute('data-sb-conversation-layout') !== 'pages' || await sheld.getAttribute('data-sb-conversation-page') === wanted) {
         return;
     }
-    if (wanted === 'pals') {
-        await page.locator('#sb_conversation_pals_toggle').click();
+    if (wanted === 'list') {
+        await page.locator('#sb_conversation_list_toggle').click();
     } else {
-        await page.locator(`.sb-conversation-pal[data-avatar="${FIXTURES.character.avatar}"]`).click();
+        await page.locator(`.sb-conversation-list-item[data-avatar="${FIXTURES.character.avatar}"]`).click();
     }
     await page.waitForFunction(value => document.getElementById('sheld')?.getAttribute('data-sb-conversation-page') === value, wanted);
     await settle(page);
@@ -87,14 +88,6 @@ export async function setConversationConnection(page, connected) {
     }, connected);
     await page.waitForFunction(connected => document.getElementById('sb_conversation_input').placeholder === (connected ? 'Type your message…' : 'Not connected to API!')
         && document.getElementById('sb_conversation_send').disabled === !connected, connected);
-}
-
-/** Closes the settings column or page if it is open. */
-export async function closeConversationSettingsPane(page) {
-    if (await page.locator('#sb_conversation_settings_drawer').isVisible()) {
-        await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
-        await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'hidden' });
-    }
 }
 
 /** Puts the workspace back to the page of the chat with nothing open: no editor, search, reply, picker, text or attachment. */
@@ -116,7 +109,6 @@ async function resetConversation(page) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         document.activeElement?.blur?.();
     });
-    await closeConversationSettingsPane(page);
     await showConversationPage(page, 'chat');
     await page.mouse.move(0, 0);
 }
@@ -131,7 +123,7 @@ export async function openConversation(page) {
     const open = await page.locator('#sheld[data-sb-conversation-mode="on"] #sb_conversation_timeline .sb-conversation-message').count();
     if (!open) {
         await dismissDialogs(page);
-        const thread = THREAD.map((entry, number) => ({
+        const messages = MESSAGES.map((entry, number) => ({
             id: conversationMessageId(number),
             role: entry.role,
             name: entry.role === 'user' ? FIXTURES.chat.userName : FIXTURES.character.name,
@@ -140,7 +132,7 @@ export async function openConversation(page) {
             created_at: START + entry.at * MINUTE,
             extra: entry.extra ?? {},
         }));
-        await page.evaluate(async ({ avatar, thread }) => {
+        await page.evaluate(async (avatar) => {
             const context = window.SillyTavern.getContext();
             if (!context.characters.length) {
                 await context.getCharacters();
@@ -151,49 +143,34 @@ export async function openConversation(page) {
             }
             await context.selectCharacterById(index, { switchMenu: false });
             document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-            const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
-            saveConversationThread(avatar, thread);
+        }, FIXTURES.character.avatar);
+        await seedConversation(page, { avatar: FIXTURES.character.avatar, chats: [{ messages }] });
+        await page.evaluate(async (avatar) => {
             const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-            if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
+            if (!await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
                 throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
             }
-        }, { avatar: FIXTURES.character.avatar, thread });
+        }, FIXTURES.character.avatar);
         await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
         await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
         await dismissDialogs(page);
     }
-    await showMainThread(page);
+    await showMainChat(page);
     await resetConversation(page);
     await setConversationConnection(page, false);
     await settle(page);
 }
 
-/** Selects the main conversation again when a branch is open, as the branch list of the header does. */
-async function showMainThread(page) {
+/** Selects the first chat of the conversation again when another chat is open. */
+async function showMainChat(page) {
     if (await page.locator(conversationMessage(0)).count()) {
         return;
     }
     await page.evaluate(async (avatar) => {
-        const { selectConversationThread } = await import('/scripts/sillybunny-conversation/chrome.js');
-        await selectConversationThread(avatar, { branchId: '' });
+        const { selectConversation } = await import('/scripts/sillybunny-conversation/chrome.js');
+        await selectConversation(avatar, { chatId: '' });
     }, FIXTURES.character.avatar);
     await page.locator(conversationMessage(0)).waitFor({ state: 'attached' });
-}
-
-/**
- * Shows the settings of the workspace: a column beside the chat from 1200px up, a drawer over it below that, and on a phone
- * (`(max-width: 768px)`) a page of its own, where the Conversation menu holds the entry.
- */
-export async function openConversationSettings(page) {
-    const layout = await page.locator('#sheld').getAttribute('data-sb-conversation-layout');
-    if (layout === 'pages') {
-        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
-        await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-    } else {
-        await page.locator('[data-sb-conversation-action="open-settings"]').click();
-    }
-    await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'visible' });
-    await settle(page);
 }
 
 /** Opens the inline editor of a message. From `foundation/conversation-mode.e2e.js` ("inline message editor"). */
@@ -214,7 +191,7 @@ export async function editConversationMessageById(page, number) {
 
 /** Shows a picker of the workspace by calling the function that the rail's buttons call, from the page of the rail where its anchor is. */
 export async function openConversationPicker(page, { toggle, root }) {
-    await showConversationPage(page, 'pals');
+    await showConversationPage(page, 'list');
     await page.evaluate(async ({ toggle }) => {
         const pickers = await import('/scripts/sillybunny-conversation/pickers.js');
         pickers[toggle]();
@@ -223,29 +200,69 @@ export async function openConversationPicker(page, { toggle, root }) {
     await settle(page, { root });
 }
 
-/** Adds two conversations to the thread of the character, so that the workspace has branches, and opens the first of them. */
-export async function addConversationBranches(page) {
+/** The surface of the details window, which is on top of the workspace while it is open. */
+export const DETAILS_WINDOW = '.sb-details-window';
+
+/**
+ * Opens the details window of the audit character's conversation at one of its pages, or the mode-wide Preferences, through
+ * the entry points of `chrome.js`, as the header and the list do. A window that is open is replaced, so a page can be opened
+ * after another without closing it. Needs the workspace open (`openConversation`).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} pageId A page of `openConversationDetails`, or `preferences`.
+ * @param {{ avatar?: string }} [options] The character of a `profile` page, the audit character by default.
+ */
+export async function openConversationDetailsAt(page, pageId, { avatar = FIXTURES.character.avatar } = {}) {
+    await page.evaluate(async ({ pageId, avatar }) => {
+        const { openConversationDetails, openConversationPreferences } = await import('/scripts/sillybunny-conversation/chrome.js');
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const { getConversationPersonaId } = await import('/scripts/sillybunny-conversation/context.js');
+        const opened = pageId === 'preferences'
+            ? await openConversationPreferences()
+            : await openConversationDetails(conversationData.findDirect(getConversationPersonaId(), avatar)?.id, { page: pageId, avatar });
+        if (!opened) {
+            throw new Error(`The details window did not open at ${pageId}.`);
+        }
+    }, { pageId, avatar });
+    await page.locator(`${DETAILS_WINDOW} .sb-details-page`).last().waitFor({ state: 'visible' });
+    await settle(page, { root: DETAILS_WINDOW });
+}
+
+/** Closes the details window, one page at a time, as Escape does. */
+export async function closeConversationDetails(page) {
+    while (await page.locator(DETAILS_WINDOW).count()) {
+        const before = await page.locator(`${DETAILS_WINDOW} .sb-dialog__page`).count();
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(({ selector, count }) => document.querySelectorAll(selector).length < count, { selector: `${DETAILS_WINDOW} .sb-dialog__page`, count: before });
+    }
+}
+
+/** Adds two conversations to the thread of the character, so that the workspace has chats, and opens the first of them. */
+export async function addConversationChats(page) {
     await page.evaluate(async ({ avatar, texts, names, characterName, userName }) => {
         const context = await import('/scripts/sillybunny-conversation/context.js');
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
-        const { selectConversationThread } = await import('/scripts/sillybunny-conversation/chrome.js');
-        const created = names.map((name, index) => {
-            const branch = context.createConversationBranchForAvatar(avatar, name);
+        const { saveConversationMessages } = await import('/scripts/sillybunny-conversation/conversation-store.js');
+        const { selectConversation } = await import('/scripts/sillybunny-conversation/chrome.js');
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        const created = [];
+        for (const [index, name] of names.entries()) {
+            const chat = context.createConversationChat(avatar, name);
             const start = Date.UTC(2026, 0, 2 + index, 18, 0, 0);
-            saveConversationThread(avatar, texts.map((text, number) => ({
-                id: `branch-${index}-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? characterName : userName,
+            saveConversationMessages(avatar, texts.map((text, number) => ({
+                id: `chat-${index}-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? characterName : userName,
                 mes: text, send_date: new Date(start + number * 60_000).toISOString(), created_at: start + number * 60_000, extra: {},
-            })), { branchId: branch.id });
-            return branch;
-        });
-        await selectConversationThread(avatar, { branchId: created[0].id });
+            })), { chatId: chat.id });
+            // The chats start read, as the conversation of the thread does, so that the surfaces show no unread badge.
+            await conversationData.markRead({ conversationId: context.getConversationRecord(avatar).id, chatId: chat.id });
+            created.push(chat);
+        }
+        await selectConversation(avatar, { chatId: created[0].id });
     }, {
         avatar: FIXTURES.character.avatar,
         characterName: FIXTURES.character.name,
         userName: FIXTURES.chat.userName,
-        names: BRANCH_NAMES,
+        names: CHAT_NAMES,
         texts: ['It is raining on the window.', 'I like the sound of it.', 'Then we shall leave the lamp low.'],
     });
-    await page.locator(branchMessage(0, 0)).waitFor({ state: 'visible' });
+    await page.locator(chatMessage(0, 0)).waitFor({ state: 'visible' });
     await settle(page);
 }

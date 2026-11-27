@@ -16,7 +16,7 @@ import {
     lodash,
 } from './lib.js';
 
-import { humanizedDateTime, favsToHotswap, getMessageTimeStamp, dragElement, isMobile, initRossMods } from './scripts/RossAscends-mods.js';
+import { humanizedDateTime, favsToHotswap, getMessageTimeStamp, isMobile, initRossMods } from './scripts/RossAscends-mods.js';
 import { userStatsHandler, statMesProcess, initStats } from './scripts/stats.js';
 import {
     generateKoboldWithStreaming,
@@ -111,7 +111,6 @@ import {
     fixMarkdown,
     power_user,
     persona_description_positions,
-    loadMovingUIState,
     getCustomStoppingStrings,
     MAX_CONTEXT_DEFAULT,
     MAX_RESPONSE_DEFAULT,
@@ -3846,6 +3845,8 @@ export async function clearChat({ clearData = false } = {}) {
     extension_prompts = {};
     if (is_delete_mode) {
         $('#dialogue_del_mes_cancel').trigger('click');
+        // SillyBunny: clear the flag even when selection mode had not mounted its cancel button yet.
+        is_delete_mode = false;
     }
     //This will also remove non '.mes' elements, e.g. chat history window controls.
     chatElement.children().remove();
@@ -3884,6 +3885,17 @@ export async function deleteLastMessage() {
     syncRenderedChatLastMessageClass();
     syncChatHistoryWindowControls();
     await eventSource.emit(event_types.MESSAGE_DELETED, deletedMessageId);
+}
+
+// SillyBunny: the one-step cut of sillybunny-message-selection.js removes rows without the per-message work of deleteMessage.
+/**
+ * Removes the rendered messages from an id on, and stops watching their sizes.
+ * @param {number} startId The id of the first message to remove.
+ */
+export function removeRenderedMessagesFrom(startId) {
+    const messageElements = chatElement.find('.mes').filter((_, element) => Number(element.getAttribute('mesid')) >= startId);
+    unobserveChatMessageResize(messageElements);
+    messageElements.remove();
 }
 
 function getMessageDeletionStartId(id, deleteToolCalls = true) {
@@ -7473,6 +7485,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @prop {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @prop {AbortSignal} [signal] Optional signal to abort the request.
  * @prop {'main'|'auxiliary'|'none'} [cacheScope] Prompt cache lane for local backends.
+ * @prop {{ plan: object|null, state: string|null }|null} [commit] SillyBunny: the commit plan of a conversation reply, and where the server's answer to the claim is put.
  */
 
 /**
@@ -7481,7 +7494,7 @@ export function createRawPrompt(prompt, api, instructOverride, quietToLoud, syst
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<object | string>} Raw API response data, or a JSON string extracted from the response when `jsonSchema` is provided.
  */
-export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
+export async function generateRawData({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false, commit = null } = {}) {
     if (!api) {
         api = main_api;
     }
@@ -7574,6 +7587,8 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
         }
         let data = {};
 
+        // SillyBunny: a conversation reply registers its commit plan on the signal that reaches fetchResumable()
+        registerGenerationCommitPlan(abortController.signal, commit?.plan ?? null);
         if (api === 'koboldhorde') {
             data = await generateHorde(prompt.toString(), generateData, abortController.signal, false);
         } else if (api === 'openai') {
@@ -7593,6 +7608,11 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
             }
 
             data = await response.json();
+        }
+
+        // SillyBunny: the server's answer to the claim of the reply, for the caller that gave the plan
+        if (commit?.plan) {
+            commit.state = await settleGenerationCommit(abortController.signal);
         }
 
         // should only happen for text completions
@@ -7624,13 +7644,13 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
  * @param {GenerateRawParams} params Parameters for generating a message
  * @returns {Promise<string>} Generated output: a cleaned-up message string when `jsonSchema` is not provided, or an extracted JSON string conforming to `jsonSchema` when it is.
  */
-export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false } = {}) {
+export async function generateRaw({ prompt = '', api = null, instructOverride = false, quietToLoud = false, systemPrompt = '', responseLength = null, trimNames = true, prefill = '', jsonSchema = null, signal = null, cacheScope = 'auxiliary', preserveReasoningBudget = false, commit = null } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('generateRaw called with positional arguments. Please use an object instead.');
         [prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, trimNames, prefill, jsonSchema] = arguments;
     }
 
-    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope, preserveReasoningBudget });
+    const data = await generateRawData({ prompt, api, instructOverride, quietToLoud, systemPrompt, responseLength, prefill, jsonSchema, signal, cacheScope, preserveReasoningBudget, commit });
 
     // JSON string (matching the provided schema) will already be extracted.
     if (jsonSchema) {
@@ -14066,16 +14086,47 @@ function updateMessage(div) {
     return { mesBlock, text, mes, bias };
 }
 
+// SillyBunny: invalidates in-flight openMessageDelete loads across clearChat() or a newer request.
+let messageDeleteRequestId = 0;
+
 function openMessageDelete(fromSlashCommand, deleteToolCalls = true) {
-    closeMessageEditor();
-    hideSwipeButtons();
     if (fromSlashCommand || (!is_send_press) || (selected_group && !is_group_generating)) {
-        $('#dialogue_del_mes').css('display', 'block');
-        $('#send_form').css('display', 'none');
-        $('.del_checkbox').each(function () {
-            $(this).css('display', 'grid');
-            $(this).parent().children('.for_checkbox').css('display', 'none');
-        });
+        closeMessageEditor();
+        hideSwipeButtons();
+        // SillyBunny: the selection mode of sillybunny-message-selection.js (any messages, Shift ranges, Select All) replaces the
+        // "this message and everything after it" bar. A refusal below changes nothing, where upstream still set the delete-mode flag.
+        const requestId = ++messageDeleteRequestId;
+        const renderVersion = chatRenderVersion;
+        const isStillWanted = () => is_delete_mode && requestId === messageDeleteRequestId && renderVersion === chatRenderVersion;
+        is_delete_mode = true;
+        import('./scripts/sillybunny-message-selection.js')
+            .then(({ openMessageSelection }) => {
+                if (!isStillWanted()) {
+                    return;
+                }
+                return openMessageSelection({
+                    deleteToolCalls,
+                    isStillWanted,
+                    syncWindowControls: () => {
+                        if (chat.length > 0 && getRenderedChatMessageWindow().renderedMessageCount === 0) {
+                            return printMessages();
+                        }
+                        syncChatHistoryWindowControls();
+                    },
+                    onExit: () => {
+                        if (requestId === messageDeleteRequestId) {
+                            is_delete_mode = false;
+                        }
+                    },
+                });
+            })
+            .catch((error) => {
+                console.error('Could not enter message selection', error);
+                if (requestId === messageDeleteRequestId) {
+                    is_delete_mode = false;
+                    showSwipeButtons();
+                }
+            });
     } else {
         console.debug(`
             ERR -- could not enter del mode
@@ -14084,9 +14135,6 @@ function openMessageDelete(fromSlashCommand, deleteToolCalls = true) {
             selected_group: ${selected_group}
             is_group_generating: ${is_group_generating}`);
     }
-    this_del_mes = -1;
-    deleteToolCallsInDeleteMode = deleteToolCalls;
-    is_delete_mode = true;
 }
 
 function messageEditAuto(div) {
@@ -19388,75 +19436,22 @@ jQuery(async function () {
         const thumbURL = avatarImage.attr('data-thumbnail-src') || avatarImage.attr('src') || fullAvatarURL;
         const avatarSource = parseAvatarSource(thumbURL) || parseAvatarSource(fullAvatarURL);
         const targetAvatarImg = avatarSource?.file || '';
-        const charname = targetAvatarImg.replace('.png', '');
         const isValidCharacter = avatarSource?.type === 'avatar' && characters.some(x => x.avatar === targetAvatarImg);
 
-        // Remove existing zoomed avatars for characters that are not the clicked character when moving UI is not enabled
-        if (!power_user.movingUI) {
-            $('.zoomed_avatar').each(function () {
-                const currentForChar = $(this).attr('forChar');
-                if (currentForChar !== charname && typeof currentForChar !== 'undefined') {
-                    console.debug(`Removing zoomed avatar for character: ${currentForChar}`);
-                    $(this).remove();
-                }
-            });
+        let zoomedSrc = '';
+        if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
+            //handle user and system avatars
+            const isValidPersona = targetAvatarImg in power_user.personas;
+            zoomedSrc = isValidPersona ? originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg) : thumbURL;
+        } else if (messageElement.attr('is_user') == 'false') { //handle char avatars
+            zoomedSrc = avatarSource?.original || fullAvatarURL || thumbURL;
         }
 
-        const avatarSrc = avatarSource?.original || fullAvatarURL || thumbURL;
-        if ($(`.zoomed_avatar[forChar="${charname}"]`).length) {
-            console.debug('removing container as it already existed');
-            $(`.zoomed_avatar[forChar="${charname}"]`).fadeOut(animation_duration, () => {
-                $(`.zoomed_avatar[forChar="${charname}"]`).remove();
-            });
-        } else {
-            console.debug('making new container from template');
-            const template = $('#zoomed_avatar_template').html();
-            const newElement = $(template);
-            newElement.attr('forChar', charname);
-            newElement.attr('id', `zoomFor_${charname}`);
-            newElement.addClass('draggable');
-            newElement.find('.drag-grabber').attr('id', `zoomFor_${charname}header`);
-
-            $('body').append(newElement);
-            newElement.fadeIn(animation_duration);
-            const zoomedAvatarImgElement = $(`.zoomed_avatar[forChar="${charname}"] img`);
-            if (messageElement.attr('is_user') == 'true' || (messageElement.attr('is_system') == 'true' && !isValidCharacter)) {
-                //handle user and system avatars
-                const isValidPersona = targetAvatarImg in power_user.personas;
-                if (isValidPersona) {
-                    const personaSrc = originalAvatarURL || avatarSource?.original || getUserAvatar(targetAvatarImg);
-                    zoomedAvatarImgElement.attr('src', personaSrc);
-                    zoomedAvatarImgElement.attr('data-izoomify-url', personaSrc);
-                } else {
-                    zoomedAvatarImgElement.attr('src', thumbURL);
-                    zoomedAvatarImgElement.attr('data-izoomify-url', thumbURL);
-                }
-            } else if (messageElement.attr('is_user') == 'false') { //handle char avatars
-                zoomedAvatarImgElement.attr('src', avatarSrc);
-                zoomedAvatarImgElement.attr('data-izoomify-url', avatarSrc);
-            }
-            loadMovingUIState();
-            $(`.zoomed_avatar[forChar="${charname}"]`).css('display', 'flex');
-            dragElement(newElement);
-
-            if (power_user.zoomed_avatar_magnification) {
-                $('.zoomed_avatar_container').izoomify();
-            }
-
-            $('.zoomed_avatar, .zoomed_avatar .dragClose').on('click touchend', (e) => {
-                if (e.target.closest('.dragClose')) {
-                    $(`.zoomed_avatar[forChar="${charname}"]`).fadeOut(animation_duration, () => {
-                        $(`.zoomed_avatar[forChar="${charname}"]`).remove();
-                    });
-                }
-            });
-
-            zoomedAvatarImgElement.on('dragstart', (e) => {
-                console.log('saw drag on avatar!');
-                e.preventDefault();
-                return false;
-            });
-        }
+        // SillyBunny: sillybunny-avatar-viewer.js opens, toggles and closes the zoomed avatar for roleplay and for conversation mode, so this handler only reads which picture the message shows.
+        if (!zoomedSrc) return;
+        import('./scripts/sillybunny-avatar-viewer.js')
+            .then(({ toggleZoomedAvatar }) => toggleZoomedAvatar({ file: targetAvatarImg, src: zoomedSrc }))
+            .catch(error => console.error('Could not open the zoomed avatar', error));
     });
 
     document.addEventListener('click', function (e) {

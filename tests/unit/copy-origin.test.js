@@ -73,6 +73,13 @@ describe('createOrigin', () => {
         expect(origin.classify('Shared label').origin).toBe('upstream');
     });
 
+    test('a text that code the project does not own holds word for word is foreign even where a template of its own files would make it', () => {
+        const names = createOrigin({ tree: { strings: ['${} left', 'Check for updates'], foreign: ['backhand index pointing left'] }, upstream: { strings: [] } });
+        expect(names.classify('backhand index pointing left').origin).toBe('foreign');
+        // A text that no foreign file holds still fills the template.
+        expect(names.classify('Aurelia left')).toEqual({ origin: 'sillybunny', text: '${} left' });
+    });
+
     test('a text that fills a template is judged as the template', () => {
         expect(origin.classify('Actions for Seraphina')).toEqual({ origin: 'sillybunny', text: 'Actions for ${}' });
     });

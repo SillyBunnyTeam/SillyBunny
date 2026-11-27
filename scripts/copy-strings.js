@@ -214,7 +214,7 @@ function treeFiles() {
 }
 
 /** Part of the name of a cache file: raise it when the extraction changes, so that an old file is not read. */
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 export const cacheDirectory = () => path.join(os.tmpdir(), 'sb-copy-strings');
 
 function readOrBuild(file, build) {
@@ -242,10 +242,11 @@ export function upstreamStrings({ base = UPSTREAM_BASE, file } = {}) {
 }
 
 /**
- * Code of quick-image-gen, of third-party extensions and the libraries of an extension, and the bundled agent templates: the first
- * three are not the project's wording, and the names in the templates are content that the user can edit and delete.
+ * Code of quick-image-gen, of third-party extensions and the libraries of an extension, the bundled agent templates, and the emoji
+ * tables: the first three are not the project's wording, the names in the templates are content that the user can edit and delete,
+ * and the emoji tables are the Unicode CLDR names of the emoji, in lower case, in 15 languages.
  */
-const isForeign = name => /\/(?:quick-image-gen|third-party)\//.test(name) || /\/extensions\/[^/]+\/lib\//.test(name) || /\/in-chat-agents\/templates\//.test(name);
+const isForeign = name => /\/(?:quick-image-gen|third-party)\//.test(name) || /\/extensions\/[^/]+\/lib\//.test(name) || /\/in-chat-agents\/templates\//.test(name) || /\/sillybunny-conversation\/emoji\/data\//.test(name);
 
 /**
  * The strings of the working tree (cached by the names, sizes and times of its files). `strings` are those of the project's own

@@ -1,5 +1,5 @@
 const warnedSuffixKeys = new Set();
-const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'background', 'agent', 'agent-template']);
+const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'background', 'conversation', 'agent', 'agent-template']);
 const rowSlotOrder = ['grip', 'avatar', 'text', 'badge', 'suffix', 'chevron'];
 const textSlotOrder = ['title', 'subtitle', 'preview', 'tags'];
 const tagStrips = new WeakMap();
@@ -87,7 +87,7 @@ export const entityRowMotionKey = element => element.dataset.sbListKey;
 
 /**
  * Builds a namespaced key for a supported entity kind.
- * @param {'character'|'group'|'tag'|'persona'|'agent'|'agent-template'} kind
+ * @param {'character'|'group'|'tag'|'persona'|'background'|'conversation'|'agent'|'agent-template'} kind
  * @param {string|number} id
  * @returns {string}
  */

@@ -17,6 +17,18 @@ const META_CLEARANCE = 6;
 
 let initialized = false;
 let coarseQuery = null;
+/**
+ * The reactions of the workspace. This module starts with the page (`sillybunny-message-actions.js` imports it), so it
+ * imports nothing of the mode's runtime: `reactions-ui.js` registers itself when the workspace loads, and a menu opens
+ * only in the workspace.
+ * @type {{ buildMenuReactions: (item: HTMLElement, trigger: HTMLElement) => import('../sillybunny-action-menu.js').ActionMenuReaction[], syncToolbarReactions: (item: HTMLElement) => void, bindReactionChips: () => void }|null}
+ */
+let reactions = null;
+
+export function registerMessageMenuReactions(provider) {
+    reactions = provider;
+    provider.bindReactionChips();
+}
 
 function isCoarsePointer() {
     return coarseQuery?.matches === true;
@@ -41,22 +53,17 @@ function findLiveButton(item, button) {
         return button;
     }
     const action = CSS.escape(button.dataset.sbConversationAction || '');
-    const reaction = button.dataset.reaction ? `[data-reaction="${CSS.escape(button.dataset.reaction)}"]` : '';
     const messageId = CSS.escape(item.dataset.messageId || '');
-    return document.querySelector(`${MESSAGE_SELECTOR}[data-message-id="${messageId}"] .sb-conversation-message-actions [data-sb-conversation-action="${action}"]${reaction}`);
+    return document.querySelector(`${MESSAGE_SELECTOR}[data-message-id="${messageId}"] .sb-conversation-message-actions [data-sb-conversation-action="${action}"]`);
 }
 
 function forward(item, button) {
     findLiveButton(item, button)?.click();
 }
 
-function buildSections(item, actionBar) {
-    const reactions = [...actionBar.querySelectorAll(':scope > .sb-conversation-reaction-button')].map(button => ({
-        text: button.textContent || '',
-        pressed: button.getAttribute('aria-pressed') === 'true',
-        onSelect: () => forward(item, button),
-    }));
-    const sections = [{ reactions }];
+function buildSections(item, actionBar, trigger) {
+    // The reaction row comes from the quick row, not from the toolbar's buttons: the toolbar has room for two emoji only.
+    const sections = [{ reactions: reactions?.buildMenuReactions(item, trigger) ?? [] }];
     for (const button of actionBar.querySelectorAll(':scope > .sb-conversation-message-action[data-sb-conversation-action]')) {
         const index = Number(button.getAttribute('data-sb-section'));
         const section = (sections[index + 1] ??= { items: [] });
@@ -88,19 +95,33 @@ function getTrigger(item) {
 export function openConversationMessageMenu(trigger, { point = null, keyboard = false } = {}) {
     const item = trigger.closest(MESSAGE_SELECTOR);
     const actionBar = item?.querySelector('.sb-conversation-message-actions');
-    if (!(item instanceof HTMLElement) || !actionBar || item.classList.contains('is-editing')) {
+    // Selection mode turns the per-message actions off; a keyboard route must not bring one back.
+    if (!(item instanceof HTMLElement) || !actionBar || item.classList.contains('is-editing') || document.getElementById('sheld')?.dataset.selectionMode === 'true') {
         return;
     }
     item.classList.add(OPEN_CLASS);
     openActionMenu({
         trigger,
-        sections: buildSections(item, actionBar),
+        sections: buildSections(item, actionBar, trigger),
         subtitle: getSubtitle(item),
         point,
         keyboard,
         bounds: document.getElementById('sb_conversation_timeline'),
         onClose: () => item.classList.remove(OPEN_CLASS),
     });
+}
+
+/**
+ * The menu of a message for a long press with a finger. A coarse pointer gets the sheet; a finger on a screen whose main
+ * pointer is fine gets the popover at the finger, as the secondary click does.
+ * @param {HTMLElement} item
+ * @param {{ x: number, y: number }} point
+ */
+export function openConversationMessageMenuAt(item, point) {
+    const trigger = getTrigger(item) ?? item.querySelector('[data-sb-conversation-menu]');
+    if (trigger instanceof HTMLElement) {
+        openConversationMessageMenu(trigger, { point: isCoarsePointer() ? null : point });
+    }
 }
 
 /** Desktop menu button tooltip: adds the Shift hint unless the Expand Message Actions setting is on. */
@@ -119,6 +140,14 @@ function syncMenuTitle(target) {
     }
     if (trigger.getAttribute('aria-label') !== label) {
         trigger.setAttribute('aria-label', label);
+    }
+}
+
+/** The two emoji of a toolbar follow the user's recent reactions, which change without the message changing. */
+function syncToolbarQuickRow(target) {
+    const item = asElement(target)?.closest(MESSAGE_SELECTOR);
+    if (item instanceof HTMLElement) {
+        reactions?.syncToolbarReactions(item);
     }
 }
 
@@ -186,7 +215,8 @@ function handleContextMenu(event) {
 
 function handleMenuKey(event) {
     const isMenuKey = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
-    if (!isMenuKey || isTypingTarget(document.activeElement)) {
+    // On a reaction chip the same keys open the list of who reacted (reactions-ui.js).
+    if (!isMenuKey || isTypingTarget(document.activeElement) || asElement(document.activeElement)?.closest('.sb-conversation-message-reaction-chip')) {
         return;
     }
     const item = asElement(document.activeElement)?.closest(MESSAGE_SELECTOR);
@@ -210,10 +240,12 @@ export function initializeConversationMessageMenu() {
     document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('pointerover', (event) => {
         syncMenuTitle(event.target);
+        syncToolbarQuickRow(event.target);
         syncMetaClearance(event.target);
     }, { passive: true });
     document.addEventListener('focusin', (event) => {
         syncMenuTitle(event.target);
+        syncToolbarQuickRow(event.target);
         syncMetaClearance(event.target);
     });
     window.addEventListener('keydown', syncHoveredMetaClearance, { passive: true });

@@ -11,7 +11,7 @@ test.describe('Conversation lorebooks', () => {
     // A service worker that controls the page would answer requests before page.route sees them.
     test.use({ serviceWorkers: 'block' });
     test.beforeEach(async ({ page }) => {
-        // Settings writes stay in this page, so the global switch and the fixture thread never reach the server.
+        // Settings writes stay in this page, so the global switch never reaches the server. The fixture conversation does, and the test removes it.
         let settingsVersion = Date.now();
         await page.route('**/api/settings/save', route => route.fulfill({ status: 200, json: { version: ++settingsVersion } }));
         await testSetup.awaitST({ page });
@@ -57,7 +57,7 @@ test.describe('Conversation lorebooks', () => {
 
             await page.evaluate(async (fixtureAvatar) => {
                 const { openConversationWorkspaceForAvatar } = await import('./scripts/sillybunny-conversation.js');
-                if (!openConversationWorkspaceForAvatar(fixtureAvatar, { showToast: false, enable: true })) {
+                if (!await openConversationWorkspaceForAvatar(fixtureAvatar, { showToast: false, enable: true })) {
                     throw new Error('Could not open the fixture Conversation');
                 }
             }, avatar);
@@ -73,11 +73,13 @@ test.describe('Conversation lorebooks', () => {
             await expect.poll(() => replyRequests().length, { timeout: 30_000 }).toBe(1);
             expect(getSystemPrompt(replyRequests()[0])).toContain(entryText);
 
-            await page.locator('[data-sb-conversation-action="open-settings"]').first().click();
-            const lorebookSwitch = page.locator('#sb_conv_lorebooks_enabled');
+            // The switch is mode-wide, so it is in Preferences, which the Main Menu of the list opens.
+            await page.evaluate(async () => (await import('./scripts/sillybunny-conversation/chrome.js')).openConversationPreferences());
+            const lorebookSwitch = page.getByRole('switch', { name: 'Use Character Lorebooks' });
             await expect(lorebookSwitch).toBeChecked();
             await lorebookSwitch.uncheck();
-            await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
+            await page.keyboard.press('Escape');
+            await expect(lorebookSwitch).toHaveCount(0);
 
             await input.fill('Is the lexicon still there?');
             await send.click();
@@ -88,6 +90,12 @@ test.describe('Conversation lorebooks', () => {
                 const { getCharacters, getRequestHeaders } = await import('./script.js');
                 const { deleteWorldInfo, world_names } = await import('./scripts/world-info.js');
                 if (fixtureAvatar) {
+                    const listed = await (await fetch('/api/sillybunny-conversation/list', { method: 'POST', headers: getRequestHeaders(), body: '{}' })).json();
+                    for (const conversation of listed.conversations ?? []) {
+                        if (conversation.characters.includes(fixtureAvatar)) {
+                            await fetch('/api/sillybunny-conversation/delete', { method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ id: conversation.id }) });
+                        }
+                    }
                     await fetch('/api/characters/delete', {
                         method: 'POST',
                         headers: getRequestHeaders(),

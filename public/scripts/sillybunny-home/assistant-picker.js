@@ -1,5 +1,6 @@
 import { t } from '../i18n.js';
 import { openDialog } from '../sillybunny-editor/dialog.js';
+import { createLazyImage } from '../sillybunny-editor/lazy-image.js';
 import { createRow, createPrefGroup } from '../sillybunny-editor/rows.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { ensureWindowStyles } from '../sillybunny-window-styles.js';
@@ -18,13 +19,7 @@ const MIN_ROWS_PER_FRAME = 60;
 const MAX_ROWS_PER_FRAME = 500;
 
 function createThumbnail(avatar, getThumbnailUrl) {
-    const image = document.createElement('img');
-    image.className = 'sbAssistantPickerThumb';
-    image.src = getThumbnailUrl(avatar);
-    image.alt = '';
-    image.decoding = 'async';
-    image.loading = 'lazy';
-    return image;
+    return createLazyImage(getThumbnailUrl(avatar), 'sbAssistantPickerThumb');
 }
 
 function createSelectedMark() {

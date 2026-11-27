@@ -14,6 +14,22 @@ const TOPICS_BY_SECTION = [
     ['world-info', 'World Info', [['add-world-info', 'Add World Info']]],
     ['chatting', 'Chatting', [['start-a-chat', 'Start a Chat']]],
     ['modes', 'Modes', [['switch-chat-mode', 'Switch Chat Mode']]],
+    ['conversations', 'Conversations', [
+        ['start-a-conversation', 'Start a Conversation'],
+        ['start-a-group', 'Start a Group'],
+        ['manage-the-conversation-list', 'Manage the Conversation List'],
+        ['use-conversation-folders', 'Use Conversation Folders'],
+        ['use-conversation-details', 'Use the Details Window'],
+        ['open-a-character-profile', 'Open a Character Profile'],
+        ['let-characters-message-first', 'Let Characters Message First'],
+        ['get-replies-after-closing-the-page', 'Get Replies After Closing the Page'],
+        ['insert-an-emoji', 'Insert an Emoji'],
+        ['react-to-a-message', 'React to a Message'],
+        ['let-characters-react', 'Let Characters React'],
+        ['select-and-delete-messages', 'Select and Delete Messages'],
+        ['delete-a-chat-or-conversation', 'Delete a Chat or a Conversation'],
+        ['change-conversation-preferences', 'Change Conversation Preferences'],
+    ]],
     ['agents', 'Agents', [['turn-on-an-agent', 'Turn On an Agent']]],
     ['extensions-and-themes', 'Extensions and Themes', [['install-an-extension', 'Install an Extension']]],
     ['search', 'Search', [['find-a-setting', 'Find a Setting']]],
@@ -37,7 +53,7 @@ function withMoreTroubleshooting() {
 }
 
 describe('Help model', () => {
-    test('lists the twelve sections in reading order with the twelve topics they have always had', () => {
+    test('lists the thirteen sections in reading order with the topics of each', () => {
         const shape = getHelpSections().map(section => [section.id, section.title, section.topics.map(topic => [topic.id, topic.title])]);
 
         expect(shape).toEqual(TOPICS_BY_SECTION);

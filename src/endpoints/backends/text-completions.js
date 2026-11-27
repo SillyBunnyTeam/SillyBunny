@@ -331,8 +331,7 @@ function getSafeCompletionErrorStatus(status) {
     return Number.isInteger(parsed) && parsed >= 400 && parsed < 500 ? parsed : 502;
 }
 
-// SillyBunny divergence: export the existing handler so Conversation REST can reuse upstream text-generation flow without duplicating provider glue.
-export async function handleTextCompletionsGenerate(request, response) {
+async function handleTextCompletionsGenerate(request, response) {
     if (!request.body) return response.sendStatus(400);
 
     try {

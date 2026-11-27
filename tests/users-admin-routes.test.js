@@ -8,6 +8,8 @@ import { ADMIN, DISABLED_MEMBER, MEMBER, OPEN_MEMBER, readReply, startAccountSer
 
 // The login limiter keeps its count in module state and every test here shares one client address, so a limit of 0 turns it off in this file.
 const harness = await startAccountServer({ config: { 'rateLimiting.accountsLoginMaxAttempts': 0 } });
+const { conversationIndex } = await import('../src/conversation-index.js');
+const { createConversation, listConversations } = await import('../src/conversation-store.js');
 
 // Creating an account copies its default content, which can pass the default Jest timeout on a busy machine.
 jest.setTimeout(30000);
@@ -266,6 +268,38 @@ describe('POST /api/users/delete', () => {
         expect(await harness.account(OPEN_MEMBER.handle)).toBeUndefined();
         expect(fs.existsSync(path.dirname(memberFile))).toBe(false);
         expect(fs.existsSync(otherFile)).toBe(true);
+    });
+
+    test('with purge, drops cached conversation index rows for that account only', async () => {
+        const seedConversation = (handle, text) => {
+            const targetUser = { profile: { handle }, directories: harness.users.getUserDirectories(handle) };
+            const { conversation } = createConversation(targetUser, {
+                kind: 'direct',
+                personaId: 'user-default.png',
+                characters: ['Nova.png'],
+                chats: [{
+                    id: 'main',
+                    records: [
+                        { chat_metadata: {}, user_name: 'unused', character_name: 'unused' },
+                        { id: 'm1', name: 'Nova', is_user: false, is_system: false, role: 'character', send_date: '2026-01-01T00:00:00.000Z', created_at: 1, mes: text, extra: {} },
+                    ],
+                }],
+            });
+            listConversations(targetUser);
+            const chatPath = path.join(targetUser.directories.conversations, conversation.id, 'chats', 'main.jsonl');
+            return { chatPath, stat: fs.statSync(chatPath) };
+        };
+
+        const purged = seedConversation(OPEN_MEMBER.handle, 'Secret purged preview');
+        const kept = seedConversation(MEMBER.handle, 'Kept member preview');
+        expect(conversationIndex.get(purged.chatPath, purged.stat, '')).toMatchObject({ preview: 'Secret purged preview' });
+        expect(conversationIndex.get(kept.chatPath, kept.stat, '')).toMatchObject({ preview: 'Kept member preview' });
+
+        const response = await admin.post('/api/users/delete', { handle: OPEN_MEMBER.handle, purge: true });
+
+        expect(response.status).toBe(204);
+        expect(conversationIndex.get(purged.chatPath, purged.stat, '')).toBeUndefined();
+        expect(conversationIndex.get(kept.chatPath, kept.stat, '')).toMatchObject({ preview: 'Kept member preview' });
     });
 
     test('answers 400 without a handle', async () => {

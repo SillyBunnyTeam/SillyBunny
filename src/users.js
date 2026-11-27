@@ -110,6 +110,7 @@ const STORAGE_KEYS = {
  * @property {string} reasoning - The directory where the reasoning templates are stored
  * @property {string} inChatAgents - The directory where the in-chat agents are stored
  * @property {string} inChatAgentGroups - The directory where the in-chat agent groups are stored
+ * @property {string} conversations - SillyBunny: the directory where conversation mode stores its conversations
  */
 
 /**

@@ -4,6 +4,9 @@ import { selected_group } from '../group-chats.js';
 import { createGreetingArt } from './greeting-art.js';
 import { openGreetingArtViewer } from './greeting-art-viewer.js';
 
+/** How long MESSAGE_DELETED has to stay quiet before the picture is checked. */
+const MESSAGE_DELETED_QUIET_MS = 50;
+
 /**
  * Wires the greeting picture into the app. The picture is added to the page and never to the chat, so nothing that
  * builds a prompt or saves a chat can reach it.
@@ -30,7 +33,6 @@ if (chatElement) {
     for (const type of [
         event_types.MESSAGE_SWIPED,
         event_types.MESSAGE_SWIPE_DELETED,
-        event_types.MESSAGE_DELETED,
         event_types.MESSAGE_EDITED,
         event_types.MESSAGE_UPDATED,
         event_types.CHARACTER_MESSAGE_RENDERED,
@@ -38,5 +40,11 @@ if (chatElement) {
     ]) {
         eventSource.on(type, () => greetingArt.sync());
     }
+    // Deleting many messages sends one event for each, so the picture is checked once the events stop.
+    let deletedTimer = 0;
+    eventSource.on(event_types.MESSAGE_DELETED, () => {
+        clearTimeout(deletedTimer);
+        deletedTimer = setTimeout(() => greetingArt.sync(), MESSAGE_DELETED_QUIET_MS);
+    });
     greetingArt.start();
 }

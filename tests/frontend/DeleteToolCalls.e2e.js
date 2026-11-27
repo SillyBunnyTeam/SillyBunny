@@ -53,16 +53,7 @@ test.describe('deleting assistant messages with tool calls', () => {
                 .filter(message => new Set([...testMessages, 'Later']).has(message.mes))
                 .map(message => message.mes);
 
-            await newAssistantChat({ temporary: true });
-            await addMessages();
-            document.querySelector('#option_delete_mes').click();
-            await new Promise(resolve => setTimeout(resolve, 200));
-            document.querySelector(`.mes[mesid="${chat.length - 1}"]`).click();
-            document.querySelector('#dialogue_del_mes_ok').click();
-            await new Promise(resolve => setTimeout(resolve, 50));
-            const deleteMode = snapshot();
-
-            return { automatic, deleteMode, disabled, range };
+            return { automatic, disabled, range };
         });
 
         expect(result.automatic).toEqual([{ mes: 'Run a tool', toolCall: false }]);
@@ -71,6 +62,40 @@ test.describe('deleting assistant messages with tool calls', () => {
             { mes: 'Tool result', toolCall: true },
         ]);
         expect(result.range).toEqual(['Run a tool']);
-        expect(result.deleteMode).toEqual([{ mes: 'Run a tool', toolCall: false }]);
+    });
+
+    test('the selection mode selects and deletes a tool call with its assistant message', async ({ page }) => {
+        await page.evaluate(async () => {
+            const { addOneMessage, chat, newAssistantChat } = await import('./script.js');
+            await newAssistantChat({ temporary: true });
+            const messages = [
+                { name: 'User', is_user: true, is_system: false, mes: 'Run a tool', extra: {} },
+                {
+                    name: 'System',
+                    is_user: false,
+                    is_system: true,
+                    mes: 'Tool result',
+                    extra: { isSmallSys: true, tool_invocations: [{ id: 'call-1', name: 'lookup' }] },
+                },
+                { name: 'Assistant', is_user: false, is_system: false, mes: 'Done', extra: {} },
+            ];
+            for (const message of messages) {
+                chat.push(message);
+                await addOneMessage(message);
+            }
+        });
+
+        await page.locator('#option_delete_mes').evaluate(item => item.click());
+        await expect(page.locator('#sheld')).toHaveAttribute('data-selection-mode', 'true');
+        // The tool call is a row of its own, and choosing it chooses the message it belongs to.
+        await page.locator('#chat .mes', { hasText: 'Tool result' }).locator('.mes_text').click();
+        await expect(page.locator('#dialogue_del_mes_count')).toHaveText('2 Selected');
+        await expect(page.locator('#chat .mes.is-selection-selected')).toHaveCount(2);
+        await page.locator('#dialogue_del_mes_ok').click();
+        await page.locator('dialog[open]').getByRole('button', { name: 'Delete' }).click();
+
+        await expect.poll(() => page.evaluate(async () => (await import('./script.js')).chat
+            .filter(message => ['Run a tool', 'Tool result', 'Done'].includes(message.mes))
+            .map(message => message.mes))).toEqual(['Run a tool']);
     });
 });

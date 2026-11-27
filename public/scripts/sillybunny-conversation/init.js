@@ -1,27 +1,24 @@
-import { chat } from '../../script.js';
 import { event_types, eventSource } from '../events.js';
-import { selected_group } from '../group-chats.js';
+import { extension_settings } from '../extensions.js';
+import { CONVERSATION_DETAILS_CLOSE_EVENT, CONVERSATION_STORE_KEY } from './constants.js';
+import { getConversationGroupById } from './context.js';
+import { conversationData, installConversationDataHooks } from './conversation-data-browser.js';
+import { generationTargets, installPageLeaveEffects, installRemovalEffects } from './deletion-guards.js';
+import { importLegacyLocalStorage } from './legacy-import.js';
 import {
-    captureGroupAsideRequest,
-    captureRoleplayDMRequest,
-    checkGroupChatMention,
-    handleChatChanged,
-    startConversationAutoWorker,
-    stopConversationAutoWorker,
-    triggerGroupAsideDM,
-    triggerRoleplayDM,
-} from './auto-engine.js';
-import { disableConversationModeForCurrentCharacter, getDefaultConversationAvatar, selectConversationThread } from './chrome.js';
-import { GROUP_ASIDE_RANDOM_CHANCE } from './constants.js';
-import { getConversationGroupById, getConversationPersonaId, getRoleplayCurrentCharacter, getRoleplayGroupById, migrateConversationLocalStorage } from './context.js';
-import { loadCurrentPanelSettings } from './interface.js';
-import { sanitizeConversationUnreadCounts, updateConversationNotificationIndicators } from './notifications.js';
-import { getCharacterForGroupChatMessage, getCurrentGroupConversationMembers } from './pals-rail.js';
-import { scheduleInterfaceRefresh } from './render-scheduler.js';
-import { closeConversationSettings } from './settings-panel.js';
-import { getSettings, hasAnyConversationModeUsage } from './settings-store.js';
-import { conversationState, setExternalConversationGenerationActive } from './state.js';
-import { setConversationTimeout } from './timers.js';
+    bindWorkspacePrefetch,
+    disableConversationModeForCurrentCharacter,
+    handleRoleplayCharacterMessage,
+    handleRoleplayUserMessage,
+    installConversationReplyStream,
+    openConversationWorkspaceFromRequest,
+    selectConversation,
+    startConversationWorker,
+} from './lazy-parts.js';
+import { getActiveConversationKey, updateConversationNotificationIndicators, updateModeToggleUnread } from './notifications.js';
+import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
+import { hasAnyConversationModeUsage } from './settings-store.js';
+import { conversationState, sendQueue, setExternalConversationGenerationActive } from './state.js';
 
 function hasConversationRuntimeUsage() {
     return conversationState.conversationWorkspaceOpen || hasAnyConversationModeUsage();
@@ -29,7 +26,7 @@ function hasConversationRuntimeUsage() {
 
 function scheduleInterfaceRefreshIfOpen() {
     if (conversationState.conversationWorkspaceOpen) {
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
 }
 
@@ -38,7 +35,7 @@ function ensureConversationRuntimeStarted() {
         return;
     }
 
-    startConversationAutoWorker();
+    startConversationWorker();
     updateConversationNotificationIndicators();
 }
 
@@ -48,17 +45,28 @@ export function init() {
     }
 
     conversationState.initialized = true;
-    migrateConversationLocalStorage();
-    sanitizeConversationUnreadCounts();
+    installRemovalEffects({ onRemoval: conversationData.onRemoval, queue: sendQueue, targets: generationTargets });
+    installPageLeaveEffects({ target: window, targets: generationTargets });
+    conversationData.subscribe((event) => {
+        if (event.type === 'list' || event.type === 'status') {
+            updateConversationNotificationIndicators();
+            if (hasAnyConversationModeUsage()) {
+                installConversationReplyStream();
+            }
+            if (conversationState.conversationWorkspaceOpen) {
+                scheduleConversationListRender();
+            }
+        } else if (event.type === 'chat' && !event.local && conversationState.conversationWorkspaceOpen && event.address.conversationId === getActiveConversationKey()) {
+            scheduleInterfaceRefreshIfOpen();
+        }
+    });
     eventSource.on(event_types.USER_MESSAGE_RENDERED, (messageId) => {
         if (!hasConversationRuntimeUsage()) {
             return;
         }
 
         scheduleInterfaceRefreshIfOpen();
-        if (selected_group) {
-            checkGroupChatMention(messageId);
-        }
+        handleRoleplayUserMessage(messageId);
     });
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
         if (!hasConversationRuntimeUsage()) {
@@ -66,47 +74,7 @@ export function init() {
         }
 
         scheduleInterfaceRefreshIfOpen();
-
-        // Occasional private asides keep Conversation Mode feeling connected
-        // without forcing a public group-chat reply.
-        const roll = Math.random();
-        if (roll < GROUP_ASIDE_RANDOM_CHANCE) {
-            if (selected_group) {
-                const sourceGroupId = String(selected_group || '');
-                const roleplayGroup = getRoleplayGroupById(sourceGroupId);
-                const members = getCurrentGroupConversationMembers({ group: roleplayGroup, requireRoleplayReactions: true });
-                const speaker = getCharacterForGroupChatMessage(chat[messageId]);
-                const speakerMember = speaker?.avatar ? members.find(item => item.character?.avatar === speaker.avatar) : null;
-                const chosenMember = speakerMember && Math.random() < 0.65
-                    ? speakerMember
-                    : members[Math.floor(Math.random() * members.length)];
-                if (chosenMember?.character) {
-                    const reason = speakerMember?.character?.avatar === chosenMember.character.avatar ? 'reaction' : 'random';
-                    const personaId = getConversationPersonaId();
-                    const request = captureGroupAsideRequest(chosenMember.character, {
-                        personaId,
-                        reason,
-                        sourceGroup: roleplayGroup,
-                        sourceGroupId,
-                        sourceMessageId: messageId,
-                    });
-                    if (request) {
-                        setConversationTimeout(() => void triggerGroupAsideDM(chosenMember.character, request), 2000);
-                    }
-                }
-            } else {
-                const roleplayCharacter = getCharacterForGroupChatMessage(chat[messageId]) || getRoleplayCurrentCharacter();
-                const avatar = roleplayCharacter?.avatar || '';
-                const personaId = getConversationPersonaId();
-                if (!avatar || !getSettings(avatar, { groupId: '', personaId }).roleplay_reactions) {
-                    return;
-                }
-                const request = captureRoleplayDMRequest({ avatar, personaId, sourceMessageId: messageId });
-                if (request) {
-                    setConversationTimeout(() => void triggerRoleplayDM(request), 2000);
-                }
-            }
-        }
+        handleRoleplayCharacterMessage(messageId);
     });
     eventSource.on(event_types.GENERATION_STARTED, (_type, _params, isDryRun) => {
         if (isDryRun) {
@@ -131,39 +99,29 @@ export function init() {
     eventSource.on(event_types.ONLINE_STATUS_CHANGED, scheduleInterfaceRefreshIfOpen);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         if (conversationState.conversationWorkspaceOpen) {
-            handleChatChanged();
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     });
     eventSource.on(event_types.CHAT_LOADED, () => {
         if (conversationState.conversationWorkspaceOpen) {
-            handleChatChanged();
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     });
     eventSource.on(event_types.PERSONA_CHANGED, () => {
-        closeConversationSettings();
+        window.dispatchEvent(new CustomEvent(CONVERSATION_DETAILS_CLOSE_EVENT));
         conversationState.conversationReplyTarget = null;
-        sanitizeConversationUnreadCounts();
         updateConversationNotificationIndicators();
         ensureConversationRuntimeStarted();
         if (conversationState.conversationWorkspaceOpen) {
             if (conversationState.conversationSelectedGroupId && !getConversationGroupById(conversationState.conversationSelectedGroupId)) {
                 conversationState.conversationSelectedGroupId = null;
             }
-            handleChatChanged();
-            loadCurrentPanelSettings();
-            scheduleInterfaceRefresh({ syncControls: false });
+            scheduleInterfaceRefresh();
         }
     });
 
     window.addEventListener('sb:open-conversation-workspace', (event) => {
-        const detail = event instanceof CustomEvent ? event.detail : null;
-        const avatar = detail?.avatar || getDefaultConversationAvatar();
-        const branchId = detail?.branchId || '';
-        const groupId = detail?.groupId || null;
-        const personaId = detail?.personaId || getConversationPersonaId();
-        void selectConversationThread(avatar, { branchId, groupId, personaId, showToast: detail?.showToast !== false });
+        void openConversationWorkspaceFromRequest(event instanceof CustomEvent ? event.detail : null);
     });
     window.addEventListener('sb:roleplay-character-selected', (event) => {
         if (!conversationState.conversationWorkspaceOpen) {
@@ -173,17 +131,34 @@ export function init() {
         const detail = event instanceof CustomEvent ? event.detail : null;
         const avatar = detail?.avatar || '';
         if (avatar) {
-            void selectConversationThread(avatar, { showToast: false });
+            void selectConversation(avatar, { showToast: false });
         }
     });
     window.addEventListener('sb:close-conversation-workspace', () => disableConversationModeForCurrentCharacter({ focusRoleplay: false }));
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
-    window.addEventListener('beforeunload', stopConversationAutoWorker);
+    // The badge on the chat mode button shows only while the workspace is closed, so it follows the workspace opening and closing.
+    window.addEventListener('sb:conversation-workspace-state-changed', () => updateModeToggleUnread());
+    bindWorkspacePrefetch(window);
 
-    if (hasAnyConversationModeUsage()) {
-        ensureConversationRuntimeStarted();
-        loadCurrentPanelSettings();
-    }
+    // The page does not wait for the conversations: the rest of the mode starts when the list has arrived.
+    void conversationData.whenReady().then(async () => {
+        try {
+            await importLegacyLocalStorage();
+        } catch (error) {
+            console.error('Conversation Mode: the old browser data could not be moved', error);
+        }
+        updateConversationNotificationIndicators();
+        if (hasAnyConversationModeUsage()) {
+            ensureConversationRuntimeStarted();
+            scheduleInterfaceRefresh();
+        }
+    });
 }
 
+installConversationDataHooks({
+    eventSource,
+    settingsLoaded: event_types.SETTINGS_LOADED,
+    refreshOn: [event_types.CHARACTER_DELETED, event_types.CHARACTER_RENAMED, event_types.PERSONA_DELETED],
+    getModeObject: () => extension_settings[CONVERSATION_STORE_KEY],
+});
 eventSource.on(event_types.APP_READY, init);

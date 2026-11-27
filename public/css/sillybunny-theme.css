@@ -283,7 +283,7 @@
        use the View layer like a document body. */
     --sb-layer-alert: var(--sb-layer-dialog);
     --sb-layer-view-surface: var(--sb-layer-view);
-    /* Complementary rail (Conversation pals rail, Settings sidebar and its header).
+    /* Complementary rail (Conversation list, Settings sidebar and its header).
        libadwaita sidebar-bg: #2e2e32 in Libadwaita dark, #ebebed in light. */
     --sb-sidebar-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
     --sb-sidebar-bg: var(--sb-sidebar-bg-source);
@@ -409,7 +409,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
 
 /* Centred under the top bar. */
 @media (max-width: 1024px) {
-    .zoomed_avatar:not(.sb-conversation-zoomed-avatar) {
+    .zoomed_avatar {
         inset: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) 0 0;
         width: fit-content;
         height: fit-content;

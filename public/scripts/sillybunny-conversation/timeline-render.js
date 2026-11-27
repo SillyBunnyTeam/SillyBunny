@@ -1,60 +1,48 @@
 import {
-    characters,
     default_user_avatar,
     getThumbnailUrl,
     messageFormatting,
     name1,
 } from '../../script.js';
-import { world_names } from '../world-info.js';
-import {
-    createButtonRow,
-    createEntryRow,
-    createPrefGroup,
-    createRow,
-    createSpinRow,
-    createSwitchRow,
-    createTextAreaField,
-    releaseRowIds,
-} from '../sillybunny-editor/rows.js';
-import { createSelectRow } from '../sillybunny-editor/select-row.js';
 import {
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ACCEPT,
-    CONVERSATION_REACTION_LABELS,
-    CONVERSATION_TIMELINE_CHANNELS,
-    DEFAULT_AUTO_CHAT_COOLDOWN,
     SELFIE_COMMAND_RE,
 } from './constants.js';
 import { truncateConversationReplyPreview } from './preview-utils.js';
 import {
-    createConversationBranch,
-    getActiveConversationBranch,
+    getActiveConversationChat,
+    getConversationChats,
     getConversationGroupById,
-    getConversationBranches,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
+    getConversationRecord,
     getCurrentCharAvatar,
     getCurrentCharName,
-    persistConversationStore,
 } from './context.js';
+import { conversationData } from './conversation-data-browser.js';
 import { promptConversationText } from './dialogs.js';
 import { commitCharacterReplyCommands, extractCharacterReplyCommands, generateConversationRaw, generateSelfieFromContext, getCharacterReplyCommandMetadata, reportConversationGenerationError } from './generation.js';
+import { dropQueueItemsOfDeletedMessages, removeChatMessages } from './message-deletion.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
 import { getCharacterForAvatar, getConversationParticipants, getEffectiveConversationStatus } from './media.js';
-import { getConversationMessageAvatar, getConversationMessageReceipt } from './pals-rail.js';
-import { escapeRegExp, getCharacterMentionHandles, parseAvatarList } from './partners.js';
-import { getConnectionProfiles } from './personas.js';
+import { getConversationMessageAvatar, getConversationMessageReceipt } from './conversation-list.js';
+import { escapeRegExp, getCharacterMentionHandles } from './members.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt, renderConversationAttachments } from './prompt.js';
-import { registerConversationRenderer, scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
-import { escapeHtmlAttribute, escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
-import { getConversationReplyMaxTokens } from './schedule.js';
+import { getPinEvents, isPinned, setMessagePin } from './pin-model.js';
+import { createPinnedMark, detachPinEventRows, placePinEventRows } from './pin-events-ui.js';
+import { createReactionChips, createToolbarReactionButtons } from './reactions-ui.js';
+import { buildConversationRenderKey } from './render-key.js';
+import { getConversationRenderChatId } from './screen-target.js';
+import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
+import { escapeHtmlText, getConversationMessageExtraFingerprint, hashConversationRenderFingerprint } from './render-utils.js';
 import { getSettings } from './settings-store.js';
 import {
     beginConversationGenerationOperation,
     conversationState,
     endConversationGenerationOperation,
     regenerationBusyKeys,
+    sendQueue,
 } from './state.js';
 import { getConversationTimelineMessages } from './timeline-search.js';
 import { narrateConversationMessage } from './tts.js';
@@ -63,13 +51,13 @@ import {
     buildConversationMessageReplyReference,
     getConversationAttachmentSummary,
     getConversationSeenAt,
-    getConversationMessagePreviewText,
-    getConversationThread,
-    saveConversationThread,
-} from './thread-store.js';
-import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
+    getConversationMessages,
+    saveConversationMessages,
+} from './conversation-store.js';
+import { getActiveTypingParticipants, getPrimaryTypingParticipant, withTypingParticipant } from './typing.js';
 import { getConversationWorldInfo } from './world-info.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { toSafeAttachmentUrl } from './safe-url.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -81,17 +69,8 @@ export {
     quickConversationSummarize,
 } from './timeline-slash-commands.js';
 
-function getConversationRenderBranchId(avatar, groupId, personaId) {
-    const store = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    return String(store?.activeBranchId || getActiveConversationBranch(avatar, { create: false, groupId, personaId })?.id || '');
-}
-
-function buildConversationRenderThreadKey(avatar, groupId, branchId, personaId) {
-    return [personaId || '', avatar || '', groupId || '', branchId || ''].join('\u001f');
-}
-
-function buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settings, allMessages, messages }) {
-    const activeTyping = getActiveTypingParticipants(avatar, { branchId, groupId, personaId });
+function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings, allMessages, messages }) {
+    const activeTyping = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });
     const statusAvatars = new Set([avatar]);
     for (const participant of activeTyping) {
         if (participant?.avatar) {
@@ -100,7 +79,7 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settin
     }
 
     const messageParts = messages.map((message) => {
-        const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
+        const speakerAvatar = message?.role === 'member' ? message.extra?.member_avatar : avatar;
         if (speakerAvatar && message?.role !== 'user' && message?.role !== 'system') {
             statusAvatars.add(speakerAvatar);
         }
@@ -121,10 +100,9 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settin
         .join(',');
     const statusPart = Array.from(statusAvatars)
         .filter(Boolean)
-        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar, getSettings(statusAvatar, { groupId, personaId }))}`)
+        .map(statusAvatar => `${statusAvatar}:${getEffectiveConversationStatus(statusAvatar)}`)
         .join(',');
     const settingsPart = [
-        settings?.editable_messages ? '1' : '0',
         settings?.prose_polisher ? '1' : '0',
     ].join(':');
 
@@ -132,8 +110,7 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settin
         personaId || '',
         avatar || '',
         groupId || '',
-        branchId || '',
-        conversationState.conversationTimelineChannel || '',
+        chatId || '',
         conversationState.conversationTimelineSearchQuery || '',
         allMessages.length,
         messages.length,
@@ -148,9 +125,9 @@ function buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settin
 }
 
 function buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index }) {
-    const speakerAvatar = message?.role === 'partner' ? message.extra?.partner_avatar : avatar;
+    const speakerAvatar = message?.role === 'member' ? message.extra?.member_avatar : avatar;
     const speakerStatus = speakerAvatar && message?.role !== 'user' && message?.role !== 'system'
-        ? getEffectiveConversationStatus(speakerAvatar, getSettings(speakerAvatar, { groupId, personaId }))
+        ? getEffectiveConversationStatus(speakerAvatar)
         : '';
 
     return hashConversationRenderFingerprint([
@@ -164,11 +141,20 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, persona
         getConversationMessageExtraFingerprint(message),
         getConversationMessageReceipt(message, avatar, { groupId, personaId }),
         getConversationMessageAvatar(message, avatar),
-        settings?.editable_messages ? '1' : '0',
         settings?.prose_polisher ? '1' : '0',
         speakerStatus,
         index > 8 ? 'lazy' : 'eager',
     ].join('\u001f'));
+}
+
+function buildConversationMessageBaseFingerprint(message, context) {
+    if (!message?.extra || typeof message.extra !== 'object' || !Object.hasOwn(message.extra, 'conversation_reactions')) {
+        return buildConversationMessageFingerprint(message, context);
+    }
+    return buildConversationMessageFingerprint({
+        ...message,
+        extra: { ...message.extra, conversation_reactions: undefined },
+    }, context);
 }
 
 function getConversationSelfieCommandRequests(message) {
@@ -253,10 +239,10 @@ function createConversationReplyReferenceElement(reference, className) {
     return wrapper;
 }
 
-export function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const target = conversationState.conversationReplyTarget;
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    const resolvedBranchId = branchId || threadStore?.activeBranchId || '';
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    const resolvedChatId = chatId || conversationRecord?.activeChatId || '';
     if (!target) {
         return null;
     }
@@ -264,7 +250,7 @@ export function getActiveConversationReplyTarget(avatar = getCurrentCharAvatar()
         target.avatar !== avatar
         || String(target.groupId || '') !== String(groupId || '')
         || String(target.personaId || '') !== String(personaId || '')
-        || String(target.branchId || '') !== String(resolvedBranchId)
+        || String(target.chatId || '') !== String(resolvedChatId)
     ) {
         conversationState.conversationReplyTarget = null;
         return null;
@@ -313,8 +299,8 @@ export function clearConversationReplyTarget() {
     renderConversationComposerReplyPreview();
 }
 
-export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const target = getActiveConversationReplyTarget(avatar, { branchId, groupId, personaId });
+export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const target = getActiveConversationReplyTarget(avatar, { chatId, groupId, personaId });
     if (!target) {
         return null;
     }
@@ -322,7 +308,7 @@ export function consumeConversationReplyTarget(avatar = getCurrentCharAvatar(), 
     clearConversationReplyTarget();
     const reference = { ...target };
     delete reference.avatar;
-    delete reference.branchId;
+    delete reference.chatId;
     delete reference.groupId;
     delete reference.personaId;
     return reference;
@@ -395,7 +381,7 @@ function getConversationMessageSpeakerKey(message) {
         return `system:${message?.id || ''}`;
     }
 
-    return `${message?.role || 'character'}:${message?.extra?.partner_avatar || message?.name || ''}`;
+    return `${message?.role || 'character'}:${message?.extra?.member_avatar || message?.name || ''}`;
 }
 
 function messagesShareConversationGroup(current, previous) {
@@ -431,10 +417,14 @@ function getConversationGroupPosition(continuesPrevious, continuesNext) {
     return 'single';
 }
 
-export function getConversationTimelineGroupMeta(messages) {
+/**
+ * @param {object[]} messages
+ * @param {{ breaksAfter?: Set<string> }} [options] The ids of messages that a line of the timeline follows. A line ends a group, as a day divider does, so the message after it shows its header again.
+ */
+export function getConversationTimelineGroupMeta(messages, { breaksAfter = new Set() } = {}) {
     return (Array.isArray(messages) ? messages : []).map((message, index, list) => {
-        const continuesPrevious = messagesShareConversationGroup(message, list[index - 1]);
-        const continuesNext = messagesShareConversationGroup(list[index + 1], message);
+        const continuesPrevious = !breaksAfter.has(list[index - 1]?.id) && messagesShareConversationGroup(message, list[index - 1]);
+        const continuesNext = !breaksAfter.has(message?.id) && messagesShareConversationGroup(list[index + 1], message);
         return {
             position: getConversationGroupPosition(continuesPrevious, continuesNext),
             showHeader: !continuesPrevious,
@@ -474,25 +464,27 @@ function insertConversationDayDividers(timeline, messages) {
     }
 }
 
-function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint }) {
+function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint, baseFingerprint }) {
     const item = document.createElement('article');
     item.className = 'sb-conversation-message';
     item.dataset.role = message.role || 'character';
     item.dataset.messageId = message.id;
-    item.dataset.pinned = String(Boolean(message.extra?.conversation_pinned));
+    item.dataset.pinned = String(isPinned(message));
     item.dataset.sbConversationMessageFingerprint = fingerprint;
+    if (baseFingerprint) {
+        item.dataset.sbConversationMessageBaseFingerprint = baseFingerprint;
+    }
 
     const avatarWrap = document.createElement('div');
     avatarWrap.className = 'sb-conversation-message-avatar';
     const messageAvatar = message.role === 'user'
         ? ''
-        : message.role === 'partner' || message.role === 'system'
-            ? message.extra?.partner_avatar || avatar
+        : message.role === 'member' || message.role === 'system'
+            ? message.extra?.member_avatar || avatar
             : avatar;
     if (message.role !== 'user' && messageAvatar) {
         avatarWrap.dataset.sbConversationAction = 'zoom-avatar';
         avatarWrap.dataset.avatarFile = messageAvatar;
-        avatarWrap.dataset.avatarType = 'avatar';
         avatarWrap.tabIndex = 0;
         avatarWrap.role = 'button';
         avatarWrap.setAttribute('aria-label', `Show Full Picture for ${message.name || getCurrentCharName()}`);
@@ -507,7 +499,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         if (messageAvatar && message.role !== 'system') {
             const statusDot = document.createElement('span');
             statusDot.className = 'sb-conversation-status-dot';
-            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar, getSettings(messageAvatar, { groupId }));
+            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar);
             statusDot.setAttribute('aria-hidden', 'true');
             avatarWrap.appendChild(statusDot);
         }
@@ -532,41 +524,24 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         time.title = formattedTime.title;
     }
     meta.append(name, time);
-    if (message.extra?.conversation_pinned) {
-        const pin = document.createElement('i');
-        pin.className = 'fa-solid fa-thumbtack sb-conversation-message-pin';
-        pin.title = 'Pinned';
-        pin.setAttribute('aria-label', 'Pinned');
-        meta.append(pin);
-    }
 
     // SillyBunny message actions: reactions | Reply, Edit, Copy, menu
     // at rest; data-sb-secondary items join in section order when the pill is expanded.
     const actionBar = document.createElement('span');
     actionBar.className = 'sb-conversation-message-actions';
-    const activeReactionCounts = message.extra?.conversation_reactions || {};
-    for (const reaction of Object.keys(CONVERSATION_REACTION_LABELS)) {
-        const reactionButton = document.createElement('button');
-        reactionButton.type = 'button';
-        reactionButton.className = 'sb-conversation-reaction-button';
-        reactionButton.textContent = normalizeConversationReactionLabel(reaction);
-        reactionButton.setAttribute('aria-pressed', String(Number(activeReactionCounts[reaction]) > 0));
-        reactionButton.dataset.sbConversationAction = 'react-message';
-        reactionButton.dataset.messageId = message.id;
-        reactionButton.dataset.reaction = reaction;
-        actionBar.appendChild(reactionButton);
-    }
+    actionBar.append(...createToolbarReactionButtons(message));
 
     const isCharacterMessage = !['user', 'system'].includes(message.role || '');
     const actionSections = [
         [
             { action: 'reply-message', icon: 'fa-reply', label: 'Reply' },
-            settings.editable_messages && { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation Message', className: 'sb-conversation-message-edit' },
+            { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation Message', className: 'sb-conversation-message-edit' },
             settings.prose_polisher && message.role !== 'user' && { action: 'polish-character-message', icon: 'fa-wand-magic-sparkles', label: 'Polish Character Message', className: 'sb-conversation-message-polish', secondary: true },
         ],
         [
             { action: 'copy-message', icon: 'fa-copy', label: 'Copy Message' },
-            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin Message' : 'Pin Message', secondary: true },
+            { action: 'select-message', icon: 'fa-square-check', label: 'Select Message', secondary: true, menuOnly: true },
+            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: isPinned(message) ? 'Unpin Message' : 'Pin Message', secondary: true },
             { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch From Here', secondary: true },
         ],
         isCharacterMessage ? [
@@ -604,6 +579,9 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
             actionButton.dataset.sbSection = String(index);
             if (messageAction.secondary) {
                 actionButton.dataset.sbSecondary = '';
+            }
+            if (messageAction.menuOnly) {
+                actionButton.dataset.sbMenuOnly = '';
             }
             actionBar.appendChild(actionButton);
         }
@@ -643,8 +621,8 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         'sb-conversation-message-reply-preview',
     );
 
-    const imageUrl = message.extra?.image_url;
-    if (typeof imageUrl === 'string' && imageUrl) {
+    const imageUrl = toSafeAttachmentUrl(message.extra?.image_url, { allowDataImage: true });
+    if (imageUrl) {
         const figure = document.createElement('figure');
         figure.className = 'sb-conversation-image-preview';
         const img = document.createElement('img');
@@ -662,24 +640,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         text.appendChild(selfieActions);
     }
 
-    const activeReactions = Object.entries(message.extra?.conversation_reactions || {})
-        .filter(([, count]) => Number(count) > 0);
-    let reactions = null;
-    if (activeReactions.length) {
-        reactions = document.createElement('div');
-        reactions.className = 'sb-conversation-message-reactions';
-        for (const [reaction, count] of activeReactions) {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'sb-conversation-message-reaction-chip';
-            chip.textContent = `${normalizeConversationReactionLabel(reaction)} ${count}`;
-            chip.setAttribute('aria-pressed', 'true');
-            chip.dataset.sbConversationAction = 'react-message';
-            chip.dataset.messageId = message.id;
-            chip.dataset.reaction = reaction;
-            reactions.appendChild(chip);
-        }
-    }
+    const reactions = createReactionChips(message);
 
     const receiptText = getConversationMessageReceipt(message, avatar, { groupId });
     let receipt = null;
@@ -700,6 +661,9 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     const body = document.createElement('div');
     body.className = 'sb-conversation-message-body';
     body.append(meta, content);
+    if (isPinned(message)) {
+        body.append(createPinnedMark());
+    }
     if (reactions) {
         body.append(reactions);
     }
@@ -740,12 +704,12 @@ function createConversationTransientRow({ role, avatarSrc, nameHtml, textHtml, e
 /** The timeline's empty and unavailable states are the shared status page; the class marks it for `removeTimelineTransientNodes`. */
 function createConversationStatusPage(values) {
     const { element } = createStatusPage(values);
-    element.classList.add('sb-conversation-thread-empty');
+    element.classList.add('sb-conversation-timeline-empty');
     return element;
 }
 
 function removeTimelineTransientNodes(timeline) {
-    timeline.querySelectorAll('.sb-conversation-thread-empty, .sb-conversation-typing-indicator, .sb-conversation-image-pending').forEach(node => node.remove());
+    timeline.querySelectorAll('.sb-conversation-timeline-empty, .sb-conversation-typing-indicator, .sb-conversation-image-pending').forEach(node => node.remove());
 }
 
 function requestConversationFrame(callback) {
@@ -763,10 +727,10 @@ function scrollConversationTimelineToBottom(timeline) {
     timeline.scrollTop = Math.max(0, timeline.scrollHeight - timeline.clientHeight);
 }
 
-function anchorConversationTimelineToBottom(timeline, renderThreadKey) {
+function anchorConversationTimelineToBottom(timeline, renderConversationKey) {
     const token = ++timelineBottomScrollToken;
     const applyScroll = () => {
-        if (token !== timelineBottomScrollToken || !timeline.isConnected || conversationState.lastRenderedThreadKey !== renderThreadKey) {
+        if (token !== timelineBottomScrollToken || !timeline.isConnected || conversationState.lastRenderedConversationKey !== renderConversationKey) {
             return false;
         }
 
@@ -786,7 +750,128 @@ function anchorConversationTimelineToBottom(timeline, renderThreadKey) {
     setTimeout(applyScroll, 250);
 }
 
-function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings }) {
+function findPreferredMenuTrigger(node) {
+    const mobile = node.querySelector('.sb-conversation-mobile-menu-trigger');
+    const desktop = node.querySelector('.sb-conversation-message-menu');
+    const ordered = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches
+        ? [mobile, desktop]
+        : [desktop, mobile];
+    for (const candidate of ordered) {
+        if (candidate instanceof HTMLElement && getComputedStyle(candidate).display !== 'none') {
+            return candidate;
+        }
+    }
+    return ordered.find(candidate => candidate instanceof HTMLElement) || null;
+}
+
+function findReactionChipFocusTarget(nextNode, reaction, previousIndex) {
+    const chips = [...nextNode.querySelectorAll('.sb-conversation-message-reaction-chip')];
+    const matching = chips.find(chip => chip.dataset.reaction === reaction);
+    if (matching) {
+        return matching;
+    }
+    if (chips.length) {
+        return chips[Math.max(0, Math.min(previousIndex, chips.length - 1))];
+    }
+    return findPreferredMenuTrigger(nextNode);
+}
+
+function findReplacementFocusTarget(currentNode, nextNode) {
+    const active = document.activeElement;
+    const focused = active instanceof HTMLElement && currentNode.contains(active)
+        ? active
+        : currentNode.querySelector(':focus');
+    if (!(focused instanceof HTMLElement)) {
+        return null;
+    }
+    if (focused.hasAttribute('data-sb-conversation-menu')) {
+        const selector = focused.classList.contains('sb-conversation-mobile-menu-trigger')
+            ? '.sb-conversation-mobile-menu-trigger'
+            : '.sb-conversation-message-menu';
+        return nextNode.querySelector(selector);
+    }
+    if (focused.classList.contains('sb-conversation-message-reaction-chip')) {
+        const previousChips = [...currentNode.querySelectorAll('.sb-conversation-message-reaction-chip')];
+        return findReactionChipFocusTarget(nextNode, focused.dataset.reaction || '', previousChips.indexOf(focused));
+    }
+    if (focused.classList.contains('sb-conversation-reaction-more')) {
+        return nextNode.querySelector('.sb-conversation-reaction-more');
+    }
+    if (focused.classList.contains('sb-conversation-reaction-button')) {
+        const reaction = focused.dataset.reaction || '';
+        const nextButtons = [...nextNode.querySelectorAll('.sb-conversation-reaction-button:not(.sb-conversation-reaction-more)')];
+        const matching = nextButtons.find(button => button.dataset.reaction === reaction);
+        if (matching) {
+            return matching;
+        }
+        const previousButtons = [...currentNode.querySelectorAll('.sb-conversation-reaction-button:not(.sb-conversation-reaction-more)')];
+        const index = previousButtons.indexOf(focused);
+        return nextButtons[index] || nextNode.querySelector('.sb-conversation-reaction-more');
+    }
+    const action = focused.dataset.sbConversationAction;
+    if (action) {
+        const selfieIndex = focused.dataset.selfieIndex;
+        const selector = selfieIndex !== undefined
+            ? `[data-sb-conversation-action="${CSS.escape(action)}"][data-selfie-index="${CSS.escape(selfieIndex)}"]`
+            : `[data-sb-conversation-action="${CSS.escape(action)}"]`;
+        return nextNode.querySelector(selector);
+    }
+    return null;
+}
+
+/**
+ * Updates only the reaction chips and toolbar quick-reaction buttons on an existing message node so an open reaction
+ * popover (such as More Reactions with Shift+Click) keeps its trigger connected and its open-menu class intact.
+ */
+function updateMessageReactionsInPlace(node, message, fingerprint) {
+    const active = document.activeElement;
+    const focusedChip = active instanceof HTMLElement && node.contains(active) && active.classList.contains('sb-conversation-message-reaction-chip')
+        ? active
+        : node.querySelector('.sb-conversation-message-reaction-chip:focus');
+    const focusedReaction = focusedChip instanceof HTMLElement ? focusedChip.dataset.reaction || '' : '';
+    const focusedChipIndex = focusedChip instanceof HTMLElement
+        ? [...node.querySelectorAll('.sb-conversation-message-reaction-chip')].indexOf(focusedChip)
+        : -1;
+
+    const body = node.querySelector('.sb-conversation-message-body');
+    if (body) {
+        const oldRow = body.querySelector(':scope > .sb-conversation-message-reactions');
+        const nextRow = createReactionChips(message);
+        if (oldRow && nextRow) {
+            oldRow.replaceWith(nextRow);
+        } else if (oldRow) {
+            oldRow.remove();
+        } else if (nextRow) {
+            const receipt = body.querySelector(':scope > .sb-conversation-message-receipt');
+            if (receipt) {
+                receipt.before(nextRow);
+            } else {
+                body.append(nextRow);
+            }
+        }
+    }
+
+    const freshButtons = createToolbarReactionButtons(message).filter(button => !button.classList.contains('sb-conversation-reaction-more'));
+    const existingButtons = node.querySelectorAll('.sb-conversation-message-actions > .sb-conversation-reaction-button:not(.sb-conversation-reaction-more)');
+    existingButtons.forEach((button, idx) => {
+        const fresh = freshButtons[idx];
+        if (!fresh) {
+            return;
+        }
+        if (button.dataset.reaction !== fresh.dataset.reaction) {
+            button.textContent = fresh.textContent;
+            button.dataset.reaction = fresh.dataset.reaction;
+            button.title = fresh.title;
+            button.setAttribute('aria-label', fresh.getAttribute('aria-label') || '');
+        }
+        button.setAttribute('aria-pressed', fresh.getAttribute('aria-pressed') || 'false');
+    });
+
+    node.dataset.sbConversationMessageFingerprint = fingerprint;
+    return focusedChip ? findReactionChipFocusTarget(node, focusedReaction, focusedChipIndex) : null;
+}
+
+function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter }) {
     const existingNodes = new Map();
     timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
         if (node instanceof HTMLElement && !node.classList.contains('sb-conversation-typing-indicator') && !node.classList.contains('sb-conversation-image-pending')) {
@@ -794,25 +879,28 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
         }
     });
 
-    const grouping = getConversationTimelineGroupMeta(messages);
+    const grouping = getConversationTimelineGroupMeta(messages, { breaksAfter });
     messages.forEach((message, index) => {
         const messageId = String(message?.id || '');
-        const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index });
+        const fingerprintContext = { avatar, groupId, personaId, settings, index };
+        const fingerprint = buildConversationMessageFingerprint(message, fingerprintContext);
+        const baseFingerprint = buildConversationMessageBaseFingerprint(message, fingerprintContext);
         const currentNode = existingNodes.get(messageId) || null;
         let nextNode = currentNode;
         let focusTarget = null;
         if (!nextNode || nextNode.dataset.sbConversationMessageFingerprint !== fingerprint) {
-            nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint });
-            if (currentNode) {
-                const focusedTrigger = currentNode.querySelector('[data-sb-conversation-menu]:focus');
-                if (focusedTrigger) {
-                    // Replacing a message must not discard focus returned by its action menu.
-                    const selector = focusedTrigger.classList.contains('sb-conversation-mobile-menu-trigger')
-                        ? '.sb-conversation-mobile-menu-trigger'
-                        : '.sb-conversation-message-menu';
-                    focusTarget = nextNode.querySelector(selector);
+            if (currentNode && currentNode.dataset.sbConversationMessageBaseFingerprint === baseFingerprint) {
+                focusTarget = updateMessageReactionsInPlace(currentNode, message, fingerprint);
+                nextNode = currentNode;
+            } else {
+                nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint, baseFingerprint });
+                if (currentNode) {
+                    if (currentNode.classList.contains('has-open-menu')) {
+                        nextNode.classList.add('has-open-menu');
+                    }
+                    focusTarget = findReplacementFocusTarget(currentNode, nextNode);
+                    currentNode.replaceWith(nextNode);
                 }
-                currentNode.replaceWith(nextNode);
             }
         }
 
@@ -846,7 +934,7 @@ export function renderConversationTimeline() {
 
     const previousScrollTop = timeline.scrollTop;
     const previousScrollBottom = timeline.scrollHeight - previousScrollTop - timeline.clientHeight;
-    const previousThreadKey = conversationState.lastRenderedThreadKey || '';
+    const previousConversationKey = conversationState.lastRenderedConversationKey || '';
     const previousMessageCount = conversationState.lastRenderedMessageCount;
 
     if (!avatar) {
@@ -868,9 +956,9 @@ export function renderConversationTimeline() {
                 title: 'No Conversation Members Available',
                 description: `${unavailableGroup.name || 'This group'} does not currently have any eligible Conversation members. Add or enable a member, then try again.`,
             }
-            : { state: 'empty', icon: 'comments', title: 'Choose a DM to Begin' }));
+            : { state: 'empty', icon: 'comments', title: 'Choose a Conversation' }));
         conversationState.lastRenderedAvatar = null;
-        conversationState.lastRenderedThreadKey = '';
+        conversationState.lastRenderedConversationKey = '';
         conversationState.lastRenderedMessageCount = 0;
         conversationState.timelineBottomScrollPending = false;
         updateConversationToolsState();
@@ -879,47 +967,64 @@ export function renderConversationTimeline() {
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId, personaId });
-    const allMessages = getConversationThread(avatar, { groupId, personaId });
+    const allMessages = getConversationMessages(avatar, { groupId, personaId });
     const messages = getConversationTimelineMessages(allMessages);
-    const branchId = getConversationRenderBranchId(avatar, groupId, personaId);
-    const renderThreadKey = buildConversationRenderThreadKey(avatar, groupId, branchId, personaId);
-    const contextChanged = previousThreadKey !== renderThreadKey;
+    const chatId = getConversationRenderChatId(avatar, groupId, personaId);
+    const renderConversationKey = buildConversationRenderKey(avatar, groupId, chatId, personaId);
+    const contextChanged = previousConversationKey !== renderConversationKey;
+    // The chat of a conversation is read from the server when the conversation is opened.
+    const openChat = getActiveConversationChat(avatar, { chatId, groupId, personaId });
+    if (openChat && !openChat.loaded) {
+        const loadingFingerprint = `loading:${renderConversationKey}`;
+        if (timeline.dataset.sbConversationFingerprint !== loadingFingerprint) {
+            conversationState.lastTimelineFingerprint = loadingFingerprint;
+            timeline.dataset.sbConversationFingerprint = loadingFingerprint;
+            timeline.replaceChildren(createConversationStatusPage({ state: 'loading', icon: 'message', title: 'Loading' }));
+            conversationState.lastRenderedAvatar = avatar;
+            conversationState.lastRenderedConversationKey = renderConversationKey;
+            conversationState.lastRenderedMessageCount = 0;
+        }
+        updateConversationToolsState();
+        return;
+    }
     const messagesAdded = allMessages.length > previousMessageCount;
     const isNearBottom = previousScrollBottom <= 150;
     const needsBottomScroll = Boolean(conversationState.timelineBottomScrollPending);
-    const fingerprint = buildTimelineFingerprint({ avatar, groupId, branchId, personaId, settings, allMessages, messages });
+    const fingerprint = buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings, allMessages, messages });
     if (!contextChanged && fingerprint === conversationState.lastTimelineFingerprint && timeline.dataset.sbConversationFingerprint === fingerprint) {
         updateConversationToolsState();
         if (needsBottomScroll) {
             conversationState.timelineBottomScrollPending = false;
-            anchorConversationTimelineToBottom(timeline, renderThreadKey);
+            anchorConversationTimelineToBottom(timeline, renderConversationKey);
         }
         return;
     }
 
     conversationState.lastTimelineFingerprint = fingerprint;
     timeline.dataset.sbConversationFingerprint = fingerprint;
+    let detachedPinRows = { rows: new Map(), focused: null };
     if (contextChanged) {
         timeline.textContent = '';
     } else {
         stripConversationDayDividers(timeline);
         removeTimelineTransientNodes(timeline);
+        detachedPinRows = detachPinEventRows(timeline);
     }
 
     if (!allMessages.length) {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'empty',
             icon: 'message',
-            title: 'No DM Messages Yet',
+            title: 'No Messages Yet',
             description: 'Type a message to begin chatting with this character!',
         }));
         conversationState.lastRenderedAvatar = avatar;
-        conversationState.lastRenderedThreadKey = renderThreadKey;
+        conversationState.lastRenderedConversationKey = renderConversationKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
         conversationState.timelineBottomScrollPending = false;
         updateConversationToolsState();
         if (contextChanged || messagesAdded || isNearBottom || needsBottomScroll) {
-            anchorConversationTimelineToBottom(timeline, renderThreadKey);
+            anchorConversationTimelineToBottom(timeline, renderConversationKey);
         } else {
             timeline.scrollTop = previousScrollTop;
         }
@@ -930,23 +1035,26 @@ export function renderConversationTimeline() {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'no-results',
             title: 'No Matching Messages',
-            description: 'Clear search or switch back to Main to see the full Conversation',
         }));
         conversationState.lastRenderedAvatar = avatar;
-        conversationState.lastRenderedThreadKey = renderThreadKey;
+        conversationState.lastRenderedConversationKey = renderConversationKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
         conversationState.timelineBottomScrollPending = false;
         updateConversationToolsState();
         return;
     }
 
-    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings });
+    // A search shows the messages that match and not the course of the chat, so it shows no line between them.
+    const pinEvents = conversationState.conversationTimelineSearchQuery ? [] : getPinEvents(messages, getConversationMessageTimestampMs);
+    const breaksAfter = new Set(pinEvents.map(event => event.afterMessageId));
+    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter });
     insertConversationDayDividers(timeline, messages);
+    placePinEventRows(timeline, pinEvents, detachedPinRows);
 
-    const typingParticipants = getActiveTypingParticipants(avatar, { branchId, groupId, personaId });
+    const typingParticipants = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });
     if (typingParticipants.length > 2) {
         timeline.appendChild(createConversationTransientRow({
-            role: 'partner',
+            role: 'member',
             extraClass: 'sb-conversation-typing-indicator',
             avatarSrc: getThumbnailUrl('avatar', typingParticipants[0]?.avatar) || default_user_avatar,
             nameHtml: 'Several people',
@@ -962,7 +1070,7 @@ export function renderConversationTimeline() {
             const typingAvatar = typingParticipant?.avatar || getCurrentCharAvatar();
             const typingName = typingParticipant?.name || getCurrentCharName();
             timeline.appendChild(createConversationTransientRow({
-                role: typingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character',
+                role: typingAvatar !== getCurrentCharAvatar() ? 'member' : 'character',
                 extraClass: 'sb-conversation-typing-indicator',
                 avatarSrc: getThumbnailUrl('avatar', typingAvatar) || default_user_avatar,
                 nameHtml: escapeHtmlText(typingName),
@@ -972,10 +1080,10 @@ export function renderConversationTimeline() {
     }
 
     if (conversationState.imageGenerationActive) {
-        const pendingParticipant = getPrimaryTypingParticipant(avatar, { branchId, groupId, personaId });
+        const pendingParticipant = getPrimaryTypingParticipant(avatar, { chatId, groupId, personaId });
         const pendingAvatar = pendingParticipant?.avatar || getCurrentCharAvatar();
         timeline.appendChild(createConversationTransientRow({
-            role: pendingParticipant && pendingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character',
+            role: pendingParticipant && pendingAvatar !== getCurrentCharAvatar() ? 'member' : 'character',
             extraClass: 'sb-conversation-image-pending',
             avatarSrc: getThumbnailUrl('avatar', pendingAvatar) || default_user_avatar,
             nameHtml: 'Image Generation',
@@ -987,74 +1095,15 @@ export function renderConversationTimeline() {
     }
 
     conversationState.lastRenderedAvatar = avatar;
-    conversationState.lastRenderedThreadKey = renderThreadKey;
+    conversationState.lastRenderedConversationKey = renderConversationKey;
     conversationState.lastRenderedMessageCount = allMessages.length;
     conversationState.timelineBottomScrollPending = false;
     updateConversationToolsState();
     if (contextChanged || messagesAdded || isNearBottom || needsBottomScroll) {
-        anchorConversationTimelineToBottom(timeline, renderThreadKey);
+        anchorConversationTimelineToBottom(timeline, renderConversationKey);
     } else {
         timeline.scrollTop = previousScrollTop;
     }
-}
-
-export function buildLorebookOptions(selected) {
-    const options = ['<option value="">Character default (no override)</option>'];
-    for (const worldName of (Array.isArray(world_names) ? world_names : [])) {
-        const safe = escapeHtmlAttribute(worldName);
-        options.push(`<option value="${safe}"${worldName === selected ? ' selected' : ''}>${escapeHtmlText(worldName)}</option>`);
-    }
-    return options.join('');
-}
-
-export function buildConnectionProfileOptions(selected) {
-    const options = ['<option value="">Use current connection</option>'];
-    for (const profile of getConnectionProfiles()) {
-        if (!profile?.name) {
-            continue;
-        }
-        const safe = escapeHtmlAttribute(profile.name);
-        options.push(`<option value="${safe}"${profile.name === selected ? ' selected' : ''}>${escapeHtmlText(profile.name)}</option>`);
-    }
-    return options.join('');
-}
-
-export function buildPartnerOptions(selectedNames, emptyText = 'Enable more characters to pick partners.') {
-    const selectedSet = new Set(parseAvatarList(selectedNames));
-    const currentAvatar = getCurrentCharAvatar();
-    const rows = [];
-    (Array.isArray(characters) ? characters : []).forEach((character) => {
-        if (!character?.avatar || character.avatar === currentAvatar) {
-            return;
-        }
-        const charName = character.name || 'Character';
-        const charAvatar = character.avatar;
-        const checked = selectedSet.has(charAvatar) ? ' checked' : '';
-        const thumbUrl = getThumbnailUrl('avatar', charAvatar);
-        rows.push(`
-            <div class="sb-conversation-partner-option" data-char-name="${escapeHtmlAttribute(charName.toLowerCase())}">
-                <label class="sb-conversation-partner-pick">
-                    <input type="checkbox" class="sb-conversation-partner-checkbox" value="${escapeHtmlAttribute(charAvatar)}"${checked} />
-                    <img class="sb-conversation-partner-avatar" src="${escapeHtmlAttribute(thumbUrl)}" alt="${escapeHtmlAttribute(charName)}" loading="lazy" />
-                    <span class="sb-conversation-partner-name">${escapeHtmlText(charName)}</span>
-                </label>
-            </div>
-        `);
-    });
-    if (!rows.length) {
-        return `<div class="sb-conversation-empty">${escapeHtmlText(emptyText)}</div>`;
-    }
-    return rows.join('');
-}
-
-export function buildChimingPartnerOptions(selectedNames) {
-    return buildPartnerOptions(selectedNames, 'Enable more characters to pick chiming partners.');
-}
-
-export function setConversationTimelineChannel(channel) {
-    conversationState.conversationTimelineChannel = CONVERSATION_TIMELINE_CHANNELS.includes(channel) ? channel : 'main';
-    updateConversationToolsState();
-    scheduleTimelineRender();
 }
 
 export function updateConversationToolsState() {
@@ -1073,14 +1122,6 @@ export function updateConversationToolsState() {
         searchToggle.setAttribute('aria-pressed', String(searchOpen));
     }
 
-    tools.querySelectorAll('[data-channel]').forEach((button) => {
-        if (button instanceof HTMLButtonElement) {
-            const active = button.dataset.channel === conversationState.conversationTimelineChannel;
-            button.setAttribute('aria-pressed', String(active));
-            button.dataset.active = String(active);
-        }
-    });
-
     const searchInput = document.getElementById(CHROME_IDS.search);
     if (searchInput instanceof HTMLInputElement && searchInput.value !== conversationState.conversationTimelineSearchQuery) {
         searchInput.value = conversationState.conversationTimelineSearchQuery;
@@ -1088,9 +1129,7 @@ export function updateConversationToolsState() {
 }
 
 export function isConversationSearchBarOpen() {
-    return Boolean(conversationState.conversationSearchOpen)
-        || conversationState.conversationTimelineChannel !== 'main'
-        || Boolean(conversationState.conversationTimelineSearchQuery);
+    return Boolean(conversationState.conversationSearchOpen) || Boolean(conversationState.conversationTimelineSearchQuery);
 }
 
 export function toggleConversationSearchBar(open = !isConversationSearchBarOpen()) {
@@ -1101,7 +1140,6 @@ export function toggleConversationSearchBar(open = !isConversationSearchBarOpen(
         if (searchInput instanceof HTMLInputElement) {
             searchInput.value = '';
         }
-        conversationState.conversationTimelineChannel = 'main';
         updateConversationToolsState();
         scheduleTimelineRender();
         return;
@@ -1117,47 +1155,29 @@ export function updateConversationSearchQuery(value) {
     scheduleTimelineRender();
 }
 
-export function getConversationMessageById(messageId, { avatar = getCurrentCharAvatar(), branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function getConversationMessageById(messageId, { avatar = getCurrentCharAvatar(), chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar || !messageId) {
         return null;
     }
 
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    const resolvedBranchId = branchId || threadStore?.activeBranchId || '';
-    const messages = getConversationThread(avatar, { branchId: resolvedBranchId, create: false, groupId, personaId });
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+    const resolvedChatId = chatId || conversationRecord?.activeChatId || '';
+    const messages = getConversationMessages(avatar, { chatId: resolvedChatId, create: false, groupId, personaId });
     const message = messages.find(item => item.id === messageId);
-    return message ? { avatar, branchId: resolvedBranchId, groupId, messages, message, personaId } : null;
+    return message ? { avatar, chatId: resolvedChatId, groupId, messages, message, personaId } : null;
 }
 
-export function saveConversationMessageThread(context) {
+export function saveConversationContextMessages(context, { shrink = false } = {}) {
     if (!context?.avatar) {
         return;
     }
 
-    saveConversationThread(context.avatar, context.messages, {
-        branchId: context.branchId,
-        create: false,
+    saveConversationMessages(context.avatar, context.messages, {
+        chatId: context.chatId,
         groupId: context.groupId,
         personaId: context.personaId,
+        shrink,
     });
-    if (context.messages.length) {
-        updateLastPreviewFromConversation(context.avatar, {
-            branchId: context.branchId,
-            groupId: context.groupId,
-            personaId: context.personaId,
-        });
-    } else {
-        const branch = getActiveConversationBranch(context.avatar, {
-            branchId: context.branchId,
-            create: false,
-            groupId: context.groupId,
-            personaId: context.personaId,
-        });
-        if (branch) {
-            branch.preview = 'Conversation ready';
-            persistConversationStore();
-        }
-    }
     scheduleTimelineRender();
 }
 
@@ -1180,7 +1200,7 @@ export function replyToConversationMessage(messageId) {
     conversationState.conversationReplyTarget = {
         ...reference,
         avatar: context.avatar,
-        branchId: context.branchId,
+        chatId: context.chatId,
         groupId: context.groupId || '',
         personaId: context.personaId,
     };
@@ -1223,30 +1243,41 @@ export function toggleConversationMessagePin(messageId) {
         return;
     }
 
-    context.message.extra = { ...context.message.extra, conversation_pinned: !context.message.extra?.conversation_pinned };
-    saveConversationMessageThread(context);
+    setMessagePin(context.message, !isPinned(context.message));
+    saveConversationContextMessages(context);
 }
 
-export function reactConversationMessage(messageId, reaction) {
-    const context = getConversationMessageById(messageId);
-    if (!context || !reaction) {
-        return;
+/**
+ * Deletes messages of the open chat in one commit. Besides the messages it keeps the composer, the read marker and the
+ * send queue free of references to them.
+ * @param {string[]} messageIds
+ * @returns {string[]} The ids that were deleted.
+ */
+export function deleteConversationMessages(messageIds) {
+    const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const personaId = getConversationPersonaId();
+    const address = avatar ? conversationData.resolve({ avatar, groupId, personaId }) : null;
+    if (!address) {
+        return [];
     }
 
-    const reactions = { ...(context.message.extra?.conversation_reactions || {}) };
-    reactions[reaction] = reactions[reaction] ? 0 : 1;
-    context.message.extra = { ...context.message.extra, conversation_reactions: reactions };
-    saveConversationMessageThread(context);
+    const removed = removeChatMessages(conversationData, address, messageIds);
+    if (!removed.length) {
+        return [];
+    }
+
+    const replyTarget = conversationState.conversationReplyTarget;
+    if (replyTarget && removed.includes(replyTarget.messageId)) {
+        clearConversationReplyTarget();
+    }
+    dropQueueItemsOfDeletedMessages(sendQueue, { chatId: address.chatId, messageIds: removed });
+    scheduleTimelineRender();
+    return removed;
 }
 
 export function deleteConversationMessage(messageId) {
-    const context = getConversationMessageById(messageId);
-    if (!context) {
-        return;
-    }
-
-    context.messages = context.messages.filter(item => item.id !== messageId);
-    saveConversationMessageThread(context);
+    deleteConversationMessages([messageId]);
 }
 
 export async function regenerateConversationMessage(messageId) {
@@ -1260,10 +1291,10 @@ export async function regenerateConversationMessage(messageId) {
         return;
     }
 
-    const speakerAvatar = context.message.extra?.partner_avatar || context.avatar;
+    const speakerAvatar = context.message.extra?.member_avatar || context.avatar;
     const settings = getSettings(speakerAvatar, { groupId: context.groupId, personaId: context.personaId });
     const speakerName = context.message.name || getCharacterForAvatar(speakerAvatar)?.name || getCurrentCharName();
-    const operationKey = [context.personaId, context.avatar, context.groupId, context.branchId, messageId].join('\u001f');
+    const operationKey = [context.personaId, context.avatar, context.groupId, context.chatId, messageId].join('\u001f');
     if (regenerationBusyKeys.has(operationKey)) {
         return;
     }
@@ -1272,7 +1303,7 @@ export async function regenerateConversationMessage(messageId) {
     const sourceRevision = getConversationMessagesRevision(sourceMessages);
     regenerationBusyKeys.add(operationKey);
     const operation = beginConversationGenerationOperation();
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
 
     try {
         const transcript = sourceMessages.slice(0, -1);
@@ -1292,18 +1323,17 @@ export async function regenerateConversationMessage(messageId) {
             () => generateConversationRaw({
                 prompt,
                 systemPrompt: buildConversationSystemPrompt(settings, speakerAvatar, {
-                    threadAvatar: context.avatar,
-                    branchId: context.branchId,
+                    anchorAvatar: context.avatar,
+                    chatId: context.chatId,
                     groupId: context.groupId,
                     personaId: context.personaId,
                     worldInfo,
                 }),
-                responseLength: getConversationReplyMaxTokens(settings),
                 trimNames: true,
                 cacheScope: 'conversation-mode',
             }, settings),
             context.avatar,
-            { branchId: context.branchId, groupId: context.groupId, personaId: context.personaId },
+            { chatId: context.chatId, groupId: context.groupId, personaId: context.personaId },
         );
 
         if (!String(response || '').trim()) {
@@ -1313,7 +1343,7 @@ export async function regenerateConversationMessage(messageId) {
 
         const targetContext = getConversationMessageById(messageId, {
             avatar: context.avatar,
-            branchId: context.branchId,
+            chatId: context.chatId,
             groupId: context.groupId,
             personaId: context.personaId,
         });
@@ -1335,9 +1365,9 @@ export async function regenerateConversationMessage(messageId) {
         }
         targetContext.message.mes = commandParts.text;
         targetContext.message.extra = { ...extra, regenerated_at: Date.now() };
-        saveConversationMessageThread(targetContext);
+        saveConversationContextMessages(targetContext);
         commitCharacterReplyCommands(commandParts, speakerAvatar, {
-            branchId: context.branchId,
+            chatId: context.chatId,
             groupId: context.groupId,
             personaId: context.personaId,
             reminderAvatar: context.avatar,
@@ -1348,62 +1378,42 @@ export async function regenerateConversationMessage(messageId) {
     } finally {
         regenerationBusyKeys.delete(operationKey);
         endConversationGenerationOperation(operation);
-        scheduleInterfaceRefresh({ syncControls: false });
+        scheduleInterfaceRefresh();
     }
 }
 
-export function branchConversationFromMessage(messageId) {
+export async function branchConversationFromMessage(messageId) {
     const context = getConversationMessageById(messageId);
     if (!context) {
         return;
     }
 
-    const index = context.messages.findIndex(item => item.id === messageId);
-    if (index < 0) {
+    const store = getConversationRecord(context.avatar, { groupId: context.groupId, personaId: context.personaId });
+    if (!store || !context.messages.some(item => item.id === messageId)) {
         return;
     }
 
-    const sourceBranch = getActiveConversationBranch(context.avatar, {
-        branchId: context.branchId,
-        create: false,
-        groupId: context.groupId,
-        personaId: context.personaId,
-    });
-    if (!sourceBranch) {
+    // The server writes the messages as the first save of the new chat, so a crash cannot leave a listed chat that is empty.
+    let created;
+    try {
+        created = await conversationData.branchChat({ conversationId: store.id, chatId: context.chatId }, messageId, { name: `Chat ${getConversationChats(context.avatar, { groupId: context.groupId }).length + 1}`, activate: true });
+    } catch (error) {
+        console.error('Conversation Mode: the chat could not be branched', error);
+        globalThis.toastr?.error?.('The chat could not be branched');
         return;
     }
-
-    const branch = createConversationBranch(`Branch ${getConversationBranches(context.avatar, { groupId: context.groupId }).length + 1}`);
-    branch.messages = context.messages.slice(0, index + 1).map(item => ({ ...item, extra: { ...(item.extra || {}) } }));
-    branch.preview = getConversationMessagePreviewText(branch.messages[branch.messages.length - 1]) || 'Conversation ready';
-    branch.updatedAt = Date.now();
-    if (sourceBranch.memorySummary) {
-        branch.memorySummary = sourceBranch.memorySummary;
-        branch.memoryMessageCount = sourceBranch.memoryMessageCount;
-    }
-    const store = getConversationThreadStore(context.avatar, { groupId: context.groupId, personaId: context.personaId });
-    if (!store) {
-        return;
-    }
-
-    store.branches[branch.id] = branch;
-    store.activeBranchId = branch.id;
-    const group = context.groupId ? getConversationGroupById(context.groupId, { personaId: context.personaId }) : null;
-    if (group?.is_conversation_group) {
-        group.updatedAt = Date.now();
-    }
-    persistConversationStore();
+    const chat = { id: created.address.chatId };
     window.dispatchEvent(new CustomEvent('sb:open-conversation-workspace', {
         detail: {
             avatar: context.avatar,
-            branchId: branch.id,
+            chatId: chat.id,
             groupId: context.groupId || null,
             personaId: context.personaId,
             showToast: false,
         },
     }));
     scheduleTimelineRender();
-    schedulePalsRailRender();
+    scheduleConversationListRender();
 
     if (context.message.role === 'user') {
         const replyText = String(context.message.mes || '').trim() || getConversationAttachmentSummary(context.message);
@@ -1411,7 +1421,7 @@ export function branchConversationFromMessage(messageId) {
             window.dispatchEvent(new CustomEvent('sb:queue-conversation-reply', {
                 detail: {
                     avatar: context.avatar,
-                    branchId: branch.id,
+                    chatId: chat.id,
                     groupId: context.groupId || null,
                     messageIds: [context.message.id],
                     personaId: context.personaId,
@@ -1427,25 +1437,25 @@ export function branchConversationFromMessage(messageId) {
 export async function quickConversationSelfie() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        globalThis.toastr?.warning?.('Pick a DM first');
+        globalThis.toastr?.warning?.('Pick a conversation first');
         return;
     }
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     const settings = getSettings(avatar, { groupId, personaId });
     const context = await promptConversationText({
         title: 'Send a Selfie',
         text: 'Describe the selfie context',
-        defaultValue: 'a casual selfie in the current DM conversation',
+        defaultValue: 'a casual selfie in the current conversation',
         confirmLabel: 'Generate',
     });
     if (typeof context !== 'string') {
         return;
     }
 
-    await generateSelfieFromContext(context.trim(), settings, avatar, { branchId, groupId, personaId, force: true, notify: true });
+    await generateSelfieFromContext(context.trim(), settings, avatar, { chatId, groupId, personaId, force: true, notify: true });
 }
 
 export async function generateConversationSelfieFromMessageCommand(messageId, selfieIndex = 0) {
@@ -1461,15 +1471,15 @@ export async function generateConversationSelfieFromMessageCommand(messageId, se
         return;
     }
 
-    const speakerAvatar = context.message.role === 'partner'
-        ? context.message.extra?.partner_avatar || context.avatar
+    const speakerAvatar = context.message.role === 'member'
+        ? context.message.extra?.member_avatar || context.avatar
         : context.avatar;
-    const role = context.message.role === 'partner' ? 'partner' : 'character';
+    const role = context.message.role === 'member' ? 'member' : 'character';
     const settings = getSettings(speakerAvatar, { groupId: context.groupId, personaId: context.personaId });
-    const extra = role === 'partner' ? { partner_avatar: speakerAvatar } : {};
+    const extra = role === 'member' ? { member_avatar: speakerAvatar } : {};
     await generateSelfieFromContext(request.context, settings, speakerAvatar, {
-        threadAvatar: context.avatar,
-        branchId: context.branchId,
+        anchorAvatar: context.avatar,
+        chatId: context.chatId,
         role,
         name: context.message.name || '',
         extra,
@@ -1488,7 +1498,7 @@ export async function quickConversationReminder() {
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
-    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
+    const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
     const delay = await promptConversationText({
         title: 'Remind Me',
         text: 'When should the reminder fire? For example 30m, 1h or 2d.',
@@ -1508,23 +1518,7 @@ export async function quickConversationReminder() {
         return;
     }
 
-    addConversationReminder(avatar, groupId, delay, memo, { branchId, personaId });
-}
-
-export function updateConversationNotificationSettingsVisibility() {
-    const muted = document.getElementById('sb_conv_notifications_muted');
-    const priority = document.getElementById('sb_conv_notification_priority');
-    const shouldDisablePriority = muted instanceof HTMLInputElement && muted.checked;
-    if (priority instanceof HTMLSelectElement) {
-        priority.disabled = shouldDisablePriority;
-        priority.closest('.ds-row')?.classList.toggle('is-insensitive', shouldDisablePriority);
-    }
-    // applySettingsToPanel ends here; picker rows mirror their select, which changes without an event.
-    syncSettingsDrawerRows();
-}
-
-export function normalizeConversationReactionLabel(reaction) {
-    return CONVERSATION_REACTION_LABELS[reaction] || reaction;
+    addConversationReminder(avatar, groupId, delay, memo, { chatId, personaId });
 }
 
 export function getConversationMentionTargets(avatar = getCurrentCharAvatar()) {
@@ -1609,367 +1603,6 @@ export function highlightConversationMentions(container, avatar = getCurrentChar
     }
 }
 
-let settingsSelectRows = [];
-
-function settingsFieldName(id) {
-    return id.replace(/^sb_conv_/, '').replace(/_/g, '-');
-}
-
-function createSettingsControl(tagName, id, attributes = {}) {
-    const control = document.createElement(tagName);
-    control.id = id;
-    for (const [name, value] of Object.entries(attributes)) {
-        control.setAttribute(name, value === true ? '' : String(value));
-    }
-    return control;
-}
-
-function appendSettingScope(label) {
-    const chip = document.createElement('span');
-    chip.className = 'sb-conversation-setting-scope';
-    chip.textContent = 'Global';
-    label.append(' ', chip);
-}
-
-function markSettingScope(controller) {
-    appendSettingScope(controller.row.querySelector('.ds-row-label'));
-    return controller;
-}
-
-function createSettingsSwitch({ id, label, subtitle, title, scope = false, onChange }) {
-    const controller = createSwitchRow({ id, field: settingsFieldName(id), label, subtitle, onChange });
-    if (title) {
-        controller.row.title = title;
-    }
-    return scope ? markSettingScope(controller) : controller;
-}
-
-function createSettingsSpin({ id, label, subtitle, min, max, step, value }) {
-    const input = createSettingsControl('input', id, { type: 'number', class: 'text_pole', min, max, step, value });
-    return createSpinRow({ normalize: false, input, label, subtitle, field: settingsFieldName(id) });
-}
-
-function createSettingsEntry({ id, label, placeholder }) {
-    const input = createSettingsControl('input', id, { type: 'text' });
-    return createEntryRow({ floating: true, input, label, placeholder, field: settingsFieldName(id) });
-}
-
-function createSettingsSelect({ id, label, subtitle, optionsHtml, scope = false }) {
-    const select = createSettingsControl('select', id);
-    select.innerHTML = optionsHtml;
-    const controller = createSelectRow({ select, label, subtitle, field: settingsFieldName(id) });
-    settingsSelectRows.push(controller);
-    return scope ? markSettingScope(controller) : controller;
-}
-
-function createSettingsTextArea({ id, label, subtitle, placeholder, rows, scope = false, readOnly = false }) {
-    const attributes = { class: readOnly ? 'text_pole textarea_compact' : 'text_pole textarea_compact autoSetHeight', placeholder };
-    if (readOnly) {
-        attributes.readonly = true;
-    }
-    const controller = createTextAreaField({
-        input: createSettingsControl('textarea', id, attributes),
-        field: settingsFieldName(id),
-        label,
-        subtitle,
-        rows,
-        expand: !readOnly,
-        expandLabel: 'Expand the Editor',
-    });
-    if (scope) {
-        appendSettingScope(controller.labelRow.querySelector('.ds-row-textarea__label'));
-    }
-    return controller;
-}
-
-function createSettingsAction({ action, label, icon, danger = false }) {
-    const controller = createButtonRow({ label, icon, danger, field: action });
-    controller.row.dataset.sbConversationAction = action;
-    return controller;
-}
-
-function createSettingsTimeEntry({ id, label }) {
-    const input = createSettingsControl('input', id, {
-        type: 'text',
-        class: 'text_pole sb-conversation-quiet-time-input',
-        inputmode: 'numeric',
-        autocomplete: 'off',
-        maxlength: 5,
-        placeholder: 'HH:MM',
-    });
-    const controller = createRow({ label, field: settingsFieldName(id), suffix: input });
-    const caption = controller.row.querySelector('.ds-row-label');
-    caption.id = `${id}_label`;
-    input.setAttribute('aria-labelledby', caption.id);
-    return controller;
-}
-
-function createSettingsHiddenInput(id, type, value) {
-    return createSettingsControl('input', id, value === undefined ? { type, hidden: true } : { type, value });
-}
-
-function createSettingsGroup({ title, subtitle, field, rows, hidden = [] }) {
-    // Level 4: the theme boxes every h3 outside a dialog, and a group heading takes no box.
-    const group = createPrefGroup({ title, subtitle, field, rows, headingLevel: 4 });
-    group.section.append(...hidden);
-    return group.section;
-}
-
-function createSettingsDrawerHeader(drawerTitle) {
-    const header = document.createElement('div');
-    header.className = 'sb-conversation-settings-header';
-    header.innerHTML = `
-        <button type="button" class="sb-conversation-flat-button sb-conversation-settings-close" data-sb-conversation-action="close-settings" title="Close Conversation Settings" aria-label="Close Conversation Settings">
-            <i class="fa-solid fa-xmark sb-conversation-settings-close-x" aria-hidden="true"></i>
-            <i class="fa-solid fa-arrow-left sb-conversation-settings-close-back" aria-hidden="true"></i>
-        </button>
-        <div>
-            <div class="sb-conversation-settings-kicker">Conversation Mode</div>
-            <div class="sb-conversation-settings-title">${escapeHtmlText(drawerTitle)}</div>
-        </div>
-    `;
-    return header;
-}
-
-function createGroupMembersWrapper(settings, { autoChatCooldown }) {
-    const search = createSettingsControl('input', 'sb_conv_multi_char_search', {
-        type: 'text',
-        class: 'text_pole textarea_compact sb-conversation-member-search',
-        placeholder: 'Search group members…',
-    });
-    const list = createSettingsControl('div', 'sb_conv_chiming_partner_list', { class: 'sb-conversation-partner-list' });
-    list.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
-    const field = document.createElement('div');
-    field.className = 'sb-conversation-members-field';
-    field.append(search, list);
-
-    const members = createRow({
-        label: 'Group DM Members',
-        subtitle: 'Selected characters are considered part of this Conversation thread. Type @Name, such as @Kaveh, to tag them. Autonomous character-to-character chat uses this same group list.',
-        field: 'group-members',
-        stacked: true,
-        suffix: field,
-    });
-    const autoChat = createSettingsSwitch({ id: 'sb_conv_auto_character_chat', label: 'Allow Characters to Talk to Each Other', subtitle: 'Allow enabled characters to chat with each other autonomously in this thread' });
-    const cooldown = createSettingsSpin({ id: 'sb_conv_auto_chat_cooldown', label: 'Character Chat Cooldown (Mins)', subtitle: 'Minimum time between autonomous character-to-character messages in this Conversation thread', min: 1, max: 1440, step: 1, value: autoChatCooldown });
-
-    const wrapper = createSettingsControl('div', 'sb_conv_group_members_wrapper', { class: 'sb-conversation-members-wrapper' });
-    wrapper.append(members.row, autoChat.row, cooldown.row);
-    return wrapper;
-}
-
-/**
- * Builds the settings drawer from the shared boxed-list rows. The drawer is a live store for
- * applySettingsToPanel and saveCurrentPanelSettings, so it is built whole and synchronously.
- */
-export function buildSettingsDrawerContent() {
-    const avatar = getCurrentCharAvatar();
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId });
-    const isGroupConversation = Boolean(groupId);
-    settingsSelectRows = [];
-
-    const presence = createSettingsGroup({
-        title: 'Presence & Availability',
-        field: 'presence',
-        rows: [
-            createSettingsSelect({
-                id: 'sb_conv_availability',
-                label: 'Status',
-                optionsHtml: '<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>',
-            }),
-            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send Auto Follow-Up', subtitle: 'Follow-ups react to silence in the current thread', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
-            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous Ping', subtitle: 'Spontaneous Pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
-            createSettingsSpin({ id: 'sb_conv_idle_limit', label: 'Idle Minimum (Minutes)', min: 1, max: 1440, step: 1, value: 15 }),
-            createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-Responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
-            createSettingsSwitch({
-                id: 'sb_conv_notifications_muted',
-                label: 'Mute This DM',
-                subtitle: 'Unread badges still update while muted or inside quiet hours',
-                title: 'Keep unread badges but suppress sounds and popups for this Conversation.',
-                onChange: updateConversationNotificationSettingsVisibility,
-            }),
-            createSettingsSelect({
-                id: 'sb_conv_notification_priority',
-                label: 'Priority',
-                optionsHtml: '<option value="normal">Normal</option><option value="silent">Silent</option><option value="priority">Priority</option>',
-            }),
-            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_start', label: 'Quiet Start' }),
-            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_end', label: 'Quiet End' }),
-        ],
-    });
-
-    const schedule = createSettingsGroup({
-        title: 'Character Schedule',
-        subtitle: 'Auto-generate a weekly schedule using the current active connection profile and selected model. This informs when the character is available to chat.',
-        field: 'schedule',
-        rows: [
-            createSettingsAction({ action: 'generate-schedule', label: 'Generate Schedule', icon: 'wand-magic-sparkles' }),
-            createSettingsAction({ action: 'edit-schedule', label: 'Edit Schedule', icon: 'pencil' }),
-        ],
-        hidden: [createSettingsHiddenInput('sb_conv_auto_schedule', 'hidden', settings.auto_schedule)],
-    });
-    const scheduleDisplay = createSettingsControl('div', 'sb_conv_schedule_display', { class: 'sb-conversation-schedule-display', 'aria-live': 'polite' });
-    schedule.append(scheduleDisplay);
-
-    const proactiveRows = [
-        createSettingsSwitch({
-            id: 'sb_conv_proactive_messaging',
-            label: isGroupConversation ? 'Let Group Members Message me First' : 'Let This Character Message me First',
-            subtitle: isGroupConversation
-                ? 'Let group members message you first based on the group schedule and mood'
-                : 'Let the character message you first based on their schedule and mood',
-        }),
-        createSettingsSpin({ id: 'sb_conv_inactivity_threshold', label: 'Patience (Mins)', min: 15, max: 360, step: 5, value: 120 }),
-        createSettingsSpin({ id: 'sb_conv_max_followups', label: 'Max Follow-Ups', min: 1, max: 3, step: 1, value: 3 }),
-        createSettingsSpin({ id: 'sb_conv_talkativeness', label: 'Talkativeness', min: 0, max: 100, step: 5, value: 50 }),
-        createSettingsSpin({ id: 'sb_conv_reply_delay_multiplier', label: 'Reply Delay', min: 0, max: 300, step: 10, value: 100 }),
-        createSettingsSpin({
-            id: 'sb_conv_reply_max_tokens',
-            label: 'Max Reply Tokens',
-            subtitle: isGroupConversation ? undefined : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.',
-            min: 64,
-            max: 64000,
-            step: 64,
-            value: 16000,
-        }),
-        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies Through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
-        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character Status Updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now', title: 'Let the character update its current availability/activity through [schedule_update]' }),
-    ];
-    const proactive = createSettingsGroup({
-        title: 'Proactive Messaging',
-        subtitle: isGroupConversation ? 'These proactive controls apply only to this group Conversation, not solo DMs.' : undefined,
-        field: 'proactive',
-        rows: proactiveRows,
-    });
-
-    const memorySummary = createSettingsTextArea({
-        id: 'sb_conv_memory_summary',
-        label: 'Conversation Memory',
-        placeholder: 'No memory summary yet. It appears after enough messages, or you can refresh it manually once this Conversation has chat history.',
-        rows: 5,
-        readOnly: true,
-    });
-    const memoryMeta = createSettingsControl('small', 'sb_conv_memory_meta', { class: 'ds-row-subtitle ds-row-textarea__caption sb-conversation-memory-meta' });
-    memorySummary.row.append(memoryMeta);
-    memorySummary.control.setAttribute('aria-describedby', memoryMeta.id);
-    const memory = createSettingsGroup({
-        title: 'Chat Memories',
-        subtitle: 'Persistent notes the LLM writes for continuity. They survive deleted chats and only clear when you use Clear memory.',
-        field: 'memory',
-        rows: [
-            memorySummary,
-            createSettingsAction({ action: 'create-memory', label: 'Create Memory', icon: 'plus' }),
-            createSettingsAction({ action: 'refresh-memory', label: 'Refresh Memory', icon: 'rotate' }),
-            createSettingsAction({ action: 'clear-memory', label: 'Clear Memory', icon: 'eraser', danger: true }),
-            createSettingsSwitch({
-                id: 'sb_conv_include_related_memory',
-                label: isGroupConversation ? 'Remember Solo DMs in This Group DM' : 'Remember Group DMs in This Solo DM',
-                subtitle: isGroupConversation
-                    ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
-                    : 'When enabled, this solo DM can reference saved memory from group DMs that include this character',
-                title: 'Share saved memory summaries between this character\'s solo and group Conversation threads',
-            }),
-        ],
-        hidden: [createSettingsHiddenInput('sb_conv_copy_memory_to_new_branch', 'checkbox')],
-    });
-    const memoryNote = document.createElement('p');
-    memoryNote.className = 'ds-row-subtitle sb-conversation-section-note';
-    memoryNote.textContent = 'Memory is kept across new chats and deleted histories until you clear it.';
-    memory.append(memoryNote);
-
-    const weeklyEditor = createSettingsControl('div', 'sb_conv_weekly_schedule_editor', { class: 'sb-conversation-weekly-schedule' });
-    const manual = createSettingsGroup({
-        title: 'Manual Scheduling',
-        subtitle: 'Use this for fixed-time check-ins. Weekly slots decide when messages can happen; cooldown prevents repeated sends too close together.',
-        field: 'manual-scheduling',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_auto_message', label: 'Enable Scheduling', subtitle: 'Enable autonomous scheduled messages' }),
-            createSettingsSpin({ id: 'sb_conv_cooldown', label: 'Cooldown (Secs)', subtitle: 'Auto-message minimum delay/cooldown in seconds', min: 10, max: 9999, step: 1, value: 60 }),
-            createRow({ label: 'Weekly Schedule', field: 'weekly-schedule', stacked: true, suffix: weeklyEditor }),
-            createSettingsAction({ action: 'weekly-add', label: 'Add Weekly Slot', icon: 'plus' }),
-        ],
-        hidden: [createSettingsHiddenInput('sb_conv_weekly_schedule', 'hidden', settings.weekly_schedule)],
-    });
-
-    const prompts = createSettingsGroup({
-        title: 'Prompts & Formats',
-        field: 'prompts',
-        rows: [
-            createSettingsTextArea({ id: 'sb_conv_geechan_chatroom_prompt', label: 'Geechan Chatroom System Prompt', placeholder: 'Type the chatroom system prompt here…', rows: 3 }),
-            createSettingsAction({ action: 'reset-prompt', label: 'Reset to Default', icon: 'rotate-left' }),
-            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM', placeholder: 'Type any custom instructions or guidelines here…', rows: 3, scope: true }),
-            createSettingsSwitch({
-                id: 'sb_conv_grounded_dialogue_rules_enabled',
-                label: 'Grounded Dialogue Rules',
-                subtitle: 'Optional anti-cliché style guard. Use the pencil to edit the full rules without expanding this drawer.',
-                title: 'Apply the global Grounded Dialogue Rules block to Conversation Mode prompts.',
-                scope: true,
-            }),
-            createSettingsAction({ action: 'edit-grounded-dialogue-rules', label: 'Edit Grounded Dialogue Rules', icon: 'pencil' }),
-            createSettingsSwitch({ id: 'sb_conv_multi_char', label: 'Add Additional Members in the Chat', subtitle: 'Enable additional characters in the chat to chime in' }),
-            createGroupMembersWrapper(settings, { autoChatCooldown: DEFAULT_AUTO_CHAT_COOLDOWN }),
-            createSettingsSwitch({ id: 'sb_conv_roleplay_reactions', label: 'React to Current Roleplay', subtitle: 'Allow this character to privately react to the current roleplay or group chat' }),
-        ],
-        hidden: [
-            createSettingsControl('textarea', 'sb_conv_grounded_dialogue_rules', { hidden: true }),
-            createSettingsHiddenInput('sb_conv_multi_char_names', 'hidden', settings.multi_char_names),
-        ],
-    });
-
-    const context = createSettingsGroup({
-        title: 'Context Overrides',
-        field: 'context',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_lorebooks_enabled', label: 'Use Character Lorebooks', subtitle: 'When off, Conversation replies use no lorebooks at all, including the override below', scope: true }),
-            createSettingsSelect({ id: 'sb_conv_lorebook_override', label: 'Lorebook Override', optionsHtml: buildLorebookOptions(settings.lorebook_override) }),
-            createSettingsSelect({ id: 'sb_conv_connection_profile', label: 'Connection Profile', subtitle: 'Used for all Conversation Mode generations unless left on the current active connection', optionsHtml: buildConnectionProfileOptions(settings.connection_profile), scope: true }),
-            createSettingsTextArea({ id: 'sb_conv_authors_note', label: 'Author\'s Note Override', placeholder: '[Author\'s Note: Keep responses short, direct, and conversational as if chatting in a DM.]', rows: 2 }),
-        ],
-    });
-
-    const images = createSettingsGroup({
-        title: 'Image Generation',
-        field: 'images',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_image_gen_enabled', label: 'Enable Chatroom Image Generation', subtitle: 'Enable in-chat image generation' }),
-            createSettingsEntry({ id: 'sb_conv_image_gen_prompt_template', label: 'Image Prompt Template', placeholder: 'a photo of {{char}}, {{scene}}' }),
-            createSettingsEntry({ id: 'sb_conv_image_gen_negative', label: 'Negative Prompt', placeholder: 'blurry, distorted' }),
-            createSettingsSpin({ id: 'sb_conv_image_gen_cooldown', label: 'Image Cooldown (Minutes)', min: 0, max: 1440, step: 1, value: 10 }),
-            createSettingsSwitch({ id: 'sb_conv_spontaneous_selfies', label: 'Enable Spontaneous Selfies', subtitle: 'Character spontaneously generates selfies during the conversation' }),
-            createSettingsEntry({ id: 'sb_conv_selfie_prompt', label: 'Selfie Prompt Template', placeholder: 'raw photo, selfie of {{char}}' }),
-        ],
-    });
-
-    const tweaks = createSettingsGroup({
-        title: 'DM Tweaks',
-        field: 'tweaks',
-        rows: [
-            createSettingsSwitch({ id: 'sb_conv_editable_messages', label: 'Enable Quick-Edit DM Actions', subtitle: 'Add quick inline edit buttons next to messages in the Conversation thread' }),
-            createSettingsSwitch({ id: 'sb_conv_prose_polisher', label: 'Character Prose Polisher', subtitle: 'Enable a magic wand icon on character replies to polish and refine their outputs' }),
-        ],
-    });
-
-    const body = document.createElement('div');
-    body.className = 'sb-conversation-settings-body';
-    body.append(presence, schedule, proactive, memory, manual, prompts, context, images, tweaks);
-
-    const fragment = document.createDocumentFragment();
-    fragment.append(createSettingsDrawerHeader(isGroupConversation ? 'Group Controls' : 'DM Controls'), body);
-    return fragment;
-}
-
-export function replaceSettingsDrawerContent(drawer) {
-    releaseRowIds(drawer);
-    drawer.replaceChildren(buildSettingsDrawerContent());
-}
-
-export function syncSettingsDrawerRows() {
-    for (const row of settingsSelectRows) {
-        row.sync();
-    }
-}
-
 function bindConversationChromeControlsAsync(sheld) {
     void import('./chrome.js')
         .then(({ bindConversationChromeControls }) => bindConversationChromeControls(sheld))
@@ -1990,24 +1623,20 @@ export function ensureConversationChrome() {
         header.className = 'sb-conversation-headerbar';
         header.hidden = true;
         header.innerHTML = `
-            <button id="${CHROME_IDS.palsToggle}" type="button" class="sb-conversation-flat-button sb-conversation-header-back" data-sb-conversation-action="toggle-pals" title="Back to Conversations" aria-label="Back to Conversations">
+            <button id="${CHROME_IDS.listToggle}" type="button" class="sb-conversation-flat-button sb-conversation-header-back" data-sb-conversation-action="toggle-list" title="Back to Conversations" aria-label="Back to Conversations">
                 <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                <span class="sb-conversation-pals-toggle-badge" hidden></span>
+                <span class="sb-conversation-list-toggle-badge" hidden></span>
             </button>
             <div class="sb-conversation-header-avatar" data-sb-conversation-participants></div>
-            <button type="button" class="sb-conversation-header-title" data-sb-conversation-action="open-branch-menu" aria-haspopup="menu" title="Branches">
+            <button type="button" class="sb-conversation-header-title" data-sb-conversation-action="open-details" aria-haspopup="dialog" title="Details">
                 <span class="sb-conversation-header-copy">
                     <span class="sb-conversation-header-name" data-sb-conversation-name>Conversation</span>
                     <span class="sb-conversation-header-status" data-sb-conversation-status></span>
                 </span>
-                <i class="fa-solid fa-chevron-down sb-conversation-header-caret" aria-hidden="true"></i>
             </button>
             <div class="sb-conversation-header-actions">
                 <button type="button" class="sb-conversation-flat-button sb-conversation-header-search" data-sb-conversation-action="toggle-search" title="Search" aria-label="Search" aria-pressed="false" aria-controls="${CHROME_IDS.tools}">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-header-settings" data-sb-conversation-action="open-settings" title="Conversation Settings" aria-label="Conversation Settings">
-                    <i class="fa-solid fa-gear" aria-hidden="true"></i>
                 </button>
                 <button type="button" class="sb-conversation-flat-button sb-conversation-header-menu" data-sb-conversation-action="open-conversation-menu" title="Conversation Menu" aria-label="Conversation Menu" aria-haspopup="menu">
                     <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
@@ -2028,16 +1657,8 @@ export function ensureConversationChrome() {
                 <label class="sb-conversation-search-wrap" for="${CHROME_IDS.search}">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     <span class="sr-only">Search Conversation Messages</span>
-                    <input id="${CHROME_IDS.search}" class="sb-conversation-search-entry" type="search" placeholder="Search this DM" autocomplete="off" />
+                    <input id="${CHROME_IDS.search}" class="sb-conversation-search-entry" type="search" placeholder="Search this conversation" autocomplete="off" />
                 </label>
-                <div class="sb-conversation-channel-tabs" role="toolbar" aria-label="Conversation Filters">
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="main" aria-pressed="true">Main</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="pinned" aria-pressed="false">Pins</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="selfies" aria-pressed="false">Selfies</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="media" aria-pressed="false">Files</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="ooc" aria-pressed="false">OOC</button>
-                    <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="memories" aria-pressed="false">Memories</button>
-                </div>
             </div>
             <div id="${CHROME_IDS.timeline}" class="sb-conversation-timeline" role="log" aria-live="polite"></div>
             <div id="${CHROME_IDS.dropHint}" class="sb-conversation-drop-hint" hidden>Drop files to attach</div>
@@ -2045,29 +1666,18 @@ export function ensureConversationChrome() {
                 <div id="${CHROME_IDS.replyPreview}" class="sb-conversation-reply-preview" hidden></div>
                 <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-row">
-                    <button type="button" class="sb-conversation-flat-button sb-conversation-composer-more" data-sb-conversation-action="open-composer-menu" title="Attach and More" aria-label="Attach and More" aria-haspopup="menu">
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    </button>
-                    <button id="${CHROME_IDS.attach}" type="button" class="sb-conversation-flat-button sb-conversation-composer-attach sb-conversation-composer-quick" data-sb-conversation-action="attach-file" title="Attach Files" aria-label="Attach Files">
+                    <button id="${CHROME_IDS.attach}" type="button" class="sb-conversation-flat-button sb-conversation-composer-tool sb-conversation-composer-attach" data-sb-conversation-action="attach-file" title="Attach Files" aria-label="Attach Files">
                         <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-composer-tool sb-conversation-composer-more" data-sb-conversation-action="open-composer-menu" title="Add to Message" aria-label="Add to Message" aria-haspopup="menu">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
                     </button>
                     <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation Attachments" />
                     <label class="sr-only" for="${CHROME_IDS.input}">Conversation Message</label>
                     <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message…"></textarea>
-                    <div class="sb-conversation-composer-actions" role="group" aria-label="Message Tools">
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-selfie" title="Send a Selfie" aria-label="Send a Selfie">
-                            <i class="fa-solid fa-camera" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-remind" title="Remind Me" aria-label="Remind Me">
-                            <i class="fa-solid fa-bell" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-summarize" title="Summarize Memory" aria-label="Summarize Memory">
-                            <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="force-response" title="Force a Reply" aria-label="Force a Reply">
-                            <i class="fa-solid fa-bolt" aria-hidden="true"></i>
-                        </button>
-                    </div>
+                    <button id="${CHROME_IDS.emoji}" type="button" class="sb-conversation-flat-button sb-conversation-composer-tool sb-conversation-composer-emoji" data-sb-conversation-action="open-emoji-chooser" title="Insert Emoji" aria-label="Insert Emoji" aria-haspopup="dialog" aria-keyshortcuts="Control+Period">
+                        <i class="fa-solid fa-face-smile" aria-hidden="true"></i>
+                    </button>
                     <button id="${CHROME_IDS.send}" type="submit" class="sb-conversation-send-button" title="Send Conversation Message" aria-label="Send Conversation Message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                     </button>
@@ -2077,13 +1687,13 @@ export function ensureConversationChrome() {
         sheld.insertBefore(stage, chatElement);
     }
 
-    let palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (!(palsRail instanceof HTMLElement)) {
-        palsRail = document.createElement('aside');
-        palsRail.id = CHROME_IDS.palsRail;
-        palsRail.hidden = true;
-        palsRail.setAttribute('aria-label', 'Conversations');
-        palsRail.innerHTML = `
+    let conversationList = document.getElementById(CHROME_IDS.conversationList);
+    if (!(conversationList instanceof HTMLElement)) {
+        conversationList = document.createElement('aside');
+        conversationList.id = CHROME_IDS.conversationList;
+        conversationList.hidden = true;
+        conversationList.setAttribute('aria-label', 'Conversations');
+        conversationList.innerHTML = `
             <div class="sb-conversation-headerbar sb-conversation-rail-header">
                 <div id="${CHROME_IDS.railFooter}" class="sb-conversation-rail-persona">
                     <button type="button" class="sb-conversation-flat-button sb-conversation-persona-button" data-sb-conversation-action="open-persona-menu" aria-haspopup="menu" title="Your Status and Persona">
@@ -2092,21 +1702,26 @@ export function ensureConversationChrome() {
                         <span class="sr-only"><span id="sb_conv_footer_persona_name"></span>, <span id="sb_conv_footer_user_status"></span></span>
                     </button>
                 </div>
-                <h2 class="sb-conversation-rail-title">Conversations</h2>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-menu" aria-haspopup="menu" title="New Conversation" aria-label="New Conversation">
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                </button>
+                <div class="sb-conversation-rail-actions">
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-menu" aria-haspopup="menu" title="New" aria-label="New">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-rail-main-menu-button" data-sb-conversation-action="open-main-menu" aria-haspopup="menu" title="Main Menu" aria-label="Main Menu">
+                        <i class="fa-solid fa-bars" aria-hidden="true"></i>
+                    </button>
+                </div>
             </div>
             <div class="sb-conversation-rail-search">
-                <label class="sb-conversation-search-wrap" for="sb_conversation_pals_search">
+                <label class="sb-conversation-search-wrap" for="sb_conversation_list_search">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     <span class="sr-only">Search Conversations</span>
-                    <input type="search" id="sb_conversation_pals_search" class="sb-conversation-search-entry" placeholder="Search" autocomplete="off" />
+                    <input type="search" id="sb_conversation_list_search" class="sb-conversation-search-entry" placeholder="Search" autocomplete="off" />
                 </label>
             </div>
-            <div id="${CHROME_IDS.palsList}" class="sb-conversation-pals-list"></div>
+            <div id="${CHROME_IDS.listItems}" class="sb-conversation-list-items" tabindex="-1"></div>
+            <div class="sb-conversation-list-status sr-only" role="status" aria-live="polite"></div>
         `;
-        sheld.insertBefore(palsRail, header);
+        sheld.insertBefore(conversationList, header);
     }
 
     // Pickers sit directly in #sheld (outside the sliding mobile pages) so they keep the delegated
@@ -2154,26 +1769,8 @@ export function ensureConversationChrome() {
         sheld.appendChild(statusPicker);
     }
 
-    let backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
-    if (!(backdrop instanceof HTMLElement)) {
-        backdrop = document.createElement('div');
-        backdrop.id = CHROME_IDS.settingsBackdrop;
-        backdrop.hidden = true;
-        sheld.appendChild(backdrop);
-    }
-
-    let drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-    if (!(drawer instanceof HTMLElement)) {
-        drawer = document.createElement('aside');
-        drawer.id = CHROME_IDS.settingsDrawer;
-        drawer.hidden = true;
-        drawer.setAttribute('aria-label', 'Conversation Settings');
-        replaceSettingsDrawerContent(drawer);
-        sheld.appendChild(drawer);
-    }
-
     bindConversationChromeControlsAsync(sheld);
-    return { sheld, header, stage, palsRail, backdrop, drawer };
+    return { sheld, header, stage, conversationList };
 }
 
 registerConversationRenderer('timeline', renderConversationTimeline);

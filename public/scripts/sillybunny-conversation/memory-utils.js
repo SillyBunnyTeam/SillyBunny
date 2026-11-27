@@ -1,75 +1,50 @@
-import { DEFAULT_BRANCH_ID, GROUP_CONVERSATION_STORE_PREFIX } from './constants.js';
+/**
+ * The related memories of a conversation. Each source is one conversation with the summary of its active chat:
+ * `{ groupId, avatar, members, summary, updatedAt }`, where `groupId` is empty for a direct conversation.
+ */
 
-function parseGroupConversationStoreKey(storeKey) {
-    const value = String(storeKey || '');
-    if (!value.startsWith(GROUP_CONVERSATION_STORE_PREFIX)) {
-        return null;
-    }
-
-    const withoutPrefix = value.slice(GROUP_CONVERSATION_STORE_PREFIX.length);
-    const separatorIndex = withoutPrefix.indexOf(':');
-    if (separatorIndex < 0) {
-        return null;
-    }
-
-    const groupId = withoutPrefix.slice(0, separatorIndex);
-    const avatar = withoutPrefix.slice(separatorIndex + 1);
-    return groupId && avatar ? { groupId, avatar } : null;
+function toUpdatedAt(value) {
+    const updatedAt = Number(value || 0);
+    return Number.isFinite(updatedAt) ? updatedAt : 0;
 }
 
-function getActiveMemoryBranch(threadStore) {
-    const branches = threadStore?.branches && typeof threadStore.branches === 'object' ? threadStore.branches : {};
-    const branchId = threadStore?.activeBranchId || DEFAULT_BRANCH_ID;
-    return branches[branchId] || branches[DEFAULT_BRANCH_ID] || null;
-}
-
-export function collectSoloConversationMemorySummary(charactersStore, avatar) {
-    if (!avatar || !charactersStore || typeof charactersStore !== 'object') {
+export function collectSoloConversationMemorySummary(sources, avatar) {
+    if (!avatar || !Array.isArray(sources)) {
         return null;
     }
 
-    const threadStore = charactersStore[avatar];
-    const branch = getActiveMemoryBranch(threadStore);
-    const summary = String(threadStore?.memorySummary || branch?.memorySummary || '').trim();
+    const source = sources.find(item => !item.groupId && item.avatar === avatar);
+    const summary = String(source?.summary || '').trim();
     if (!summary) {
         return null;
     }
 
-    const updatedAt = Number(threadStore?.memoryUpdatedAt || branch?.updatedAt || branch?.createdAt || 0);
-    return {
-        avatar,
-        summary,
-        updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
-    };
+    return { avatar, summary, updatedAt: toUpdatedAt(source.updatedAt) };
 }
 
-export function collectGroupConversationMemorySummaries(charactersStore, avatar, { excludeGroupId = '', getGroupName = () => '', max = 4 } = {}) {
-    if (!avatar || !charactersStore || typeof charactersStore !== 'object') {
+export function collectGroupConversationMemorySummaries(sources, avatar, { excludeGroupId = '', getGroupName = () => '', max = 4 } = {}) {
+    if (!avatar || !Array.isArray(sources)) {
         return [];
     }
 
     const items = [];
-    Object.entries(charactersStore).forEach(([storeKey, threadStore]) => {
-        const parsed = parseGroupConversationStoreKey(storeKey);
-        if (!parsed || parsed.avatar !== avatar || (excludeGroupId && parsed.groupId === String(excludeGroupId))) {
-            return;
+    for (const source of sources) {
+        if (!source.groupId || !source.members?.includes(avatar) || (excludeGroupId && source.groupId === String(excludeGroupId))) {
+            continue;
         }
 
-        const branch = getActiveMemoryBranch(threadStore);
-        const summary = String(threadStore?.memorySummary || branch?.memorySummary || '').trim();
+        const summary = String(source.summary || '').trim();
         if (!summary) {
-            return;
+            continue;
         }
 
-        const updatedAt = Number(threadStore?.memoryUpdatedAt || branch?.updatedAt || branch?.createdAt || 0);
-        const groupName = String(getGroupName(parsed.groupId) || '').trim();
         items.push({
-            groupId: parsed.groupId,
-            groupName,
+            groupId: source.groupId,
+            groupName: String(getGroupName(source.groupId) || '').trim(),
             summary,
-            updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+            updatedAt: toUpdatedAt(source.updatedAt),
         });
-    });
+    }
 
     const parsedMax = Number(max);
     const limit = Number.isFinite(parsedMax) ? Math.max(0, parsedMax) : undefined;

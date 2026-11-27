@@ -13,6 +13,7 @@
  */
 
 import { GENERATION_PLACEHOLDER_KEY as PLACEHOLDER_KEY, getMessageIdentity, hashCommitText } from '../public/scripts/generation-commit-plan.js';
+import { afterConversationCommit, applyConversationReply, checkConversationReplyTarget } from './conversation-generation-commit.js';
 import { updateChatRecords } from './endpoints/chats.js';
 
 /** Message extras that clearMessageData() in public/script.js removes before a swipe is generated. */
@@ -150,6 +151,9 @@ function isOwnPlaceholder(message, plan) {
  * @returns {{ records: object[] } | { reason: string }}
  */
 export function applyGenerationReply(records, plan, reply, context) {
+    if (plan.kind === 'reply') {
+        return applyConversationReply(records, plan, reply, context);
+    }
     const [header, ...source] = structuredClone(records);
     const messages = /** @type {any[]} */ (source);
     const extraSwipes = plan.kind === 'continue' ? [] : (reply.swipes ?? []).filter(text => typeof text === 'string');
@@ -241,6 +245,9 @@ export function applyGenerationReply(records, plan, reply, context) {
  * @returns {Parameters<typeof updateChatRecords>[1]}
  */
 function getChatTarget(plan) {
+    if (plan.chat.conversation) {
+        return { conversationChat: { conversationId: plan.chat.conversation, chatId: plan.file } };
+    }
     return plan.chat.group
         ? { groupChatId: plan.file }
         : { avatarUrl: plan.chat.avatar, fileName: plan.file };
@@ -255,9 +262,15 @@ function getChatTarget(plan) {
  * @returns {Promise<{ committed: true, undo: GenerationCommitUndo } | { committed: false, reason: string }>}
  */
 export async function commitGenerationReply(user, plan, reply, context) {
+    const conversation = plan.chat.conversation ? checkConversationReplyTarget(user, plan) : null;
+    if (conversation && 'reason' in conversation) {
+        return { committed: false, reason: conversation.reason };
+    }
     let refusal = '';
     /** @type {object[]} */
     let before = [];
+    /** @type {object[]} */
+    let written = [];
     const result = await updateChatRecords(user, getChatTarget(plan), (records) => {
         const applied = applyGenerationReply(records, plan, reply, context);
         if ('reason' in applied) {
@@ -265,9 +278,13 @@ export async function commitGenerationReply(user, plan, reply, context) {
             return null;
         }
         before = records;
-        return { records: applied.records };
+        written = applied.records;
+        return { records: written };
     });
     if (result.status === 'saved') {
+        if (conversation) {
+            afterConversationCommit(user, plan, conversation.entry, written, result.integrity);
+        }
         return { committed: true, undo: { records: before, integrity: result.previousIntegrity, committedIntegrity: result.integrity } };
     }
     return { committed: false, reason: refusal || result.reason || result.status };

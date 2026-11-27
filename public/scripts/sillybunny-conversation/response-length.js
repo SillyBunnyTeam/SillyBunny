@@ -24,3 +24,28 @@ export async function getActiveApiResponseLength(responseLength) {
 
     return Math.max(limit, MIN_LENGTH);
 }
+
+/**
+ * The response length that a scoped connection profile asks for when the request names none: the length in the preset of
+ * the profile, which is what a normal chat with that profile asks for, and the length of the active connection when the
+ * profile has no preset or its preset is gone. The profile modules are loaded on the first call, because most
+ * conversations use no profile.
+ * @param {{ api?: string, preset?: string }} profile
+ * @returns {Promise<number|undefined>}
+ */
+export async function getProfileResponseLength(profile) {
+    const [{ CONNECT_API_MAP }, { getPresetManager }, { oai_settings }] = await Promise.all([
+        import('../slash-commands.js'),
+        import('../preset-manager.js'),
+        import('../openai.js'),
+    ]);
+    const selected = CONNECT_API_MAP[profile?.api]?.selected;
+    const preset = profile?.preset ? getPresetManager(selected)?.getCompletionPresetByName(profile.preset) : null;
+    const presetLength = Number(selected === 'openai' ? preset?.openai_max_tokens : preset?.genamt);
+    if (presetLength > 0) {
+        return presetLength;
+    }
+
+    const activeLength = Number(main_api === 'openai' ? oai_settings.openai_max_tokens : amount_gen);
+    return activeLength > 0 ? activeLength : undefined;
+}

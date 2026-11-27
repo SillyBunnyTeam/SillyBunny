@@ -5,7 +5,6 @@ import { user_avatar } from '../personas.js';
 import { power_user } from '../power-user.js';
 import {
     AVAILABILITY_COPY,
-    CHROME_IDS,
     PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
     PERSONA_APPENDICES_SELECTIONS_KEY,
     USER_STATUS_OPTIONS,
@@ -14,15 +13,13 @@ import {
 import {
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getRawConversationThreadKey,
+    getConversationRecord,
     getConversationStore,
-    getConversationThreadKey,
+    getConversationKey,
     getCurrentCharAvatar,
     isAvatarInConversationGroup,
     persistConversationStore,
 } from './context.js';
-import { promptConversationText } from './dialogs.js';
-import { updateUserFooter } from './pickers.js';
 
 export function getAvailabilityCopy(status) {
     return AVAILABILITY_COPY[status] ?? AVAILABILITY_COPY.online;
@@ -53,31 +50,6 @@ export function setUserPersonaStatus(statusText) {
     persistConversationStore();
 }
 
-export async function editUserPersonaStatus() {
-    const nextStatus = await promptConversationText({
-        title: 'Status Message',
-        text: 'Leave blank to clear it',
-        defaultValue: getUserPersonaStatus(),
-    });
-    if (typeof nextStatus !== 'string') {
-        return;
-    }
-
-    setUserPersonaStatus(nextStatus);
-    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
-    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
-    updateUserFooter();
-}
-
-export function safeParseWeeklySchedule(value) {
-    try {
-        const parsed = JSON.parse(value || '[]');
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
-
 export function getConnectionProfiles() {
     return extension_settings.connectionManager?.profiles ?? [];
 }
@@ -104,14 +76,20 @@ export function getConversationPersonaName(personaId, fallback = 'User') {
     return fallbackName;
 }
 
+/**
+ * The key under which a persona's Scenario Notes for one conversation are stored: the id of the conversation. A
+ * conversation that came from the old store also has its old key, which is read as a fallback.
+ */
 export function getConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
-    return String(getConversationThreadKey(avatar, targetGroupId, { personaId }) || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    const key = getConversationKey(avatar, targetGroupId, { personaId });
+    return key && !key.startsWith('pending:') ? key : PERSONA_APPENDICES_DEFAULT_SCOPE_KEY;
 }
 
-function getLegacyConversationPersonaAppendixScopeKey({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+function getLegacyConversationPersonaAppendixScopeKeys({ avatar = getCurrentCharAvatar(), groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const targetGroupId = groupId && isAvatarInConversationGroup(avatar, groupId, { personaId }) ? groupId : '';
-    return String(getRawConversationThreadKey(avatar, targetGroupId, '') || PERSONA_APPENDICES_DEFAULT_SCOPE_KEY);
+    const record = getConversationRecord(avatar, { groupId: targetGroupId, personaId });
+    return [record?.legacyKey, targetGroupId ? `group:${targetGroupId}:${avatar}` : avatar].filter(Boolean);
 }
 
 function normalizeConversationPersonaAppendixSelections(descriptor) {
@@ -156,10 +134,10 @@ export function getActiveConversationPersonaAppendixIds(avatarId, options = {}) 
     const normalized = normalizeConversationPersonaAppendixSelections(descriptor);
     const selections = normalized.selections;
     const scopeKey = getConversationPersonaAppendixScopeKey(options);
-    const legacyScopeKey = getLegacyConversationPersonaAppendixScopeKey(options);
     let changed = normalized.changed;
     if (!Object.prototype.hasOwnProperty.call(selections, scopeKey)) {
-        const legacyIds = selections[legacyScopeKey] ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY];
+        const legacyScopeKey = getLegacyConversationPersonaAppendixScopeKeys(options).find(key => Object.prototype.hasOwnProperty.call(selections, key));
+        const legacyIds = (legacyScopeKey ? selections[legacyScopeKey] : undefined) ?? selections[PERSONA_APPENDICES_DEFAULT_SCOPE_KEY];
         if (Array.isArray(legacyIds)) {
             selections[scopeKey] = [...legacyIds];
             changed = true;

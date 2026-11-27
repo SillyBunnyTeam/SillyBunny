@@ -1,30 +1,28 @@
 import {
     characters,
-    default_avatar,
     default_user_avatar,
     getThumbnailUrl,
     name1,
 } from '../../script.js';
 import { user_avatar } from '../personas.js';
-import { runConversationAction, selectConversationThread } from './chrome.js';
+import { runConversationAction, selectConversation } from './chrome.js';
+import { withConversationSwitch } from './screen-target.js';
 import { MENU_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
+import { createLazyImage } from '../sillybunny-editor/lazy-image.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
-import { AVAILABILITY_COPY, CHROME_IDS, DEFAULT_BRANCH_ID, WEEKDAY_LABELS } from './constants.js';
+import { AVAILABILITY_COPY, CHROME_IDS } from './constants.js';
+import { promptConversationText } from './dialogs.js';
 import {
-    createConversationBranch,
-    createConversationGroupRecord,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
-    getConversationThreadStore,
+    getConversationRecord,
     getCurrentCharAvatar,
-    getDefaultGroupConversationSettings,
-    normalizeConversationBranch,
-    persistConversationStore,
+    makeConversationGroup,
 } from './context.js';
-import { saveCurrentPanelSettings } from './interface.js';
+import { conversationData } from './conversation-data-browser.js';
 import { getCharacterForAvatar } from './media.js';
 import {
     getActiveConversationPersonaAppendixIds,
@@ -32,102 +30,11 @@ import {
     getPersonaOptions,
     getUserPersonaStatus,
     getUserStatus,
-    safeParseWeeklySchedule,
+    setUserPersonaStatus,
 } from './personas.js';
-import { schedulePalsRailRender } from './render-scheduler.js';
-import { escapeHtmlAttribute } from './render-utils.js';
-import { closePalsRail } from './settings-panel.js';
-import { conversationState } from './state.js';
-
-export function renderWeeklyScheduleEditor(container, scheduleJson) {
-    const entries = safeParseWeeklySchedule(scheduleJson);
-    container.innerHTML = '';
-    for (const entry of entries) {
-        container.appendChild(createWeeklyScheduleRow(entry));
-    }
-}
-
-export function createWeeklyScheduleRow(entry = {}) {
-    const row = document.createElement('div');
-    row.className = 'sb-conversation-weekly-row';
-    const dayPills = WEEKDAY_LABELS.map((label, idx) => {
-        const checked = Array.isArray(entry.days) && entry.days.includes(idx) ? ' checked' : '';
-        return `<label class="sb-conversation-day-pill"><input type="checkbox" class="sb-conv-day-check" data-day="${idx}"${checked} /><span>${label}</span></label>`;
-    }).join('');
-    row.innerHTML = `
-        <div class="sb-conversation-day-pills">${dayPills}</div>
-        <div class="sb-conversation-weekly-row-meta">
-            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule Time" />
-            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule Message" />
-            <label class="sb-conv-weekly-enabled">
-                <span>On</span>
-                <input type="checkbox" role="switch" class="sb-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
-            </label>
-            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove Slot" aria-label="Remove Slot">
-                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
-            </button>
-        </div>
-    `;
-    return row;
-}
-
-export function addWeeklyScheduleRow() {
-    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
-    if (!(editor instanceof HTMLElement)) {
-        return;
-    }
-
-    editor.appendChild(createWeeklyScheduleRow({ days: [], time: '08:00', message: '', enabled: true }));
-    saveCurrentPanelSettings();
-}
-
-export function readWeeklyScheduleFromEditor() {
-    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
-    if (!(editor instanceof HTMLElement)) {
-        return '[]';
-    }
-
-    const entries = [];
-    for (const row of editor.querySelectorAll('.sb-conversation-weekly-row')) {
-        const days = [];
-        row.querySelectorAll('.sb-conv-day-check:checked').forEach((cb) => {
-            const day = parseInt(cb.dataset.day, 10);
-            if (!Number.isNaN(day)) {
-                days.push(day);
-            }
-        });
-        const timeEl = row.querySelector('.sb-conv-weekly-time');
-        const messageEl = row.querySelector('.sb-conv-weekly-message');
-        const enabledEl = row.querySelector('.sb-conv-weekly-enabled-check');
-        entries.push({
-            days,
-            time: timeEl instanceof HTMLInputElement ? timeEl.value : '08:00',
-            message: messageEl instanceof HTMLInputElement ? messageEl.value : '',
-            enabled: enabledEl instanceof HTMLInputElement ? enabledEl.checked : true,
-        });
-    }
-
-    return JSON.stringify(entries);
-}
-
-export function readPartnersFromList(listId) {
-    const list = document.getElementById(listId);
-    if (!(list instanceof HTMLElement)) {
-        return '';
-    }
-
-    const checked = [];
-    list.querySelectorAll('.sb-conversation-partner-checkbox:checked').forEach((cb) => {
-        if (cb instanceof HTMLInputElement && cb.value) {
-            checked.push(cb.value);
-        }
-    });
-    return checked.join(', ');
-}
-
-export function readChimingPartnersFromList() {
-    return readPartnersFromList('sb_conv_chiming_partner_list');
-}
+import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
+import { closeConversationList } from './conversation-pages.js';
+import { getCharacterPickerOptions } from './character-picker-options.js';
 
 // Pickers are bottom sheets under the menu condition, like every other menu (sillybunny-conversation.css repeats it).
 const PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;
@@ -407,6 +314,21 @@ export function updateUserFooter() {
     }
 }
 
+export async function editUserPersonaStatus() {
+    const nextStatus = await promptConversationText({
+        title: 'Status Message',
+        text: 'Leave blank to clear it',
+        defaultValue: getUserPersonaStatus(),
+    });
+    if (typeof nextStatus !== 'string') {
+        return;
+    }
+
+    setUserPersonaStatus(nextStatus);
+    hideConversationPickers();
+    updateUserFooter();
+}
+
 export function toggleUserStatusPicker(anchor = getPickerAnchor('[data-sb-conversation-action="open-persona-menu"]')) {
     const picker = document.getElementById(CHROME_IDS.userStatusPicker);
     if (!(picker instanceof HTMLElement)) {
@@ -430,8 +352,8 @@ export function renderConversationPersonaPicker(picker) {
 function renderPersonaOptions(picker) {
     picker.innerHTML = '';
     const personas = getPersonaOptions();
-    const threadAvatar = getCurrentCharAvatar();
-    const groupId = getConversationGroupIdForAvatar(threadAvatar);
+    const anchorAvatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(anchorAvatar);
     if (!personas.length) {
         picker.append(createStatusPage({ state: 'empty', title: 'No Personas Configured', compact: true }).element);
         return;
@@ -450,10 +372,7 @@ function renderPersonaOptions(picker) {
         btn.setAttribute('role', 'option');
         btn.setAttribute('aria-selected', String(avatarId === user_avatar));
 
-        const img = document.createElement('img');
-        img.src = getThumbnailUrl('persona', avatarId);
-        img.alt = '';
-        img.loading = 'lazy';
+        const img = createLazyImage(getThumbnailUrl('persona', avatarId));
 
         const name = document.createElement('span');
         name.className = 'sb-conversation-persona-option-name';
@@ -464,7 +383,7 @@ function renderPersonaOptions(picker) {
         const appendices = getConversationPersonaAppendices(avatarId);
         if (appendices.length) {
             const activeIds = new Set(getActiveConversationPersonaAppendixIds(avatarId, {
-                avatar: threadAvatar,
+                avatar: anchorAvatar,
                 groupId,
                 personaId: avatarId,
             }));
@@ -514,55 +433,6 @@ export function togglePersonaPicker(anchor = getPickerAnchor('[data-sb-conversat
     (picker.querySelector('[aria-selected="true"]') || picker.querySelector('button'))?.focus?.({ preventScroll: true });
 }
 
-export function bindWeeklyScheduleEditor() {
-    const editor = document.getElementById('sb_conv_weekly_schedule_editor');
-    const hiddenInput = document.getElementById('sb_conv_weekly_schedule');
-    if (!(editor instanceof HTMLElement)) {
-        return;
-    }
-
-    const scheduleJson = hiddenInput instanceof HTMLInputElement ? hiddenInput.value : '[]';
-    renderWeeklyScheduleEditor(editor, scheduleJson);
-
-    if (editor.dataset.sbConversationBound !== 'true') {
-        editor.dataset.sbConversationBound = 'true';
-        editor.addEventListener('change', saveCurrentPanelSettings);
-    }
-}
-
-export function bindPartnerList(listId, searchId) {
-    const list = document.getElementById(listId);
-    if (!(list instanceof HTMLElement) || list.dataset.sbConversationBound === 'true') {
-        return;
-    }
-
-    list.dataset.sbConversationBound = 'true';
-    list.addEventListener('change', (event) => {
-        const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest('.sb-conversation-partner-checkbox')) {
-            saveCurrentPanelSettings();
-        }
-    });
-
-    const searchInput = document.getElementById(searchId);
-    if (searchInput instanceof HTMLInputElement) {
-        searchInput.addEventListener('input', () => {
-            const query = searchInput.value.toLowerCase().trim();
-            const options = list.querySelectorAll('.sb-conversation-partner-option');
-            options.forEach(opt => {
-                if (opt instanceof HTMLElement) {
-                    const charName = opt.dataset.charName || '';
-                    if (charName.includes(query)) {
-                        opt.style.display = '';
-                    } else {
-                        opt.style.display = 'none';
-                    }
-                }
-            });
-        });
-    }
-}
-
 const START_PICKER_ANCHOR = '[data-sb-conversation-action="open-new-menu"]';
 let activeStartPicker = null;
 
@@ -603,28 +473,12 @@ function openStartPicker(key, anchor, options) {
     });
 }
 
-function getCharacterPickerItems() {
-    const items = [];
-    (Array.isArray(characters) ? characters : []).forEach((character, index) => {
-        if (!character?.avatar) {
-            return;
-        }
-
-        const avatar = document.createElement('img');
-        avatar.className = 'sb-conversation-picker-avatar';
-        avatar.src = getThumbnailUrl('avatar', character.avatar);
-        avatar.alt = '';
-        avatar.loading = 'lazy';
-        items.push({ value: index, label: character.name || 'Character', icon: avatar });
-    });
-    return items;
-}
-
-export function toggleAddDmPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
+export function toggleStartDirectConversationPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
     openStartPicker('solo', anchor, {
-        title: 'Create a Solo DM',
-        items: getCharacterPickerItems(),
-        onSelect: index => void runConversationAction('add-character-dm', { characterIndex: String(index) }),
+        title: 'New Conversation',
+        ...getCharacterPickerOptions(),
+        // The action takes the place of the card in `characters`, which is read when a card is picked, not when the list is made.
+        onSelect: avatar => void runConversationAction('start-direct-conversation', { characterIndex: String(characters.findIndex(card => card?.avatar === avatar)) }),
     });
 }
 
@@ -656,73 +510,39 @@ export function buildConversationGroupName(memberAvatars) {
     return `Group: ${visibleNames}${hiddenCount ? ` +${hiddenCount}` : ''}`;
 }
 
-export function cloneConversationStoreValue(value) {
-    try {
-        return JSON.parse(JSON.stringify(value));
-    } catch {
-        return null;
-    }
-}
-
-export function copyConversationThreadToGroup(sourceAvatar, targetGroupId, { sourceGroupId = '' } = {}) {
-    if (!sourceAvatar || !targetGroupId) {
-        return false;
-    }
-
-    const sourceStore = getConversationThreadStore(sourceAvatar, { create: false, groupId: sourceGroupId || '' });
-    const targetStore = getConversationThreadStore(sourceAvatar, { create: true, groupId: targetGroupId });
-    if (!sourceStore?.branches || !targetStore) {
-        return false;
-    }
-
-    const clonedBranches = cloneConversationStoreValue(sourceStore.branches);
-    targetStore.activeBranchId = sourceStore.activeBranchId || DEFAULT_BRANCH_ID;
-    targetStore.branches = clonedBranches && typeof clonedBranches === 'object'
-        ? clonedBranches
-        : { [DEFAULT_BRANCH_ID]: createConversationBranch('Main', DEFAULT_BRANCH_ID) };
-
-    const activeBranchId = targetStore.activeBranchId || DEFAULT_BRANCH_ID;
-    targetStore.branches[activeBranchId] = normalizeConversationBranch(targetStore.branches[activeBranchId], activeBranchId);
-    targetStore.branches[activeBranchId].sessionMarkers = {
-        ...(targetStore.branches[activeBranchId].sessionMarkers || {}),
-        copied_to_group_at: Date.now(),
-    };
-    persistConversationStore();
-    return true;
-}
-
-export async function createConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
+export async function createConversationGroup(memberAvatars) {
     const members = getUniqueConversationGroupMembers(memberAvatars);
     if (members.length < 2) {
         toastr.warning('Pick at least two characters for a group Conversation');
         return null;
     }
 
-    const group = createConversationGroupRecord(members, {
-        name: buildConversationGroupName(members),
-        avatarUrl: default_avatar,
-        settings: getDefaultGroupConversationSettings(),
-    });
+    let group = null;
+    try {
+        group = await makeConversationGroup(members, { name: buildConversationGroupName(members) });
+    } catch (error) {
+        console.error('Conversation Mode: the group could not be made', error);
+    }
     if (!group?.id) {
         toastr.error('Could not create group Conversation');
         return null;
     }
 
-    if (sourceAvatar && copySourceGroupId !== null) {
-        copyConversationThreadToGroup(sourceAvatar, group.id, { sourceGroupId: copySourceGroupId || '' });
-    }
-
     return group;
 }
 
-export async function createAndOpenConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
-    const group = await createConversationGroup(memberAvatars, { sourceAvatar, copySourceGroupId });
+/**
+ * Opens a group that was just made. The character that the user started from anchors it when it is a member.
+ * @param {{ id: string, name?: string, members: string[] }} group
+ * @returns {Promise<boolean>}
+ */
+async function openNewConversationGroup(group, preferredAvatar = '') {
     if (!group?.id || !Array.isArray(group.members)) {
         return false;
     }
 
-    const targetAvatar = sourceAvatar && group.members.includes(sourceAvatar)
-        ? sourceAvatar
+    const targetAvatar = preferredAvatar && group.members.includes(preferredAvatar)
+        ? preferredAvatar
         : group.members.find(avatar => getCharacterForAvatar(avatar));
     if (!targetAvatar) {
         toastr.warning('This group does not have any available character cards for Conversation Mode');
@@ -730,51 +550,70 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
     }
 
     hideConversationPickers();
-    closePalsRail();
-    const opened = await selectConversationThread(targetAvatar, {
+    closeConversationList();
+    const opened = await selectConversation(targetAvatar, {
         groupId: String(group.id),
         showToast: false,
     });
     if (opened) {
-        schedulePalsRailRender();
+        scheduleConversationListRender();
         toastr.success(`Opened group Conversation for ${group.name || 'this group'}`);
     }
 
     return opened;
 }
 
-export function getCurrentGroupMemberAvatars(groupId) {
-    const group = getConversationGroupById(groupId);
-    if (!group?.members?.length) {
-        return [];
-    }
-
-    return group.members.filter(avatar => avatar && !group.disabled_members?.includes(avatar) && getCharacterForAvatar(avatar));
+export async function createAndOpenConversationGroup(memberAvatars) {
+    // The open conversation stays on screen while the server makes the group, so its composer is held until the group opens.
+    return withConversationSwitch(async () => openNewConversationGroup(await createConversationGroup(memberAvatars)));
 }
 
-export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId = '', anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
-    const normalizedSourceGroupId = sourceGroupId || '';
-    const sourceMembers = normalizedSourceGroupId ? getCurrentGroupMemberAvatars(normalizedSourceGroupId) : [];
-    const lockedMembers = new Set(sourceAvatar ? (sourceMembers.length ? sourceMembers : [sourceAvatar]) : []);
-    const selectedMembers = new Set(lockedMembers);
-    const avatarOf = index => characters[index]?.avatar;
-    const items = getCharacterPickerItems().map(item => ({ ...item, muted: lockedMembers.has(avatarOf(item.value)) }));
+/**
+ * Add Member. On a group the characters join it in place and read its history. On a direct conversation the server
+ * starts a new group of that character and the chosen ones, which opens; the direct conversation stays as it is.
+ * @param {string[]} avatars The characters to add, without the ones that are in the conversation already.
+ * @returns {Promise<boolean>}
+ */
+export async function addMembersToConversation(avatars, source) {
+    // A group takes the members in place. A direct conversation stays on screen while the server starts the new group that opens, so its composer is held.
+    return source.sourceGroupId ? addMembers(avatars, source) : withConversationSwitch(() => addMembers(avatars, source));
+}
 
-    const title = sourceAvatar
-        ? (normalizedSourceGroupId ? 'Add Members to This Group' : 'Add Members to This DM')
-        : 'Create a Group DM';
+async function addMembers(avatars, { sourceAvatar, sourceGroupId = '' }) {
+    const view = getConversationRecord(sourceAvatar, { groupId: sourceGroupId });
+    if (!view || !avatars.length) {
+        return false;
+    }
 
-    openStartPicker(`group:${sourceAvatar || ''}:${normalizedSourceGroupId}`, anchor, {
-        title,
-        items,
+    let result;
+    try {
+        result = await conversationData.addMembers(view.id, avatars);
+    } catch (error) {
+        console.error('Conversation Mode: the members could not be added', error);
+        toastr.error('Could not add members');
+        return false;
+    }
+
+    if (result.created) {
+        return openNewConversationGroup(getConversationGroupById(result.conversation.id), sourceAvatar);
+    }
+    hideConversationPickers();
+    scheduleInterfaceRefresh();
+    scheduleConversationListRender();
+    toastr.success('Members added');
+    return true;
+}
+
+export function toggleConversationGroupPicker({ anchor = getPickerAnchor(START_PICKER_ANCHOR) } = {}) {
+    const selectedMembers = new Set();
+
+    openStartPicker('group', anchor, {
+        title: 'New Group',
+        ...getCharacterPickerOptions(),
         multiple: true,
-        getItemState: index => (selectedMembers.has(avatarOf(index)) ? 'selected' : null),
+        getItemState: avatar => (selectedMembers.has(avatar) ? 'selected' : null),
         selectionCount: () => `${selectedMembers.size} selected`,
-        onSelect: index => {
-            const avatar = avatarOf(index);
-            if (!avatar || lockedMembers.has(avatar)) {
-                return;
-            }
+        onSelect: avatar => {
             if (selectedMembers.has(avatar)) {
                 selectedMembers.delete(avatar);
             } else {
@@ -784,22 +623,9 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
         footer: [{
             label: 'Create Group',
             icon: 'fa-solid fa-user-group',
+            // A group needs two members.
             disabled: () => selectedMembers.size < 2,
-            onSelect: () => void createAndOpenConversationGroup([...selectedMembers], { sourceAvatar, copySourceGroupId: null }),
+            onSelect: () => void createAndOpenConversationGroup([...selectedMembers]),
         }],
-    });
-}
-
-export function openAddMemberPicker() {
-    const avatar = getCurrentCharAvatar();
-    if (!avatar) {
-        toastr.warning('Open a Conversation before adding members');
-        return;
-    }
-
-    toggleConversationGroupPicker({
-        sourceAvatar: avatar,
-        sourceGroupId: conversationState.conversationSelectedGroupId || '',
-        anchor: getPickerAnchor(`#${CHROME_IDS.header} [data-sb-conversation-action="open-conversation-menu"]`),
     });
 }

@@ -2,22 +2,25 @@ import { characters, default_user_avatar, getThumbnailUrl } from '../../script.j
 import { extension_settings, modules } from '../extensions.js';
 import { DEFAULT_SETTINGS, MAX_STACKED_PARTICIPANT_AVATARS } from './constants.js';
 import {
-    getActiveConversationBranch,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getCurrentCharacter,
+    getConversationRecord,
+    getCharacterForAvatar,
     getCurrentCharAvatar,
     getCurrentCharName,
 } from './context.js';
-import { parseAvatarList } from './partners.js';
+import { resolveConversationName } from './conversation-list-model.js';
+import { parseAvatarList } from './members.js';
 import { getExtensionCapability } from './extension-capabilities.js';
 import { formatPromptText } from './shared-helpers.js';
 import { scheduleTimelineRender } from './render-scheduler.js';
-import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { getCharacterStatus } from './schedule.js';
 import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
-import { getConversationThread } from './thread-store.js';
+import { getConversationMessages } from './conversation-store.js';
+
+export { getCharacterForAvatar };
 
 function isAbortError(error, signal) {
     return signal?.aborted || error?.name === 'AbortError';
@@ -85,14 +88,6 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
     }
 }
 
-export function getCharacterForAvatar(avatar = getCurrentCharAvatar()) {
-    if (!avatar) {
-        return getCurrentCharacter();
-    }
-
-    return (Array.isArray(characters) ? characters : []).find(character => character?.avatar === avatar) || null;
-}
-
 export function getCharacterIndexForAvatar(avatar) {
     return (Array.isArray(characters) ? characters : []).findIndex(character => character?.avatar === avatar);
 }
@@ -105,29 +100,29 @@ export function addUniqueAvatar(avatars, avatar, currentAvatar = '') {
     avatars.push(avatar);
 }
 
-export function getConversationPartnerAvatars(avatar = getCurrentCharAvatar(), settings = null, { branchId = '', includeThreadPartners = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function getConversationMemberAvatars(avatar = getCurrentCharAvatar(), settings = null, { chatId = '', includeConversationMembers = true, groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     const resolvedSettings = settings || getSettings(avatar, { groupId, personaId });
-    const partnerAvatars = [];
-    parseAvatarList(resolvedSettings?.multi_char_names).forEach(partnerAvatar => addUniqueAvatar(partnerAvatars, partnerAvatar, avatar));
+    const memberAvatars = [];
+    parseAvatarList(resolvedSettings?.multi_char_names).forEach(memberAvatar => addUniqueAvatar(memberAvatars, memberAvatar, avatar));
 
     const group = getConversationGroupById(groupId, { personaId });
     if (group?.members?.length) {
         group.members
             .filter(memberAvatar => !group.disabled_members?.includes(memberAvatar))
-            .forEach(memberAvatar => addUniqueAvatar(partnerAvatars, memberAvatar, avatar));
+            .forEach(memberAvatar => addUniqueAvatar(memberAvatars, memberAvatar, avatar));
     }
 
-    if (includeThreadPartners) {
-        getConversationThread(avatar, { branchId, create: false, groupId, personaId }).forEach((message) => {
-            if (message?.role !== 'partner') {
+    if (includeConversationMembers) {
+        getConversationMessages(avatar, { chatId, create: false, groupId, personaId }).forEach((message) => {
+            if (message?.role !== 'member') {
                 return;
             }
 
-            addUniqueAvatar(partnerAvatars, message.extra?.partner_avatar, avatar);
+            addUniqueAvatar(memberAvatars, message.extra?.member_avatar, avatar);
         });
     }
 
-    return partnerAvatars.filter(partnerAvatar => getCharacterForAvatar(partnerAvatar));
+    return memberAvatars.filter(memberAvatar => getCharacterForAvatar(memberAvatar));
 }
 
 export function getConversationParticipants(avatar = getCurrentCharAvatar(), settings = null, options = {}) {
@@ -139,23 +134,18 @@ export function getConversationParticipants(avatar = getCurrentCharAvatar(), set
         participants.push(primary);
     }
 
-    getConversationPartnerAvatars(avatar, resolvedSettings, options).forEach((partnerAvatar) => {
-        const partner = getCharacterForAvatar(partnerAvatar);
-        if (partner?.avatar && !participants.some(participant => participant.avatar === partner.avatar)) {
-            participants.push(partner);
+    getConversationMemberAvatars(avatar, resolvedSettings, options).forEach((memberAvatar) => {
+        const member = getCharacterForAvatar(memberAvatar);
+        if (member?.avatar && !participants.some(participant => participant.avatar === member.avatar)) {
+            participants.push(member);
         }
     });
 
     return participants;
 }
 
-export function getEffectiveConversationStatus(avatar = getCurrentCharAvatar(), settings = getSettings(avatar)) {
-    const schedule = getStoredSchedule(avatar);
-    if (schedule) {
-        return getCurrentActivityFromSchedule(schedule, avatar).status;
-    }
-
-    return settings?.availability || DEFAULT_SETTINGS.availability;
+export function getEffectiveConversationStatus(avatar = getCurrentCharAvatar()) {
+    return getCharacterStatus(avatar).status;
 }
 
 export function getParticipantNamesForDisplay(participants) {
@@ -203,7 +193,7 @@ export function renderConversationParticipantStack(container, participants, {
             avatarItem.classList.add('is-interactive');
             avatarItem.tabIndex = 0;
             avatarItem.role = 'button';
-            avatarItem.setAttribute('aria-label', `Open Solo DM With ${participant.name || 'Character'}`);
+            avatarItem.setAttribute('aria-label', `Open Conversation With ${participant.name || 'Character'}`);
             avatarItem.addEventListener('click', (event) => {
                 event.stopPropagation();
                 onAvatarClick(participant);
@@ -218,7 +208,6 @@ export function renderConversationParticipantStack(container, participants, {
             avatarItem.classList.add('is-interactive');
             avatarItem.dataset.sbConversationAction = 'zoom-avatar';
             avatarItem.dataset.avatarFile = participant.avatar;
-            avatarItem.dataset.avatarType = 'avatar';
             avatarItem.tabIndex = 0;
             avatarItem.role = 'button';
             avatarItem.setAttribute('aria-label', `Show Full Picture for ${participant.name || 'Character'}`);
@@ -233,7 +222,7 @@ export function renderConversationParticipantStack(container, participants, {
         const statusDot = document.createElement('span');
         statusDot.className = 'sb-conversation-status-dot';
         statusDot.dataset.status = participant.avatar
-            ? getEffectiveConversationStatus(participant.avatar, getSettings(participant.avatar, { groupId }))
+            ? getEffectiveConversationStatus(participant.avatar)
             : status;
         statusDot.setAttribute('aria-hidden', 'true');
         avatarItem.appendChild(statusDot);
@@ -269,17 +258,24 @@ export function getCharacterAuthorNote(avatar = getCurrentCharAvatar()) {
     return String(character?.data?.extensions?.depth_prompt?.prompt || '').trim();
 }
 
-export function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), { groupId = getConversationGroupIdForAvatar(avatar) } = {}) {
-    const branch = getActiveConversationBranch(avatar, { create: false, groupId });
-    if (branch?.name && branch.name !== 'Main') {
-        return branch.name;
-    }
-
-    const names = getParticipantNamesForDisplay(getConversationParticipants(avatar, settings, { groupId }));
-    return names.length ? names.join(', ') : 'Conversation';
+/**
+ * The name that the list and the header both show for a conversation. `name` is the one the conversation was given; it is
+ * read from the conversation when the caller does not have it.
+ */
+export function getConversationDisplayName(avatar = getCurrentCharAvatar(), settings = getSettings(avatar), {
+    groupId = getConversationGroupIdForAvatar(avatar),
+    personaId = getConversationPersonaId(),
+    name = getConversationRecord(avatar, { groupId, personaId })?.name ?? '',
+} = {}) {
+    return resolveConversationName({
+        name,
+        isGroup: Boolean(groupId),
+        memberNames: getParticipantNamesForDisplay(getConversationParticipants(avatar, settings, { groupId, personaId })),
+        characterName: getCharacterForAvatar(avatar)?.name || '',
+    });
 }
 
-export function buildCharacterImagePrompt(template, scene = 'the current DM conversation', avatar = getCurrentCharAvatar()) {
+export function buildCharacterImagePrompt(template, scene = 'the current conversation', avatar = getCurrentCharAvatar()) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const details = getCharacterImageDetails(avatar);

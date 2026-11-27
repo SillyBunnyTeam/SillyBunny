@@ -10,17 +10,19 @@ import {
     TRANSCRIPT_MESSAGE_LIMIT,
 } from './constants.js';
 import {
-    getActiveConversationBranch,
+    getActiveConversationChat,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
-    getConversationThreadKey,
+    getConversationRecord,
+    getConversationKey,
     getCurrentCharAvatar,
     getCurrentCharName,
     parsePositiveInt,
 } from './context.js';
 import { generateConversationRaw } from './generation.js';
 import { getConversationMessagesRevision } from './message-identity-utils.js';
+import { isPendingServerReply } from './pending-reply.js';
+import { buildReactionsContext } from './reaction-prompt.js';
 import { getCharacterAuthorNote, getCharacterForAvatar, getConversationParticipants, getParticipantNamesForDisplay } from './media.js';
 import {
     composeConversationPersonaDescription,
@@ -29,7 +31,7 @@ import {
     getUserPersonaStatus,
     getUserStatus,
 } from './personas.js';
-import { getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
+import { getCharacterStatus } from './schedule.js';
 import {
     buildConversationGroupReferenceContext,
     compileGeechanPrompt,
@@ -44,6 +46,7 @@ import {
     saveConversationMemorySummary,
 } from './settings-store.js';
 import { memorySummaryBusyAvatars, memorySummaryTimers } from './state.js';
+import { toSafeAttachmentUrl } from './safe-url.js';
 import {
     getConversationAttachmentSummary,
     getConversationFileAttachments,
@@ -52,7 +55,7 @@ import {
     getConversationMediaIndex,
     getConversationPromptMediaAttachments,
     hasConversationMessageContent,
-} from './thread-store.js';
+} from './conversation-store.js';
 
 export function formatConversationFileSize(size) {
     const bytes = Number(size);
@@ -83,28 +86,32 @@ export function renderConversationAttachments(container, message) {
     wrapper.className = 'sb-conversation-attachments';
 
     media.forEach((attachment) => {
+        const title = String(attachment.title || '').trim();
+        const type = String(attachment.type || 'image');
+        const safeUrl = toSafeAttachmentUrl(attachment.url, { allowDataImage: type !== 'video' && type !== 'audio' });
+        if (!safeUrl) {
+            return;
+        }
         const figure = document.createElement('figure');
         figure.className = 'sb-conversation-media-attachment';
 
-        const title = String(attachment.title || '').trim();
-        const type = String(attachment.type || 'image');
         if (type === 'video') {
             const video = document.createElement('video');
-            video.src = attachment.url;
+            video.src = safeUrl;
             video.controls = true;
             video.preload = 'metadata';
             video.title = title;
             figure.appendChild(video);
         } else if (type === 'audio') {
             const audio = document.createElement('audio');
-            audio.src = attachment.url;
+            audio.src = safeUrl;
             audio.controls = true;
             audio.preload = 'metadata';
             audio.title = title;
             figure.appendChild(audio);
         } else {
             const img = document.createElement('img');
-            img.src = attachment.url;
+            img.src = safeUrl;
             img.alt = title || 'Uploaded image';
             img.loading = 'lazy';
             figure.appendChild(img);
@@ -120,9 +127,13 @@ export function renderConversationAttachments(container, message) {
     });
 
     files.forEach((file) => {
+        const safeUrl = toSafeAttachmentUrl(file.url);
+        if (!safeUrl) {
+            return;
+        }
         const link = document.createElement('a');
         link.className = 'sb-conversation-file-attachment';
-        link.href = file.url;
+        link.href = safeUrl;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.download = file.name || '';
@@ -145,7 +156,9 @@ export function renderConversationAttachments(container, message) {
         wrapper.appendChild(link);
     });
 
-    container.appendChild(wrapper);
+    if (wrapper.childElementCount > 0) {
+        container.appendChild(wrapper);
+    }
 }
 
 function getConversationLocalTimeContext(now = new Date()) {
@@ -247,7 +260,7 @@ export async function buildConversationPromptMessages(messages, directive, speak
         identifier: 'conversation-transcript-header',
     }];
 
-    const sliceMessages = messages.slice(-TRANSCRIPT_MESSAGE_LIMIT);
+    const sliceMessages = messages.filter(message => !isPendingServerReply(message)).slice(-TRANSCRIPT_MESSAGE_LIMIT);
     const convertedMessages = await Promise.all(sliceMessages.map(async (message, index) => {
         const parts = [
             formatPromptText(message.mes, 1800),
@@ -333,6 +346,19 @@ export async function buildConversationPromptMessages(messages, directive, speak
         });
     }
 
+    const reactionsContext = buildReactionsContext(sliceMessages, {
+        speakerName,
+        userName: getConversationPersonaName(personaId, 'User'),
+        getCharacterName: avatar => getCharacterForAvatar(avatar)?.name || '',
+    });
+    if (reactionsContext) {
+        promptMessages.push({
+            role: 'system',
+            content: reactionsContext,
+            identifier: 'conversation-reactions-context',
+        });
+    }
+
     promptMessages.push({
         role: 'user',
         content: [directive, `${speakerName}:`].filter(Boolean).join('\n\n'),
@@ -355,14 +381,14 @@ export function buildConversationMemoryPrompt(avatar, messages, { groupId = getC
     ].filter(Boolean).join('\n');
 }
 
-export async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false, personaId = getConversationPersonaId() } = {}) {
-    const memoryKey = `${getConversationThreadKey(avatar, groupId, { personaId })}:${branchId}`;
+export async function updateConversationMemorySummary(avatar = getCurrentCharAvatar(), { chatId = '', force = false, groupId = getConversationGroupIdForAvatar(avatar), notify = false, personaId = getConversationPersonaId() } = {}) {
+    const memoryKey = `${getConversationKey(avatar, groupId, { personaId })}:${chatId}`;
     if (!avatar || !memoryKey || memorySummaryBusyAvatars.has(memoryKey)) {
         return false;
     }
 
-    const branch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
-    const messages = Array.isArray(branch?.messages) ? branch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system') : [];
+    const chat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
+    const messages = Array.isArray(chat?.messages) ? chat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system' && !isPendingServerReply(message)) : [];
     if (!messages.length || (!force && messages.length < MEMORY_SUMMARY_MIN_MESSAGES)) {
         if (notify) {
             toastr.info(`Memory appears after at least ${MEMORY_SUMMARY_MIN_MESSAGES} messages, or when there is enough chat to summarize`);
@@ -370,8 +396,8 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         return false;
     }
 
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    const lastSummarizedCount = parsePositiveInt(branch?.memoryMessageCount ?? threadStore?.memoryMessageCount, 0, 0);
+    const conversationRecord = getConversationRecord(avatar, { create: false, groupId, personaId });
+    const lastSummarizedCount = parsePositiveInt(chat?.memoryMessageCount ?? conversationRecord?.memoryMessageCount, 0, 0);
     if (!force && messages.length - lastSummarizedCount < MEMORY_SUMMARY_INTERVAL_MESSAGES) {
         return false;
     }
@@ -379,7 +405,7 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
 
     memorySummaryBusyAvatars.add(memoryKey);
     try {
-        const previousSummary = getConversationMemorySummary(avatar, { branchId, groupId, personaId });
+        const previousSummary = getConversationMemorySummary(avatar, { chatId, groupId, personaId });
         const prompt = [
             previousSummary ? `Existing DM memory summary:\n${previousSummary}` : '',
             buildConversationMemoryPrompt(avatar, messages, { groupId, personaId }),
@@ -395,14 +421,14 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
         }, settings);
 
         if (response?.trim()) {
-            const currentBranch = getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId });
-            const currentMessages = Array.isArray(currentBranch?.messages)
-                ? currentBranch.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system')
+            const currentChat = getActiveConversationChat(avatar, { chatId, create: false, groupId, personaId });
+            const currentMessages = Array.isArray(currentChat?.messages)
+                ? currentChat.messages.filter(message => hasConversationMessageContent(message) && message.role !== 'system' && !isPendingServerReply(message))
                 : [];
             if (getConversationMessagesRevision(currentMessages) !== sourceRevision) {
                 return false;
             }
-            saveConversationMemorySummary(avatar, response.trim(), messages.length, { branchId, groupId, personaId });
+            saveConversationMemorySummary(avatar, response.trim(), messages.length, { chatId, groupId, personaId });
             if (notify) {
                 toastr.success('Conversation memory refreshed');
             }
@@ -420,13 +446,13 @@ export async function updateConversationMemorySummary(avatar = getCurrentCharAva
     return false;
 }
 
-export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(), { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
     if (!avatar) {
         return;
     }
 
-    const capturedBranchId = branchId || getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-    const memoryKey = `${getConversationThreadKey(avatar, groupId, { personaId })}:${capturedBranchId}`;
+    const capturedChatId = chatId || getConversationRecord(avatar, { create: false, groupId, personaId })?.activeChatId || '';
+    const memoryKey = `${getConversationKey(avatar, groupId, { personaId })}:${capturedChatId}`;
     const existingTimer = memorySummaryTimers.get(memoryKey);
     if (existingTimer) {
         window.clearTimeout(existingTimer);
@@ -434,24 +460,24 @@ export function scheduleConversationMemorySummary(avatar = getCurrentCharAvatar(
 
     const timer = window.setTimeout(() => {
         memorySummaryTimers.delete(memoryKey);
-        void updateConversationMemorySummary(avatar, { branchId: capturedBranchId, groupId, personaId });
+        void updateConversationMemorySummary(avatar, { chatId: capturedChatId, groupId, personaId });
     }, 2500);
     memorySummaryTimers.set(memoryKey, timer);
 }
 
-export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { threadAvatar = avatar, branchId = '', groupId = getConversationGroupIdForAvatar(threadAvatar), personaId = getConversationPersonaId(), worldInfo = null } = {}) {
+export function buildConversationSystemPrompt(settings, avatar = getCurrentCharAvatar(), { anchorAvatar = avatar, chatId = '', groupId = getConversationGroupIdForAvatar(anchorAvatar), personaId = getConversationPersonaId(), worldInfo = null } = {}) {
     const character = getCharacterForAvatar(avatar);
     const charName = character?.name || getCurrentCharName();
     const userName = getConversationPersonaName(personaId, 'User');
-    const threadSettings = threadAvatar === avatar ? settings : getSettings(threadAvatar, { groupId, personaId });
-    const threadCharacter = threadAvatar !== avatar ? getCharacterForAvatar(threadAvatar) : null;
-    const partners = getConversationParticipants(threadAvatar, threadSettings, { branchId, groupId, personaId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
-    const partnerNames = getParticipantNamesForDisplay(partners);
+    const conversationSettings = anchorAvatar === avatar ? settings : getSettings(anchorAvatar, { groupId, personaId });
+    const conversationCharacter = anchorAvatar !== avatar ? getCharacterForAvatar(anchorAvatar) : null;
+    const members = getConversationParticipants(anchorAvatar, conversationSettings, { chatId, groupId, personaId }).filter(participant => participant?.avatar && participant.avatar !== avatar);
+    const memberNames = getParticipantNamesForDisplay(members);
     let conversationOpening = `You are ${charName} in a private direct-message conversation with ${userName}.`;
     if (groupId) {
-        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${[userName, ...partnerNames].join(', ')}. You are one equal participant in this group DM and should reply only as ${charName}.`;
-    } else if (threadCharacter) {
-        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${userName} and ${threadCharacter.name || 'another character'}.`;
+        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${[userName, ...memberNames].join(', ')}. You are one equal participant in this group DM and should reply only as ${charName}.`;
+    } else if (conversationCharacter) {
+        conversationOpening = `You are ${charName} in a private group direct-message conversation with ${userName} and ${conversationCharacter.name || 'another character'}.`;
     }
     const fields = [
         conversationOpening,
@@ -503,7 +529,7 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         ? `User presence: ${userName} is ${userAvailability.label.toLowerCase()}. Their Conversation status: ${userPersonaStatus}.`
         : `User presence: ${userName} is ${userAvailability.label.toLowerCase()}.`);
     const personaContext = composeConversationPersonaDescription(personaId || user_avatar, {
-        avatar: threadAvatar,
+        avatar: anchorAvatar,
         groupId,
         personaId,
     }).trim() || (personaId === getConversationPersonaId() ? String(power_user?.persona_description ?? '').trim() : '');
@@ -511,11 +537,11 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         fields.push(`User persona and active Scenario Notes:\n${formatPromptText(personaContext, 2600)}`);
     }
 
-    if (partners.length) {
-        fields.push(`${groupId ? 'Other group DM participants' : 'Group DM participants who may chime in'}: ${partnerNames.join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
+    if (members.length) {
+        fields.push(`${groupId ? 'Other group DM participants' : 'Group DM participants who may chime in'}: ${memberNames.join(', ')}. Treat them as independent people in the chat. Do not speak for them unless specifically generating their message.`);
     }
 
-    const memorySummary = getConversationMemorySummary(threadAvatar, { branchId, groupId, personaId });
+    const memorySummary = getConversationMemorySummary(anchorAvatar, { chatId, groupId, personaId });
     if (memorySummary) {
         fields.push(`Long-term DM memory summary:\n${memorySummary}`);
     }
@@ -534,9 +560,8 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
         }
     }
 
-    const schedule = getStoredSchedule(avatar, { personaId });
-    if (schedule) {
-        const current = getCurrentActivityFromSchedule(schedule, avatar, now, { personaId });
+    const current = getCharacterStatus(avatar, now, { personaId });
+    if (current.source !== 'manual') {
         const timeLabel = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         fields.push(`Current life context: It is ${timeLabel} for ${charName}, who is currently ${current.activity} (status: ${current.status}). Let this naturally color your availability, mood, and what you mention. Stay in this moment of your day.`);
     }
@@ -547,6 +572,9 @@ export function buildConversationSystemPrompt(settings, avatar = getCurrentCharA
     }
     if (settings.schedule_command_enabled) {
         commandHints.push('To change what you are doing right now, embed [schedule_update: status="online|idle|dnd|offline", activity="short description", duration="1h30m"]. Use this when your situation shifts (you got off work, went to sleep, etc.).');
+    }
+    if (settings.characters_react) {
+        commandHints.push('To react to the user\'s latest message with an emoji, embed [react: <emoji>] once anywhere in your reply, for example [react: 😂]. It is stripped from the visible message and shown as a reaction on their message. Use one standard emoji, and only when a real person would react that way.');
     }
     commandHints.push('To schedule a reminder for the user at their request, embed [reminder: delay_or_time | memo] anywhere in your reply. delay_or_time can be durations (e.g. "2h", "15m", "30s") or explicit clock times (e.g. "14:30"). memo is what you are reminding them about (e.g. "wash the dishes"). This command is stripped from the visible message.');
     if (commandHints.length) {

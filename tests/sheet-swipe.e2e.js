@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { uniquePersona } from './helpers/conversation-seed.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { restoreAnimationSpeed, slowAnimations } from './helpers/animation-speed.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
@@ -41,6 +42,7 @@ async function bootApp(page) {
 async function bootConversation(page, baseURL) {
     const origin = new URL(baseURL).origin;
     await protectMaintainerServer(page);
+    const persona = uniquePersona();
     const readEndpoints = new Set([
         '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
         '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
@@ -60,17 +62,19 @@ async function bootConversation(page, baseURL) {
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             applyWelcomeSettings(settings);
+            // This page sees only its own conversations, because the server's user is shared with the specs that run beside this one.
+            settings.user_avatar = persona;
             settings.power_user.auto_connect = false;
             settings.power_user.reduced_motion = false;
             // Visual Novel mode moves #sheld below the fold on a phone, which puts the sheet's handle
             // outside the viewport. WebKit does not deliver mouse events there, Chromium does.
             settings.power_user.waifuMode = false;
-            settings.extension_settings.sillybunny_conversation = {};
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
         }
-        if (readEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) return route.continue();
+        // The conversations are on the server of the test; this spec opens the workspace without one.
+        if (readEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/') || url.pathname.startsWith('/api/sillybunny-conversation/')) return route.continue();
         if (url.pathname.startsWith('/api/backends/')) return route.fulfill({ json: { data: [] } });
         if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) return route.fulfill({ json: {} });
         return route.continue();
@@ -401,7 +405,7 @@ test.describe('Conversation pickers at 390×844', () => {
         await swipeClosed(page, picker);
     });
 
-    test('the New DM and New group pickers share one sheet, and switching between them leaves one open', async ({ page, baseURL }) => {
+    test('the New Conversation and New Group pickers share one sheet, and switching between them leaves one open', async ({ page, baseURL }) => {
         await bootConversation(page, baseURL);
         await addTrigger(page);
         const title = page.locator('.sb-picker-sheet .sb-action-sheet-title');
@@ -409,12 +413,12 @@ test.describe('Conversation pickers at 390×844', () => {
             const { toggleConversationGroupPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
             toggleConversationGroupPicker({ anchor: document.getElementById('qa-sheet-trigger') });
         });
-        await expect(title).toHaveText('Create a Group DM');
+        await expect(title).toHaveText('New Group');
         await page.evaluate(async () => {
-            const { toggleAddDmPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
-            toggleAddDmPicker(document.getElementById('qa-sheet-trigger'));
+            const { toggleStartDirectConversationPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
+            toggleStartDirectConversationPicker(document.getElementById('qa-sheet-trigger'));
         });
-        await expect(title).toHaveText('Create a Solo DM');
+        await expect(title).toHaveText('New Conversation');
         await expect(page.locator('.sb-picker-sheet:not([hidden])')).toHaveCount(1);
     });
 

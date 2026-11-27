@@ -8,7 +8,7 @@
 import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, animateIn, animateOut, stopMotion } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from './sillybunny-sheet.js';
-import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
+import { MENU_LAYER_CLOSED_EVENT, hostOverlayLayer, isChildLayerOf } from './sillybunny-editor/overlay-host.js';
 import { MENU_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
 import { bindSheetSwipeClose, createSheetHandle } from './sillybunny-editor/sheet-gestures.js';
 
@@ -19,6 +19,8 @@ const POPOVER_MARGIN = 8;
 const POPOVER_MIN_HEIGHT = 120;
 const SHEET_TITLE_ID = 'sb-action-sheet-title';
 const MENU_ID = 'sb-action-menu';
+const MIN_REACTION_CELL = 40;
+const REACTION_GAP = 4;
 const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
 
 /**
@@ -37,9 +39,10 @@ const ITEM_SELECTOR = '[role^="menuitem"]:not([aria-disabled="true"])';
 
 /**
  * @typedef {object} ActionMenuReaction
- * @property {string} text
- * @property {string} [label]
- * @property {boolean} [pressed]
+ * @property {string} text - The emoji. Empty for a button that draws an icon.
+ * @property {string} [label] - The accessible name; an emoji needs one, because its glyph is read as a name only by some screen readers.
+ * @property {string} [icon] - Font Awesome classes, for a button with no text, such as More Reactions.
+ * @property {boolean} [pressed] - Whether the reaction is chosen. A button without it is a command, not a toggle.
  * @property {(event: MouseEvent) => void} onSelect
  */
 
@@ -130,12 +133,20 @@ function buildMenu(sections, label) {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'sb-action-menu-reaction';
-                button.setAttribute('role', 'menuitemcheckbox');
-                button.setAttribute('aria-checked', String(Boolean(reaction.pressed)));
+                const isToggle = typeof reaction.pressed === 'boolean';
+                button.setAttribute('role', isToggle ? 'menuitemcheckbox' : 'menuitem');
+                if (isToggle) {
+                    button.setAttribute('aria-checked', String(reaction.pressed));
+                }
                 if (reaction.label) {
                     button.setAttribute('aria-label', reaction.label);
+                    button.title = reaction.label;
                 }
-                button.textContent = reaction.text;
+                if (reaction.icon) {
+                    button.append(createIcon(reaction.icon));
+                } else {
+                    button.textContent = reaction.text;
+                }
                 button.addEventListener('click', event => activate(event, reaction.onSelect));
                 group.append(button);
             }
@@ -186,6 +197,26 @@ function buildMenu(sections, label) {
     });
     menu.addEventListener('keydown', handleMenuKeydown);
     return menu;
+}
+
+/**
+ * A reaction row in a grid keeps to one row at any width by shrinking its cells, down to 40px. Below that the emoji that
+ * would not fit leave the row, from the end, and a button that is a command (More Reactions) stays. Called when the menu
+ * is in the document and shown, so that the width is known.
+ */
+function fitReactionRows(menu) {
+    for (const group of menu.querySelectorAll('.sb-action-menu-reactions')) {
+        const style = getComputedStyle(group);
+        if (style.display !== 'grid') {
+            continue;
+        }
+        const width = group.clientWidth - parseFloat(style.paddingInlineStart) - parseFloat(style.paddingInlineEnd);
+        const capacity = Math.floor((width + REACTION_GAP) / (MIN_REACTION_CELL + REACTION_GAP));
+        const toggles = [...group.children].filter(button => button.getAttribute('role') === 'menuitemcheckbox');
+        for (let surplus = group.children.length - capacity; surplus > 0 && toggles.length; surplus--) {
+            toggles.pop().remove();
+        }
+    }
 }
 
 function activate(event, onSelect) {
@@ -493,11 +524,13 @@ function finishClose() {
     open = null;
     visualViewportWatch?.stop();
     visualViewportWatch = null;
-    setTriggerExpanded(state.trigger, false);
+    if (state.trackTrigger !== false) {
+        setTriggerExpanded(state.trigger, false);
+    }
     const root = state.kind === 'popover' ? state.popover : state.frame.element;
     if (root.id) {
         // A picker that was opened from inside this surface goes with it.
-        document.dispatchEvent(new CustomEvent('sb-menu-layer-closed', { detail: root.id }));
+        document.dispatchEvent(new CustomEvent(MENU_LAYER_CLOSED_EVENT, { detail: root.id }));
     }
     if (state.frame) {
         releaseSheetIds(state);
@@ -529,8 +562,10 @@ function releaseSheetIds({ frame, menu }) {
  * @param {boolean} [options.forcePopover=false] - Use an anchored popover even on mobile.
  * @param {'auto'|'start'|'end'} [options.alignment='auto'] - Popover inline alignment; see `positionPopover`.
  * @param {() => void} [options.onClose]
+ * @param {boolean} [options.trackTrigger=true] - False leaves `aria-expanded` and `aria-controls` of the trigger alone, for a trigger
+ * whose own `aria-expanded` says something else, such as the heading of a section that opens and closes.
  */
-export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, alignment = 'auto', onClose = null }) {
+export function openActionMenu({ trigger, sections, title = translate('Message Actions'), subtitle = '', point = null, keyboard = false, bounds = null, forcePopover = false, alignment = 'auto', onClose = null, trackTrigger = true }) {
     initialize();
     if (open?.trigger === trigger && !point) {
         closeActionMenu({ restoreFocus: true });
@@ -550,9 +585,12 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
         frame.subtitle.hidden = !subtitle;
         frame.body.replaceChildren(menu);
         hostOverlayLayer(frame.backdrop, frame.element);
-        open = { kind: 'sheet', frame, trigger, menu, keyboard, onClose };
-        setTriggerExpanded(trigger, true);
+        open = { kind: 'sheet', frame, trigger, menu, keyboard, onClose, trackTrigger };
+        if (trackTrigger) {
+            setTriggerExpanded(trigger, true);
+        }
         frame.controller.open();
+        fitReactionRows(menu);
         return;
     }
 
@@ -564,10 +602,13 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     popover.addEventListener('focusout', handlePopoverFocusOut);
     blockUpstreamDrawerClose(popover);
     hostOverlayLayer(popover);
+    fitReactionRows(menu);
     const origin = positionPopover(popover, trigger, point, bounds, alignment);
-    open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds, alignment };
+    open = { kind: 'popover', trigger, menu, popover, keyboard, onClose, point, bounds, alignment, trackTrigger };
     watchVisualViewport();
-    setTriggerExpanded(trigger, true);
+    if (trackTrigger) {
+        setTriggerExpanded(trigger, true);
+    }
     // Popovers open with a 200ms fade and a scale from 0.96 to 1, so they grow out of the trigger.
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
         duration: MOTION_FAST,
@@ -581,7 +622,7 @@ export function openActionMenu({ trigger, sections, title = translate('Message A
     });
 }
 
-export function openPopover({ trigger, content, title = '', titleLabel = null, titleInput = null, bounds = null, initialFocus = null, onClose = null }) {
+export function openPopover({ trigger, content, title = '', titleLabel = null, titleInput = null, bounds = null, initialFocus = null, onClose = null, trackTrigger = true }) {
     if (!(trigger instanceof HTMLElement) || !(content instanceof HTMLElement)) {
         throw new TypeError('openPopover requires a trigger and content element');
     }
@@ -602,8 +643,10 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
         frame.subtitle.hidden = true;
         frame.body.replaceChildren(content);
         hostOverlayLayer(frame.backdrop, frame.element);
-        open = { kind: 'sheet', frame, trigger, keyboard: false, initialFocus, onClose };
-        setTriggerExpanded(trigger, true);
+        open = { kind: 'sheet', frame, trigger, keyboard: false, initialFocus, onClose, trackTrigger };
+        if (trackTrigger) {
+            setTriggerExpanded(trigger, true);
+        }
         frame.controller.open();
         return { close: () => closeActionMenu({ restoreFocus: true }), get isOpen() { return open?.trigger === trigger; } };
     }
@@ -624,9 +667,11 @@ export function openPopover({ trigger, content, title = '', titleLabel = null, t
     blockUpstreamDrawerClose(popover);
     hostOverlayLayer(popover);
     const origin = positionPopover(popover, trigger, null, bounds);
-    open = { kind: 'popover', trigger, popover, keyboard: false, custom: true, initialFocus, onClose, bounds };
+    open = { kind: 'popover', trigger, popover, keyboard: false, custom: true, initialFocus, onClose, bounds, trackTrigger };
     watchVisualViewport();
-    setTriggerExpanded(trigger, true);
+    if (trackTrigger) {
+        setTriggerExpanded(trigger, true);
+    }
     animateIn(popover, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], {
         duration: MOTION_FAST,
         easing: MOTION_EASE_OUT_CUBIC,
@@ -707,12 +752,7 @@ function handlePopoverKeydown(event) {
  * under it, and a press, a scroll or the focus in the layer is not one outside the surface.
  */
 function isChildLayerOfOpen(node) {
-    if (!open || !(node instanceof Element)) {
-        return false;
-    }
-    const root = open.kind === 'popover' ? open.popover : open.frame.element;
-    const layer = node.closest('[data-sb-parent-layer]');
-    return Boolean(root.id) && layer instanceof HTMLElement && layer.dataset.sbParentLayer === root.id;
+    return Boolean(open) && isChildLayerOf(open.kind === 'popover' ? open.popover : open.frame.element, node);
 }
 
 function handlePopoverFocusOut(event) {

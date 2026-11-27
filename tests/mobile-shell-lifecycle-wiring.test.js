@@ -407,7 +407,6 @@ describe('mobile shell lifecycle wiring', () => {
             ['#sheld', '.group_speaker_list'],
             ['#user-settings-block', '.sb-settings-tabs-nav'],
             ['#top-bar', '.sb-topbar-group-left'],
-            ['#sheld', '.sb-conversation-channel-tabs'],
             ['#right-nav-panel', '.sb-character-create-bar'],
             ['#right-nav-panel', '#HotSwapWrapper .hotswap'],
             ['#right-nav-panel', '#right-nav-panel .rm_tag_controls'],

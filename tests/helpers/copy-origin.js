@@ -29,6 +29,7 @@ export const ORIGINS = Object.freeze(['foreign', 'data', 'upstream', 'sillybunny
 export function createOrigin({ tree = treeStrings(), upstream } = {}) {
     const own = stringLookup(tree.strings);
     const foreign = stringLookup(tree.foreign);
+    const foreignText = new Set(tree.foreign.map(norm));
     const content = new Set(tree.content ?? []);
     let upstreamLookup = null;
     let upstreamFailed = null;
@@ -60,6 +61,10 @@ export function createOrigin({ tree = treeStrings(), upstream } = {}) {
             const label = own(text);
             if (!label) {
                 return { origin: foreign(text) ? 'foreign' : 'data', text };
+            }
+            // A template of the project's own files ("${} left") can make a name that only code it does not own holds (an emoji name): the name is that code's wording.
+            if (label.includes('${}') && foreignText.has(norm(text))) {
+                return { origin: 'foreign', text };
             }
             const lookup = upstreamOf();
             if (!lookup) {

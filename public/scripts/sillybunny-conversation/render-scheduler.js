@@ -1,11 +1,10 @@
-const RENDER_ORDER = ['interface', 'timeline', 'palsRail'];
+const RENDER_ORDER = ['interface', 'timeline', 'conversationList'];
 
 const registeredRenderers = new Map();
 const pendingRenderers = new Set();
 const renderObservers = new Set();
 
 let pendingFrameId = null;
-let pendingInterfaceSyncControls = false;
 let flushingRenders = false;
 
 function requestRenderFrame(callback) {
@@ -48,10 +47,9 @@ function scheduleRenderer(name) {
     requestFlush();
 }
 
-export function scheduleInterfaceRefresh({ syncControls = false } = {}) {
-    pendingInterfaceSyncControls = pendingInterfaceSyncControls || Boolean(syncControls);
+export function scheduleInterfaceRefresh() {
     pendingRenderers.delete('timeline');
-    pendingRenderers.delete('palsRail');
+    pendingRenderers.delete('conversationList');
     scheduleRenderer('interface');
 }
 
@@ -59,8 +57,8 @@ export function scheduleTimelineRender() {
     scheduleRenderer('timeline');
 }
 
-export function schedulePalsRailRender() {
-    scheduleRenderer('palsRail');
+export function scheduleConversationListRender() {
+    scheduleRenderer('conversationList');
 }
 
 /**
@@ -97,15 +95,12 @@ export function flushConversationRenders() {
     }
 
     if (!pendingRenderers.size) {
-        pendingInterfaceSyncControls = false;
         runRenderObservers();
         return;
     }
 
     const renderBatch = new Set(pendingRenderers);
-    const interfaceSyncControls = pendingInterfaceSyncControls;
     pendingRenderers.clear();
-    pendingInterfaceSyncControls = false;
 
     flushingRenders = true;
     try {
@@ -119,11 +114,7 @@ export function flushConversationRenders() {
                 continue;
             }
 
-            if (name === 'interface') {
-                renderer({ syncControls: interfaceSyncControls });
-            } else {
-                renderer();
-            }
+            renderer();
         }
     } finally {
         flushingRenders = false;

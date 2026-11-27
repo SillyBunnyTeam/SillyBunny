@@ -112,9 +112,10 @@
     pointer-events: none;
 }
 .sb-color-picker-bar { display: flex; align-items: center; gap: 8px; }
+/* These labels are the only text that says which field or slider is which, so they take the body colour; --sb-muted-fg is too faint on this layer in most bundled themes (tests/sillybunny-color-picker-theme-contrast.test.js). */
 .sb-color-picker-bar > span,
 .sb-color-picker-field > span {
-    color: var(--sb-muted-fg);
+    color: var(--SmartThemeBodyColor);
     font-size: var(--sb-type-meta);
     font-weight: 700;
     overflow-wrap: anywhere;

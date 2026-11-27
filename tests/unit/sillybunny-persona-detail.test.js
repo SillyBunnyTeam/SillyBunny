@@ -10,6 +10,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 await jest.unstable_mockModule('../../public/script.js', () => ({
     characters: [{ name: 'Alice', avatar: 'alice.png' }], default_avatar: '/default.png', default_user_avatar: '/user.png',
     getThumbnailUrl: (type, id) => `/thumbnail/${type}/${id}`,
+    getMobileThumbnailUrl: (type, id) => `/small/${type}/${id}`,
     getThumbnailUrlForViewport: (type, id) => `/thumbnail/${type}/${id}`,
 }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({
@@ -674,6 +675,31 @@ describe('Scenario notes and immediate state', () => {
         await settle();
         expect(openWorldInfoEditor).not.toHaveBeenCalled();
         expect(controller.isDirty()).toBe(true);
+    });
+
+    test('the avatar of a character connection is lazy before it has an address, and is the small thumbnail', () => {
+        state.persona_descriptions['first.png'].connections = [{ type: 'character', id: 'alice.png' }, { type: 'character', id: 'gone.png' }];
+        const order = [];
+        const create = document.createElement.bind(document);
+        const spy = jest.spyOn(document, 'createElement').mockImplementation(tag => {
+            const element = create(tag);
+            if (tag === 'img') {
+                for (const name of ['loading', 'decoding', 'src']) {
+                    let value;
+                    Object.defineProperty(element, name, { configurable: true, get: () => value, set: next => { order.push(name); value = next; } });
+                }
+            }
+            return element;
+        });
+        const { host } = mount();
+        spy.mockRestore();
+
+        const [known, gone] = [...host.querySelectorAll('.sb-persona-connection-avatar')];
+        expect(order.slice(-6)).toEqual(['loading', 'decoding', 'src', 'loading', 'decoding', 'src']);
+        expect(known.loading).toBe('lazy');
+        expect(known.src).toBe('/small/avatar/alice.png');
+        expect(gone.loading).toBe('lazy');
+        expect(gone.src).toBe('/default.png');
     });
 
     test.each(['click', 'Enter', ' '])('character connection %s navigates with a chat-switch notice and stable origin', async activation => {

@@ -17,6 +17,9 @@ function buildContent(title, text) {
     if (text) {
         const body = document.createElement('p');
         body.textContent = text;
+        if (text === 'TODO(copy)') {
+            body.dataset.sbCopyPlaceholder = 'true';
+        }
         wrapper.append(body);
     }
     return wrapper;

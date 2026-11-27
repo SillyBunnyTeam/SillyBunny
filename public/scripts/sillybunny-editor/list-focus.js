@@ -295,6 +295,16 @@ export function bindListFocus(container, { rowSelector, keySourceSelector = '', 
             resizeObserver?.disconnect();
             container.removeEventListener('keydown', onKeydown);
             container.removeEventListener('focusin', onFocusin);
+            // A list can outlive its binding (the message rows while selection mode ends), so the controls get their own tabindex back.
+            for (const row of allRows()) {
+                for (const control of controlsOf(row)) {
+                    if (!originalTabindex.has(control)) continue;
+                    const original = originalTabindex.get(control);
+                    originalTabindex.delete(control);
+                    if (original === null) control.removeAttribute('tabindex');
+                    else control.setAttribute('tabindex', original);
+                }
+            }
             for (const stop of bound) {
                 stop.removeEventListener('keydown', onTrailingKeydown);
                 stop.removeEventListener('click', onTrailingClick);

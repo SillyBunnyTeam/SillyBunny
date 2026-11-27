@@ -743,6 +743,60 @@ describe('companion tracker panel', () => {
         ]));
     });
 
+    test('a burst of deletions renders the open panel once, and a closed panel not at all', async () => {
+        jest.useFakeTimers();
+        try {
+            const panel = await importPanel();
+            const elementStub = () => {
+                const element = {
+                    length: 0,
+                    on: jest.fn(() => element),
+                    append: jest.fn(() => element),
+                    html: jest.fn(() => element),
+                    toggle: jest.fn(() => element),
+                    attr: jest.fn(() => element),
+                    addClass: jest.fn(() => element),
+                    removeClass: jest.fn(() => element),
+                };
+                return element;
+            };
+            const panelElement = elementStub();
+            const menuItem = { on: jest.fn(() => menuItem) };
+            globalThis.$ = jest.fn((arg) => {
+                if (arg === '#ica--tracker-panel') {
+                    return panelElement;
+                }
+                if (typeof arg === 'string' && arg.trim().startsWith('<')) {
+                    return menuItem;
+                }
+                return elementStub();
+            });
+            panel.initCompanionPanel();
+
+            for (let count = 0; count < 20; count++) {
+                await eventSource.emit('message_deleted', 3);
+            }
+            await jest.advanceTimersByTimeAsync(1000);
+            expect(panelElement.html).not.toHaveBeenCalled();
+
+            panel.openCompanionPanel();
+            panelElement.html.mockClear();
+            await eventSource.emit('message_deleted', 3);
+            await jest.advanceTimersByTimeAsync(1000);
+            const rendersForOneEvent = panelElement.html.mock.calls.length;
+            expect(rendersForOneEvent).toBeGreaterThan(0);
+
+            panelElement.html.mockClear();
+            for (let count = 0; count < 20; count++) {
+                await eventSource.emit('message_deleted', 3);
+            }
+            await jest.advanceTimersByTimeAsync(1000);
+            expect(panelElement.html.mock.calls).toHaveLength(rendersForOneEvent);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     test('keeps the panel open on outside clicks while locked', async () => {
         const panel = await importPanel();
         const elementStub = () => {

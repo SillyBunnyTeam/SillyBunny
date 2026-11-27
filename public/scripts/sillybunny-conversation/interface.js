@@ -1,87 +1,103 @@
 import { online_status } from '../../script.js';
 import { isConversationStylesheetLoading, setConversationInterfaceActive } from './chrome.js';
-import { CHROME_IDS, DEFAULT_BRANCH_ID, DEFAULT_SETTINGS, SETTINGS_FIELDS } from './constants.js';
+import { swapComposerDraft } from './composer-draft.js';
+import { CHROME_IDS } from './constants.js';
 import {
-    getConversationBranches,
+    getActiveConversationChat,
     getConversationGroupById,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadStore,
+    getConversationRecord,
     getCurrentCharacter,
     getCurrentCharAvatar,
     getCurrentCharName,
-    getIdleActionFromSettings,
-    parsePositiveInt,
-    saveGroupConversationSettings,
 } from './context.js';
 import { generateConversationRaw, normalizeConversationOutputText } from './generation.js';
 import { getConversationMessageRevision } from './message-identity-utils.js';
 import { getConversationDisplayName, getConversationParticipants, getEffectiveConversationStatus, renderConversationParticipantStack } from './media.js';
+import { describeHeaderSubtitle } from './conversation-list-model.js';
 import {
     clearUnreadCount,
     getBadgeLabel,
     getUnreadCount,
-    isConversationActiveThread,
+    isConversationActive,
     updateConversationNotificationIndicators,
 } from './notifications.js';
-import { getConversationRailItems } from './pals-rail.js';
+import { conversationData } from './conversation-data-browser.js';
+import { getConversationRailItems } from './conversation-list.js';
 import { getAvailabilityCopy } from './personas.js';
-import { readChimingPartnersFromList, readWeeklyScheduleFromEditor, updateUserFooter } from './pickers.js';
-import { clamp, getConversationReplyMaxTokens, getCurrentActivityFromSchedule, getStoredSchedule } from './schedule.js';
-import { getSettings, saveSettings } from './settings-store.js';
+import { updateUserFooter } from './pickers.js';
+import { getCharacterStatus } from './schedule.js';
+import { getSettings } from './settings-store.js';
+import { isConversationSwitching } from './screen-target.js';
 import { conversationState } from './state.js';
-import { getConversationThread, saveConversationThread } from './thread-store.js';
-import { renderConversationTimeline, updateConversationNotificationSettingsVisibility } from './timeline-render.js';
-import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
+import { getConversationMessages, saveConversationMessages } from './conversation-store.js';
+import { renderConversationTimeline } from './timeline-render.js';
+import { getActiveTypingParticipants, getLastConversationPreview } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
-import { createSpinner, createStatusPage } from '../sillybunny-editor/status-page.js';
+import { createSpinner } from '../sillybunny-editor/status-page.js';
+import { getConversationListViewKey, renderConversationListView } from './conversation-list-view.js';
+import { conversationFolders } from './conversation-folders-browser.js';
 
-function buildBranchListFingerprint(characterStore, activeBranchId) {
-    return Object.entries(characterStore?.branches || {})
-        .map(([id, branch]) => [
-            branch?.id || id,
-            branch?.name || '',
-            branch?.preview || '',
-            branch?.updatedAt || '',
-            branch?.unread || 0,
-            (branch?.id || id) === activeBranchId ? '1' : '0',
-        ].join('\u001f'))
-        .join('\u001e');
+/** The name of a row is the name that the header shows. */
+function getListRowName({ name, character, settings, groupId }) {
+    return getConversationDisplayName(character.avatar, settings, { groupId, name });
 }
 
-function buildPalsRailFingerprint(pals) {
-    const personaId = getConversationPersonaId();
-    const parts = [String(pals.length), personaId, conversationState.conversationSelectedAvatar || '', conversationState.conversationSelectedGroupId || ''];
-    for (const { character, index, settings, groupId, group } of pals) {
-        const avatar = character?.avatar || '';
-        const unreadCount = getUnreadCount(avatar, { groupId, personaId });
-        const characterStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-        const activeBranchId = characterStore?.activeBranchId || DEFAULT_BRANCH_ID;
-        const participants = getConversationParticipants(avatar, settings, { groupId })
-            .map((participant) => {
-                const participantSettings = participant?.avatar === avatar ? settings : getSettings(participant?.avatar, { groupId });
-                return `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar, participantSettings)}`;
-            })
-            .join(',');
-        const branches = buildBranchListFingerprint(characterStore, activeBranchId);
+function buildListEntry(item, personaId) {
+    const { character, index, settings, groupId, key, favorite, lastMessageRole } = item;
+    const avatar = character.avatar;
+    const unread = getUnreadCount(avatar, { groupId, personaId });
+    return {
+        id: key,
+        name: getListRowName(item),
+        favorite,
+        folderId: conversationFolders.folderOf(personaId, key),
+        muted: Boolean(settings?.notifications_muted),
+        unread,
+        badge: getBadgeLabel(unread),
+        preview: getLastConversationPreview(avatar, { groupId, personaId }),
+        lastMessageRole,
+        active: isConversationActive(avatar, groupId, { personaId }),
+        avatar,
+        characterIndex: String(index),
+        groupId: groupId || '',
+        participants: getConversationParticipants(avatar, settings, { groupId }),
+        status: getEffectiveConversationStatus(avatar),
+    };
+}
 
+/** The rows of the conversation list as it shows them now, in the order of the data module. */
+export function getConversationListEntries() {
+    const personaId = getConversationPersonaId();
+    return getConversationRailItems({ personaId }).map(item => buildListEntry(item, personaId));
+}
+
+/**
+ * The folders of the persona and whether Favorites is open, as the list draws them. The same object comes back until the
+ * persona's folders change.
+ */
+export function getConversationListLayout() {
+    return conversationFolders.layout(getConversationPersonaId());
+}
+
+function buildConversationListFingerprint(entries, layout) {
+    const parts = [String(entries.length), getConversationPersonaId(), getConversationListViewKey(), layout.signature];
+    for (const entry of entries) {
         parts.push([
-            avatar,
-            index,
-            character?.name || '',
-            groupId || '',
-            group?.name || '',
-            settings?.enabled ? '1' : '0',
-            settings?.availability || '',
-            settings?.multi_char_names || '',
-            getConversationDisplayName(avatar, settings, { groupId }),
-            getLastConversationPreview(avatar, { groupId, personaId }),
-            unreadCount,
-            isConversationActiveThread(avatar, groupId, { personaId }) ? '1' : '0',
-            activeBranchId,
-            participants,
-            branches,
+            entry.id,
+            entry.name,
+            entry.favorite ? '1' : '0',
+            entry.folderId,
+            entry.muted ? '1' : '0',
+            entry.unread,
+            entry.preview,
+            entry.lastMessageRole,
+            entry.active ? '1' : '0',
+            entry.avatar,
+            entry.groupId,
+            entry.participants.map(participant => `${participant?.avatar || ''}:${participant?.name || ''}:${getEffectiveConversationStatus(participant?.avatar)}`).join(','),
         ].join('\u001f'));
     }
 
@@ -92,7 +108,7 @@ function buildHeaderParticipantsFingerprint(participants, { groupId = '', status
     const participantParts = (Array.isArray(participants) ? participants : []).map(participant => [
         participant?.avatar || '',
         participant?.name || '',
-        participant?.avatar ? getEffectiveConversationStatus(participant.avatar, getSettings(participant.avatar, { groupId })) : status,
+        participant?.avatar ? getEffectiveConversationStatus(participant.avatar) : status,
     ].join('\u001f'));
 
     return hashConversationRenderFingerprint([
@@ -121,86 +137,30 @@ function renderHeaderParticipantStack(container, participants, options = {}) {
     renderConversationParticipantStack(container, participants, options);
 }
 
-export function renderPalsRail() {
-    const list = document.getElementById(CHROME_IDS.palsList);
+export function renderConversationList() {
+    const list = document.getElementById(CHROME_IDS.listItems);
     if (!(list instanceof HTMLElement)) {
         return;
     }
 
-    const pals = getConversationRailItems();
-    const personaId = getConversationPersonaId();
-    const fingerprint = buildPalsRailFingerprint(pals);
-    if (fingerprint === conversationState.lastPalsRailFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
+    // The rows wait for the folders, so that no frame shows a conversation outside the folder that holds it. A folders
+    // read that failed draws the list with no folders, and the module reads again by itself.
+    const foldersStatus = conversationFolders.status();
+    if (foldersStatus === 'idle' || foldersStatus === 'loading') {
+        void conversationFolders.load();
         return;
     }
 
-    conversationState.lastPalsRailFingerprint = fingerprint;
+    const entries = getConversationListEntries();
+    const layout = getConversationListLayout();
+    const fingerprint = buildConversationListFingerprint(entries, layout);
+    if (fingerprint === conversationState.lastConversationListFingerprint && list.dataset.sbConversationFingerprint === fingerprint) {
+        return;
+    }
+
+    conversationState.lastConversationListFingerprint = fingerprint;
     list.dataset.sbConversationFingerprint = fingerprint;
-    list.textContent = '';
-
-    if (!pals.length) {
-        list.appendChild(createStatusPage({ state: 'empty', icon: 'comments', title: 'Use + to start a DM with a character.', compact: true }).element);
-        updateConversationNotificationIndicators();
-        return;
-    }
-
-    for (const { character, index, settings, groupId, group } of pals) {
-        const unreadCount = getUnreadCount(character.avatar, { groupId, personaId });
-        const row = document.createElement('div');
-        row.className = 'sb-conversation-pal-row';
-        row.dataset.groupId = groupId || '';
-
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'sb-conversation-pal';
-        button.dataset.characterIndex = String(index);
-        button.dataset.avatar = character.avatar;
-        button.dataset.groupId = groupId || '';
-        button.dataset.unread = String(unreadCount > 0);
-        button.setAttribute('aria-current', String(isConversationActiveThread(character.avatar, groupId, { personaId })));
-        button.innerHTML = `
-            <span class="sb-conversation-pal-avatar"></span>
-            <span class="sb-conversation-pal-copy">
-                <span class="sb-conversation-pal-name-row"><span class="sb-conversation-pal-name"></span><span class="sb-conversation-pal-kind"></span></span>
-                <span class="sb-conversation-pal-preview"></span>
-            </span>
-            <span class="sb-conversation-pal-unread" aria-hidden="true"></span>
-        `;
-
-        const avatarStack = button.querySelector('.sb-conversation-pal-avatar');
-        const name = button.querySelector('.sb-conversation-pal-name');
-        const kind = button.querySelector('.sb-conversation-pal-kind');
-        const preview = button.querySelector('.sb-conversation-pal-preview');
-        const unreadBadge = button.querySelector('.sb-conversation-pal-unread');
-
-        renderConversationParticipantStack(avatarStack, getConversationParticipants(character.avatar, settings, { groupId }), {
-            status: getEffectiveConversationStatus(character.avatar, settings),
-            max: 3,
-        });
-        if (name instanceof HTMLElement) {
-            name.textContent = groupId
-                ? getConversationDisplayName(character.avatar, settings, { groupId })
-                : character.name || 'Character';
-        }
-        if (kind instanceof HTMLElement) {
-            kind.textContent = groupId ? 'Group' : '';
-            kind.hidden = !groupId;
-            kind.title = groupId ? (group?.name || 'Group DM') : '';
-        }
-        if (preview instanceof HTMLElement) {
-            preview.textContent = getLastConversationPreview(character.avatar, { groupId, personaId });
-        }
-        if (unreadBadge instanceof HTMLElement) {
-            unreadBadge.textContent = getBadgeLabel(unreadCount);
-            unreadBadge.hidden = unreadCount <= 0;
-        }
-        if (unreadCount > 0) {
-            button.setAttribute('aria-label', `${name?.textContent || 'Conversation'}, ${unreadCount} Unread`);
-        }
-
-        row.append(button);
-        list.appendChild(row);
-    }
+    renderConversationListView(list, entries, layout);
     updateConversationNotificationIndicators();
 }
 
@@ -213,9 +173,7 @@ export function updateConversationHeader(settings = getSettings()) {
     const name = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-name]`);
     const status = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-status]`);
     const participantsContainer = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-participants]`);
-    const statusCopy = getAvailabilityCopy(settings.availability);
-    const schedule = avatar ? getStoredSchedule(avatar, { personaId }) : null;
-    const current = schedule ? getCurrentActivityFromSchedule(schedule, avatar, new Date(), { personaId }) : null;
+    const current = avatar ? getCharacterStatus(avatar, new Date(), { personaId }) : null;
     const effectiveStatus = current ? current.status : settings.availability;
 
     if (!avatar || !character) {
@@ -232,7 +190,8 @@ export function updateConversationHeader(settings = getSettings()) {
         if (status instanceof HTMLElement) {
             status.textContent = unavailableGroup
                 ? 'No eligible Conversation members are available in this group yet.'
-                : 'Pick or start a DM from the Pals rail.';
+                : 'Pick or start a conversation from the list.';
+            status.title = status.textContent;
         }
         return;
     }
@@ -242,52 +201,37 @@ export function updateConversationHeader(settings = getSettings()) {
     }
 
     const participants = getConversationParticipants(avatar, settings, { groupId });
-    const partnerCount = Math.max(0, participants.length - 1);
     renderHeaderParticipantStack(participantsContainer, participants, {
         status: effectiveStatus,
         groupId,
         zoomable: true,
     });
     if (name instanceof HTMLElement) {
-        name.textContent = getConversationDisplayName(avatar, settings);
+        name.textContent = getConversationDisplayName(avatar, settings, { groupId, personaId });
     }
     if (status instanceof HTMLElement) {
-        const activeBranchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || DEFAULT_BRANCH_ID;
-        const branchName = getConversationBranches(avatar, { groupId }).find(branch => branch.id === activeBranchId)?.name || 'Main';
-        const typingParticipants = getActiveTypingParticipants(avatar, { groupId, personaId });
-        let statusText;
-        if (typingParticipants.length) {
-            const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
-            if (typingNames.length > 2) {
-                statusText = 'Several People Are Typing…';
-            } else if (typingNames.length > 1) {
-                statusText = `${typingNames.join(', ')} Are Writing…`;
-            } else {
-                statusText = `${typingNames[0] || 'Character'} Is Writing…`;
-            }
-        } else if (current) {
-            const currentCopy = getAvailabilityCopy(current.status);
-            const delayedNotice = ['dnd', 'offline'].includes(current.status) ? ' · replies may be delayed' : '';
-            const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
-            statusText = `${currentCopy.label} · ${current.activity}${delayedNotice}${partnerNotice}`;
-        } else {
-            const partnerNotice = partnerCount ? ` · ${partnerCount} pal${partnerCount === 1 ? '' : 's'} can chime in` : '';
-            statusText = `${statusCopy.label}${partnerNotice}`;
-            status.title = statusCopy.detail;
-        }
-        status.textContent = `${branchName} · ${statusText}`;
-        if (current || typingParticipants.length) {
-            status.title = statusText;
-        }
+        const typingNames = getActiveTypingParticipants(avatar, { groupId, personaId }).map(participant => participant?.name || 'Character');
+        const hasRoutineActivity = current.source !== 'manual';
+        status.textContent = describeHeaderSubtitle({
+            typingNames,
+            isGroup: Boolean(groupId),
+            description: getConversationGroupById(groupId)?.description ?? '',
+            status: {
+                label: getAvailabilityCopy(current.status).label,
+                activity: hasRoutineActivity ? current.activity : '',
+                delayed: ['dnd', 'offline'].includes(current.status),
+            },
+        });
+        status.title = status.textContent;
     }
 }
 
 export function updateConversationChrome(settings = getSettings()) {
     updateConversationHeader(settings);
-    renderPalsRail();
+    renderConversationList();
 }
 
-export function refreshConversationInterface({ syncControls = false } = {}) {
+export function refreshConversationInterface() {
     const avatar = getCurrentCharAvatar();
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
@@ -297,17 +241,21 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
 
     setConversationInterfaceActive(active);
 
-    if (syncControls && avatar) {
-        applySettingsToPanel(settings);
-    }
-
     if (active) {
+        const record = avatar ? getConversationRecord(avatar, { groupId, personaId }) : null;
         if (avatar) {
-            const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-            clearUnreadCount(avatar, { branchId, groupId, personaId });
-            updateLastPreviewFromConversation(avatar, { groupId, personaId });
+            const chatId = record?.activeChatId || '';
+            const address = record && chatId ? { conversationId: record.id, chatId } : null;
+            conversationData.setOpen(address);
+            if (address && !conversationData.chat(address)) {
+                void conversationData.loadChat(address).then(() => scheduleInterfaceRefresh(), () => {});
+            } else {
+                void clearUnreadCount(avatar, { chatId, groupId, personaId });
+            }
         }
+        const drawnBefore = conversationState.lastRenderedConversationKey;
         renderConversationTimeline();
+        swapComposerDraft(drawnBefore, conversationState.lastRenderedConversationKey, record?.id ?? '');
         updateConversationChrome(settings);
         updateUserFooter();
 
@@ -317,123 +265,31 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
             ? getConversationGroupById(conversationState.conversationUnavailableGroupId)
             : null;
         const isConnected = online_status !== 'no_connection';
+        const openChat = avatar ? getActiveConversationChat(avatar, { groupId, personaId }) : null;
+        const chatLoading = Boolean(openChat) && !openChat.loaded;
+        // From the start of a switch until the new conversation is drawn, the composer on screen belongs to the old one.
+        const held = !avatar || chatLoading || isConversationSwitching();
         if (input instanceof HTMLTextAreaElement) {
-            input.disabled = !avatar;
+            input.disabled = held;
             input.placeholder = !isConnected
                 ? 'Not connected to API!'
                 : avatar
                     ? 'Type your message…'
                     : unavailableGroup
                         ? 'This group has no eligible Conversation members yet…'
-                        : 'Pick or start a DM from the Pals rail…';
+                        : 'Pick or start a conversation from the list…';
         }
         if (send instanceof HTMLButtonElement) {
-            send.disabled = !avatar || !isConnected || conversationState.conversationUploadActive;
+            send.disabled = held || !isConnected || conversationState.conversationUploadActive;
         }
-        document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-quick`).forEach((button) => {
+        document.querySelectorAll(`#${CHROME_IDS.form} .sb-conversation-composer-tool`).forEach((button) => {
             if (button instanceof HTMLButtonElement) {
-                button.disabled = !avatar;
+                button.disabled = !avatar || isConversationSwitching();
             }
         });
     }
 
     updateProsePolisherButtonVisibility();
-}
-
-export function readSettingsFromPanel(avatar, { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const settings = getSettings(avatar, { groupId, personaId });
-
-    for (const field of SETTINGS_FIELDS) {
-        const element = document.getElementById(field.id);
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        if (field.prop === 'checked') {
-            settings[field.key] = Boolean(element.checked);
-        } else if (field.type === 'number') {
-            const parsed = parsePositiveInt(element.value, field.fallback, field.min);
-            settings[field.key] = typeof field.max === 'number' ? clamp(parsed, field.min, field.max) : parsed;
-        } else {
-            settings[field.key] = element.value ?? '';
-        }
-    }
-
-    return settings;
-}
-
-export function saveCurrentPanelSettings(options = {}) {
-    const avatar = options?.avatar || getCurrentCharAvatar();
-    if (!avatar) {
-        return;
-    }
-
-    const groupId = Object.prototype.hasOwnProperty.call(options, 'groupId') ? options.groupId || '' : getConversationGroupIdForAvatar(avatar);
-    const personaId = options?.personaId || getConversationPersonaId();
-
-    // Sync dynamic editor state into hidden backing inputs before reading
-    const weeklyInput = document.getElementById('sb_conv_weekly_schedule');
-    if (weeklyInput instanceof HTMLInputElement) {
-        weeklyInput.value = readWeeklyScheduleFromEditor();
-    }
-    const chimingInput = document.getElementById('sb_conv_multi_char_names');
-    if (chimingInput instanceof HTMLInputElement) {
-        chimingInput.value = readChimingPartnersFromList();
-    }
-
-    const settings = readSettingsFromPanel(avatar, { groupId, personaId });
-    settings.idle_action = getIdleActionFromSettings(settings);
-    settings.reply_max_tokens = getConversationReplyMaxTokens(settings);
-    settings.auto_chat_names = settings.multi_char_names;
-    if (groupId) {
-        saveGroupConversationSettings(groupId, settings, { personaId });
-    }
-    saveSettings(avatar, settings, { groupId, personaId });
-    if (personaId === getConversationPersonaId()) {
-        scheduleInterfaceRefresh({ syncControls: false });
-    }
-    updateGroupMembersVisibility();
-}
-
-export function applySettingsToPanel(settings) {
-    for (const field of SETTINGS_FIELDS) {
-        const element = document.getElementById(field.id);
-        if (!(element instanceof HTMLElement)) {
-            continue;
-        }
-
-        if (field.prop === 'checked') {
-            element.checked = Boolean(settings[field.key]);
-        } else {
-            element.value = settings[field.key] ?? '';
-        }
-    }
-    updateGroupMembersVisibility();
-    updateConversationNotificationSettingsVisibility();
-}
-
-export function updateGroupMembersVisibility() {
-    const checkbox = document.getElementById('sb_conv_multi_char');
-    const wrapper = document.getElementById('sb_conv_group_members_wrapper');
-    if (checkbox instanceof HTMLInputElement && wrapper instanceof HTMLElement) {
-        wrapper.hidden = !checkbox.checked;
-    }
-}
-
-export function loadCurrentPanelSettings() {
-    const avatar = getCurrentCharAvatar();
-    const personaId = getConversationPersonaId();
-
-    if (!avatar) {
-        applySettingsToPanel(DEFAULT_SETTINGS);
-        scheduleInterfaceRefresh({ syncControls: false });
-        return;
-    }
-
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    const settings = getSettings(avatar, { groupId, personaId });
-    applySettingsToPanel(settings);
-    scheduleInterfaceRefresh({ syncControls: false });
 }
 
 export function updateProsePolisherButtonVisibility() {
@@ -450,12 +306,12 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
 
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
-    const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
-    if (!branchId) {
+    const chatId = getConversationRecord(avatar, { groupId, personaId })?.activeChatId || '';
+    if (!chatId) {
         return;
     }
-    const thread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-    const msg = thread.find(m => String(m.id) === String(messageId));
+    const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+    const msg = messages.find(m => String(m.id) === String(messageId));
     if (!msg || !msg.mes) {
         return;
     }
@@ -480,15 +336,14 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         }, settings);
 
         if (response?.trim()) {
-            const targetThread = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
-            const targetMessage = targetThread.find(message => String(message.id) === String(messageId));
+            const targetMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
+            const targetMessage = targetMessages.find(message => String(message.id) === String(messageId));
             if (!targetMessage || getConversationMessageRevision(targetMessage) !== sourceRevision) {
                 return;
             }
             targetMessage.mes = normalizeConversationOutputText(response.trim());
-            saveConversationThread(avatar, targetThread, { branchId, create: false, groupId, personaId });
-            updateLastPreviewFromConversation(avatar, { branchId, groupId, personaId });
-            if (isConversationActiveThread(avatar, groupId, { branchId, personaId })) {
+            saveConversationMessages(avatar, targetMessages, { chatId, create: false, groupId, personaId });
+            if (isConversationActive(avatar, groupId, { chatId, personaId })) {
                 scheduleTimelineRender();
             }
             globalThis.toastr?.success?.('Character reply polished successfully!');
@@ -506,5 +361,5 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
     }
 }
 
-registerConversationRenderer('palsRail', renderPalsRail);
+registerConversationRenderer('conversationList', renderConversationList);
 registerConversationRenderer('interface', refreshConversationInterface);

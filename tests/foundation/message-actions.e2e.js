@@ -476,18 +476,24 @@ test('Document: a fine pointer gets an overlaid toolbar on hover or focus', asyn
     await expect(buttons).toHaveCSS('opacity', '1');
 });
 
-test('delete mode puts Cancel first, a live count in the middle and Delete last, with round checks', async ({ page }) => {
+test('delete mode is the selection mode: Cancel, a live count and Select All in the header, round checks, Delete in the bar', async ({ page }) => {
     await seedChat(page);
+    // A toast of the page would cover the header's buttons on a phone.
+    await page.evaluate(() => window.toastr?.clear?.());
     await page.evaluate(() => window.$('#option_delete_mes').trigger('click'));
+    const header = page.locator('#sb_message_selection_header');
     const bar = page.locator('#dialogue_del_mes');
+    await expect(header).toBeVisible();
     await expect(bar).toBeVisible();
 
-    const order = await bar.locator('> *').evaluateAll(items => items.map(item => item.id));
-    expect(order).toEqual(['dialogue_del_mes_cancel', 'dialogue_del_mes_count', 'dialogue_del_mes_ok']);
-    await expect(bar.locator('#dialogue_del_mes_count')).toHaveAttribute('role', 'status');
-    await expect(bar.locator('#dialogue_del_mes_count')).toHaveText('0 selected');
+    // The ids of the bar that this mode replaced stay on its parts.
+    const order = await header.locator('.sb-selection-header > *').evaluateAll(items => items.map(item => item.id || item.className.match(/sb-selection-[a-z-]+/)?.[0]));
+    expect(order).toEqual(['dialogue_del_mes_cancel', 'dialogue_del_mes_count', 'sb-selection-select-all']);
+    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('0 Selected');
+    await expect(bar.locator('#dialogue_del_mes_ok')).toBeVisible();
+    await expect(bar.locator('#dialogue_del_mes_ok')).toBeDisabled();
 
-    const check = await page.locator('#chat .mes[mesid="4"] .del_checkbox').evaluate(element => {
+    const check = await page.locator('#chat .mes[mesid="4"] .sb-selection-check').evaluate(element => {
         const box = element.getBoundingClientRect();
         const style = getComputedStyle(element);
         return { width: Math.round(box.width), height: Math.round(box.height), radius: style.borderRadius, border: style.borderTopWidth };
@@ -495,11 +501,14 @@ test('delete mode puts Cancel first, a live count in the middle and Delete last,
     expect({ width: check.width, height: check.height, border: check.border }).toEqual({ width: 28, height: 28, border: '2px' });
     expect(parseFloat(check.radius)).toBeGreaterThanOrEqual(14);
 
-    // Choosing a message selects it and every message after it.
+    // Choosing a message selects that message only; a Shift-click on another takes the range between them.
     await page.locator('#chat .mes[mesid="3"] .mes_text').click();
-    await expect(bar.locator('#dialogue_del_mes_count')).toHaveText('3 selected');
-    await bar.locator('#dialogue_del_mes_cancel').click();
+    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('1 Selected');
+    await page.locator('#chat .mes[mesid="5"] .mes_text').click({ modifiers: ['Shift'] });
+    await expect(header.locator('#dialogue_del_mes_count')).toHaveText('3 Selected');
+    await header.locator('#dialogue_del_mes_cancel').click();
     await expect(bar).toBeHidden();
+    await expect(header).toBeHidden();
 });
 
 test('the swipe arrows are at the pointer floor, the previous one at the start edge in a Moonlit style', async ({ page, isMobile }) => {

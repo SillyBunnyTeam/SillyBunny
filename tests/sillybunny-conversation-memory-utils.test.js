@@ -5,77 +5,52 @@ import {
     collectSoloConversationMemorySummary,
 } from '../public/scripts/sillybunny-conversation/memory-utils.js';
 
+const source = (overrides = {}) => ({ groupId: '', avatar: 'char_a', members: ['char_a'], summary: '', updatedAt: 0, ...overrides });
+
 describe('sillybunny conversation memory utils', () => {
     test('collects the active solo memory summary for a character', () => {
-        const store = {
-            char_a: {
-                activeBranchId: 'main',
-                branches: {
-                    main: { memorySummary: '  Solo promise and private joke.  ', updatedAt: 100 },
-                },
-            },
-        };
+        const sources = [
+            source({ summary: '  Solo promise and private joke.  ', updatedAt: 100 }),
+            source({ groupId: 'alpha', members: ['char_a', 'char_b'], summary: 'A group memory', updatedAt: 900 }),
+        ];
 
-        expect(collectSoloConversationMemorySummary(store, 'char_a')).toEqual({
+        expect(collectSoloConversationMemorySummary(sources, 'char_a')).toEqual({
             avatar: 'char_a',
             summary: 'Solo promise and private joke.',
             updatedAt: 100,
         });
-        expect(collectSoloConversationMemorySummary(store, 'missing')).toBeNull();
+        expect(collectSoloConversationMemorySummary(sources, 'missing')).toBeNull();
+        expect(collectSoloConversationMemorySummary([source({ summary: '   ' })], 'char_a')).toBeNull();
+        expect(collectSoloConversationMemorySummary(null, 'char_a')).toBeNull();
     });
 
-    test('collects group memories for the same avatar newest first', () => {
-        const store = {
-            char_a: {
-                activeBranchId: 'main',
-                branches: {
-                    main: { memorySummary: 'Solo memory', updatedAt: 400 },
-                },
-            },
-            'group:alpha:char_a': {
-                activeBranchId: 'main',
-                branches: {
-                    main: { memorySummary: '  Alpha group memory.  ', updatedAt: 200 },
-                },
-            },
-            'group:beta:char_a': {
-                activeBranchId: 'branch_2',
-                branches: {
-                    main: { memorySummary: 'Old beta memory.', updatedAt: 100 },
-                    branch_2: { memorySummary: 'Beta branch memory.', updatedAt: 300 },
-                },
-            },
-            'group:gamma:char_b': {
-                activeBranchId: 'main',
-                branches: {
-                    main: { memorySummary: 'Wrong avatar memory.', updatedAt: 500 },
-                },
-            },
-            'group:empty:char_a': {
-                activeBranchId: 'main',
-                branches: {
-                    main: { memorySummary: '   ', updatedAt: 600 },
-                },
-            },
-        };
+    test('collects group memories for a member newest first and skips empty ones', () => {
+        const sources = [
+            source({ summary: 'Solo memory', updatedAt: 400 }),
+            source({ groupId: 'alpha', members: ['char_a', 'char_b'], summary: '  Alpha group memory.  ', updatedAt: 200 }),
+            source({ groupId: 'beta', members: ['char_a', 'char_c'], summary: 'Beta memory.', updatedAt: 300 }),
+            source({ groupId: 'gamma', members: ['char_b', 'char_c'], summary: 'Wrong member memory.', updatedAt: 500 }),
+            source({ groupId: 'empty', members: ['char_a', 'char_b'], summary: '   ', updatedAt: 600 }),
+        ];
 
-        expect(collectGroupConversationMemorySummaries(store, 'char_a', {
+        expect(collectGroupConversationMemorySummaries(sources, 'char_a', {
             getGroupName: groupId => ({ alpha: 'Alpha Squad', beta: 'Beta Crew' }[groupId]),
         })).toEqual([
-            { groupId: 'beta', groupName: 'Beta Crew', summary: 'Beta branch memory.', updatedAt: 300 },
+            { groupId: 'beta', groupName: 'Beta Crew', summary: 'Beta memory.', updatedAt: 300 },
             { groupId: 'alpha', groupName: 'Alpha Squad', summary: 'Alpha group memory.', updatedAt: 200 },
         ]);
     });
 
     test('limits and excludes group memories', () => {
-        const store = {
-            'group:alpha:char_a': { branches: { main: { memorySummary: 'Alpha.', updatedAt: 100 } } },
-            'group:beta:char_a': { branches: { main: { memorySummary: 'Beta.', updatedAt: 200 } } },
-            'group:gamma:char_a': { branches: { main: { memorySummary: 'Gamma.', updatedAt: 300 } } },
-        };
+        const sources = [
+            source({ groupId: 'alpha', members: ['char_a', 'char_b'], summary: 'Alpha.', updatedAt: 100 }),
+            source({ groupId: 'beta', members: ['char_a', 'char_b'], summary: 'Beta.', updatedAt: 200 }),
+            source({ groupId: 'gamma', members: ['char_a', 'char_b'], summary: 'Gamma.', updatedAt: 300 }),
+        ];
 
-        expect(collectGroupConversationMemorySummaries(store, 'char_a', { excludeGroupId: 'gamma', max: 1 })).toEqual([
+        expect(collectGroupConversationMemorySummaries(sources, 'char_a', { excludeGroupId: 'gamma', max: 1 })).toEqual([
             { groupId: 'beta', groupName: '', summary: 'Beta.', updatedAt: 200 },
         ]);
+        expect(collectGroupConversationMemorySummaries(sources, 'char_a', { max: 0 })).toEqual([]);
     });
 });

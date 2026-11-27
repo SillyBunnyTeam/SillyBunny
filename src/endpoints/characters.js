@@ -23,6 +23,8 @@ import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+// SillyBunny: a deleted or renamed card changes the conversations that name it.
+import { deleteConversationsOfCharacter, renameCharacterInConversations } from '../conversation-cleanup.js';
 import { CharacterIndex } from '../character-index.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
@@ -1311,6 +1313,9 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
             console.error('Could not remove stale date-added metadata after character rename.', metadataError);
         }
 
+        // SillyBunny: the card is renamed for good here, and the call answers a count and never throws, so it cannot undo the rename.
+        await renameCharacterInConversations(request.user, oldAvatarName, newAvatarName);
+
         // Return new avatar name to ST
         return response.send({ avatar: newAvatarName });
     } catch (err) {
@@ -1716,6 +1721,10 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         invalidateThumbnail(request.user.directories, 'avatar', avatar);
     } catch (thumbnailError) {
         console.error('Could not remove the thumbnail after character deletion.', thumbnailError);
+    }
+    // SillyBunny: the card is deleted for good, so the call that follows answers a count and never throws, like the thumbnail above.
+    if (request.body.delete_chats == true) {
+        deleteConversationsOfCharacter(request.user, avatar);
     }
 
     return response.sendStatus(200);

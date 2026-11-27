@@ -1,0 +1,435 @@
+/**
+ * The interface of reactions in the workspace: the chips under a message, the list of who reacted, the quick row that
+ * the toolbar and the message menu show, and More Reactions, which opens the emoji chooser. The rules (what a reaction
+ * is, how it is counted) are in `reaction-model.js`; this file only draws them and writes the user's choice.
+ */
+
+import { getThumbnailUrl } from '../../script.js';
+import { openPopover } from '../sillybunny-action-menu.js';
+import { getCurrentCharAvatar } from './context.js';
+import { DEFAULT_REACTION_NAMES } from './emoji/data/default-names.js';
+import { DEFAULT_QUICK_REACTIONS } from './emoji/emoji-defaults.js';
+import { pickEmojiLocale } from './emoji/emoji-locales.js';
+import { pushRecentReaction, readRecentReactions } from './emoji/emoji-store.js';
+import { emojiKey } from './emoji/emoji-validate.js';
+import { getConversationMessages, updateConversationChatMessageReactions } from './conversation-store.js';
+import { getCharacterForAvatar } from './media.js';
+import { registerMessageMenuReactions } from './message-menu.js';
+import { CLICK_SWALLOW_MS, LONG_PRESS_MS, LONG_PRESS_SLOP_PX } from './message-long-press.js';
+import {
+    USER_REACTOR,
+    describeReactionChip,
+    getQuickReactions,
+    groupReactions,
+    readReactions,
+    toLabelCase,
+    toggleUserReaction,
+} from './reaction-model.js';
+
+/** What the toolbar shows of the quick row: it has no room for more, so the menu holds the rest. */
+export const TOOLBAR_QUICK_SLOTS = 2;
+export const MENU_QUICK_SLOTS = 6;
+const MESSAGE_SELECTOR = '.sb-conversation-message';
+const CHIP_SELECTOR = '.sb-conversation-message-reaction-chip';
+const OPEN_CLASS = 'has-open-menu';
+const MORE_REACTIONS_LABEL = 'More Reactions';
+const YOU_LABEL = 'You';
+const FALLBACK_CHARACTER_LABEL = 'Character';
+
+function toast(kind, text) {
+    globalThis.toastr?.[kind]?.(text);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Recents and the quick row
+
+function getInterfaceLocale() {
+    return globalThis.document?.documentElement?.lang || globalThis.navigator?.language || 'en';
+}
+
+/** The name of an emoji for a label: what the recents kept at the pick, or the name of a default emoji in the language of the interface. An empty text for any other, which the emoji itself then labels. */
+export function getReactionName(emoji) {
+    const key = emojiKey(emoji);
+    const recent = readRecentReactions().find(item => emojiKey(item.e) === key);
+    if (recent?.n) {
+        return recent.n;
+    }
+    const preset = DEFAULT_QUICK_REACTIONS.find(item => emojiKey(item) === key);
+    if (!preset) {
+        return '';
+    }
+    return (DEFAULT_REACTION_NAMES[pickEmojiLocale(getInterfaceLocale())] ?? DEFAULT_REACTION_NAMES.en)[preset] ?? DEFAULT_REACTION_NAMES.en[preset] ?? '';
+}
+
+/** The emoji of the quick row, each with its name: the user's recent reactions, topped up from the default six. */
+export function getQuickReactionRow(size) {
+    return getQuickReactions(readRecentReactions(), size).map(item => ({ e: item.e, n: item.n || getReactionName(item.e) }));
+}
+
+function rememberReaction(emoji, name) {
+    if (readRecentReactions()[0]?.e && emojiKey(readRecentReactions()[0].e) === emojiKey(emoji)) {
+        return;
+    }
+    pushRecentReaction({ e: emoji, n: name || getReactionName(emoji) });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Writing the user's reaction
+
+function findMessage(messageId) {
+    const avatar = getCurrentCharAvatar();
+    return avatar && messageId ? getConversationMessages(avatar).find(message => message.id === messageId) ?? null : null;
+}
+
+/** Whether the user has reacted to the message with the emoji. */
+export function hasUserReaction(messageId, emoji) {
+    const key = emojiKey(emoji);
+    return readReactions(findMessage(messageId)).some(entry => entry.by === USER_REACTOR && emojiKey(entry.emoji) === key);
+}
+
+/**
+ * The user pressing an emoji of a message: the reaction is taken back when it is there, and added when it is not.
+ * @returns {'added'|'removed'|'refused'|'invalid'}
+ */
+export function reactConversationMessage(messageId, emoji, { name = '' } = {}) {
+    const avatar = getCurrentCharAvatar();
+    if (!avatar || !messageId) {
+        return 'invalid';
+    }
+
+    let status = 'invalid';
+    updateConversationChatMessageReactions(avatar, messageId, (entries) => {
+        const result = toggleUserReaction(entries, emoji);
+        status = result.status;
+        return result.entries;
+    });
+    if (status === 'added') {
+        rememberReaction(emoji, name);
+    } else if (status === 'refused') {
+        // The maintainer words what a message that holds 20 distinct emoji says.
+        toast('info', 'TODO(copy)');
+    }
+    return status;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The toolbar and the menu
+
+/** The reaction row shows the emoji as text, with the name as the label, and says whether the user has chosen it. */
+function paintQuickButton(button, { e, n }, pressed) {
+    const label = toLabelCase(n) || e;
+    if (button.dataset.reaction !== e) {
+        button.textContent = e;
+        button.dataset.reaction = e;
+        button.title = label;
+        button.setAttribute('aria-label', label);
+    }
+    button.setAttribute('aria-pressed', String(pressed));
+}
+
+export function getUserReactionKeys(message) {
+    return new Set(readReactions(message).filter(entry => entry.by === USER_REACTOR).map(entry => emojiKey(entry.emoji)));
+}
+
+/** The reaction buttons of a message's toolbar: the first emoji of the quick row, and More Reactions. */
+export function createToolbarReactionButtons(message) {
+    const mine = getUserReactionKeys(message);
+    const buttons = getQuickReactionRow(TOOLBAR_QUICK_SLOTS).map((reaction) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sb-conversation-reaction-button';
+        button.dataset.sbConversationAction = 'react-message';
+        button.dataset.messageId = message.id;
+        paintQuickButton(button, reaction, mine.has(emojiKey(reaction.e)));
+        return button;
+    });
+
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'sb-conversation-reaction-button sb-conversation-reaction-more';
+    more.title = MORE_REACTIONS_LABEL;
+    more.setAttribute('aria-label', MORE_REACTIONS_LABEL);
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.dataset.sbConversationAction = 'open-reaction-chooser';
+    more.dataset.messageId = message.id;
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-face-smile';
+    icon.setAttribute('aria-hidden', 'true');
+    more.append(icon);
+    return [...buttons, more];
+}
+
+/**
+ * Brings the toolbar of a message up to date with the recent reactions, which change without a message changing. Called
+ * when the pointer or the focus reaches the message, so that a toolbar nobody looks at costs nothing.
+ */
+export function syncToolbarReactions(item) {
+    const buttons = item.querySelectorAll(':scope .sb-conversation-message-actions > .sb-conversation-reaction-button:not(.sb-conversation-reaction-more)');
+    if (!buttons.length) {
+        return;
+    }
+    const mine = getPressedKeys(item);
+    const row = getQuickReactionRow(TOOLBAR_QUICK_SLOTS);
+    buttons.forEach((button, index) => {
+        if (row[index]) {
+            paintQuickButton(button, row[index], mine.has(emojiKey(row[index].e)));
+        }
+    });
+}
+
+/** The reactions that the user has made to the message of a row, read from its chips. */
+export function getPressedKeys(item) {
+    return new Set([...item.querySelectorAll(`${CHIP_SELECTOR}[aria-pressed="true"]`)].map(chip => emojiKey(chip.dataset.reaction)));
+}
+
+/**
+ * The reaction section of the message menu and its sheet: the whole quick row, and More Reactions.
+ * @param {HTMLElement} item The message row.
+ * @param {HTMLElement} trigger What opened the menu; the chooser opens at it.
+ * @returns {import('../sillybunny-action-menu.js').ActionMenuReaction[]}
+ */
+export function buildMenuReactions(item, trigger) {
+    const messageId = item.dataset.messageId || '';
+    const mine = getPressedKeys(item);
+    const reactions = getQuickReactionRow(MENU_QUICK_SLOTS).map(({ e, n }) => ({
+        text: e,
+        label: toLabelCase(n) || e,
+        pressed: mine.has(emojiKey(e)),
+        onSelect: () => void reactConversationMessage(messageId, e, { name: n }),
+    }));
+    reactions.push({
+        text: '',
+        icon: 'fa-solid fa-face-smile',
+        label: MORE_REACTIONS_LABEL,
+        onSelect: () => void openReactionChooser(messageId, trigger),
+    });
+    return reactions;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// More Reactions
+
+/**
+ * Opens the emoji chooser for a message. The chooser is its own module and loads when it is first needed.
+ * @param {string} messageId
+ * @param {HTMLElement} trigger The control that the chooser opens at, and returns the focus to.
+ */
+export async function openReactionChooser(messageId, trigger) {
+    let chooser;
+    try {
+        chooser = await import('./emoji/emoji-chooser.js');
+    } catch (error) {
+        console.warn('Conversation Mode: the emoji chooser could not be loaded', error);
+        toast('warning', 'TODO(copy)');
+        return;
+    }
+
+    if (!trigger?.isConnected) {
+        return;
+    }
+    const getLiveItem = () => (trigger.isConnected ? trigger.closest(MESSAGE_SELECTOR) : null)
+        ?? document.querySelector(`${MESSAGE_SELECTOR}[data-message-id="${CSS.escape(String(messageId))}"]`);
+    const item = getLiveItem();
+    // The toolbar shows only while the pointer is over the message, and the chooser takes the pointer away.
+    item?.classList.add(OPEN_CLASS);
+    chooser.openEmojiChooser({
+        trigger,
+        kind: 'react',
+        bounds: document.getElementById('sb_conversation_timeline'),
+        isPicked: emoji => hasUserReaction(messageId, emoji),
+        onPick: (emoji, { name = '' } = {}) => void reactConversationMessage(messageId, emoji, { name }),
+        onClose: () => {
+            item?.classList.remove(OPEN_CLASS);
+            getLiveItem()?.classList.remove(OPEN_CLASS);
+        },
+    });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The chips
+
+function getReactorName(by) {
+    return by === USER_REACTOR
+        ? YOU_LABEL
+        : getCharacterForAvatar(by)?.name || String(by).replace(/\.[a-z0-9]+$/i, '') || FALLBACK_CHARACTER_LABEL;
+}
+
+/** The reactors of a chip in the order that the list shows them: the user first, then the others as they came. */
+function sortReactors(reactors) {
+    return [...reactors].sort((left, right) => Number(right.by === USER_REACTOR) - Number(left.by === USER_REACTOR));
+}
+
+function createChip(messageId, chip) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sb-conversation-message-reaction-chip';
+    button.setAttribute('aria-pressed', String(chip.mine));
+    button.setAttribute('aria-label', describeReactionChip(chip, toLabelCase(getReactionName(chip.emoji))));
+    // A hint for the pointer. The list of reactors is also one command away for the keyboard and a finger (see bindReactionChips).
+    button.title = sortReactors(chip.reactors).map(reactor => getReactorName(reactor.by)).join(', ');
+    button.dataset.sbConversationAction = 'react-message';
+    button.dataset.messageId = messageId;
+    button.dataset.reaction = chip.emoji;
+    // The long press of a chip opens the list of who reacted; the selection mode must not take the same press.
+    button.dataset.sbOwnLongPress = '';
+
+    const emoji = document.createElement('span');
+    emoji.className = 'sb-conversation-reaction-emoji';
+    emoji.textContent = chip.emoji;
+    button.append(emoji);
+    if (chip.count > 1) {
+        const count = document.createElement('span');
+        count.className = 'sb-conversation-reaction-count';
+        count.textContent = String(chip.count);
+        button.append(count);
+    }
+    return button;
+}
+
+/** The row of chips under a message, or null when it has no reaction. */
+export function createReactionChips(message) {
+    const chips = groupReactions(readReactions(message));
+    if (!chips.length) {
+        return null;
+    }
+    const row = document.createElement('div');
+    row.className = 'sb-conversation-message-reactions';
+    row.append(...chips.map(chip => createChip(message.id, chip)));
+    return row;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Who reacted
+
+function createReactorList(reactors) {
+    const list = document.createElement('ul');
+    list.className = 'sb-reaction-people';
+    // A list whose bullets are removed loses its role in Safari.
+    list.setAttribute('role', 'list');
+    for (const { by } of sortReactors(reactors)) {
+        const row = document.createElement('li');
+        row.className = 'sb-reaction-person';
+        const picture = document.createElement(by === USER_REACTOR ? 'i' : 'img');
+        picture.className = 'sb-reaction-person-picture';
+        if (by === USER_REACTOR) {
+            picture.classList.add('fa-solid', 'fa-user');
+        } else {
+            picture.alt = '';
+            picture.src = getThumbnailUrl('avatar', by);
+        }
+        picture.setAttribute('aria-hidden', 'true');
+        const name = document.createElement('span');
+        name.className = 'sb-reaction-person-name';
+        name.textContent = getReactorName(by);
+        row.append(picture, name);
+        list.append(row);
+    }
+    return list;
+}
+
+/** Opens the list of who reacted with the emoji of a chip, at the chip. */
+export function openReactionPeople(chipButton) {
+    const message = findMessage(chipButton.dataset.messageId);
+    const key = emojiKey(chipButton.dataset.reaction || '');
+    const chip = groupReactions(readReactions(message)).find(candidate => candidate.key === key);
+    if (!chip) {
+        return;
+    }
+    openPopover({
+        trigger: chipButton,
+        title: toLabelCase(getReactionName(chip.emoji)) || chip.emoji,
+        content: createReactorList(chip.reactors),
+        bounds: document.getElementById('sb_conversation_timeline'),
+    });
+}
+
+const getChip = target => (target instanceof Element ? target.closest(CHIP_SELECTOR) : null);
+
+/**
+ * The commands that open the list of who reacted: the secondary click, the Menu key and Shift+F10, and a long press on a
+ * touch screen, which sends no secondary click on every platform. The same list serves all of them, so a chip never needs
+ * a hover to say who is behind it.
+ */
+export function bindReactionChips() {
+    let press = null;
+    // The list was opened by a press that the finger has not left yet.
+    let longPressActive = false;
+    // The click that ends a long press comes right after the release, and would toggle the reaction that the list is about.
+    let swallowClicksUntil = 0;
+    const isEndOfLongPress = () => longPressActive || Date.now() < swallowClicksUntil;
+
+    const cancelPress = () => {
+        if (press) {
+            clearTimeout(press.timer);
+            press = null;
+        }
+    };
+    const releasePress = () => {
+        if (longPressActive) {
+            longPressActive = false;
+            swallowClicksUntil = Date.now() + CLICK_SWALLOW_MS;
+        }
+        cancelPress();
+    };
+
+    document.addEventListener('contextmenu', (event) => {
+        const chip = getChip(event.target);
+        if (!(chip instanceof HTMLElement) || event.shiftKey) {
+            return;
+        }
+        event.preventDefault();
+        // A long press opens the list by its own timer, and the browser then sends this event too: opening again would close it.
+        if (!isEndOfLongPress()) {
+            openReactionPeople(chip);
+        }
+    });
+
+    window.addEventListener('keydown', (event) => {
+        const isMenuKey = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
+        const chip = isMenuKey ? getChip(document.activeElement) : null;
+        if (!(chip instanceof HTMLElement)) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        openReactionPeople(chip);
+    }, true);
+
+    document.addEventListener('pointerdown', (event) => {
+        const chip = getChip(event.target);
+        if (!(chip instanceof HTMLElement) || event.pointerType === 'mouse') {
+            return;
+        }
+        cancelPress();
+        press = {
+            x: event.clientX,
+            y: event.clientY,
+            timer: setTimeout(() => {
+                press = null;
+                longPressActive = true;
+                openReactionPeople(chip);
+            }, LONG_PRESS_MS),
+        };
+    }, { passive: true });
+
+    document.addEventListener('pointermove', (event) => {
+        if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_SLOP_PX) {
+            cancelPress();
+        }
+    }, { passive: true });
+    document.addEventListener('pointerup', releasePress, { passive: true });
+    // A cancelled press sends no click, so nothing is left to swallow.
+    document.addEventListener('pointercancel', () => {
+        longPressActive = false;
+        cancelPress();
+    }, { passive: true });
+
+    window.addEventListener('click', (event) => {
+        if (isEndOfLongPress() && getChip(event.target)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }, true);
+}
+
+registerMessageMenuReactions({ buildMenuReactions, syncToolbarReactions, bindReactionChips });

@@ -552,6 +552,22 @@ describe('selection mode', () => {
         expect(selection.isActive).toBe(false);
     });
 
+    test('a control inside a row that has a long press of its own does not start the long press of the row', () => {
+        jest.useFakeTimers();
+        const { selection, rows } = makeSelection();
+        const chip = document.createElement('button');
+        chip.dataset.sbOwnLongPress = '';
+        rows[0].append(chip);
+
+        pointer(chip, 'pointerdown');
+        jest.advanceTimersByTime(500);
+        expect(selection.isActive).toBe(false);
+
+        pointer(rows[0], 'pointerdown');
+        jest.advanceTimersByTime(500);
+        expect(selection.isActive).toBe(true);
+    });
+
     test('mouse pointerdown does not start a long press', () => {
         jest.useFakeTimers();
         const { selection, rows } = makeSelection();
@@ -654,6 +670,25 @@ describe('selection mode', () => {
         selection.exit();
 
         expect(document.activeElement).toBe(list);
+    });
+
+    test('exit falls back to the list when the return trigger is hidden or menu-only', () => {
+        for (const hide of [
+            el => { el.style.display = 'none'; },
+            el => { el.hidden = true; },
+            el => { el.setAttribute('data-sb-menu-only', ''); },
+        ]) {
+            document.body.replaceChildren();
+            const { selection, root, list } = makeSelection();
+            const trigger = document.createElement('button');
+            root.prepend(trigger);
+            hide(trigger);
+
+            selection.enter('a', trigger);
+            selection.exit();
+
+            expect(document.activeElement).toBe(list);
+        }
     });
 
     test('exit makes a non-tabbable list focusable only as a return target', () => {

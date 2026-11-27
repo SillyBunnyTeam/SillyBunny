@@ -1,0 +1,353 @@
+/* Conversation details window: the pages that open from a conversation's title, and the mode-wide Preferences. The rows, groups,
+   entity rows and the dialog frame come from the app's own sheets; this sheet adds the pictures, the page frame and the few
+   parts that no shared component gives. It loads with the mode's lazy part. */
+
+/* ---------- Pictures (AdwAvatar) ---------- */
+.sb-details-avatar {
+    --sb-details-avatar-size: 32px;
+    position: relative;
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    inline-size: var(--sb-details-avatar-size);
+    block-size: var(--sb-details-avatar-size);
+    border-radius: var(--sb-radius-pill);
+    overflow: hidden;
+    background: var(--sb-raised-bg);
+    color: var(--sb-on-solid-accent);
+    vertical-align: middle;
+}
+
+.sb-details-avatar > img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+}
+
+.sb-details-avatar__initials {
+    font-size: calc(var(--sb-details-avatar-size) * 0.4);
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* A group that has no picture of its own: up to four member pictures in one circle. */
+.sb-details-avatar--tiled {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: 1fr;
+    gap: 3px;
+}
+
+.sb-details-avatar--tiled[data-count='1'] { grid-template-columns: 1fr; }
+.sb-details-avatar--tiled[data-count='3'] > :first-child { grid-row: span 2; }
+
+.sb-details-avatar__tile {
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+    background: var(--sb-raised-bg);
+}
+
+.sb-details-avatar__tile > img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: 50% 20%;
+}
+
+/* The editable picture of Fractal's room edit page: Edit at the bottom end, Remove at the top end. */
+.sb-details-editable-avatar {
+    position: relative;
+    display: inline-flex;
+    line-height: 0;
+}
+
+.sb-details-editable-avatar__button {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 40px;
+    block-size: 40px;
+    padding: 0;
+    /* The cut-out ring of libadwaita's buttons over a picture, in the colour of the surface under them. */
+    border: 3px solid var(--sb-layer-window);
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-raised-bg);
+    background-clip: padding-box;
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+}
+
+.sb-details-editable-avatar__edit { inset-block-end: 0; inset-inline-end: 0; }
+.sb-details-editable-avatar__remove { inset-block-start: 0; inset-inline-end: 0; }
+.sb-details-editable-avatar__button:disabled { opacity: var(--sb-disabled-opacity); cursor: default; }
+
+@media (hover: hover) {
+    .sb-details-editable-avatar__button:not(:disabled):hover { background: var(--sb-raised-hover-bg); }
+}
+
+.sb-details-editable-avatar__button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+@media (pointer: coarse) {
+    .sb-details-editable-avatar__button { inline-size: 44px; block-size: 44px; }
+}
+
+/* ---------- The page ---------- */
+/* The page pads its own content as a libadwaita preferences page does, so the dialog body adds none. */
+:is(.sb-details-window, .sb-details-frame) .sb-dialog__body { padding: 0; }
+
+.sb-details-page {
+    box-sizing: border-box;
+    padding: 24px 12px max(24px, env(safe-area-inset-bottom));
+}
+
+/* AdwClamp: a preferences page is as wide as its room up to 600px. */
+.sb-details-clamp {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-inline-size: 600px;
+    margin-inline: auto;
+}
+
+.sb-details-page--profile .sb-details-clamp { max-inline-size: 444px; }
+
+/* The editor sheet spaces consecutive sections itself; the clamp spaces its groups, as AdwPreferencesPage does. */
+.sb-details-page .sb-details-clamp > .sb-editor-section { margin-block: 0; }
+
+.sb-details-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.sb-details-hero > .menu_button { margin-block-start: 12px; }
+
+.sb-details-hero__name {
+    margin: 12px 0 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
+    line-height: 1.18;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+}
+
+.sb-details-hero__subtitle {
+    margin: 0;
+    max-inline-size: 36ch;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-body);
+    -webkit-user-select: text;
+    user-select: text;
+    overflow-wrap: anywhere;
+}
+
+.sb-details-hero__subtitle:empty { display: none; }
+
+.sb-details-hero__avatar-button {
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: transparent;
+    cursor: zoom-in;
+    line-height: 0;
+}
+
+.sb-details-hero__avatar-button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+/* The group chrome inside a page: a heading and its description sit above the box, with no box of their own. */
+.sb-details-page .ds-pref-group-header > :is(.ds-pref-group-heading, .ds-pref-group-subtitle) {
+    margin: 0;
+    padding: 0;
+}
+
+.sb-details-page .ds-pref-group-header > .ds-pref-group-heading {
+    min-block-size: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    line-height: 1.3;
+}
+
+.sb-details-page .ds-pref-group-subtitle { color: var(--sb-input-placeholder); }
+
+.sb-details-count {
+    color: var(--sb-input-placeholder);
+    font-variant-numeric: tabular-nums;
+}
+
+.sb-details-note {
+    margin: 0;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-caption);
+    text-align: center;
+}
+
+
+.sb-details-alert-body { text-align: center; }
+
+/* ---------- Buttons ---------- */
+.sb-details-pill.menu_button {
+    inline-size: fit-content;
+    min-inline-size: 0;
+    width: fit-content;
+    border-color: transparent;
+    border-radius: var(--sb-radius-pill);
+    padding: 9px 24px;
+    white-space: nowrap;
+    box-shadow: none;
+    transform: none;
+}
+
+.sb-details-pill.menu_button:not(.is-suggested) { background: var(--sb-raised-bg); }
+
+@media (hover: hover) {
+    .sb-details-pill.menu_button:not(.is-suggested, :disabled):hover { background: var(--sb-raised-hover-bg); }
+}
+
+.sb-details-pill.menu_button:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+.sb-details-page-action {
+    display: flex;
+    justify-content: center;
+    padding-block-start: 6px;
+}
+
+.sb-details-toast-undo.menu_button {
+    margin-inline-start: 12px;
+    padding: 3px 12px;
+    border-radius: var(--sb-radius-control);
+}
+
+/* ---------- Collections: members, chats, files, pinned messages ---------- */
+/* A collection sits in the same card as a group of rows, so the pages read as one kind of surface. */
+.sb-details-collection {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-card-fill);
+    box-shadow: var(--sb-shadow-card);
+    overflow: hidden;
+}
+
+.sb-details-collection:empty { display: none; }
+.sb-details-collection .ds-entity-row { margin: 0; border-radius: 0; }
+.sb-details-collection > .sb-inline-hint { padding: 12px; }
+
+/* The members that General lists, in a list of their own: the row above the Add Member row keeps its hairline. */
+.sb-details-inline-list > .ds-entity-row:last-child { border-bottom: 1px solid var(--SmartThemeBorderColor); }
+
+/* A member row inside a boxed group (General lists up to four): the same entity row in the group's card. */
+.sb-details-page .ds-pref-group > .ds-entity-row { border-radius: 0; }
+
+.sb-details-page .ds-entity-row__preview {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-caption);
+    line-height: 1.4;
+}
+
+.sb-details-current-mark {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 24px;
+    block-size: 24px;
+    color: var(--sb-accent);
+    font-size: 0.9em;
+}
+
+.sb-details-file-icon {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 32px;
+    block-size: 32px;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    color: var(--sb-muted-fg);
+}
+
+.sb-details-picker-list,
+.sb-details-reminders { display: contents; }
+.sb-details-picker-avatar { flex: 0 0 auto; }
+
+/* ---------- Media ---------- */
+.sb-details-media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 6px;
+}
+
+.sb-details-media-item { min-inline-size: 0; }
+.sb-details-media-item > .sb-details-media-cell { inline-size: 100%; }
+
+.sb-details-media-cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    overflow: hidden;
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+}
+
+.sb-details-media-cell > img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    object-position: 50% 25%;
+    display: block;
+}
+
+.sb-details-media-cell:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+/* A picture or a video that opens as a page of the window. */
+.sb-details-picture {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-block-size: 100%;
+    padding: 12px;
+}
+
+.sb-details-picture__media {
+    max-inline-size: 100%;
+    max-block-size: min(70dvh, 640px);
+    object-fit: contain;
+    border-radius: var(--sb-radius-card);
+}

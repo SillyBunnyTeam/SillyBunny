@@ -28,7 +28,7 @@ export function getConversationMessageRevision(message) {
             media: extra.media || [],
             media_display: extra.media_display || '',
             media_index: extra.media_index ?? '',
-            partner_avatar: extra.partner_avatar || '',
+            member_avatar: extra.member_avatar || '',
         },
     }));
 }

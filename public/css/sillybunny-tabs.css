@@ -2002,7 +2002,7 @@ body:not(.movingUI) .drawer-content.maximized {
  * Desktop: the chat bar and composer read as one libadwaita bottom toolbar stack.
  * Only joined while nothing (group speaker controls, delete dialog) sits between them.
  */
-html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speaker_controls:not(.displayNone), > #dialogue_del_mes[style*='block'])) > #sb-bottom-chat-bar:not(.displayNone, :empty) {
+html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speaker_controls:not(.displayNone), > #dialogue_del_mes.sb-selection-action-bar:not([hidden]))) > #sb-bottom-chat-bar:not(.displayNone, :empty) {
     margin-block-end: 0;
     border-block-end: 0;
     border-end-start-radius: 0;
@@ -2011,7 +2011,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 /* The composer keeps its side and bottom border; its top edge becomes the one hairline between
    the two rows. !important beats the #send_form frame rule in sillybunny-theme.css. */
-html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speaker_controls:not(.displayNone), > #dialogue_del_mes[style*='block'])):has(> #sb-bottom-chat-bar:not(.displayNone, :empty)) > #send_form {
+html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speaker_controls:not(.displayNone), > #dialogue_del_mes.sb-selection-action-bar:not([hidden]))):has(> #sb-bottom-chat-bar:not(.displayNone, :empty)) > #send_form {
     border-block-start-color: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent) !important;
     border-start-start-radius: 0 !important;
     border-start-end-radius: 0 !important;
@@ -2724,7 +2724,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     -webkit-appearance: none;
     appearance: none;
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) 16px;
+    grid-template-columns: 28px minmax(0, 1fr) minmax(16px, auto);
     grid-template-rows: auto auto;
     grid-template-areas: 'icon label check' 'icon desc check';
     align-items: center;
@@ -2784,6 +2784,12 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     font-size: var(--sb-type-meta);
     color: var(--sb-shell-text-secondary);
     line-height: 1.3;
+}
+
+/* The count takes the place of the check, which only the item of the active mode shows. */
+.sb-mode-menu-item > .sb-mode-badge {
+    grid-area: check;
+    justify-self: end;
 }
 
 #sb-persona-picker {
@@ -3935,6 +3941,35 @@ body.reduced-motion .sb-search-entry {
 #sb-topbar-search-toggle,
 #sb-mode-toggle {
     flex-shrink: 0;
+}
+
+/* The unread count of Conversation Mode on the chat mode button (`syncModeToggleButton()`) and on the Conversation item of
+   its menu: a small Accent pill with the ink of a solid Accent fill, as the counts of the conversation list. The proxy button
+   clips its content, so this one lets the badge hang over its corner. A badge is drawn only while the workspace is closed. */
+#sb-mode-toggle {
+    overflow: visible;
+}
+
+.sb-mode-badge {
+    box-sizing: border-box;
+    display: inline-grid;
+    place-items: center;
+    min-inline-size: 16px;
+    block-size: 16px;
+    padding-inline: 3px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-accent);
+    color: var(--sb-on-solid-accent);
+    font-size: var(--sb-type-caption);
+    font-weight: var(--sb-weight-title);
+    line-height: 1;
+    pointer-events: none;
+}
+
+#sb-mode-toggle > .sb-mode-badge {
+    position: absolute;
+    inset-block-start: -1px;
+    inset-inline-end: -3px;
 }
 
 /* ── Preference group primitives ────────────────────────────────────────── */

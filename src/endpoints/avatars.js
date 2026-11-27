@@ -6,6 +6,8 @@ import sanitize from 'sanitize-filename';
 import { Jimp } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
+// SillyBunny: a deleted persona takes its conversations with it.
+import { deleteConversationsOfPersona } from '../conversation-cleanup.js';
 import { getImages, tryParse } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { applyAvatarCropResize } from './characters.js';
@@ -31,6 +33,8 @@ router.post('/delete', getFileNameValidationFunction('avatar'), function (reques
     if (fs.existsSync(fileName)) {
         fs.unlinkSync(fileName);
         invalidateThumbnail(request.user.directories, 'persona', sanitize(request.body.avatar));
+        // SillyBunny: the persona file is gone for good, so the call answers a count and never throws.
+        deleteConversationsOfPersona(request.user, sanitize(request.body.avatar));
         return response.send({ result: 'ok' });
     }
 
