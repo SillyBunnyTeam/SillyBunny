@@ -43,11 +43,27 @@ describe('bulk actions: names inside an archive', () => {
         expect(sanitiseFileName('   ', 'Chat')).toBe('Chat');
         expect(sanitiseFileName('CON', 'Chat')).toBe('CON_');
         expect(sanitiseFileName('nul', 'Chat')).toBe('nul_');
+        expect(sanitiseFileName('CON .txt', 'File')).toBe('CON_.txt');
     });
 
-    test('cuts a long name and keeps room for the extension', () => {
-        const name = sanitiseFileName('x'.repeat(400), 'File');
-        expect(name.length).toBeLessThanOrEqual(120);
+    test('cuts a long name and keeps its extension intact', () => {
+        const plain = sanitiseFileName('x'.repeat(400), 'File');
+        expect(plain.length).toBeLessThanOrEqual(120);
+
+        const ascii = sanitiseFileName(`${'a'.repeat(200)}.png`, 'File');
+        expect(ascii.endsWith('.png')).toBe(true);
+        expect(new TextEncoder().encode(ascii).length).toBeLessThanOrEqual(120);
+
+        const utf8 = sanitiseFileName(`${'日'.repeat(50)}.webp`, 'File');
+        expect(utf8.endsWith('.webp')).toBe(true);
+        expect(new TextEncoder().encode(utf8).length).toBeLessThanOrEqual(120);
+
+        const dupes = planArchiveNames([
+            { name: `${'a'.repeat(200)}.png`, fallback: 'File' },
+            { name: `${'a'.repeat(200)}.png`, fallback: 'File' },
+        ]);
+        expect(dupes[0].endsWith('.png')).toBe(true);
+        expect(dupes[1].endsWith(' (2).png')).toBe(true);
     });
 
     test('gives each file the name of its chat, with the extension', () => {
@@ -160,6 +176,19 @@ describe('bulk actions: fetching the files of an archive', () => {
         expect(peak).toBeLessThanOrEqual(3);
     });
 
+    test('stops fetching remaining candidates once its signal is aborted', async () => {
+        const controller = new AbortController();
+        const fetched = [];
+        const candidates = [{ name: 'a.png', source: '/a' }, { name: 'b.png', source: '/b' }, { name: 'c.png', source: '/c' }];
+        const result = await fetchArchiveEntries(candidates, async (url) => {
+            fetched.push(url);
+            controller.abort();
+            return new Uint8Array([1]);
+        }, { concurrency: 1, signal: controller.signal });
+        expect(fetched).toEqual(['/a']);
+        expect(result.entries.map(entry => entry.name)).toEqual(['a.png']);
+    });
+
     test('says which files failed in a line for a toast', () => {
         expect(formatFailedFiles(['a.png'])).toBe('a.png');
         expect(formatFailedFiles(['a.png', 'b.png', 'c.png'])).toBe('a.png, b.png, c.png');
@@ -180,6 +209,12 @@ describe('bulk actions: assembling the archive', () => {
     test('keeps unicode names', async () => {
         const blob = await createArchive(JSZip, [{ name: 'Café – 日本.jsonl', data: 'x' }]);
         expect(Object.keys(await readArchive(blob))).toEqual(['Café – 日本.jsonl']);
+    });
+
+    test('supports STORE compression for already-compressed media archives', async () => {
+        const blob = await createArchive(JSZip, [{ name: 'photo.png', data: new Uint8Array([104, 105]) }], { compression: 'STORE' });
+        expect(blob.type).toBe('application/zip');
+        expect(await readArchive(blob)).toEqual({ 'photo.png': 'hi' });
     });
 
     test('makes an archive with no entries, so that a download of nothing is the caller\'s to refuse', async () => {

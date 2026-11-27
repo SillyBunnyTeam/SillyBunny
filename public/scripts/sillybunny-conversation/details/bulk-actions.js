@@ -5,7 +5,6 @@
  */
 
 import { confirmConversationAction } from '../dialogs.js';
-import { deleteConversationChat } from '../context.js';
 import { SAFE_TOAST_OPTIONS } from '../constants.js';
 import { isConversationActive } from '../notifications.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh, scheduleTimelineRender } from '../render-scheduler.js';
@@ -66,7 +65,10 @@ function conversationLabel(view) {
  * Makes the ZIP of the entries and saves it. Files that failed are named in a toast; the others are saved all the same.
  * @returns {Promise<boolean>} False when nothing could be saved, so that the selection stays and the user can try again.
  */
-async function saveArchive({ entries, failed, fileName, failureMessage }) {
+async function saveArchive({ entries, failed, fileName, failureMessage, compression = 'DEFLATE', signal = null }) {
+    if (signal?.aborted) {
+        return false;
+    }
     if (failed.length) {
         toast(entries.length ? 'warning' : 'error', `${failureMessage}: ${formatFailedFiles(failed.map(item => item.name))}`);
     }
@@ -74,7 +76,11 @@ async function saveArchive({ entries, failed, fileName, failureMessage }) {
         return false;
     }
     try {
-        saveBlob(await createArchive(await loadJsZip(), entries), `${sanitiseFileName(fileName, 'Archive')}.zip`);
+        const blob = await createArchive(await loadJsZip(), entries, { compression });
+        if (signal?.aborted) {
+            return false;
+        }
+        saveBlob(blob, `${sanitiseFileName(fileName, 'Archive')}.zip`);
     } catch (error) {
         console.error('Conversation Mode: the archive could not be made', error);
         toast('error', 'The archive could not be made');
@@ -90,8 +96,9 @@ async function saveArchive({ entries, failed, fileName, failureMessage }) {
  * One ZIP of the JSONL files of chats, each named after its chat.
  * @param {Record<string, any>} view The conversation.
  * @param {string[]} chatIds In the order that the page lists them.
+ * @param {{ signal?: AbortSignal }} [options]
  */
-export async function exportChatsArchive(view, chatIds) {
+export async function exportChatsArchive(view, chatIds, { signal = null } = {}) {
     const chats = chatIds.map(id => view.chats.find(chat => chat.id === id)).filter(Boolean);
     if (!chats.length) {
         return false;
@@ -101,30 +108,36 @@ export async function exportChatsArchive(view, chatIds) {
     const { entries, failed } = await fetchArchiveEntries(
         chats.map((chat, index) => ({ name: names[index], source: chat.id })),
         async chatId => encoder.encode((await conversationData.exportChat({ conversationId: view.id, chatId })).text),
+        { signal },
     );
-    return saveArchive({ entries, failed, fileName: `${conversationLabel(view)} Chats`, failureMessage: 'Could not export' });
+    return saveArchive({ entries, failed, fileName: `${conversationLabel(view)} Chats`, failureMessage: 'Could not export', signal });
 }
 
 /**
- * Deletes chats after the user confirms, through the same path as Delete Chat, so that the replies being written for a
+ * Deletes chats after the user confirms, through `conversationData.deleteChat`, so that the replies being written for a
  * chat stop and the server picks the chat to show. The open chat goes last. When every chat is chosen the server makes
  * one empty chat.
  * @returns {Promise<boolean>}
  */
 export async function deleteChats(conversationId, chatIds) {
+    const initial = conversationData.get(conversationId);
+    if (!initial) {
+        return false;
+    }
+    const initialPlan = planChatDeletion(initial.chats, initial.activeChatId, chatIds);
+    if (!initialPlan.order.length || !await confirmConversationAction({ title: chatDeletionTitle(initialPlan.order.length), text: ALERT_BODY })) {
+        return false;
+    }
+    // The conversation can change while the alert is open, so the plan is made again from the chats as they are now.
     const view = conversationData.get(conversationId);
     if (!view) {
         return false;
     }
     const plan = planChatDeletion(view.chats, view.activeChatId, chatIds);
-    if (!plan.order.length || !await confirmConversationAction({ title: chatDeletionTitle(plan.order.length), text: ALERT_BODY })) {
-        return false;
-    }
-    const { avatar, groupId } = identityOf(view);
     let allDeleted = true;
     for (const chatId of plan.order) {
         try {
-            await deleteConversationChat(avatar, chatId, { groupId, personaId: view.personaId });
+            await conversationData.deleteChat({ conversationId, chatId });
         } catch (error) {
             console.error('Conversation Mode: a chat could not be deleted', error);
             toast('error', 'The chats could not all be deleted');
@@ -132,7 +145,8 @@ export async function deleteChats(conversationId, chatIds) {
             break;
         }
     }
-    if (isConversationActive(avatar, groupId)) {
+    const { avatar, groupId } = identityOf(view);
+    if (avatar && isConversationActive(avatar, groupId)) {
         scheduleInterfaceRefresh();
     } else {
         scheduleConversationListRender();
@@ -150,10 +164,13 @@ function archiveNameOf(item) {
     return own || fileNameFromUrl(item.url);
 }
 
-async function fetchSameOrigin(url) {
-    const response = await fetch(url, { credentials: 'same-origin' });
+async function fetchSameOrigin(url, signal = null) {
+    const response = await fetch(url, { credentials: 'same-origin', ...(signal ? { signal } : {}) });
     if (!response.ok) {
         throw new Error(`The file answered ${response.status}.`);
+    }
+    if (response.url && !isFetchableAttachmentUrl(response.url, globalThis.location.href)) {
+        throw new Error('The file redirected outside this app.');
     }
     return new Uint8Array(await response.arrayBuffer());
 }
@@ -163,8 +180,9 @@ async function fetchSameOrigin(url) {
  * @param {Record<string, any>} view
  * @param {{ kind: string, url: string, name?: string }[]} items In the order that the page lists them.
  * @param {string} section "Media" or "Files": it ends the name of the ZIP.
+ * @param {{ signal?: AbortSignal }} [options]
  */
-export async function downloadAttachmentsArchive(view, items, section) {
+export async function downloadAttachmentsArchive(view, items, section, { signal = null } = {}) {
     if (!items.length) {
         return false;
     }
@@ -175,13 +193,17 @@ export async function downloadAttachmentsArchive(view, items, section) {
     const candidates = items.map((item, index) => ({ name: names[index], source: item.url }));
     const reachable = candidates.filter(candidate => isFetchableAttachmentUrl(candidate.source, globalThis.location.href));
     const unreachable = candidates.filter(candidate => !reachable.includes(candidate));
-    const { entries, failed } = await fetchArchiveEntries(reachable, fetchSameOrigin);
+    const { entries, failed } = await fetchArchiveEntries(reachable, url => fetchSameOrigin(url, signal), { signal });
+    // Pictures and video are already compressed, so storing them avoids re-compressing on the main thread.
+    const compression = section === 'Media' ? 'STORE' : 'DEFLATE';
     // The entries come back in the order of the list, with the files that were not fetched left out.
     return saveArchive({
         entries,
         failed: [...failed, ...unreachable.map(candidate => ({ name: candidate.name, error: new Error('Not a file of this app.') }))],
         fileName: `${conversationLabel(view)} ${section}`,
         failureMessage: 'Could not download',
+        compression,
+        signal,
     });
 }
 
@@ -224,6 +246,8 @@ export async function removeAttachmentsFromChat(conversationId, keys, noun) {
     if (current.emptied.length) {
         deleteMessagesInChat(address, current.emptied);
     }
-    scheduleTimelineRender();
+    if (current.removed) {
+        scheduleTimelineRender();
+    }
     return true;
 }

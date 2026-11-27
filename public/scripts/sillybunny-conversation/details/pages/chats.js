@@ -62,7 +62,7 @@ export function buildChats({ conversationId, nav }) {
         getKey: row => row.dataset.sbListKey,
         getAllKeys: () => chats.map(rowKeyOf),
         actions: [
-            { id: 'export', label: 'Export', icon: 'fa-solid fa-file-export', run: keys => exportChatsArchive(requireView(conversationId), chatIdsOf(keys)) },
+            { id: 'export', label: 'Export', icon: 'fa-solid fa-file-export', run: (keys, options) => exportChatsArchive(requireView(conversationId), chatIdsOf(keys), options) },
             { id: 'delete', label: 'Delete', icon: 'fa-solid fa-trash-can', danger: true, run: keys => deleteChats(conversationId, chatIdsOf(keys)) },
         ],
     });
@@ -96,7 +96,7 @@ export function buildChats({ conversationId, nav }) {
         });
         return built.row;
     };
-    const batched = createBatchedList({ list, renderRow: renderChat, onDrawn: () => bulk.sync() });
+    const batched = createBatchedList({ list, renderRow: renderChat, rowSelector: '.sb-details-collection-row', onDrawn: () => bulk.sync() });
 
     const draw = () => {
         const view = requireView(conversationId);

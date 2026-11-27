@@ -135,6 +135,32 @@ describe('bulk actions: a long list in batches', () => {
         expect(focusTarget).toHaveBeenCalledTimes(1);
         expect(focusTarget.mock.calls[0][0]).toBe(list.children[100]);
     });
+
+    test('with rowSelector, gives the list one Tab stop, arrows to Show More, and keeps existing rows when loading more', async () => {
+        batched.destroy();
+        batched = createBatchedList({ list, renderRow: row, rowSelector: '.row' });
+        list.after(batched.element);
+        batched.update(keysOf(52));
+
+        const firstRow = list.children[0];
+        const lastOfFirstBatch = list.children[49];
+        expect(firstRow.tabIndex).toBe(0);
+        expect(lastOfFirstBatch.tabIndex).toBe(-1);
+
+        firstRow.focus();
+        press(firstRow, 'ArrowDown');
+        expect(document.activeElement).toBe(list.children[1]);
+        press(list.children[1], 'End');
+        expect(document.activeElement).toBe(lastOfFirstBatch);
+        press(lastOfFirstBatch, 'ArrowDown');
+        expect(document.activeElement).toBe(batched.element.querySelector('button'));
+
+        batched.element.querySelector('button').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+        await settled();
+        expect(list.children).toHaveLength(52);
+        expect(list.children[0]).toBe(firstRow);
+        expect(document.activeElement).toBe(list.children[50]);
+    });
 });
 
 describe('bulk actions: selection mode on a page of the details window', () => {
@@ -265,7 +291,6 @@ describe('bulk actions: selection mode on a page of the details window', () => {
     test('sync drops the chosen items that are gone, keeps one that is behind Show More, and gives new rows their checks', () => {
         mountPage();
         bulk.enter('k1');
-        bulk.enter('k1');
         click(list.querySelector('[data-sb-list-key="k2"]'));
         click(frame.headerEnd.querySelector('.sb-selection-select-all'));
         expect(bulk.selectedKeys).toHaveLength(120);
@@ -287,7 +312,7 @@ describe('bulk actions: selection mode on a page of the details window', () => {
         click(bar.querySelector('[data-action-id="act"]'));
         await Promise.resolve();
         await Promise.resolve();
-        expect(run).toHaveBeenCalledWith(['k1', 'k5']);
+        expect(run).toHaveBeenCalledWith(['k1', 'k5'], expect.objectContaining({ signal: expect.any(AbortSignal) }));
         expect(bulk.isActive).toBe(false);
     });
 
@@ -302,29 +327,73 @@ describe('bulk actions: selection mode on a page of the details window', () => {
         expect(bulk.selectedKeys).toEqual(['k1']);
     });
 
-    test('an action that is running is not started again by a second press', async () => {
+    test('an action that is running disables the action bar, is not started twice, and receives an abort on Cancel', async () => {
         mountPage();
         let finish;
-        run.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+        let receivedSignal;
+        run.mockImplementation((_keys, { signal }) => {
+            receivedSignal = signal;
+            return new Promise((resolve) => { finish = resolve; });
+        });
         bulk.enter('k1');
         const button = frame.body.nextElementSibling.querySelector('[data-action-id="act"]');
         click(button);
+        expect(button.disabled).toBe(true);
         click(button);
         expect(run).toHaveBeenCalledTimes(1);
+        expect(receivedSignal.aborted).toBe(false);
+
+        click(frame.headerStart.querySelector('.sb-selection-cancel'));
+        expect(receivedSignal.aborted).toBe(true);
+        expect(bulk.isActive).toBe(false);
+
         finish(true);
         await Promise.resolve();
         await Promise.resolve();
         expect(bulk.isActive).toBe(false);
     });
 
-    test('hides the Select button of a page that has nothing to choose, and leaves selection mode', () => {
+    test('hides the Select button of a page that has nothing to choose, leaves selection mode, and keeps focus in the header', () => {
         mountPage();
-        bulk.enter('k1');
+        selectButton().focus();
+        click(selectButton());
+        list.replaceChildren();
         bulk.setSelectable(false);
         expect(selectButton().hidden).toBe(true);
         expect(bulk.isActive).toBe(false);
+        expect(document.activeElement).toBe(document.getElementById('back'));
         bulk.setSelectable(true);
         expect(selectButton().hidden).toBe(false);
+    });
+
+    test('keySourceSelector lets a nested button extend a range with Shift+Space', () => {
+        ({ frame, list } = buildFrame());
+        const cellRow = (key) => {
+            const item = document.createElement('div');
+            item.className = 'media-item';
+            item.dataset.sbSelectKey = key;
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = 'media-cell';
+            item.append(cell);
+            return item;
+        };
+        items = keysOf(5);
+        bulk = createBulkSelection({
+            getList: () => list,
+            rowSelector: '.media-item',
+            keySourceSelector: '.media-cell',
+            getKey: node => node.dataset.sbSelectKey,
+            getAllKeys: () => items,
+            actions: [{ id: 'act', label: 'Act', icon: 'fa-solid fa-check', run: jest.fn(async () => true) }],
+        });
+        list.replaceChildren(...items.map(cellRow));
+        bulk.mount({ frame });
+        bulk.enter('k1');
+        const fourthCell = list.children[3].querySelector('.media-cell');
+        fourthCell.focus();
+        fourthCell.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', shiftKey: true, bubbles: true, cancelable: true }));
+        expect(bulk.selectedKeys.sort()).toEqual(['k1', 'k2', 'k3', 'k4']);
     });
 
     test('takes its button and its bar away when the page is dropped', () => {

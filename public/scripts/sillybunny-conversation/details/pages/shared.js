@@ -36,9 +36,10 @@ function describeSender(item) {
  * @param {boolean} [options.gestures] A secondary click or a long press on a row starts selection; for rows that have no menu.
  * @param {(row: HTMLElement) => string} [options.getKey] How a row names its key; the key of the row's own attribute by default.
  * @param {(row: HTMLElement) => string} [options.rowLabel] The accessible name of a row's check; a row that has no name of its own gives it.
+ * @param {string} [options.keySourceSelector] Row descendants whose Space, Enter and arrow keys act on the row.
  * @param {(row: HTMLElement) => HTMLElement|null} [options.focusTarget]
  */
-function createSharedPage({ conversationId, nav, className, title, pick, createList, rowSelector, keyOf, renderItem, empty, actions, gestures = false, getKey, rowLabel, focusTarget }) {
+function createSharedPage({ conversationId, nav, className, title, pick, createList, rowSelector, keySourceSelector = '', keyOf, renderItem, empty, actions, gestures = false, getKey, rowLabel, focusTarget }) {
     requireView(conversationId);
     const { page, clamp } = createPage(className);
     const body = el('div', 'sb-details-shared');
@@ -56,13 +57,14 @@ function createSharedPage({ conversationId, nav, className, title, pick, createL
     const bulk = createBulkSelection({
         getList: () => list,
         rowSelector,
+        keySourceSelector,
         getKey: getKey ?? (row => row.dataset.sbListKey),
         rowLabel,
         getAllKeys: () => current.map(keyOf),
         gestures,
         actions: actions(selected => selected.map(key => byKey.get(key)).filter(Boolean)),
     });
-    const batched = createBatchedList({ list, renderRow: item => renderItem(item, bulk), onDrawn: () => bulk.sync(), focusTarget });
+    const batched = createBatchedList({ list, renderRow: item => renderItem(item, bulk), rowSelector, keySourceSelector, onDrawn: () => bulk.sync(), focusTarget });
 
     const releaseLoading = () => {
         loadingPage?.release();
@@ -80,11 +82,12 @@ function createSharedPage({ conversationId, nav, className, title, pick, createL
         for (const item of items) {
             byKey.set(keyOf(item), item);
         }
-        bulk.setSelectable(items.length > 0);
         if (!items.length) {
             body.replaceChildren(createStatusPage({ state: 'empty', icon: empty.icon, title: empty.title, compact: true }).element);
+            bulk.setSelectable(false);
             return;
         }
+        bulk.setSelectable(true);
         if (list.parentNode !== body) {
             body.replaceChildren(list, batched.element);
         }
@@ -205,6 +208,7 @@ export function buildMedia({ conversationId, nav }) {
         pick: shared => shared.media,
         empty: { icon: 'image', title: 'No Media' },
         rowSelector: '.sb-details-media-item',
+        keySourceSelector: '.sb-details-media-cell',
         getKey: row => row.dataset.sbSelectKey,
         rowLabel: row => row.querySelector('.sb-details-media-cell')?.getAttribute('aria-label') ?? '',
         keyOf: item => item.key,
@@ -253,7 +257,7 @@ export function buildMedia({ conversationId, nav }) {
             return entry;
         },
         actions: itemsOf => [
-            { id: 'download', label: 'Download', icon: 'fa-solid fa-download', run: keys => downloadAttachmentsArchive(requireView(conversationId), itemsOf(keys), 'Media') },
+            { id: 'download', label: 'Download', icon: 'fa-solid fa-download', run: (keys, options) => downloadAttachmentsArchive(requireView(conversationId), itemsOf(keys), 'Media', options) },
             { id: 'remove', label: 'Remove From Chat', icon: 'fa-solid fa-trash-can', danger: true, run: keys => removeAttachmentsFromChat(conversationId, itemsOf(keys).map(item => item.key), 'item') },
         ],
     });
@@ -310,7 +314,7 @@ export function buildFiles({ conversationId, nav }) {
             return built.row;
         },
         actions: itemsOf => [
-            { id: 'download', label: 'Download', icon: 'fa-solid fa-download', run: keys => downloadAttachmentsArchive(requireView(conversationId), itemsOf(keys), 'Files') },
+            { id: 'download', label: 'Download', icon: 'fa-solid fa-download', run: (keys, options) => downloadAttachmentsArchive(requireView(conversationId), itemsOf(keys), 'Files', options) },
             { id: 'remove', label: 'Remove From Chat', icon: 'fa-solid fa-trash-can', danger: true, run: keys => removeAttachmentsFromChat(conversationId, itemsOf(keys).map(item => item.key), 'file') },
         ],
     });

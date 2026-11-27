@@ -116,6 +116,10 @@ test.describe('Chats', () => {
         await select.focus();
         await page.keyboard.press('Enter');
         await expect(selectionHeader(page).getByRole('button', { name: 'Cancel' })).toBeFocused();
+        await page.keyboard.press('Control+A');
+        await expect(selectionTitle(page)).toHaveText('5 Selected');
+        await selectionHeader(page).getByRole('button', { name: 'Select All' }).click();
+        await expect(selectionTitle(page)).toHaveText('0 Selected');
 
         await chats.getByRole('listitem', { name: 'Delta' }).focus();
         await page.keyboard.press('Space');
@@ -298,6 +302,24 @@ test.describe('Chats in batches', () => {
         await expect(chats.getByRole('list', { name: 'Chats' }).getByRole('listitem')).toHaveCount(52);
         await expect(chats.getByRole('listitem', { name: 'Chat 02' })).toBeFocused();
     });
+
+    test('arrow keys move through Chats and reach Show More from the last row', async ({ page }) => {
+        const { avatars } = await openDetailsApp(page);
+        const many = Array.from({ length: 52 }, (_, index) => chatAt(`Chat ${String(index + 1).padStart(2, '0')}`, index));
+        const { conversationId } = await seedAndOpen(page, { avatar: avatars[0], chats: many });
+        await openDetails(page, conversationId, { page: 'chats' });
+        const chats = shownPage(page);
+
+        await chats.getByRole('listitem', { name: 'Chat 52' }).focus();
+        await page.keyboard.press('ArrowDown');
+        await expect(chats.getByRole('listitem', { name: 'Chat 51' })).toBeFocused();
+        await page.keyboard.press('End');
+        await expect(chats.getByRole('listitem', { name: 'Chat 03' })).toBeFocused();
+        await page.keyboard.press('ArrowDown');
+        await expect(chats.getByRole('button', { name: 'Show More' })).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(chats.getByRole('listitem', { name: 'Chat 02' })).toBeFocused();
+    });
 });
 
 
@@ -358,17 +380,21 @@ test.describe('Media', () => {
         await expect(selectionTitle(page)).toHaveText('4 Selected');
     });
 
-    test('the keyboard chooses a picture with Space and leaves selection mode with Escape', async ({ page }) => {
+    test('the keyboard chooses a picture with Space, extends a range with Shift+Space, and leaves selection mode with Escape', async ({ page }) => {
         await openSharedPage(page, 'media', PICTURE_CHAT);
         const media = shownPage(page);
         await media.getByRole('button', { name: 'Select', exact: true }).click();
-        await cellOf(page, 'p-2:media:0').focus();
+        await cellOf(page, 'p-3:media:0').focus();
         await page.keyboard.press('Space');
         await expect(selectionTitle(page)).toHaveText('1 Selected');
+        await page.keyboard.press('ArrowRight');
+        await expect(cellOf(page, 'p-2:media:0')).toBeFocused();
+        await page.keyboard.press('ArrowRight');
+        await expect(cellOf(page, 'p-1:media:0')).toBeFocused();
+        await page.keyboard.press('Shift+Space');
+        await expect(selectionTitle(page)).toHaveText('3 Selected');
         await page.keyboard.press('Enter');
-        await expect(selectionTitle(page)).toHaveText('0 Selected');
-        await page.keyboard.press('Space');
-        await expect(selectionTitle(page)).toHaveText('1 Selected');
+        await expect(selectionTitle(page)).toHaveText('2 Selected');
         await expect(page.locator('.sb-details-picture')).toHaveCount(0);
 
         await page.keyboard.press('Escape');
@@ -582,6 +608,7 @@ test.describe('Files and Pinned in batches', () => {
         await expect(selectionTitle(page)).toHaveText('52 Selected');
         await actionBar(page).getByRole('button', { name: 'Unpin' }).click();
         await expect(pinned.getByText('No Pinned Messages')).toBeVisible();
+        await expect(pinned.getByRole('button', { name: 'Back' })).toBeFocused();
         await expect.poll(async () => (await readRecords(page, conversationId, chatIds[0])).filter(record => record.extra?.conversation_pinned).length).toBe(0);
     });
 });

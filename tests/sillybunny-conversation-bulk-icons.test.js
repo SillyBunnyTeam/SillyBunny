@@ -9,6 +9,7 @@ const SOURCES = [
     'scripts/sillybunny-conversation/details/pages/chats.js',
     'scripts/sillybunny-conversation/details/pages/shared.js',
     'scripts/sillybunny-conversation/details/bulk-selection.js',
+    'scripts/sillybunny-conversation/details/window.js',
 ];
 
 function iconsNamedIn(source) {

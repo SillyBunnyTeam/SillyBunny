@@ -46,8 +46,19 @@ export function sanitiseFileName(name, fallback) {
         return fallback;
     }
     const firstDot = cleaned.indexOf('.');
-    const stem = firstDot < 0 ? cleaned : cleaned.slice(0, firstDot);
-    const safe = RESERVED_NAME.test(stem) ? `${stem}_${cleaned.slice(stem.length)}` : cleaned;
+    const basePart = (firstDot < 0 ? cleaned : cleaned.slice(0, firstDot)).trimEnd();
+    const safe = RESERVED_NAME.test(basePart)
+        ? `${basePart}_${firstDot < 0 ? '' : cleaned.slice(firstDot)}`
+        : cleaned;
+    if (encoder.encode(safe).length <= MAX_NAME_BYTES) {
+        return safe;
+    }
+    const [stem, own] = splitExtension(safe);
+    const ownBytes = own ? encoder.encode(own).length : 0;
+    if (own && ownBytes < MAX_NAME_BYTES) {
+        const cutStem = cutToBytes(stem, MAX_NAME_BYTES - ownBytes).replace(/[.\s]+$/, '');
+        return cutStem ? `${cutStem}${own}` : fallback;
+    }
     return cutToBytes(safe, MAX_NAME_BYTES).replace(/[.\s]+$/, '') || fallback;
 }
 
@@ -128,11 +139,11 @@ export function isFetchableAttachmentUrl(url, base) {
  * @returns {Promise<{ entries: { name: string, data: Uint8Array|ArrayBuffer }[], failed: { name: string, error: unknown }[] }>}
  * Entries keep the order of the candidates.
  */
-export async function fetchArchiveEntries(candidates, fetchBytes, { concurrency = DEFAULT_CONCURRENCY } = {}) {
+export async function fetchArchiveEntries(candidates, fetchBytes, { concurrency = DEFAULT_CONCURRENCY, signal = null } = {}) {
     const results = new Array(candidates.length);
     let next = 0;
     async function worker() {
-        while (next < candidates.length) {
+        while (next < candidates.length && !signal?.aborted) {
             const index = next++;
             const { name, source } = candidates[index];
             try {
@@ -163,13 +174,14 @@ export function formatFailedFiles(names) {
  * @param {new () => { file: (name: string, data: any) => any, generateAsync: (options: object) => Promise<Uint8Array> }} JSZip
  * The library; it is imported by the caller when a download starts.
  * @param {{ name: string, data: string|Uint8Array|ArrayBuffer }[]} entries
+ * @param {{ compression?: 'DEFLATE'|'STORE' }} [options]
  * @returns {Promise<Blob>}
  */
-export async function createArchive(JSZip, entries) {
+export async function createArchive(JSZip, entries, { compression = 'DEFLATE' } = {}) {
     const zip = new JSZip();
     for (const { name, data } of entries) {
         zip.file(name, data);
     }
-    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression });
     return new Blob([bytes], { type: 'application/zip' });
 }
