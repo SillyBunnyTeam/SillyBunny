@@ -1929,6 +1929,12 @@ This is the largest class by a wide margin.
 - **Guards:** `GROUPS_MIGRATION_VERSION` in `src/endpoints/groups.js` is the number after `v` in the signature; raise it whenever the migration gains or changes a step. The skip branch for a missing `chats` array sets `migrationClean = false`, so no marker is written for that user until the group changes or is fixed. The content-manager marker (`.sillybunny-reconcile-marker.json`) already carries `readAppVersionSignature()` and `RECONCILE_MARKER_FORMAT`, and its reconcile passes return `clean: false` for every caught error; an item that is modified, deleted or not installed is left on purpose and its files are part of the signature.
 - **Tests:** `tests/perf-caching-compression-markers.test.js` ("does not write the group marker while a group that needs migration was skipped", "runs the group migration again for groups that an earlier migration version marked as done").
 
+### One loopback test for `requireHttps` and the compression bypass
+
+- **Breaks:** The compression bypass kept its own list of forwarding headers (it had `via` and lacked `x-forwarded-proto`) and its own loopback address pattern, and `requireHttps` kept a different list (it had `x-forwarded-proto` and lacked `via`) and used `isIpInPatterns()`. An empty forwarding header counted for `requireHttps` and not for the bypass. A proxy on this machine that sent only `X-Forwarded-Proto` or `X-Forwarded-Host` therefore got uncompressed responses, and a request with `Via` was local for `requireHttps`.
+- **Guards:** `src/loopback-request.js` holds `FORWARDING_HEADERS`, `hasForwardingHeaders()` (a present header counts, even when empty) and `isLoopbackAddress()`, and both middlewares call them. The address source differs on purpose: `requireHttps` reads `request.ip`, the bypass reads `request.socket.remoteAddress`, because `request.ip` follows `X-Forwarded-For` as soon as `trust proxy` is enabled and a client must not be able to name itself loopback to switch compression off. The server sets no `trust proxy`, so the two values are equal today.
+- **Tests:** `tests/perf-caching-compression-markers.test.js` ("the loopback bypass and requireHttps agree on which requests come straight from this machine") runs the real `requireHttps` middleware and the bypass over every forwarding header and eight client addresses.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

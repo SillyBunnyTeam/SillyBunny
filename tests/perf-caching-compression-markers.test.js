@@ -568,7 +568,7 @@ describe('3. Loopback compression bypass and bounded static LRU', () => {
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '::ffff:127.0.0.2' }, headers: {} })).toBe(true);
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '192.168.1.25' }, headers: {} })).toBe(false);
 
-        for (const proxyHeader of ['x-forwarded-for', 'forwarded', 'via', 'x-real-ip', 'cf-connecting-ip']) {
+        for (const proxyHeader of ['x-forwarded-for', 'forwarded', 'via', 'x-real-ip', 'cf-connecting-ip', 'x-forwarded-proto', 'x-forwarded-host']) {
             const req = {
                 socket: { remoteAddress: '127.0.0.1' },
                 headers: { [proxyHeader]: '203.0.113.5' },
@@ -581,6 +581,57 @@ describe('3. Loopback compression bypass and bounded static LRU', () => {
         expect(shouldBypassLoopbackCompression(directLoopback, { loopbackBypass: 'auto', env: {} })).toBe(true);
         expect(shouldBypassLoopbackCompression(directLoopback, { loopbackBypass: false, env: {} })).toBe(false);
         expect(shouldBypassLoopbackCompression(directLoopback, { loopbackBypass: 'auto', env: { SILLYBUNNY_TEST_COMPRESSION: '1' } })).toBe(false);
+    });
+
+    test('the loopback bypass and requireHttps agree on which requests come straight from this machine', async () => {
+        const previousRequireHttps = process.env.SILLYTAVERN_REQUIREHTTPS;
+        process.env.SILLYTAVERN_REQUIREHTTPS = 'true';
+        let requireHttpsMiddleware;
+        try {
+            ({ default: requireHttpsMiddleware } = await import('../src/middleware/requireHttps.js'));
+        } finally {
+            if (previousRequireHttps === undefined) {
+                delete process.env.SILLYTAVERN_REQUIREHTTPS;
+            } else {
+                process.env.SILLYTAVERN_REQUIREHTTPS = previousRequireHttps;
+            }
+        }
+
+        // requireHttps lets plain HTTP through only for a request from this machine, so a pass on a request that says
+        // "http" over a non-secure connection means it judged the request local.
+        const requireHttpsJudgesLocal = (address, headers) => {
+            let passed = false;
+            requireHttpsMiddleware(
+                { ip: address, socket: { remoteAddress: address }, secure: false, hostname: 'app.example', headers },
+                { status() { return this; }, json() {} },
+                () => { passed = true; },
+            );
+            return passed;
+        };
+        const bypassJudgesLocal = (address, headers) => shouldBypassLoopbackCompression(
+            { ip: address, socket: { remoteAddress: address }, headers },
+            { loopbackBypass: 'auto', env: {} },
+        );
+
+        const forwardingHeaders = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip', 'cf-connecting-ip', 'via'];
+        const headerSets = [{}, { host: 'localhost' }, ...forwardingHeaders.map(name => ({ [name]: 'http' })), { 'x-forwarded-for': '' }];
+        const addresses = ['127.0.0.1', '127.8.9.10', '::1', '::ffff:127.0.0.1', '::FFFF:127.0.0.2', '192.0.2.10', '::ffff:192.0.2.10', '2001:db8::1'];
+
+        const disagreements = [];
+        let judgedLocal = 0;
+        for (const address of addresses) {
+            for (const headers of headerSets) {
+                const forRequireHttps = requireHttpsJudgesLocal(address, headers);
+                const forBypass = bypassJudgesLocal(address, headers);
+                judgedLocal += forBypass ? 1 : 0;
+                if (forRequireHttps !== forBypass) {
+                    disagreements.push({ address, headers, requireHttps: forRequireHttps, bypass: forBypass });
+                }
+            }
+        }
+
+        expect(disagreements).toEqual([]);
+        expect(judgedLocal).toBeGreaterThan(0);
     });
 
     test('compresses proxied dynamic responses at the compression package defaults and keeps the 2048-byte threshold', async () => {

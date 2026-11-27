@@ -8,21 +8,12 @@ import zlib from 'node:zlib';
 import compression from 'compression';
 import mime from 'mime-types';
 
+import { hasForwardingHeaders, isLoopbackAddress } from '../loopback-request.js';
 import { isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import { getConfigValue } from '../util.js';
 
 const brotliCompressAsync = promisify(zlib.brotliCompress);
 const gzipAsync = promisify(zlib.gzip);
-
-const IPV4_LOOPBACK_RE = /^127(?:\.\d{1,3}){3}$/;
-
-const PROXY_FORWARDING_HEADERS = Object.freeze([
-    'x-forwarded-for',
-    'forwarded',
-    'via',
-    'x-real-ip',
-    'cf-connecting-ip',
-]);
 
 const LOOPBACK_BYPASS_ENV_KEY = 'SILLYTAVERN_PERFORMANCE_COMPRESSION_LOOPBACKBYPASS';
 const TEST_COMPRESSION_ENV_KEY = 'SILLYBUNNY_TEST_COMPRESSION';
@@ -72,49 +63,19 @@ function appendVaryAcceptEncoding(response) {
     }
 }
 
-function hasProxyHeaders(request) {
-    const headers = request?.headers;
-    if (!headers) {
-        return false;
-    }
-
-    for (const headerName of PROXY_FORWARDING_HEADERS) {
-        const value = headers[headerName];
-        if (Array.isArray(value) ? value.some(Boolean) : Boolean(value && String(value).trim())) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function isLoopbackRemoteAddress(remoteAddress) {
-    if (typeof remoteAddress !== 'string' || !remoteAddress) {
-        return false;
-    }
-
-    const normalized = remoteAddress.trim().toLowerCase();
-    if (normalized === '::1') {
-        return true;
-    }
-
-    const ipv4 = normalized.startsWith('::ffff:') ? normalized.slice('::ffff:'.length) : normalized;
-    return IPV4_LOOPBACK_RE.test(ipv4);
-}
-
 /**
  * True only when the TCP peer is loopback and no reverse-proxy header is present.
  * A local reverse proxy (nginx/Caddy/Cloudflare Tunnel) connects over loopback on behalf
- * of remote clients, so any proxy header disqualifies the loopback bypass.
+ * of remote clients, so any forwarding header disqualifies the loopback bypass. The
+ * address and header tests are the ones `requireHttps` uses for its local exemption.
+ * The address is read from the socket instead of `request.ip` because `request.ip`
+ * follows `X-Forwarded-For` once `trust proxy` is enabled, and a client must never be
+ * able to name itself loopback to switch compression off.
  * @param {import('express').Request} request Express request
  * @returns {boolean}
  */
 export function isDirectLoopbackRequest(request) {
-    if (!isLoopbackRemoteAddress(request?.socket?.remoteAddress)) {
-        return false;
-    }
-
-    return !hasProxyHeaders(request);
+    return isLoopbackAddress(request?.socket?.remoteAddress) && !hasForwardingHeaders(request);
 }
 
 function readLoopbackBypassSetting(explicitSetting, env = process.env) {
