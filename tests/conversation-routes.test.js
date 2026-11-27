@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import express from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
@@ -632,11 +631,36 @@ describe('what the routes refuse', () => {
 });
 
 describe('the server mounts the routes under one prefix only', () => {
-    test('src/server-startup.js mounts the router at /api/sillybunny-conversation and not at the old alias', () => {
-        const source = fs.readFileSync(fileURLToPath(new URL('../src/server-startup.js', import.meta.url)), 'utf8');
+    test('setupPrivateEndpoints serves /api/sillybunny-conversation and leaves the old alias unmounted', async () => {
+        const { setupPrivateEndpoints } = await import('../src/server-startup.js');
+        const fullApp = express();
+        fullApp.use(express.json());
+        fullApp.use((request, _response, next) => {
+            request.user = user;
+            next();
+        });
+        setupPrivateEndpoints(fullApp);
+        const mountedServer = await new Promise(resolve => {
+            const listening = fullApp.listen(0, '127.0.0.1', () => resolve(listening));
+        });
+        const mountedUrl = `http://127.0.0.1:${mountedServer.address().port}`;
+        try {
+            const active = await fetch(`${mountedUrl}/api/sillybunny-conversation/list`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            const legacy = await fetch(`${mountedUrl}/api/sillybunny/conversation/list`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
 
-        expect(source).toContain('app.use(\'/api/sillybunny-conversation\', sillyBunnyConversationRouter)');
-        expect(source).not.toContain('/api/sillybunny/conversation');
+            expect(active.status).toBe(200);
+            expect(legacy.status).toBe(404);
+        } finally {
+            await new Promise((resolve, reject) => mountedServer.close(error => error ? reject(error) : resolve()));
+        }
     });
 });
 

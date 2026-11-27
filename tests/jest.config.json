@@ -3,6 +3,8 @@
     "transform": {},
     "testEnvironment": "node",
     "moduleNameMapper": {
+        "^/script\\.js$": "<rootDir>/../public/script.js",
+        "^/lib\\.js$": "<rootDir>/../public/lib.js",
         "^/scripts/(.*)$": "<rootDir>/../public/scripts/$1"
     }
 }

@@ -1,6 +1,10 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync, readdirSync } from 'node:fs';
+import { describe, expect, jest, test } from '@jest/globals';
+import fs, { readFileSync, readdirSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+import { setConfigFilePath } from '../src/util.js';
 import {
     THEME_COLOR_KEYS,
     THEME_REVISED_KEYS,
@@ -12,12 +16,14 @@ import {
     planThemeTextRepair,
 } from '../public/scripts/sillybunny-theme-revisions.js';
 
+setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
+const { reconcileManagedBundledThemes } = await import('../src/endpoints/content-manager.js');
+
 const readJson = url => JSON.parse(readFileSync(url, 'utf8'));
 const bundled = name => readJson(new URL(`../default/content/themes/${name}.json`, import.meta.url));
 /** The file as it shipped before the text colors were raised. */
 const previous = name => readJson(new URL(`./fixtures/stale-bundled-themes/${name}.json`, import.meta.url));
 const powerUserSource = readFileSync(new URL('../public/scripts/power-user.js', import.meta.url), 'utf8');
-const contentManagerSource = readFileSync(new URL('../src/endpoints/content-manager.js', import.meta.url), 'utf8');
 
 const bundledNames = readdirSync(new URL('../default/content/themes/', import.meta.url)).map(file => file.replace(/\.json$/, ''));
 const unrevisedNames = bundledNames.filter(name => !Object.hasOwn(REVISED_THEMES, name));
@@ -31,18 +37,32 @@ const RENAMED_BEFORE_REPAIR = ['Dark V 1.0'];
  */
 const RENAMES_OF_RETIRED_THEMES = { 'Libadwaita Dark': 'Libadwaita.json' };
 
-/** Names of the bundled themes the server replaces while the user's copy is an earlier version, read from content-manager.js. */
+/** Names of the bundled themes the server reconciles, observed by running reconcileManagedBundledThemes against an empty folder. */
 function managedThemeNames() {
-    const contrastBlock = /const CONTRAST_REVISED_THEME_HASHES = Object\.freeze\(\{\n([\s\S]*?)\n\}\);/.exec(contentManagerSource)?.[1];
-    if (!contrastBlock) {
-        throw new Error('CONTRAST_REVISED_THEME_HASHES not found in content-manager.js');
+    const tempThemesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-theme-revisions-'));
+    const checkedFiles = [];
+    const realExistsSync = fs.existsSync.bind(fs);
+    const existsSpy = jest.spyOn(fs, 'existsSync').mockImplementation((targetPath) => {
+        if (typeof targetPath === 'string' && targetPath.startsWith(tempThemesDir) && targetPath !== tempThemesDir) {
+            checkedFiles.push(path.basename(targetPath));
+            return false;
+        }
+        return realExistsSync(targetPath);
+    });
+    try {
+        reconcileManagedBundledThemes({ themes: tempThemesDir });
+    } finally {
+        existsSpy.mockRestore();
+        fs.rmSync(tempThemesDir, { recursive: true, force: true });
     }
-    const contrastNames = [...contrastBlock.matchAll(/^ {4}(?:'([^']+)'|([\w-]+)): (?:'[0-9a-f]{64}',|\[)$/gm)].map(match => match[1] ?? match[2]);
-    const listedNames = [...contentManagerSource.matchAll(/bundledPath: 'themes\/([^']+)\.json'/g)].map(match => match[1]);
-    for (const retiredFile of Object.values(RENAMES_OF_RETIRED_THEMES)) {
-        expect(contentManagerSource).toContain(`filename: '${retiredFile}'`);
+    const retiredFiles = new Set(Object.values(RENAMES_OF_RETIRED_THEMES));
+    for (const retiredFile of retiredFiles) {
+        expect(checkedFiles).toContain(retiredFile);
     }
-    return [...listedNames, ...contrastNames, ...Object.keys(RENAMES_OF_RETIRED_THEMES)];
+    const managedNames = checkedFiles
+        .filter(file => !retiredFiles.has(file) && file.endsWith('.json'))
+        .map(file => file.replace(/\.json$/, ''));
+    return [...new Set([...managedNames, ...Object.keys(RENAMES_OF_RETIRED_THEMES)])];
 }
 
 const paletteOf = theme => Object.fromEntries(THEME_COLOR_KEYS.map(key => [key, theme[key]]));

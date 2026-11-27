@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 import { setConfigFilePath } from '../src/util.js';
+import { importOpenAiModule } from './util/openai-harness.js';
 
 const actualNodeFetch = (await import('node-fetch')).default;
 const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
@@ -238,12 +239,23 @@ describe('reasoning effort on Z.AI and Moonshot requests', () => {
         expect(genericCaption[1].split(',')).not.toContain('moonshot');
     });
 
-    test('keeps both sources out of the string-effort resolver so max is not collapsed to high', () => {
-        const openAiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
-        const sources = openAiSource.match(/const reasoningEffortSources = \[([\s\S]*?)\];/);
-
-        expect(sources).not.toBeNull();
-        expect(sources[1]).not.toContain('ZAI');
-        expect(sources[1]).not.toContain('MOONSHOT');
+    test('preserves max effort on the client for Z.AI and Moonshot instead of collapsing it to high', async () => {
+        const { openai } = await importOpenAiModule();
+        for (const [source, model] of [
+            [openai.chat_completion_sources.ZAI, 'glm-5.2'],
+            [openai.chat_completion_sources.MOONSHOT, 'kimi-k3'],
+        ]) {
+            const { generate_data } = await openai.createGenerationParameters(
+                {
+                    ...openai.oai_settings,
+                    chat_completion_source: source,
+                    reasoning_effort: openai.reasoning_effort_types.max,
+                },
+                model,
+                'normal',
+                [{ role: 'user', content: 'Question' }],
+            );
+            expect(generate_data.reasoning_effort).toBe('max');
+        }
     });
 });
