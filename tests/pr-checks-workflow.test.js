@@ -57,6 +57,17 @@ describe('pull request checks workflow', () => {
         expect(testIndex).toBeGreaterThan(installIndex);
     });
 
+    test('runs the unit suite on Windows with Node 24 and ignore-scripts installs', () => {
+        const job = workflow.jobs['run-tests-windows'];
+        expect(job.name).toBe('✅ Run Unit Tests on Windows');
+        expect(job['runs-on']).toBe('windows-latest');
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+        const commands = runCommands('run-tests-windows');
+        expect(commands).toContain('npm ci --ignore-scripts');
+        expect(commands).toContain('npm ci --ignore-scripts --prefix tests');
+        expect(commands).toContain('npm run test:unit --prefix tests');
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = Object.values(workflow.jobs).flatMap(job => job.steps.map(step => step.uses).filter(Boolean));
         expect(uses.length).toBeGreaterThan(0);
