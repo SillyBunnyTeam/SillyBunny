@@ -68,12 +68,21 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build and verify prebuilt frontend library bundle
+        run: |
+          set -euo pipefail
+          npm run build:lib -- --verify --tarball "$RUNNER_TEMP/sillybunny-prebuilt-lib.tar.gz"
+
       - name: Collect release assets
         id: assets
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/release-assets"
           mkdir -p "$out"
+          cp "$RUNNER_TEMP/sillybunny-prebuilt-lib.tar.gz" "$out/sillybunny-prebuilt-lib.tar.gz"
           # Bootstrap installers ship once scripts/bootstrap/ exists (Phase 4).
           if [ -d scripts/bootstrap ]; then
             find scripts/bootstrap -maxdepth 1 -type f \( -name '*.sh' -o -name '*.ps1' -o -name '*.cmd' \) -exec cp {} "$out/" \;

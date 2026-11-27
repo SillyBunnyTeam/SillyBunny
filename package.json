@@ -135,6 +135,8 @@
         "start:no-csrf": "bun server.js --disableCsrf",
         "start:no-csrf:node": "node --no-warnings server.js --disableCsrf",
         "build:frontend": "node scripts/build-frontend-assets.js",
+        "build:lib": "node scripts/build-prebuilt-lib.js",
+        "verify:lib": "node scripts/build-prebuilt-lib.js --verify",
         "perf:frontend": "node scripts/measure-frontend-performance.js",
         "audit:frontend": "node scripts/audit-frontend-contracts.js",
         "check:frontend-contracts": "node scripts/audit-frontend-contracts.js --strict --baseline scripts/frontend-contract-baseline.json",
