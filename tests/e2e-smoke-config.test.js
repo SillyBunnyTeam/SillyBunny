@@ -42,7 +42,12 @@ describe('e2e smoke and cross-browser Playwright configs', () => {
         expect(firefoxConfig.projects).toEqual([{ name: 'firefox', use: { browserName: 'firefox', serviceWorkers: 'block' } }]);
         expect(webkitConfig.timeout).toBe(60_000);
         expect(firefoxConfig.timeout).toBe(60_000);
-        expect([firefoxConfig.globalSetup].flat()).toContain('./helpers/restart-cache-clear-seed.js');
+        const firefoxGlobalSetup = [firefoxConfig.globalSetup].flat().filter(Boolean);
+        if (firefoxConfig.webServer) {
+            expect(firefoxGlobalSetup.some(entry => entry.endsWith('e2e-servers-prime.js'))).toBe(true);
+        } else {
+            expect(firefoxGlobalSetup).toContain('./helpers/restart-cache-clear-seed.js');
+        }
     });
 
     test('Firefox exclusions each document a reason and a RegExp pattern', () => {
