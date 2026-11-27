@@ -156,6 +156,7 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/composer-bar-controls.e2e.js` (chips unclipped at 1440, label steps, typing row above the chips at 390), `tests/group-chat-greetings-qol.test.js`, `tests/group-speaker-selection-api.test.js`.
 
 ### Chat writes, reloads and backups
+- Switching regex presets must guard `reloadCurrentChat()` with `if (getCurrentChatId())` so changing presets with no open chat does not trigger the neutral-chat reload path (`public/scripts/extensions/regex/index.js` `RegexPresetManager.applyPreset`, early port of upstream ST #6109; guarded by `tests/regex-preset-reload-guard.test.js`).
 
 - **Breaks:** an old queued write replaces a newer chat; backups push each other out of the backup ring.
 - **Files:** `public/scripts/chat-save-guard.js`, `public/scripts/chat-reload-guard.js`, `src/endpoints/chats.js`, `src/generation-commit.js`, `public/scripts/server-generations.js`.

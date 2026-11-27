@@ -396,7 +396,10 @@ class RegexPresetManager {
         // Render the changes to the UI
         await loadRegexScripts();
         // Apply the changes to the current chat
-        await reloadCurrentChat();
+        // SillyBunny: do not reload chat when switching regex presets with no chat open (ST #6109).
+        if (getCurrentChatId()) {
+            await reloadCurrentChat();
+        }
     }
 
     /**

@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/regex/index.js` - skip chat reload on preset change when no chat is open
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/regex/index.js` (`RegexPresetManager.applyPreset`). |
+| Area | Regex preset switching while no chat is open. |
+| Divergence reason | Early port of upstream SillyTavern PR #6109 before the next full upstream sync; switching regex presets while no chat is open triggered `reloadCurrentChat()` through SillyBunny's neutral-chat reset path. |
+| Target seam | `RegexPresetManager.applyPreset()` in `public/scripts/extensions/regex/index.js` (early port of upstream SillyTavern PR #6109, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Guard `await reloadCurrentChat()` with `if (getCurrentChatId())` so preset changes on the Home screen do not enter the neutral-chat reload path. |
+| Protecting tests | `tests/regex-preset-reload-guard.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- regex-preset-reload-guard.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `if (getCurrentChatId())` wrapper around `await reloadCurrentChat()` in `RegexPresetManager.applyPreset()` in `public/scripts/extensions/regex/index.js`, and delete `tests/regex-preset-reload-guard.test.js`. Saved regex presets and chats are unaffected. Drop this entry on the upstream sync that brings ST #6109. |
+| Last reviewed | 2026-11-27 (early port of ST #6109). |
+| Owner | Built-in extensions integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
