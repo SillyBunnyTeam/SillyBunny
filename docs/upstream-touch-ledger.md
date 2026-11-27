@@ -2958,28 +2958,28 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/encryption.js`; `src/endpoints/secrets.js`. |
 | Area | Secrets-at-rest `scryptSync` key derivation and hot-path `secrets.json` read caching. |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Upstream's `SCRYPT_OPTIONS` (`N = 32768, r = 8, p = 1`) omits `maxmem`, exceeding OpenSSL/BoringSSL's 32 MiB default on Node 24 and Bun 1.4+ and throwing `ERR_CRYPTO_INVALID_SCRYPT_PARAMS`. In addition, `readSecret()` synchronously reads, parses, and decrypts `secrets.json` on every API call (~43 ms + 32 MiB scrypt work per call when encrypted). |
 | Target seam | `SCRYPT_OPTIONS` in `src/encryption.js` and bounded `secretsFileCache` / `clearSecretsCache()` in `src/endpoints/secrets.js`. |
 | Adapter shape | `src/encryption.js`: sets `maxmem: 64 * 1024 * 1024` on `SCRYPT_OPTIONS` so `N = 32768, r = 8` succeeds under Node 24 and Bun 1.4.4 default 32 MiB OpenSSL/BoringSSL limits. `src/endpoints/secrets.js`: caches parsed/decrypted `secrets.json` entries (bounded to 64 files) by `(mtimeMs, size, passphraseDigest)`, returns `structuredClone` copies, and invalidates on write. Marked with `// SillyBunny:` comments. |
 | Protecting tests | `tests/perf-secrets-encryption-datamaid.test.js`; `tests/secrets.test.js`. |
 | Validation | 2026-11-26 (fresh install, restart, settings save): root and `tests/` lint, focused Jest unit tests, and Node 24 + Bun 1.4.4 encryption roundtrip checks. |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Remove `maxmem` from `SCRYPT_OPTIONS` in `src/encryption.js` (note: breaks encrypted secrets on Node 24/Bun 1.4+) and revert the marked `secretsFileCache` lookup/invalidation helpers in `src/endpoints/secrets.js`. The on-disk `secrets.json` and `STENC01` ciphertext format are unchanged. |
 | Last reviewed | 2026-11-26, PR #1032 Wave-1 follow-up. |
-| Owner | `TODO(copy)` |
+| Owner | Server runtime integrator. |
 
 ### `src/endpoints/data-maid.js` - single-pass streaming scan, Conversation Mode media protection, and mobile thumbnails
 | Field | Value |
 | --- | --- |
 | File | `src/endpoints/data-maid.js`. |
 | Area | Data Maid loose-asset scanning, orphan safety, and mobile thumbnail cleanup. |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Upstream reads and parses every `.jsonl` chat file four separate times serially into memory per report, misses SillyBunny's mobile avatar/persona thumbnail directories, and does not inspect `extension_settings.sillybunny_conversation` — risking flagging live Conversation Mode attachments and group avatars as orphaned files for deletion. |
 | Target seam | `collectConversationModeReferences()` and `#collectChatAndGroupReferences()` inside `src/endpoints/data-maid.js`. |
 | Adapter shape | Marked `SillyBunny:` additions: streams `.jsonl` chat files once via `node:readline` instead of reading/parsing all chats four times, caches `settings.json` per report pass, records `extension_settings.sillybunny_conversation` message media/files/attachments and group avatars as known references, and scans `thumbnailsAvatarMobile` and `thumbnailsPersonaMobile` alongside desktop thumbnail directories. |
 | Protecting tests | `tests/perf-secrets-encryption-datamaid.test.js`; `tests/data-maid-precise-reference.test.js`; `tests/data-maid-external-media.test.js`; `tests/data-maid-fonts.test.js`. |
 | Validation | 2026-11-26 (long chat, Data Maid scan): root and `tests/` lint and focused Data Maid Jest suites. |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Revert the marked streaming reference collector, `collectConversationModeReferences()`, and mobile thumbnail directory checks in `src/endpoints/data-maid.js` to restore upstream's `#parseAllChats`/`#parseAllMetadata` scans. No saved user data formats change. |
 | Last reviewed | 2026-11-26, PR #1032 Wave-1 follow-up. |
-| Owner | `TODO(copy)` |
+| Owner | Server runtime integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
