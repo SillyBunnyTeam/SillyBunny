@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const ICON_CONTROL_ANCHOR = '.right_menu_button:not(:has(> span)):not(:has(> small)):not(:has(> b)):not(:has(> strong)):has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):only-child)';
+const ICON_CONTROL_ANCHOR = '.right_menu_button:has(> :is(.fa, .fa-solid, .fa-regular, .fa-brands, i, svg, img):not(span, small, b, strong):only-child)';
 
 function getIconControlRuleBodies(fileName) {
     const css = readFileSync(path.join(repoRoot, 'public', 'css', fileName), 'utf8').replace(/\r\n/g, '\n');

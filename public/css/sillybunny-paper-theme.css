@@ -6,8 +6,8 @@
 
 }
 
-/* Paper grain and wash overlay */
-body::after {
+/* Paper grain and wash overlay; gated on texture state so disabled mode creates no fixed blend layer. */
+:root[data-sb-paper-texture='on'] body::after {
     content: '';
     position: fixed;
     inset: 0;
@@ -127,7 +127,7 @@ body.bubblechat .mes[is_user='false'] {
 }
 
 /* Light paper fiber on bubbles */
-body.bubblechat .mes::after {
+:root[data-sb-paper-texture='on'] body.bubblechat .mes::after {
     content: '';
     position: absolute;
     inset: 0;

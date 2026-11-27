@@ -315,6 +315,20 @@ function getChatSaveComparisonRecords(data, { ignoreDerivedMetadata = true } = {
 }
 
 function isSameChatSaveContent(left, right, options = {}) {
+    // SillyBunny: identical non-empty JSONL strings represent the same chat without parsing every message twice.
+    if (typeof left === 'string' && typeof right === 'string' && left.length > 0 && left === right) {
+        const firstLineEnd = left.indexOf('\n');
+        const firstLine = (firstLineEnd === -1 ? left : left.slice(0, firstLineEnd)).trim();
+        if (firstLine.length > 0) {
+            try {
+                if (isRecognizedChatHeader(JSON.parse(firstLine))) {
+                    return true;
+                }
+            } catch {
+                // Fall through to full comparison for malformed inputs.
+            }
+        }
+    }
     const leftRecords = getChatSaveComparisonRecords(left, options);
     const rightRecords = getChatSaveComparisonRecords(right, options);
     return leftRecords !== null && rightRecords !== null && isDeepStrictEqual(leftRecords, rightRecords);

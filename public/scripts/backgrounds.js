@@ -44,6 +44,42 @@ const THUMBNAIL_STORAGE = localforage.createInstance({ name: 'SillyTavern_Thumbn
  * @type {Map<string, string>}
  */
 const THUMBNAIL_BLOBS = new Map();
+// SillyBunny: bound active thumbnail blob URLs and revoke evicted entries so gallery browsing does not leak memory.
+const MAX_THUMBNAIL_BLOB_URLS = 64;
+
+function cacheThumbnailBlobUrl(bg, blobUrl) {
+    const existing = THUMBNAIL_BLOBS.get(bg);
+    if (existing && existing !== blobUrl) {
+        URL.revokeObjectURL(existing);
+    }
+    THUMBNAIL_BLOBS.delete(bg);
+    THUMBNAIL_BLOBS.set(bg, blobUrl);
+
+    if (THUMBNAIL_BLOBS.size <= MAX_THUMBNAIL_BLOB_URLS) {
+        return;
+    }
+
+    const activeName = background_settings?.name;
+    for (const [evictKey, evictUrl] of THUMBNAIL_BLOBS) {
+        if (THUMBNAIL_BLOBS.size <= MAX_THUMBNAIL_BLOB_URLS) {
+            break;
+        }
+        if (evictKey === bg || evictKey === activeName) {
+            continue;
+        }
+        THUMBNAIL_BLOBS.delete(evictKey);
+        URL.revokeObjectURL(evictUrl);
+        // Re-arm lazy loading if the evicted tile is still in the DOM so scrolling back restores it from IndexedDB.
+        if (typeof document !== 'undefined') {
+            const tile = document.querySelector(`.bg_example[bgfile="${CSS.escape(evictKey)}"] .bg_example_clipper`);
+            if (tile instanceof HTMLElement && tile.style.backgroundImage.includes(evictUrl)) {
+                tile.style.backgroundImage = '';
+                tile.classList.add('lazy-load-background');
+                lazyLoadObserver?.observe(tile);
+            }
+        }
+    }
+}
 
 const THUMBNAIL_CONFIG = {
     width: 160,
@@ -466,13 +502,15 @@ async function onCopyToSystemBackgroundClick(e) {
 async function getThumbnailFromStorage(bg, isCustom) {
     const cachedBlobUrl = THUMBNAIL_BLOBS.get(bg);
     if (cachedBlobUrl) {
+        THUMBNAIL_BLOBS.delete(bg);
+        THUMBNAIL_BLOBS.set(bg, cachedBlobUrl);
         return cachedBlobUrl;
     }
 
     const savedBlob = await THUMBNAIL_STORAGE.getItem(bg);
     if (savedBlob) {
         const savedBlobUrl = URL.createObjectURL(savedBlob);
-        THUMBNAIL_BLOBS.set(bg, savedBlobUrl);
+        cacheThumbnailBlobUrl(bg, savedBlobUrl);
         return savedBlobUrl;
     }
 
@@ -488,13 +526,13 @@ async function getThumbnailFromStorage(bg, isCustom) {
         const thumbnailBlob = await fetch(thumbnailBase64).then(res => res.blob());
         await THUMBNAIL_STORAGE.setItem(bg, thumbnailBlob);
         const blobUrl = URL.createObjectURL(thumbnailBlob);
-        THUMBNAIL_BLOBS.set(bg, blobUrl);
+        cacheThumbnailBlobUrl(bg, blobUrl);
         return blobUrl;
     } catch (error) {
         console.error('Error fetching thumbnail, fallback image will be used:', error);
         const fallbackBlob = PNG_PIXEL_BLOB;
         const fallbackBlobUrl = URL.createObjectURL(fallbackBlob);
-        THUMBNAIL_BLOBS.set(bg, fallbackBlobUrl);
+        cacheThumbnailBlobUrl(bg, fallbackBlobUrl);
         return fallbackBlobUrl;
     }
 }

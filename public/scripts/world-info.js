@@ -247,6 +247,22 @@ class WorldInfoBuffer {
      */
     static externalActivations = new Map();
 
+    // SillyBunny: cache compiled whole-word keyword regexes inside the class so extracted test harnesses stay self-contained.
+    static #wholeWordRegexCache = new Map();
+    static #maxWholeWordRegexCache = 2048;
+
+    static #getWholeWordRegex(transformedString) {
+        let regex = WorldInfoBuffer.#wholeWordRegexCache.get(transformedString);
+        if (!regex) {
+            regex = new RegExp(`(?:^|\\W)(${escapeRegex(transformedString)})(?:$|\\W)`);
+            if (WorldInfoBuffer.#wholeWordRegexCache.size >= WorldInfoBuffer.#maxWholeWordRegexCache) {
+                WorldInfoBuffer.#wholeWordRegexCache.delete(WorldInfoBuffer.#wholeWordRegexCache.keys().next().value);
+            }
+            WorldInfoBuffer.#wholeWordRegexCache.set(transformedString, regex);
+        }
+        return regex;
+    }
+
     /**
      * @type {WIGlobalScanData} Chat independent data to be scanned, such as persona and character descriptions
      */
@@ -282,6 +298,27 @@ class WorldInfoBuffer {
      * @type {(value: string) => string} Macro substitution for entry keys
      */
     #substitute;
+
+    // SillyBunny: memoize assembled and lowercased scan haystacks until the buffer mutates.
+    #haystackCache = new Map();
+    #lowerHaystackCache = new Map();
+
+    #clearCaches() {
+        this.#haystackCache.clear();
+        this.#lowerHaystackCache.clear();
+    }
+
+    #getLowerHaystack(haystack) {
+        let lowered = this.#lowerHaystackCache.get(haystack);
+        if (lowered === undefined) {
+            lowered = haystack.toLowerCase();
+            if (this.#lowerHaystackCache.size >= 32) {
+                this.#lowerHaystackCache.delete(this.#lowerHaystackCache.keys().next().value);
+            }
+            this.#lowerHaystackCache.set(haystack, lowered);
+        }
+        return lowered;
+    }
 
     /**
      * Initialize the buffer with the given messages.
@@ -341,6 +378,22 @@ class WorldInfoBuffer {
             depth = MAX_SCAN_DEPTH;
         }
 
+        // SillyBunny: reuse assembled scan buffer when depth, scan mode, and global flags match.
+        const globalFlags = depth > 0
+            ? (entry.matchPersonaDescription ? 1 : 0)
+                | (entry.matchCharacterDescription ? 2 : 0)
+                | (entry.matchCharacterPersonality ? 4 : 0)
+                | (entry.matchCharacterDepthPrompt ? 8 : 0)
+                | (entry.matchScenario ? 16 : 0)
+                | (entry.matchCreatorNotes ? 32 : 0)
+            : 0;
+        const excludeRecurse = scanState === scan_state.MIN_ACTIVATIONS ? 1 : 0;
+        const cacheKey = `${depth}|${excludeRecurse}|${globalFlags}`;
+        const cached = this.#haystackCache.get(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+
         const MATCHER = '\x01';
         const JOINER = '\n' + MATCHER;
         let result = MATCHER + this.#depthBuffer.slice(this.#startDepth, depth).join(JOINER);
@@ -375,6 +428,7 @@ class WorldInfoBuffer {
             result += JOINER + this.#recurseBuffer.join(JOINER);
         }
 
+        this.#haystackCache.set(cacheKey, result);
         return result;
     }
 
@@ -393,7 +447,8 @@ class WorldInfoBuffer {
         }
 
         // Otherwise we do normal matching of plaintext with the chosen entry settings
-        haystack = this.#transformString(haystack, entry);
+        const caseSensitive = entry.caseSensitive ?? world_info_case_sensitive;
+        haystack = caseSensitive ? haystack : this.#getLowerHaystack(haystack);
         const transformedString = this.#transformString(needle, entry);
         const matchWholeWords = entry.matchWholeWords ?? world_info_match_whole_words;
 
@@ -404,7 +459,7 @@ class WorldInfoBuffer {
                 return haystack.includes(transformedString);
             } else {
                 // Use custom boundaries to include punctuation and other non-alphanumeric characters
-                const regex = new RegExp(`(?:^|\\W)(${escapeRegex(transformedString)})(?:$|\\W)`);
+                const regex = WorldInfoBuffer.#getWholeWordRegex(transformedString);
                 if (regex.test(haystack)) {
                     return true;
                 }
@@ -422,6 +477,7 @@ class WorldInfoBuffer {
      */
     addRecurse(message) {
         this.#recurseBuffer.push(message);
+        this.#clearCaches();
     }
 
     /**
@@ -430,6 +486,7 @@ class WorldInfoBuffer {
      */
     addInject(message) {
         this.#injectBuffer.push(message);
+        this.#clearCaches();
     }
 
     /**
@@ -445,6 +502,7 @@ class WorldInfoBuffer {
      */
     advanceScan() {
         this.#skew++;
+        this.#clearCaches();
     }
 
     /**
@@ -3207,6 +3265,10 @@ function isValidRegex(input) {
  * @returns {RegExp|null} The regex object, or null if not a valid regex
  */
 export function parseRegexFromString(input) {
+    // SillyBunny: skip regex parsing immediately for plain keywords that do not start with a slash delimiter.
+    if (typeof input !== 'string' || input.charCodeAt(0) !== 47) {
+        return null;
+    }
     // Extracting the regex pattern and flags
     let match = input.match(/^\/([\w\W]+?)\/([gimsuy]*)$/);
     if (!match) {

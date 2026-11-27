@@ -1,9 +1,14 @@
 import { runSettledFrames } from './scheduler.js';
 
 const DEFAULT_MESSAGE_SELECTOR = '.mes[mesid]';
+const SAFE_ATTRIBUTE_VALUE_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function canReadElementRect(element) {
     return Boolean(element && typeof element.getBoundingClientRect === 'function');
+}
+
+function isCollapsedBoxRect(rect) {
+    return rect.top === 0 && rect.bottom === 0 && rect.width === 0 && rect.height === 0;
 }
 
 function getMessageElements(scrollElement, messageSelector = DEFAULT_MESSAGE_SELECTOR) {
@@ -12,6 +17,53 @@ function getMessageElements(scrollElement, messageSelector = DEFAULT_MESSAGE_SEL
     }
 
     return Array.from(scrollElement.querySelectorAll(messageSelector));
+}
+
+function findFirstVisibleMessage(messages, scrollRect) {
+    let low = 0;
+    let high = messages.length - 1;
+    let candidate = null;
+    let sawCollapsedBox = false;
+
+    while (low <= high) {
+        const mid = (low + high) >>> 1;
+        const message = messages[mid];
+        if (!canReadElementRect(message)) {
+            sawCollapsedBox = true;
+            break;
+        }
+        const rect = message.getBoundingClientRect();
+        if (isCollapsedBoxRect(rect)) {
+            sawCollapsedBox = true;
+            break;
+        }
+        if (rect.bottom > scrollRect.top) {
+            candidate = { message, rect };
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+
+    if (!sawCollapsedBox) {
+        if (candidate && candidate.rect.top < scrollRect.bottom) {
+            return candidate;
+        }
+        return null;
+    }
+
+    // Fall back to a linear scan only when a hidden zero-box node breaks top-to-bottom ordering.
+    for (const message of messages) {
+        if (!canReadElementRect(message)) {
+            continue;
+        }
+        const rect = message.getBoundingClientRect();
+        if (rect.bottom > scrollRect.top && rect.top < scrollRect.bottom) {
+            return { message, rect };
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -28,14 +80,13 @@ export function captureVisibleMessageAnchor(scrollElement, { messageSelector = D
     }
 
     const scrollRect = scrollElement.getBoundingClientRect();
-    const anchorElement = getMessageElements(scrollElement, messageSelector).find(message => {
-        if (!canReadElementRect(message)) {
-            return false;
-        }
+    const messages = getMessageElements(scrollElement, messageSelector);
+    if (messages.length === 0) {
+        return null;
+    }
 
-        const messageRect = message.getBoundingClientRect();
-        return messageRect.bottom > scrollRect.top && messageRect.top < scrollRect.bottom;
-    });
+    const visible = findFirstVisibleMessage(messages, scrollRect);
+    const anchorElement = visible?.message ?? null;
 
     if (!anchorElement || typeof anchorElement.getAttribute !== 'function') {
         return null;
@@ -49,7 +100,7 @@ export function captureVisibleMessageAnchor(scrollElement, { messageSelector = D
 
     return {
         messageId,
-        offsetTop: anchorElement.getBoundingClientRect().top - scrollRect.top,
+        offsetTop: visible.rect.top - scrollRect.top,
     };
 }
 
@@ -66,8 +117,15 @@ export function restoreVisibleMessageAnchor(scrollElement, anchor, { messageSele
         return;
     }
 
-    const anchorElement = getMessageElements(scrollElement, messageSelector)
-        .find(message => typeof message.getAttribute === 'function' && message.getAttribute(keyAttribute) === String(anchor.messageId));
+    const keyString = String(anchor.messageId);
+    let anchorElement = null;
+    if (typeof scrollElement.querySelector === 'function' && SAFE_ATTRIBUTE_VALUE_PATTERN.test(keyString) && SAFE_ATTRIBUTE_VALUE_PATTERN.test(keyAttribute)) {
+        anchorElement = scrollElement.querySelector(`${messageSelector}[${keyAttribute}="${keyString}"]`);
+    }
+    if (!anchorElement) {
+        anchorElement = getMessageElements(scrollElement, messageSelector)
+            .find(message => typeof message.getAttribute === 'function' && message.getAttribute(keyAttribute) === keyString);
+    }
 
     if (!canReadElementRect(anchorElement)) {
         return;

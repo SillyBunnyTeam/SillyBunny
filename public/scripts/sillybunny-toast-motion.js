@@ -30,9 +30,10 @@ import {
     TOAST_OVERLAY_ID,
     classifyToast,
     markButtons,
+    unwatchToastButtons,
     watchToastButtons,
 } from './sillybunny-toast-form.js';
-import { bindCardClick, playNotificationEnter, playNotificationLeave, shiftOthersAround, stopNotificationMotion, watchButtons } from './sillybunny-toast-notification.js';
+import { bindCardClick, playNotificationEnter, playNotificationLeave, shiftOthersAround, stopNotificationMotion, unwatchButtons, watchButtons } from './sillybunny-toast-notification.js';
 import { edgeOf, observeToastPlacement, scheduleToastPlacement, startToastPlacement, updateToastPlacement } from './sillybunny-toast-placement.js';
 
 export const TOAST_SHOW_METHOD = 'sbToastIn';
@@ -267,6 +268,11 @@ function sbToastHold() {
     return this;
 }
 
+function disconnectToastObservers(element) {
+    unwatchToastButtons(element);
+    unwatchButtons(element);
+}
+
 function leave(element, { pinned = false, complete = null } = {}) {
     const queue = queueOf(element);
     leaving.add(element);
@@ -279,6 +285,7 @@ function leave(element, { pinned = false, complete = null } = {}) {
     playLeave(element, {
         onFinish: () => {
             leaving.delete(element);
+            disconnectToastObservers(element);
             // toastr's removeToast() skips elements that are still :visible.
             element.style.display = 'none';
             pointToastrAtBothContainers();
@@ -306,6 +313,7 @@ function sbToastOut({ complete } = {}) {
     if (entry?.state === WAITING) {
         // A toast that never showed has nothing to animate. toastr removes it in `complete`.
         queue.waiting = queue.waiting.filter(other => other !== entry);
+        disconnectToastObservers(element);
         element.style.display = 'none';
         pointToastrAtBothContainers();
         complete?.call(element);
@@ -375,8 +383,20 @@ function pruneDetached() {
     // A message in a container that left the document with its dialog is not gone yet.
     adoptOrphans();
     for (const queue of allQueues) {
-        queue.waiting = queue.waiting.filter(entry => entry.element.isConnected);
-        queue.shown = queue.shown.filter(entry => entry.element.isConnected);
+        queue.waiting = queue.waiting.filter(entry => {
+            if (!entry.element.isConnected) {
+                disconnectToastObservers(entry.element);
+                return false;
+            }
+            return true;
+        });
+        queue.shown = queue.shown.filter(entry => {
+            if (!entry.element.isConnected) {
+                disconnectToastObservers(entry.element);
+                return false;
+            }
+            return true;
+        });
     }
 }
 
@@ -568,6 +588,7 @@ function keepRepeat({ queue, entry }) {
 
 function dropWaiting(queue, entry) {
     queue.waiting = queue.waiting.filter(other => other !== entry);
+    disconnectToastObservers(entry.element);
     toastrApi.remove(entry.$toast);
     entry.options.onHidden?.();
 }
@@ -1132,6 +1153,9 @@ export function getNotificationQueue() {
 
 export function resetToastQueue() {
     for (const queue of allQueues) {
+        for (const entry of [...queue.shown, ...queue.waiting]) {
+            disconnectToastObservers(entry.element);
+        }
         queue.shown = [];
         queue.waiting = [];
         queue.hiding = 0;

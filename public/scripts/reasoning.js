@@ -359,6 +359,31 @@ export function isHiddenReasoningModel() {
  * @param {boolean} [options.reset=false] - Whether to reset state, and not take the current mess properties (for example when swiping)
  */
 export function updateReasoningUI(messageIdOrElement, { reset = false } = {}) {
+    // SillyBunny: skip ReasoningHandler construction, formatting and morphdom for plain messages with no reasoning.
+    if (!reset) {
+        const messageElement = typeof messageIdOrElement === 'number'
+            ? document.querySelector(`#chat [mesid="${messageIdOrElement}"]`)
+            : messageIdOrElement instanceof HTMLElement
+                ? messageIdOrElement
+                : $(messageIdOrElement)[0];
+        const messageId = Number(messageElement?.getAttribute?.('mesid'));
+        const message = !isNaN(messageId) ? chat[messageId] : null;
+        const extra = message?.extra;
+        if (message && !extra?.reasoning && !extra?.reasoning_duration && !extra?.reasoning_display_text
+            && !messageElement.classList.contains('reasoning')
+            && !messageElement.dataset.reasoningState) {
+            const details = messageElement.querySelector('.mes_reasoning_details');
+            if (details) {
+                if (details.dataset.state !== ReasoningState.None) {
+                    details.dataset.state = ReasoningState.None;
+                }
+                if (details.dataset.hasContent) {
+                    delete details.dataset.hasContent;
+                }
+            }
+            return;
+        }
+    }
     const handler = new ReasoningHandler();
     handler.initHandleMessage(messageIdOrElement, { reset });
 }
@@ -391,6 +416,14 @@ export class ReasoningHandler {
     #activeStreamingTemplate = null;
     /** @type {number} Last time the live reasoning body was rendered */
     #lastReasoningDomRenderAt = 0;
+    /** @type {string?} Last raw reasoning text passed through regex replacement */
+    #lastRawReasoningInput = null;
+    /** @type {string?} Last regexed reasoning text produced by updateReasoning */
+    #lastRegexedReasoning = null;
+    /** @type {string?} Last reasoning text written to the DOM */
+    #lastRenderedReasoningText = null;
+    /** @type {HTMLElement?} Content element that received the last rendered reasoning text */
+    #lastRenderedReasoningDom = null;
 
     /**
      * @param {Date?} [timeStarted=null] - When the generation started
@@ -434,6 +467,10 @@ export class ReasoningHandler {
         this.state = promptReasoning.prefixIncomplete ? ReasoningState.None : ReasoningState.Done;
         this.startTime = this.initialTime;
         this.endTime = promptReasoning.prefixDuration ? new Date(this.initialTime.getTime() + promptReasoning.prefixDuration) : null;
+        this.#lastRawReasoningInput = null;
+        this.#lastRegexedReasoning = null;
+        this.#lastRenderedReasoningText = null;
+        this.#lastRenderedReasoningDom = null;
     }
 
     /**
@@ -502,6 +539,10 @@ export class ReasoningHandler {
             this.#isParsingReasoning = false;
             this.#parsingReasoningMesStartIndex = null;
             this.#activeStreamingTemplate = null;
+            this.#lastRawReasoningInput = null;
+            this.#lastRegexedReasoning = null;
+            this.#lastRenderedReasoningText = null;
+            this.#lastRenderedReasoningDom = null;
         }
 
         this.updateDom(messageId);
@@ -552,7 +593,17 @@ export class ReasoningHandler {
         const extra = chat[messageId].extra;
 
         const reasoningChanged = extra.reasoning !== reasoning;
-        this.reasoning = getRegexedString(reasoning ?? '', regex_placement.REASONING);
+        // SillyBunny: avoid re-running reasoning regexes when the raw input is unchanged or was already regexed in this tick.
+        const rawInput = reasoning ?? '';
+        if (rawInput === this.#lastRawReasoningInput && this.#lastRegexedReasoning !== null) {
+            this.reasoning = this.#lastRegexedReasoning;
+        } else if (rawInput === this.#lastRegexedReasoning) {
+            this.reasoning = this.#lastRegexedReasoning;
+        } else {
+            this.reasoning = getRegexedString(rawInput, regex_placement.REASONING);
+            this.#lastRawReasoningInput = rawInput;
+            this.#lastRegexedReasoning = this.reasoning;
+        }
 
         this.type = (this.#isParsingReasoning || this.#parsingReasoningMesStartIndex) ? ReasoningType.Parsed : ReasoningType.Model;
 
@@ -727,11 +778,14 @@ export class ReasoningHandler {
         setDatasetProperty(this.messageReasoningDetailsDom, 'hasContent', hasReasoningContent ? 'true' : null);
 
         // SillyBunny: mobile browsers can force-reload under reasoning-heavy streams if we
-        // format and morph a growing hidden reasoning block on every live tick.
-        if (shouldRenderReasoning) {
+        // format and morph a growing hidden reasoning block on every live tick, and completed
+        // reasoning must not re-format and morphdom on every subsequent prose tick.
+        const reasoning = trimSpaces(this.reasoningDisplayText ?? this.reasoning);
+        const reasoningBodyUnchanged = this.#lastRenderedReasoningDom === this.messageReasoningContentDom
+            && this.#lastRenderedReasoningText === reasoning;
+        if (shouldRenderReasoning && !reasoningBodyUnchanged) {
             // SillyBunny: throttle live reasoning DOM work on reduced platforms so large
             // hidden reasoning blocks do not cause aggressive repaint or reload loops.
-            const reasoning = trimSpaces(this.reasoningDisplayText ?? this.reasoning);
             const displayReasoning = messageFormatting(reasoning, '', false, false, messageId, {}, true);
 
             if (power_user.stream_fade_in) {
@@ -745,6 +799,8 @@ export class ReasoningHandler {
                 applyStreamDomPatch(this.messageReasoningContentDom, displayReasoning);
             }
 
+            this.#lastRenderedReasoningText = reasoning;
+            this.#lastRenderedReasoningDom = this.messageReasoningContentDom;
             this.#lastReasoningDomRenderAt = now;
         }
 

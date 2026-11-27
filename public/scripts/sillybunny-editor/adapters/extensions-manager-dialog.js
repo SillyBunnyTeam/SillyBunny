@@ -176,7 +176,7 @@ export function adaptExtensionsManager(source, {
 
     return {
         // The row actions measure the rows. The opening animation scales the dialog, so they start in onOpen.
-        onOpen: () => document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-open')),
+        onOpen: () => document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-open', { detail: { container: root } })),
         onOpening: popup => {
             const header = popup.dlg.querySelector('.sb-dialog__header');
             if (!header) return;
@@ -189,6 +189,6 @@ export function adaptExtensionsManager(source, {
             if (close && close.parentElement !== headerMenus) headerMenus.append(close);
             if (headerMenus.parentElement !== header) header.append(headerMenus);
         },
-        onClose: () => document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-close')),
+        onClose: () => document.dispatchEvent(new CustomEvent('sillybunny:extensions-manager-close', { detail: { container: root } })),
     };
 }

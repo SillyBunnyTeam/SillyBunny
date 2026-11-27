@@ -861,6 +861,27 @@ describe('Queued settings save acknowledgement', () => {
         expect(context.fetch).toHaveBeenCalledTimes(3);
     });
 
+    test('remembers the fingerprint of the settings that it sent, even when the page changes them while the fingerprint is computed', async () => {
+        const remembered = [];
+        const settingsSync = {
+            getFingerprint: jest.fn(async (input) => {
+                context.name1 = 'Changed while hashing';
+                return `fingerprint of ${typeof input === 'string' ? input : JSON.stringify(input)}`;
+            }),
+            remember: fingerprint => remembered.push(fingerprint),
+            isSynced: () => false,
+        };
+        const { context } = createHarness({ settingsSync });
+        context.name1 = 'Before hashing';
+
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(true);
+
+        const sentBody = context.fetch.mock.calls[0][1].body;
+        expect(JSON.parse(sentBody).username).toBe('Before hashing');
+        expect(settingsSync.getFingerprint).toHaveBeenCalledWith(sentBody);
+        expect(remembered).toEqual([`fingerprint of ${sentBody}`]);
+    });
+
     test('remembers no settings from a failed save', async () => {
         const { context } = createHarness({ settingsSync: createSettingsSync() });
         context.fetch.mockRejectedValueOnce(new Error('Network failure'));
@@ -874,7 +895,7 @@ describe('Queued settings save acknowledgement', () => {
         const { context } = createHarness({ settingsSync: sync });
         context.fetch.mockResolvedValueOnce({ status: 409, json: async () => ({ version: 5 }) });
         expect(await context.saveSettings(0, { returnResult: true })).toBe(false);
-        expect(sync.isSynced(sync.getFingerprint(JSON.stringify(JSON.parse(context.fetch.mock.calls[0][1].body))))).toBe(false);
+        expect(sync.isSynced(await sync.getFingerprint(JSON.stringify(JSON.parse(context.fetch.mock.calls[0][1].body))))).toBe(false);
     });
 
     test('preserves conflict state and blocks subsequent writes with the existing prompt', async () => {

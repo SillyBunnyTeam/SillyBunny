@@ -148,6 +148,52 @@ describe('readChatJsonlStrict', () => {
             data: invalidUtf8,
         });
     });
+
+    describe('parseChatJsonl', () => {
+        const header = '{"chat_metadata":{},"user_name":"User","character_name":"Character"}';
+        const message = '{"name":"Character","mes":"hello"}';
+        const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+        const bomCharacter = String.fromCharCode(0xfeff);
+        const text = value => Buffer.from(value, 'utf8');
+
+        test.each([true, false])('accepts a byte order mark at the start of the file only (collectRecords: %s)', (collectRecords) => {
+            const atStart = parseChatJsonl(Buffer.concat([bom, text(`${header}\n${message}\n`)]), { collectRecords });
+            expect(atStart.status).toBe('ok');
+
+            for (const [label, data] of [
+                ['line 2', Buffer.concat([text(`${header}\n`), bom, text(`${message}\n`)])],
+                ['line 3', Buffer.concat([text(`${header}\n${message}\n`), bom, text(`${message}\n`)])],
+                ['line 2 of a string', `${header}\n${bomCharacter}${message}\n`],
+                ['two at the start of the file', Buffer.concat([bom, bom, text(`${header}\n${message}\n`)])],
+            ]) {
+                expect([label, parseChatJsonl(data, { collectRecords })]).toEqual([label, expect.objectContaining({ status: 'corrupt', reason: 'invalid-json' })]);
+            }
+        });
+
+        test('ignores a line that holds only a byte order mark, as a blank line', () => {
+            const result = parseChatJsonl(Buffer.concat([text(`${header}\n`), bom, text(`\n${message}\n`)]));
+
+            expect(result.status).toBe('ok');
+            expect(result.records).toHaveLength(2);
+        });
+
+        test('reports invalid UTF-8 even when an earlier line is invalid JSON', () => {
+            const data = Buffer.concat([text(`${header}\nnot json\n{"mes":"`), Buffer.from([0xff]), text('"}\n')]);
+
+            for (const collectRecords of [true, false]) {
+                expect(parseChatJsonl(data, { collectRecords })).toMatchObject({ status: 'corrupt', reason: 'invalid-utf8' });
+            }
+        });
+
+        test('reports invalid JSON on a later line before an unrecognised header', () => {
+            const data = text('{"unexpected":"header"}\nnot json\n');
+
+            for (const collectRecords of [true, false]) {
+                expect(parseChatJsonl(data, { collectRecords })).toMatchObject({ status: 'corrupt', reason: 'invalid-json', line: 2 });
+            }
+            expect(parseChatJsonl(text('{"unexpected":"header"}\n{"mes":"hello"}\n'))).toMatchObject({ status: 'corrupt', reason: 'missing-chat-metadata' });
+        });
+    });
 });
 
 describe('chat recovery targets', () => {

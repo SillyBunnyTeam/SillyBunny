@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +23,8 @@ const ROOT_DIRECTORY_KEYS = Object.freeze({
     conversation: 'conversationsDirectory',
 });
 const RECOVERY_STATE_FILE_REGEXP = /^([a-f0-9]{64})\.(?:latest\.jsonl|deleted|corrupt-\d+\.jsonl)$/;
-const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+// A BOM in the middle of the file is not a BOM: the decoder keeps it, so that JSON.parse refuses the line. parseChatJsonl() strips the one at the start of the file.
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const rekeyTransactions = new WeakMap();
 
 function acquireRecoveryStateLock(target) {
@@ -138,42 +140,71 @@ function toBuffer(data) {
     throw new TypeError('Chat JSONL data must be a string, Buffer, or Uint8Array.');
 }
 
-export function parseChatJsonl(data) {
-    let serialized;
-    try {
-        serialized = utf8Decoder.decode(toBuffer(data));
-    } catch {
+export function parseChatJsonl(data, { collectRecords = true } = {}) {
+    const buffer = toBuffer(data);
+    // Invalid UTF-8 anywhere in the file is reported before a JSON error on an earlier line, so the reason does not depend on where the bad bytes are.
+    if (!isUtf8(buffer)) {
         return corruptResult('invalid-utf8', data);
     }
+    const records = collectRecords ? [] : null;
+    let recordCount = 0;
+    let headerRecognized = false;
+    let lineNumber = 0;
+    let offset = 0;
 
-    const records = [];
-    const lines = serialized.split('\n');
-    for (let index = 0; index < lines.length; index++) {
-        const line = lines[index];
-        if (line.trim() === '') {
-            continue;
+    // Scan line slices directly from the raw Buffer so large chats do not duplicate into a full-file string and split array.
+    while (offset <= buffer.length) {
+        const newlineIndex = buffer.indexOf(0x0a, offset);
+        const end = newlineIndex === -1 ? buffer.length : newlineIndex;
+        lineNumber++;
+
+        if (end > offset) {
+            let line;
+            try {
+                line = utf8Decoder.decode(buffer.subarray(offset, end));
+            } catch {
+                // Stays fatal so that a disagreement with isUtf8() cannot turn bad bytes into U+FFFD.
+                return corruptResult('invalid-utf8', data);
+            }
+            if (lineNumber === 1 && line.charCodeAt(0) === 0xfeff) {
+                line = line.slice(1);
+            }
+
+            if (line.trim() !== '') {
+                let record;
+                try {
+                    record = JSON.parse(line);
+                } catch {
+                    return corruptResult('invalid-json', data, { line: lineNumber });
+                }
+                if (!isPlainObject(record)) {
+                    return corruptResult('non-object', data, { line: lineNumber });
+                }
+                if (recordCount === 0) {
+                    // A JSON error on a later line outranks an unrecognised header, so the verdict waits for the end of the file.
+                    headerRecognized = isRecognizedChatHeader(record);
+                    if (collectRecords && !isPlainObject(record.chat_metadata)) {
+                        record = { ...record, chat_metadata: {} };
+                    }
+                }
+                recordCount++;
+                if (collectRecords) {
+                    records.push(record);
+                }
+            }
         }
 
-        let record;
-        try {
-            record = JSON.parse(line);
-        } catch {
-            return corruptResult('invalid-json', data, { line: index + 1 });
+        if (newlineIndex === -1) {
+            break;
         }
-        if (!isPlainObject(record)) {
-            return corruptResult('non-object', data, { line: index + 1 });
-        }
-        records.push(record);
+        offset = newlineIndex + 1;
     }
 
-    if (records.length === 0) {
+    if (recordCount === 0) {
         return corruptResult('empty', data);
     }
-    if (!isRecognizedChatHeader(records[0])) {
+    if (!headerRecognized) {
         return corruptResult('missing-chat-metadata', data);
-    }
-    if (!isPlainObject(records[0].chat_metadata)) {
-        records[0] = { ...records[0], chat_metadata: {} };
     }
 
     return {
@@ -183,7 +214,7 @@ export function parseChatJsonl(data) {
     };
 }
 
-export function readChatJsonlStrict(filePath) {
+export function readChatJsonlStrict(filePath, options = {}) {
     recoverFileWriteSync(filePath);
     const rawResult = readRegularFile(filePath);
     if (rawResult.status !== 'ok') {
@@ -192,7 +223,7 @@ export function readChatJsonlStrict(filePath) {
             records: null,
         };
     }
-    return parseChatJsonl(rawResult.data);
+    return parseChatJsonl(rawResult.data, options);
 }
 
 function normalizeDirectory(directory, label) {
@@ -456,8 +487,17 @@ function isTombstoned(target) {
 }
 
 function isStoredSnapshotCurrent(latestPath, data) {
+    const targetBuffer = toBuffer(data);
+    try {
+        const stats = fs.lstatSync(latestPath);
+        if (stats.isSymbolicLink() || !stats.isFile() || stats.size !== targetBuffer.length) {
+            return false;
+        }
+    } catch {
+        return false;
+    }
     const existing = readRegularFile(latestPath);
-    return existing.status === 'ok' && toBuffer(existing.data).equals(toBuffer(data));
+    return existing.status === 'ok' && toBuffer(existing.data).equals(targetBuffer);
 }
 
 function storeValidSnapshot(target, parsed) {
@@ -529,7 +569,7 @@ export function isChatRecoverable(target) {
         }
 
         const { latestPath } = getChatRecoveryPaths(normalizedTarget);
-        return readChatJsonlStrict(latestPath).status === 'ok';
+        return readChatJsonlStrict(latestPath, { collectRecords: false }).status === 'ok';
     }, 'Failed to inspect chat recoverability; treating recovery as unavailable.');
     return inspection.ok ? inspection.value : false;
 }
@@ -668,7 +708,8 @@ export function loadActiveChatWithRecovery(target) {
 
 export function markChatDeleted(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
-    const active = readChatJsonlStrict(normalizedTarget.activePath);
+    // Validate without retaining parsed message objects so deleting large chats stays bounded in memory.
+    const active = readChatJsonlStrict(normalizedTarget.activePath, { collectRecords: false });
     let snapshotUpdated = false;
 
     if (active.status === 'ok') {

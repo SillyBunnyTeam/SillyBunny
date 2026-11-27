@@ -99,16 +99,47 @@ export function markButtons(toast) {
     }
 }
 
+/** @type {WeakMap<Element, MutationObserver>} */
+const toastButtonObservers = new WeakMap();
+
+/**
+ * Stops watching a toast for dynamic button changes.
+ * @param {Element | null | undefined} toast
+ */
+export function unwatchToastButtons(toast) {
+    if (!toast) {
+        return;
+    }
+    const observer = toastButtonObservers.get(toast);
+    if (observer) {
+        observer.disconnect();
+        toastButtonObservers.delete(toast);
+    }
+}
+
 /**
  * Marks the buttons of a toast again each time a caller changes its content after it shows, as a message that adds an
  * Undo button to a text that is already on screen does. Only the toast form needs it: an in-app notification keeps the
  * markup of its caller.
  * @param {Element} toast
+ * @returns {() => void} Stops observing the toast.
  */
 export function watchToastButtons(toast) {
-    if (typeof MutationObserver === 'function') {
-        new MutationObserver(() => markButtons(toast)).observe(toast, { childList: true, subtree: true });
+    unwatchToastButtons(toast);
+    if (typeof MutationObserver !== 'function') {
+        return () => {};
     }
+    const observer = new MutationObserver(() => {
+        if (!toast.isConnected) {
+            unwatchToastButtons(toast);
+            return;
+        }
+        markButtons(toast);
+        observer.takeRecords();
+    });
+    observer.observe(toast, { childList: true, subtree: true });
+    toastButtonObservers.set(toast, observer);
+    return () => unwatchToastButtons(toast);
 }
 
 /**

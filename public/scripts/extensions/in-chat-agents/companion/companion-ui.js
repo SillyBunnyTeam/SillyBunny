@@ -581,6 +581,17 @@ export function renderCompanionResultsForMessage(messageIndex) {
 }
 
 function renderAllCompanionResults() {
+    if (typeof document?.querySelectorAll === 'function') {
+        const mountedMessages = document.querySelectorAll('#chat > .mes[mesid]');
+        for (const messageElement of mountedMessages) {
+            const index = Number(messageElement.getAttribute('mesid'));
+            if (Number.isInteger(index) && index >= 0 && index < chat.length) {
+                renderCompanionResultsForMessage(index);
+            }
+        }
+        return;
+    }
+
     for (let index = 0; index < chat.length; index++) {
         renderCompanionResultsForMessage(index);
     }
