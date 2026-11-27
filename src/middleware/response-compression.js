@@ -15,6 +15,17 @@ import { getConfigValue } from '../util.js';
 const brotliCompressAsync = promisify(zlib.brotliCompress);
 const gzipAsync = promisify(zlib.gzip);
 
+// The five headers that `requireHttps` checks, plus two more that proxies set. See `hasForwardingHeaders` for why the lists differ.
+const BYPASS_FORWARDING_HEADERS = Object.freeze([
+    'forwarded',
+    'x-forwarded-for',
+    'x-forwarded-host',
+    'x-forwarded-proto',
+    'x-real-ip',
+    'cf-connecting-ip',
+    'via',
+]);
+
 const LOOPBACK_BYPASS_ENV_KEY = 'SILLYTAVERN_PERFORMANCE_COMPRESSION_LOOPBACKBYPASS';
 const TEST_COMPRESSION_ENV_KEY = 'SILLYBUNNY_TEST_COMPRESSION';
 
@@ -75,7 +86,7 @@ function appendVaryAcceptEncoding(response) {
  * @returns {boolean}
  */
 export function isDirectLoopbackRequest(request) {
-    return isLoopbackAddress(request?.socket?.remoteAddress) && !hasForwardingHeaders(request);
+    return isLoopbackAddress(request?.socket?.remoteAddress) && !hasForwardingHeaders(request, BYPASS_FORWARDING_HEADERS);
 }
 
 function readLoopbackBypassSetting(explicitSetting, env = process.env) {

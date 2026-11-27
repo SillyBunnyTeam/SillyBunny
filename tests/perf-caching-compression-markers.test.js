@@ -583,7 +583,7 @@ describe('3. Loopback compression bypass and bounded static LRU', () => {
         expect(shouldBypassLoopbackCompression(directLoopback, { loopbackBypass: 'auto', env: { SILLYBUNNY_TEST_COMPRESSION: '1' } })).toBe(false);
     });
 
-    test('the loopback bypass and requireHttps agree on which requests come straight from this machine', async () => {
+    test('the loopback bypass and requireHttps judge the same requests local, except that Via and X-Forwarded-Host only end the bypass', async () => {
         const previousRequireHttps = process.env.SILLYTAVERN_REQUIREHTTPS;
         process.env.SILLYTAVERN_REQUIREHTTPS = 'true';
         let requireHttpsMiddleware;
@@ -613,13 +613,15 @@ describe('3. Loopback compression bypass and bounded static LRU', () => {
             { loopbackBypass: 'auto', env: {} },
         );
 
-        const forwardingHeaders = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip', 'cf-connecting-ip', 'via'];
-        const headerSets = [{}, { host: 'localhost' }, ...forwardingHeaders.map(name => ({ [name]: 'http' })), { 'x-forwarded-for': '' }];
-        const addresses = ['127.0.0.1', '127.8.9.10', '::1', '::ffff:127.0.0.1', '::FFFF:127.0.0.2', '192.0.2.10', '::ffff:192.0.2.10', '2001:db8::1'];
+        const loopbackAddresses = ['127.0.0.1', '127.8.9.10', '::1', '::ffff:127.0.0.1', '::FFFF:127.0.0.2'];
+        const remoteAddresses = ['192.0.2.10', '::ffff:192.0.2.10', '2001:db8::1'];
+        // The five headers that requireHttps has always checked.
+        const sharedHeaders = ['forwarded', 'x-forwarded-for', 'x-forwarded-proto', 'x-real-ip', 'cf-connecting-ip'];
+        const headerSets = [{}, { host: 'localhost' }, ...sharedHeaders.map(name => ({ [name]: 'http' })), { 'x-forwarded-for': '' }];
 
         const disagreements = [];
         let judgedLocal = 0;
-        for (const address of addresses) {
+        for (const address of [...loopbackAddresses, ...remoteAddresses]) {
             for (const headers of headerSets) {
                 const forRequireHttps = requireHttpsJudgesLocal(address, headers);
                 const forBypass = bypassJudgesLocal(address, headers);
@@ -629,9 +631,23 @@ describe('3. Loopback compression bypass and bounded static LRU', () => {
                 }
             }
         }
-
         expect(disagreements).toEqual([]);
         expect(judgedLocal).toBeGreaterThan(0);
+
+        // requireHttps is a security check and decides as it always did, so it does not look at Via or X-Forwarded-Host.
+        // The bypass only saves CPU, so for it a wrong "not local" costs a compressed response and it counts both headers.
+        for (const address of loopbackAddresses) {
+            for (const headerName of ['via', 'x-forwarded-host']) {
+                const headers = { [headerName]: 'proxy.example' };
+                expect({ address, headerName, requireHttpsLocal: requireHttpsJudgesLocal(address, headers) })
+                    .toEqual({ address, headerName, requireHttpsLocal: true });
+                expect({ address, headerName, bypass: bypassJudgesLocal(address, headers) })
+                    .toEqual({ address, headerName, bypass: false });
+            }
+        }
+        for (const address of remoteAddresses) {
+            expect(requireHttpsJudgesLocal(address, { via: '1.1 proxy' })).toBe(false);
+        }
     });
 
     test('compresses proxied dynamic responses at the compression package defaults and keeps the 2048-byte threshold', async () => {
