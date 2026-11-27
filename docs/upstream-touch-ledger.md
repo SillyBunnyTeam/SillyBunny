@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/stable-diffusion.js` - NanoGPT URL image download and upstream error forwarding
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/stable-diffusion.js` |
+| Area | Image Generation backend: `POST /api/sd/nanogpt/generate`. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6107 before the next full upstream sync. In addition to downloading URL-based NanoGPT images and forwarding upstream non-OK error text, SillyBunny enforces `https:` and routes the untrusted download URL through `getUntrustedRequestAgent()` with a 30-second timeout and no `x-api-key` header to uphold SillyBunny's SSRF boundary even when the global private request filter is disabled. |
+| Target seam | `getUntrustedRequestAgent()` in `src/private-request-filter.js` and `nanogpt.post('/generate')` in `src/endpoints/stable-diffusion.js` (adapted early port of upstream SillyTavern PR #6107, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Forward upstream NanoGPT non-OK error text with status 500 instead of a bare 500; when NanoGPT returns a download `url` instead of inline `b64_json`, require an `https:` URL and download it through `getUntrustedRequestAgent()` with a 30s `AbortSignal.timeout` and no `x-api-key` header. |
+| Protecting tests | `tests/stable-diffusion.test.js` (`NanoGPT generation`). |
+| Validation | Root and `tests/` lint, `npm run test:unit -- stable-diffusion.test.js image-model-discovery.test.js`. |
+| Rollback path | Remove the `getUntrustedRequestAgent` import and restore the inline-only `b64_json` extraction and bare `sendStatus(500)` error handling in `nanogpt.post('/generate')` in `src/endpoints/stable-diffusion.js`, and remove the `NanoGPT generation` suite from `tests/stable-diffusion.test.js`. Saved settings and secrets are unaffected. On the next upstream sync carrying ST #6107, retain the `https:` check, `getUntrustedRequestAgent()`, and timeout guard. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6107). |
+| Owner | Server and image-generation provider integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
