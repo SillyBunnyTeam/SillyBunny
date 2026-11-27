@@ -371,14 +371,6 @@ export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_MOBILE_MODAL_STATE: 'sync-mobile-modal-state',
 });
 
-export const MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR = [
-    '#top-bar',
-    '#form_sheld',
-    '#bg1',
-    '#bg_custom',
-    '#sheldheader',
-].join(', ');
-
 const MOBILE_DOCUMENT_PAN_BACKGROUND_SELECTOR = [
     'html',
     'body',

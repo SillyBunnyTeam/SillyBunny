@@ -112,8 +112,7 @@ describe('mobile shell lifecycle wiring', () => {
     test('blocks mobile document panning from fixed chrome and scroll edges', () => {
         expect(browserFixesSource).toContain('blockDocumentPanFromShellGaps');
         expect(browserFixesSource).toContain('captureDocumentPanStart');
-        expect(browserFixesSource).toContain('surface.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps, { passive: false, capture: true });');
-        expect(browserFixesSource).not.toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps');
+        expect(browserFixesSource).toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps, { passive: false, capture: true });');
 
         const chatScroller = createElementStub({
             matches: selector => selectorListIncludes(selector, '#chat'),

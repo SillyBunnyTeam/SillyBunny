@@ -682,14 +682,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `public/scripts/browser-fixes.js` - mobile viewport reset guard
 | Field | Value |
 | --- | --- |
-| Area | Mobile shell and compositor scroll. |
+| Area | Mobile shell. |
 | Divergence reason | SillyBunny must restore scroll and avoid re-pinning the root while mobile keyboard close/reset events are still settling. |
-| Target seam | `public/scripts/mobile-shell-lifecycle/index.js` (`MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR`, `createMobileDocumentPanTouchStart`, `shouldBlockMobileDocumentPan`). |
-| Adapter shape | Keep reset scheduling, transient fixed-position cleanup, scroll restoration, and reapply suppression in the mobile browser fix helper. Gate `blockMultiTouchZoom` (`{ passive: false }`) strictly to `isFirefox()`, bind `blockDocumentPanFromShellGaps` only to fixed chrome surfaces (`MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR`) with precomputed `touchstart` scroll ancestry, and skip `html { position: fixed }` on modern iOS WebKit while an editable field is focused. |
-| Protecting tests | `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/unit/perf-compositor-scroll-and-preload.test.js`. |
-| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- mobile-shell-lifecycle-wiring.test.js unit/perf-compositor-scroll-and-preload.test.js`. |
+| Target seam | `public/scripts/mobile-shell-lifecycle/index.js` (`createMobileDocumentPanTouchStart`, `shouldBlockMobileDocumentPan`). |
+| Adapter shape | Keep reset scheduling, transient fixed-position cleanup, scroll restoration, and reapply suppression in the mobile browser fix helper. The multi-touch zoom block (`blockMultiTouchZoom`) and the pan guard (`blockDocumentPanFromShellGaps`) stay as `{ passive: false }` listeners on `document` for every mobile browser, and the listeners that never cancel stay passive. The pan guard reads the scroll ancestry of its target once on `touchstart` (`createMobileDocumentPanTouchStart`), so a `touchmove` calls no `getComputedStyle`. `orientationchange` pins the root with `position: fixed` on every platform, also while a field has the focus. |
+| Protecting tests | `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/unit/browser-fixes-touch-guards.test.js`; `tests/unit/browser-fixes-ios-position-fix.test.js`; `tests/unit/perf-compositor-scroll-and-preload.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- mobile-shell-lifecycle-wiring.test.js unit/browser-fixes-touch-guards.test.js unit/browser-fixes-ios-position-fix.test.js unit/perf-compositor-scroll-and-preload.test.js`. Real touch events in Chromium with Pixel 7 emulation: a one-finger pull and a two-finger pinch on `#chat`, a Customize shell and a dialog are cancelled as often as without the PR. |
 | Rollback path | Restore the prior reset timeout and remove scroll restoration/reapply suppression if mobile viewport behavior regresses. |
-| Last reviewed | 2026-11-26, PR #1033 (compositor scroll & modern iOS WebKit guard). |
+| Last reviewed | 2026-11-27, PR #1033 (touch guards kept on `document`; the cheaper `touchstart` precomputation of the pan guard stays). |
 | Owner | Refactor integrator and mobile shell owner. |
 
 ### `public/index.html` and `public/script.js` - message actions

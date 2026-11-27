@@ -7,7 +7,6 @@ import vm from 'node:vm';
 
 import {
     createMobileDocumentPanTouchStart,
-    MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR,
     shouldBlockMobileDocumentPan,
 } from '../../public/scripts/mobile-shell-lifecycle/index.js';
 
@@ -140,7 +139,7 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
         });
     });
 
-    describe('mobile pan guard and modern iOS WebKit position:fixed guard', () => {
+    describe('mobile pan guard', () => {
         test('precomputes scroll ancestry on touchstart with zero getComputedStyle calls during 120Hz touchmove', () => {
             const previousElement = globalThis.Element;
             const previousWindow = globalThis.window;
@@ -214,18 +213,6 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
                 globalThis.window = previousWindow;
                 globalThis.document = previousDocument;
             }
-        });
-
-        test('scopes touchmove { passive: false } to fixed chrome surfaces, gates zoom block to Firefox, and skips modern iOS position:fixed while editing', () => {
-            const browserFixesSource = readPublic('scripts', 'browser-fixes.js');
-
-            expect(MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR).toContain('#top-bar');
-            expect(MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR).toContain('#form_sheld');
-            expect(MOBILE_FIXED_CHROME_PAN_SURFACES_SELECTOR).not.toContain('#chat');
-
-            expect(browserFixesSource).toMatch(/if\s*\(isFirefox\(\)\)\s*\{\s*document\.addEventListener\('touchstart',\s*blockMultiTouchZoom,\s*\{\s*passive:\s*false\s*\}\);\s*document\.addEventListener\('touchmove',\s*blockMultiTouchZoom,\s*\{\s*passive:\s*false\s*\}\);\s*\}/);
-            expect(browserFixesSource).not.toContain('document.addEventListener(\'touchmove\', blockDocumentPanFromShellGaps');
-            expect(browserFixesSource).toContain('if (isModernIOSWebKit && isEditableFocusTarget(document.activeElement)) {');
         });
     });
 
