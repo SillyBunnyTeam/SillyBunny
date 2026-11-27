@@ -8,6 +8,12 @@ import zlib from 'node:zlib';
 export const BACKUP_DEFLATE_LEVEL = 1;
 
 const EMPTY_CHUNK = new Uint8Array(0);
+const ZIP_OS_UNIX = 3;
+const UNIX_FILE_TYPE_REGULAR = 0o100000;
+const UNIX_FILE_TYPE_DIRECTORY = 0o040000;
+const UNIX_PERMISSION_MASK = 0o7777;
+const DOS_ATTRIBUTE_ARCHIVE = 0x20;
+const DOS_ATTRIBUTE_DIRECTORY = 0x10;
 
 /** @type {Int32Array | null} */
 let crcTable = null;
@@ -44,6 +50,22 @@ export function crc32Fallback(chunk, previous = 0) {
 export const crc32 = typeof zlib.crc32 === 'function' ? zlib.crc32 : crc32Fallback;
 
 /**
+ * Builds the `os` and `attrs` fields that fflate writes to a ZIP entry so that an extractor restores the Unix permissions.
+ * The layout is the one that the earlier archiver backup wrote: the Unix mode (with its file type) in the high 16 bits of
+ * the external attributes, plus the DOS archive or directory bit.
+ * @param {number} mode `st_mode` of the file or folder; only its permission bits are used
+ * @param {boolean} [directory=false] Whether the entry is a folder
+ * @returns {{ os: number, attrs: number }} Fields to assign to an fflate ZIP entry before it is added
+ */
+export function getZipUnixAttributes(mode, directory = false) {
+    const fileType = directory ? UNIX_FILE_TYPE_DIRECTORY : UNIX_FILE_TYPE_REGULAR;
+    const dosAttribute = directory ? DOS_ATTRIBUTE_DIRECTORY : DOS_ATTRIBUTE_ARCHIVE;
+    // Multiplication, not a shift: the result can pass 2^31 and a shift would make it negative.
+    const attrs = ((mode & UNIX_PERMISSION_MASK) | fileType) * 0x10000 + dosAttribute;
+    return { os: ZIP_OS_UNIX, attrs };
+}
+
+/**
  * The general-purpose flag bits that tell an extractor how hard the entry was deflated (same values as fflate's own entries).
  * @param {number} level zlib level
  * @returns {number} Value for the `flag` field of an fflate ZIP entry
@@ -69,8 +91,9 @@ export class NativeDeflateZipEntry {
      * @param {string} filename Name of the entry inside the archive
      * @param {object} [options] Entry metadata, set before the entry is added to the `Zip`
      * @param {Date} [options.mtime] Modification time (1980 to 2099)
+     * @param {number} [options.mode] `st_mode` of the source file
      */
-    constructor(filename, { mtime = undefined } = {}) {
+    constructor(filename, { mtime = undefined, mode = undefined } = {}) {
         this.filename = filename;
         this.compression = 8;
         this.flag = getDeflateFlag(BACKUP_DEFLATE_LEVEL);
@@ -82,6 +105,9 @@ export class NativeDeflateZipEntry {
         this.streams = [];
         if (mtime !== undefined) {
             this.mtime = mtime;
+        }
+        if (mode !== undefined) {
+            Object.assign(this, getZipUnixAttributes(mode));
         }
     }
 

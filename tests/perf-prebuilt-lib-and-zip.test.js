@@ -1088,6 +1088,49 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
     test.each([
         ['streaming path', undefined],
         ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
+    ])('stores the Unix mode of files and empty folders in the %s, so that an extracted backup keeps the exec bit', async (_label, options) => {
+        const handle = `zip-modes-${options ? 'zip64' : 'stream'}-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        writeFiles(userRoot, {
+            'scripts/run.sh': '#!/bin/sh\necho hi\n',
+            'readonly.txt': 'ro',
+            'private.json': '{"p":1}',
+            'plain.txt': 'plain',
+            'characters/card.png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]),
+        });
+        fs.chmodSync(path.join(userRoot, 'scripts', 'run.sh'), 0o755);
+        fs.chmodSync(path.join(userRoot, 'readonly.txt'), 0o444);
+        fs.chmodSync(path.join(userRoot, 'private.json'), 0o640);
+        fs.chmodSync(path.join(userRoot, 'plain.txt'), 0o664);
+        fs.chmodSync(path.join(userRoot, 'characters', 'card.png'), 0o600);
+        fs.mkdirSync(path.join(userRoot, 'empty-private'), { mode: 0o700 });
+        fs.chmodSync(path.join(userRoot, 'empty-private'), 0o700);
+
+        const zipBuffer = await backupToBuffer(handle, options);
+        const entries = await readZipEntries(zipBuffer);
+
+        const expected = {
+            'scripts/run.sh': 0o100755,
+            'readonly.txt': 0o100444,
+            'private.json': 0o100640,
+            'plain.txt': 0o100664,
+            'characters/card.png': 0o100600,
+            'empty-private/': 0o040700,
+        };
+        for (const [name, mode] of Object.entries(expected)) {
+            expect({ name, mode: entries.get(name)?.unixMode, madeByUnix: entries.get(name)?.madeByUnix })
+                .toEqual({ name, mode, madeByUnix: true });
+        }
+
+        // Extracting the backup gives the same permissions as the source folder.
+        const extractedRoot = makeTempDir('sb-modes-extract-');
+        await extractZipToDirectory(zipBuffer, extractedRoot);
+        expect(describeTree(extractedRoot)).toEqual(describeTree(userRoot));
+    });
+
+    test.each([
+        ['streaming path', undefined],
+        ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
     ])('extracts to the same tree as the source folder in the %s', async (_label, options) => {
         const handle = `zip-tree-${options ? 'zip64' : 'stream'}-${Date.now()}`;
         const userRoot = path.join(global.DATA_ROOT, handle);
@@ -1107,6 +1150,7 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
             'secrets.json': '{"api_key":"never-export"}',
         });
         fs.mkdirSync(path.join(userRoot, 'a', 'b', 'c'), { recursive: true });
+        fs.chmodSync(path.join(userRoot, 'chats', 'Émile', 'chat.jsonl'), 0o600);
 
         const zipBuffer = await backupToBuffer(handle, options);
         const extractedRoot = makeTempDir('sb-tree-extract-');

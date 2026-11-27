@@ -24,7 +24,7 @@ import { serverDirectory } from './server-directory.js';
 import { filterValidIpPatterns, getIpFromRequest } from './express-common.js';
 import { extensionsEnabledFeatureGuard } from './endpoints/extensions.js';
 import { setStoredMediaHeaders } from './stored-media-headers.js'; // SillyBunny: gives the stored images route its own content type and nosniff.
-import { NativeDeflateZipEntry } from './zip-native-deflate.js'; // SillyBunny: native zlib deflate for the backup ZIP entries.
+import { NativeDeflateZipEntry, getZipUnixAttributes } from './zip-native-deflate.js'; // SillyBunny: native zlib deflate and Unix modes for the backup ZIP entries.
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -1321,13 +1321,13 @@ async function resolveBackupRoot(rootDir) {
  * Walks a resolved user root directory without following symlinks and yields its regular files in a stable order.
  * A folder with nothing in it is yielded as a directory entry (`directory: true`, name ending in `/`), because no file would otherwise recreate it.
  * @param {string} resolvedRoot Real path of the user root directory
- * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }>} Entries to archive
+ * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date, mode?: number }>} Entries to archive
  */
 async function* walkBackupFiles(resolvedRoot) {
     /**
      * @param {string} currentDir
      * @param {string} relativePrefix
-     * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }>}
+     * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date, mode?: number }>}
      */
     async function* walk(currentDir, relativePrefix) {
         const dirents = await fs.promises.readdir(currentDir, { withFileTypes: true });
@@ -1336,7 +1336,7 @@ async function* walkBackupFiles(resolvedRoot) {
         if (dirents.length === 0 && relativePrefix) {
             try {
                 const directoryStat = await fs.promises.lstat(currentDir);
-                yield { absolutePath: currentDir, entryName: `${relativePrefix}/`, size: 0, directory: true, mtime: directoryStat.mtime };
+                yield { absolutePath: currentDir, entryName: `${relativePrefix}/`, size: 0, directory: true, mtime: directoryStat.mtime, mode: directoryStat.mode };
             } catch (error) {
                 if (error?.code !== 'ENOENT') {
                     throw error;
@@ -1405,10 +1405,10 @@ function needsZip64Fallback(summary, thresholds = DEFAULT_ZIP64_THRESHOLDS) {
  * being held in memory.
  * @param {string} resolvedRoot Real path of the user root directory
  * @param {{ maxEntries?: number, maxFileBytes?: number, maxTotalBytes?: number }} [thresholds] Optional threshold overrides
- * @returns {Promise<{ needsZip64: boolean, files: Array<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }> }>} The entries, or an empty list when ZIP64 is needed
+ * @returns {Promise<{ needsZip64: boolean, files: Array<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date, mode?: number }> }>} The entries, or an empty list when ZIP64 is needed
  */
 async function collectBackupFiles(resolvedRoot, thresholds = undefined) {
-    /** @type {Array<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }>} */
+    /** @type {Array<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date, mode?: number }>} */
     const files = [];
     const summary = { entryCount: 0, totalUncompressedBytes: 0, maxFileBytes: 0 };
 
@@ -1429,7 +1429,7 @@ async function collectBackupFiles(resolvedRoot, thresholds = undefined) {
 /**
  * Streams a ZIP64 backup archive using lazy-loaded `archiver` when an account exceeds ZIP32 limits.
  * @param {object} options Archive options
- * @param {AsyncIterable<{ absolutePath: string, entryName: string, directory?: boolean, mtime?: Date }>} options.files Entries to archive, walked lazily
+ * @param {AsyncIterable<{ absolutePath: string, entryName: string, directory?: boolean, mtime?: Date, mode?: number }>} options.files Entries to archive, walked lazily
  * @param {string} options.handle User handle
  * @param {import('express').Response} options.response Express response or writable stream
  * @param {() => Promise<typeof import('archiver').default>} [options.loadArchiver] Optional archiver loader override
@@ -1538,7 +1538,7 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
                     const directoryProcessed = new Promise((resolve) => {
                         releaseEntryWait = resolve;
                     });
-                    archive.append(Buffer.alloc(0), { name: file.entryName, date: clampZipEntryMtime(file.mtime) });
+                    archive.append(Buffer.alloc(0), { name: file.entryName, date: clampZipEntryMtime(file.mtime), mode: (file.mode ?? 0o755) & 0o7777 });
                     await directoryProcessed;
                     continue;
                 }
@@ -1849,6 +1849,7 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
             if (file.directory) {
                 const directoryEntry = new ZipPassThrough(file.entryName);
                 directoryEntry.mtime = clampZipEntryMtime(file.mtime);
+                Object.assign(directoryEntry, getZipUnixAttributes(file.mode ?? 0o755, true));
                 zip.add(directoryEntry);
                 directoryEntry.push(EMPTY_ZIP_CHUNK, true);
                 if (consumeDrainFlag()) {
@@ -1875,9 +1876,10 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
                 if (ZIP_STORE_EXTENSIONS.has(ext)) {
                     entry = new ZipPassThrough(file.entryName);
                     entry.mtime = mtime;
+                    Object.assign(entry, getZipUnixAttributes(fdStat.mode));
                 } else {
                     // Native zlib deflates compressible data several times faster than fflate's JavaScript deflate at the same level.
-                    entry = new NativeDeflateZipEntry(file.entryName, { mtime });
+                    entry = new NativeDeflateZipEntry(file.entryName, { mtime, mode: fdStat.mode });
                 }
 
                 zip.add(entry);

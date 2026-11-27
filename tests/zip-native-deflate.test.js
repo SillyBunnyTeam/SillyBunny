@@ -9,6 +9,7 @@ import {
     NativeDeflateZipEntry,
     crc32,
     crc32Fallback,
+    getZipUnixAttributes,
 } from '../src/zip-native-deflate.js';
 
 function randomBytes(length, seed) {
@@ -41,6 +42,29 @@ describe('running CRC-32', () => {
     });
 });
 
+describe('getZipUnixAttributes', () => {
+    test('puts the Unix mode with its file type in the high 16 bits, as the earlier archiver backup did', () => {
+        const file = getZipUnixAttributes(0o100755);
+        expect(file.os).toBe(3);
+        expect(file.attrs >>> 16).toBe(0o100755);
+        expect(file.attrs & 0xffff).toBe(0x20);
+
+        const readonly = getZipUnixAttributes(0o444);
+        expect(readonly.attrs >>> 16).toBe(0o100444);
+
+        const folder = getZipUnixAttributes(0o40750, true);
+        expect(folder.attrs >>> 16).toBe(0o040750);
+        expect(folder.attrs & 0xffff).toBe(0x10);
+    });
+
+    test('stays a positive integer below 2^32, which fflate writes as four bytes', () => {
+        const { attrs } = getZipUnixAttributes(0o7777);
+        expect(attrs).toBeGreaterThan(0);
+        expect(attrs).toBeLessThan(2 ** 32);
+        expect(Number.isInteger(attrs)).toBe(true);
+    });
+});
+
 describe('NativeDeflateZipEntry in an fflate Zip', () => {
     async function zipWith(entries) {
         const chunks = [];
@@ -64,7 +88,7 @@ describe('NativeDeflateZipEntry in an fflate Zip', () => {
 
     test('deflates at the backup level, with the CRC and size of the uncompressed data', async () => {
         const content = Buffer.concat([randomBytes(50_000, 1), Buffer.from('text '.repeat(40_000))]);
-        const entry = new NativeDeflateZipEntry('dir/data.bin', { mtime: new Date(2024, 4, 5, 6, 7, 8) });
+        const entry = new NativeDeflateZipEntry('dir/data.bin', { mtime: new Date(2024, 4, 5, 6, 7, 8), mode: 0o100640 });
         const source = Readable.from([content.subarray(0, 70_000), content.subarray(70_000)]);
 
         const zipBuffer = await zipWith([{ entry, source }]);
