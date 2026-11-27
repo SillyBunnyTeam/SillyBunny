@@ -9,6 +9,9 @@ import { applyLegacyTrim, STOP_MARKER, stripWhitespaceMarkers, WHITESPACE_MARKER
 // SillyBunny: matches legacy angle-bracket macros rewritten by core:legacy-markers.
 const LEGACY_ANGLE_MARKER_RE = /<(?:USER|BOT|CHAR|GROUP|CHARIFNOTGROUP)>/i;
 
+// SillyBunny: a caller can pass any value as `source`, so the check must not throw on one that is not a string.
+const isCoreSource = source => String(source).startsWith('core:');
+
 /** @typedef {import('./MacroCstWalker.js').MacroCall} MacroCall */
 /** @typedef {import('./MacroEnv.types.js').MacroEnv} MacroEnv */
 /** @typedef {import('./MacroRegistry.js').MacroDefinitionOptions} MacroDefinitionOptions */
@@ -65,7 +68,7 @@ class MacroEngine {
     addPreProcessor(handler, { priority = 100, source = 'unknown' } = {}) {
         this.#preProcessors.push({ handler, priority, source });
         this.#preProcessors.sort((a, b) => a.priority - b.priority);
-        if (!source.startsWith('core:')) {
+        if (!isCoreSource(source)) {
             this.#customProcessorCount++;
         }
     }
@@ -80,7 +83,7 @@ class MacroEngine {
         const index = this.#preProcessors.findIndex(p => p.handler === handler);
         if (index !== -1) {
             const [removed] = this.#preProcessors.splice(index, 1);
-            if (!removed.source.startsWith('core:')) {
+            if (!isCoreSource(removed.source)) {
                 this.#customProcessorCount = Math.max(0, this.#customProcessorCount - 1);
             }
             return true;
@@ -99,7 +102,7 @@ class MacroEngine {
     addPostProcessor(handler, { priority = 100, source = 'unknown' } = {}) {
         this.#postProcessors.push({ handler, priority, source });
         this.#postProcessors.sort((a, b) => a.priority - b.priority);
-        if (!source.startsWith('core:')) {
+        if (!isCoreSource(source)) {
             this.#customProcessorCount++;
         }
     }
@@ -114,7 +117,7 @@ class MacroEngine {
         const index = this.#postProcessors.findIndex(p => p.handler === handler);
         if (index !== -1) {
             const [removed] = this.#postProcessors.splice(index, 1);
-            if (!removed.source.startsWith('core:')) {
+            if (!isCoreSource(removed.source)) {
                 this.#customProcessorCount = Math.max(0, this.#customProcessorCount - 1);
             }
             return true;

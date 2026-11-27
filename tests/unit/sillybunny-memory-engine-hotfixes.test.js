@@ -121,6 +121,21 @@ describe('Slice 1E: MacroEngine plain-text fast path', () => {
         expect(MacroEngine.canFastReturnPlainText('foo')).toBe(true);
         expect(MacroEngine.evaluate('foo', { dynamicMacros: {} })).toBe('foo');
     });
+
+    test.each([null, 7, { name: 'extension' }])('accepts a processor whose source is %j, and still counts and removes it', (source) => {
+        const handler = jest.fn(text => text.replace('foo', 'bar'));
+
+        for (const [add, remove] of [['addPreProcessor', 'removePreProcessor'], ['addPostProcessor', 'removePostProcessor']]) {
+            expect(() => MacroEngine[add](handler, { source })).not.toThrow();
+            try {
+                expect(MacroEngine.canFastReturnPlainText('foo')).toBe(false);
+                expect(MacroEngine.evaluate('foo', { dynamicMacros: {} })).toBe('bar');
+            } finally {
+                expect(MacroEngine[remove](handler)).toBe(true);
+            }
+            expect(MacroEngine.canFastReturnPlainText('foo')).toBe(true);
+        }
+    });
 });
 
 describe('Slice 1E: bounded session caches and World Info fast paths', () => {
