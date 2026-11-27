@@ -631,15 +631,78 @@ describe('PNG fast tEXt extraction parity', () => {
         }
     });
 
-    test('extractTextChunks and extractCharacterCardText skip IDAT CRC while full extract still rejects corrupted IDAT', () => {
+    test('extractTextChunks and extractCharacterCardText reject a corrupted IDAT, like the full extract', () => {
         const png = buildMultiMbCardPng(createV2Card(), 256 * 1024);
         // Flip a byte inside the IDAT payload (signature=8, IHDR=25, IDAT header=8 -> offset 41).
         const corruptedIdat = Buffer.from(png);
         corruptedIdat[41] ^= 0xFF;
 
         expect(() => extract(corruptedIdat)).toThrow(/^CRC values for IDAT header do not match/);
-        expect(extractTextChunks(corruptedIdat)).toHaveLength(1);
-        expect(extractCharacterCardText(corruptedIdat)).toBe(JSON.stringify(createV2Card()));
+        expect(() => extractTextChunks(corruptedIdat)).toThrow(/^CRC values for IDAT header do not match/);
+        expect(() => extractCharacterCardText(corruptedIdat)).toThrow(/^CRC values for IDAT header do not match/);
+    });
+
+    test('extractCharacterCardText rejects every single-bit flip and every cut that the reference parser rejects, and reads the same text from the rest', () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        // The reference parser allocates the length that a chunk declares, so flips in a length field are left to the
+        // bounds tests (a flipped high bit makes it allocate gigabytes).
+        const lengthFieldOffsets = png => {
+            const offsets = new Set();
+            for (let start = 8; start < png.length; start += 12 + png.readUInt32BE(start)) {
+                for (let index = 0; index < 4; index++) {
+                    offsets.add(start + index);
+                }
+            }
+            return offsets;
+        };
+        const outcome = (read, bytes) => {
+            try {
+                return { text: read(new Uint8Array(bytes)) };
+            } catch (error) {
+                return { error: error.message };
+            }
+        };
+        const bases = [
+            createCardPng(createV2Card(), ['chara']),
+            createCardPng(createV3Card(), ['chara', 'ccv3']),
+            buildMultiMbCardPng(createV2Card(), 64),
+        ];
+
+        const disagreements = [];
+        let compared = 0;
+        const compare = (label, bytes) => {
+            compared++;
+            const reference = outcome(referenceReadCardText, bytes);
+            const bulk = outcome(extractCharacterCardText, bytes);
+            if (('error' in reference) !== ('error' in bulk) || reference.text !== bulk.text) {
+                disagreements.push({ label, reference, bulk: 'error' in bulk ? { error: bulk.error } : { text: String(bulk.text).slice(0, 20) } });
+            }
+        };
+
+        for (const [baseIndex, png] of bases.entries()) {
+            const skipped = lengthFieldOffsets(png);
+            for (let offset = 0; offset < png.length; offset++) {
+                for (let bit = 0; bit < 8 && !skipped.has(offset); bit++) {
+                    const flipped = Buffer.from(png);
+                    flipped[offset] ^= 1 << bit;
+                    compare(`base ${baseIndex} flip ${offset}:${bit}`, flipped);
+                }
+                compare(`base ${baseIndex} cut at ${offset}`, png.subarray(0, offset));
+            }
+        }
+
+        expect(compared).toBeGreaterThan(5000);
+        expect(disagreements).toEqual([]);
+    });
+
+    test('extractCharacterCardText rejects a corrupted byte inside a large IDAT, as the reference parser does', () => {
+        const png = buildMultiMbCardPng(createV2Card(), 2 * 1024 * 1024);
+        for (const offset of [41, 1_000_000, 2 * 1024 * 1024 + 20]) {
+            const corrupted = Buffer.from(png);
+            corrupted[offset] ^= 0x01;
+            expect(() => referenceReadCardText(corrupted)).toThrow(/^CRC values for/);
+            expect(() => extractCharacterCardText(corrupted)).toThrow(/^CRC values for/);
+        }
     });
 
     test('extractTextChunks and extractCharacterCardText still reject corrupted tEXt CRC, NUL bytes, bad header, and bounds overrun', () => {

@@ -51,14 +51,13 @@ function checkSignature(data) {
 
 /**
  * Walks PNG chunk headers with the checks and error messages of png-chunks-extract, returning zero-copy Uint8Array
- * views for the kept chunks. When `verifyChunk` returns false for a chunk type (for example multi-MB IDAT during fast
- * tEXt extraction), that chunk is neither copied nor CRC-checked.
+ * views for the kept chunks. The CRC of every chunk before IEND is checked, as png-chunks-extract does, so a corrupted
+ * chunk is rejected whether or not it is kept. A chunk that is not kept is checked in place and never copied.
  * @param {Uint8Array} data PNG file
  * @param {(name: string) => boolean} keep Whether to include the chunk in the returned array
- * @param {(name: string) => boolean} verifyChunk Whether to verify the chunk's CRC32
  * @returns {{ name: string, data: Uint8Array }[]} Kept chunks up to and including IEND
  */
-function walkChunks(data, keep, verifyChunk) {
+function walkChunks(data, keep) {
     checkSignature(data);
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     checkChunkBounds(data, view);
@@ -85,12 +84,10 @@ function walkChunks(data, keep, verifyChunk) {
             return chunks;
         }
 
-        if (verifyChunk(name)) {
-            // png-chunks-extract reads a missing CRC byte at the end of a cut-off file as 0.
-            const expected = (((data[dataEnd] ?? 0) << 24) | ((data[dataEnd + 1] ?? 0) << 16) | ((data[dataEnd + 2] ?? 0) << 8) | (data[dataEnd + 3] ?? 0)) >>> 0;
-            if (nativeCrc32(data.subarray(nameStart, dataEnd)) !== expected) {
-                throw new Error(`CRC values for ${name} header do not match, PNG file is likely corrupted`);
-            }
+        // png-chunks-extract reads a missing CRC byte at the end of a cut-off file as 0.
+        const expected = (((data[dataEnd] ?? 0) << 24) | ((data[dataEnd + 1] ?? 0) << 16) | ((data[dataEnd + 2] ?? 0) << 8) | (data[dataEnd + 3] ?? 0)) >>> 0;
+        if (nativeCrc32(data.subarray(nameStart, dataEnd)) !== expected) {
+            throw new Error(`CRC values for ${name} header do not match, PNG file is likely corrupted`);
         }
 
         if (keep(name)) {
@@ -144,31 +141,31 @@ export default function extract(data) {
         return extractChunks(data);
     }
 
-    return walkChunks(data, () => true, () => true);
+    return walkChunks(data, () => true);
 }
 
 /**
- * Extracts only the tEXt chunks of a PNG file by walking chunk headers directly, skipping copy and CRC verification
- * of non-tEXt chunks (such as multi-MB IDAT pixel data). Still validates the PNG signature, IHDR-first ordering,
- * chunk bounds, IEND presence, and tEXt chunk CRCs.
+ * Extracts only the tEXt chunks of a PNG file by walking chunk headers directly, without copying the other chunks
+ * (such as multi-MB IDAT pixel data). Validates what png-chunks-extract validates: the PNG signature, IHDR-first
+ * ordering, chunk bounds, IEND presence, and the CRC of every chunk.
  * @param {Uint8Array} data PNG file
  * @returns {{ name: string, data: Uint8Array }[]} tEXt chunks in file order
- * @throws {Error} If a chunk runs past the end of the file, or if the file header/structure/tEXt CRC is invalid
+ * @throws {Error} If a chunk runs past the end of the file, or if the file header, structure or a chunk CRC is invalid
  */
 export function extractTextChunks(data) {
     if (!nativeCrc32) {
         return extract(data).filter(chunk => chunk.name === 'tEXt');
     }
 
-    return walkChunks(data, name => name === 'tEXt', name => name === 'tEXt');
+    return walkChunks(data, name => name === 'tEXt');
 }
 
 /**
- * Extracts character card JSON text (preferring ccv3 over chara) from a PNG buffer without copying or CRC-verifying
- * multi-MB IDAT chunks. Matches character-card-parser's read() decoding semantics for tEXt chunks.
+ * Extracts character card JSON text (preferring ccv3 over chara) from a PNG buffer without copying multi-MB IDAT
+ * chunks. Matches character-card-parser's read() decoding semantics and its rejection of a corrupted chunk.
  * @param {Uint8Array} data PNG file
  * @returns {string} Decoded UTF-8 character card JSON text
- * @throws {Error} If the PNG structure/tEXt CRC is invalid, a tEXt chunk contains a NUL byte, or no card metadata exists
+ * @throws {Error} If the PNG structure or a chunk CRC is invalid, a tEXt chunk contains a NUL byte, or no card metadata exists
  */
 export function extractCharacterCardText(data) {
     const textChunks = extractTextChunks(data).map(chunk => decodeTextChunkData(chunk.data));

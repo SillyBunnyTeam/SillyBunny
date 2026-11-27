@@ -14,7 +14,7 @@ import { default as validateAvatarUrlMiddleware, getFileNameValidationFunction }
 import { deepMerge, humanizedDateTime, tryParse, MemoryLimitedMap, getConfigValue, mutateJsonString, clientRelativePath, getUniqueName, recoverFileWritesInDirectorySync, recoverFileWriteSync, sanitizeSafeCharacterReplacements, getArrayBufferSlice, tryWriteFileSync } from '../util.js';
 import { TavernCardValidator } from '../validator/TavernCardValidator.js';
 import { parse, read, write } from '../character-card-parser.js';
-// SillyBunny: fast header-only PNG tEXt extraction for bulk directory reads skips copying and CRC-verifying multi-MB IDAT chunks.
+// SillyBunny: fast PNG tEXt extraction for bulk directory reads walks the chunk headers and does not copy multi-MB IDAT chunks.
 import { extractCharacterCardText } from '../png/extract.js';
 import { readWorldInfoFile } from './worldinfo.js';
 import { invalidateThumbnail, generateThumbnail } from './thumbnails.js';
@@ -153,7 +153,7 @@ async function readCharacterData(inputFile, inputFormat = 'png', { fileStat: kno
         return indexedData;
     }
 
-    // SillyBunny: during bulk directory reads, walk PNG chunk headers directly for tEXt without copying or CRC-verifying multi-MB IDAT chunks.
+    // SillyBunny: during bulk directory reads, walk PNG chunk headers directly for tEXt without copying multi-MB IDAT chunks. It still checks every chunk CRC, so a card that the single-card parser rejects is not listed.
     const result = inputFormat === 'png' && indexedEntries
         ? extractCharacterCardText(await fsPromises.readFile(inputFile))
         : await parse(inputFile, inputFormat);
