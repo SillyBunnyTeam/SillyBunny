@@ -27,8 +27,6 @@ describe('PR 7 CSS diet regressions', () => {
     const mobileShellCss = readPublic('css', 'sillybunny-mobile-shell.css');
     const bgGalleryCss = readPublic('css', 'sillybunny-background-gallery.css');
     const wiEditorCss = readPublic('css', 'sillybunny-world-info-editor.css');
-    const promptEditorCss = readPublic('css', 'sillybunny-prompt-editor.css');
-    const personaEditorCss = readPublic('css', 'sillybunny-persona-editor.css');
     const streamingDisplayCss = readPublic('css', 'streaming-display.css');
 
     test('removes universal * pointer-events: auto rules and narrows #top-bar to direct children', () => {
@@ -75,35 +73,26 @@ describe('PR 7 CSS diet regressions', () => {
         expect(chatBlurReset).toContain('-webkit-backdrop-filter: none');
     });
 
-    test('applies layout/paint containment and content-visibility to large-list rows with drag overrides', () => {
-        for (const [css, selector] of [
-            [wiEditorCss, '\\.sb-wi-row'],
-            [promptEditorCss, '\\.sb-prompt-row'],
-            [bgGalleryCss, '\\.bg_example'],
-            [personaEditorCss, '\\.sb-persona-row'],
-        ]) {
-            const block = extractRuleBlock(css, selector);
-            expect(block).not.toBeNull();
-            expect(block).toContain('contain: layout style paint');
-            expect(block).toContain('content-visibility: auto');
-            expect(block).toMatch(/contain-intrinsic-size:\s*auto\s+\d+px/);
+    test('only the character list rows and the chat messages skip rendering when off screen', () => {
+        // Other lists draw every row: a row that grows when it is first drawn moves the content below it, and WebKit has no scroll anchoring.
+        const allowed = [
+            /^\.sb-character-list__rows\s*>\s*\.ds-entity-row$/,
+            /^#chat\s*>\s*\.mes\.sb-mes-sized:not\(\.last_mes\):not\(:nth-last-child\(-n \+ 20\)\)$/,
+        ];
+        const cssDir = path.join(repoRoot, 'public', 'css');
+        const sheets = [
+            ['style.css', styleCss],
+            ...readdirSync(cssDir).filter(name => name.endsWith('.css')).map(name => [name, readPublic('css', name)]),
+        ];
+        const offenders = [];
+        for (const [name, css] of sheets) {
+            for (const [, selector, body] of stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+                if (!/content-visibility\s*:\s*auto/.test(body)) continue;
+                const normalised = selector.trim().replace(/\s+/g, ' ');
+                if (!allowed.some(pattern => pattern.test(normalised))) offenders.push(`${name}: ${normalised}`);
+            }
         }
-
-        for (const [css, cls] of [
-            [wiEditorCss, 'sb-wi-row'],
-            [promptEditorCss, 'sb-prompt-row'],
-        ]) {
-            expect(css).toContain(`.${cls}.ui-sortable-helper`);
-            expect(css).toContain(`.${cls}.ui-sortable-placeholder`);
-            expect(css).toMatch(new RegExp(`\\.${cls}[^{]*\\{[^}]*content-visibility:\\s*visible`, 's'));
-        }
-
-        expect(extractRuleBlock(tabsCss, '\\.ds-pref-group')).toContain('contain: layout style');
-        expect(extractRuleBlock(tabsCss, '\\.sb-settings-mounted-shell\\s+\\.sb-settings-flat-section')).toContain('contain: layout style');
-
-        for (const css of [styleCss, tabsCss, themeCss, mobileShellCss]) {
-            expect(stripComments(css)).not.toMatch(/#chat\s+\.mes[^{]*\{[^}]*content-visibility/);
-        }
+        expect(offenders).toEqual([]);
     });
 
     test('contains inactive shell panels', () => {

@@ -175,12 +175,6 @@
     transition: opacity var(--sb-transition-fast);
 }
 
-.bg_example {
-    contain: layout style paint;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 120px;
-}
-
 .sb-bg-cell-menu:focus {
     opacity: 1;
 }

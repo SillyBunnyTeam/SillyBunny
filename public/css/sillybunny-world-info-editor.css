@@ -181,21 +181,6 @@
     font-weight: 700;
 }
 
-.sb-wi-row {
-    contain: layout style paint;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 56px;
-}
-
-.sb-wi-row.ui-sortable-helper,
-.sb-wi-row.ui-sortable-placeholder,
-.ui-sortable-helper .sb-wi-row,
-.ui-sortable-dragging .sb-wi-row,
-.is-dragging .sb-wi-row {
-    contain: none;
-    content-visibility: visible;
-}
-
 .sb-wi-row > .sb-wi-row-icon {
     display: flex;
     align-items: center;
