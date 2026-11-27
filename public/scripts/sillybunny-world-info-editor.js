@@ -232,6 +232,9 @@ export function mountWorldInfoEditor(container) {
     let shownRevision = 0;
     let dragBook = null;
     let dragging = false;
+    // True while the whole page is mounted so that a drag can reach every row of it.
+    let dragMounted = false;
+    let dragReordered = false;
     let heldOrder = null;
     let selection = null;
     let bulkBusy = false;
@@ -787,7 +790,7 @@ export function mountWorldInfoEditor(container) {
 
     function computeVirtualWindow(pageEntries) {
         const pageLength = pageEntries.length;
-        if (pageLength <= WI_VIRTUAL_THRESHOLD) return { start: 0, end: pageLength, topPad: 0, bottomPad: 0 };
+        if (pageLength <= WI_VIRTUAL_THRESHOLD || dragMounted) return { start: 0, end: pageLength, topPad: 0, bottomPad: 0 };
         syncVirtualRowKeys(pageEntries);
         const viewportHeight = listBody.clientHeight > 0 ? listBody.clientHeight : 600;
         const boxOffset = entryBox.offsetTop > 0 ? entryBox.offsetTop : 0;
@@ -973,8 +976,10 @@ export function mountWorldInfoEditor(container) {
             start: () => {
                 dragBook = state;
                 dragging = true;
+                dragReordered = false;
             },
             update: () => run(async () => {
+                dragReordered = true;
                 if (dragBook !== state) return;
                 const domIds = [...entryBox.children].map(row => row.dataset.uid);
                 const pageSlice = pagination.slice(entries);
@@ -1002,6 +1007,10 @@ export function mountWorldInfoEditor(container) {
             }),
             stop: () => {
                 dragging = false;
+                // A drop that changed the order renders from the saved book, which windows the page again. Windowing here
+                // would put the rows back in the old order until the save returns.
+                if (dragReordered) dragMounted = false;
+                else unmountDragPage();
                 requestAnimationFrame(() => shell.flushRefresh());
             },
         });
@@ -1062,6 +1071,45 @@ export function mountWorldInfoEditor(container) {
         ],
         onChange: () => renderList(), onExit: () => renderList(),
     });
+    /**
+     * jQuery UI collects the rows of the list when a press on a grip is captured, and its auto-scroll moves over rows that
+     * exist. The window hides every row outside it, so a drag could not reach them. The whole page is mounted when the press
+     * starts, before the press reaches the sortable, and the window comes back when the press ends or the drop is done.
+     */
+    function mountDragPage(row) {
+        const pageEntries = pagination.slice(entries);
+        if (pageEntries.length <= WI_VIRTUAL_THRESHOLD || dragMounted) return;
+        const top = row.getBoundingClientRect().top;
+        dragMounted = true;
+        reconcilePageWindow(pageEntries);
+        selection?.decorate();
+        // Rows above the window were laid out at estimated heights. Keep the pressed row under the pointer.
+        const shift = row.getBoundingClientRect().top - top;
+        if (shift) listBody.scrollTop += shift;
+    }
+
+    function unmountDragPage() {
+        if (!dragMounted) return;
+        dragMounted = false;
+        if (destroyed || !state.data) return;
+        reconcilePageWindow(pagination.slice(entries));
+        selection?.decorate();
+    }
+
+    const onGripPointerDown = event => {
+        if (event.button !== 0 || !(event.target instanceof Element)) return;
+        const row = event.target.closest('.sb-wi-grip')?.closest('.sb-wi-row');
+        if (!row || !entryBox.contains(row) || selection?.isActive || !customSort() || searchControl.query) return;
+        mountDragPage(row);
+    };
+    // A press that became a drag is released by the sortable's stop callback.
+    const onPressEnd = () => {
+        if (!dragging) unmountDragPage();
+    };
+    entryBox.addEventListener('pointerdown', onGripPointerDown, true);
+    window.addEventListener('pointerup', onPressEnd, true);
+    window.addEventListener('pointercancel', onPressEnd, true);
+    window.addEventListener('blur', onPressEnd);
     const onListScroll = () => {
         if (destroyed || dragging || !state.data) return;
         const pageEntries = pagination.slice(entries);
@@ -1293,6 +1341,10 @@ export function mountWorldInfoEditor(container) {
             worldInfo.removeEventListener('click', onTransportClick, true);
             listBody.removeEventListener('scroll', onListScroll);
             listBody.removeEventListener('keydown', onVirtualKeydown, true);
+            entryBox.removeEventListener('pointerdown', onGripPointerDown, true);
+            window.removeEventListener('pointerup', onPressEnd, true);
+            window.removeEventListener('pointercancel', onPressEnd, true);
+            window.removeEventListener('blur', onPressEnd);
             unbindRows();
             filterButton.removeEventListener('click', onSortClick);
             listHeader.destroy();

@@ -506,6 +506,137 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             expect(firstRowAgain.getAttribute('aria-posinset')).toBe('1');
         });
 
+        describe('drag reorder across a virtualized page', () => {
+            const hadStructuredClone = 'structuredClone' in globalThis;
+            beforeEach(() => {
+                // The model snapshots an entry before it changes it; jsdom has no structuredClone.
+                if (!hadStructuredClone) globalThis.structuredClone = value => JSON.parse(JSON.stringify(value));
+            });
+            afterEach(() => {
+                if (!hadStructuredClone) delete globalThis.structuredClone;
+            });
+
+            /**
+             * jQuery UI is not loaded in jsdom. This stand-in keeps what matters here: like jQuery UI it collects the rows
+             * that exist when the press is captured, and it can only drop the row among rows that are still in the document.
+             */
+            function installFakeSortable() {
+                const fake = { options: null, captured: [] };
+                globalThis.$ = Object.assign(jest.fn(node => ({
+                    on: jest.fn(),
+                    val: jest.fn(() => ({ trigger: jest.fn() })),
+                    sortable(options) {
+                        if (typeof options !== 'object') return node;
+                        fake.options = options;
+                        node.addEventListener('mousedown', event => {
+                            if (event.target.closest(options.handle)) fake.captured = [...node.querySelectorAll(':scope > .sb-wi-row')];
+                        });
+                        return node;
+                    },
+                })), { fn: { sortable() {} } });
+                return fake;
+            }
+
+            const press = (row, type) => row.querySelector('.sb-wi-grip')
+                .dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
+
+            async function mountCustomSortedBook(count, pageSize = count) {
+                wiPageSize = String(pageSize);
+                const container = (() => {
+                    document.body.innerHTML = `<div id="sb_character_world_info_panel"><div id="WorldInfo"><div id="wi-holder">
+                        <div id="wiTopBlock"></div><div id="world_popup">
+                        <select id="world_editor_select"><option value="0">Perf Lorebook</option></select>
+                        <input id="world_info_search">
+                        <select id="world_info_sort_order"><option value="0" data-rule="priority">Priority</option><option value="13" data-rule="custom" selected>Custom</option></select>
+                        <button class="world_info_view_filter is-active" data-filter="all">All</button>
+                        <button id="world_popup_new"></button><button id="world_create_button"></button><button id="world_import_button"></button>
+                        <button id="world_refresh"></button><button id="world_apply_current_sorting"></button>
+                        </div></div></div></div>`;
+                    return document.getElementById('WorldInfo');
+                })();
+                wiLiveState = { name: 'Perf Lorebook', data: makeLargeBook(count, 64) };
+                wiMounted = mountWorldInfoEditor(container);
+                await settle();
+                const listBody = container.querySelector('.sb-wi-list-body');
+                Object.defineProperty(listBody, 'clientHeight', { configurable: true, value: 560 });
+                await wiAdapter.render({ ...wiLiveState, navigation: -1000 });
+                await settle();
+                return { container, listBody, entryBox: container.querySelector('.sb-wi-list-box') };
+            }
+
+            const mountedUids = container => [...container.querySelectorAll('.sb-wi-row')].map(row => Number(row.dataset.uid));
+
+            test('a press on a row grip mounts the whole page, so the drag can reach every row, and the window returns after the drop', async () => {
+                const fake = installFakeSortable();
+                const { container, listBody, entryBox } = await mountCustomSortedBook(500);
+                listBody.scrollTop = 14000;
+                listBody.dispatchEvent(new Event('scroll'));
+                const windowed = mountedUids(container);
+                expect(windowed.length).toBeLessThanOrEqual(60);
+                expect(windowed).not.toContain(5);
+                const dragged = windowed[windowed.length >> 1];
+
+                const row = container.querySelector(`.sb-wi-row[data-uid="${dragged}"]`);
+                press(row, 'pointerdown');
+                press(row, 'mousedown');
+                fake.options.start();
+
+                // Every row of the page exists when the sortable collects its items, so it can place the row anywhere.
+                const capturedUids = fake.captured.map(item => Number(item.dataset.uid));
+                expect(capturedUids.length).toBe(500);
+                expect([capturedUids[0], capturedUids[250], capturedUids[499]]).toEqual([0, 250, 499]);
+                const target = fake.captured.find(item => item.dataset.uid === '5');
+                expect(target.isConnected).toBe(true);
+                expect(row.isConnected).toBe(true);
+
+                // Drop the row in front of uid 5, as the sortable moves the node.
+                entryBox.insertBefore(row, target);
+                fake.options.update();
+                await settle();
+                fake.options.stop();
+                press(row, 'pointerup');
+                // The page is rendered again from the saved book once the save has returned.
+                await wiReorder.mock.results.at(-1).value;
+                await settle();
+
+                const submitted = wiReorder.mock.calls.at(-1)[3].map(Number);
+                expect(submitted.length).toBe(500);
+                expect(submitted.slice(0, 7)).toEqual([0, 1, 2, 3, 4, dragged, 5]);
+                expect(new Set(submitted).size).toBe(500);
+
+                expect(mountedUids(container).length).toBeLessThanOrEqual(60);
+            });
+
+            test('a press that does not become a drag mounts the window again', async () => {
+                const fake = installFakeSortable();
+                const { container, listBody } = await mountCustomSortedBook(500);
+                listBody.scrollTop = 14000;
+                listBody.dispatchEvent(new Event('scroll'));
+                const row = container.querySelector('.sb-wi-row');
+
+                press(row, 'pointerdown');
+                press(row, 'mousedown');
+                expect(fake.captured.length).toBe(500);
+                press(row, 'pointerup');
+                await settle();
+
+                expect(mountedUids(container).length).toBeLessThanOrEqual(60);
+                expect(wiReorder).not.toHaveBeenCalled();
+            });
+
+            test('a drag in a page of 100 rows or fewer needs no extra mounting', async () => {
+                const fake = installFakeSortable();
+                const { container } = await mountCustomSortedBook(80, 100);
+                const row = container.querySelector('.sb-wi-row');
+                const before = mountedUids(container);
+
+                press(row, 'pointerdown');
+                press(row, 'mousedown');
+                expect(fake.captured.length).toBe(80);
+                expect(mountedUids(container)).toEqual(before);
+            });
+        });
+
         test('keeps identical full-page rendering without virtual padding on small lists (<= 100 entries)', async () => {
             wiPageSize = '100';
             const container = setupWorldInfoDom();
